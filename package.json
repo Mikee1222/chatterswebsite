@@ -14,7 +14,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 execute chatter-d1 --remote --file=./drizzle/migrations/0000_initial.sql",
     "db:studio": "wrizzle-kit studio",
-    "pages:build": "npx @cloudflare/next-on-pages"
+    "pages:build": "opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
+    "preview:cf": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.0.5",
@@ -37,7 +39,7 @@
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "@cloudflare/next-on-pages": "^1.7.0",
+    "@opennextjs/cloudflare": "^1.0.0-beta.19",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
@@ -48,6 +50,6 @@
     "tailwindcss": "^3.4.0",
     "tsx": "^4.7.0",
     "typescript": "^5.3.0",
-    "wrangler": "^3.22.0"
+    "wrangler": "^3.99.0"
   }
 }

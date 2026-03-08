@@ -52,7 +52,7 @@ export default async function AdminWhalesPage({
   const user = await getSessionFromCookies();
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
-  const params = await (typeof searchParams.then === "function" ? searchParams : Promise.resolve(searchParams));
+  const params = await (searchParams instanceof Promise ? searchParams : Promise.resolve(searchParams));
   const filters = filtersFromSearchParams(params);
   const offset = (typeof params.offset === "string" ? params.offset : Array.isArray(params.offset) ? params.offset[0] : undefined) ?? undefined;
 
