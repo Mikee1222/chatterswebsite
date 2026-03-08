@@ -1,0 +1,5 @@
+# Copy to .dev.vars for local wrangler dev
+# Do not commit .dev.vars
+
+REALTIME_JWT_SECRET=your-jwt-secret-min-32-chars
+REALTIME_BROADCAST_SECRET=your-broadcast-secret

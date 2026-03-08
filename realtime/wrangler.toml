@@ -1,0 +1,17 @@
+# Realtime WebSocket layer – Cloudflare Worker + Durable Object
+# Deploy: cd realtime && npx wrangler deploy
+# Set REALTIME_JWT_SECRET and REALTIME_BROADCAST_SECRET in dashboard or .dev.vars
+
+name = "chatter-realtime"
+main = "src/index.ts"
+compatibility_date = "2024-01-01"
+
+[[durable_objects.bindings]]
+name = "NOTIFICATION_HUB"
+class_name = "NotificationHub"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["NotificationHub"]
+
+# Optional: bind to a custom domain route, e.g. realtime.yourdomain.com

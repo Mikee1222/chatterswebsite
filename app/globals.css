@@ -1,0 +1,170 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 2%;
+    --foreground: 0 0% 98%;
+    --card: 0 0% 8%;
+    --primary: 330 80% 55%;
+    --primary-foreground: 0 0% 100%;
+    --muted: 0 0% 15%;
+    --muted-foreground: 0 0% 65%;
+    --border: 0 0% 18%;
+    --ring: 330 70% 55%;
+    --glass: rgba(20, 20, 25, 0.65);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+    --pink-glow: hsl(330 80% 55% / 0.25);
+    --bg-base: #050505;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply text-foreground antialiased;
+    background: var(--bg-base);
+    min-height: 100vh;
+  }
+}
+
+/* ========== Dashboard: layered luxury background ========== */
+.dashboard-bg {
+  position: relative;
+  min-height: 100vh;
+  background: var(--bg-base);
+  overflow: hidden;
+}
+
+/* Base: very dark gradient overlay (adds depth, not flat) */
+.dashboard-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 120% 80% at 50% 0%, rgba(18, 18, 22, 0.95) 0%, transparent 50%),
+    radial-gradient(ellipse 100% 100% at 50% 100%, rgba(12, 12, 16, 0.9) 0%, transparent 45%);
+  pointer-events: none;
+}
+
+/* Subtle noise texture */
+.dashboard-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  pointer-events: none;
+}
+
+/* Pink ambient glow — top left (behind content) */
+.dashboard-glow-tl {
+  position: absolute;
+  z-index: 0;
+  top: 0;
+  left: 0;
+  width: 60vmax;
+  height: 60vmax;
+  background: radial-gradient(
+    circle at 20% 20%,
+    rgba(236, 72, 153, 0.12),
+    rgba(200, 50, 130, 0.04) 35%,
+    transparent 50%
+  );
+  pointer-events: none;
+}
+
+/* Pink ambient glow — bottom right (behind content) */
+.dashboard-glow-br {
+  position: absolute;
+  z-index: 0;
+  bottom: 0;
+  right: 0;
+  width: 55vmax;
+  height: 55vmax;
+  background: radial-gradient(
+    circle at 80% 80%,
+    rgba(236, 72, 153, 0.08),
+    rgba(200, 50, 130, 0.03) 40%,
+    transparent 55%
+  );
+  pointer-events: none;
+}
+
+/* Optional: very slow gradient drift (premium, non-distracting) */
+@keyframes dashboard-glow-drift {
+  0%, 100% { opacity: 1; transform: scale(1) translate(0, 0); }
+  33% { opacity: 0.92; transform: scale(1.02) translate(1%, 0.5%); }
+  66% { opacity: 0.98; transform: scale(0.99) translate(-0.5%, -0.3%); }
+}
+
+.dashboard-glow-tl,
+.dashboard-glow-br {
+  animation: dashboard-glow-drift 28s ease-in-out infinite;
+}
+
+.dashboard-glow-br {
+  animation-delay: -14s;
+}
+
+/* Content above background layers */
+.dashboard-bg .dashboard-content {
+  position: relative;
+  z-index: 1;
+}
+
+/* ========== Glass panels — pop more, keep luxury ========== */
+.glass-panel {
+  background: rgba(20, 20, 25, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  @apply rounded-3xl;
+}
+
+.glass-card {
+  background: rgba(20, 20, 25, 0.65);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+  @apply rounded-2xl;
+}
+
+/* Subtle pink glow for focus/active */
+.glow-pink {
+  box-shadow: 0 0 20px -5px hsl(330 80% 55% / 0.35);
+}
+
+/* Premium stat card */
+.stat-card {
+  @apply glass-card p-5 transition-all duration-200 hover:shadow-[0_0_24px_-4px_rgba(236,72,153,0.12)];
+}
+.stat-card:hover {
+  background: rgba(28, 28, 34, 0.72);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* ========== Mobile app spacing system ========== */
+:root {
+  --mobile-screen-padding: 16px;
+  --mobile-card-padding: 16px;
+  --mobile-section-gap: 16px;
+  --mobile-item-gap: 12px;
+  --mobile-tap-min-height: 48px;
+  --mobile-bottom-nav-height: 72px;
+}
+
+/* Main content: clear bottom nav + safe area on mobile; normal on desktop */
+.mobile-app-main {
+  padding-bottom: max(6rem, calc(5rem + env(safe-area-inset-bottom, 0px)));
+}
+@media (min-width: 768px) {
+  .mobile-app-main {
+    padding-bottom: 1.5rem;
+  }
+}
