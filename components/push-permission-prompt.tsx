@@ -71,11 +71,14 @@ export async function runPushEnableFlow(role?: UserRole | null): Promise<PushEna
       reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
     }
-    pushLog("Service worker ready:", !!reg);
+    pushLog("Service worker ready");
 
     pushLog("Requesting notification permission…");
     const permission = await Notification.requestPermission();
     pushLog("Permission result:", permission);
+    if (permission === "granted") {
+      pushLog("Permission granted");
+    }
     if (permission !== "granted") {
       pushLog("Exit: user denied or dismissed permission");
       return { status: "denied" };
@@ -104,7 +107,7 @@ export async function runPushEnableFlow(role?: UserRole | null): Promise<PushEna
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
     });
-    pushLog("Push subscription created:", !!sub?.endpoint);
+    pushLog("Subscription object created", { endpoint: !!sub?.endpoint });
 
     const j = sub.toJSON();
     const body = {
@@ -123,10 +126,10 @@ export async function runPushEnableFlow(role?: UserRole | null): Promise<PushEna
     if (!subscribeRes.ok) {
       const err = await subscribeRes.json().catch(() => ({}));
       const msg = (err as { error?: string }).error || "Failed to save subscription";
-      pushLog("Save failure:", subscribeRes.status, msg);
+      pushLog("Airtable save failure", subscribeRes.status, msg);
       return { status: "error", message: msg };
     }
-    pushLog("Save success – subscription stored on backend");
+    pushLog("Airtable save success – subscription stored on backend");
     return { status: "success" };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -279,18 +282,42 @@ export function PushPermissionPrompt({ role, onSubscribed }: Props) {
     );
   }
 
-  /* Error state */
+  /* Error state (e.g. permission granted but backend save failed) */
+  const isSaveFailed = step === "error" && (stepMessage?.toLowerCase().includes("save") ?? false);
   if (step === "error") {
     return (
-      <PromptCard onClose={handleCloseSuccessOrDenied} title="Something went wrong" showClose>
-        <p className="mt-2 text-sm text-amber-200/90">{stepMessage || "Could not enable notifications."}</p>
-        <button
-          type="button"
-          onClick={handleCloseSuccessOrDenied}
-          className="mt-4 w-full rounded-xl border border-white/20 bg-white/5 py-3 text-sm font-medium text-white/80"
-        >
-          OK
-        </button>
+      <PromptCard
+        onClose={handleCloseSuccessOrDenied}
+        title={isSaveFailed ? "Permission granted, but subscription setup failed" : "Something went wrong"}
+        showClose
+      >
+        <p className="mt-2 text-sm text-amber-200/90">
+          {isSaveFailed
+            ? "Your browser allowed notifications, but we couldn’t save this device. Tap Retry or try again later."
+            : stepMessage || "Could not enable notifications."}
+        </p>
+        <div className="mt-4 flex gap-3">
+          {isSaveFailed && (
+            <button
+              type="button"
+              onClick={() => {
+                setStep("loading");
+                setStepMessage("");
+                void handleEnable();
+              }}
+              className="flex-1 rounded-xl bg-[hsl(330,80%,55%)] py-3 text-sm font-semibold text-white"
+            >
+              Retry
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleCloseSuccessOrDenied}
+            className={isSaveFailed ? "rounded-xl border border-white/20 bg-white/5 px-4 py-3 text-sm font-medium text-white/80" : "mt-4 w-full rounded-xl border border-white/20 bg-white/5 py-3 text-sm font-medium text-white/80"}
+          >
+            OK
+          </button>
+        </div>
       </PromptCard>
     );
   }

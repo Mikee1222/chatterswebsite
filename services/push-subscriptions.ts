@@ -65,16 +65,33 @@ export async function findSubscriptionByUserAndEndpoint(
   return match ? mapRecord(match as AirtableRecord<Fields>) : null;
 }
 
+/** Minimal fields required for Airtable push_subscriptions. Omit user_agent so save does not fail if column is missing. */
+type SafeCreateFields = Pick<Fields, "subscription_id" | "user_id" | "endpoint" | "p256dh" | "auth"> & {
+  role?: string;
+};
+
 export async function createPushSubscription(fields: Partial<Fields>) {
-  const rec = await createRecord(TABLE, fields);
+  const safe: Record<string, unknown> = {};
+  if (fields.subscription_id != null) safe.subscription_id = fields.subscription_id;
+  if (fields.user_id != null) safe.user_id = fields.user_id;
+  if (fields.endpoint != null) safe.endpoint = fields.endpoint;
+  if (fields.p256dh != null) safe.p256dh = fields.p256dh;
+  if (fields.auth != null) safe.auth = fields.auth;
+  if (fields.role != null) safe.role = fields.role;
+  const rec = await createRecord(TABLE, safe as SafeCreateFields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
+/** Only pass writable fields that exist on the table. Omit user_agent to avoid INVALID_VALUE if column missing. */
 export async function updatePushSubscription(
   recordId: string,
-  fields: Partial<Pick<Fields, "p256dh" | "auth" | "user_agent" | "role">>
+  fields: Partial<Pick<Fields, "p256dh" | "auth" | "role">>
 ) {
-  const rec = await updateRecord<Fields>(TABLE, recordId, fields);
+  const safe: Record<string, unknown> = {};
+  if (fields.p256dh != null) safe.p256dh = fields.p256dh;
+  if (fields.auth != null) safe.auth = fields.auth;
+  if (fields.role != null) safe.role = fields.role;
+  const rec = await updateRecord<Fields>(TABLE, recordId, safe);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 

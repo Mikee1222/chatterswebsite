@@ -35,7 +35,6 @@ export async function POST(request: Request) {
   }
 
   const userId = user.airtableUserId ?? user.id;
-  const userAgent = request.headers.get("user-agent") ?? "";
 
   try {
     const existing = await findSubscriptionByUserAndEndpoint(userId, endpoint);
@@ -43,12 +42,9 @@ export async function POST(request: Request) {
       await updatePushSubscription(existing.id, {
         p256dh: keys.p256dh,
         auth: keys.auth,
-        user_agent: userAgent,
         role: role ?? undefined,
       });
-      if (process.env.NODE_ENV !== "production") {
-        console.log("[push/subscribe] updated existing subscription", existing.id);
-      }
+      console.log("[push/subscribe] Airtable save success (updated existing)", existing.id);
       return NextResponse.json({ success: true });
     }
 
@@ -59,15 +55,12 @@ export async function POST(request: Request) {
       endpoint,
       p256dh: keys.p256dh,
       auth: keys.auth,
-      user_agent: userAgent,
       role: role ?? undefined,
     });
-    if (process.env.NODE_ENV !== "production") {
-      console.log("[push/subscribe] created new subscription");
-    }
+    console.log("[push/subscribe] Airtable save success (created new)");
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("[push/subscribe]", err);
+    console.error("[push/subscribe] Airtable save failure", err);
     return NextResponse.json({ error: "Failed to save subscription" }, { status: 500 });
   }
 }
