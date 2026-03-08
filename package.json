@@ -3,6 +3,10 @@
   "version": "1.0.0",
   "description": "Internal dashboard – Airtable backend, Cloudflare deploy",
   "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
