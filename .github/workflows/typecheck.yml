@@ -1,0 +1,41 @@
+name: TypeScript Check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run TypeScript check (standard)
+        run: npm run typecheck
+
+      - name: Run TypeScript check (strict)
+        continue-on-error: true
+        run: |
+          npm run typecheck:strict 2>&1 | tee typescript-errors.log
+          ERROR_COUNT=$(grep -c 'error TS' typescript-errors.log || echo 0)
+          echo "::notice::Strict mode errors: $ERROR_COUNT"
+
+      - name: Upload error log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: typescript-errors
+          path: typescript-errors.log
+          if-no-files-found: ignore

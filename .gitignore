@@ -50,6 +50,9 @@ Thumbs.db
 # TypeScript build info
 *.tsbuildinfo
 
+# Local strict-mode error capture (CI / dev)
+typescript-errors.log
+
 # Duplicate lockfile (e.g. macOS copy)
 package-lock 2.json
 
@@ -59,3 +62,7 @@ package-lock 2.json
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# Local junk / accidental copies
+.foo/
+.next-nope/
