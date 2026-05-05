@@ -14,6 +14,8 @@ import {
 import { ROUTES } from "@/lib/routes";
 import { formatTimeFromISO, formatDateTimeEuropean } from "@/lib/format";
 import { Input, FormError } from "@/components/ui/form";
+import { Loader2, RefreshCw } from "lucide-react";
+import { motion } from "framer-motion";
 import { LiveTimer } from "@/components/live-timer";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
 import type { Shift, ShiftModel, ModelRecord } from "@/types";
@@ -32,6 +34,8 @@ type Props = {
   modelss: ModelRecord[];
   maxBreakMinutes: number;
   todaySchedule?: TodayScheduleData;
+  /** modelss record ids currently in an active period (today). */
+  modelIdsInActivePeriodToday?: string[];
 };
 
 function parseStartTime(startTime: string | null): number | null {
@@ -55,6 +59,7 @@ function VaAddModelModal({
   loading,
   error,
   selectedModelId,
+  shiftInteractionLocked,
 }: {
   modelss: ModelRecord[];
   alreadyInShiftModelIds: Set<string>;
@@ -64,7 +69,9 @@ function VaAddModelModal({
   loading: boolean;
   error: string | null;
   selectedModelId: string | null;
+  shiftInteractionLocked?: boolean;
 }) {
+  const locked = shiftInteractionLocked ?? false;
   const [search, setSearch] = React.useState("");
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -112,7 +119,8 @@ function VaAddModelModal({
                   <button
                     type="button"
                     onClick={() => onSelect(selectedModelId === m.id ? null : m.id)}
-                    className={`flex w-full items-center gap-4 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-white/[0.09] ${
+                    disabled={locked}
+                    className={`flex w-full items-center gap-4 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-white/[0.09] disabled:pointer-events-none disabled:opacity-40 ${
                       selectedModelId === m.id ? "border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/10" : "border-white/10 bg-white/[0.06]"
                     }`}
                   >
@@ -144,9 +152,10 @@ function VaAddModelModal({
           <button
             type="button"
             onClick={onConfirm}
-            disabled={loading || !selectedModelId}
-            className="rounded-xl bg-[hsl(330,80%,55%)] px-5 py-2.5 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)] disabled:opacity-50"
+            disabled={loading || !selectedModelId || locked}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-5 py-2.5 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)] disabled:opacity-50"
           >
+            {loading ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
             {loading ? "Adding…" : "Add to shift"}
           </button>
         </div>
@@ -225,7 +234,11 @@ function VaModelSelectModal({
                 <ul className="space-y-3 md:space-y-2">
                   {filtered.map((m) => (
                     <li key={m.id}>
-                      <label className="flex min-h-[52px] cursor-pointer items-center gap-4 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-4 transition-colors hover:bg-white/[0.09] active:bg-white/[0.12] md:min-h-0 md:py-3">
+                      <motion.label
+                        whileHover={{ scale: 1.01 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="flex min-h-[52px] cursor-pointer items-center gap-4 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-4 transition-colors hover:bg-white/[0.09] active:bg-white/[0.12] md:min-h-0 md:py-3"
+                      >
                         <input
                           type="checkbox"
                           checked={selectedModelIds.has(m.id)}
@@ -234,13 +247,17 @@ function VaModelSelectModal({
                         />
                         <span className="min-w-0 flex-1 font-medium text-white/95 text-base md:text-sm">{m.model_name}</span>
                         {m.current_status === "free" ? (
-                          <span className="shrink-0 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-300">Free</span>
+                          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                            Free
+                          </span>
                         ) : (
-                          <span className="shrink-0 rounded-full bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-300">
+                          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-300">
+                            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 animate-pulse" aria-hidden />
                             {m.current_chatter_name ? `Chatter: ${m.current_chatter_name}` : "Busy"}
                           </span>
                         )}
-                      </label>
+                      </motion.label>
                     </li>
                   ))}
                 </ul>
@@ -250,14 +267,16 @@ function VaModelSelectModal({
               <button type="button" onClick={onCancel} className="min-h-[44px] rounded-xl border border-white/15 px-5 py-2.5 text-base font-medium text-white/80 hover:bg-white/5 md:min-h-0 md:text-sm">
                 Cancel
               </button>
-              <button
+              <motion.button
                 type="button"
                 onClick={onConfirm}
                 disabled={loading || selectedModelIds.size === 0}
+                whileTap={{ scale: 0.97 }}
+                transition={{ duration: 0.12 }}
                 className="min-h-[44px] rounded-xl bg-[hsl(330,80%,55%)] px-6 py-2.5 text-base font-medium text-white hover:bg-[hsl(330,80%,50%)] disabled:opacity-50 md:min-h-0 md:text-sm"
               >
                 {loading ? "Starting…" : `Start mistake shift (${selectedModelIds.size} model${selectedModelIds.size !== 1 ? "s" : ""})`}
-              </button>
+              </motion.button>
             </div>
           </div>
           {schedulePanel && (
@@ -284,8 +303,16 @@ export function VaShiftClient({
   modelss,
   maxBreakMinutes,
   todaySchedule,
+  modelIdsInActivePeriodToday = [],
 }: Props) {
   const router = useRouter();
+  const [refreshing, setRefreshing] = React.useState(false);
+  const handleRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    router.refresh();
+    setTimeout(() => setRefreshing(false), 1000);
+  }, [router]);
+
   const [showModelSelect, setShowModelSelect] = React.useState(false);
   const [selectedModelIds, setSelectedModelIds] = React.useState<Set<string>>(new Set());
   const [starting, setStarting] = React.useState(false);
@@ -298,6 +325,8 @@ export function VaShiftClient({
   const [showAddModelModal, setShowAddModelModal] = React.useState(false);
   const [selectedAddModelId, setSelectedAddModelId] = React.useState<string | null>(null);
   const [clientTotalBreakUsed, setClientTotalBreakUsed] = React.useState<number | null>(null);
+  const [breakAction, setBreakAction] = React.useState<"idle" | "starting" | "ending">("idle");
+  const [optimisticNotOnBreak, setOptimisticNotOnBreak] = React.useState(false);
 
   React.useEffect(() => {
     if (!successMessage) return;
@@ -307,14 +336,29 @@ export function VaShiftClient({
 
   const startTimeMs = activeShift ? parseStartTime(activeShift.start_time) : null;
   const breakUsed = activeShift?.break_minutes ?? 0;
-  const isOnBreak = activeShift?.status === "on_break" || breakStartedAt !== null;
+  const isOnBreak =
+    !optimisticNotOnBreak &&
+    (activeShift?.status === "on_break" || breakStartedAt !== null);
   const breakStartTimeMs = isOnBreak && activeShift
     ? (activeShift.break_started_at ? new Date(activeShift.break_started_at).getTime() : breakStartedAt?.getTime() ?? null)
     : null;
   const breakStartedAtIso = activeShift?.break_started_at ?? breakStartedAt?.toISOString() ?? null;
   const totalBreakUsedDisplay = clientTotalBreakUsed !== null ? clientTotalBreakUsed : breakUsed;
   const remainingBreak = Math.max(0, maxBreakMinutes - totalBreakUsedDisplay);
-  const canStartBreak = activeShift && activeShift.status === "active" && remainingBreak > 0;
+  const shiftControlsBusy = breakAction !== "idle" || ending;
+  const canStartBreak =
+    activeShift &&
+    activeShift.status === "active" &&
+    !isOnBreak &&
+    remainingBreak > 0 &&
+    breakAction === "idle" &&
+    !ending;
+
+  React.useEffect(() => {
+    if (optimisticNotOnBreak && activeShift?.status === "active") {
+      setOptimisticNotOnBreak(false);
+    }
+  }, [optimisticNotOnBreak, activeShift?.status]);
 
   React.useEffect(() => {
     if (!isOnBreak || breakStartTimeMs === null) {
@@ -430,32 +474,55 @@ export function VaShiftClient({
   async function handleStartBreak() {
     if (!activeShift) return;
     setError(null);
+    setBreakAction("starting");
+    setBreakStartedAt(new Date());
     try {
-      await startBreak(activeShift.id);
-      setBreakStartedAt(new Date());
+      const result = await startBreak(activeShift.id);
+      if (result && "success" in result && !result.success) {
+        setBreakStartedAt(null);
+        setError(result.error);
+        return;
+      }
       router.refresh();
     } catch (err) {
+      setBreakStartedAt(null);
       setError(err instanceof Error ? err.message : "Failed to start break");
+    } finally {
+      setBreakAction("idle");
     }
   }
 
   async function handleEndBreak() {
     if (!activeShift) return;
     setError(null);
-    const elapsed = breakStartedAt ? Math.ceil((Date.now() - breakStartedAt.getTime()) / 60000) : 1;
+    const bStartMs =
+      breakStartTimeMs ??
+      (breakStartedAt != null ? breakStartedAt.getTime() : null);
+    const elapsed =
+      bStartMs != null ? Math.max(1, Math.ceil((Date.now() - bStartMs) / 60000)) : 1;
+    const usedForCap = clientTotalBreakUsed !== null ? clientTotalBreakUsed : breakUsed;
+    const remainingSnap = Math.max(0, maxBreakMinutes - usedForCap);
+    const additionalBreak = Math.min(elapsed, remainingSnap + elapsed);
+
+    setBreakAction("ending");
+    setOptimisticNotOnBreak(true);
+    setBreakStartedAt(null);
     try {
-      await endBreak(activeShift.id, Math.min(elapsed, remainingBreak + elapsed));
-      setBreakStartedAt(null);
+      await endBreak(activeShift.id, additionalBreak);
       router.refresh();
     } catch (err) {
+      setOptimisticNotOnBreak(false);
       setError(err instanceof Error ? err.message : "Failed to end break");
+      void router.refresh();
+    } finally {
+      setBreakAction("idle");
     }
   }
 
   async function handleEndShift() {
     if (!activeShift) return;
-    setError(null);
     setEnding(true);
+    setError(null);
     try {
       await endMistakeShift(activeShift.id);
       setBreakStartedAt(null);
@@ -486,19 +553,33 @@ export function VaShiftClient({
           />
         )}
         <div className="glass-panel p-5 md:p-8 md:p-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Mistake shift</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-3xl">Start a mistake shift</h2>
-          <p className="mt-2 text-sm text-white/60 md:text-base">
-            Select models to check. You can enter any model (even if a chatter is in it).
-          </p>
-          <div className="mt-6 md:mt-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Mistake shift</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-3xl">Start a mistake shift</h2>
+              <p className="mt-2 text-sm text-white/60 md:text-base">
+                Select models to check. You can enter any model (even if a chatter is in it).
+              </p>
+            </div>
             <button
               type="button"
+              onClick={handleRefresh}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+              <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          </div>
+          <div className="mt-6 md:mt-8">
+            <motion.button
+              type="button"
               onClick={() => setShowModelSelect(true)}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.12 }}
               className="w-full rounded-2xl bg-[hsl(330,80%,55%)] px-6 py-3.5 text-base font-medium text-white shadow-[0_0_32px_-8px_rgba(236,72,153,0.5)] transition hover:bg-[hsl(330,80%,50%)] md:w-auto md:px-8 md:py-4"
             >
               Start mistake shift
-            </button>
+            </motion.button>
           </div>
         </div>
         <div className="grid gap-6 lg:grid-cols-2">
@@ -550,9 +631,16 @@ export function VaShiftClient({
   }
 
   const startedAtLabel = activeShift.start_time ? formatDateTimeEuropean(activeShift.start_time) : "—";
-  const statusLabel = activeShift.status === "on_break" || breakStartedAt ? "On break" : "Running";
+  const statusLabel =
+    breakAction === "starting"
+      ? "On break…"
+      : breakAction === "ending"
+        ? "Ending break…"
+        : isOnBreak
+          ? "On break"
+          : "Running";
   const statusBadgeColor =
-    activeShift.status === "on_break" || breakStartedAt
+    isOnBreak || breakAction === "starting" || breakAction === "ending"
       ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
       : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
 
@@ -566,12 +654,30 @@ export function VaShiftClient({
       )}
       <div className="glass-panel p-4 md:p-8">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">Mistake shift active</h2>
-              <span className={`rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeColor}`}>{statusLabel}</span>
-            </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">Mistake shift active</h2>
             <p className="mt-1 text-base italic text-white/70 md:text-lg">Fix the flow.</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeColor}`}>
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  isOnBreak || breakAction === "starting" || breakAction === "ending"
+                    ? "bg-amber-400 animate-pulse"
+                    : "bg-emerald-400 animate-pulse"
+                }`}
+                aria-hidden
+              />
+              {statusLabel}
+            </span>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+              <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
           </div>
         </div>
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 md:mt-8 md:gap-6">
@@ -598,26 +704,39 @@ export function VaShiftClient({
           <button
             type="button"
             onClick={() => { setSelectedAddModelId(null); setError(null); setShowAddModelModal(true); }}
-            className="rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)]"
+            disabled={shiftControlsBusy}
+            className="rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add model
           </button>
           {canStartBreak && (
-            <button type="button" onClick={handleStartBreak} className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10">
+            <button
+              type="button"
+              onClick={handleStartBreak}
+              disabled={shiftControlsBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
               Start break
             </button>
           )}
-          {(activeShift.status === "on_break" || breakStartedAt) && (
-            <button type="button" onClick={handleEndBreak} className="rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2.5 text-sm font-medium text-white">
-              End break
+          {isOnBreak && (
+            <button
+              type="button"
+              onClick={handleEndBreak}
+              disabled={shiftControlsBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {breakAction === "ending" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+              {breakAction === "ending" ? "Ending break…" : "End break"}
             </button>
           )}
           <button
             type="button"
             onClick={handleEndShift}
-            disabled={ending}
-            className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+            disabled={ending || shiftControlsBusy}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {ending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
             {ending ? "Ending…" : "End shift"}
           </button>
         </div>
@@ -626,6 +745,18 @@ export function VaShiftClient({
         <div className="lg:col-span-3">
           <div className="glass-card p-4 md:p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Active models</h3>
+            {(() => {
+              const names = shiftModels
+                .filter((sm) => modelIdsInActivePeriodToday.includes(sm.model_id))
+                .map((sm) => sm.model_name)
+                .filter(Boolean);
+              if (names.length === 0) return null;
+              return (
+                <p className="mt-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
+                  ⚠️ {names.join(", ")} may have content restrictions today
+                </p>
+              );
+            })()}
             <div className="mt-4 space-y-3">
               {shiftModels.length === 0 ? (
                 <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-center text-sm text-white/50">No models. Add one below.</p>
@@ -635,13 +766,17 @@ export function VaShiftClient({
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-white/95">{sm.model_name}</p>
                       <p className="text-xs text-white/50">Entered {formatEnteredAt(sm.entered_at)}</p>
+                      {modelIdsInActivePeriodToday.includes(sm.model_id) && (
+                        <p className="mt-1 text-[11px] text-amber-200/90">⚠️ Possible content restrictions today</p>
+                      )}
                     </div>
                     <button
                       type="button"
                       onClick={() => handleRemoveModel(sm)}
-                      disabled={removingId === sm.id}
-                      className="min-h-[44px] shrink-0 rounded-xl border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10 disabled:opacity-50 md:min-h-0 md:rounded-lg md:px-3 md:py-1.5 md:text-xs"
+                      disabled={removingId === sm.id || shiftControlsBusy}
+                      className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:rounded-lg md:px-3 md:py-1.5 md:text-xs"
                     >
+                      {removingId === sm.id ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
                       {removingId === sm.id ? "Removing…" : "Remove"}
                     </button>
                   </div>
@@ -682,26 +817,39 @@ export function VaShiftClient({
           <button
             type="button"
             onClick={() => { setSelectedAddModelId(null); setError(null); setShowAddModelModal(true); }}
-            className="min-h-[48px] rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25"
+            disabled={shiftControlsBusy}
+            className="min-h-[48px] rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add model
           </button>
           {canStartBreak && (
-            <button type="button" onClick={handleStartBreak} className="min-h-[48px] rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 hover:bg-white/10">
+            <button
+              type="button"
+              onClick={handleStartBreak}
+              disabled={shiftControlsBusy}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+            >
               Start break
             </button>
           )}
-          {(activeShift.status === "on_break" || breakStartedAt) && (
-            <button type="button" onClick={handleEndBreak} className="min-h-[48px] rounded-xl bg-[hsl(330,80%,55%)] px-4 py-3 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)]">
-              End break
+          {isOnBreak && (
+            <button
+              type="button"
+              onClick={handleEndBreak}
+              disabled={shiftControlsBusy}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-4 py-3 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {breakAction === "ending" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+              {breakAction === "ending" ? "Ending break…" : "End break"}
             </button>
           )}
           <button
             type="button"
             onClick={handleEndShift}
-            disabled={ending}
-            className="min-h-[48px] rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+            disabled={ending || shiftControlsBusy}
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {ending ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
             {ending ? "Ending…" : "End shift"}
           </button>
         </div>
@@ -714,7 +862,8 @@ export function VaShiftClient({
           onSelect={setSelectedAddModelId}
           onConfirm={handleConfirmAddModel}
           onCancel={() => { setShowAddModelModal(false); setSelectedAddModelId(null); setError(null); }}
-          loading={addingModelId !== null}
+          loading={Boolean(selectedAddModelId && addingModelId === selectedAddModelId)}
+          shiftInteractionLocked={shiftControlsBusy}
           error={error}
         />
       )}

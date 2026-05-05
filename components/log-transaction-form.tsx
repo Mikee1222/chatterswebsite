@@ -11,14 +11,13 @@ import {
   Label,
   Input,
   Textarea,
-  Select,
   SuccessBlock,
   SubmitButton,
   btnSecondaryClass,
   formSpace,
   formRowClass,
-  selectOptionClass,
 } from "@/components/ui/form";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 type WhaleOption = {
   id: string;
@@ -52,6 +51,22 @@ export function LogTransactionForm({ chatterRecordId, chatterName, whales }: Pro
   const [note, setNote] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [done, setDone] = React.useState(false);
+
+  const whaleOptions = React.useMemo(
+    () => [
+      { value: "", label: "Select whale" },
+      ...whales.map((w) => ({ value: w.id, label: w.username })),
+    ],
+    [whales]
+  );
+  const currencyOptions = React.useMemo(
+    () => TRANSACTION_CURRENCY_OPTIONS.map((c) => ({ value: c, label: c.toUpperCase() })),
+    []
+  );
+  const typeOptions = React.useMemo(
+    () => TRANSACTION_TYPES.map((t) => ({ value: t, label: t })),
+    []
+  );
 
   const selectedWhale = whales.find((w) => w.id === whaleId);
 
@@ -117,14 +132,7 @@ export function LogTransactionForm({ chatterRecordId, chatterName, whales }: Pro
     <form onSubmit={submit} className={formSpace}>
       <div>
         <Label>Whale</Label>
-        <Select value={whaleId} onChange={(e) => setWhaleId(e.target.value)} required>
-          <option value="" className={selectOptionClass}>Select whale</option>
-          {whales.map((w) => (
-            <option key={w.id} value={w.id} className={selectOptionClass}>
-              {w.username}
-            </option>
-          ))}
-        </Select>
+        <CustomSelect value={whaleId} onChange={setWhaleId} required options={whaleOptions} />
       </div>
       <div>
         <Label>Model name</Label>
@@ -185,20 +193,12 @@ export function LogTransactionForm({ chatterRecordId, chatterName, whales }: Pro
         </div>
         <div>
           <Label>Currency</Label>
-          <Select value={currency} onChange={(e) => setCurrency(e.target.value as TransactionCurrency)}>
-            {TRANSACTION_CURRENCY_OPTIONS.map((c) => (
-              <option key={c} value={c} className={selectOptionClass}>{c.toUpperCase()}</option>
-            ))}
-          </Select>
+          <CustomSelect value={currency} onChange={(v) => setCurrency(v as TransactionCurrency)} options={currencyOptions} />
         </div>
       </div>
       <div>
         <Label>Type</Label>
-        <Select value={type} onChange={(e) => setType(e.target.value as TransactionType)}>
-          {TRANSACTION_TYPES.map((t) => (
-            <option key={t} value={t} className={selectOptionClass}>{t}</option>
-          ))}
-        </Select>
+        <CustomSelect value={type} onChange={(v) => setType(v as TransactionType)} options={typeOptions} />
       </div>
       <div>
         <Label>Note</Label>

@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
+import { firstLinkedId } from "@/lib/airtable-linked";
 import type { UserRecord, UserRole } from "@/types";
 
 const TABLE = "users";
@@ -24,6 +25,9 @@ type Fields = {
   created_at?: string;
   updated_at?: string;
   password_hash?: string;
+  linked_model_id?: string | string[];
+  linked_model?: string | string[];
+  language_preference?: string;
 };
 
 function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): UserRecord {
@@ -41,6 +45,11 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
     updated_at: f.updated_at ?? "",
   };
   if (includePasswordHash && f.password_hash) out.password_hash = f.password_hash;
+  const linkedModelId = firstLinkedId(f.linked_model_id) ?? firstLinkedId(f.linked_model);
+  if (linkedModelId) out.linked_model_id = linkedModelId;
+  if (typeof f.language_preference === "string" && f.language_preference.trim()) {
+    out.language_preference = f.language_preference.trim();
+  }
   return out;
 }
 
@@ -95,6 +104,8 @@ export type CreateUserInput = {
   can_login?: boolean;
   notes?: string;
   password_hash?: string;
+  linked_model_id?: string;
+  language_preference?: string;
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
@@ -108,6 +119,8 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
     notes: input.notes?.trim() ?? "",
   };
   if (input.password_hash) fields.password_hash = input.password_hash;
+  if (input.linked_model_id) fields.linked_model_id = [input.linked_model_id];
+  if (input.language_preference) fields.language_preference = input.language_preference;
   const rec = await createRecord<Fields>(TABLE, fields as Fields);
   return mapRecord(rec);
 }
@@ -119,6 +132,8 @@ export type UpdateUserInput = Partial<{
   status: string;
   can_login: boolean;
   notes: string;
+  linked_model_id: string | null;
+  language_preference: string | null;
 }>;
 
 export async function updateUser(recordId: string, input: UpdateUserInput): Promise<UserRecord> {
@@ -129,6 +144,12 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   if (input.status !== undefined) fields.status = input.status;
   if (input.can_login !== undefined) fields.can_login = input.can_login;
   if (input.notes !== undefined) fields.notes = input.notes;
+  if (input.linked_model_id !== undefined) {
+    fields.linked_model_id = input.linked_model_id ? [input.linked_model_id] : [];
+  }
+  if (input.language_preference !== undefined) {
+    fields.language_preference = input.language_preference ?? "";
+  }
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   return mapRecord(rec);
 }

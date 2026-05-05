@@ -4,7 +4,8 @@ import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekAndVa } from "@/services/weekly-program-va";
 import { listAllModelss } from "@/services/modelss";
 import { formatTimeFromISO } from "@/lib/format";
-import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel } from "@/lib/weekly-program";
+import { getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
+import { normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
 import { WeeklyProgramDaySwiper } from "@/components/weekly-program-day-swiper";
 
 const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -14,7 +15,7 @@ export default async function VaWeeklyProgramPage() {
   if (!user || user.role !== "virtual_assistant") redirect(ROUTES.dashboard);
 
   const vaId = user.airtableUserId ?? user.id;
-  const weekStart = normalizeWeekStart(getThisWeekMonday());
+  const weekStart = normalizeWeekStart(getWeekStartYmdInAthens(0));
   const [entries, modelss] = await Promise.all([
     getProgramsForWeekAndVa(weekStart, vaId).catch(() => []),
     listAllModelss().catch(() => []),

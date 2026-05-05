@@ -448,12 +448,21 @@ export function AdminHomeClient(props: Props) {
               <li className="py-4 text-center text-sm text-white/50">No data for this month</li>
             ) : (
               props.byChatter.slice(0, 5).map(([name, value], i) => (
-                <li key={name} className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-2.5">
-                  <span className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[hsl(330,80%,55%)]/30 text-xs font-bold text-[hsl(330,90%,75%)]">{i + 1}</span>
-                    <span className="font-medium text-white/90">{name}</span>
+                <li
+                  key={name}
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl bg-white/5 px-3 py-2.5 sm:px-4"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-full bg-[hsl(330,80%,55%)]/30 text-xs font-bold text-[hsl(330,90%,75%)]">
+                      {i + 1}
+                    </span>
+                    <span className="truncate font-medium text-white/90" title={name}>
+                      {name}
+                    </span>
                   </span>
-                  <span className="text-sm font-semibold text-[hsl(330,90%,75%)]">${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums text-[hsl(330,90%,75%)]">
+                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
                 </li>
               ))
             )}
@@ -466,12 +475,21 @@ export function AdminHomeClient(props: Props) {
               <li className="py-4 text-center text-sm text-white/50">No data for this month</li>
             ) : (
               props.byModel.slice(0, 5).map(([name, value], i) => (
-                <li key={name} className="flex items-center justify-between rounded-xl bg-white/5 px-4 py-2.5">
-                  <span className="flex items-center gap-2">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-[hsl(330,80%,55%)]/30 text-xs font-bold text-[hsl(330,90%,75%)]">{i + 1}</span>
-                    <span className="font-medium text-white/90 truncate" title={name}>{name}</span>
+                <li
+                  key={name}
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl bg-white/5 px-3 py-2.5 sm:px-4"
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-full bg-[hsl(330,80%,55%)]/30 text-xs font-bold text-[hsl(330,90%,75%)]">
+                      {i + 1}
+                    </span>
+                    <span className="truncate font-medium text-white/90" title={name}>
+                      {name}
+                    </span>
                   </span>
-                  <span className="text-sm font-semibold text-[hsl(330,90%,75%)] shrink-0 ml-2">${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                  <span className="ml-2 shrink-0 text-sm font-semibold tabular-nums text-[hsl(330,90%,75%)]">
+                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
                 </li>
               ))
             )}

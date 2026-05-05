@@ -8,13 +8,12 @@ import {
   Label,
   Input,
   Textarea,
-  Select,
   FormError,
   SuccessBlock,
   SubmitButton,
   formSpace,
-  selectOptionClass,
 } from "@/components/ui/form";
+import { CustomSelect } from "@/components/ui/custom-select";
 
 type Props = {
   chatterRecordId: string;
@@ -34,8 +33,7 @@ export function RequestCustomForm({ chatterRecordId, chatterName, modelOptions }
   const [done, setDone] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  const handleModelChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
+  const handleModelChange = (id: string) => {
     const opt = modelOptions.find((o) => o.id === id);
     setModelRecordId(id);
     setModelName(opt?.name ?? "");
@@ -56,7 +54,6 @@ export function RequestCustomForm({ chatterRecordId, chatterName, modelOptions }
         custom_type: customType,
         description: description.trim(),
         price: price.trim(),
-        priority,
       });
       setDone(true);
     } catch (err) {
@@ -86,14 +83,15 @@ export function RequestCustomForm({ chatterRecordId, chatterName, modelOptions }
       {error && <FormError>{error}</FormError>}
       <div>
         <Label>Model</Label>
-        <Select value={modelRecordId} onChange={handleModelChange} required>
-          <option value="" className={selectOptionClass}>Select model</option>
-          {modelOptions.map((m) => (
-            <option key={m.id} value={m.id} className={selectOptionClass}>
-              {m.name}
-            </option>
-          ))}
-        </Select>
+        <CustomSelect
+          value={modelRecordId}
+          onChange={handleModelChange}
+          required
+          options={[
+            { value: "", label: "Select model" },
+            ...modelOptions.map((m) => ({ value: m.id, label: m.name })),
+          ]}
+        />
       </div>
       <div>
         <Label>Fan username</Label>
@@ -106,13 +104,14 @@ export function RequestCustomForm({ chatterRecordId, chatterName, modelOptions }
       </div>
       <div>
         <Label>Type</Label>
-        <Select value={customType} onChange={(e) => setCustomType(e.target.value as CustomRequestType)}>
-          {CUSTOM_REQUEST_TYPE_OPTIONS.map((t) => (
-            <option key={t} value={t} className={selectOptionClass}>
-              {t.replace(/_/g, " ")}
-            </option>
-          ))}
-        </Select>
+        <CustomSelect
+          value={customType}
+          onChange={(v) => setCustomType(v as CustomRequestType)}
+          options={CUSTOM_REQUEST_TYPE_OPTIONS.map((t) => ({
+            value: t,
+            label: t.replace(/_/g, " "),
+          }))}
+        />
       </div>
       <div>
         <Label>Description</Label>
@@ -134,13 +133,11 @@ export function RequestCustomForm({ chatterRecordId, chatterName, modelOptions }
       </div>
       <div>
         <Label>Priority</Label>
-        <Select value={priority} onChange={(e) => setPriority(e.target.value as CustomRequestPriority)}>
-          {CUSTOM_REQUEST_PRIORITY_OPTIONS.map((p) => (
-            <option key={p} value={p} className={selectOptionClass}>
-              {p}
-            </option>
-          ))}
-        </Select>
+        <CustomSelect
+          value={priority}
+          onChange={(v) => setPriority(v as CustomRequestPriority)}
+          options={CUSTOM_REQUEST_PRIORITY_OPTIONS.map((p) => ({ value: p, label: p }))}
+        />
       </div>
       <SubmitButton disabled={pending}>
         {pending ? "Submitting…" : "Submit request"}

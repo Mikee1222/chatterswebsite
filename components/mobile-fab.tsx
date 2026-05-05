@@ -17,6 +17,8 @@ import {
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import type { SessionUser } from "@/types";
+import { AddWhaleForm } from "@/components/add-whale-form";
+import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 
 type QuickAction = { href: string; label: string; icon: React.ComponentType<{ className?: string }> };
 
@@ -48,37 +50,51 @@ function getQuickActions(user: SessionUser): QuickAction[] {
   return [];
 }
 
-type MobileFabProps = { user: SessionUser; hasLiveMiniBar?: boolean };
+type MobileFabProps = { user: SessionUser };
 
-export function MobileFab({ user, hasLiveMiniBar = false }: MobileFabProps) {
+export function MobileFab({ user }: MobileFabProps) {
   const [open, setOpen] = React.useState(false);
+  const [addWhaleOpen, setAddWhaleOpen] = React.useState(false);
   const actions = React.useMemo(() => getQuickActions(user), [user]);
+  const showChatterAddWhale = user.role === "chatter";
+  const fabHiddenByOverlay = useMobileFabHidden();
 
-  if (actions.length === 0) return null;
-
-  const bottomOffset = hasLiveMiniBar ? "136px" : "84px";
+  if (actions.length === 0 && !showChatterAddWhale) return null;
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className={cn(
-          "fixed right-4 z-35 flex h-14 w-14 items-center justify-center rounded-2xl shadow-lg md:hidden",
-          "bg-[hsl(330,80%,55%)] text-white",
-          "hover:bg-[hsl(330,80%,50%)] active:scale-95 transition-all",
-          "ring-2 ring-white/20 ring-offset-2 ring-offset-black/80"
-        )}
-        style={{
-          bottom: `calc(${bottomOffset} + env(safe-area-inset-bottom, 0px))`,
-          boxShadow: "0 4px 24px -4px rgba(236,72,153,0.5), 0 0 0 1px rgba(255,255,255,0.1)",
-        }}
-        aria-label="Quick actions"
-      >
-        <Plus className="h-7 w-7" strokeWidth={2.5} />
-      </button>
+      {!fabHiddenByOverlay ? (
+        <button
+          type="button"
+          onClick={() => {
+            if (showChatterAddWhale) {
+              setAddWhaleOpen(true);
+            } else {
+              setOpen(true);
+            }
+          }}
+          className={cn(
+            "flex items-center justify-center rounded-2xl shadow-lg md:hidden",
+            "bg-[hsl(330,88%,58%)] text-white",
+            "hover:bg-[hsl(330,88%,52%)] active:scale-95 transition-all",
+            "outline-none ring-0 border-0"
+          )}
+          style={{
+            position: "fixed",
+            bottom: "calc(80px + env(safe-area-inset-bottom, 0px))",
+            right: "16px",
+            zIndex: 50,
+            width: "56px",
+            height: "56px",
+            boxShadow: "0 4px 24px -4px rgba(236,72,153,0.5), 0 0 0 1px rgba(255,255,255,0.1)",
+          }}
+          aria-label={showChatterAddWhale ? "Add whale" : "Quick actions"}
+        >
+          <Plus className="h-7 w-7" strokeWidth={2.5} />
+        </button>
+      ) : null}
 
-      {open && (
+      {open && !showChatterAddWhale ? (
         <>
           <div
             className="fixed inset-0 z-[105] bg-black/60 backdrop-blur-sm md:hidden"
@@ -124,7 +140,11 @@ export function MobileFab({ user, hasLiveMiniBar = false }: MobileFabProps) {
             </ul>
           </div>
         </>
-      )}
+      ) : null}
+
+      {showChatterAddWhale ? (
+        <AddWhaleForm open={addWhaleOpen} onOpenChange={setAddWhaleOpen} />
+      ) : null}
     </>
   );
 }

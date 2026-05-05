@@ -4,9 +4,11 @@ import { ROUTES } from "@/lib/routes";
 import { getActiveShiftByStaff, getActiveShiftModels } from "@/services/shifts";
 import { listAllModelss } from "@/services/modelss";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
-import { getThisWeekMonday, getTodayWeekday, getTodayYmd } from "@/lib/weekly-program";
+import { getWeekStartYmdInAthens, getTodayWeekdayAthens, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatTimeFromISO } from "@/lib/format";
 import { VaShiftClient } from "@/components/va-shift-client";
+import { RouterRefreshInterval } from "@/components/router-refresh-interval";
+import { getCurrentPeriod } from "@/services/model-periods";
 
 const MAX_BREAK_MINUTES = 45;
 
@@ -21,14 +23,15 @@ export default async function VaShiftPage() {
   let modelss: Awaited<ReturnType<typeof listAllModelss>> = [];
   let shiftModels: Awaited<ReturnType<typeof getActiveShiftModels>> = [];
   let loadError = false;
-  const todayYmd = getTodayYmd();
-  const todayWeekday = getTodayWeekday();
-  const weekStart = getThisWeekMonday();
+  const todayYmd = getTodayYmdAthens();
+  const todayWeekday = getTodayWeekdayAthens();
+  const weekStart = getWeekStartYmdInAthens(0);
   let todaySchedule: { todayYmd: string; todayWeekday: string; items: { timeRange: string; modelNames: string[] }[] } = {
     todayYmd,
     todayWeekday,
     items: [],
   };
+  let modelIdsInActivePeriodToday: string[] = [];
 
   try {
     const [activeShiftResult, modelssResult, programsResult] = await Promise.all([
@@ -40,6 +43,12 @@ export default async function VaShiftPage() {
     modelss = modelssResult;
     if (activeShift) {
       shiftModels = await getActiveShiftModels(activeShift.id);
+    }
+    modelIdsInActivePeriodToday = [];
+    for (const sm of shiftModels) {
+      if (!sm.model_id) continue;
+      const cur = await getCurrentPeriod(sm.model_id).catch(() => null);
+      if (cur) modelIdsInActivePeriodToday.push(sm.model_id);
     }
     const programs = programsResult.filter((p) => p.chatter_id === vaId && p.day === todayWeekday);
     const modelNameById = new Map(modelss.map((m) => [m.id, m.model_name]));
@@ -57,6 +66,7 @@ export default async function VaShiftPage() {
   }
 
   return (
+    <RouterRefreshInterval intervalMs={60_000}>
     <div className="min-h-0 space-y-8">
       {loadError && (
         <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
@@ -78,7 +88,9 @@ export default async function VaShiftPage() {
         modelss={modelss}
         maxBreakMinutes={MAX_BREAK_MINUTES}
         todaySchedule={todaySchedule}
+        modelIdsInActivePeriodToday={modelIdsInActivePeriodToday}
       />
     </div>
+    </RouterRefreshInterval>
   );
 }

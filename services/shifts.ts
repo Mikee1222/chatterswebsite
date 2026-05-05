@@ -13,6 +13,7 @@ import {
 } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText, formulaLinkedContains } from "@/lib/airtable-linked";
 import { formatRelativeTime } from "@/lib/format";
+import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { Shift, ShiftModel } from "@/types";
 
 const SHIFTS_TABLE = "shifts";
@@ -74,6 +75,7 @@ type ShiftFields = {
   start_time?: string;
   end_time?: string;
   break_started_at?: string;
+  break_reminder_at?: string;
   break_minutes?: number;
   worked_minutes?: number;
   status?: string;
@@ -135,6 +137,25 @@ function getBreakStartedAt(f: Record<string, unknown>): string | null {
   return null;
 }
 
+/** Read break_reminder_at (ISO); Airtable may label e.g. "Break reminder at". */
+function getBreakReminderAt(f: Record<string, unknown>): string | null {
+  const direct =
+    f.break_reminder_at ??
+    f["Break reminder at"] ??
+    f["break_reminder_at"] ??
+    f["Break reminder"];
+  if (direct != null && typeof direct === "string") {
+    const s = String(direct).trim();
+    if (s) return s;
+  }
+  const key = Object.keys(f).find((k) => /break/i.test(k) && /remind/i.test(k));
+  if (key) {
+    const v = f[key] as string | undefined;
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 /** Read break_minutes; Airtable may use "break_minutes" or "Break minutes". */
 function getBreakMinutes(f: Record<string, unknown>): number {
   const v = f.break_minutes ?? f["Break minutes"] ?? f["break_minutes"];
@@ -149,6 +170,7 @@ function getBreakMinutes(f: Record<string, unknown>): number {
 function mapShift(rec: AirtableRecord<ShiftFields>): Shift {
   const f = rec.fields as unknown as Record<string, unknown>;
   const break_started_at = getBreakStartedAt(f);
+  const break_reminder_at = getBreakReminderAt(f);
   let status = getShiftStatus(f);
   if (status === "active" && break_started_at) status = "on_break";
   return {
@@ -162,6 +184,7 @@ function mapShift(rec: AirtableRecord<ShiftFields>): Shift {
     start_time: (f.start_time as string | null) ?? null,
     end_time: (f.end_time as string | null) ?? null,
     break_started_at,
+    break_reminder_at,
     break_minutes: getBreakMinutes(f),
     worked_minutes: (f.worked_minutes as number | null) ?? null,
     status,
@@ -225,6 +248,13 @@ export async function getLiveShifts(): Promise<Shift[]> {
   return listAllShifts(formula, "shifts.getLiveShifts");
 }
 
+/** Shifts currently on break (for break-reminder cron). */
+export async function listShiftsOnBreak(): Promise<Shift[]> {
+  const statusField = await getShiftsStatusFieldName();
+  const formula = `{${statusField}} = "on_break"`;
+  return listAllShifts(formula, "shifts.listShiftsOnBreak");
+}
+
 /** Shifts that fall in the given month (yearMonth = "YYYY-MM"). Uses date field. */
 export async function getShiftsForMonth(yearMonth: string): Promise<Shift[]> {
   if (!/^\d{4}-\d{2}$/.test(yearMonth)) return [];
@@ -236,6 +266,18 @@ export async function getShiftsForMonth(yearMonth: string): Promise<Shift[]> {
   const formula = `AND(DATESTR({date}) >= "${start}", DATESTR({date}) <= "${end}")`;
   return listAllShifts(formula, "shifts.getShiftsForMonth");
 }
+
+/**
+ * Shifts for a single calendar date (YYYY-MM-DD).
+ * For “today” on the server, pass {@link getTodayYmdAthens} so DATESTR matches Greece (UTC+3) day.
+ */
+export async function getShiftsForDate(dateYmd: string): Promise<Shift[]> {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) return [];
+  const formula = `DATESTR({date}) = "${dateYmd.replace(/"/g, '""')}"`;
+  return listAllShifts(formula, "shifts.getShiftsForDate");
+}
+
+export { getTodayYmdAthens };
 
 /** Shifts where chatter linked field contains chatterRecordId (users table record id). Uses linked relation, not text snapshot. */
 export async function getShiftsByChatter(chatterRecordId: string, staffRole?: "chatter" | "virtual_assistant") {
@@ -285,6 +327,7 @@ export type ShiftWriteFields = Partial<{
   end_time: string;
   status: string;
   break_started_at: string;
+  break_reminder_at: string;
   break_minutes: number;
   staff_role: string;
   shift_type: string;
@@ -326,6 +369,21 @@ export async function listShiftModels(shiftRecordId: string) {
     const raw = (r.fields as Record<string, unknown>).shift ?? (r.fields as Record<string, unknown>).Shift;
     const ids = Array.isArray(raw) ? raw : raw ? [raw] : [];
     return ids.includes(shiftRecordId);
+  });
+  return filtered.map((r) => mapShiftModel(r as AirtableRecord<ShiftModelFields>));
+}
+
+/** Single bulk read: shift_models linked to any of the given shift record IDs. */
+export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promise<ShiftModel[]> {
+  if (shiftRecordIds.length === 0) return [];
+  const set = new Set(shiftRecordIds);
+  const records = await listAllRecords<ShiftModelFields>(SHIFT_MODELS_TABLE, {
+    _caller: "shifts.listShiftModelsForShifts",
+  });
+  const filtered = records.filter((r) => {
+    const raw = (r.fields as Record<string, unknown>).shift ?? (r.fields as Record<string, unknown>).Shift;
+    const ids = (Array.isArray(raw) ? raw : raw ? [raw] : []).map(String);
+    return ids.some((id) => set.has(id));
   });
   return filtered.map((r) => mapShiftModel(r as AirtableRecord<ShiftModelFields>));
 }

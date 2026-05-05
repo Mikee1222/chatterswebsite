@@ -8,6 +8,7 @@ import { getMonthlyTargetByTeamMemberAndMonth } from "@/services/monthly-targets
 import { transactionTypeLabel } from "@/lib/airtable-options";
 import { eurToUsd } from "@/lib/exchange";
 import { formatDateEuropean, displayName } from "@/lib/format";
+import { getNowInAthens } from "@/lib/airtable-datetime";
 import { ChatterHomeClient } from "@/components/chatter-home-client";
 import type { WhaleTransaction } from "@/types";
 
@@ -66,8 +67,8 @@ export default async function ChatterHomePage() {
   if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
-  const now = new Date();
-  const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const athens = getNowInAthens();
+  const currentMonthKey = `${athens.getUTCFullYear()}-${String(athens.getUTCMonth() + 1).padStart(2, "0")}`;
 
   const [whales, shiftCardData, transactions, monthlyTarget] = await Promise.all([
     getWhalesByChatter(chatterId).catch(() => []),

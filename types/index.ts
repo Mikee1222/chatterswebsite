@@ -1,7 +1,7 @@
 import type { TransactionTypeOption } from "@/lib/airtable-options";
 
 /** Role from Airtable users table; auth must match. */
-export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant";
+export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "model";
 
 /** whales.status – must match Airtable single-select options exactly. */
 export type WhaleStatus =
@@ -14,13 +14,46 @@ export type RelationshipStatus =
   | "New"
   | "Angry"
   | "In Love"
-  | "Intrestead"
+  | "Interested"
   | "Simp";
 export type SpendLevel = "low" | "medium" | "high" | "vip" | "whale";
 export type Platform = "onlyfans" | "fanvue" | "other";
 export type ShiftStatus = "active" | "on_break" | "completed" | "cancelled";
 export type StaffRole = "chatter" | "virtual_assistant";
 export type ShiftType = "chatting" | "mistakes" | "vault_cleaning" | "other";
+
+/** Airtable `va_tasks` — VA operational tasks. */
+export type VaTaskStatus = "pending" | "in_progress" | "done" | "skipped";
+export type VaTaskPriority = "low" | "normal" | "high" | "urgent";
+export type VaRecurrenceType = "daily" | "weekly" | "monthly" | "custom";
+export type VaRecurrenceDay =
+  | "Monday"
+  | "Tuesday"
+  | "Wednesday"
+  | "Thursday"
+  | "Friday"
+  | "Saturday"
+  | "Sunday";
+
+export type VaTaskRecord = {
+  id: string;
+  title: string;
+  description: string;
+  assigned_to_ids: string[];
+  assigned_by_ids: string[];
+  status: VaTaskStatus;
+  priority: VaTaskPriority;
+  due_date: string | null;
+  is_recurring: boolean;
+  recurrence_type: VaRecurrenceType | "";
+  recurrence_days: VaRecurrenceDay[];
+  recurrence_interval: number | null;
+  recurrence_end_date: string | null;
+  reminder_minutes_before: number | null;
+  completed_at: string | null;
+  completed_notes: string;
+  created_at: string | null;
+};
 
 export interface Whale {
   id: string;
@@ -80,7 +113,27 @@ export interface ModelRecord {
   notes: string;
   created_at: string;
   updated_at: string;
+  /** Rolling average cycle length (days) from period history on modelss. */
+  avg_cycle_length?: number | null;
+  /** Rolling average period length (days) from logged periods. */
+  avg_period_length?: number | null;
+  period_notes?: string;
 }
+
+/** Logged period row in Airtable table model_periods. */
+export interface ModelPeriodRecord {
+  id: string;
+  model_id: string;
+  start_date: string;
+  end_date: string;
+  cycle_length_days: number | null;
+  period_length_days: number | null;
+  notes: string;
+  logged_by: string;
+  created_at: string | null;
+}
+
+export type PeriodLoggedBy = "model" | "admin" | "va";
 
 export interface Shift {
   id: string;
@@ -95,6 +148,8 @@ export interface Shift {
   end_time: string | null;
   /** When status is on_break, ISO string of when this break started (for live timer). */
   break_started_at: string | null;
+  /** When set, cron sends a push after this ISO time (then clears the field). */
+  break_reminder_at: string | null;
   break_minutes: number;
   worked_minutes: number | null;
   status: ShiftStatus;
@@ -144,27 +199,148 @@ export type CustomRequestStatus =
   | "delivered"
   | "cancelled";
 
+/** custom_requests.admin_status (single-select). */
+export type CustomRequestAdminStatus = "pending" | "accepted" | "rejected";
+/** custom_requests.model_status (single-select). */
+export type CustomRequestModelStatus =
+  | "waiting_schedule"
+  | "scheduled"
+  | "in_progress"
+  | "completed"
+  | "declined";
+
 export interface CustomRequest {
   id: string;
   request_id: string;
-  /** First linked record id from chatter (users). */
-  chatter_id: string;
-  chatter_name: string;
-  /** First linked record id from model (modelss). */
+  fan_username: string;
+  /** requested_by_chatter link → users */
+  requested_by_chatter_id: string;
+  requested_by_chatter_name?: string;
+  /** assigned_model link → modelss */
+  assigned_model_id: string;
+  assigned_model_name?: string;
+  request_title: string;
+  request_details: string;
+  price: string;
+  deadline_requested: string | null;
+  admin_status: CustomRequestAdminStatus;
+  model_status: CustomRequestModelStatus;
+  model_scheduled_date: string | null;
+  model_scheduled_start: string | null;
+  model_scheduled_end: string | null;
+  admin_notes: string;
+  model_notes: string;
+  /** linked_schedule_item link → model_schedule */
+  linked_schedule_item_id: string | null;
+  created_at: string;
+  updated_at: string;
+  /** Legacy/compat: same as request_title or request_details. */
+  custom_type?: CustomRequestType;
+  description?: string;
+  priority?: CustomRequestPriority;
+  status?: CustomRequestStatus;
+  /** Legacy: same as requested_by_chatter_id. */
+  chatter_id?: string;
+  chatter_name?: string;
+  model_id?: string;
+  model_name?: string;
+  whale_username?: string;
+  whale_name?: string;
+  whale_id?: string;
+}
+
+/** model_schedule.item_type (single-select). */
+export type ModelScheduleItemType =
+  | "script"
+  | "mass_message"
+  | "live_stream"
+  | "custom"
+  | "content_shoot"
+  | "promo"
+  | "meeting"
+  | "rest"
+  | "other";
+
+export interface ModelScheduleItem {
+  id: string;
+  /** Link to modelss */
+  model_id: string;
+  title: string;
+  item_type: ModelScheduleItemType;
+  date: string;
+  start_time: string | null;
+  end_time: string | null;
+  duration_minutes: number | null;
+  priority: string;
+  status: string;
+  details: string;
+  details_en: string | null;
+  details_es: string | null;
+  instructions: string;
+  instructions_en: string | null;
+  instructions_es: string | null;
+  linked_custom_request_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** model_tasks status / type. */
+export type ModelTaskStatus = "pending" | "done" | "skipped" | "blocked";
+export type ModelTaskType = string;
+
+export interface ModelTaskRecord {
+  id: string;
+  /** Link to modelss */
+  model_id: string;
+  title: string;
+  type: ModelTaskType;
+  required: boolean;
+  status: ModelTaskStatus;
+  description: string;
+  description_en: string | null;
+  description_es: string | null;
+  linked_schedule_item_id: string | null;
+  completion_notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ModelLiveStreamRecord {
+  id: string;
+  /** Link to modelss */
+  model_id: string;
+  date: string;
+  planned_start: string | null;
+  planned_end: string | null;
+  /** When live actually started (ISO). */
+  actual_start: string | null;
+  /** When live actually ended (ISO). */
+  actual_end: string | null;
+  platform: string;
+  status: string;
+  details: string;
+  details_en: string | null;
+  details_es: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** weekly_availability_requests_models entry_type. */
+export type ModelAvailabilityEntryType = "availability" | "day_off" | "live_window" | "custom_window";
+
+export interface ModelWeeklyAvailabilityRequest {
+  id: string;
+  request_id: string;
+  week_start: string;
+  /** Link to modelss */
   model_id: string;
   model_name: string;
-  /** First linked record id from whale (whales), if any. */
-  whale_id: string;
-  /** Human-readable whale username snapshot. Prefer for display. */
-  whale_username: string;
-  /** Human-readable whale name, if different from username. */
-  whale_name: string;
-  fan_username: string;
-  custom_type: CustomRequestType;
-  description: string;
-  price: string;
-  priority: CustomRequestPriority;
-  status: CustomRequestStatus;
+  day: WeeklyProgramDay;
+  entry_type: ModelAvailabilityEntryType;
+  start_time: string | null;
+  end_time: string | null;
+  notes: string;
+  status: WeeklyAvailabilityRequestStatus;
   created_at: string;
 }
 
@@ -219,6 +395,10 @@ export interface UserRecord {
   notes: string;
   created_at: string;
   updated_at: string;
+  /** When role=model: Airtable record id of linked modelss row. */
+  linked_model_id?: string;
+  /** When role=model: preferred language (e.g. "en", "es") for model-facing UI. */
+  language_preference?: string;
   /** Only present when loading from DB; never expose to client. */
   password_hash?: string;
 }
@@ -312,33 +492,86 @@ export interface SessionUser {
 }
 
 // --- Notifications ---
-
+// Categories must match Airtable notifications.category single-select options exactly.
 export type NotificationCategory =
   | "shift"
-  | "task_shift"
   | "model"
   | "whale"
+  | "custom_request"
   | "system"
-  | "account";
+  | "task";
 
 export type NotificationPriority = "low" | "normal" | "high" | "critical";
 
+// Event types (operational intelligence). Many map to Airtable single-select via EVENT_TYPE_TO_AIRTABLE.
 export type NotificationEventType =
+  // Shift
   | "shift_started"
   | "shift_ended"
+  | "shift_late"
+  | "shift_no_show"
+  | "shift_overtime"
+  | "shift_running_long"
+  | "shift_starting_soon"
+  | "chatter_no_models"
+  // Break
   | "break_started"
   | "break_ended"
-  | "task_started"
-  | "task_finished"
+  | "break_exceeded"
+  | "break_too_long"
+  // Model / live
   | "model_became_free"
   | "model_taken"
+  | "model_live_started"
+  | "model_live_ended"
+  | "model_live_scheduled"
+  | "model_missed_live"
+  | "model_content_completed"
+  // Task
+  | "task_shift_started"
+  | "task_shift_ended"
+  | "task_started"
+  | "task_finished"
+  | "task_completed"
+  | "task_overdue"
+  | "tasks_not_started"
+  | "va_task_reminder"
+  // Custom
+  | "custom_request_created"
+  | "custom_request_updated"
+  | "custom_request_submitted"
+  | "custom_status_changed"
+  | "custom_approved"
+  | "custom_rejected"
+  | "custom_scheduled"
+  | "custom_deadline_approaching"
+  | "custom_overdue"
+  // Form / schedule
+  | "form_submitted"
+  | "schedule_updated"
+  | "weekly_availability_friday_reminder"
+  | "availability_submitted"
+  // Whale / revenue
+  | "whale_registered"
+  | "whale_assigned"
   | "whale_followup"
   | "whale_spent"
   | "whale_session_submitted"
-  | "custom_request_submitted"
-  | "custom_status_changed"
+  // System
   | "system_alert"
-  | "account_update";
+  | "account_update"
+  | "user_created"
+  | "role_changed"
+  | "account_deleted"
+  | "daily_summary"
+  // Rewards
+  | "points_awarded"
+  | "level_up"
+  | "spin_available"
+  | "challenge_completed";
+
+/** Optional structured metadata for richer display (e.g. models, shift type, deadline). */
+export type NotificationMetadataItem = { label: string; value: string };
 
 export interface AppNotification {
   id: string;
@@ -353,6 +586,8 @@ export interface AppNotification {
   entity_id: string;
   read_at: string | null;
   created_at: string;
+  /** Optional structured metadata for chips / metadata line (when provided by backend). */
+  metadata?: NotificationMetadataItem[];
 }
 
 export interface NotificationPreference {

@@ -1,0 +1,198 @@
+/**
+ * Dashboard form ambience + optional utility classes.
+ * Primary control styling: @/components/ui/form.tsx + CSS variables in globals.css :root.
+ * (No @layer — this file is @import'd before Tailwind in globals and is a separate CSS chunk.)
+ */
+
+.luxury-form-card {
+  background: var(--luxury-form-card-bg);
+  border: 1px solid var(--luxury-form-card-border);
+  border-radius: var(--luxury-form-card-radius);
+  padding: var(--luxury-form-card-padding);
+}
+
+.luxury-form-label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-size: var(--luxury-label-size);
+  font-weight: 500;
+  letter-spacing: var(--luxury-label-tracking);
+  text-transform: uppercase;
+  color: var(--luxury-label-color);
+}
+
+/* Dark calendar / time popups for native pickers */
+.dashboard-content {
+  color-scheme: dark;
+}
+
+.dashboard-content select option,
+.dashboard-content select optgroup {
+  background-color: var(--luxury-form-select-bg);
+  color: var(--luxury-form-text);
+}
+
+.dashboard-content :where(input[type="checkbox"], input[type="radio"]) {
+  width: var(--luxury-checkbox-size);
+  height: var(--luxury-checkbox-size);
+  accent-color: var(--luxury-checkbox-accent);
+}
+
+/* Native fields: automatic luxury styling (stray inputs/selects outside @/components/ui/form) */
+.dashboard-content :where(
+    input:is(
+        [type="text"],
+        [type="search"],
+        [type="email"],
+        [type="password"],
+        [type="url"],
+        [type="tel"],
+        [type="number"],
+        [type="date"],
+        [type="datetime-local"],
+        [type="time"],
+        [type="month"],
+        [type="week"]
+      )
+  ) {
+  box-sizing: border-box;
+  min-height: var(--luxury-form-min-height);
+  border-radius: var(--luxury-form-radius);
+  border: 1px solid var(--luxury-form-border);
+  background-color: var(--luxury-form-control-bg);
+  color: var(--luxury-form-text);
+  font-size: var(--luxury-form-font-size);
+  padding: var(--luxury-form-padding-y) var(--luxury-form-padding-x);
+  transition:
+    border-color var(--luxury-transition),
+    box-shadow var(--luxury-transition),
+    background-color var(--luxury-transition);
+}
+
+.dashboard-content
+  :where(
+    input:is(
+      [type="text"],
+      [type="search"],
+      [type="email"],
+      [type="password"],
+      [type="url"],
+      [type="tel"],
+      [type="number"],
+      [type="date"],
+      [type="datetime-local"],
+      [type="time"],
+      [type="month"],
+      [type="week"]
+    )
+  )::placeholder {
+  color: var(--luxury-form-placeholder);
+}
+
+.dashboard-content
+  :where(
+    input:is(
+      [type="text"],
+      [type="search"],
+      [type="email"],
+      [type="password"],
+      [type="url"],
+      [type="tel"],
+      [type="number"],
+      [type="date"],
+      [type="datetime-local"],
+      [type="time"],
+      [type="month"],
+      [type="week"]
+    )
+  ):hover:not(:disabled):not(:read-only) {
+  background-color: var(--luxury-form-control-bg-hover);
+}
+
+.dashboard-content
+  :where(
+    input:is(
+      [type="text"],
+      [type="search"],
+      [type="email"],
+      [type="password"],
+      [type="url"],
+      [type="tel"],
+      [type="number"],
+      [type="date"],
+      [type="datetime-local"],
+      [type="time"],
+      [type="month"],
+      [type="week"]
+    )
+  ):focus {
+  outline: none;
+  border-color: var(--luxury-form-focus-border);
+  box-shadow: 0 0 0 3px var(--luxury-form-focus-ring);
+}
+
+.dashboard-content :where(textarea) {
+  box-sizing: border-box;
+  min-height: 120px;
+  border-radius: var(--luxury-form-radius);
+  border: 1px solid var(--luxury-form-border);
+  background-color: var(--luxury-form-control-bg);
+  color: var(--luxury-form-text);
+  font-size: var(--luxury-form-font-size);
+  padding: var(--luxury-form-padding-y) var(--luxury-form-padding-x);
+  transition:
+    border-color var(--luxury-transition),
+    box-shadow var(--luxury-transition),
+    background-color var(--luxury-transition);
+}
+
+.dashboard-content :where(textarea)::placeholder {
+  color: var(--luxury-form-placeholder);
+}
+
+.dashboard-content :where(textarea):hover:not(:disabled):not(:read-only) {
+  background-color: var(--luxury-form-control-bg-hover);
+}
+
+.dashboard-content :where(textarea):focus {
+  outline: none;
+  border-color: var(--luxury-form-focus-border);
+  box-shadow: 0 0 0 3px var(--luxury-form-focus-ring);
+}
+
+.dashboard-content :where(select:not([multiple]):not([size])) {
+  box-sizing: border-box;
+  min-height: var(--luxury-form-min-height);
+  border-radius: var(--luxury-form-radius);
+  border: 1px solid var(--luxury-form-border);
+  background-color: var(--luxury-form-select-bg);
+  color: var(--luxury-form-text);
+  font-size: var(--luxury-form-font-size);
+  padding: var(--luxury-form-padding-y) calc(var(--luxury-form-padding-x) + 1.5rem) var(--luxury-form-padding-y) var(--luxury-form-padding-x);
+  appearance: none;
+  background-image: var(--luxury-select-chevron);
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 1.25rem auto;
+  cursor: pointer;
+  transition:
+    border-color var(--luxury-transition),
+    box-shadow var(--luxury-transition),
+    background-color var(--luxury-transition);
+}
+
+.dashboard-content :where(select:not([multiple]):not([size])):hover:not(:disabled) {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dashboard-content :where(select:not([multiple]):not([size])):focus {
+  outline: none;
+  border-color: var(--luxury-form-focus-border);
+  box-shadow: 0 0 0 3px var(--luxury-form-focus-ring);
+}
+
+/* Selected option: pink tint where the UA allows */
+.dashboard-content select option:checked {
+  background-color: rgba(236, 72, 153, 0.35);
+  color: #fff;
+}

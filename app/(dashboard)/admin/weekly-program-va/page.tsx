@@ -1,7 +1,8 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel } from "@/lib/weekly-program";
+import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel, addDays } from "@/lib/weekly-program";
+import { getPeriodDatesByModelForWeek } from "@/services/model-periods";
 import { adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getRequestsForWeekVa } from "@/services/weekly-availability-requests-va";
@@ -16,13 +17,12 @@ import type { ModelRecord } from "@/types";
 export default async function AdminWeeklyProgramVaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week_start?: string }>;
+  searchParams: { week_start?: string };
 }) {
   const user = await getSessionFromCookies();
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
-  const params = await searchParams;
-  const rawWeek = params.week_start?.trim();
+  const rawWeek = searchParams.week_start?.trim();
   const weekStart = normalizeWeekStart(rawWeek || getThisWeekMonday());
   if (rawWeek && rawWeek !== weekStart) redirect(adminWeeklyProgramVaUrl(weekStart));
 
@@ -66,6 +66,12 @@ export default async function AdminWeeklyProgramVaPage({
   const uniquePairs = Array.from(new Map(assignmentPairs.map((p) => [`${p.chatterId}:${p.modelId}`, p])).values());
   const lastAssignmentMap = await getLastAssignmentBatch(uniquePairs).catch(() => ({}));
 
+  const weekEnd = addDays(weekStart, 6);
+  const periodModelIds = modelss.map((m) => m.id);
+  const periodDatesByModelId = await getPeriodDatesByModelForWeek(periodModelIds, weekStart, weekEnd).catch(
+    () => ({}) as Record<string, string[]>
+  );
+
   return (
     <AdminWeeklyProgramVaClient
       programs={programs as WeeklyProgramRecord[]}
@@ -79,6 +85,7 @@ export default async function AdminWeeklyProgramVaPage({
       lastAssignmentMap={lastAssignmentMap ?? {}}
       suggestionsByKey={{}}
       availabilityRequests={Array.isArray(availabilityRequests) ? availabilityRequests : []}
+      periodDatesByModelId={periodDatesByModelId}
     />
   );
 }

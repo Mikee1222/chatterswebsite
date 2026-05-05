@@ -71,6 +71,39 @@ export function formatDateEuropean(dateInput: string | Date | null | undefined):
   }
 }
 
+/** Long human-readable date (e.g. Monday, 07 March 2026). */
+export function formatDateLong(
+  dateInput: string | Date | null | undefined,
+  locale: "en-GB" | "es" = "en-GB"
+): string {
+  if (dateInput == null || dateInput === "") return "—";
+  try {
+    if (typeof dateInput === "string" && DATE_ONLY_ISO.test(dateInput.trim())) {
+      const [y, m, d] = dateInput.trim().split("-").map(Number);
+      const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
+      return dt.toLocaleDateString(locale, { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+    }
+    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
+    if (Number.isNaN(d.getTime())) return "—";
+    return d.toLocaleDateString(locale, { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  } catch {
+    return "—";
+  }
+}
+
+/** Time range helper for schedule UI (HH:mm - HH:mm). */
+export function formatTimeRange(
+  start: string | null | undefined,
+  end: string | null | undefined
+): string {
+  const startText = formatTimeEuropean(start);
+  const endText = formatTimeEuropean(end);
+  if (startText === "—" && endText === "—") return "—";
+  if (startText === "—") return endText;
+  if (endText === "—") return startText;
+  return `${startText} - ${endText}`;
+}
+
 /** European date and time (e.g. 07/03/2026, 14:30). Explicit date part; time uses EU locale 24h. */
 export function formatDateTimeEuropean(dateInput: string | Date | null | undefined): string {
   if (dateInput == null || dateInput === "") return "—";

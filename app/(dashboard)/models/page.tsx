@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelss } from "@/services/modelss";
+import { ModelsDirectoryTable } from "@/components/models-directory-table";
+import { RouterRefreshInterval } from "@/components/router-refresh-interval";
 import { getActiveShifts, getActiveShiftModels } from "@/services/shifts";
 
 export default async function ModelsPage() {
@@ -27,6 +29,7 @@ export default async function ModelsPage() {
   }
 
   return (
+    <RouterRefreshInterval intervalMs={60_000}>
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold text-white">Models free / taken</h1>
@@ -44,46 +47,11 @@ export default async function ModelsPage() {
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
-            {modelss.length === 0 ? (
-              <tr>
-                <td colSpan={3} className="p-8 text-center text-white/50">
-                  No models
-                </td>
-              </tr>
-            ) : (
-              modelss.map((m) => {
-                const chatterStatus = m.current_status === "occupied" ? (m.current_chatter_name || "Occupied") : "Free";
-                const vaNames = modelIdToVaNames[m.id] ?? [];
-                return (
-                  <tr key={m.id} className="hover:bg-white/[0.03]">
-                    <td className="p-3 font-medium text-white/90">{m.model_name}</td>
-                    <td className="p-3">
-                      <span
-                        className={
-                          m.current_status === "occupied"
-                            ? "rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-amber-300"
-                            : "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-emerald-300"
-                        }
-                      >
-                        {chatterStatus}
-                      </span>
-                    </td>
-                    <td className="p-3">
-                      {vaNames.length > 0 ? (
-                        <span className="rounded-full border border-[hsl(330,80%,55%)]/30 bg-[hsl(330,80%,55%)]/15 px-2 py-0.5 text-[hsl(330,90%,75%)]">
-                          {vaNames.join(", ")}
-                        </span>
-                      ) : (
-                        <span className="text-white/45">—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+            <ModelsDirectoryTable modelss={modelss} modelIdToVaNames={modelIdToVaNames} />
           </tbody>
         </table>
       </div>
     </div>
+    </RouterRefreshInterval>
   );
 }

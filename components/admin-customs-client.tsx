@@ -1,19 +1,36 @@
 "use client";
 
 import * as React from "react";
+import { Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { updateCustomStatusAction } from "@/app/actions/customs";
+import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeEuropean } from "@/lib/format";
 import { Select, selectOptionClass } from "@/components/ui/form";
-import type { CustomRequest, CustomRequestStatus } from "@/types";
+import type { AppNotification, CustomRequest, CustomRequestAdminStatus } from "@/types";
 
-const STATUS_OPTIONS: CustomRequestStatus[] = [
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+const STATUS_OPTIONS: CustomRequestAdminStatus[] = [
   "pending",
   "accepted",
-  "recording",
-  "completed",
-  "delivered",
-  "cancelled",
+  "rejected",
 ];
 
 type Props = {
@@ -36,18 +53,21 @@ function copyFormattedBlock(req: CustomRequest): string {
 
 export function AdminCustomsClient({ requests: initialRequests }: Props) {
   const router = useRouter();
+  const { addToast } = useToast();
   const [requests, setRequests] = React.useState(initialRequests);
   const [updatingId, setUpdatingId] = React.useState<string | null>(null);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<CustomRequest | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
 
   React.useEffect(() => setRequests(initialRequests), [initialRequests]);
 
-  const handleStatusChange = async (recordId: string, status: CustomRequestStatus) => {
+  const handleStatusChange = async (recordId: string, status: CustomRequestAdminStatus) => {
     setUpdatingId(recordId);
     try {
       const res = await updateCustomStatusAction(recordId, status);
       if (res.success) {
-        setRequests((prev) => prev.map((r) => (r.id === recordId ? { ...r, status } : r)));
+        setRequests((prev) => prev.map((r) => (r.id === recordId ? { ...r, admin_status: status } : r)));
         router.refresh();
       }
     } finally {
@@ -61,6 +81,28 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
     setCopiedId(req.id);
     setTimeout(() => setCopiedId(null), 2000);
   };
+
+  const confirmDeleteRequest = React.useCallback(async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
+    setConfirmingDelete(true);
+    try {
+      const res = await fetch(`/api/custom-requests/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        addToast(localToast(`ac-del-err-${Date.now()}`, "Could not delete", data.error ?? "Delete failed.", "high"));
+        return;
+      }
+      setRequests((prev) => prev.filter((r) => r.id !== id));
+      setPendingDelete(null);
+      addToast(localToast(`ac-del-ok-${Date.now()}`, "Deleted", "Custom request removed.", "normal"));
+      router.refresh();
+    } catch {
+      addToast(localToast(`ac-del-err-${Date.now()}`, "Could not delete", "Network error.", "high"));
+    } finally {
+      setConfirmingDelete(false);
+    }
+  }, [pendingDelete, addToast, router]);
 
   return (
     <div className="space-y-6">
@@ -94,7 +136,7 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
               <div className="mt-4 flex flex-wrap items-center gap-3">
                 <Select
                   value={req.status}
-                  onChange={(e) => handleStatusChange(req.id, e.target.value as CustomRequestStatus)}
+                  onChange={(e) => handleStatusChange(req.id, e.target.value as CustomRequestAdminStatus)}
                   disabled={updatingId === req.id}
                   className="min-h-[44px] min-w-[140px] flex-1 text-base"
                 >
@@ -108,6 +150,14 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
                   className="min-h-[44px] rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10"
                 >
                   {copiedId === req.id ? "Copied" : "Copy"}
+                </button>
+                <button
+                  type="button"
+                  disabled={confirmingDelete && pendingDelete?.id === req.id}
+                  onClick={() => setPendingDelete(req)}
+                  className="min-h-[44px] rounded-xl border border-red-500/35 px-4 py-2.5 text-sm font-medium text-red-300/90 hover:bg-red-500/10 disabled:opacity-50"
+                >
+                  Delete
                 </button>
               </div>
             </div>
@@ -127,13 +177,14 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
               <th className="p-3 font-medium">Priority</th>
               <th className="p-3 font-medium">Status</th>
               <th className="p-3 font-medium">Created</th>
-              <th className="p-3 font-medium w-24">Copy</th>
+              <th className="p-3 font-medium w-28">Copy</th>
+              <th className="p-3 w-12"> </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {requests.length === 0 ? (
               <tr>
-                <td colSpan={9} className="p-8 text-center text-white/50">No custom requests</td>
+                <td colSpan={10} className="p-8 text-center text-white/50">No custom requests</td>
               </tr>
             ) : (
               requests.map((req) => (
@@ -147,7 +198,7 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
                   <td className="p-3">
                     <Select
                       value={req.status}
-                      onChange={(e) => handleStatusChange(req.id, e.target.value as CustomRequestStatus)}
+                      onChange={(e) => handleStatusChange(req.id, e.target.value as CustomRequestAdminStatus)}
                       disabled={updatingId === req.id}
                       className="min-w-[120px] py-2 text-sm"
                     >
@@ -166,12 +217,42 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
                       {copiedId === req.id ? "Copied" : "Copy"}
                     </button>
                   </td>
+                  <td className="p-3">
+                    <button
+                      type="button"
+                      disabled={confirmingDelete && pendingDelete?.id === req.id}
+                      onClick={() => setPendingDelete(req)}
+                      className="rounded-lg p-2 text-white/45 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                      title="Delete request"
+                    >
+                      <Trash2 className="h-4 w-4" aria-hidden />
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
           </tbody>
         </table>
       </div>
+
+      <ConfirmDeleteModal
+        open={pendingDelete != null}
+        title="Delete custom request?"
+        description={
+          pendingDelete ? (
+            <>
+              Delete the request for{" "}
+              <span className="font-medium text-white">{pendingDelete.model_name || "—"}</span>? This action cannot be
+              undone.
+            </>
+          ) : null
+        }
+        onClose={() => {
+          if (!confirmingDelete) setPendingDelete(null);
+        }}
+        onConfirm={confirmDeleteRequest}
+        confirming={confirmingDelete}
+      />
     </div>
   );
 }

@@ -83,8 +83,11 @@ export function MobileNav({ user }: { user: SessionUser }) {
   return (
     <>
       <nav
-        className="fixed bottom-0 left-0 right-0 z-40 flex items-center justify-around border-t border-white/10 bg-black/90 py-2 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
-        style={{ boxShadow: "0 -4px 24px rgba(0,0,0,0.4)" }}
+        className="fixed bottom-0 left-0 right-0 z-40 flex h-[72px] items-center justify-around border-t border-white/10 bg-black/90 backdrop-blur-xl md:hidden"
+        style={{
+          paddingBottom: "env(safe-area-inset-bottom, 0px)",
+          boxShadow: "0 -4px 24px rgba(0,0,0,0.4)",
+        }}
       >
         {primary.map((item) => {
           const Icon = item.icon;
@@ -94,8 +97,11 @@ export function MobileNav({ user }: { user: SessionUser }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "flex flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors",
-                active ? "text-[hsl(330,90%,65%)]" : "text-white/60 hover:text-white/90"
+                "flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
+                "border-0 bg-transparent shadow-none outline-none ring-0",
+                active
+                  ? "bg-[hsl(330,88%,58%)]/18 text-[hsl(330,92%,72%)]"
+                  : "text-white/60 hover:text-white/90"
               )}
             >
               <Icon className="h-6 w-6 shrink-0" />
@@ -108,8 +114,11 @@ export function MobileNav({ user }: { user: SessionUser }) {
             type="button"
             onClick={() => setDrawerOpen(true)}
             className={cn(
-              "flex flex-col items-center gap-0.5 rounded-xl px-3 py-2 text-xs font-medium transition-colors",
-              more.some((i) => isActive(pathname, i.href, items.map((x) => x.href))) ? "text-[hsl(330,90%,65%)]" : "text-white/60 hover:text-white/90"
+              "flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-xl px-2 py-2 text-xs font-medium transition-colors",
+              "border-0 bg-transparent shadow-none outline-none ring-0",
+              more.some((i) => isActive(pathname, i.href, items.map((x) => x.href)))
+                ? "bg-[hsl(330,88%,58%)]/18 text-[hsl(330,92%,72%)]"
+                : "text-white/60 hover:text-white/90"
             )}
           >
             <Menu className="h-6 w-6 shrink-0" />

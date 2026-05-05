@@ -31,6 +31,34 @@ export async function toggleModelStatus(recordId: string) {
   return { success: true };
 }
 
+/** Admin only: delete model after checks. Returns JSON-friendly result (no redirect). */
+export async function deleteModelForAdmin(
+  recordId: string
+): Promise<{ success: true } | { success: false; error: string }> {
+  const user = await getSessionFromCookies();
+  if (!user || user.role !== "admin") {
+    return { success: false, error: "Unauthorized" };
+  }
+  const id = recordId?.trim();
+  if (!id) {
+    return { success: false, error: "Missing model record." };
+  }
+  try {
+    const check = await getDeleteBlockReasonsForModel(id);
+    if (!check.canDelete) {
+      return { success: false, error: check.summary };
+    }
+    await deleteRecord("modelss", id);
+    revalidatePath(ROUTES.admin.models);
+    revalidatePath(ROUTES.accounts);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[deleteModelForAdmin] error", err);
+    return { success: false, error: message || "Failed to delete model." };
+  }
+}
+
 /** Admin only: delete model after checking linked records. Blocks if any references exist. */
 export async function deleteModelAction(recordId: string) {
   const user = await getSessionFromCookies();

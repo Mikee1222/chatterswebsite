@@ -27,7 +27,7 @@ export const RELATIONSHIP_STATUS_OPTIONS = [
   "New",
   "Angry",
   "In Love",
-  "Intrestead",
+  "Interested",
   "Simp",
 ] as const;
 
@@ -106,3 +106,55 @@ export const CUSTOM_REQUEST_STATUS_OPTIONS = [
  * whale_transactions.currency – match Airtable options exactly (usd, eur only).
  */
 export const TRANSACTION_CURRENCY_OPTIONS = ["usd", "eur"] as const;
+
+/**
+ * model_live_streams.platform – single source of truth for live stream platform.
+ * Match Airtable single-select options exactly: onlyfans, instagram, tiktok, other.
+ */
+export const MODEL_LIVE_STREAM_PLATFORM_OPTIONS = ["onlyfans", "instagram", "tiktok", "other"] as const;
+
+export type ModelLiveStreamPlatformOption = (typeof MODEL_LIVE_STREAM_PLATFORM_OPTIONS)[number];
+
+export function isModelLiveStreamPlatform(value: string): value is ModelLiveStreamPlatformOption {
+  return MODEL_LIVE_STREAM_PLATFORM_OPTIONS.includes(value as ModelLiveStreamPlatformOption);
+}
+
+/** Display label for model live stream platform (for UI only; Airtable stores lowercase). */
+export function modelLiveStreamPlatformLabel(value: string): string {
+  if (value === "onlyfans") return "OnlyFans";
+  if (value === "instagram") return "Instagram";
+  if (value === "tiktok") return "TikTok";
+  if (value === "other") return "Other";
+  return value;
+}
+
+/**
+ * model_tasks.type (single-select). Match Airtable single-select options exactly.
+ * Expected: script, mass, live_prep, live_stream, custom, content, admin_note, other.
+ */
+export const MODEL_TASK_TYPE_OPTIONS = [
+  "script",
+  "mass",
+  "live_prep",
+  "live_stream",
+  "custom",
+  "content",
+  "admin_note",
+  "other",
+] as const;
+
+export type ModelTaskTypeOption = (typeof MODEL_TASK_TYPE_OPTIONS)[number];
+
+export function modelTaskTypeLabel(value: string): string {
+  const labels: Record<string, string> = {
+    script: "Script",
+    mass: "Mass",
+    live_prep: "Live prep",
+    live_stream: "Live stream",
+    custom: "Custom",
+    content: "Content",
+    admin_note: "Admin note",
+    other: "Other",
+  };
+  return labels[value] ?? value;
+}

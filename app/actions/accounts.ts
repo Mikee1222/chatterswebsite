@@ -4,10 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies, hashPassword } from "@/lib/auth";
-import { getDeleteBlockReasonsForUser } from "@/services/accounts-delete";
-import { deleteRecord, listAllRecords } from "@/lib/airtable-server";
-import { getPreferencesByUserId } from "@/services/notification-preferences";
-import { getActiveSubscriptionsForUser } from "@/services/push-subscriptions";
+import { deleteUserLinkedRecordsBeforeUserDelete } from "@/services/accounts-delete";
+import { deleteRecord } from "@/lib/airtable-server";
 
 /** Next.js redirect() throws; re-throw so redirect is not treated as a normal error. */
 function isRedirectError(err: unknown): boolean {
@@ -40,6 +38,8 @@ export async function createAccount(formData: FormData) {
   const password = (formData.get("password") as string)?.trim() ?? "";
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim() ?? "";
+  const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || undefined;
+  const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
 
   if (!full_name || !email) {
     redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Name and email are required"));
@@ -56,6 +56,8 @@ export async function createAccount(formData: FormData) {
   if (password) {
     input.password_hash = await hashPassword(password);
   }
+  if (role === "model" && linked_model_id) input.linked_model_id = linked_model_id;
+  if (role === "model" && language_preference) input.language_preference = language_preference;
   try {
     await createUser(input);
     redirect(ROUTES.accounts + "?success=created");
@@ -78,6 +80,8 @@ export async function updateAccount(formData: FormData) {
   const status = (formData.get("status") as string)?.trim();
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim();
+  const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || null;
+  const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
 
   const input: UpdateUserInput = {};
   if (full_name !== undefined) input.full_name = full_name;
@@ -86,6 +90,12 @@ export async function updateAccount(formData: FormData) {
   if (status !== undefined) input.status = status;
   input.can_login = can_login;
   if (notes !== undefined) input.notes = notes;
+  if (role === "model") {
+    input.linked_model_id = linked_model_id;
+    input.language_preference = language_preference ?? undefined;
+  } else {
+    input.linked_model_id = null;
+  }
   try {
     await updateUser(recordId, input);
     redirect(ROUTES.accounts + "?success=updated");
@@ -141,19 +151,8 @@ export async function deleteUserAction(recordId: string) {
     return;
   }
   try {
-    const check = await getDeleteBlockReasonsForUser(id);
-    if (!check.canDelete) {
-      redirect(ROUTES.accounts + "?error=" + encodeURIComponent(check.summary));
-      return;
-    }
-    const escaped = id.replace(/"/g, '""');
-    const userFormula = `{user_id} = "${escaped}"`;
-    const notifRecs = await listAllRecords<{ id: string }>("notifications", { filterByFormula: userFormula });
-    await Promise.all(notifRecs.map((r) => deleteRecord("notifications", r.id)));
-    const pref = await getPreferencesByUserId(id);
-    if (pref) await deleteRecord("notification_preferences", pref.id);
-    const subs = await getActiveSubscriptionsForUser(id);
-    await Promise.all(subs.map((s) => deleteRecord("push_subscriptions", s.id)));
+    await deleteUserLinkedRecordsBeforeUserDelete(id);
+    console.log("[delete-user]", { userId: id, step: "deleting user record" });
     await deleteRecord("users", id);
     revalidatePath(ROUTES.accounts);
     redirect(ROUTES.accounts + "?success=user_deleted");

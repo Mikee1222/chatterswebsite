@@ -24,7 +24,7 @@ export function getSessionJwtSecret(): string {
 export type AuthUser = {
   id: string;
   email: string;
-  role: "admin" | "manager" | "chatter" | "virtual_assistant";
+  role: "admin" | "manager" | "chatter" | "virtual_assistant" | "model";
   airtableUserId: string | null;
   fullName: string | null;
 };

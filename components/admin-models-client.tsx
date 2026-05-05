@@ -1,24 +1,144 @@
 "use client";
 
 import * as React from "react";
-import { formatDateTimeEuropean } from "@/lib/format";
-import { Input, Select, selectOptionClass } from "@/components/ui/form";
-import type { ModelRecord } from "@/types";
+import { motion, AnimatePresence } from "framer-motion";
+import { Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { useToast } from "@/contexts/toast-context";
+import type { AppNotification } from "@/types";
+import { formatDateTimeEuropean, formatDateEuropean } from "@/lib/format";
+import { Input, Label, Textarea } from "@/components/ui/form";
+import { CustomSelect } from "@/components/ui/custom-select";
+import { addDays, getTodayYmd } from "@/lib/weekly-program";
+import { logPeriodAction, deletePeriodAction } from "@/app/actions/model-periods";
+import type { ModelRecord, ModelPeriodRecord } from "@/types";
+
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+export type ModelPeriodSummary = {
+  current: ModelPeriodRecord | null;
+  predictedNextStart: string | null;
+  history: ModelPeriodRecord[];
+};
 
 type Props = {
   modelss: ModelRecord[];
   modelIdToVaNames: Record<string, string[]>;
+  periodSummaryByModelId: Record<string, ModelPeriodSummary>;
 };
 
-export function AdminModelsClient({ modelss, modelIdToVaNames }: Props) {
+function PeriodSection({
+  summary,
+  onLogClick,
+}: {
+  summary: ModelPeriodSummary;
+  onLogClick: () => void;
+}) {
+  return (
+    <div className="mt-3 rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-3 text-xs text-white/75">
+      <p className="font-semibold uppercase tracking-wider text-rose-200/80">Period</p>
+      {summary.current ? (
+        <p className="mt-1.5">
+          In period until <span className="font-medium text-white">{formatDateEuropean(summary.current.end_date)}</span>
+        </p>
+      ) : summary.predictedNextStart ? (
+        <p className="mt-1.5">
+          Next predicted: <span className="font-medium text-white">{formatDateEuropean(summary.predictedNextStart)}</span>
+        </p>
+      ) : (
+        <p className="mt-1.5 text-white/55">No period data yet.</p>
+      )}
+      <button
+        type="button"
+        onClick={onLogClick}
+        className="mt-2 rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-[11px] font-medium text-rose-100 hover:bg-rose-500/25"
+      >
+        Log period
+      </button>
+    </div>
+  );
+}
+
+export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByModelId }: Props) {
+  const router = useRouter();
+  const { addToast } = useToast();
+  const [localModelss, setLocalModelss] = React.useState(modelss);
   const [filterPlatform, setFilterPlatform] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState("");
   const [filterPriority, setFilterPriority] = React.useState("");
   const [filterChatter, setFilterChatter] = React.useState("");
   const [viewFilter, setViewFilter] = React.useState<"all" | "free" | "taken">("all");
+  const [modelPendingDelete, setModelPendingDelete] = React.useState<ModelRecord | null>(null);
+  const [confirmingModelDelete, setConfirmingModelDelete] = React.useState(false);
+
+  const [logModel, setLogModel] = React.useState<ModelRecord | null>(null);
+  const [logStart, setLogStart] = React.useState("");
+  const [logEnd, setLogEnd] = React.useState("");
+  const [logNotes, setLogNotes] = React.useState("");
+  const [logBusy, setLogBusy] = React.useState(false);
+  const [logError, setLogError] = React.useState<string | null>(null);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
+
+  React.useEffect(() => setLocalModelss(modelss), [modelss]);
+
+  const openLog = (m: ModelRecord) => {
+    const today = getTodayYmd();
+    const len =
+      typeof m.avg_period_length === "number" && m.avg_period_length > 0
+        ? Math.min(14, Math.round(m.avg_period_length))
+        : 5;
+    setLogModel(m);
+    setLogStart(today);
+    setLogEnd(addDays(today, len - 1));
+    setLogNotes("");
+    setLogError(null);
+  };
+
+  const submitLog = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!logModel) return;
+    setLogBusy(true);
+    setLogError(null);
+    const res = await logPeriodAction(logModel.id, logStart, logEnd, logNotes.trim() || undefined);
+    setLogBusy(false);
+    if (!res.success) {
+      setLogError(res.error);
+      return;
+    }
+    setLogModel(null);
+    router.refresh();
+  };
+
+  const handleDeletePeriod = async (periodId: string) => {
+    if (!confirm("Delete this period record?")) return;
+    setDeletingId(periodId);
+    const res = await deletePeriodAction(periodId);
+    setDeletingId(null);
+    if (!res.success) {
+      alert(res.error);
+      return;
+    }
+    router.refresh();
+  };
 
   const filtered = React.useMemo(() => {
-    let list = modelss;
+    let list = localModelss;
     if (filterPlatform) list = list.filter((m) => m.platform === filterPlatform);
     if (filterStatus) list = list.filter((m) => (m.status ?? "") === filterStatus);
     if (filterPriority) list = list.filter((m) => (m.priority ?? "") === filterPriority);
@@ -26,14 +146,59 @@ export function AdminModelsClient({ modelss, modelIdToVaNames }: Props) {
     if (viewFilter === "free") list = list.filter((m) => m.current_status === "free");
     if (viewFilter === "taken") list = list.filter((m) => m.current_status === "occupied");
     return list;
-  }, [modelss, filterPlatform, filterStatus, filterPriority, filterChatter, viewFilter]);
+  }, [localModelss, filterPlatform, filterStatus, filterPriority, filterChatter, viewFilter]);
 
-  const platforms = React.useMemo(() => [...new Set(modelss.map((m) => m.platform).filter(Boolean))].sort(), [modelss]);
-  const statuses = React.useMemo(() => [...new Set(modelss.map((m) => m.status).filter(Boolean))].sort(), [modelss]);
-  const priorities = React.useMemo(() => [...new Set(modelss.map((m) => m.priority).filter(Boolean))].sort(), [modelss]);
+  const platforms = React.useMemo(() => [...new Set(localModelss.map((m) => m.platform).filter(Boolean))].sort(), [localModelss]);
+  const statuses = React.useMemo(() => [...new Set(localModelss.map((m) => m.status).filter(Boolean))].sort(), [localModelss]);
+  const priorities = React.useMemo(() => [...new Set(localModelss.map((m) => m.priority).filter(Boolean))].sort(), [localModelss]);
 
-  const freeCount = modelss.filter((m) => m.current_status === "free").length;
-  const takenCount = modelss.length - freeCount;
+  const platformSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "Platform" },
+      ...platforms.map((p) => ({ value: p, label: p })),
+    ],
+    [platforms]
+  );
+  const statusSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "Status" },
+      ...statuses.map((s) => ({ value: s, label: s })),
+    ],
+    [statuses]
+  );
+  const prioritySelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "Priority" },
+      ...priorities.map((p) => ({ value: p, label: p })),
+    ],
+    [priorities]
+  );
+
+  const freeCount = localModelss.filter((m) => m.current_status === "free").length;
+  const takenCount = localModelss.length - freeCount;
+
+  const handleConfirmDeleteModel = React.useCallback(async () => {
+    if (!modelPendingDelete) return;
+    const id = modelPendingDelete.id;
+    const name = modelPendingDelete.model_name?.trim() || "Model";
+    setConfirmingModelDelete(true);
+    try {
+      const res = await fetch(`/api/models/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        addToast(localToast(`am-del-err-${Date.now()}`, "Could not delete", data.error ?? "Delete failed.", "high"));
+        return;
+      }
+      setLocalModelss((prev) => prev.filter((m) => m.id !== id));
+      setModelPendingDelete(null);
+      addToast(localToast(`am-del-ok-${Date.now()}`, "Deleted", `${name} was removed.`, "normal"));
+      router.refresh();
+    } catch {
+      addToast(localToast(`am-del-err-${Date.now()}`, "Could not delete", "Network error.", "high"));
+    } finally {
+      setConfirmingModelDelete(false);
+    }
+  }, [modelPendingDelete, addToast, router]);
 
   return (
     <div className="space-y-6">
@@ -61,36 +226,24 @@ export function AdminModelsClient({ modelss, modelIdToVaNames }: Props) {
             </button>
           ))}
         </div>
-        <Select
+        <CustomSelect
           value={filterPlatform}
-          onChange={(e) => setFilterPlatform(e.target.value)}
+          onChange={setFilterPlatform}
+          options={platformSelectOptions}
           className="w-36"
-        >
-          <option value="" className={selectOptionClass}>Platform</option>
-          {platforms.map((p) => (
-            <option key={p} value={p} className={selectOptionClass}>{p}</option>
-          ))}
-        </Select>
-        <Select
+        />
+        <CustomSelect
           value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
+          onChange={setFilterStatus}
+          options={statusSelectOptions}
           className="w-36"
-        >
-          <option value="" className={selectOptionClass}>Status</option>
-          {statuses.map((s) => (
-            <option key={s} value={s} className={selectOptionClass}>{s}</option>
-          ))}
-        </Select>
-        <Select
+        />
+        <CustomSelect
           value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
+          onChange={setFilterPriority}
+          options={prioritySelectOptions}
           className="w-36"
-        >
-          <option value="" className={selectOptionClass}>Priority</option>
-          {priorities.map((p) => (
-            <option key={p} value={p} className={selectOptionClass}>{p}</option>
-          ))}
-        </Select>
+        />
         <Input
           type="text"
           placeholder="Current chatter"
@@ -100,29 +253,43 @@ export function AdminModelsClient({ modelss, modelIdToVaNames }: Props) {
         />
       </div>
 
-      {/* Mobile: stacked cards */}
       <div className="space-y-4 md:hidden">
         {filtered.length === 0 ? (
           <p className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-white/50">No models match</p>
         ) : (
-          filtered.map((m) => {
+          filtered.map((m, index) => {
             const vaNames = modelIdToVaNames[m.id] ?? [];
+            const summary = periodSummaryByModelId[m.id] ?? {
+              current: null,
+              predictedNextStart: null,
+              history: [],
+            };
             return (
-              <div
+              <motion.div
                 key={m.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+                whileHover={{ scale: 1.01 }}
                 className="rounded-2xl border border-white/10 bg-white/[0.06] p-4"
                 style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
               >
                 <p className="text-base font-semibold text-white/95">{m.model_name}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <span
-                    className={
+                    className={`inline-flex items-center gap-1.5 ${
                       m.current_status === "occupied"
                         ? "rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300"
                         : "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
-                    }
+                    }`}
                   >
-                    {m.current_status === "occupied" ? (m.current_chatter_name || "Occupied") : "Free"}
+                    <span
+                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                        m.current_status === "occupied" ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"
+                      }`}
+                      aria-hidden
+                    />
+                    {m.current_status === "occupied" ? m.current_chatter_name || "Occupied" : "Free"}
                   </span>
                   {vaNames.length > 0 && (
                     <span className="rounded-full border border-[hsl(330,80%,55%)]/30 bg-[hsl(330,80%,55%)]/15 px-2.5 py-1 text-xs text-[hsl(330,90%,75%)]">
@@ -136,48 +303,126 @@ export function AdminModelsClient({ modelss, modelIdToVaNames }: Props) {
                   {m.last_exit_at && <p>Last exit: {formatDateTimeEuropean(m.last_exit_at)}</p>}
                   {m.priority && <p>Priority: {m.priority}</p>}
                 </div>
-              </div>
+                <PeriodSection summary={summary} onLogClick={() => openLog(m)} />
+                {summary.history.length > 0 && (
+                  <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/50">
+                    {summary.history.map((p) => (
+                      <div key={p.id} className="flex items-center justify-between gap-2">
+                        <span>
+                          {formatDateEuropean(p.start_date)} → {formatDateEuropean(p.end_date)}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={deletingId === p.id}
+                          onClick={() => handleDeletePeriod(p.id)}
+                          className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
+                        >
+                          {deletingId === p.id ? "…" : "Delete"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-4 flex justify-end border-t border-white/10 pt-3">
+                  <button
+                    type="button"
+                    disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
+                    onClick={() => setModelPendingDelete(m)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/35 px-3 py-2 text-sm text-red-300/90 transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-50"
+                    title="Delete model"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                    Delete model
+                  </button>
+                </div>
+              </motion.div>
             );
           })
         )}
       </div>
-      {/* Desktop: table */}
-      <div className="glass-card overflow-hidden hidden md:block">
-        <table className="w-full text-sm">
+
+      <div className="glass-card hidden overflow-x-auto md:block">
+        <table className="w-full min-w-[960px] text-sm">
           <thead className="border-b border-white/10 bg-black/40 text-left text-xs font-medium uppercase tracking-wider text-white/50">
             <tr>
               <th className="p-3 font-medium">Model</th>
+              <th className="p-3 font-medium min-w-[200px]">Period</th>
               <th className="p-3 font-medium">Chatter</th>
               <th className="p-3 font-medium">VA in model</th>
               <th className="p-3 font-medium">Entered at</th>
               <th className="p-3 font-medium">Last chatter</th>
               <th className="p-3 font-medium">Last exit</th>
               <th className="p-3 font-medium">Priority</th>
+              <th className="p-3 font-medium w-14 text-center"> </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5">
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="p-8 text-center text-white/50">No models match</td>
+                <td colSpan={9} className="p-8 text-center text-white/50">
+                  No models match
+                </td>
               </tr>
             ) : (
-              filtered.map((m) => {
+              <AnimatePresence mode="popLayout">
+                {filtered.map((m, index) => {
                 const vaNames = modelIdToVaNames[m.id] ?? [];
+                const summary = periodSummaryByModelId[m.id] ?? {
+                  current: null,
+                  predictedNextStart: null,
+                  history: [],
+                };
                 return (
-                  <tr key={m.id} className="hover:bg-white/[0.03]">
-                    <td className="p-3 font-medium text-white/90">{m.model_name}</td>
-                    <td className="p-3">
+                  <motion.tr
+                    key={m.id}
+                    layout
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+                    className="hover:bg-white/[0.03]"
+                  >
+                    <td className="p-3 align-top font-medium text-white/90">{m.model_name}</td>
+                    <td className="p-3 align-top text-xs text-white/70">
+                      <PeriodSection summary={summary} onLogClick={() => openLog(m)} />
+                      {summary.history.length > 0 && (
+                        <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto border-t border-white/10 pt-2 text-[11px] text-white/50">
+                          {summary.history.map((p) => (
+                            <li key={p.id} className="flex items-start justify-between gap-2">
+                              <span>
+                                {formatDateEuropean(p.start_date)} → {formatDateEuropean(p.end_date)}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={deletingId === p.id}
+                                onClick={() => handleDeletePeriod(p.id)}
+                                className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
+                              >
+                                {deletingId === p.id ? "…" : "×"}
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </td>
+                    <td className="p-3 align-top">
                       <span
-                        className={
+                        className={`inline-flex items-center gap-1.5 ${
                           m.current_status === "occupied"
                             ? "rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-amber-300"
                             : "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-emerald-300"
-                        }
+                        }`}
                       >
-                        {m.current_status === "occupied" ? (m.current_chatter_name || "Occupied") : "Free"}
+                        <span
+                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                            m.current_status === "occupied" ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"
+                          }`}
+                          aria-hidden
+                        />
+                        {m.current_status === "occupied" ? m.current_chatter_name || "Occupied" : "Free"}
                       </span>
                     </td>
-                    <td className="p-3">
+                    <td className="p-3 align-top">
                       {vaNames.length > 0 ? (
                         <span className="rounded-full border border-[hsl(330,80%,55%)]/30 bg-[hsl(330,80%,55%)]/15 px-2 py-0.5 text-[hsl(330,90%,75%)]">
                           {vaNames.join(", ")}
@@ -186,17 +431,93 @@ export function AdminModelsClient({ modelss, modelIdToVaNames }: Props) {
                         <span className="text-white/45">—</span>
                       )}
                     </td>
-                    <td className="p-3 text-white/70">{m.entered_at ? formatDateTimeEuropean(m.entered_at) : "—"}</td>
-                    <td className="p-3 text-white/70">{m.last_chatter_name || "—"}</td>
-                    <td className="p-3 text-white/70">{m.last_exit_at ? formatDateTimeEuropean(m.last_exit_at) : "—"}</td>
-                    <td className="p-3 text-white/60">{m.priority || "—"}</td>
-                  </tr>
+                    <td className="p-3 align-top text-white/70">{m.entered_at ? formatDateTimeEuropean(m.entered_at) : "—"}</td>
+                    <td className="p-3 align-top text-white/70">{m.last_chatter_name || "—"}</td>
+                    <td className="p-3 align-top text-white/70">{m.last_exit_at ? formatDateTimeEuropean(m.last_exit_at) : "—"}</td>
+                    <td className="p-3 align-top text-white/60">{m.priority || "—"}</td>
+                    <td className="p-3 align-top">
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
+                          onClick={() => setModelPendingDelete(m)}
+                          className="rounded-lg p-2 text-white/50 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                          title="Delete model"
+                        >
+                          <Trash2 className="h-4 w-4" aria-hidden />
+                        </button>
+                      </div>
+                    </td>
+                  </motion.tr>
                 );
-              })
+              })}
+              </AnimatePresence>
             )}
           </tbody>
         </table>
       </div>
+
+      <ConfirmDeleteModal
+        open={modelPendingDelete != null}
+        title="Delete model?"
+        description={
+          <>
+            Delete{" "}
+            <span className="font-medium text-white">{modelPendingDelete?.model_name || "this model"}</span>? This action
+            cannot be undone.
+          </>
+        }
+        onClose={() => {
+          if (!confirmingModelDelete) setModelPendingDelete(null);
+        }}
+        onConfirm={handleConfirmDeleteModel}
+        confirming={confirmingModelDelete}
+      />
+
+      {logModel && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm md:items-center">
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/10 bg-black/95 p-6 shadow-2xl"
+            role="dialog"
+            aria-labelledby="log-period-title"
+          >
+            <h2 id="log-period-title" className="text-lg font-semibold text-white">
+              Log period — {logModel.model_name}
+            </h2>
+            <form onSubmit={submitLog} className="mt-4 space-y-3">
+              <div>
+                <Label>Start date</Label>
+                <Input type="date" value={logStart} onChange={(e) => setLogStart(e.target.value)} className="mt-1" required />
+              </div>
+              <div>
+                <Label>End date</Label>
+                <Input type="date" value={logEnd} onChange={(e) => setLogEnd(e.target.value)} className="mt-1" required />
+              </div>
+              <div>
+                <Label>Notes</Label>
+                <Textarea value={logNotes} onChange={(e) => setLogNotes(e.target.value)} rows={2} className="mt-1" />
+              </div>
+              {logError && <p className="text-sm text-red-300">{logError}</p>}
+              <div className="flex flex-wrap gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={logBusy}
+                  className="rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+                >
+                  {logBusy ? "Saving…" : "Save"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setLogModel(null)}
+                  className="rounded-xl border border-white/20 px-4 py-2 text-sm text-white/80 hover:bg-white/10"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -42,3 +42,28 @@ export async function broadcastRealtimeEvent(
     console.error("[realtime] broadcast error", err);
   }
 }
+
+/** Broadcast arbitrary realtime payload to all connected clients. */
+export async function broadcastRealtimeToAll(payload: Record<string, unknown>): Promise<void> {
+  const url = process.env.REALTIME_BROADCAST_URL;
+  const secret = process.env.REALTIME_BROADCAST_SECRET;
+  if (!url || !secret) return;
+  try {
+    const res = await fetch(`${url.replace(/\/$/, "")}/realtime/broadcast`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${secret}`,
+      },
+      body: JSON.stringify({
+        target: "all",
+        payload,
+      }),
+    });
+    if (!res.ok) {
+      console.error("[realtime] broadcast all failed", res.status, await res.text());
+    }
+  } catch (err) {
+    console.error("[realtime] broadcast all error", err);
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": "workers/entry.ts",
+  "name": "chatterswebsite",
+  "compatibility_date": "2024-12-30",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "REALTIME_HUB",
+        "class_name": "RealtimeHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["RealtimeHub"]
+    }
+  ],
+
+  // Route and URL behavior: explicit so deploy does not override with defaults
+  "workers_dev": true,
+  "preview_urls": true,
+  "routes": [
+    {
+      "pattern": "gunzoteam.com",
+      "zone_name": "gunzoteam.com",
+      "custom_domain": true
+    }
+  ],
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "chatterswebsite"
+    }
+  ],
+
+  // Non-secret config only. Set secrets via: npx wrangler secret put <NAME>
+  "vars": {
+    "AIRTABLE_BASE_ID": "appfCUBei2fna7I1u",
+    "NEXT_PUBLIC_APP_URL": "https://gunzoteam.com",
+    "VAPID_PUBLIC_KEY": "BDiZxYcEe5WSJsV8FHeYca6adpb6K1CYPB6wBrrSYN3wLL6t_LkGev0IP0-C8A4pgrNWCGEAktTOUCU0_w5M63w",
+    "DEMO_LOGIN_EMAIL": "mikee.kara@gmail.com",
+    "DEMO_LOGIN_ROLE": "admin",
+    "ADMIN_AIRTABLE_USER_IDS": "recA62rgP2WK9Jbp2,rec71mX8kFyxMDMwY",
+    "NEXT_PUBLIC_REALTIME_WS_URL": ""
+  },
+
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true
+    }
+  }
+}

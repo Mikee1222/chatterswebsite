@@ -292,3 +292,15 @@ export async function checkScheduledShiftConflicts(
   }
   return { conflict: false };
 }
+
+/** Greece business calendar (fixed UTC+3) for week/today when the server runs in UTC. */
+export {
+  addDaysAthensYmd,
+  getMondayOfWeekFromYmdAthens,
+  getNowInAthens,
+  getTodayWeekdayAthens,
+  getTodayYmdAthens,
+  getWeekStartInAthens,
+  getWeekStartYmdInAthens,
+  getYesterdayYmdAthens,
+} from "@/lib/airtable-datetime";

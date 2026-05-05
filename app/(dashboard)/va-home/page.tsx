@@ -8,7 +8,20 @@ import {
 } from "@/services/shifts";
 import { formatDateEuropean, formatDateTimeEuropean } from "@/lib/format";
 import { VaHomeClient } from "@/components/va-home-client";
+import { getVaTasksForUser } from "@/services/va-tasks";
 import type { Shift } from "@/types";
+
+function localYmdFromDue(isoLike: string | null): string {
+  if (!isoLike?.trim()) return "";
+  const d = new Date(isoLike.trim());
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function todayYmdLocal(): string {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+}
 
 export type VaHomeShiftCardData =
   | {
@@ -82,10 +95,19 @@ export default async function VaHomePage() {
 
   const vaId = user.airtableUserId ?? user.id;
   const vaName = user.fullName ?? user.email ?? "VA";
-  const [allShifts, shiftCardData] = await Promise.all([
+  const [allShifts, shiftCardData, vaTasks] = await Promise.all([
     getShiftsByChatter(vaId, "virtual_assistant").catch(() => []),
     getVaHomeShiftCardData(vaId),
+    getVaTasksForUser(vaId).catch(() => []),
   ]);
+
+  const todayY = todayYmdLocal();
+  const openTasksToday = vaTasks.filter(
+    (t) =>
+      (t.status === "pending" || t.status === "in_progress") &&
+      t.due_date &&
+      localYmdFromDue(t.due_date) === todayY
+  ).length;
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
@@ -143,6 +165,7 @@ export default async function VaHomePage() {
         todayHours={hoursFromMinutes(todayMinutes)}
         shiftCardData={shiftCardData}
         recentActivity={recent}
+        openTasksToday={openTasksToday}
       />
     </div>
   );

@@ -12,11 +12,60 @@ import {
   endShift,
 } from "@/app/actions/shift";
 import { ROUTES } from "@/lib/routes";
-import { formatTimeFromISO, formatDateTimeEuropean } from "@/lib/format";
+import { formatDateTimeEuropean } from "@/lib/format";
 import { Input, FormError } from "@/components/ui/form";
+import { Loader2, RefreshCw } from "lucide-react";
+import { motion } from "framer-motion";
 import { LiveTimer } from "@/components/live-timer";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
-import type { Shift, ShiftModel, ModelRecord } from "@/types";
+import { useToast } from "@/contexts/toast-context";
+import { useMobileFabVisibility } from "@/contexts/mobile-fab-visibility-context";
+import type { AppNotification, Shift, ShiftModel, ModelRecord } from "@/types";
+
+function localToast(id: string, title: string, body: string, priority: "normal" | "high" = "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function BusyOverlay({
+  show,
+  title,
+  subtitle,
+}: {
+  show: boolean;
+  title: string;
+  subtitle?: string;
+}) {
+  if (!show) return null;
+  const node = (
+    <div
+      className="fixed inset-0 z-[200] flex flex-col items-center justify-center gap-4 bg-black/80 backdrop-blur-sm"
+      role="alertdialog"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <div className="h-12 w-12 shrink-0 animate-spin rounded-full border-4 border-[hsl(330,80%,55%)] border-t-transparent" />
+      <p className="text-lg font-semibold text-white">{title}</p>
+      {subtitle ? <p className="text-sm text-white/40">{subtitle}</p> : null}
+    </div>
+  );
+  if (typeof document !== "undefined") {
+    return createPortal(node, document.body);
+  }
+  return node;
+}
 
 export type TodayScheduleData = {
   todayYmd: string;
@@ -29,9 +78,11 @@ type Props = {
   chatterName: string;
   activeShift: Shift | null;
   shiftModels: ShiftModel[];
+  /** Loaded on the server in one slim `modelss` query (name, status, chatter); modals read props only — no per-open fetches. */
   modelss: ModelRecord[];
   maxBreakMinutes: number;
   todaySchedule?: TodayScheduleData;
+  modelIdsInActivePeriodToday?: string[];
 };
 
 function parseStartTime(startTime: string | null): number | null {
@@ -42,30 +93,45 @@ function parseStartTime(startTime: string | null): number | null {
 
 function formatEnteredAt(enteredAt: string | null): string {
   if (!enteredAt) return "—";
-  return formatTimeFromISO(enteredAt);
+  const d = new Date(enteredAt);
+  if (Number.isNaN(d.getTime())) return "—";
+  const display = new Date(d.getTime() + 3 * 60 * 60 * 1000);
+  const h = display.getUTCHours();
+  const m = display.getUTCMinutes();
+  return `${h < 10 ? `0${h}` : h}:${m < 10 ? `0${m}` : m}`;
 }
 
-// --- Add model to shift modal (single select, free only) ---
+// --- Add model to shift modal (multi-select; mobile: portaled + fixed bottom actions above nav) ---
 function AddModelToShiftModal({
   modelss,
   alreadyInShiftModelIds,
-  onSelect,
+  selectedModelIds,
+  onToggle,
   onConfirm,
   onCancel,
   loading,
   error,
-  selectedModelId,
+  shiftInteractionLocked,
 }: {
   modelss: ModelRecord[];
   alreadyInShiftModelIds: Set<string>;
-  onSelect: (id: string | null) => void;
+  selectedModelIds: Set<string>;
+  onToggle: (id: string) => void;
   onConfirm: () => void;
   onCancel: () => void;
   loading: boolean;
   error: string | null;
-  selectedModelId: string | null;
+  /** When break/shift actions are in flight — block confirm only */
+  shiftInteractionLocked?: boolean;
 }) {
+  const locked = shiftInteractionLocked ?? false;
+  const [mounted, setMounted] = React.useState(false);
   const [search, setSearch] = React.useState("");
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return modelss;
@@ -78,107 +144,194 @@ function AddModelToShiftModal({
   const freeAndNotInShift = filtered.filter((m) => m.current_status === "free" && !alreadyInShiftModelIds.has(m.id));
   const occupied = filtered.filter((m) => m.current_status === "occupied");
   const inThisShift = filtered.filter((m) => alreadyInShiftModelIds.has(m.id));
+  const selectedModels = React.useMemo(() => Array.from(selectedModelIds), [selectedModelIds]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden onClick={onCancel} />
-      <div
-        className="relative flex max-h-[90dvh] w-full flex-col rounded-t-2xl border border-white/10 border-b-0 bg-black/95 shadow-2xl md:max-h-[85vh] md:w-full md:max-w-lg md:rounded-3xl md:border md:bg-black/90 md:shadow-black/50 md:backdrop-blur-xl"
-        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 0 60px -12px hsl(330 80% 55% / 0.15)" }}
-      >
-        <div className="shrink-0 border-b border-white/10 px-4 py-4 md:px-6 md:py-5">
-          <h2 className="text-lg font-semibold tracking-tight text-white md:text-xl">Add model to shift</h2>
-          <p className="mt-1 text-sm text-white/55">
-            Choose a free model to attach to your current shift. Occupied models show who has them.
-          </p>
-          <div className="mt-3 md:mt-4">
-            <Input
-              type="search"
-              placeholder="Search by model or chatter…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="py-2.5 md:py-3"
-            />
-          </div>
+  const closeModal = onCancel;
+  const handleAddModels = onConfirm;
+
+  const sheetBody = (
+    <>
+      <div className="shrink-0 border-b border-white/10 px-4 py-4 md:px-6 md:py-5">
+        <h2 id="add-model-shift-title" className="text-lg font-semibold tracking-tight text-white md:text-xl">
+          Add model to shift
+        </h2>
+        <p className="mt-1 text-sm text-white/55">
+          Tap free models to select, then confirm. Occupied models show who has them.
+        </p>
+        <div className="mt-3 md:mt-4">
+          <Input
+            type="search"
+            placeholder="Search by model or chatter…"
+            value={search}
+            disabled={loading}
+            onChange={(e) => setSearch(e.target.value)}
+            className="py-2.5 md:py-3"
+          />
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 md:max-h-[50vh] md:flex-none">
-          {error && (
-            <div className="mb-4">
-              <FormError>{error}</FormError>
-            </div>
-          )}
-          {filtered.length === 0 ? (
-            <p className="py-8 text-center text-sm text-white/50">No models match your search.</p>
-          ) : freeAndNotInShift.length === 0 && inThisShift.length === 0 && occupied.length === filtered.length ? (
-            <p className="py-8 text-center text-sm text-white/50">
-              No free models available. All are occupied or already in your shift.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {freeAndNotInShift.map((m) => (
+      </div>
+      <div
+        className="min-h-0 flex-1 overflow-y-auto p-4 md:max-h-[min(50vh,360px)] md:flex-none"
+        style={{ paddingBottom: "120px" }}
+      >
+        {error && (
+          <div className="mb-4">
+            <FormError>{error}</FormError>
+          </div>
+        )}
+        {filtered.length === 0 ? (
+          <p className="py-8 text-center text-sm text-white/50">No models match your search.</p>
+        ) : freeAndNotInShift.length === 0 && inThisShift.length === 0 && occupied.length === filtered.length ? (
+          <p className="py-8 text-center text-sm text-white/50">
+            No free models available. All are occupied or already in your shift.
+          </p>
+        ) : (
+          <ul className="space-y-2 pb-2">
+            {freeAndNotInShift.map((m) => {
+              const isSelected = selectedModelIds.has(m.id);
+              return (
                 <li key={m.id}>
                   <button
                     type="button"
-                    onClick={() => onSelect(selectedModelId === m.id ? null : m.id)}
-                    className={`flex w-full items-center gap-4 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-white/[0.09] ${
-                      selectedModelId === m.id
+                    onClick={() => !locked && !loading && onToggle(m.id)}
+                    disabled={locked || loading}
+                    className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-white/[0.09] disabled:pointer-events-none disabled:opacity-40 ${
+                      isSelected
                         ? "border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/10"
                         : "border-white/10 bg-white/[0.06]"
                     }`}
                   >
-                    <span className="font-medium text-white/95">{m.model_name}</span>
-                    <span className="ml-auto rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
-                      Free
+                    <span className="min-w-0 flex-1 font-medium text-white/95">{m.model_name}</span>
+                    <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                      {isSelected ? (
+                        <span className="inline-flex items-center rounded-full bg-[hsl(330,80%,55%)]/25 px-2 py-0.5 text-xs font-medium text-[hsl(330,90%,80%)]">
+                          Selected
+                        </span>
+                      ) : null}
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
+                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                        Free
+                      </span>
                     </span>
-                    {selectedModelId === m.id && (
-                      <span className="text-[hsl(330,90%,75%)]">Selected</span>
-                    )}
                   </button>
                 </li>
-              ))}
-              {inThisShift.map((m) => (
-                <li key={m.id}>
-                  <div className="flex cursor-default items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 opacity-75">
-                    <span className="font-medium text-white/70">{m.model_name}</span>
-                    <span className="ml-auto rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-300">
-                      In your shift
-                    </span>
-                  </div>
-                </li>
-              ))}
-              {occupied.filter((m) => !alreadyInShiftModelIds.has(m.id)).map((m) => (
-                <li key={m.id}>
-                  <div className="flex cursor-not-allowed items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 opacity-75">
-                    <span className="font-medium text-white/70">{m.model_name}</span>
-                    <span className="ml-auto rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">
-                      {m.current_chatter_name || "Occupied"}
-                    </span>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-white/10 p-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/5"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={onConfirm}
-            disabled={loading || !selectedModelId}
-            className="rounded-xl bg-[hsl(330,80%,55%)] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_20px_-4px_rgba(236,72,153,0.4)] hover:bg-[hsl(330,80%,50%)] disabled:opacity-50"
-          >
-            {loading ? "Adding…" : "Add to shift"}
-          </button>
+              );
+            })}
+            {inThisShift.map((m) => (
+              <li key={m.id}>
+                <div className="flex cursor-default items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 opacity-75">
+                  <span className="font-medium text-white/70">{m.model_name}</span>
+                  <span className="ml-auto rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-300">
+                    In your shift
+                  </span>
+                </div>
+              </li>
+            ))}
+            {occupied.filter((m) => !alreadyInShiftModelIds.has(m.id)).map((m) => (
+              <li key={m.id}>
+                <div className="flex cursor-not-allowed items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 opacity-75">
+                  <span className="font-medium text-white/70">{m.model_name}</span>
+                  <span className="ml-auto rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">
+                    {m.current_chatter_name || "Occupied"}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
+
+  const bottomBarStyle: React.CSSProperties = {
+    position: "fixed",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    zIndex: 9999,
+    backgroundColor: "#111111",
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+    padding: "12px 16px 32px 16px",
+    display: "flex",
+    gap: "12px",
+  };
+
+  const node = (
+    <>
+      <button
+        type="button"
+        className="fixed inset-0 z-[9980] bg-black/70 backdrop-blur-sm"
+        aria-label="Close"
+        disabled={loading}
+        onClick={loading ? undefined : closeModal}
+      />
+      <div
+        className="pointer-events-none fixed inset-0 z-[9985] flex max-md:items-end max-md:justify-center md:items-center md:justify-center md:p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="add-model-shift-title"
+      >
+        <div
+          className="pointer-events-auto flex max-h-[min(calc(100dvh-9.5rem-env(safe-area-inset-bottom,0px)),90dvh)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl border border-white/10 border-b-0 bg-black/95 shadow-2xl md:mb-0 md:max-h-[85vh] md:rounded-3xl md:border-b md:bg-black/90 md:shadow-black/50 md:backdrop-blur-xl"
+          style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 0 60px -12px hsl(330 80% 55% / 0.15)" }}
+        >
+          {sheetBody}
         </div>
       </div>
-    </div>
+      <div style={bottomBarStyle}>
+        <button
+          type="button"
+          onClick={closeModal}
+          disabled={loading}
+          style={{
+            flex: 1,
+            height: "52px",
+            borderRadius: "12px",
+            border: "1px solid rgba(255,255,255,0.15)",
+            background: "transparent",
+            color: "white",
+            fontSize: "15px",
+            opacity: loading ? 0.6 : 1,
+          }}
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleAddModels}
+          disabled={selectedModels.length === 0 || loading || locked}
+          style={{
+            flex: 2,
+            height: "52px",
+            borderRadius: "12px",
+            background:
+              selectedModels.length > 0 && !loading && !locked ? "#ec4899" : "rgba(236,72,153,0.3)",
+            border: "none",
+            color: "white",
+            fontSize: "15px",
+            fontWeight: "600",
+            cursor:
+              selectedModels.length > 0 && !loading && !locked ? "pointer" : "not-allowed",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+          }}
+        >
+          {loading ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden /> : null}
+          {loading
+            ? "Adding..."
+            : selectedModels.length > 0
+              ? `Add ${selectedModels.length} model${selectedModels.length > 1 ? "s" : ""}`
+              : "Select models"}
+        </button>
+      </div>
+    </>
   );
+
+  if (!mounted || typeof document === "undefined") {
+    return null;
+  }
+  return createPortal(node, document.body);
 }
 
 // --- Model selection modal (start shift: multi-select) with schedule context ---
@@ -219,7 +372,7 @@ function ModelSelectModal({
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
         aria-hidden
-        onClick={onCancel}
+        onClick={loading ? undefined : onCancel}
       />
       {/* Mobile: full-screen sheet (stacked: Today card → search → list → bottom bar); desktop: centered two-column */}
       <div className="relative ml-0 flex min-h-full min-w-0 flex-1 items-stretch justify-center overflow-hidden md:ml-64 md:items-center md:overflow-y-auto md:p-6 md:w-[calc(100vw-16rem)]" onClick={(e) => e.stopPropagation()}>
@@ -242,6 +395,7 @@ function ModelSelectModal({
                   type="search"
                   placeholder="Search by model or chatter…"
                   value={search}
+                  disabled={loading}
                   onChange={(e) => setSearch(e.target.value)}
                   className="min-h-[44px] py-2.5 md:py-3 text-base md:text-sm"
                 />
@@ -259,18 +413,24 @@ function ModelSelectModal({
                 <ul className="space-y-3 md:space-y-2">
                   {free.map((m) => (
                     <li key={m.id}>
-                      <label className="flex min-h-[52px] cursor-pointer items-center gap-4 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-4 transition-colors hover:bg-white/[0.09] active:bg-white/[0.12] md:min-h-0 md:py-3">
+                      <motion.label
+                    whileHover={loading ? undefined : { scale: 1.01 }}
+                    transition={{ duration: 0.15, ease: "easeOut" }}
+                    className={`flex min-h-[52px] items-center gap-4 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-4 transition-colors md:min-h-0 md:py-3 ${loading ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-white/[0.09] active:bg-white/[0.12]"}`}
+                  >
                         <input
                           type="checkbox"
                           checked={selectedModelIds.has(m.id)}
+                          disabled={loading}
                           onChange={() => onToggle(m.id)}
-                          className="h-5 w-5 shrink-0 rounded border-white/30 bg-white/5 text-[hsl(330,80%,55%)] focus:ring-2 focus:ring-[hsl(330,80%,55%)]/40 md:h-4 md:w-4"
+                          className="h-5 w-5 shrink-0 rounded border-white/30 bg-white/5 text-[hsl(330,80%,55%)] focus:ring-2 focus:ring-[hsl(330,80%,55%)]/40 disabled:cursor-not-allowed disabled:opacity-40 md:h-4 md:w-4"
                         />
                         <span className="min-w-0 flex-1 font-medium text-white/95 text-base md:text-sm">{m.model_name}</span>
-                        <span className="shrink-0 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-1 text-xs font-medium text-emerald-300">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
                           Free
                         </span>
-                      </label>
+                      </motion.label>
                     </li>
                   ))}
                   {occupied.map((m) => (
@@ -278,7 +438,8 @@ function ModelSelectModal({
                       <div className="flex min-h-[52px] cursor-not-allowed items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-4 opacity-75 md:min-h-0 md:py-3">
                         <span className="h-5 w-5 shrink-0 rounded border border-white/20 bg-white/5 md:h-4 md:w-4" aria-hidden />
                         <span className="min-w-0 flex-1 font-medium text-white/70 text-base md:text-sm">{m.model_name}</span>
-                        <span className="shrink-0 rounded-full bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-300">
+                        <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-amber-500/20 px-2.5 py-1 text-xs font-medium text-amber-300">
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 animate-pulse" aria-hidden />
                           {m.current_chatter_name || "Busy"}
                         </span>
                       </div>
@@ -291,18 +452,21 @@ function ModelSelectModal({
               <button
                 type="button"
                 onClick={onCancel}
-                className="min-h-[44px] rounded-xl border border-white/15 px-5 py-2.5 text-base font-medium text-white/80 hover:bg-white/5 md:min-h-0 md:text-sm"
+                disabled={loading}
+                className="min-h-[44px] rounded-xl border border-white/15 px-5 py-2.5 text-base font-medium text-white/80 hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40 md:min-h-0 md:text-sm"
               >
                 Cancel
               </button>
-              <button
+              <motion.button
                 type="button"
                 onClick={onConfirm}
                 disabled={loading}
+                whileTap={{ scale: 0.97 }}
+                transition={{ duration: 0.12 }}
                 className="min-h-[44px] rounded-xl bg-[hsl(330,80%,55%)] px-6 py-2.5 text-base font-medium text-white shadow-[0_0_20px_-4px_rgba(236,72,153,0.4)] hover:bg-[hsl(330,80%,50%)] disabled:opacity-50 md:min-h-0 md:text-sm"
               >
-                {loading ? "Starting…" : `Start shift with ${selectedModelIds.size} model${selectedModelIds.size !== 1 ? "s" : ""}`}
-              </button>
+                {loading ? "Starting shift…" : `Start shift with ${selectedModelIds.size} model${selectedModelIds.size !== 1 ? "s" : ""}`}
+              </motion.button>
             </div>
           </div>
           {/* Desktop-only: schedule panel on the right */}
@@ -330,20 +494,67 @@ export function ShiftClient({
   modelss,
   maxBreakMinutes,
   todaySchedule,
+  modelIdsInActivePeriodToday = [],
 }: Props) {
   const router = useRouter();
+  const { addToast } = useToast();
+  /** Prevents double-submit on shift/break actions. */
+  const submittingRef = React.useRef(false);
+  /** Coalesce rapid `router.refresh()` calls into one RSC reload to stay under Cloudflare subrequest limits. */
+  const refreshCoalesceTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const requestRouterRefresh = React.useCallback(() => {
+    if (refreshCoalesceTimerRef.current !== null) {
+      clearTimeout(refreshCoalesceTimerRef.current);
+    }
+    refreshCoalesceTimerRef.current = setTimeout(() => {
+      refreshCoalesceTimerRef.current = null;
+      router.refresh();
+    }, 350);
+  }, [router]);
+
+  React.useEffect(
+    () => () => {
+      if (refreshCoalesceTimerRef.current !== null) clearTimeout(refreshCoalesceTimerRef.current);
+    },
+    []
+  );
+
+  const [refreshing, setRefreshing] = React.useState(false);
+  const handleRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    router.refresh();
+    setTimeout(() => setRefreshing(false), 1000);
+  }, [router]);
+
   const [showModelSelect, setShowModelSelect] = React.useState(false);
   const [selectedModelIds, setSelectedModelIds] = React.useState<Set<string>>(new Set());
-  const [starting, setStarting] = React.useState(false);
+  const [isStartingShift, setIsStartingShift] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [successMessage, setSuccessMessage] = React.useState<string | null>(null);
   const [breakStartedAt, setBreakStartedAt] = React.useState<Date | null>(null);
-  const [addingModelId, setAddingModelId] = React.useState<string | null>(null);
   const [removingId, setRemovingId] = React.useState<string | null>(null);
-  const [ending, setEnding] = React.useState(false);
+  const [removeConfirmModel, setRemoveConfirmModel] = React.useState<ShiftModel | null>(null);
+  const [isEndingShift, setIsEndingShift] = React.useState(false);
   const [showAddModelModal, setShowAddModelModal] = React.useState(false);
-  const [selectedAddModelId, setSelectedAddModelId] = React.useState<string | null>(null);
+  const [selectedAddModelIds, setSelectedAddModelIds] = React.useState<Set<string>>(() => new Set());
+  const [isAddingModelsToShift, setIsAddingModelsToShift] = React.useState(false);
   const [clientTotalBreakUsed, setClientTotalBreakUsed] = React.useState<number | null>(null);
+  /** Instant UI while startBreak / endBreak server actions run */
+  const [breakAction, setBreakAction] = React.useState<"idle" | "starting" | "ending">("idle");
+  /** After End break click, treat shift as active until server props catch up */
+  const [optimisticNotOnBreak, setOptimisticNotOnBreak] = React.useState(false);
+  const [showBreakConfirmModal, setShowBreakConfirmModal] = React.useState(false);
+  /** Selected reminder length (minutes); `null` = no push reminder. Default 15 when opening modal. */
+  const [breakReminderMins, setBreakReminderMins] = React.useState<number | null>(15);
+
+  const mobileFabVisibility = useMobileFabVisibility();
+  React.useEffect(() => {
+    if (!mobileFabVisibility) return;
+    mobileFabVisibility.setMobileFabHidden(showAddModelModal || showBreakConfirmModal);
+    return () => {
+      mobileFabVisibility.setMobileFabHidden(false);
+    };
+  }, [showAddModelModal, showBreakConfirmModal, mobileFabVisibility]);
 
   React.useEffect(() => {
     if (!successMessage) return;
@@ -353,14 +564,41 @@ export function ShiftClient({
 
   const startTimeMs = activeShift ? parseStartTime(activeShift.start_time) : null;
   const breakUsed = activeShift?.break_minutes ?? 0;
-  const isOnBreak = activeShift?.status === "on_break" || breakStartedAt !== null;
+  const isOnBreak =
+    !optimisticNotOnBreak &&
+    (activeShift?.status === "on_break" || breakStartedAt !== null);
   const breakStartTimeMs = isOnBreak && activeShift
     ? (activeShift.break_started_at ? new Date(activeShift.break_started_at).getTime() : breakStartedAt?.getTime() ?? null)
     : null;
   const breakStartedAtIso = activeShift?.break_started_at ?? breakStartedAt?.toISOString() ?? null;
   const totalBreakUsedDisplay = clientTotalBreakUsed !== null ? clientTotalBreakUsed : breakUsed;
   const remainingBreak = Math.max(0, maxBreakMinutes - totalBreakUsedDisplay);
-  const canStartBreak = activeShift && activeShift.status === "active" && remainingBreak > 0;
+  const shiftControlsBusy =
+    breakAction !== "idle" ||
+    isEndingShift ||
+    isStartingShift ||
+    isAddingModelsToShift ||
+    showBreakConfirmModal;
+  const breakStartEligible =
+    !!activeShift &&
+    activeShift.status === "active" &&
+    !isOnBreak &&
+    remainingBreak > 0 &&
+    breakAction === "idle" &&
+    !isEndingShift &&
+    !isStartingShift &&
+    !isAddingModelsToShift;
+  const canStartBreak = breakStartEligible && !showBreakConfirmModal;
+
+  React.useEffect(() => {
+    if (!activeShift) setIsEndingShift(false);
+  }, [activeShift]);
+
+  React.useEffect(() => {
+    if (optimisticNotOnBreak && activeShift?.status === "active") {
+      setOptimisticNotOnBreak(false);
+    }
+  }, [optimisticNotOnBreak, activeShift?.status]);
 
   React.useEffect(() => {
     if (!isOnBreak || breakStartTimeMs === null) {
@@ -388,6 +626,7 @@ export function ShiftClient({
   const occupiedModelss = modelss.filter((m) => m.current_status === "occupied");
 
   function toggleModelSelection(id: string) {
+    if (isStartingShift) return;
     const m = modelss.find((x) => x.id === id);
     if (m?.current_status !== "free") return;
     setSelectedModelIds((prev) => {
@@ -399,8 +638,10 @@ export function ShiftClient({
   }
 
   async function handleConfirmModelSelection() {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setIsStartingShift(true);
     setError(null);
-    setStarting(true);
     try {
       const result = await startShiftWithModels(chatterId, chatterName, Array.from(selectedModelIds));
       if (!result || !result.success) {
@@ -411,126 +652,205 @@ export function ShiftClient({
       setSelectedModelIds(new Set());
       setSuccessMessage("Shift started. Loading…");
       router.push(ROUTES.chatter.shift);
-      router.refresh();
+      requestRouterRefresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to start shift");
+      addToast(localToast(`shift-start-err-${Date.now()}`, "Failed to start shift", "Please try again."));
     } finally {
-      setStarting(false);
+      setIsStartingShift(false);
+      submittingRef.current = false;
     }
   }
 
-  async function handleAddModel(model: ModelRecord) {
-    if (!activeShift) return;
-    setError(null);
-    setAddingModelId(model.id);
-    try {
-      const result = await addModelToShift({
-        shiftRecordId: activeShift.id,
-        modelRecordId: model.id,
-        modelName: model.model_name,
-        chatterRecordId: chatterId,
-        chatterName,
-      });
-      if (!result || !result.success) {
-        setError(result?.error ?? "Failed to add model");
-        return;
-      }
-      setSuccessMessage("Model added. Refreshing…");
-      router.refresh();
-    } finally {
-      setAddingModelId(null);
-    }
-  }
+  const toggleAddModelSelection = React.useCallback((id: string) => {
+    if (shiftControlsBusy) return;
+    const m = modelss.find((x) => x.id === id);
+    if (!m || m.current_status !== "free") return;
+    setSelectedAddModelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, [modelss, shiftControlsBusy]);
 
-  async function handleConfirmAddModel() {
-    const model = modelss.find((m) => m.id === selectedAddModelId);
-    if (!model || !activeShift) return;
+  async function handleConfirmAddModels() {
+    if (!activeShift || selectedAddModelIds.size === 0 || submittingRef.current) return;
+    submittingRef.current = true;
+    setIsAddingModelsToShift(true);
     setError(null);
-    setAddingModelId(model.id);
+    const ids = Array.from(selectedAddModelIds);
     try {
-      const result = await addModelToShift({
-        shiftRecordId: activeShift.id,
-        modelRecordId: model.id,
-        modelName: model.model_name,
-        chatterRecordId: chatterId,
-        chatterName,
-      });
-      if (!result || !result.success) {
-        setError(result?.error ?? "Failed to add model");
-        return;
+      for (const id of ids) {
+        const model = modelss.find((m) => m.id === id);
+        if (!model) continue;
+        const result = await addModelToShift({
+          shiftRecordId: activeShift.id,
+          modelRecordId: model.id,
+          modelName: model.model_name,
+          chatterRecordId: chatterId,
+          chatterName,
+        });
+        if (!result || !result.success) {
+          const msg = result?.error ?? "Failed to add model";
+          setError(msg);
+          addToast(
+            localToast(`add-models-err-${Date.now()}`, "Could not add models", msg, "high")
+          );
+          return;
+        }
       }
       setShowAddModelModal(false);
-      setSelectedAddModelId(null);
-      setSuccessMessage("Model added.");
+      setSelectedAddModelIds(new Set());
+      setSuccessMessage(ids.length === 1 ? "Model added." : `${ids.length} models added.`);
       router.refresh();
+      requestRouterRefresh();
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to add models";
+      setError(msg);
+      addToast(localToast(`add-models-err-${Date.now()}`, "Could not add models", msg, "high"));
     } finally {
-      setAddingModelId(null);
+      setIsAddingModelsToShift(false);
+      submittingRef.current = false;
     }
   }
 
-  async function handleRemoveModel(sm: ShiftModel) {
-    setError(null);
+  function openRemoveModelConfirm(sm: ShiftModel) {
+    if (!activeShift || removingId !== null || isEndingShift) return;
+    setRemoveConfirmModel(sm);
+  }
+
+  function cancelRemoveModelConfirm() {
+    setRemoveConfirmModel(null);
+  }
+
+  async function confirmRemoveModelFromShift() {
+    if (submittingRef.current) return;
+    const sm = removeConfirmModel;
+    if (!sm || !activeShift) return;
+    submittingRef.current = true;
+    console.log("[remove-model]", {
+      shiftId: activeShift.id,
+      modelRecordId: sm.model_id,
+      modelName: sm.model_name,
+    });
+    setRemoveConfirmModel(null);
     setRemovingId(sm.id);
+    setError(null);
     try {
-      const result = await removeModelFromShift(sm.id, sm.model_id, activeShift?.id);
+      const result = await removeModelFromShift(activeShift.id, sm.model_id);
       if (!result || !result.success) {
-        setError(result?.error ?? "Failed to remove model");
+        const msg = result?.error ?? "Failed to remove model";
+        setError(msg);
+        addToast(localToast(`remove-model-err-${Date.now()}`, "Remove failed", msg, "high"));
         return;
       }
+      if (result.shiftEnded) {
+        setSuccessMessage("Shift ended — no models left on this shift.");
+      }
       router.refresh();
+      requestRouterRefresh();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove model");
+      const msg = err instanceof Error ? err.message : "Failed to remove model";
+      setError(msg);
+      addToast(localToast(`remove-model-err-${Date.now()}`, "Remove failed", msg, "high"));
     } finally {
       setRemovingId(null);
+      submittingRef.current = false;
     }
   }
 
-  async function handleStartBreak() {
-    if (!activeShift) return;
+  function openBreakConfirmModal() {
+    if (!breakStartEligible) return;
+    setBreakReminderMins(15);
+    setShowBreakConfirmModal(true);
     setError(null);
+  }
+
+  function closeBreakConfirmModal() {
+    setShowBreakConfirmModal(false);
+  }
+
+  async function confirmStartBreak(reminderMinutes: number | null) {
+    if (!activeShift || submittingRef.current) return;
+    submittingRef.current = true;
+    setError(null);
+    setBreakAction("starting");
+    setBreakStartedAt(new Date());
+    setShowBreakConfirmModal(false);
     try {
-      await startBreak(activeShift.id);
-      setBreakStartedAt(new Date());
-      router.refresh();
+      const result = await startBreak(activeShift.id, reminderMinutes);
+      if (result && "success" in result && !result.success) {
+        setBreakStartedAt(null);
+        setError(result.error);
+        return;
+      }
+      requestRouterRefresh();
     } catch (err) {
+      setBreakStartedAt(null);
       setError(err instanceof Error ? err.message : "Failed to start break");
+    } finally {
+      setBreakAction("idle");
+      submittingRef.current = false;
     }
   }
 
   async function handleEndBreak() {
-    if (!activeShift) return;
+    if (!activeShift || submittingRef.current) return;
+    submittingRef.current = true;
     setError(null);
+    const bStartMs =
+      breakStartTimeMs ??
+      (breakStartedAt != null ? breakStartedAt.getTime() : null);
     const elapsed =
-      breakStartTimeMs !== null
-        ? Math.ceil((Date.now() - breakStartTimeMs) / 60000)
-        : 1;
+      bStartMs != null ? Math.max(1, Math.ceil((Date.now() - bStartMs) / 60000)) : 1;
+    const usedForCap = clientTotalBreakUsed !== null ? clientTotalBreakUsed : breakUsed;
+    const remainingSnap = Math.max(0, maxBreakMinutes - usedForCap);
+    const additionalBreak = Math.min(elapsed, remainingSnap + elapsed);
+
+    setBreakAction("ending");
+    setOptimisticNotOnBreak(true);
+    setBreakStartedAt(null);
     try {
-      await endBreak(activeShift.id, Math.min(elapsed, remainingBreak + elapsed));
-      setBreakStartedAt(null);
-      router.refresh();
+      await endBreak(activeShift.id, additionalBreak);
+      requestRouterRefresh();
     } catch (err) {
+      setOptimisticNotOnBreak(false);
       setError(err instanceof Error ? err.message : "Failed to end break");
+      requestRouterRefresh();
+    } finally {
+      setBreakAction("idle");
+      submittingRef.current = false;
     }
   }
 
   async function handleEndShift() {
-    if (!activeShift) return;
+    if (!activeShift || submittingRef.current) return;
+    submittingRef.current = true;
+    setIsEndingShift(true);
     setError(null);
-    setEnding(true);
     try {
       await endShift(activeShift.id);
       setBreakStartedAt(null);
       setSuccessMessage("Shift ended.");
-      router.refresh();
+      requestRouterRefresh();
     } catch (err) {
+      setIsEndingShift(false);
       setError(err instanceof Error ? err.message : "Failed to end shift");
+      addToast(
+        localToast(`shift-end-err-${Date.now()}`, "Failed to end shift", "Please try again.")
+      );
     } finally {
-      setEnding(false);
+      submittingRef.current = false;
     }
   }
 
   // ——— No active shift: start shift hero + intelligence ———
   if (!activeShift) {
     return (
-      <div className="space-y-8">
+      <>
+        <BusyOverlay show={isStartingShift} title="Starting shift…" subtitle="Attaching models" />
+        <div className={`space-y-8 ${isStartingShift ? "pointer-events-none opacity-90" : ""}`}>
         {error && (
           <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-sm text-red-200">
             {error}
@@ -555,19 +875,35 @@ export function ShiftClient({
           className="glass-panel p-5 md:p-8 md:p-10"
           style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 48px -12px hsl(330 80% 55% / 0.12)" }}
         >
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Live operations</p>
-          <h2 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-3xl">Start a shift</h2>
-          <p className="mt-2 text-sm text-white/60 md:text-base">
-            Select models and go live. You can add or remove models during your shift.
-          </p>
-          <div className="mt-6 md:mt-8">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Live operations</p>
+              <h2 className="mt-2 text-xl font-semibold tracking-tight text-white md:text-3xl">Start a shift</h2>
+              <p className="mt-2 text-sm text-white/60 md:text-base">
+                Select models and go live. You can add or remove models during your shift.
+              </p>
+            </div>
             <button
               type="button"
+              onClick={handleRefresh}
+              disabled={isStartingShift}
+              className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+              <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
+          </div>
+          <div className="mt-6 md:mt-8">
+            <motion.button
+              type="button"
               onClick={() => setShowModelSelect(true)}
-              className="w-full rounded-2xl bg-[hsl(330,80%,55%)] px-6 py-3.5 text-base font-medium text-white shadow-[0_0_32px_-8px_rgba(236,72,153,0.5)] transition hover:bg-[hsl(330,80%,50%)] md:w-auto md:px-8 md:py-4"
+              disabled={isStartingShift}
+              whileTap={{ scale: 0.97 }}
+              transition={{ duration: 0.12 }}
+              className="w-full rounded-2xl bg-[hsl(330,80%,55%)] px-6 py-3.5 text-base font-medium text-white shadow-[0_0_32px_-8px_rgba(236,72,153,0.5)] transition hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-50 md:w-auto md:px-8 md:py-4"
             >
               Start shift
-            </button>
+            </motion.button>
           </div>
         </div>
 
@@ -621,7 +957,7 @@ export function ShiftClient({
               setShowModelSelect(false);
               setError(null);
             }}
-            loading={starting}
+            loading={isStartingShift}
             error={error}
             schedulePanel={
               todaySchedule ? (
@@ -635,20 +971,30 @@ export function ShiftClient({
             }
           />
         )}
-      </div>
+        </div>
+      </>
     );
   }
 
   // ——— Active shift: hero + two-column + intelligence ———
   const startedAtLabel = activeShift.start_time ? formatDateTimeEuropean(activeShift.start_time) : "—";
-  const statusLabel = activeShift.status === "on_break" || breakStartedAt ? "On break" : "Running";
+  const statusLabel =
+    breakAction === "starting"
+      ? "On break…"
+      : breakAction === "ending"
+        ? "Ending break…"
+        : isOnBreak
+          ? "On break"
+          : "Running";
   const statusBadgeColor =
-    activeShift.status === "on_break" || breakStartedAt
+    isOnBreak || breakAction === "starting" || breakAction === "ending"
       ? "bg-amber-500/20 text-amber-300 border-amber-500/30"
       : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30";
 
   return (
-    <div className="space-y-6 pb-24 md:space-y-8 md:pb-0">
+    <>
+      <BusyOverlay show={isEndingShift} title="Ending shift…" subtitle="Releasing all models" />
+      <div className={`space-y-6 pb-24 md:space-y-8 md:pb-0 ${isEndingShift ? "pointer-events-none" : ""}`}>
       {error && (
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-3 text-sm text-red-200">
           {error}
@@ -666,16 +1012,32 @@ export function ShiftClient({
         style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 48px -12px hsl(330 80% 55% / 0.12)" }}
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">Shift Active</h2>
-              <span
-                className={`rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeColor}`}
-              >
-                {statusLabel}
-              </span>
-            </div>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-xl font-semibold tracking-tight text-white md:text-3xl">Shift Active</h2>
             <p className="mt-1 text-base italic text-white/70 md:text-lg">Milk them.</p>
+          </div>
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium ${statusBadgeColor}`}
+            >
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+                  isOnBreak || breakAction === "starting" || breakAction === "ending"
+                    ? "bg-amber-400 animate-pulse"
+                    : "bg-emerald-400 animate-pulse"
+                }`}
+                aria-hidden
+              />
+              {statusLabel}
+            </span>
+            <button
+              type="button"
+              onClick={handleRefresh}
+              className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+              <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+            </button>
           </div>
         </div>
 
@@ -718,39 +1080,43 @@ export function ShiftClient({
           <button
             type="button"
             onClick={() => {
-              setSelectedAddModelId(null);
+              setSelectedAddModelIds(new Set());
               setError(null);
               setShowAddModelModal(true);
             }}
-            className="rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] shadow-[0_0_20px_-6px_rgba(236,72,153,0.25)] hover:bg-[hsl(330,80%,55%)]/20"
+            disabled={shiftControlsBusy}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] shadow-[0_0_20px_-6px_rgba(236,72,153,0.25)] hover:bg-[hsl(330,80%,55%)]/20 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add model
           </button>
           {canStartBreak && (
             <button
               type="button"
-              onClick={handleStartBreak}
-              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10"
+              onClick={openBreakConfirmModal}
+              disabled={shiftControlsBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Start break
             </button>
           )}
-          {(activeShift.status === "on_break" || breakStartedAt) && (
+          {isOnBreak && (
             <button
               type="button"
               onClick={handleEndBreak}
-              className="rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2.5 text-sm font-medium text-white shadow-[0_0_20px_-4px_rgba(236,72,153,0.35)] hover:bg-[hsl(330,80%,50%)]"
+              disabled={shiftControlsBusy}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2.5 text-sm font-medium text-white shadow-[0_0_20px_-4px_rgba(236,72,153,0.35)] hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              End break
+              {breakAction === "ending" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+              {breakAction === "ending" ? "Ending break…" : "End break"}
             </button>
           )}
           <button
             type="button"
             onClick={handleEndShift}
-            disabled={ending}
-            className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+            disabled={shiftControlsBusy}
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {ending ? "Ending…" : "End shift"}
+            End shift
           </button>
         </div>
       </div>
@@ -760,6 +1126,18 @@ export function ShiftClient({
         <div className="lg:col-span-3">
           <div className="glass-card p-4 md:p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Active models</h3>
+            {(() => {
+              const names = shiftModels
+                .filter((sm) => modelIdsInActivePeriodToday.includes(sm.model_id))
+                .map((sm) => sm.model_name)
+                .filter(Boolean);
+              if (names.length === 0) return null;
+              return (
+                <p className="mt-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
+                  ⚠️ {names.join(", ")} may have content restrictions today
+                </p>
+              );
+            })()}
             <div className="mt-4 space-y-3">
               {shiftModels.length === 0 ? (
                 <p className="rounded-xl border border-white/10 bg-white/5 px-4 py-6 text-center text-sm text-white/50">
@@ -774,13 +1152,19 @@ export function ShiftClient({
                     <div className="min-w-0 flex-1">
                       <p className="font-medium text-white/95">{sm.model_name}</p>
                       <p className="text-xs text-white/50">Entered {formatEnteredAt(sm.entered_at)}</p>
+                      {modelIdsInActivePeriodToday.includes(sm.model_id) && (
+                        <p className="mt-1 text-[11px] text-amber-200/90">⚠️ Possible content restrictions today</p>
+                      )}
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleRemoveModel(sm)}
-                      disabled={removingId === sm.id}
-                      className="min-h-[44px] shrink-0 rounded-xl border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10 disabled:opacity-50 md:min-h-0 md:rounded-lg md:px-3 md:py-1.5 md:text-xs"
+                      onClick={() => openRemoveModelConfirm(sm)}
+                      disabled={removingId !== null || isEndingShift || removeConfirmModel !== null}
+                      className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:rounded-lg md:px-3 md:py-1.5 md:text-xs"
                     >
+                      {removingId === sm.id ? (
+                        <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      ) : null}
                       {removingId === sm.id ? "Removing…" : "Remove"}
                     </button>
                   </div>
@@ -798,29 +1182,41 @@ export function ShiftClient({
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedAddModelId(null);
+                  setSelectedAddModelIds(new Set());
                   setError(null);
                   setShowAddModelModal(true);
                 }}
-                className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-3 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20"
+                disabled={shiftControlsBusy}
+                className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-3 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 Add model
               </button>
               {canStartBreak && (
-                <button type="button" onClick={handleStartBreak} className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/90 hover:bg-white/10">
+                <button
+                  type="button"
+                  onClick={openBreakConfirmModal}
+                  disabled={shiftControlsBusy}
+                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                >
                   Start break
                 </button>
               )}
-              {(activeShift.status === "on_break" || breakStartedAt) && (
-                <button type="button" onClick={handleEndBreak} className="rounded-lg bg-[hsl(330,80%,55%)] px-3 py-2 text-sm text-white hover:bg-[hsl(330,80%,50%)]">
-                  End break
+              {isOnBreak && (
+                <button
+                  type="button"
+                  onClick={handleEndBreak}
+                  disabled={shiftControlsBusy}
+                  className="inline-flex items-center gap-2 rounded-lg bg-[hsl(330,80%,55%)] px-3 py-2 text-sm text-white hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {breakAction === "ending" ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden /> : null}
+                  {breakAction === "ending" ? "Ending break…" : "End break"}
                 </button>
               )}
               <button
                 type="button"
                 onClick={handleEndShift}
-                disabled={ending}
-                className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+                disabled={shiftControlsBusy}
+                className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 End shift
               </button>
@@ -921,39 +1317,43 @@ export function ShiftClient({
           <button
             type="button"
             onClick={() => {
-              setSelectedAddModelId(null);
+              setSelectedAddModelIds(new Set());
               setError(null);
               setShowAddModelModal(true);
             }}
-            className="min-h-[48px] rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25"
+            disabled={shiftControlsBusy}
+            className="min-h-[48px] rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
             Add model
           </button>
           {canStartBreak && (
             <button
               type="button"
-              onClick={handleStartBreak}
-              className="min-h-[48px] rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 hover:bg-white/10"
+              onClick={openBreakConfirmModal}
+              disabled={shiftControlsBusy}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
               Start break
             </button>
           )}
-          {(activeShift.status === "on_break" || breakStartedAt) && (
+          {isOnBreak && (
             <button
               type="button"
               onClick={handleEndBreak}
-              className="min-h-[48px] rounded-xl bg-[hsl(330,80%,55%)] px-4 py-3 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)]"
+              disabled={shiftControlsBusy}
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-4 py-3 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
             >
-              End break
+              {breakAction === "ending" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+              {breakAction === "ending" ? "Ending break…" : "End break"}
             </button>
           )}
           <button
             type="button"
             onClick={handleEndShift}
-            disabled={ending}
-            className="min-h-[48px] rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
+            disabled={shiftControlsBusy}
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {ending ? "Ending…" : "End shift"}
+            End shift
           </button>
         </div>
       </div>
@@ -962,18 +1362,133 @@ export function ShiftClient({
         <AddModelToShiftModal
           modelss={modelss}
           alreadyInShiftModelIds={new Set(shiftModels.map((sm) => sm.model_id))}
-          selectedModelId={selectedAddModelId}
-          onSelect={setSelectedAddModelId}
-          onConfirm={handleConfirmAddModel}
+          selectedModelIds={selectedAddModelIds}
+          onToggle={toggleAddModelSelection}
+          onConfirm={handleConfirmAddModels}
           onCancel={() => {
             setShowAddModelModal(false);
-            setSelectedAddModelId(null);
+            setSelectedAddModelIds(new Set());
             setError(null);
           }}
-          loading={addingModelId !== null}
+          loading={isAddingModelsToShift}
+          shiftInteractionLocked={shiftControlsBusy}
           error={error}
         />
       )}
+
+      {showBreakConfirmModal && activeShift && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[10050] flex items-center justify-center p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="break-confirm-title"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+                aria-label="Dismiss"
+                onClick={closeBreakConfirmModal}
+              />
+              <div className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#111] p-5 shadow-2xl">
+                <h3 id="break-confirm-title" className="text-lg font-semibold text-white">
+                  Starting break
+                </h3>
+                <p className="mt-2 text-sm text-white/70">You have {remainingBreak} min remaining</p>
+                <div className="mt-5">
+                  <p className="text-sm font-medium text-white/85">Remind me in:</p>
+                  <div className="mt-2 grid grid-cols-4 gap-2">
+                    {[5, 10, 15, 20, 30].map((mins) => (
+                      <button
+                        key={mins}
+                        type="button"
+                        onClick={() => setBreakReminderMins(mins)}
+                        className={`rounded-lg px-2 py-2.5 text-sm font-medium transition-colors ${
+                          breakReminderMins === mins ? "bg-pink-600 text-white" : "bg-white/10 text-white/90 hover:bg-white/15"
+                        }`}
+                      >
+                        {mins}m
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setBreakReminderMins(null)}
+                      className={`col-span-3 rounded-lg px-2 py-2.5 text-sm font-medium transition-colors ${
+                        breakReminderMins === null ? "bg-pink-600 text-white" : "bg-white/10 text-white/90 hover:bg-white/15"
+                      }`}
+                    >
+                      No reminder
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:gap-3">
+                  <button
+                    type="button"
+                    onClick={closeBreakConfirmModal}
+                    className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmStartBreak(breakReminderMins)}
+                    disabled={breakAction === "starting"}
+                    className="flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-xl bg-pink-600 text-sm font-semibold text-white hover:bg-pink-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {breakAction === "starting" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+                    Start break
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
+
+      {removeConfirmModel && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[10050] flex items-center justify-center p-4"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="remove-model-confirm-title"
+            >
+              <button
+                type="button"
+                className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+                aria-label="Dismiss"
+                onClick={cancelRemoveModelConfirm}
+              />
+              <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 shadow-2xl">
+                <h2 id="remove-model-confirm-title" className="text-lg font-semibold text-white">
+                  Remove model
+                </h2>
+                <p className="mt-2 text-sm text-white/70">
+                  Remove {removeConfirmModel.model_name} from shift?
+                </p>
+                <div className="mt-6 flex gap-3">
+                  <button
+                    type="button"
+                    onClick={cancelRemoveModelConfirm}
+                    className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 hover:bg-white/5"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmRemoveModelFromShift()}
+                    disabled={removingId !== null}
+                    className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl bg-red-500/90 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
+    </>
   );
 }

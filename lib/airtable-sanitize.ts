@@ -7,6 +7,10 @@
  * this sanitizer. When adding a new Airtable table or new computed fields, add them here.
  */
 
+import { NOTIFICATIONS_TABLE } from "@/lib/notifications-schema";
+import { isTimeOnlyString } from "@/lib/airtable-datetime";
+import { MODEL_LIVE_STREAM_PLATFORM_OPTIONS, MODEL_TASK_TYPE_OPTIONS } from "@/lib/airtable-options";
+
 /** Normalize field name for comparison: lowercase, spaces -> underscore. Airtable may use "Created At" or "created_at". */
 function normalizeFieldName(name: string): string {
   return name.toLowerCase().replace(/\s+/g, "_").trim();
@@ -21,6 +25,22 @@ const DATE_TIME_FIELD_NORMALIZED = new Set([
   "week_start",
   "created_at",
   "updated_at",
+  "read_at",
+  "model_scheduled_date",
+  "model_scheduled_start",
+  "model_scheduled_end",
+  "planned_start",
+  "planned_end",
+  "actual_start",
+  "actual_end",
+  "deadline_requested",
+  "date",
+  "due_date",
+  "completed_at",
+  "recurrence_end_date",
+  "start_date",
+  "end_date",
+  "break_reminder_at",
 ]);
 
 function isDateTimeField(key: string): boolean {
@@ -29,6 +49,13 @@ function isDateTimeField(key: string): boolean {
 
 function isEmptyDateTimeValue(value: unknown): boolean {
   return value === undefined || value === null || (typeof value === "string" && value.trim() === "");
+}
+
+/** Omit time-only strings (e.g. "10:00") from datetime fields – Airtable expects full ISO. */
+function isInvalidDateTimeValue(key: string, value: unknown): boolean {
+  if (isEmptyDateTimeValue(value)) return true;
+  if (isDateTimeField(key) && isTimeOnlyString(value)) return true;
+  return false;
 }
 
 /**
@@ -96,7 +123,15 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
     "Inactive",
     "Dead",
     "Deleted Account",
+    "scheduled",
+    "waiting_schedule",
+    "in_progress",
+    "blocked",
+    "done",
+    "skipped",
   ]),
+  model_status: new Set(["waiting_schedule", "scheduled", "in_progress", "completed", "declined"]),
+  item_type: new Set(["script", "mass_message", "live_stream", "custom", "content_shoot", "promo", "meeting", "rest", "other"]),
   custom_type: new Set([
     "video",
     "photo_set",
@@ -106,13 +141,71 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
     "other",
   ]),
   priority: new Set(["low", "normal", "medium", "high", "urgent"]),
+  recurrence_type: new Set(["daily", "weekly", "monthly", "custom"]),
+  recurrence_days: new Set([
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+  ]),
   platform: new Set(["onlyfans", "fanvue", "other"]),
-  relationship_status: new Set(["New", "Angry", "In Love", "Intrestead", "Simp"]),
+  relationship_status: new Set(["New", "Angry", "In Love", "Interested", "Simp"]),
   hours_active: new Set(["7am - 10am", "10am-4pm", "4pm - 8pm", "8pm - 12am", "12am+"]),
-  entry_type: new Set(["availability", "day_off"]),
+  entry_type: new Set(["availability", "day_off", "live_window", "custom_window"]),
 };
 
-function getAllowedOptionsForSelectField(normalizedKey: string): Set<string> | null {
+/** Table-specific overrides for select fields (when a field name is used with different options per table). */
+const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> = {
+  model_live_streams: {
+    platform: new Set(MODEL_LIVE_STREAM_PLATFORM_OPTIONS),
+  },
+  model_tasks: {
+    type: new Set(MODEL_TASK_TYPE_OPTIONS),
+  },
+  chatter_points: {
+    level: new Set(["Bronze", "Silver", "Gold", "Diamond"]),
+  },
+  points_transactions: {
+    category: new Set(["shift", "whale", "custom", "streak", "challenge", "manual", "penalty", "spin"]),
+  },
+  challenges: {
+    target_metric: new Set([
+      "transactions",
+      "whales_added",
+      "shift_hours",
+      "customs_completed",
+      "whale_status_upgrades",
+    ]),
+  },
+  spin_wheel_prizes: {
+    prize_type: new Set(["cash", "extra_break", "double_points", "mystery", "points"]),
+  },
+  va_tasks: {
+    status: new Set(["pending", "in_progress", "done", "skipped"]),
+    priority: new Set(["low", "normal", "high", "urgent"]),
+    recurrence_type: new Set(["daily", "weekly", "monthly", "custom"]),
+    recurrence_days: new Set([
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+      "Sunday",
+    ]),
+  },
+  model_periods: {
+    logged_by: new Set(["model", "admin", "va"]),
+  },
+};
+
+function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: string): Set<string> | null {
+  if (tableName && TABLE_SELECT_FIELD_OVERRIDES[tableName]?.[normalizedKey]) {
+    return TABLE_SELECT_FIELD_OVERRIDES[tableName][normalizedKey];
+  }
   return SELECT_FIELD_ALLOWED_OPTIONS[normalizedKey] ?? null;
 }
 
@@ -120,25 +213,54 @@ function getAllowedOptionsForSelectField(normalizedKey: string): Set<string> | n
 const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   shifts: new Set(["total_minutes", "total_hours_decimal", "worked_minutes", "updated_at", "created_at"]),
   shift_models: new Set(["session_minutes", "created_at", "updated_at"]),
-  custom_requests: new Set(["created_at"]),
+  custom_requests: new Set(["created_at", "updated_at"]),
   modelss: new Set(["created_at", "updated_at"]),
+  model_schedule: new Set(["created_at", "updated_at"]),
+  model_tasks: new Set(["created_at", "updated_at"]),
+  model_live_streams: new Set(["created_at", "updated_at"]),
   whales: new Set(["created_at", "updated_at", "last_updated_by"]),
   users: new Set(["created_at", "updated_at"]),
   whale_transactions: new Set(["created_at"]),
   activity_logs: new Set(["created_at"]),
-  notifications: new Set(["created_at"]),
+  [NOTIFICATIONS_TABLE]: new Set(["created_at"]),
   notification_preferences: new Set(["updated_at"]),
   push_subscriptions: new Set(["created_at"]),
   weekly_program: new Set(["created_at", "updated_at"]),
   weekly_program_va: new Set(["created_at", "updated_at"]),
   weekly_availability_requests: new Set(["created_at"]),
   weekly_availability_requests_va: new Set(["created_at"]),
+  weekly_availability_requests_models: new Set(["created_at"]),
   staff_task_types: new Set(["created_at"]),
   monthly_targets: new Set(["created_at", "updated_at"]),
+  va_tasks: new Set(["created_at"]),
+  model_periods: new Set(["created_at"]),
+  chatter_points: new Set(["created_at", "updated_at"]),
+  points_transactions: new Set(["updated_at"]),
+  challenges: new Set(["created_at", "updated_at"]),
+  challenge_progress: new Set(["created_at"]),
+  spin_wheel_prizes: new Set(["created_at", "updated_at"]),
+  spin_wheel_spins: new Set(["updated_at"]),
+};
+
+/** Tables where a normally global-stripped field is a normal writable column. */
+const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
+  challenges: new Set(["created_by"]),
+  points_transactions: new Set(["created_at"]),
+  spin_wheel_spins: new Set(["created_at"]),
+  /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
+  challenge_progress: new Set(["updated_at"]),
+  /** Break reminder ISO datetime; explicit so payloads are never treated as non-writable elsewhere. */
+  shifts: new Set(["break_reminder_at"]),
 };
 
 function getNonWritableNormalizedForTable(tableName: string): Set<string> {
   const combined = new Set<string>(GLOBAL_NON_WRITABLE_NORMALIZED);
+  const exceptions = TABLE_WRITABLE_FIELD_EXCEPTIONS[tableName];
+  if (exceptions) {
+    for (const k of exceptions) {
+      combined.delete(normalizeFieldName(k));
+    }
+  }
   const tableSet = TABLE_NON_WRITABLE_NORMALIZED[tableName];
   if (tableSet) {
     tableSet.forEach((k) => combined.add(normalizeFieldName(k)));
@@ -166,7 +288,7 @@ export function sanitizePayloadForAirtable<T extends Record<string, unknown>>(
   for (const [key, value] of Object.entries(payload)) {
     if (value === undefined) continue;
     if (isNonWritable(key, nonWritable)) continue;
-    if (isDateTimeField(key) && isEmptyDateTimeValue(value)) continue;
+    if (isDateTimeField(key) && isInvalidDateTimeValue(key, value)) continue;
     let outValue: unknown = value;
     if (typeof value === "string") {
       outValue = unwrapJsonStringifiedValue(value);
@@ -176,7 +298,7 @@ export function sanitizePayloadForAirtable<T extends Record<string, unknown>>(
       );
     }
     const normKey = normalizeFieldName(key);
-    const allowed = getAllowedOptionsForSelectField(normKey);
+    const allowed = getAllowedOptionsForSelectField(normKey, tableName);
     if (allowed != null) {
       if (typeof outValue === "string") {
         if (!allowed.has(outValue)) continue;

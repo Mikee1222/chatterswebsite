@@ -2,11 +2,23 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
+import { motion, AnimatePresence } from "framer-motion";
 import { useRouter } from "next/navigation";
 import { updateWhale } from "@/services/whales";
-import { Input, Textarea } from "@/components/ui/form";
-import type { Whale, RelationshipStatus, WhaleStatus } from "@/types";
-import { RELATIONSHIP_STATUS_OPTIONS, WHALE_STATUS_OPTIONS, HOURS_ACTIVE_OPTIONS, whaleStatusBadgeVariant } from "@/lib/airtable-options";
+import { createWhaleTransaction } from "@/services/whale-transactions";
+import { Input, Textarea, Label, ButtonSecondary } from "@/components/ui/form";
+import { CustomSelect } from "@/components/ui/custom-select";
+import type { Whale, TransactionType, TransactionCurrency } from "@/types";
+import {
+  RELATIONSHIP_STATUS_OPTIONS,
+  WHALE_STATUS_OPTIONS,
+  HOURS_ACTIVE_OPTIONS,
+  whaleStatusBadgeVariant,
+  TRANSACTION_TYPES,
+  TRANSACTION_CURRENCY_OPTIONS,
+} from "@/lib/airtable-options";
+import { ROUTES } from "@/lib/routes";
 
 function notesSummary(notes: string | undefined, maxLen = 50): string {
   if (!notes?.trim()) return "—";
@@ -14,24 +26,21 @@ function notesSummary(notes: string | undefined, maxLen = 50): string {
   return t.length <= maxLen ? t : t.slice(0, maxLen) + "…";
 }
 
-/** Display label for select values. New whale options use display-ready text (e.g. "In Love"); legacy values may have underscores. */
 function label(value: string): string {
   return value.replace(/_/g, " ");
 }
 
-/** Returns true if value looks like an Airtable record id (rec...) - never show in UI as a "name". */
 function looksLikeRecordId(value: string | undefined): boolean {
   if (!value?.trim()) return false;
   return /^rec[A-Za-z0-9]{14}$/.test(value.trim()) || value.trim().startsWith("rec");
 }
 
-/** Human-readable model name: prefer snapshot; if missing or id, resolve from modelNames; never show record id. */
 function displayModelName(whale: Whale, modelNames: Record<string, string>): string {
   const snapshot = whale.assigned_model_name?.trim();
   if (snapshot && !looksLikeRecordId(snapshot)) return snapshot;
   const resolved = whale.assigned_model_id && modelNames[whale.assigned_model_id]?.trim();
   if (resolved) return resolved;
-  return "no model";
+  return "—";
 }
 
 function Badge({
@@ -57,7 +66,6 @@ function Badge({
   );
 }
 
-/** Portal-rendered floating popover so it is not clipped by table overflow. */
 function FloatingPopover({
   open,
   onClose,
@@ -81,8 +89,8 @@ function FloatingPopover({
     const rect = anchorRef.current.getBoundingClientRect();
     if (rect.width === 0 && rect.height === 0) return;
     const padding = 6;
-    const estimatedHeight = 220;
-    const estimatedWidth = 260;
+    const estimatedHeight = 320;
+    const estimatedWidth = 320;
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
     const placeAbove = placement === "top" || (placement === "bottom" && spaceBelow < estimatedHeight && spaceAbove > spaceBelow);
@@ -108,7 +116,7 @@ function FloatingPopover({
   const popover = (
     <div
       ref={popoverRef}
-      className={`fixed z-[9999] rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl ${className}`}
+      className={`fixed z-[9999] max-h-[min(420px,80vh)] overflow-y-auto rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl ${className}`}
       style={{
         top: position.top,
         left: position.left,
@@ -122,7 +130,7 @@ function FloatingPopover({
   return createPortal(popover, document.body);
 }
 
-function SelectCell<T extends string>({
+function SelectCell({
   value,
   options,
   whaleId,
@@ -130,8 +138,8 @@ function SelectCell<T extends string>({
   onSave,
   badgeVariant = "default",
 }: {
-  value: T;
-  options: T[];
+  value: string;
+  options: readonly string[];
   whaleId: string;
   field: string;
   onSave: (id: string, payload: Record<string, string>) => Promise<void>;
@@ -141,7 +149,7 @@ function SelectCell<T extends string>({
   const [saving, setSaving] = React.useState(false);
   const anchorRef = React.useRef<HTMLButtonElement>(null);
 
-  async function handleSelect(option: T) {
+  async function handleSelect(option: string) {
     if (option === value) {
       setOpen(false);
       return;
@@ -164,14 +172,14 @@ function SelectCell<T extends string>({
         disabled={saving}
         className="inline-flex items-center gap-1 rounded-lg border border-transparent px-2 py-1 text-left transition-colors hover:border-white/20 hover:bg-white/5 disabled:opacity-60"
       >
-        <Badge variant={badgeVariant}>{label(value)}</Badge>
+        <Badge variant={badgeVariant}>{value ? label(value) : "—"}</Badge>
         {saving ? (
           <span className="text-[10px] text-white/40">Saving…</span>
         ) : (
           <span className="text-white/30">▾</span>
         )}
       </button>
-      <FloatingPopover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="min-w-[140px] py-1">
+      <FloatingPopover open={open} onClose={() => setOpen(false)} anchorRef={anchorRef} className="min-w-[160px] py-1">
         {options.map((opt) => (
           <button
             key={opt}
@@ -357,6 +365,316 @@ function NotesCell({
   );
 }
 
+function ChatterWhaleHistorySheet({ whale, onClose }: { whale: Whale; onClose: () => void }) {
+  return (
+    <motion.div
+      className="fixed inset-0 z-[70] flex justify-end"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+    >
+      <button type="button" className="absolute inset-0 bg-black/60" aria-label="Close" onClick={onClose} />
+      <motion.aside
+        className="relative z-[1] flex h-full w-full max-w-md flex-col border-l border-white/10 bg-black/95 shadow-2xl"
+        initial={{ x: 48 }}
+        animate={{ x: 0 }}
+        exit={{ x: 48 }}
+        transition={{ duration: 0.2, ease: "easeOut" }}
+      >
+        <div className="border-b border-white/10 px-5 py-4">
+          <h2 className="text-lg font-semibold text-white">History</h2>
+          <p className="mt-1 text-sm text-white/55">{whale.username || "—"}</p>
+          <p className="mt-2 text-xs text-white/45">
+            Open the whale detail page for the full transaction list and activity timeline.
+          </p>
+          <Link
+            href={ROUTES.whaleDetail(whale.id)}
+            className="mt-4 inline-flex rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25"
+          >
+            View full history →
+          </Link>
+        </div>
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4 text-sm">
+          <div>
+            <p className="text-xs uppercase tracking-wider text-white/40">Whale ID</p>
+            <p className="mt-1 font-mono text-xs text-white/80">{whale.whale_id || "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-wider text-white/40">Total spent (record)</p>
+            <p className="mt-1 text-white/85">${whale.total_spent.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
+          </div>
+        </div>
+        <div className="border-t border-white/10 p-4">
+          <ButtonSecondary type="button" className="w-full" onClick={onClose}>
+            Close
+          </ButtonSecondary>
+        </div>
+      </motion.aside>
+    </motion.div>
+  );
+}
+
+function LogTransactionQuickForm({
+  whale,
+  modelNames,
+  onClose,
+}: {
+  whale: Whale;
+  modelNames: Record<string, string>;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const now = new Date();
+  const [sessionMinutes, setSessionMinutes] = React.useState("30");
+  const [amount, setAmount] = React.useState("");
+  const [currency, setCurrency] = React.useState<TransactionCurrency>("usd");
+  const [type, setType] = React.useState<TransactionType>("sexting + videos");
+  const [note, setNote] = React.useState("");
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  const dateStr = now.toISOString().slice(0, 10);
+  const timeStr = now.toTimeString().slice(0, 5);
+  const modelName = displayModelName(whale, modelNames);
+  const chatterId = whale.assigned_chatter_id?.trim();
+  const chatterName = whale.assigned_chatter_name?.trim() || "Chatter";
+  const sessionMinutesNum = sessionMinutes.trim() ? parseInt(sessionMinutes, 10) : NaN;
+  const validMins = Number.isInteger(sessionMinutesNum) && sessionMinutesNum >= 0;
+
+  const currencyOptions = React.useMemo(
+    () => TRANSACTION_CURRENCY_OPTIONS.map((c) => ({ value: c, label: c })),
+    []
+  );
+  const typeOptions = React.useMemo(
+    () => TRANSACTION_TYPES.map((t) => ({ value: t, label: t })),
+    []
+  );
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    if (!chatterId) {
+      setError("Missing chatter assignment on this whale.");
+      return;
+    }
+    if (!validMins) {
+      setError("Session length (minutes) must be a whole number ≥ 0.");
+      return;
+    }
+    setPending(true);
+    try {
+      await createWhaleTransaction({
+        whale_record_id: whale.id,
+        whale_username: whale.username,
+        chatter_record_id: chatterId,
+        chatter_name: chatterName,
+        model_record_id: whale.assigned_model_id || undefined,
+        model_name: modelName === "—" ? "" : modelName,
+        date: dateStr,
+        time: timeStr,
+        session_length_minutes: sessionMinutesNum,
+        amount: parseFloat(amount) || 0,
+        currency,
+        type,
+        note,
+      });
+      onClose();
+      router.refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-3 p-3">
+      <p className="text-xs text-white/50">Log session for <span className="font-medium text-white/90">{whale.username}</span></p>
+      {error ? <p className="text-xs text-red-300">{error}</p> : null}
+      <div>
+        <Label>Session length (minutes)</Label>
+        <Input value={sessionMinutes} onChange={(e) => setSessionMinutes(e.target.value)} className="mt-1" inputMode="numeric" />
+      </div>
+      <div>
+        <Label>Amount (USD)</Label>
+        <Input value={amount} onChange={(e) => setAmount(e.target.value)} className="mt-1" inputMode="decimal" placeholder="0" />
+      </div>
+      <div>
+        <Label>Currency</Label>
+        <CustomSelect
+          value={currency}
+          onChange={(v) => setCurrency(v as TransactionCurrency)}
+          options={currencyOptions}
+          className="mt-1"
+        />
+      </div>
+      <div>
+        <Label>Type</Label>
+        <CustomSelect value={type} onChange={(v) => setType(v as TransactionType)} options={typeOptions} className="mt-1" />
+      </div>
+      <div>
+        <Label>Notes</Label>
+        <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="mt-1" placeholder="Optional" />
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-lg border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/25 px-3 py-2 text-xs font-semibold text-[hsl(330,90%,80%)] hover:bg-[hsl(330,80%,55%)]/35 disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "Log transaction"}
+        </button>
+        <ButtonSecondary type="button" onClick={onClose}>
+          Cancel
+        </ButtonSecondary>
+      </div>
+    </form>
+  );
+}
+
+function WhaleChatterCard({
+  whale,
+  modelNames,
+  rowIndex,
+  onSave,
+}: {
+  whale: Whale;
+  modelNames: Record<string, string>;
+  rowIndex: number;
+  onSave: (whaleId: string, payload: Record<string, string | string[] | null>) => Promise<void>;
+}) {
+  const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [logOpen, setLogOpen] = React.useState(false);
+  const logAnchorRef = React.useRef<HTMLButtonElement>(null);
+
+  const avatarLetter = (whale.username?.trim()?.[0] ?? whale.whale_id?.trim()?.[0] ?? "?").toUpperCase();
+  const statusChipClass =
+    whale.status === "Active"
+      ? "bg-green-500/20 text-green-400"
+      : whale.status === "Inactive"
+        ? "bg-amber-500/20 text-amber-300"
+        : whale.status === "Dead"
+          ? "bg-white/10 text-white/70"
+          : "bg-red-500/20 text-red-300";
+
+  const canToggle = whale.status === "Active" || whale.status === "Inactive";
+  const nextStatus = whale.status === "Active" ? "Inactive" : "Active";
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: Math.min(rowIndex, 12) * 0.03, ease: "easeOut" }}
+      className="min-w-0"
+    >
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08]">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pink-500/20 text-lg font-bold text-pink-400">
+              {avatarLetter}
+            </div>
+            <div className="min-w-0">
+              <h3 className="truncate text-base font-semibold text-white">{whale.username || "—"}</h3>
+              <p className="truncate font-mono text-xs text-white/40">{whale.whale_id || "—"}</p>
+            </div>
+          </div>
+          <span className={`shrink-0 rounded-lg px-2 py-1 text-xs font-medium ${statusChipClass}`}>{whale.status}</span>
+        </div>
+
+        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-white/40">Model</p>
+            <p className="mt-1 text-sm font-medium text-white">{displayModelName(whale, modelNames)}</p>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-white/40">Relationship</p>
+            <div className="mt-1.5">
+              <SelectCell
+                value={whale.relationship_status}
+                options={[...RELATIONSHIP_STATUS_OPTIONS]}
+                whaleId={whale.id}
+                field="relationship_status"
+                onSave={onSave}
+                badgeVariant="slate"
+              />
+            </div>
+          </div>
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-white/40">Status</p>
+            <div className="mt-1.5">
+              <SelectCell
+                value={whale.status}
+                options={[...WHALE_STATUS_OPTIONS]}
+                whaleId={whale.id}
+                field="status"
+                onSave={onSave}
+                badgeVariant={whaleStatusBadgeVariant(whale.status)}
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/40">Hours active</p>
+          <div className="mt-1.5">
+            <HoursActiveCell value={whale.hours_active ?? []} whaleId={whale.id} onSave={onSave} />
+          </div>
+        </div>
+
+        <div className="mb-4">
+          <p className="text-xs font-medium uppercase tracking-wider text-white/40">Notes</p>
+          <div className="mt-1.5">
+            <NotesCell value={whale.notes ?? ""} whaleId={whale.id} onSave={onSave} />
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <button
+            ref={logAnchorRef}
+            type="button"
+            onClick={() => setLogOpen(true)}
+            className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-3 py-1.5 text-xs font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25"
+          >
+            Log transaction
+          </button>
+          <FloatingPopover open={logOpen} onClose={() => setLogOpen(false)} anchorRef={logAnchorRef} className="w-[min(100vw-2rem,22rem)]">
+            <LogTransactionQuickForm whale={whale} modelNames={modelNames} onClose={() => setLogOpen(false)} />
+          </FloatingPopover>
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
+          >
+            View history
+          </button>
+          <Link
+            href={`/my-whales/${whale.id}/edit`}
+            className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
+          >
+            Full edit
+          </Link>
+          {canToggle ? (
+            <button
+              type="button"
+              onClick={() => void onSave(whale.id, { status: nextStatus })}
+              className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
+            >
+              Mark {nextStatus}
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {historyOpen ? (
+          <ChatterWhaleHistorySheet key={whale.id} whale={whale} onClose={() => setHistoryOpen(false)} />
+        ) : null}
+      </AnimatePresence>
+    </motion.div>
+  );
+}
+
 export function MyWhalesTable({ whales, modelNames = {} }: { whales: Whale[]; modelNames?: Record<string, string> }) {
   const router = useRouter();
 
@@ -378,62 +696,15 @@ export function MyWhalesTable({ whales, modelNames = {} }: { whales: Whale[]; mo
     [router]
   );
 
+  if (whales.length === 0) {
+    return <p className="py-12 text-center text-sm text-white/50">No whales assigned yet.</p>;
+  }
+
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-white/10 text-left text-white/60">
-            <th className="p-3 font-medium">Username</th>
-            <th className="p-3 font-medium">Model</th>
-            <th className="p-3 font-medium">Relationship</th>
-            <th className="p-3 font-medium">Hours active</th>
-            <th className="p-3 font-medium">Status</th>
-            <th className="p-3 font-medium">Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {whales.length === 0 ? (
-            <tr>
-              <td colSpan={6} className="p-8 text-center text-white/50">
-                No whales assigned yet.
-              </td>
-            </tr>
-          ) : (
-            whales.map((w) => (
-              <tr key={w.id} className="border-b border-white/5 hover:bg-white/[0.03]">
-                <td className="p-3 font-medium text-white/90">{w.username || "—"}</td>
-                <td className="p-3 text-white/80">{displayModelName(w, modelNames)}</td>
-                <td className="p-3">
-                  <SelectCell
-                    value={w.relationship_status}
-                    options={[...RELATIONSHIP_STATUS_OPTIONS]}
-                    whaleId={w.id}
-                    field="relationship_status"
-                    onSave={handleSave}
-                    badgeVariant="slate"
-                  />
-                </td>
-                <td className="p-3">
-                  <HoursActiveCell value={w.hours_active ?? []} whaleId={w.id} onSave={handleSave} />
-                </td>
-                <td className="p-3">
-                  <SelectCell
-                    value={w.status}
-                    options={[...WHALE_STATUS_OPTIONS]}
-                    whaleId={w.id}
-                    field="status"
-                    onSave={handleSave}
-                    badgeVariant={whaleStatusBadgeVariant(w.status)}
-                  />
-                </td>
-                <td className="max-w-[200px] p-3">
-                  <NotesCell value={w.notes ?? ""} whaleId={w.id} onSave={handleSave} />
-                </td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {whales.map((w, index) => (
+        <WhaleChatterCard key={w.id} whale={w} modelNames={modelNames} rowIndex={index} onSave={handleSave} />
+      ))}
     </div>
   );
 }

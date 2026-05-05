@@ -3,20 +3,24 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import {
   createProgramAction,
   updateProgramAction,
   deleteProgramAction,
 } from "@/app/actions/weekly-program";
 import { formatTimeEuropean, formatDateEuropean, formatDateTimeEuropean, formatTimeFromISO, isoToEuropeanDisplay, parseEuropeanDateInput } from "@/lib/format";
-import { GlassModal, Input, Label, Select, Textarea, Checkbox, SubmitButton, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { GlassModal, Input, Label, Textarea, Checkbox, SubmitButton, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { CustomSelect, CUSTOM_SELECT_HOUR_12_OPTIONS, type CustomSelectOption } from "@/components/ui/custom-select";
 import { adminWeeklyProgramUrl, adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { getTimesForShiftType, buildCustomShiftTimes, getThisWeekMonday, addDays, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
-import { rangesOverlap } from "@/lib/weekly-program-conflicts";
-import type { ConflictSummary, CoverageBoard } from "@/lib/weekly-program-conflicts";
+import { getWeeklyProgramConflicts } from "@/lib/weekly-program-conflicts";
+import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
 import type { WeeklyAvailabilityRequest } from "@/types";
+import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
@@ -43,12 +47,461 @@ const DAYS: WeeklyProgramDay[] = [
 
 const SHIFT_TYPES: WeeklyProgramShiftType[] = ["Morning", "Night"];
 
+const SHIFT_FILTER_OPTIONS: CustomSelectOption[] = [
+  { value: "", label: "All shifts" },
+  { value: "Morning", label: "Morning" },
+  { value: "Night", label: "Night" },
+];
+
+const AVAIL_SHIFT_TYPE_OPTIONS: CustomSelectOption[] = [
+  { value: "", label: "All types" },
+  { value: "Morning", label: "Morning" },
+  { value: "Night", label: "Night" },
+  { value: "Custom", label: "Custom" },
+];
+
 type Chatter = { id: string; full_name: string };
 
 function getModelNames(modelIds: string[], modelss: ModelRecord[]): string[] {
   return modelIds
     .map((id) => modelss.find((m) => m.id === id)?.model_name)
     .filter((n): n is string => Boolean(n));
+}
+
+/** getWeeklyProgramConflicts flags `too_many_models` when model_ids.length >= this value; keep high so large shifts are allowed. */
+const TOO_MANY_MODELS_THRESHOLD = 1000;
+
+/** Positive-duration intersection only: shiftA.start < shiftB.end && shiftA.end > shiftB.start (touching = no overlap). */
+function intervalsStrictOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
+  const sa = new Date(startA).getTime();
+  const ea = new Date(endA).getTime();
+  const sb = new Date(startB).getTime();
+  const eb = new Date(endB).getTime();
+  if (![sa, ea, sb, eb].every(Number.isFinite)) return false;
+  return sa < eb && ea > sb;
+}
+
+const OVERLAP_TOLERANCE_MINUTES = 5;
+
+/** True only if intersection duration is strictly greater than OVERLAP_TOLERANCE_MINUTES (touching or ≤5 min = false). */
+function shiftsOverlap(startA: string, endA: string, startB: string, endB: string): boolean {
+  const sa = new Date(startA).getTime();
+  const ea = new Date(endA).getTime();
+  const sb = new Date(startB).getTime();
+  const eb = new Date(endB).getTime();
+  if (![sa, ea, sb, eb].every(Number.isFinite)) return false;
+  const overlapStart = Math.max(sa, sb);
+  const overlapEnd = Math.min(ea, eb);
+  const overlapMinutes = (overlapEnd - overlapStart) / (60 * 1000);
+  return overlapMinutes > OVERLAP_TOLERANCE_MINUTES;
+}
+
+type CoverageChipTone = "covered" | "gap" | "uncovered";
+
+type CoverageChip = { tone: CoverageChipTone; text: string };
+
+type ClientCoverageCell = CoverageCell & {
+  coverageTier: "full" | "partial" | "none";
+  gapHint: string | null;
+  coverageChips: CoverageChip[];
+};
+
+function pad2u(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+function formatUtcRangeCompactFromMs(csMs: number, ceMs: number): string {
+  const d1 = new Date(csMs);
+  const d2 = new Date(ceMs);
+  const t1 = `${pad2u(d1.getUTCHours())}:${pad2u(d1.getUTCMinutes())}`;
+  const t2 = `${pad2u(d2.getUTCHours())}:${pad2u(d2.getUTCMinutes())}`;
+  return `${t1}–${t2}`;
+}
+
+/** Last word of full name (surname) for compact chips. */
+function coverageSurname(chatterName: string): string {
+  const t = chatterName.trim();
+  if (!t || t === "—") return "—";
+  const parts = t.split(/\s+/);
+  return parts[parts.length - 1] ?? t;
+}
+
+/** Chip time: HH-HH when on hour boundaries, else HH:mm–HH:mm (UTC). */
+function formatChipRangeUtc(csMs: number, ceMs: number): string {
+  const a = new Date(csMs);
+  const b = new Date(ceMs);
+  const sh = a.getUTCHours();
+  const sm = a.getUTCMinutes();
+  const ss = a.getUTCSeconds();
+  const eh = b.getUTCHours();
+  const em = b.getUTCMinutes();
+  const es = b.getUTCSeconds();
+  if (sm === 0 && ss === 0 && em === 0 && es === 0) {
+    return `${pad2u(sh)}-${pad2u(eh)}`;
+  }
+  return `${pad2u(sh)}:${pad2u(sm)}-${pad2u(eh)}:${pad2u(em)}`;
+}
+
+function isoToMs(iso: string): number {
+  return new Date(iso).getTime();
+}
+
+type ClipSeg = { cs: number; ce: number; chatterName: string; recordId: string };
+
+function buildClippedSegmentsForModelInSlot(
+  candidates: WeeklyProgramRecord[],
+  winStartIso: string,
+  winEndIso: string
+): ClipSeg[] {
+  const ws = isoToMs(winStartIso);
+  const we = isoToMs(winEndIso);
+  const out: ClipSeg[] = [];
+  for (const p of candidates) {
+    if (!p.start_time || !p.end_time) continue;
+    const ps = isoToMs(p.start_time);
+    const pe = isoToMs(p.end_time);
+    if (!intervalsStrictOverlap(p.start_time, p.end_time, winStartIso, winEndIso)) continue;
+    const cs = Math.max(ps, ws);
+    const ce = Math.min(pe, we);
+    if (cs >= ce) continue;
+    out.push({
+      cs,
+      ce,
+      chatterName: p.chatter_name ?? "—",
+      recordId: p.id,
+    });
+  }
+  return out.sort((a, b) => a.cs - b.cs);
+}
+
+function mergeTouchingSegments(segs: { cs: number; ce: number }[]): { cs: number; ce: number }[] {
+  if (segs.length === 0) return [];
+  const sorted = [...segs].sort((a, b) => a.cs - b.cs);
+  const merged: { cs: number; ce: number }[] = [];
+  for (const seg of sorted) {
+    if (merged.length === 0) {
+      merged.push({ cs: seg.cs, ce: seg.ce });
+      continue;
+    }
+    const last = merged[merged.length - 1]!;
+    if (seg.cs <= last.ce) {
+      last.ce = Math.max(last.ce, seg.ce);
+    } else {
+      merged.push({ cs: seg.cs, ce: seg.ce });
+    }
+  }
+  return merged;
+}
+
+function analyzeModelSlotCoverage(
+  segments: ClipSeg[],
+  winStartIso: string,
+  winEndIso: string
+): {
+  tier: "full" | "partial" | "none";
+  label: string;
+  gapHint: string | null;
+  recordId: string | null;
+  chips: CoverageChip[];
+} {
+  const ws = isoToMs(winStartIso);
+  const we = isoToMs(winEndIso);
+  if (segments.length === 0) {
+    return {
+      tier: "none",
+      label: "",
+      gapHint: null,
+      recordId: null,
+      chips: [{ tone: "uncovered", text: "Uncovered" }],
+    };
+  }
+  const displayLabel = segments.map((s) => `${s.chatterName} (${formatUtcRangeCompactFromMs(s.cs, s.ce)})`).join(" / ");
+  const sortedSegs = [...segments].sort((a, b) => a.cs - b.cs);
+  const chips: CoverageChip[] = [];
+  let walk = ws;
+  for (const seg of sortedSegs) {
+    if (seg.cs > walk) {
+      chips.push({ tone: "gap", text: `Gap ${formatChipRangeUtc(walk, seg.cs)}` });
+    }
+    chips.push({
+      tone: "covered",
+      text: `${coverageSurname(seg.chatterName)} ${formatChipRangeUtc(seg.cs, seg.ce)}`,
+    });
+    walk = Math.max(walk, seg.ce);
+  }
+  if (walk < we) {
+    chips.push({ tone: "gap", text: `Gap ${formatChipRangeUtc(walk, we)}` });
+  }
+
+  const merged = mergeTouchingSegments(segments);
+  const first = merged[0]!;
+  const last = merged[merged.length - 1]!;
+  const coversFull = merged.length === 1 && first.cs <= ws && last.ce >= we;
+  const hasGapChip = chips.some((c) => c.tone === "gap");
+  const gapParts: string[] = [];
+  let cursor = ws;
+  for (const m of merged) {
+    if (m.cs > cursor) gapParts.push(formatUtcRangeCompactFromMs(cursor, m.cs));
+    cursor = Math.max(cursor, m.ce);
+  }
+  if (cursor < we) gapParts.push(formatUtcRangeCompactFromMs(cursor, we));
+  const gapHint = gapParts.length ? `Gap ${gapParts.join(", ")}` : null;
+
+  const tier: "full" | "partial" = coversFull && !hasGapChip ? "full" : "partial";
+  return {
+    tier,
+    label: displayLabel,
+    gapHint: tier === "full" ? null : gapHint,
+    recordId: segments[0]!.recordId,
+    chips,
+  };
+}
+
+function coverageCellIsUncovered(cell: CoverageCell | null | undefined): boolean {
+  if (!cell) return false;
+  const t = (cell as ClientCoverageCell).coverageTier;
+  if (t) return t === "none";
+  return !cell.covered;
+}
+
+function ModelCoverageTableCell({ cell }: { cell: CoverageCell }) {
+  const cc = cell as ClientCoverageCell;
+  const chips = cc.coverageChips ?? [{ tone: "uncovered" as const, text: "Uncovered" }];
+  const tier = cc.coverageTier ?? (cell.covered ? "full" : "none");
+  const title =
+    tier === "partial" && cc.gapHint
+      ? cc.gapHint
+      : tier === "full"
+        ? "Full shift coverage"
+        : "No coverage";
+  const flexCls = chips.length > 2 ? "flex flex-col gap-1" : "flex flex-wrap gap-1";
+  return (
+    <td className="min-w-[120px] px-2 py-1.5 text-center align-top" title={title}>
+      <div className={flexCls}>
+        {chips.map((c, i) => (
+          <span
+            key={i}
+            className={
+              c.tone === "covered"
+                ? "rounded-lg bg-green-500/20 px-2 py-1 text-xs font-medium text-green-400"
+                : c.tone === "gap"
+                  ? "rounded-lg bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400"
+                  : "rounded-lg bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400"
+            }
+          >
+            {c.text}
+          </span>
+        ))}
+      </div>
+    </td>
+  );
+}
+
+function sharedModelIds(p: WeeklyProgramRecord, q: WeeklyProgramRecord): string[] {
+  const setQ = new Set(q.model_ids.filter(Boolean));
+  return p.model_ids.filter((id): id is string => Boolean(id) && setQ.has(id));
+}
+
+/** Custom rows only: same model, two different chatters, time overlap strictly > 5 minutes. */
+function computeClientCustomOverlaps(
+  programsWeek: WeeklyProgramRecord[],
+  modelIdToName: Record<string, string>
+): Conflict[] {
+  const customs = programsWeek.filter((p) => p.shift_type === "Custom");
+  const out: Conflict[] = [];
+  for (let i = 0; i < customs.length; i++) {
+    const p = customs[i]!;
+    for (let j = i + 1; j < customs.length; j++) {
+      const q = customs[j]!;
+      if (p.chatter_id === q.chatter_id) continue;
+      if (p.day !== q.day) continue;
+      if (!p.start_time || !p.end_time || !q.start_time || !q.end_time) continue;
+      if (!shiftsOverlap(p.start_time, p.end_time, q.start_time, q.end_time)) continue;
+      const shared = sharedModelIds(p, q);
+      if (shared.length === 0) continue;
+      const modelLabel = shared.map((id) => modelIdToName[id] ?? id).join(", ");
+      out.push({
+        type: "custom_overlap",
+        message: `Model "${modelLabel}" has overlapping custom shifts on ${p.day}: ${p.chatter_name ?? "—"} and ${q.chatter_name ?? "—"}.`,
+        recordIds: [p.id, q.id],
+        day: p.day,
+        modelId: shared[0],
+        modelName: modelIdToName[shared[0]!] ?? shared[0],
+      });
+    }
+  }
+  return out;
+}
+
+function programsCoveringSlot(
+  programsWeek: WeeklyProgramRecord[],
+  weekStartNorm: string,
+  day: WeeklyProgramDay,
+  slot: "Morning" | "Night",
+  morningWin: { start_time: string; end_time: string },
+  nightWin: { start_time: string; end_time: string }
+): WeeklyProgramRecord[] {
+  const win = slot === "Morning" ? morningWin : nightWin;
+  return programsWeek.filter((p) => {
+    if (normalizeWeekStart(p.week_start) !== weekStartNorm) return false;
+    if (p.day !== day) return false;
+    if (!p.start_time || !p.end_time) return false;
+    if (p.shift_type === slot) return true;
+    if (p.shift_type === "Custom") {
+      return intervalsStrictOverlap(p.start_time, p.end_time, win.start_time, win.end_time);
+    }
+    return false;
+  });
+}
+
+function buildClientCoverageBoard(
+  programsWeek: WeeklyProgramRecord[],
+  modelss: ModelRecord[],
+  weekStartNorm: string
+): CoverageBoard {
+  const idToName: Record<string, string> = {};
+  modelss.forEach((m) => {
+    idToName[m.id] = m.model_name ?? m.id;
+  });
+  const morning: CoverageCell[][] = [];
+  const night: CoverageCell[][] = [];
+  const modelNames: string[] = [];
+
+  for (const m of modelss) {
+    modelNames.push(idToName[m.id] ?? m.id);
+    const morningRow: CoverageCell[] = [];
+    const nightRow: CoverageCell[] = [];
+    for (const day of DAYS) {
+      const dayIdx = DAYS.indexOf(day);
+      const dateYmd = addDays(weekStartNorm, dayIdx);
+      const morningWin = getTimesForShiftType("Morning", dateYmd);
+      const nightWin = getTimesForShiftType("Night", dateYmd);
+      const morningCands = programsCoveringSlot(programsWeek, weekStartNorm, day, "Morning", morningWin, nightWin).filter((p) =>
+        (p.model_ids ?? []).includes(m.id)
+      );
+      const nightCands = programsCoveringSlot(programsWeek, weekStartNorm, day, "Night", morningWin, nightWin).filter((p) =>
+        (p.model_ids ?? []).includes(m.id)
+      );
+      const segM = buildClippedSegmentsForModelInSlot(morningCands, morningWin.start_time, morningWin.end_time);
+      const segN = buildClippedSegmentsForModelInSlot(nightCands, nightWin.start_time, nightWin.end_time);
+      const metaM = analyzeModelSlotCoverage(segM, morningWin.start_time, morningWin.end_time);
+      const metaN = analyzeModelSlotCoverage(segN, nightWin.start_time, nightWin.end_time);
+
+      if (process.env.NODE_ENV !== "production") {
+        const assignedModelsM = morningCands.map((p) => ({
+          chatter: p.chatter_name,
+          shift_type: p.shift_type,
+          id: p.id,
+          models: p.model_ids,
+          range: p.start_time && p.end_time ? formatTimeRange(p.start_time, p.end_time) : "—",
+        }));
+        const assignedModelsN = nightCands.map((p) => ({
+          chatter: p.chatter_name,
+          shift_type: p.shift_type,
+          id: p.id,
+          models: p.model_ids,
+          range: p.start_time && p.end_time ? formatTimeRange(p.start_time, p.end_time) : "—",
+        }));
+        console.log("[coverage]", {
+          day,
+          shiftType: "Morning",
+          modelName: idToName[m.id] ?? m.id,
+          assignedModels: assignedModelsM,
+          coverageTier: metaM.tier,
+          gapHint: metaM.gapHint,
+        });
+        console.log("[coverage]", {
+          day,
+          shiftType: "Night",
+          modelName: idToName[m.id] ?? m.id,
+          assignedModels: assignedModelsN,
+          coverageTier: metaN.tier,
+          gapHint: metaN.gapHint,
+        });
+      }
+
+      morningRow.push({
+        day,
+        shiftType: "Morning",
+        modelId: m.id,
+        modelName: idToName[m.id] ?? m.id,
+        chatterName: metaM.tier === "none" ? null : metaM.label,
+        covered: metaM.tier !== "none",
+        recordId: metaM.recordId,
+        coverageTier: metaM.tier,
+        gapHint: metaM.gapHint,
+        coverageChips: metaM.chips,
+      } as ClientCoverageCell);
+      nightRow.push({
+        day,
+        shiftType: "Night",
+        modelId: m.id,
+        modelName: idToName[m.id] ?? m.id,
+        chatterName: metaN.tier === "none" ? null : metaN.label,
+        covered: metaN.tier !== "none",
+        recordId: metaN.recordId,
+        coverageTier: metaN.tier,
+        gapHint: metaN.gapHint,
+        coverageChips: metaN.chips,
+      } as ClientCoverageCell);
+    }
+    morning.push(morningRow);
+    night.push(nightRow);
+  }
+
+  return { morning, night, modelNames, days: [...DAYS] };
+}
+
+function recomputeClientConflicts(
+  programsWeek: WeeklyProgramRecord[],
+  modelss: ModelRecord[],
+  modelIdToName: Record<string, string>
+): { summary: ConflictSummary; conflictRecordIds: string[] } {
+  const modelIds = modelss.map((m) => m.id);
+  const { conflicts: raw } = getWeeklyProgramConflicts(programsWeek, modelIds, modelIdToName, {
+    tooManyModelsThreshold: TOO_MANY_MODELS_THRESHOLD,
+  });
+  const byId = Object.fromEntries(programsWeek.map((p) => [p.id, p]));
+
+  const clientCustom = computeClientCustomOverlaps(programsWeek, modelIdToName);
+
+  const filtered = raw.filter((c) => {
+    if (c.type === "chatter_overlap" || c.type === "custom_overlap") return false;
+    if (c.type === "model_time_overlap") {
+      const a = c.recordIds[0];
+      const b = c.recordIds[1];
+      const p = a ? byId[a] : undefined;
+      const q = b ? byId[b] : undefined;
+      if (!p || !q || !p.start_time || !p.end_time || !q.start_time || !q.end_time) return false;
+      return intervalsStrictOverlap(p.start_time, p.end_time, q.start_time, q.end_time);
+    }
+    return true;
+  });
+
+  const merged = [...filtered, ...clientCustom];
+
+  const customOverlaps = merged.filter((x) => x.type === "custom_overlap").length;
+  const uncoveredCount = merged.filter((x) => x.type === "uncovered_model").length;
+
+  const summary: ConflictSummary = {
+    modelConflicts: 0,
+    chatterOverlaps: 0,
+    customOverlaps,
+    uncoveredCount,
+    tooManyModelsCount: 0,
+    total: customOverlaps + uncoveredCount,
+  };
+  const conflictRecordIds: string[] = [];
+  const seen = new Set<string>();
+  for (const c of merged) {
+    for (const id of c.recordIds) {
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        conflictRecordIds.push(id);
+      }
+    }
+  }
+  return { summary, conflictRecordIds };
 }
 
 type Props = {
@@ -63,6 +516,7 @@ type Props = {
   lastAssignmentMap: Record<string, { date: string; dateTime: string; relative: string }>;
   suggestionsByKey?: Record<string, { type: string; text: string }[]>;
   availabilityRequests: WeeklyAvailabilityRequest[];
+  periodDatesByModelId: Record<string, string[]>;
 };
 
 function lastWithLabel(
@@ -76,18 +530,104 @@ function lastWithLabel(
   return `Last with ${modelName}: ${info.relative}`;
 }
 
+function isoTimeToHHmm(iso: string | undefined): string {
+  if (!iso || iso.length < 16) return "";
+  return iso.slice(11, 16);
+}
+
+function hhmm24To12Parts(hhmm: string): { h12: number; minute: number; pm: boolean } {
+  const [hs, ms] = hhmm.trim().split(":");
+  const h24 = Math.min(23, Math.max(0, parseInt(hs ?? "0", 10) || 0));
+  const minute = Math.min(59, Math.max(0, parseInt(ms ?? "0", 10) || 0));
+  const pm = h24 >= 12;
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  return { h12, minute, pm };
+}
+
+function hhmm12To24(h12: number, minute: number, pm: boolean): string {
+  const h = Math.min(12, Math.max(1, Math.round(h12)));
+  const m = Math.min(59, Math.max(0, Math.round(minute)));
+  let h24: number;
+  if (pm) h24 = h === 12 ? 12 : h + 12;
+  else h24 = h === 12 ? 0 : h;
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${pad(h24)}:${pad(m)}`;
+}
+
+function CustomTime12hBlock({
+  label,
+  required,
+  value,
+  onChange,
+  ariaInvalid,
+}: {
+  label: React.ReactNode;
+  required?: boolean;
+  value: string;
+  onChange: (next: string) => void;
+  ariaInvalid?: boolean;
+}) {
+  const { h12, minute, pm } = hhmm24To12Parts(value || "09:00");
+  const sync = (patch: Partial<{ h12: number; minute: number; pm: boolean }>) => {
+    const next = { h12, minute, pm, ...patch };
+    onChange(hhmm12To24(next.h12, next.minute, next.pm));
+  };
+  return (
+    <div>
+      <Label>
+        {label}
+        {required ? <span className="text-red-400"> *</span> : null}
+      </Label>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <CustomSelect
+          value={String(h12)}
+          onChange={(v) => sync({ h12: Number(v) })}
+          options={CUSTOM_SELECT_HOUR_12_OPTIONS}
+          className="w-[4.5rem] shrink-0"
+          aria-invalid={ariaInvalid}
+        />
+        <span className="text-white/50">:</span>
+        <Input
+          type="number"
+          min={0}
+          max={59}
+          inputMode="numeric"
+          value={minute}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            sync({ minute: Number.isNaN(v) ? 0 : Math.min(59, Math.max(0, v)) });
+          }}
+          className="mt-0 w-[4.25rem] shrink-0 px-2 py-2 text-center text-[15px] md:min-h-0"
+          aria-invalid={ariaInvalid}
+        />
+        <button
+          type="button"
+          onClick={() => sync({ pm: !pm })}
+          className="min-h-[44px] min-w-[3.75rem] shrink-0 rounded-2xl border border-white/20 bg-white/[0.08] px-3 text-sm font-semibold text-white transition-colors hover:border-white/30 hover:bg-white/[0.12] md:min-h-[var(--luxury-form-min-height)]"
+          aria-pressed={pm}
+          aria-label={pm ? "Currently PM, switch to AM" : "Currently AM, switch to PM"}
+        >
+          {pm ? "PM" : "AM"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminWeeklyProgramClient({
   programs: initialPrograms,
   chatters,
   modelss,
   currentWeekStart,
-  conflicts,
-  conflictSummary,
-  conflictRecordIds,
-  coverageBoard,
+  conflicts: _conflictsFromServer,
+  conflictSummary: _conflictSummaryFromServer,
+  conflictRecordIds: _conflictRecordIdsFromServer,
+  coverageBoard: _coverageBoardFromServer,
   lastAssignmentMap,
   suggestionsByKey,
   availabilityRequests,
+  periodDatesByModelId,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -105,10 +645,38 @@ export function AdminWeeklyProgramClient({
   const [availFilterShiftType, setAvailFilterShiftType] = React.useState<WeeklyProgramShiftType | "">("");
   const [availFilterDay, setAvailFilterDay] = React.useState<WeeklyProgramDay | "">("");
   const [mobileHelperOpen, setMobileHelperOpen] = React.useState(false);
+  const [duplicateOpenDay, setDuplicateOpenDay] = React.useState<WeeklyProgramDay | null>(null);
+  const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
+  /** idle: ready · working: Airtable copy in flight · done / failed: brief feedback before reset */
+  const [duplicateUi, setDuplicateUi] = React.useState<"idle" | "working" | "done" | "failed">("idle");
+  const duplicateUiRef = React.useRef(duplicateUi);
+  React.useEffect(() => {
+    duplicateUiRef.current = duplicateUi;
+  }, [duplicateUi]);
+  const duplicateResetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearDuplicateResetTimer = React.useCallback(() => {
+    if (duplicateResetTimerRef.current) {
+      clearTimeout(duplicateResetTimerRef.current);
+      duplicateResetTimerRef.current = null;
+    }
+  }, []);
+
+  React.useEffect(() => () => clearDuplicateResetTimer(), [clearDuplicateResetTimer]);
 
   React.useEffect(() => setPrograms(initialPrograms), [initialPrograms]);
 
+  const modelIdToDisplayName = React.useMemo(
+    () => Object.fromEntries(modelss.map((m) => [m.id, m.model_name ?? m.id])),
+    [modelss]
+  );
+
   const effectiveWeekStart = normalizeWeekStart(searchParams.get("week_start") || currentWeekStart);
+
+  const programsThisWeek = React.useMemo(
+    () => programs.filter((p) => normalizeWeekStart(p.week_start) === effectiveWeekStart),
+    [programs, effectiveWeekStart]
+  );
 
   const filtered = React.useMemo(() => {
     let list = programs;
@@ -131,6 +699,16 @@ export function AdminWeeklyProgramClient({
   }, [filtered]);
 
   const renderedEntryCount = byDay.reduce((acc, d) => acc + d.entries.length, 0);
+
+  const duplicateTargetExistingCount = React.useMemo(() => {
+    if (!duplicateOpenDay) return 0;
+    return programs.filter(
+      (p) =>
+        p.day === duplicateTargetDay &&
+        normalizeWeekStart(p.week_start) === effectiveWeekStart &&
+        !p.id.startsWith("dup-pending-")
+    ).length;
+  }, [duplicateOpenDay, duplicateTargetDay, programs, effectiveWeekStart]);
 
   const filteredAvailabilityRequests = React.useMemo(() => {
     const list = Array.isArray(availabilityRequests) ? availabilityRequests : [];
@@ -158,6 +736,32 @@ export function AdminWeeklyProgramClient({
       .filter((r) => r.chatter_id && !seen.has(r.chatter_id) && (seen.add(r.chatter_id), true))
       .map((r) => ({ id: r.chatter_id, full_name: r.chatter_name || "—" }));
   }, [availabilityRequests]);
+
+  const availChatterSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "All chatters" },
+      ...availabilityChatters.map((c) => ({ value: c.id, label: c.full_name })),
+    ],
+    [availabilityChatters]
+  );
+  const chatterFilterSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "All chatters" },
+      ...chatters.map((c) => ({ value: c.id, label: c.full_name })),
+    ],
+    [chatters]
+  );
+  const modelFilterSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "All models" },
+      ...modelss.map((m) => ({ value: m.id, label: m.model_name })),
+    ],
+    [modelss]
+  );
+  const dayFilterSelectOptions = React.useMemo(
+    () => [{ value: "", label: "All days" }, ...DAYS.map((d) => ({ value: d, label: d }))],
+    []
+  );
 
   const useRequestInSchedule = (request: WeeklyAvailabilityRequest) => {
     setPrefillFromAvailability(request);
@@ -191,6 +795,16 @@ export function AdminWeeklyProgramClient({
     modelss.forEach((m) => { map[m.id] = m.model_name; });
     return map;
   }, [modelss]);
+
+  const resolvedCoverageBoard = React.useMemo(
+    () => buildClientCoverageBoard(programsThisWeek, modelss, effectiveWeekStart),
+    [programsThisWeek, modelss, effectiveWeekStart]
+  );
+
+  const { summary: resolvedConflictSummary, conflictRecordIds: resolvedConflictRecordIds } = React.useMemo(
+    () => recomputeClientConflicts(programsThisWeek, modelss, modelIdToName),
+    [programsThisWeek, modelss, modelIdToName]
+  );
 
   const handleCreate = async (fields: {
     chatter_id: string;
@@ -279,6 +893,94 @@ export function AdminWeeklyProgramClient({
     router.refresh();
   };
 
+  const openDuplicateModal = (sourceDay: WeeklyProgramDay) => {
+    clearDuplicateResetTimer();
+    setDuplicateUi("idle");
+    setDuplicateOpenDay(sourceDay);
+    setDuplicateTargetDay(DAYS.find((d) => d !== sourceDay) ?? "Tuesday");
+  };
+
+  const closeDuplicateModal = React.useCallback(() => {
+    if (duplicateUiRef.current === "working") return;
+    clearDuplicateResetTimer();
+    setDuplicateOpenDay(null);
+    setDuplicateUi("idle");
+  }, [clearDuplicateResetTimer]);
+
+  const handleDuplicateCopy = (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
+    const week = effectiveWeekStart;
+    const sourceEntries = programs.filter(
+      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
+    );
+    if (sourceEntries.length === 0) {
+      setError("No shifts to copy on that day.");
+      return;
+    }
+    if (targetDay === sourceDay) return;
+
+    setError(null);
+    setSuccess(null);
+    setDuplicateUi("working");
+
+    const base = Date.now();
+    const pendingIds: string[] = sourceEntries.map((_, i) => `dup-pending-${base}-${i}`);
+
+    const optimisticRows: WeeklyProgramRecord[] = sourceEntries.map((e, i) => ({
+      ...e,
+      id: pendingIds[i]!,
+      day: targetDay,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    }));
+    setPrograms((prev) => [...prev, ...optimisticRows]);
+
+    void (async () => {
+      try {
+        const results = await Promise.all(
+          sourceEntries.map((e) =>
+            createProgramAction({
+              chatter: [e.chatter_id],
+              chatter_name: e.chatter_name,
+              models: e.model_ids,
+              day: targetDay,
+              shift_type: e.shift_type,
+              week_start: week,
+              notes: e.notes || "",
+              modelIdToName,
+              ...(e.shift_type === "Custom" && {
+                custom_start_time: isoTimeToHHmm(e.start_time),
+                custom_end_time: isoTimeToHHmm(e.end_time),
+              }),
+            })
+          )
+        );
+        for (const r of results) {
+          if (!r.success) throw new Error(r.error);
+        }
+        setDuplicateUi("done");
+        router.refresh();
+        clearDuplicateResetTimer();
+        duplicateResetTimerRef.current = setTimeout(() => {
+          duplicateResetTimerRef.current = null;
+          setDuplicateOpenDay(null);
+          setDuplicateUi("idle");
+        }, 900);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setPrograms((prev) => prev.filter((p) => !pendingIds.includes(p.id)));
+        setError(msg);
+        setDuplicateUi("failed");
+        router.refresh();
+        clearDuplicateResetTimer();
+        duplicateResetTimerRef.current = setTimeout(() => {
+          duplicateResetTimerRef.current = null;
+          setDuplicateOpenDay(null);
+          setDuplicateUi("idle");
+        }, 1600);
+      }
+    })();
+  };
+
   return (
     <div className="flex flex-col xl:flex-row xl:gap-6 gap-6">
       <div className="min-w-0 flex-1 space-y-6">
@@ -316,7 +1018,7 @@ export function AdminWeeklyProgramClient({
         </div>
       )}
 
-      {conflictSummary.total > 0 && (
+      {resolvedConflictSummary.total > 0 && (
         <div className="glass-card border-amber-500/30 bg-amber-500/5 p-5">
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400" aria-hidden>
@@ -325,15 +1027,18 @@ export function AdminWeeklyProgramClient({
             <div>
               <p className="font-semibold text-amber-200">Conflict summary</p>
               <p className="mt-0.5 text-sm text-white/80">
-                {conflictSummary.modelConflicts > 0 && <span>{conflictSummary.modelConflicts} model conflict{conflictSummary.modelConflicts !== 1 ? "s" : ""}</span>}
-                {conflictSummary.modelConflicts > 0 && (conflictSummary.chatterOverlaps > 0 || conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && " · "}
-                {conflictSummary.chatterOverlaps > 0 && <span>{conflictSummary.chatterOverlaps} chatter overlap{conflictSummary.chatterOverlaps !== 1 ? "s" : ""}</span>}
-                {conflictSummary.chatterOverlaps > 0 && (conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && " · "}
-                {conflictSummary.customOverlaps > 0 && <span>{conflictSummary.customOverlaps} overlapping custom shift{conflictSummary.customOverlaps !== 1 ? "s" : ""}</span>}
-                {conflictSummary.customOverlaps > 0 && (conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && " · "}
-                {conflictSummary.uncoveredCount > 0 && <span>{conflictSummary.uncoveredCount} uncovered model{conflictSummary.uncoveredCount !== 1 ? "s" : ""}</span>}
-                {conflictSummary.uncoveredCount > 0 && conflictSummary.tooManyModelsCount > 0 && " · "}
-                {conflictSummary.tooManyModelsCount > 0 && <span>{conflictSummary.tooManyModelsCount} too many models</span>}
+                {resolvedConflictSummary.customOverlaps > 0 && (
+                  <span>
+                    {resolvedConflictSummary.customOverlaps} overlapping custom shift
+                    {resolvedConflictSummary.customOverlaps !== 1 ? "s" : ""}
+                  </span>
+                )}
+                {resolvedConflictSummary.customOverlaps > 0 && resolvedConflictSummary.uncoveredCount > 0 && " · "}
+                {resolvedConflictSummary.uncoveredCount > 0 && (
+                  <span>
+                    {resolvedConflictSummary.uncoveredCount} uncovered model{resolvedConflictSummary.uncoveredCount !== 1 ? "s" : ""}
+                  </span>
+                )}
               </p>
             </div>
           </div>
@@ -358,20 +1063,24 @@ export function AdminWeeklyProgramClient({
         {mobileHelperOpen && (
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-1 gap-2">
-              <Select value={availFilterChatter} onChange={(e) => setAvailFilterChatter(e.target.value)} className="min-h-[48px] text-sm">
-                <option value="">All chatters</option>
-                {availabilityChatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </Select>
-              <Select value={availFilterShiftType} onChange={(e) => setAvailFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="min-h-[48px] text-sm">
-                <option value="">All types</option>
-                <option value="Morning">Morning</option>
-                <option value="Night">Night</option>
-                <option value="Custom">Custom</option>
-              </Select>
-              <Select value={availFilterDay} onChange={(e) => setAvailFilterDay(e.target.value as WeeklyProgramDay | "")} className="min-h-[48px] text-sm">
-                <option value="">All days</option>
-                {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </Select>
+              <CustomSelect
+                value={availFilterChatter}
+                onChange={setAvailFilterChatter}
+                options={availChatterSelectOptions}
+                className="min-h-[48px] text-sm"
+              />
+              <CustomSelect
+                value={availFilterShiftType}
+                onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
+                options={AVAIL_SHIFT_TYPE_OPTIONS}
+                className="min-h-[48px] text-sm"
+              />
+              <CustomSelect
+                value={availFilterDay}
+                onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
+                options={dayFilterSelectOptions}
+                className="min-h-[48px] text-sm"
+              />
             </div>
             <div className="max-h-[320px] overflow-y-auto space-y-2">
               {filteredAvailabilityRequests.length === 0 ? (
@@ -389,6 +1098,9 @@ export function AdminWeeklyProgramClient({
                           <p className="mt-0.5 text-xs text-white/60">
                             {r.day} · {r.entry_type === "day_off" ? "day off" : r.shift_type}{timeStr}
                           </p>
+                          {r.notes?.trim() ? (
+                            <p className="mt-1 text-sm text-white/50 italic">{r.notes.trim()}</p>
+                          ) : null}
                         </div>
                         <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${
                           r.status === "submitted" ? "bg-amber-500/20 text-amber-300" :
@@ -433,19 +1145,24 @@ export function AdminWeeklyProgramClient({
           <span className="ml-0 md:ml-2 text-sm font-medium text-white/80 w-full md:w-auto">Week of {formatWeekLabel(effectiveWeekStart)}</span>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <Select value={filterChatter} onChange={(e) => setFilterChatter(e.target.value)} className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0">
-            <option value="">All chatters</option>
-            {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </Select>
-          <Select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0">
-            <option value="">All models</option>
-            {modelss.map((m) => <option key={m.id} value={m.id}>{m.model_name}</option>)}
-          </Select>
-          <Select value={filterShiftType} onChange={(e) => setFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0">
-            <option value="">All shifts</option>
-            <option value="Morning">Morning</option>
-            <option value="Night">Night</option>
-          </Select>
+          <CustomSelect
+            value={filterChatter}
+            onChange={setFilterChatter}
+            options={chatterFilterSelectOptions}
+            className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0"
+          />
+          <CustomSelect
+            value={filterModel}
+            onChange={setFilterModel}
+            options={modelFilterSelectOptions}
+            className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0"
+          />
+          <CustomSelect
+            value={filterShiftType}
+            onChange={(v) => setFilterShiftType(v as WeeklyProgramShiftType | "")}
+            options={SHIFT_FILTER_OPTIONS}
+            className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0"
+          />
           <ButtonPrimary type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="w-full sm:w-auto">
             Create shift
           </ButtonPrimary>
@@ -465,21 +1182,17 @@ export function AdminWeeklyProgramClient({
                 <thead>
                   <tr className="border-b border-white/10">
                     <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-white/50">Model</th>
-                    {coverageBoard.days.map((d) => (
-                      <th key={d} className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white/50">{d.slice(0, 3)}</th>
+                    {resolvedCoverageBoard.days.map((d) => (
+                      <th key={d} className="min-w-[120px] px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white/50">{d.slice(0, 3)}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {coverageBoard.morning.map((row, idx) => (
-                    <tr key={coverageBoard.modelNames[idx]} className="border-b border-white/5">
-                      <td className="px-3 py-2 font-medium text-white/90">{coverageBoard.modelNames[idx]}</td>
+                  {resolvedCoverageBoard.morning.map((row, idx) => (
+                    <tr key={resolvedCoverageBoard.modelNames[idx]} className="border-b border-white/5">
+                      <td className="px-3 py-2 font-medium text-white/90">{resolvedCoverageBoard.modelNames[idx]}</td>
                       {row.map((cell) => (
-                        <td key={cell.day} className="px-2 py-1.5 text-center">
-                          <span className={`inline-block rounded-lg px-2 py-0.5 text-xs font-medium ${cell.covered ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"}`}>
-                            {cell.covered ? (cell.chatterName ?? "—") : "Uncovered"}
-                          </span>
-                        </td>
+                        <ModelCoverageTableCell key={cell.day} cell={cell} />
                       ))}
                     </tr>
                   ))}
@@ -496,21 +1209,17 @@ export function AdminWeeklyProgramClient({
                 <thead>
                   <tr className="border-b border-white/10">
                     <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-white/50">Model</th>
-                    {coverageBoard.days.map((d) => (
-                      <th key={d} className="px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white/50">{d.slice(0, 3)}</th>
+                    {resolvedCoverageBoard.days.map((d) => (
+                      <th key={d} className="min-w-[120px] px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white/50">{d.slice(0, 3)}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {coverageBoard.night.map((row, idx) => (
-                    <tr key={coverageBoard.modelNames[idx]} className="border-b border-white/5">
-                      <td className="px-3 py-2 font-medium text-white/90">{coverageBoard.modelNames[idx]}</td>
+                  {resolvedCoverageBoard.night.map((row, idx) => (
+                    <tr key={resolvedCoverageBoard.modelNames[idx]} className="border-b border-white/5">
+                      <td className="px-3 py-2 font-medium text-white/90">{resolvedCoverageBoard.modelNames[idx]}</td>
                       {row.map((cell) => (
-                        <td key={cell.day} className="px-2 py-1.5 text-center">
-                          <span className={`inline-block rounded-lg px-2 py-0.5 text-xs font-medium ${cell.covered ? "bg-emerald-500/20 text-emerald-300" : "bg-red-500/20 text-red-300"}`}>
-                            {cell.covered ? (cell.chatterName ?? "—") : "Uncovered"}
-                          </span>
-                        </td>
+                        <ModelCoverageTableCell key={cell.day} cell={cell} />
                       ))}
                     </tr>
                   ))}
@@ -532,21 +1241,51 @@ export function AdminWeeklyProgramClient({
             const dateLabel = formatDateEuropean(dateYmd);
             return (
               <div key={day} className="glass-card overflow-hidden rounded-2xl border border-white/10">
-                <div className="border-b border-white/10 bg-black/40 px-4 py-3">
-                  <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
-                  <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-black/40 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
+                    <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
+                  </div>
+                  {entries.length > 0 ? (
+                    <button
+                      type="button"
+                      disabled={duplicateOpenDay === day && duplicateUi === "working"}
+                      onClick={() => openDuplicateModal(day)}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 disabled:opacity-60"
+                    >
+                      {duplicateOpenDay === day && duplicateUi === "working" ? (
+                        <>
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                          Duplicating…
+                        </>
+                      ) : (
+                        "Duplicate"
+                      )}
+                    </button>
+                  ) : null}
                 </div>
                 <div className="p-4 space-y-3">
                   {entries.length === 0 ? (
                     <p className="py-4 text-center text-sm text-white/45">No shifts</p>
                   ) : (
                     entries.map((e) => {
-                      const names = getModelNames(e.model_ids, modelss);
                       const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
                       return (
                         <div key={e.id} className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
                           <p className="text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
-                          <p className="mt-1 text-sm text-white/70">Models: {names.length ? names.join(", ") : "—"}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
+                            <span className="text-white/50">Models:</span>
+                            {e.model_ids.length ? (
+                              <ModelPeriodNamesRow
+                                modelIds={e.model_ids}
+                                idToName={modelIdToDisplayName}
+                                dateYmd={dateYmd}
+                                periodDatesByModelId={periodDatesByModelId}
+                              />
+                            ) : (
+                              <span>—</span>
+                            )}
+                          </div>
                           {e.chatter_name && <p className="mt-0.5 text-xs text-white/50">{e.chatter_name}</p>}
                         </div>
                       );
@@ -570,9 +1309,30 @@ export function AdminWeeklyProgramClient({
               const dateLabel = formatDateEuropean(dateYmd);
               return (
                 <div key={day} className="glass-card overflow-hidden flex flex-col w-[280px] min-w-[280px] min-h-[480px] shrink-0">
-                  <div className="border-b border-white/10 bg-black/40 px-5 py-4 shrink-0">
-                    <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
-                    <p className="mt-1 text-sm text-white/50">{dateLabel}</p>
+                  <div className="shrink-0 border-b border-white/10 bg-black/40 px-5 py-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
+                        <p className="mt-1 text-sm text-white/50">{dateLabel}</p>
+                      </div>
+                      {entries.length > 0 ? (
+                        <button
+                          type="button"
+                          disabled={duplicateOpenDay === day && duplicateUi === "working"}
+                          onClick={() => openDuplicateModal(day)}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium text-white/80 hover:bg-white/10 disabled:opacity-60"
+                        >
+                          {duplicateOpenDay === day && duplicateUi === "working" ? (
+                            <>
+                              <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden />
+                              Duplicating…
+                            </>
+                          ) : (
+                            "Duplicate"
+                          )}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   <div className="flex-1 p-4 space-y-3 min-h-0 overflow-y-auto">
                     {entries.length === 0 ? (
@@ -584,10 +1344,7 @@ export function AdminWeeklyProgramClient({
                       </div>
                     ) : (
                       entries.map((e) => {
-                        const names = getModelNames(e.model_ids, modelss);
-                        const hasConflict = conflictRecordIds.includes(e.id);
-                        const modelCount = e.model_ids?.filter(Boolean).length ?? 0;
-                        const hasTooManyModels = modelCount > 10;
+                        const hasConflict = resolvedConflictRecordIds.includes(e.id);
                         const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
                         return (
                           <div
@@ -603,16 +1360,20 @@ export function AdminWeeklyProgramClient({
                                 <div className="min-w-0 flex-1">
                                   <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
                                   <p className="mt-1 font-medium text-white/95 truncate text-base">{e.chatter_name || "—"}</p>
-                                  <p className="mt-1 text-sm text-white/65 truncate" title={names.length ? names.join(", ") : undefined}>
-                                    {names.length ? names.join(", ") : "—"}
-                                  </p>
+                                  <div className="mt-1 min-w-0 text-sm text-white/65">
+                                    {e.model_ids.length ? (
+                                      <ModelPeriodNamesRow
+                                        modelIds={e.model_ids}
+                                        idToName={modelIdToDisplayName}
+                                        dateYmd={dateYmd}
+                                        periodDatesByModelId={periodDatesByModelId}
+                                      />
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-1">
-                                  {hasTooManyModels && (
-                                    <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="More than 10 models assigned">
-                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                    </span>
-                                  )}
                                   {hasConflict && (
                                     <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="Conflict">
                                       <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
@@ -651,20 +1412,24 @@ export function AdminWeeklyProgramClient({
           </div>
           <div className="p-3 space-y-2">
             <div className="grid grid-cols-1 gap-1.5">
-              <Select value={availFilterChatter} onChange={(e) => setAvailFilterChatter(e.target.value)} className="text-xs">
-                <option value="">All chatters</option>
-                {availabilityChatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </Select>
-              <Select value={availFilterShiftType} onChange={(e) => setAvailFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="text-xs">
-                <option value="">All types</option>
-                <option value="Morning">Morning</option>
-                <option value="Night">Night</option>
-                <option value="Custom">Custom</option>
-              </Select>
-              <Select value={availFilterDay} onChange={(e) => setAvailFilterDay(e.target.value as WeeklyProgramDay | "")} className="text-xs">
-                <option value="">All days</option>
-                {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </Select>
+              <CustomSelect
+                value={availFilterChatter}
+                onChange={setAvailFilterChatter}
+                options={availChatterSelectOptions}
+                className="text-xs"
+              />
+              <CustomSelect
+                value={availFilterShiftType}
+                onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
+                options={AVAIL_SHIFT_TYPE_OPTIONS}
+                className="text-xs"
+              />
+              <CustomSelect
+                value={availFilterDay}
+                onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
+                options={dayFilterSelectOptions}
+                className="text-xs"
+              />
             </div>
             <div className="max-h-[380px] overflow-y-auto space-y-1.5">
               {filteredAvailabilityRequests.length === 0 ? (
@@ -682,6 +1447,9 @@ export function AdminWeeklyProgramClient({
                           <p className="mt-0.5 text-[11px] text-white/60">
                             {r.day} · {r.entry_type === "day_off" ? "day off" : r.shift_type}{timeStr}
                           </p>
+                          {r.notes?.trim() ? (
+                            <p className="mt-1 text-sm text-white/50 italic">{r.notes.trim()}</p>
+                          ) : null}
                         </div>
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                           r.status === "submitted" ? "bg-amber-500/20 text-amber-300" :
@@ -710,15 +1478,26 @@ export function AdminWeeklyProgramClient({
         </div>
       </aside>
 
+      <AnimatePresence>
       {(createOpen || editingEntry || prefillFromAvailability) && (
-        <div className="fixed inset-0 z-50 flex overflow-hidden" role="dialog" aria-modal="true" aria-label="Create or edit shift">
+        <motion.div
+          key="weekly-shift-sheet"
+          className="fixed inset-0 z-50 flex overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create or edit shift"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+        >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden onClick={() => { setCreateOpen(false); setEditingEntry(null); setPrefillFromAvailability(null); setError(null); }} />
           {/* Mobile: full-screen sheet. Desktop: offset for sidebar, side panel */}
           <div
             className="relative flex h-full w-full flex-col overflow-hidden md:ml-64 md:w-[calc(100vw-16rem)] md:flex-row md:flex-1 md:flex-shrink-0 md:items-stretch md:gap-6 md:p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-black/95 shadow-2xl md:min-w-[380px] md:max-w-2xl md:rounded-2xl md:border md:border-white/10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
+            <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-black/95 shadow-2xl md:min-w-[380px] md:max-w-4xl md:rounded-2xl md:border md:border-white/10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
                 <ShiftEntryModal
                   asPanel
@@ -727,9 +1506,9 @@ export function AdminWeeklyProgramClient({
                   weekStart={effectiveWeekStart}
                   entry={editingEntry}
                   prefillFromAvailability={prefillFromAvailability}
-                  coverageBoard={coverageBoard}
+                  coverageBoard={resolvedCoverageBoard}
                   lastAssignmentMap={lastAssignmentMap}
-                  programs={programs}
+                  programs={programsThisWeek}
                   onClose={() => { setCreateOpen(false); setEditingEntry(null); setPrefillFromAvailability(null); setError(null); }}
                   onCreate={handleCreate}
                   onUpdate={editingEntry ? (fields) => handleUpdate(editingEntry.id, fields) : undefined}
@@ -743,20 +1522,24 @@ export function AdminWeeklyProgramClient({
               </div>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                 <div className="grid grid-cols-1 gap-3 shrink-0">
-                  <Select value={availFilterChatter} onChange={(e) => setAvailFilterChatter(e.target.value)} className="text-sm">
-                    <option value="">All chatters</option>
-                    {availabilityChatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                  </Select>
-                  <Select value={availFilterShiftType} onChange={(e) => setAvailFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="text-sm">
-                    <option value="">All types</option>
-                    <option value="Morning">Morning</option>
-                    <option value="Night">Night</option>
-                    <option value="Custom">Custom</option>
-                  </Select>
-                  <Select value={availFilterDay} onChange={(e) => setAvailFilterDay(e.target.value as WeeklyProgramDay | "")} className="text-sm">
-                    <option value="">All days</option>
-                    {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </Select>
+                  <CustomSelect
+                    value={availFilterChatter}
+                    onChange={setAvailFilterChatter}
+                    options={availChatterSelectOptions}
+                    className="text-sm"
+                  />
+                  <CustomSelect
+                    value={availFilterShiftType}
+                    onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
+                    options={AVAIL_SHIFT_TYPE_OPTIONS}
+                    className="text-sm"
+                  />
+                  <CustomSelect
+                    value={availFilterDay}
+                    onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
+                    options={dayFilterSelectOptions}
+                    className="text-sm"
+                  />
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto space-y-2 pt-4">
                   {filteredAvailabilityRequests.length === 0 ? (
@@ -774,6 +1557,9 @@ export function AdminWeeklyProgramClient({
                               <p className="mt-1 text-xs text-white/60">
                                 {r.day} · {r.entry_type === "day_off" ? "day off" : r.shift_type}{timeStr}
                               </p>
+                              {r.notes?.trim() ? (
+                                <p className="mt-1 text-sm text-white/50 italic">{r.notes.trim()}</p>
+                              ) : null}
                             </div>
                             <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
                               r.status === "submitted" ? "bg-amber-500/20 text-amber-300" :
@@ -801,8 +1587,101 @@ export function AdminWeeklyProgramClient({
               </div>
             </aside>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {duplicateOpenDay ? (
+          <motion.div
+            key="duplicate-week-popover"
+            className="fixed inset-0 z-[60] flex items-end justify-center md:items-center md:p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.12, ease: "easeOut" }}
+          >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-md" aria-hidden onClick={closeDuplicateModal} />
+            <motion.div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="dup-week-title"
+              className="relative z-[1] flex max-h-[90dvh] w-full max-w-sm flex-col rounded-t-2xl border border-white/10 border-b-0 bg-black/95 p-5 shadow-2xl md:max-h-[calc(100vh-2rem)] md:rounded-2xl md:border-b"
+              style={{
+                boxShadow:
+                  "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)",
+                paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))",
+              }}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.12, ease: "easeIn" } }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h2 id="dup-week-title" className="text-lg font-semibold tracking-tight text-white">
+                Copy {duplicateOpenDay} shifts to:
+              </h2>
+              <p className="mt-1 text-xs text-white/50">Pick a day. New rows appear right away; Airtable saves in the background.</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {DAYS.filter((d) => d !== duplicateOpenDay).map((d) => {
+                  const abbrev = d.slice(0, 3);
+                  const selected = duplicateTargetDay === d;
+                  return (
+                    <button
+                      key={d}
+                      type="button"
+                      disabled={duplicateUi === "working"}
+                      onClick={() => setDuplicateTargetDay(d)}
+                      className={`min-w-[3rem] rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                        selected
+                          ? "border-[hsl(330,80%,55%)]/60 bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,85%)]"
+                          : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
+                      } disabled:opacity-50`}
+                    >
+                      {abbrev}
+                    </button>
+                  );
+                })}
+              </div>
+              {duplicateTargetExistingCount > 0 ? (
+                <p className="mt-3 text-xs font-medium text-amber-300/90">This will add to existing shifts.</p>
+              ) : null}
+              {duplicateUi === "failed" ? <p className="mt-3 text-sm font-medium text-red-400">Failed</p> : null}
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
+                <ButtonSecondary
+                  type="button"
+                  disabled={duplicateUi === "working"}
+                  onClick={closeDuplicateModal}
+                  className="w-full sm:min-w-[100px]"
+                >
+                  Cancel
+                </ButtonSecondary>
+                <button
+                  type="button"
+                  disabled={
+                    duplicateUi === "working" ||
+                    duplicateUi === "done" ||
+                    duplicateOpenDay === duplicateTargetDay
+                  }
+                  onClick={() => handleDuplicateCopy(duplicateOpenDay, duplicateTargetDay)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/25 px-4 py-2.5 text-sm font-semibold text-[hsl(330,90%,80%)] hover:bg-[hsl(330,80%,55%)]/35 disabled:opacity-50 sm:min-w-[120px]"
+                >
+                  {duplicateUi === "working" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      Duplicating...
+                    </>
+                  ) : duplicateUi === "done" ? (
+                    "✓ Done"
+                  ) : (
+                    "Copy"
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }
@@ -843,11 +1722,6 @@ type ModalProps = {
   asPanel?: boolean;
 };
 
-function isoTimeToHHmm(iso: string | undefined): string {
-  if (!iso || iso.length < 16) return "";
-  return iso.slice(11, 16);
-}
-
 function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvailability, coverageBoard, lastAssignmentMap, programs, onClose, onCreate, onUpdate, asPanel }: ModalProps) {
   const isEdit = !!entry;
   const prefill = prefillFromAvailability ?? null;
@@ -878,7 +1752,6 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const [availabilityFilter, setAvailabilityFilter] = React.useState<"all" | "free" | "taken">("all");
   const [customTimeError, setCustomTimeError] = React.useState<string | null>(null);
   const [modalLastAssignments, setModalLastAssignments] = React.useState<Record<string, { date: string; dateTime: string; relative: string }>>({});
-  const [showTooManyModelsConfirm, setShowTooManyModelsConfirm] = React.useState(false);
 
   React.useEffect(() => {
     if (entry) setSelectedModelIds(new Set(entry.model_ids));
@@ -920,19 +1793,36 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     (isEdit ? (lastAssignmentMap ?? {}) : (modalLastAssignments ?? {}));
   const chatterName = chatters.find((c) => c.id === chatterId)?.full_name ?? "";
 
+  const chatterFormSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "Select chatter" },
+      ...chatters.map((c) => ({ value: c.id, label: c.full_name })),
+    ],
+    [chatters]
+  );
+  const dayFormSelectOptions = React.useMemo(() => DAYS.map((d) => ({ value: d, label: d })), []);
+  const shiftTypeFormSelectOptions = React.useMemo(
+    () => [
+      { value: "Morning", label: "Morning (12:00–20:00)" },
+      { value: "Night", label: "Night (20:00–03:00)" },
+      { value: "Custom", label: "Custom" },
+    ],
+    []
+  );
+
   const suggestions = React.useMemo(() => {
     const out: { type: string; text: string }[] = [];
     const dayIdx = DAYS.indexOf(day);
     if (shiftType === "Morning" && coverageBoard.morning.length > 0) {
       coverageBoard.morning.forEach((row, idx) => {
         const cell = row[dayIdx];
-        if (cell && !cell.covered) out.push({ type: "uncovered", text: `${coverageBoard.modelNames[idx]} is uncovered for Morning on ${day}` });
+        if (cell && coverageCellIsUncovered(cell)) out.push({ type: "uncovered", text: `${coverageBoard.modelNames[idx]} is uncovered for Morning on ${day}` });
       });
     }
     if (shiftType === "Night" && coverageBoard.night.length > 0) {
       coverageBoard.night.forEach((row, idx) => {
         const cell = row[dayIdx];
-        if (cell && !cell.covered) out.push({ type: "uncovered", text: `${coverageBoard.modelNames[idx]} is uncovered for Night on ${day}` });
+        if (cell && coverageCellIsUncovered(cell)) out.push({ type: "uncovered", text: `${coverageBoard.modelNames[idx]} is uncovered for Night on ${day}` });
       });
     }
     selectedModelIds.forEach((mid) => {
@@ -1006,7 +1896,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       for (const p of otherPrograms) {
         if (!p.start_time || !p.end_time) continue;
         if (!p.model_ids.includes(m.id)) continue;
-        if (!rangesOverlap(p.start_time, p.end_time, window.startIso, window.endIso)) continue;
+        if (!intervalsStrictOverlap(p.start_time, p.end_time, window.startIso, window.endIso)) continue;
         result[m.id] = { taken: true, takenBy: p.chatter_name ?? "—" };
         break;
       }
@@ -1082,59 +1972,11 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         return;
       }
     }
-    if (selectedModelIds.size > 10) {
-      setShowTooManyModelsConfirm(true);
-      return;
-    }
     await performSave();
   };
 
   const title = isEdit ? "Edit scheduled shift" : "Create scheduled shift";
   const subtitle = "Chatter, day, shift type, and assign models.";
-
-  const tooManyModelsDialog = showTooManyModelsConfirm ? (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="too-many-models-title">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden onClick={() => setShowTooManyModelsConfirm(false)} />
-      <div
-        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-black/95 shadow-2xl shadow-black/50 backdrop-blur-xl px-6 py-5"
-        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.12)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start gap-4">
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400" aria-hidden>
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-          </span>
-          <div className="min-w-0 flex-1">
-            <h2 id="too-many-models-title" className="text-lg font-semibold tracking-tight text-white">Too many models assigned</h2>
-            <p className="mt-2 text-sm text-white/70">
-              This chatter currently has more than 10 models assigned in this shift. Managing too many models may reduce performance.
-            </p>
-            <p className="mt-1 text-sm text-white/60">Is this okay?</p>
-            <div className="mt-5 flex gap-3">
-              <button
-                type="button"
-                onClick={() => setShowTooManyModelsConfirm(false)}
-                className="rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setShowTooManyModelsConfirm(false);
-                  await performSave();
-                }}
-                disabled={saving}
-                className="rounded-xl border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/20 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/30 transition-colors disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Yes, continue"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  ) : null;
 
   const formContent = (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
@@ -1176,55 +2018,59 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         )}
         <div>
           <Label>Chatter</Label>
-          <Select required value={chatterId} onChange={(e) => setChatterId(e.target.value)} className="mt-1 w-full">
-            <option value="">Select chatter</option>
-            {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </Select>
+          <CustomSelect
+            required
+            value={chatterId}
+            onChange={setChatterId}
+            options={chatterFormSelectOptions}
+            className="mt-1 w-full"
+          />
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <Label>Day</Label>
-            <Select required value={day} onChange={(e) => setDay(e.target.value as WeeklyProgramDay)} className="mt-1 w-full">
-              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </Select>
+            <CustomSelect
+              required
+              value={day}
+              onChange={(v) => setDay(v as WeeklyProgramDay)}
+              options={dayFormSelectOptions}
+              className="mt-1 w-full"
+            />
           </div>
           <div>
             <Label>Shift type</Label>
-            <Select required value={shiftType} onChange={(e) => { setShiftType(e.target.value as WeeklyProgramShiftType); setCustomTimeError(null); }} className="mt-1 w-full">
-              <option value="Morning">Morning (12:00–20:00)</option>
-              <option value="Night">Night (20:00–03:00)</option>
-              <option value="Custom">Custom</option>
-            </Select>
+            <CustomSelect
+              required
+              value={shiftType}
+              onChange={(v) => {
+                setShiftType(v as WeeklyProgramShiftType);
+                setCustomTimeError(null);
+              }}
+              options={shiftTypeFormSelectOptions}
+              className="mt-1 w-full"
+            />
           </div>
         </div>
         <div
-          className={`grid grid-cols-2 gap-3 overflow-hidden transition-all duration-300 ease-out ${
-            shiftType === "Custom" ? "max-h-32 opacity-100" : "max-h-0 opacity-0"
+          className={`grid grid-cols-1 gap-4 overflow-hidden transition-all duration-300 ease-out sm:grid-cols-2 ${
+            shiftType === "Custom" ? "max-h-[220px] opacity-100" : "max-h-0 opacity-0"
           }`}
           aria-hidden={shiftType !== "Custom"}
         >
-          <div>
-            <Label>Start time <span className="text-red-400">*</span></Label>
-            <input
-              type="time"
-              value={customStartTime}
-              onChange={(e) => { setCustomStartTime(e.target.value); setCustomTimeError(null); }}
-              className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white transition-colors focus:border-[hsl(330,80%,55%)]/60 focus:outline-none focus:ring-2 focus:ring-[hsl(330,80%,55%)]/20 focus:bg-white/[0.08] hover:border-white/15 [color-scheme:dark]"
-              required={shiftType === "Custom"}
-              aria-invalid={!!customTimeError}
-            />
-          </div>
-          <div>
-            <Label>End time <span className="text-red-400">*</span></Label>
-            <input
-              type="time"
-              value={customEndTime}
-              onChange={(e) => { setCustomEndTime(e.target.value); setCustomTimeError(null); }}
-              className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white transition-colors focus:border-[hsl(330,80%,55%)]/60 focus:outline-none focus:ring-2 focus:ring-[hsl(330,80%,55%)]/20 focus:bg-white/[0.08] hover:border-white/15 [color-scheme:dark]"
-              required={shiftType === "Custom"}
-              aria-invalid={!!customTimeError}
-            />
-          </div>
+          <CustomTime12hBlock
+            label="Start time"
+            required
+            value={customStartTime}
+            onChange={(v) => { setCustomStartTime(v); setCustomTimeError(null); }}
+            ariaInvalid={!!customTimeError}
+          />
+          <CustomTime12hBlock
+            label="End time"
+            required
+            value={customEndTime}
+            onChange={(v) => { setCustomEndTime(v); setCustomTimeError(null); }}
+            ariaInvalid={!!customTimeError}
+          />
         </div>
         {customTimeError && (
           <p className="text-sm text-rose-300/95">{customTimeError}</p>
@@ -1272,7 +2118,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
               </button>
             ))}
           </div>
-          <div className="mt-1.5 max-h-[40vh] overflow-y-auto rounded-lg border border-white/10 bg-white/[0.04] p-1.5 space-y-1 md:max-h-40">
+          <div className="mt-1.5 min-h-[300px] max-h-[400px] overflow-y-auto rounded-lg border border-white/10 bg-white/[0.04] p-1.5 space-y-1">
             {filteredModels.length === 0 ? (
               <p className="py-3 text-center text-sm text-white/50">No models match</p>
             ) : (
@@ -1284,7 +2130,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
                 return (
                   <div
                     key={m.id}
-                    className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-2 transition-colors ${
+                    className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-3 transition-colors ${
                       isTaken ? "bg-white/[0.02] opacity-75" : "hover:bg-white/[0.06]"
                     } ${isTaken ? "cursor-not-allowed" : ""}`}
                   >
@@ -1293,18 +2139,24 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
                         checked={selectedModelIds.has(m.id)}
                         onChange={() => toggleModel(m.id)}
                         label=""
-                        className="shrink-0"
+                        className="shrink-0 [&_input]:h-5 [&_input]:w-5 [&_input]:min-h-0"
                         disabled={isTaken}
                       />
                       <div className="min-w-0">
                         <p className={`font-medium truncate ${isTaken ? "text-white/60" : "text-white/95"}`}>
                           {m.model_name}
                         </p>
-                        <p className="mt-0.5 text-xs">
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs">
                           {isTaken ? (
-                            <span className="text-amber-400/90">Taken by {availability.takenBy}</span>
+                            <span className="inline-flex items-center gap-1.5 text-amber-400/90">
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 animate-pulse" aria-hidden />
+                              Taken by {availability.takenBy}
+                            </span>
                           ) : (
-                            <span className="text-emerald-400/90">Free</span>
+                            <span className="inline-flex items-center gap-1.5 text-emerald-400/90">
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                              Free
+                            </span>
                           )}
                         </p>
                       </div>
@@ -1340,7 +2192,6 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   if (asPanel) {
     return (
       <>
-        {tooManyModelsDialog}
         <div
           className="relative flex min-h-0 w-full flex-col rounded-none border-0 bg-black/95 shadow-2xl md:rounded-2xl md:border md:border-white/10 md:shadow-black/50 md:backdrop-blur-xl"
           style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}
@@ -1363,8 +2214,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
 
   return (
     <>
-      {tooManyModelsDialog}
-      <GlassModal onClose={onClose} title={title} subtitle={subtitle}>
+      <GlassModal onClose={onClose} title={title} subtitle={subtitle} className="md:max-w-4xl">
         {formContent}
       </GlassModal>
     </>

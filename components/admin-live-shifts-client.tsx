@@ -1,11 +1,22 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { Send, RefreshCw } from "lucide-react";
 import { formatDateTimeEuropean } from "@/lib/format";
 import type { Shift } from "@/types";
 import { LiveTimer } from "@/components/live-timer";
 
 export type LiveShiftWithModels = Shift & { modelNames: string[] };
+
+const CHATTER_TELEGRAM: Record<string, string> = {
+  "Hlias Zarifes": "elias_drag",
+  "Edgar": "Edgar200055",
+  "Giannis Katsikas": "giannhskts",
+  "Apostolis": "apo_dl",
+  "Anastasis Haroupas": "Anastasiss99",
+};
 
 const MAX_BREAK_MINUTES = 45;
 const cardShadow = "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.08)";
@@ -46,12 +57,20 @@ function BreakUsedLive({
 }
 
 /** Uses the same real-time shift state as the actual shift page: status from record + break_started_at. */
-function ShiftCard({ shift, subtitle }: { shift: LiveShiftWithModels; subtitle?: string }) {
+function ShiftCard({ shift, subtitle, index = 0 }: { shift: LiveShiftWithModels; subtitle?: string; index?: number }) {
   const isOnBreak = shift.status === "on_break" || Boolean(shift.break_started_at);
   const hasBreakStart = Boolean(shift.break_started_at);
+  const running = !isOnBreak;
+  const chatterName = shift.chatter_name || "—";
+  const telegramUsername =
+    chatterName !== "—" ? CHATTER_TELEGRAM[chatterName] : undefined;
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+      whileHover={{ scale: 1.01 }}
       className={`rounded-xl border p-5 transition ${
         isOnBreak
           ? "border-amber-500/30 bg-amber-500/[0.06] hover:bg-amber-500/[0.08]"
@@ -61,16 +80,27 @@ function ShiftCard({ shift, subtitle }: { shift: LiveShiftWithModels; subtitle?:
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <p className="text-lg font-semibold tracking-tight text-white">
-            {shift.chatter_name || "—"}
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-lg font-semibold tracking-tight text-white">{chatterName}</span>
+            {telegramUsername && (
+              <a
+                href={`tg://resolve?domain=${telegramUsername}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-white/15 bg-gradient-to-r from-rose-600 via-pink-600 to-pink-500 px-2.5 py-1 text-xs font-medium text-white shadow-[0_2px_12px_-2px_rgba(236,72,153,0.45)] transition-opacity hover:opacity-90"
+              >
+                <Send className="h-3 w-3 shrink-0 opacity-95" aria-hidden />
+                <span>Message</span>
+              </a>
+            )}
+          </div>
           {subtitle && <p className="mt-0.5 text-xs text-white/45 uppercase tracking-wider">{subtitle}</p>}
           <p className="mt-1 text-xs text-white/50">
             Started {shift.start_time ? formatDateTimeEuropean(shift.start_time) : "—"}
           </p>
         </div>
         <span
-          className={`shrink-0 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${
+          className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${
             isOnBreak
               ? "border-amber-500/50 bg-amber-500/25 text-amber-200"
               : "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
@@ -81,6 +111,10 @@ function ShiftCard({ shift, subtitle }: { shift: LiveShiftWithModels; subtitle?:
               : { boxShadow: "0 0 12px -2px rgba(16,185,129,0.3)" }
           }
         >
+          <span
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-pulse"}`}
+            aria-hidden
+          />
           {isOnBreak ? "ON BREAK" : "ACTIVE"}
         </span>
       </div>
@@ -119,7 +153,7 @@ function ShiftCard({ shift, subtitle }: { shift: LiveShiftWithModels; subtitle?:
       ) : (
         <p className="mt-4 text-sm text-white/45">No models assigned</p>
       )}
-    </div>
+    </motion.div>
   );
 }
 
@@ -149,6 +183,14 @@ type Props = {
 };
 
 export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
+  const router = useRouter();
+  const [refreshing, setRefreshing] = React.useState(false);
+  const handleRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    router.refresh();
+    setTimeout(() => setRefreshing(false), 1000);
+  }, [router]);
+
   const chatterShifts = shiftsWithModels.filter((s) => s.staff_role === "chatter");
   const vaShifts = shiftsWithModels.filter((s) => s.staff_role === "virtual_assistant");
   const totalShifts = shiftsWithModels.length;
@@ -164,9 +206,21 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
         className="rounded-2xl border border-white/10 bg-black/40 px-6 py-5 backdrop-blur-xl"
         style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 48px -12px hsl(330 80% 55% / 0.1)" }}
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Operations</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Live shifts</h1>
-        <p className="mt-1 text-white/60">Real-time visibility. Chatter and VA shifts.</p>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Operations</p>
+            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Live shifts</h1>
+            <p className="mt-1 text-white/60">Real-time visibility. Chatter and VA shifts.</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleRefresh}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+            <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats row */}
@@ -190,7 +244,7 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
             {chatterShifts.length === 0 ? (
               <EmptyState message="No live chatter shifts" sub="Shifts will appear here when chatters are live" />
             ) : (
-              chatterShifts.map((s) => <ShiftCard key={s.id} shift={s} />)
+              chatterShifts.map((s, i) => <ShiftCard key={s.id} shift={s} index={i} />)
             )}
           </div>
         </div>
@@ -206,7 +260,7 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
             {vaShifts.length === 0 ? (
               <EmptyState message="No live VA shifts" sub="VA shifts will appear here when active" />
             ) : (
-              vaShifts.map((s) => <ShiftCard key={s.id} shift={s} subtitle="Mistake check" />)
+              vaShifts.map((s, i) => <ShiftCard key={s.id} shift={s} subtitle="Mistake check" index={i} />)
             )}
           </div>
         </div>

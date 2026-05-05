@@ -9,11 +9,14 @@ export const metadata: Metadata = {
     apple: "/icons/icon.svg",
   },
   appleWebApp: {
-    capable: true,
     statusBarStyle: "black-translucent",
     title: "Chatter",
   },
   manifest: "/manifest",
+  other: {
+    "mobile-web-app-capable": "yes",
+    "apple-mobile-web-app-capable": "yes",
+  },
 };
 
 export const viewport: Viewport = {

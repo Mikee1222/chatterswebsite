@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getNotificationUserId } from "@/lib/notification-user";
+
+const AUTH_DEBUG = "[auth-debug]";
 import {
   createPushSubscription,
   findSubscriptionByUserAndEndpoint,
@@ -18,6 +21,22 @@ export async function POST(request: Request) {
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const userId = getNotificationUserId(user);
+  const session = user;
+  console.log("[push-subscribe-debug]", {
+    session_user_id: (session as { userId?: string }).userId ?? session.id,
+    airtable_user_id: session.airtableUserId,
+    notification_user_id: getNotificationUserId(session),
+  });
+  console.log(AUTH_DEBUG, "push-subscribe", JSON.stringify({
+    resolved_session_user_id: user.id,
+    resolved_airtable_user_id: user.airtableUserId ?? null,
+    user_id_used_when_saving_push_subscriptions: userId ?? null,
+    route: "api/push/subscribe",
+  }));
+  if (userId == null) {
+    return NextResponse.json({ error: "No valid user id for push subscriptions" }, { status: 401 });
+  }
 
   let body: SubscribeBody;
   try {
@@ -33,8 +52,6 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-
-  const userId = user.airtableUserId ?? user.id;
 
   try {
     const existing = await findSubscriptionByUserAndEndpoint(userId, endpoint);

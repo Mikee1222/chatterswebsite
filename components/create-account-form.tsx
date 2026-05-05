@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
 import { createAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
@@ -8,18 +9,25 @@ import {
   Label,
   Input,
   Textarea,
-  Select,
   Checkbox,
   FormActions,
   SubmitButton,
   btnSecondaryClass,
   formSpace,
-  selectOptionClass,
 } from "@/components/ui/form";
+import { CustomSelect } from "@/components/ui/custom-select";
 
-const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant"];
+const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
 
-export function CreateAccountForm() {
+type Props = {
+  modelOptions?: { id: string; model_name: string }[];
+};
+
+export function CreateAccountForm({ modelOptions = [] }: Props) {
+  const [role, setRole] = React.useState<UserRole>("chatter");
+  const [linkedModelId, setLinkedModelId] = React.useState("");
+  const [languagePreference, setLanguagePreference] = React.useState("en");
+
   return (
     <form action={createAccount} className={formSpace}>
       <div>
@@ -32,14 +40,44 @@ export function CreateAccountForm() {
       </div>
       <div>
         <Label htmlFor="role">Role</Label>
-        <Select id="role" name="role">
-          {ROLES.map((r) => (
-            <option key={r} value={r} className={selectOptionClass}>
-              {r.replace("_", " ")}
-            </option>
-          ))}
-        </Select>
+        <CustomSelect
+          id="role"
+          name="role"
+          value={role}
+          onChange={(v) => setRole(v as UserRole)}
+          options={ROLES.map((r) => ({ value: r, label: r.replace("_", " ") }))}
+        />
       </div>
+      {role === "model" && (
+        <>
+          <div>
+            <Label htmlFor="linked_model_id">Linked model</Label>
+            <CustomSelect
+              id="linked_model_id"
+              name="linked_model_id"
+              value={linkedModelId}
+              onChange={setLinkedModelId}
+              options={[
+                { value: "", label: "Select model" },
+                ...modelOptions.map((m) => ({ value: m.id, label: m.model_name })),
+              ]}
+            />
+          </div>
+          <div>
+            <Label htmlFor="language_preference">Language</Label>
+            <CustomSelect
+              id="language_preference"
+              name="language_preference"
+              value={languagePreference}
+              onChange={setLanguagePreference}
+              options={[
+                { value: "en", label: "English" },
+                { value: "es", label: "Spanish" },
+              ]}
+            />
+          </div>
+        </>
+      )}
       <div>
         <Label htmlFor="password">Password (min 8 characters)</Label>
         <Input

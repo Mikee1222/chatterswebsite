@@ -1,20 +1,44 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
   "name": "chatterswebsite",
-  "compatibility_date": "2024-12-30",
-  "compatibility_flags": [
-    "nodejs_compat",
-    "global_fetch_strictly_public"
-  ],
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-05-05",
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
-  "services": [
+  "observability": {
+    "enabled": true
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "vars": {
+    "ADMIN_AIRTABLE_USER_IDS": "recA62rgP2WK9Jbp2,rec71mX8kFyxMDMwY",
+    "AIRTABLE_BASE_ID": "appfCUBei2fna7I1u",
+    "AIRTABLE_TOKEN": "",
+    "DEMO_LOGIN_EMAIL": "mikee.kara@gmail.com",
+    "DEMO_LOGIN_ROLE": "admin",
+    "INFLOWW_AGENCY_OID": "1082871397744702",
+    "INFLOWW_API_KEY": "",
+    "NEXT_PUBLIC_APP_URL": "https://gunzoteam.com",
+    "NEXT_PUBLIC_REALTIME_WS_URL": "",
+    "VAPID_PUBLIC_KEY": "BDiZxYcEe5WSJsV8FHeYca6adpb6K1CYPB6wBrrSYN3wLL6t_LkGev0IP0-C8A4pgrNWCGEAktTOUCU0_w5M63w"
+  },
+  "routes": [
     {
-      "binding": "WORKER_SELF_REFERENCE",
-      "service": "chatterswebsite"
+      "pattern": "gunzoteam.com/*",
+      "zone_name": "gunzoteam.com"
+    }
+  ],
+  "migrations": [
+    {
+      "tag": "migrate-realtimehub-local-seed",
+      "new_classes": ["RealtimeHub"]
+    },
+    {
+      "tag": "v1",
+      "deleted_classes": ["RealtimeHub"]
     }
   ]
 }

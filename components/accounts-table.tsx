@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { AnimatePresence, motion } from "framer-motion";
 import type { UserRecord } from "@/types";
 import { toggleCanLogin, deleteUserAction } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
@@ -24,9 +25,27 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
   return (
     <>
       {/* Delete confirmation modal */}
-      {deleteConfirmId != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-user-title">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f0f0f] p-6 shadow-xl" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06)" }}>
+      <AnimatePresence>
+        {deleteConfirmId != null && (
+          <motion.div
+            key="delete-user-dialog"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-user-title"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.1, ease: "easeOut" }}
+          >
+            <motion.div
+              className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f0f0f] p-6 shadow-xl"
+              style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06)" }}
+              initial={{ opacity: 0, scale: 0.96 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.1, ease: "easeIn" } }}
+              transition={{ duration: 0.15, ease: "easeOut" }}
+            >
             <h2 id="delete-user-title" className="text-lg font-semibold text-white">Delete user?</h2>
             <p className="mt-2 text-sm text-white/70">This action cannot be undone.</p>
             <div className="mt-6 flex justify-end gap-3">
@@ -38,27 +57,34 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
               >
                 Cancel
               </button>
-              <button
+              <motion.button
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={deletingId !== null}
+                whileTap={{ scale: 0.97 }}
+                transition={{ duration: 0.12 }}
                 className="rounded-xl bg-red-600/90 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
               >
                 {deletingId ? "Deleting…" : "Delete"}
-              </button>
+              </motion.button>
             </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Mobile: stacked cards */}
       <div className="space-y-4 md:hidden">
         {users.length === 0 ? (
           <p className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-white/50">No users yet. Create one below.</p>
         ) : (
-          users.map((u) => (
-            <div
+          users.map((u, index) => (
+            <motion.div
               key={u.id}
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+              whileHover={{ scale: 1.01 }}
               className="rounded-2xl border border-white/10 bg-white/[0.06] p-4"
               style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
             >
@@ -95,7 +121,7 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
                   Delete
                 </button>
               </div>
-            </div>
+            </motion.div>
           ))
         )}
       </div>
@@ -121,8 +147,14 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
                 </td>
               </tr>
             ) : (
-              users.map((u) => (
-                <tr key={u.id} className="border-b border-white/5 hover:bg-white/5">
+              users.map((u, index) => (
+                <motion.tr
+                  key={u.id}
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+                  className="border-b border-white/5 hover:bg-white/5"
+                >
                   <td className="p-3 font-medium text-white/90">{u.full_name}</td>
                   <td className="p-3 text-white/80">{u.email}</td>
                   <td className="p-3">
@@ -167,7 +199,7 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
                       </button>
                     </span>
                   </td>
-                </tr>
+                </motion.tr>
               ))
             )}
           </tbody>

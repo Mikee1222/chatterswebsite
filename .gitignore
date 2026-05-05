@@ -1,10 +1,12 @@
 # Dependencies
 node_modules/
+node_modules 2/
 
 # Build / output
 .next/
 .out/
 .open-next/
+.open-next-old/
 out/
 dist/
 build/
@@ -19,6 +21,7 @@ build/
 .env.development.local
 .env.test.local
 .env.production.local
+.env.save
 
 # Debug and tooling
 npm-debug.log*
@@ -47,5 +50,12 @@ Thumbs.db
 # TypeScript build info
 *.tsbuildinfo
 
+# Duplicate lockfile (e.g. macOS copy)
+package-lock 2.json
+
 # Optional: PWA / browser logs (if generated locally)
 .cache/
+
+.dev.vars*
+!.dev.vars.example
+!.env.example

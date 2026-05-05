@@ -1,3 +1,5 @@
+@import "../components/ui/luxury-forms.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -7,17 +9,46 @@
     --background: 0 0% 2%;
     --foreground: 0 0% 98%;
     --card: 0 0% 8%;
-    --primary: 330 80% 55%;
+    --primary: 330 88% 58%;
     --primary-foreground: 0 0% 100%;
     --muted: 0 0% 15%;
     --muted-foreground: 0 0% 65%;
     --border: 0 0% 18%;
-    --ring: 330 70% 55%;
+    --ring: 330 85% 62%;
     --glass: rgba(20, 20, 25, 0.65);
     --glass-border: rgba(255, 255, 255, 0.08);
     --glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-    --pink-glow: hsl(330 80% 55% / 0.25);
+    --pink-glow: hsl(330 88% 58% / 0.32);
     --bg-base: #050505;
+
+    /* Luxury form system (components/ui/form.tsx + luxury-forms.css) */
+    --luxury-form-control-bg: rgba(255, 255, 255, 0.05);
+    --luxury-form-control-bg-hover: rgba(255, 255, 255, 0.1);
+    --luxury-form-select-bg: #1a1a1a;
+    --luxury-form-border: rgba(255, 255, 255, 0.1);
+    --luxury-form-radius: 0.75rem;
+    --luxury-form-text: #ffffff;
+    --luxury-form-font-size: 15px;
+    --luxury-form-placeholder: rgba(255, 255, 255, 0.4);
+    --luxury-form-focus-border: #ec4899;
+    --luxury-form-focus-ring: rgba(236, 72, 153, 0.2);
+    --luxury-form-min-height: 48px;
+    --luxury-form-padding-x: 1rem;
+    --luxury-form-padding-y: 0.75rem;
+    --luxury-label-color: rgba(255, 255, 255, 0.6);
+    --luxury-label-size: 13px;
+    --luxury-label-tracking: 0.08em;
+    --luxury-primary: #e91e8c;
+    --luxury-primary-bright: #f472b6;
+    --luxury-primary-gradient: linear-gradient(135deg, #e91e8c 0%, #db2777 42%, #c026d3 100%);
+    --luxury-form-card-bg: rgba(255, 255, 255, 0.05);
+    --luxury-form-card-border: rgba(255, 255, 255, 0.1);
+    --luxury-form-card-radius: 1rem;
+    --luxury-form-card-padding: 24px;
+    --luxury-checkbox-size: 20px;
+    --luxury-checkbox-accent: #e91e8c;
+    --luxury-select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='rgba(255,255,255,0.55)'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+    --luxury-transition: 150ms ease;
   }
 
   * {
@@ -70,8 +101,8 @@
   height: 60vmax;
   background: radial-gradient(
     circle at 20% 20%,
-    rgba(236, 72, 153, 0.12),
-    rgba(200, 50, 130, 0.04) 35%,
+    rgba(244, 114, 182, 0.16),
+    rgba(192, 132, 252, 0.06) 38%,
     transparent 50%
   );
   pointer-events: none;
@@ -87,8 +118,8 @@
   height: 55vmax;
   background: radial-gradient(
     circle at 80% 80%,
-    rgba(236, 72, 153, 0.08),
-    rgba(200, 50, 130, 0.03) 40%,
+    rgba(236, 72, 153, 0.11),
+    rgba(167, 139, 250, 0.05) 42%,
     transparent 55%
   );
   pointer-events: none;
@@ -137,12 +168,12 @@
 
 /* Subtle pink glow for focus/active */
 .glow-pink {
-  box-shadow: 0 0 20px -5px hsl(330 80% 55% / 0.35);
+  box-shadow: 0 0 20px -5px hsl(330 88% 58% / 0.4);
 }
 
 /* Premium stat card */
 .stat-card {
-  @apply glass-card p-5 transition-all duration-200 hover:shadow-[0_0_24px_-4px_rgba(236,72,153,0.12)];
+  @apply glass-card p-4 transition-all duration-200 hover:shadow-[0_0_24px_-4px_rgba(236,72,153,0.12)] md:p-5;
 }
 .stat-card:hover {
   background: rgba(28, 28, 34, 0.72);
@@ -159,12 +190,196 @@
   --mobile-bottom-nav-height: 72px;
 }
 
-/* Main content: clear bottom nav + safe area on mobile; normal on desktop */
-.mobile-app-main {
-  padding-bottom: max(6rem, calc(5rem + env(safe-area-inset-bottom, 0px)));
+/* Mobile: bottom tab bar must stay visible — .dashboard-bg overflow:hidden can clip fixed descendants; keep nav above scrolling content */
+@media (max-width: 767px) {
+  .dashboard-bg {
+    overflow-x: hidden;
+    overflow-y: visible;
+  }
+  .dashboard-content nav.fixed.bottom-0.left-0.right-0 {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 95 !important;
+    transform: none !important;
+  }
 }
 @media (min-width: 768px) {
-  .mobile-app-main {
-    padding-bottom: 1.5rem;
+  /* Inline paddingBottom on dashboard <main> is reset here (!important beats non-important inline) */
+  main[data-main-content].mobile-app-main {
+    padding-bottom: 1.5rem !important;
   }
+}
+
+/* ========== Mobile main content: cards, type, buttons, spacing, accents ========== */
+@media (max-width: 767px) {
+  :root {
+    --mobile-section-gap: 24px;
+    --mobile-card-padding: 16px;
+  }
+
+  .mobile-app-main {
+    font-size: 15px;
+    line-height: 1.65;
+  }
+
+  /* Page titles → 24px */
+  .mobile-app-main h1.text-xl {
+    font-size: 1.5rem;
+    line-height: 1.25;
+    letter-spacing: -0.02em;
+  }
+
+  .mobile-app-main h1.text-2xl {
+    font-size: 1.625rem;
+    line-height: 1.2;
+  }
+
+  .mobile-app-main h2.text-lg {
+    font-size: 1.125rem;
+    line-height: 1.35;
+  }
+
+  /* Body copy: at least 15px where text-sm is used for paragraphs / list items */
+  .mobile-app-main p.text-sm,
+  .mobile-app-main li.text-sm {
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+
+  /* Section stacks: 24px between blocks when using space-y-4 */
+  .mobile-app-main .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1.5rem;
+  }
+
+  /* Slightly more air for default space-y-6 stacks */
+  .mobile-app-main .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 1.625rem;
+  }
+
+  /* Glass cards: at least 16px inner padding; slightly more for p-5/p-6 */
+  .mobile-app-main .glass-card.p-4 {
+    padding: var(--mobile-card-padding);
+  }
+
+  .mobile-app-main .glass-card.p-5 {
+    padding: 1.125rem;
+  }
+
+  .mobile-app-main .glass-card.p-6 {
+    padding: 1.25rem;
+  }
+
+  /* Primary-style action buttons (not bottom nav): tap + size */
+  .mobile-app-main button.min-h-\[48px\],
+  .mobile-app-main a.min-h-\[48px\] {
+    min-height: 48px;
+    border-radius: 0.75rem;
+  }
+
+  .mobile-app-main button[class*="rounded-2xl"]:not([class*="rounded-full"]),
+  .mobile-app-main a[class*="rounded-2xl"]:not([class*="rounded-full"]) {
+    border-radius: 0.75rem;
+  }
+
+  .mobile-app-main button.min-h-\[48px\]:active:not(:disabled),
+  .mobile-app-main button[type="submit"]:active:not(:disabled) {
+    transform: scale(0.98);
+  }
+
+  /* Status pills / badges: clearer on small screens */
+  .mobile-app-main span.inline-flex.items-center.rounded-full.text-xs,
+  .mobile-app-main span.shrink-0.rounded-full.text-xs {
+    font-size: 0.8125rem;
+    line-height: 1.3;
+    padding-left: 0.625rem;
+    padding-right: 0.625rem;
+    padding-top: 0.3125rem;
+    padding-bottom: 0.3125rem;
+  }
+
+  .mobile-app-main span.rounded-full.border.px-3.py-1.text-xs {
+    font-size: 0.8125rem;
+    box-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+  }
+
+  /* Secondary text hierarchy: keep labels readable */
+  .mobile-app-main .text-white\/60 {
+    color: rgb(255 255 255 / 0.72);
+  }
+
+  .mobile-app-main .text-white\/50 {
+    color: rgb(255 255 255 / 0.62);
+  }
+}
+
+/* Login: background motion */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateY(-20px);
+    opacity: 0.6;
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float-slow {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  33% {
+    transform: translate(80px, -80px) scale(1.2);
+  }
+  66% {
+    transform: translate(-60px, 60px) scale(0.85);
+  }
+}
+
+@keyframes float-particle {
+  0% {
+    transform: translateY(0px) translateX(0px) scale(0);
+    opacity: 0;
+  }
+  5% {
+    opacity: 0.7;
+    transform: translateY(0px) translateX(0px) scale(1);
+  }
+  95% {
+    opacity: 0.7;
+    transform: translateY(-110vh) translateX(36px) scale(1);
+  }
+  100% {
+    transform: translateY(-120vh) translateX(40px) scale(0);
+    opacity: 0;
+  }
+}
+
+.animate-float-slow {
+  animation: float-slow ease-in-out infinite;
+}
+
+.animate-float-particle {
+  animation: float-particle linear infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.animate-shimmer {
+  animation: shimmer 2s infinite;
 }

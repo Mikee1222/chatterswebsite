@@ -17,8 +17,12 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return isAdmin ? ROUTES.admin.liveShifts : ROUTES.chatter.shift;
     case "task_shift":
       return ROUTES.va.liveShifts;
+    case "va_task":
+      return ROUTES.va.tasks;
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
+    case "model_live_stream":
+      return isAdmin ? ROUTES.admin.modelLiveStreams : ROUTES.model.liveStreams;
     case "custom_request":
       return isAdmin ? ROUTES.admin.customs : ROUTES.chatter.requestCustom;
     case "system":
@@ -40,8 +44,12 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.liveShifts : ROUTES.chatter.shift;
     case "task_shift":
       return ROUTES.va.liveShifts;
+    case "va_task":
+      return ROUTES.va.tasks;
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
+    case "model_live_stream":
+      return isAdmin ? ROUTES.admin.modelLiveStreams : ROUTES.model.liveStreams;
     case "custom_request":
       return isAdmin ? ROUTES.admin.customs : ROUTES.chatter.requestCustom;
     case "system":
@@ -59,32 +67,106 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "shift_ended":
     case "break_started":
     case "break_ended":
+    case "shift_late":
+    case "shift_starting_soon":
+    case "shift_no_show":
+    case "shift_overtime":
+    case "shift_running_long":
+    case "chatter_no_models":
+    case "break_exceeded":
+    case "break_too_long":
       return "Shift";
+    case "whale_registered":
+    case "whale_assigned":
     case "whale_session_submitted":
     case "whale_spent":
     case "whale_followup":
       return "Whale";
     case "custom_request_submitted":
+    case "custom_request_created":
+    case "custom_request_updated":
     case "custom_status_changed":
+    case "custom_approved":
+    case "custom_rejected":
+    case "custom_scheduled":
+    case "custom_deadline_approaching":
+    case "custom_overdue":
       return "Custom";
     case "task_started":
     case "task_finished":
+    case "task_shift_started":
+    case "task_shift_ended":
+    case "task_completed":
+    case "task_overdue":
+    case "tasks_not_started":
+    case "va_task_reminder":
+    case "model_content_completed":
       return "Task";
     case "model_became_free":
     case "model_taken":
+    case "model_live_started":
+    case "model_live_ended":
+    case "model_live_scheduled":
+    case "model_missed_live":
       return "Model";
+    case "form_submitted":
+    case "schedule_updated":
+    case "weekly_availability_friday_reminder":
+    case "availability_submitted":
+      return "Form";
+    case "user_created":
+    case "role_changed":
+    case "account_deleted":
+    case "account_update":
+    case "daily_summary":
+      return "System";
     default:
       return "Alert";
   }
 }
 
-/** Admin operational-priority events: highlight more strongly. */
+/** Admin operational-priority events: highlight in Important filter. */
 export function isAdminPriorityEvent(eventType: AppNotification["event_type"]): boolean {
   return (
     eventType === "whale_session_submitted" ||
+    eventType === "whale_registered" ||
+    eventType === "whale_assigned" ||
     eventType === "custom_request_submitted" ||
+    eventType === "custom_request_created" ||
+    eventType === "custom_request_updated" ||
+    eventType === "custom_approved" ||
+    eventType === "custom_rejected" ||
+    eventType === "custom_deadline_approaching" ||
+    eventType === "custom_overdue" ||
     eventType === "break_started" ||
+    eventType === "break_ended" ||
+    eventType === "break_exceeded" ||
+    eventType === "break_too_long" ||
     eventType === "shift_started" ||
-    eventType === "shift_ended"
+    eventType === "shift_ended" ||
+    eventType === "shift_late" ||
+    eventType === "shift_starting_soon" ||
+    eventType === "shift_no_show" ||
+    eventType === "shift_overtime" ||
+    eventType === "shift_running_long" ||
+    eventType === "chatter_no_models" ||
+    eventType === "task_started" ||
+    eventType === "task_finished" ||
+    eventType === "task_shift_started" ||
+    eventType === "task_shift_ended" ||
+    eventType === "task_completed" ||
+    eventType === "task_overdue" ||
+    eventType === "tasks_not_started" ||
+    eventType === "model_live_started" ||
+    eventType === "model_live_ended" ||
+    eventType === "model_live_scheduled" ||
+    eventType === "model_missed_live" ||
+    eventType === "model_content_completed" ||
+    eventType === "form_submitted" ||
+    eventType === "schedule_updated" ||
+    eventType === "availability_submitted" ||
+    eventType === "user_created" ||
+    eventType === "role_changed" ||
+    eventType === "account_deleted"
   );
 }

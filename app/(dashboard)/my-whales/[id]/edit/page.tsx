@@ -7,19 +7,19 @@ import { EditWhaleForm } from "@/components/edit-whale-form";
 export default async function EditWhalePage({
   params,
 }: {
-  params: Promise<{ id: string }>;
+  params: { id: string };
 }) {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
 
-  const { id } = await params;
+  const { id } = params;
   const whale = await getWhaleById(id);
   if (!whale || whale.assigned_chatter_id !== (user.airtableUserId ?? user.id)) notFound();
 
   return (
-    <div className="max-w-lg space-y-6">
+    <div className="mx-auto max-w-lg space-y-4 md:space-y-6">
       <h1 className="text-xl font-semibold text-white">Edit whale</h1>
-      <div className="glass-card p-6">
+      <div className="glass-card max-md:overflow-visible max-md:p-4 md:p-6">
         <EditWhaleForm whale={whale} />
       </div>
     </div>

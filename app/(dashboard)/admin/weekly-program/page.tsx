@@ -1,7 +1,8 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel } from "@/lib/weekly-program";
+import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel, addDays } from "@/lib/weekly-program";
+import { getPeriodDatesByModelForWeek } from "@/services/model-periods";
 import { adminWeeklyProgramUrl } from "@/lib/routes";
 import { getProgramsForWeek } from "@/services/weekly-program";
 import { getRequestsForWeek } from "@/services/weekly-availability-requests";
@@ -16,13 +17,12 @@ import type { ModelRecord } from "@/types";
 export default async function AdminWeeklyProgramPage({
   searchParams,
 }: {
-  searchParams: Promise<{ week_start?: string }>;
+  searchParams: { week_start?: string };
 }) {
   const user = await getSessionFromCookies();
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
-  const params = await searchParams;
-  const rawWeek = params.week_start?.trim();
+  const rawWeek = searchParams.week_start?.trim();
   const weekStart = normalizeWeekStart(rawWeek || getThisWeekMonday());
   if (rawWeek && rawWeek !== weekStart) redirect(adminWeeklyProgramUrl(weekStart));
 
@@ -37,7 +37,7 @@ export default async function AdminWeeklyProgramPage({
     console.log("[admin weekly-program page] loader", {
       selected_week_start: weekStart,
       displayed_week_label: formatWeekLabel(weekStart),
-      source: params.week_start?.trim() ? "url" : "default_current_week",
+      source: searchParams.week_start?.trim() ? "url" : "default_current_week",
       fetched_records_count: programs.length,
       weekly_availability_requests_count: availabilityRequests.length,
       fetched_record_ids: programs.map((p) => p.id),
@@ -65,6 +65,12 @@ export default async function AdminWeeklyProgramPage({
   );
   const lastAssignmentMap = await getLastAssignmentBatch(uniquePairs).catch(() => ({}));
 
+  const weekEnd = addDays(weekStart, 6);
+  const periodModelIds = modelss.map((m) => m.id);
+  const periodDatesByModelId = await getPeriodDatesByModelForWeek(periodModelIds, weekStart, weekEnd).catch(
+    () => ({}) as Record<string, string[]>
+  );
+
   return (
     <AdminWeeklyProgramClient
       programs={programs as WeeklyProgramRecord[]}
@@ -78,6 +84,7 @@ export default async function AdminWeeklyProgramPage({
       lastAssignmentMap={lastAssignmentMap ?? {}}
       suggestionsByKey={{}}
       availabilityRequests={Array.isArray(availabilityRequests) ? availabilityRequests : []}
+      periodDatesByModelId={periodDatesByModelId}
     />
   );
 }

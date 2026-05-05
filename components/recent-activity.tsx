@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import { formatDateTimeEuropean } from "@/lib/format";
 import type { ActivityLog } from "@/types";
 
@@ -7,13 +10,19 @@ export function RecentActivity({ logs }: { logs: ActivityLog[] }) {
   }
   return (
     <ul className="space-y-2">
-      {logs.map((log) => (
-        <li key={log.id} className="rounded-lg bg-white/5 px-3 py-2 text-sm">
+      {logs.map((log, index) => (
+        <motion.li
+          key={log.id}
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+          className="rounded-lg bg-white/5 px-3 py-2 text-sm"
+        >
           <span className="font-medium text-white/90">{log.actor_name}</span>
           <span className="text-white/60"> {log.action_type}</span>
           {log.summary && <span className="text-white/50"> — {log.summary}</span>}
           <span className="ml-2 text-xs text-white/40">{formatTime(log.created_at)}</span>
-        </li>
+        </motion.li>
       ))}
     </ul>
   );

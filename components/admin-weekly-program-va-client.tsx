@@ -3,13 +3,16 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { AnimatePresence, motion } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import {
   createProgramVaAction,
   updateProgramVaAction,
   deleteProgramVaAction,
 } from "@/app/actions/weekly-program-va";
 import { formatTimeEuropean, formatDateEuropean, formatDateTimeEuropean, formatTimeFromISO, isoToEuropeanDisplay, parseEuropeanDateInput } from "@/lib/format";
-import { GlassModal, Input, Label, Select, Textarea, Checkbox, SubmitButton, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { GlassModal, Input, Label, Textarea, Checkbox, SubmitButton, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { CustomSelect, CUSTOM_SELECT_HOUR_12_OPTIONS, type CustomSelectOption } from "@/components/ui/custom-select";
 import { adminWeeklyProgramUrl, adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { getTimesForShiftType, buildCustomShiftTimes, getThisWeekMonday, addDays, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
@@ -17,6 +20,7 @@ import type { ConflictSummary, CoverageBoard } from "@/lib/weekly-program-confli
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
 import type { WeeklyAvailabilityRequest } from "@/types";
+import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
@@ -43,6 +47,19 @@ const DAYS: WeeklyProgramDay[] = [
 
 const SHIFT_TYPES: WeeklyProgramShiftType[] = ["Morning", "Night"];
 
+const SHIFT_FILTER_OPTIONS: CustomSelectOption[] = [
+  { value: "", label: "All shifts" },
+  { value: "Morning", label: "Morning" },
+  { value: "Night", label: "Night" },
+];
+
+const AVAIL_SHIFT_TYPE_OPTIONS: CustomSelectOption[] = [
+  { value: "", label: "All types" },
+  { value: "Morning", label: "Morning" },
+  { value: "Night", label: "Night" },
+  { value: "Custom", label: "Custom" },
+];
+
 type Chatter = { id: string; full_name: string };
 
 function getModelNames(modelIds: string[], modelss: ModelRecord[]): string[] {
@@ -63,6 +80,7 @@ type Props = {
   lastAssignmentMap: Record<string, { date: string; dateTime: string; relative: string }>;
   suggestionsByKey?: Record<string, { type: string; text: string }[]>;
   availabilityRequests: WeeklyAvailabilityRequest[];
+  periodDatesByModelId: Record<string, string[]>;
 };
 
 function lastWithLabel(
@@ -74,6 +92,91 @@ function lastWithLabel(
   const info = lastAssignmentMap[`${chatterId}:${modelId}`];
   if (!info) return null;
   return `Last with ${modelName}: ${info.relative}`;
+}
+
+function isoTimeToHHmm(iso: string | undefined): string {
+  if (!iso || iso.length < 16) return "";
+  return iso.slice(11, 16);
+}
+
+function hhmm24To12Parts(hhmm: string): { h12: number; minute: number; pm: boolean } {
+  const [hs, ms] = hhmm.trim().split(":");
+  const h24 = Math.min(23, Math.max(0, parseInt(hs ?? "0", 10) || 0));
+  const minute = Math.min(59, Math.max(0, parseInt(ms ?? "0", 10) || 0));
+  const pm = h24 >= 12;
+  let h12 = h24 % 12;
+  if (h12 === 0) h12 = 12;
+  return { h12, minute, pm };
+}
+
+function hhmm12To24(h12: number, minute: number, pm: boolean): string {
+  const h = Math.min(12, Math.max(1, Math.round(h12)));
+  const m = Math.min(59, Math.max(0, Math.round(minute)));
+  let h24: number;
+  if (pm) h24 = h === 12 ? 12 : h + 12;
+  else h24 = h === 12 ? 0 : h;
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${pad(h24)}:${pad(m)}`;
+}
+
+function CustomTime12hBlock({
+  label,
+  required,
+  value,
+  onChange,
+  ariaInvalid,
+}: {
+  label: React.ReactNode;
+  required?: boolean;
+  value: string;
+  onChange: (next: string) => void;
+  ariaInvalid?: boolean;
+}) {
+  const { h12, minute, pm } = hhmm24To12Parts(value || "09:00");
+  const sync = (patch: Partial<{ h12: number; minute: number; pm: boolean }>) => {
+    const next = { h12, minute, pm, ...patch };
+    onChange(hhmm12To24(next.h12, next.minute, next.pm));
+  };
+  return (
+    <div>
+      <Label>
+        {label}
+        {required ? <span className="text-red-400"> *</span> : null}
+      </Label>
+      <div className="mt-1 flex flex-wrap items-center gap-2">
+        <CustomSelect
+          value={String(h12)}
+          onChange={(v) => sync({ h12: Number(v) })}
+          options={CUSTOM_SELECT_HOUR_12_OPTIONS}
+          className="w-[4.5rem] shrink-0"
+          aria-invalid={ariaInvalid}
+        />
+        <span className="text-white/50">:</span>
+        <Input
+          type="number"
+          min={0}
+          max={59}
+          inputMode="numeric"
+          value={minute}
+          onChange={(e) => {
+            const v = parseInt(e.target.value, 10);
+            sync({ minute: Number.isNaN(v) ? 0 : Math.min(59, Math.max(0, v)) });
+          }}
+          className="mt-0 w-[4.25rem] shrink-0 px-2 py-2 text-center text-[15px] md:min-h-0"
+          aria-invalid={ariaInvalid}
+        />
+        <button
+          type="button"
+          onClick={() => sync({ pm: !pm })}
+          className="min-h-[44px] min-w-[3.75rem] shrink-0 rounded-2xl border border-white/20 bg-white/[0.08] px-3 text-sm font-semibold text-white transition-colors hover:border-white/30 hover:bg-white/[0.12] md:min-h-[var(--luxury-form-min-height)]"
+          aria-pressed={pm}
+          aria-label={pm ? "Currently PM, switch to AM" : "Currently AM, switch to PM"}
+        >
+          {pm ? "PM" : "AM"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 export function AdminWeeklyProgramVaClient({
@@ -88,6 +191,7 @@ export function AdminWeeklyProgramVaClient({
   lastAssignmentMap,
   suggestionsByKey,
   availabilityRequests,
+  periodDatesByModelId,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -105,8 +209,16 @@ export function AdminWeeklyProgramVaClient({
   const [availFilterShiftType, setAvailFilterShiftType] = React.useState<WeeklyProgramShiftType | "">("");
   const [availFilterDay, setAvailFilterDay] = React.useState<WeeklyProgramDay | "">("");
   const [mobileHelperOpen, setMobileHelperOpen] = React.useState(false);
+  const [duplicateOpenDay, setDuplicateOpenDay] = React.useState<WeeklyProgramDay | null>(null);
+  const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
+  const [duplicateBusy, setDuplicateBusy] = React.useState(false);
 
   React.useEffect(() => setPrograms(initialPrograms), [initialPrograms]);
+
+  const modelIdToDisplayName = React.useMemo(
+    () => Object.fromEntries(modelss.map((m) => [m.id, m.model_name ?? m.id])),
+    [modelss]
+  );
 
   const effectiveWeekStart = normalizeWeekStart(searchParams.get("week_start") || currentWeekStart);
 
@@ -158,6 +270,32 @@ export function AdminWeeklyProgramVaClient({
       .filter((r) => r.chatter_id && !seen.has(r.chatter_id) && (seen.add(r.chatter_id), true))
       .map((r) => ({ id: r.chatter_id, full_name: r.chatter_name || "—" }));
   }, [availabilityRequests]);
+
+  const availChatterSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "All VAs" },
+      ...availabilityChatters.map((c) => ({ value: c.id, label: c.full_name })),
+    ],
+    [availabilityChatters]
+  );
+  const chatterFilterSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "All VAs" },
+      ...chatters.map((c) => ({ value: c.id, label: c.full_name })),
+    ],
+    [chatters]
+  );
+  const modelFilterSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "All models" },
+      ...modelss.map((m) => ({ value: m.id, label: m.model_name })),
+    ],
+    [modelss]
+  );
+  const dayFilterSelectOptions = React.useMemo(
+    () => [{ value: "", label: "All days" }, ...DAYS.map((d) => ({ value: d, label: d }))],
+    []
+  );
 
   const useRequestInSchedule = (request: WeeklyAvailabilityRequest) => {
     setPrefillFromAvailability(request);
@@ -279,6 +417,67 @@ export function AdminWeeklyProgramVaClient({
     router.refresh();
   };
 
+  const handleDuplicateDay = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
+    const week = effectiveWeekStart;
+    const sourceEntries = programs.filter(
+      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
+    );
+    const targetEntries = programs.filter(
+      (p) => p.day === targetDay && normalizeWeekStart(p.week_start) === week
+    );
+    if (sourceEntries.length === 0) {
+      setError("No shifts to copy on that day.");
+      return;
+    }
+    if (targetEntries.length > 0) {
+      const ok = window.confirm(
+        `${targetDay} already has ${targetEntries.length} shift(s). Replace them with copies from ${sourceDay}? Existing shifts on ${targetDay} will be removed.`
+      );
+      if (!ok) return;
+    }
+    setDuplicateBusy(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      for (const t of targetEntries) {
+        const del = await deleteProgramVaAction(t.id);
+        if (!del.success) {
+          setError(del.error);
+          setDuplicateBusy(false);
+          router.refresh();
+          return;
+        }
+      }
+      for (const e of sourceEntries) {
+        const res = await createProgramVaAction({
+          chatter: [e.chatter_id],
+          chatter_name: e.chatter_name,
+          models: e.model_ids,
+          day: targetDay,
+          shift_type: e.shift_type,
+          week_start: week,
+          notes: e.notes || "",
+          modelIdToName,
+          ...(e.shift_type === "Custom" && {
+            custom_start_time: isoTimeToHHmm(e.start_time),
+            custom_end_time: isoTimeToHHmm(e.end_time),
+          }),
+        });
+        if (!res.success) {
+          setError(res.error);
+          setDuplicateBusy(false);
+          router.refresh();
+          return;
+        }
+      }
+      setSuccess(`Copied ${sourceEntries.length} shift(s) from ${sourceDay} to ${targetDay}.`);
+      setDuplicateOpenDay(null);
+      router.refresh();
+    } finally {
+      setDuplicateBusy(false);
+    }
+  };
+
   return (
     <div className="flex flex-col xl:flex-row xl:gap-6 gap-6">
       <div className="min-w-0 flex-1 space-y-6">
@@ -358,20 +557,24 @@ export function AdminWeeklyProgramVaClient({
         {mobileHelperOpen && (
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-1 gap-2">
-              <Select value={availFilterChatter} onChange={(e) => setAvailFilterChatter(e.target.value)} className="min-h-[48px] text-sm">
-                <option value="">All VAs</option>
-                {availabilityChatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </Select>
-              <Select value={availFilterShiftType} onChange={(e) => setAvailFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="min-h-[48px] text-sm">
-                <option value="">All types</option>
-                <option value="Morning">Morning</option>
-                <option value="Night">Night</option>
-                <option value="Custom">Custom</option>
-              </Select>
-              <Select value={availFilterDay} onChange={(e) => setAvailFilterDay(e.target.value as WeeklyProgramDay | "")} className="min-h-[48px] text-sm">
-                <option value="">All days</option>
-                {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </Select>
+              <CustomSelect
+                value={availFilterChatter}
+                onChange={setAvailFilterChatter}
+                options={availChatterSelectOptions}
+                className="min-h-[48px] text-sm"
+              />
+              <CustomSelect
+                value={availFilterShiftType}
+                onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
+                options={AVAIL_SHIFT_TYPE_OPTIONS}
+                className="min-h-[48px] text-sm"
+              />
+              <CustomSelect
+                value={availFilterDay}
+                onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
+                options={dayFilterSelectOptions}
+                className="min-h-[48px] text-sm"
+              />
             </div>
             <div className="max-h-[320px] overflow-y-auto space-y-2">
               {filteredAvailabilityRequests.length === 0 ? (
@@ -389,6 +592,9 @@ export function AdminWeeklyProgramVaClient({
                           <p className="mt-0.5 text-xs text-white/60">
                             {r.day} · {r.entry_type === "day_off" ? "day off" : r.shift_type}{timeStr}
                           </p>
+                          {r.notes?.trim() ? (
+                            <p className="mt-1 text-sm text-white/50 italic">{r.notes.trim()}</p>
+                          ) : null}
                         </div>
                         <span className={`shrink-0 rounded px-2 py-0.5 text-xs font-medium ${
                           r.status === "submitted" ? "bg-amber-500/20 text-amber-300" :
@@ -433,19 +639,24 @@ export function AdminWeeklyProgramVaClient({
           <span className="ml-0 md:ml-2 text-sm font-medium text-white/80 w-full md:w-auto">Week of {formatWeekLabel(effectiveWeekStart)}</span>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <Select value={filterChatter} onChange={(e) => setFilterChatter(e.target.value)} className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0">
-            <option value="">All VAs</option>
-            {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </Select>
-          <Select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0">
-            <option value="">All models</option>
-            {modelss.map((m) => <option key={m.id} value={m.id}>{m.model_name}</option>)}
-          </Select>
-          <Select value={filterShiftType} onChange={(e) => setFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0">
-            <option value="">All shifts</option>
-            <option value="Morning">Morning</option>
-            <option value="Night">Night</option>
-          </Select>
+          <CustomSelect
+            value={filterChatter}
+            onChange={setFilterChatter}
+            options={chatterFilterSelectOptions}
+            className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0"
+          />
+          <CustomSelect
+            value={filterModel}
+            onChange={setFilterModel}
+            options={modelFilterSelectOptions}
+            className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0"
+          />
+          <CustomSelect
+            value={filterShiftType}
+            onChange={(v) => setFilterShiftType(v as WeeklyProgramShiftType | "")}
+            options={SHIFT_FILTER_OPTIONS}
+            className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0"
+          />
           <ButtonPrimary type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="w-full sm:w-auto">
             Create shift
           </ButtonPrimary>
@@ -532,21 +743,68 @@ export function AdminWeeklyProgramVaClient({
             const dateLabel = formatDateEuropean(dateYmd);
             return (
               <div key={day} className="glass-card overflow-hidden rounded-2xl border border-white/10">
-                <div className="border-b border-white/10 bg-black/40 px-4 py-3">
-                  <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
-                  <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
+                <div className="flex flex-wrap items-start justify-between gap-2 border-b border-white/10 bg-black/40 px-4 py-3">
+                  <div className="min-w-0">
+                    <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
+                    <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
+                  </div>
+                  {entries.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDuplicateOpenDay(duplicateOpenDay === day ? null : day);
+                        setDuplicateTargetDay(DAYS.find((d) => d !== day) ?? "Tuesday");
+                      }}
+                      className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
+                    >
+                      Duplicate
+                    </button>
+                  ) : null}
                 </div>
+                {duplicateOpenDay === day && entries.length > 0 ? (
+                  <div className="flex flex-wrap items-end gap-2 border-b border-white/10 bg-black/30 px-4 py-2">
+                    <div className="min-w-[140px] flex-1">
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Copy to</span>
+                      <CustomSelect
+                        value={duplicateTargetDay}
+                        onChange={(v) => setDuplicateTargetDay(v as WeeklyProgramDay)}
+                        options={DAYS.filter((d) => d !== day).map((d) => ({ value: d, label: d }))}
+                        className="mt-1 w-full text-sm"
+                        disabled={duplicateBusy}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      disabled={duplicateBusy || duplicateTargetDay === day}
+                      onClick={() => handleDuplicateDay(day, duplicateTargetDay)}
+                      className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-3 py-2 text-xs font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25 disabled:opacity-50"
+                    >
+                      {duplicateBusy ? "…" : "Copy"}
+                    </button>
+                  </div>
+                ) : null}
                 <div className="p-4 space-y-3">
                   {entries.length === 0 ? (
                     <p className="py-4 text-center text-sm text-white/45">No shifts</p>
                   ) : (
                     entries.map((e) => {
-                      const names = getModelNames(e.model_ids, modelss);
                       const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
                       return (
                         <div key={e.id} className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
                           <p className="text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
-                          <p className="mt-1 text-sm text-white/70">Models: {names.length ? names.join(", ") : "—"}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
+                            <span className="text-white/50">Models:</span>
+                            {e.model_ids.length ? (
+                              <ModelPeriodNamesRow
+                                modelIds={e.model_ids}
+                                idToName={modelIdToDisplayName}
+                                dateYmd={dateYmd}
+                                periodDatesByModelId={periodDatesByModelId}
+                              />
+                            ) : (
+                              <span>—</span>
+                            )}
+                          </div>
                           {e.chatter_name && <p className="mt-0.5 text-xs text-white/50">{e.chatter_name}</p>}
                         </div>
                       );
@@ -570,9 +828,45 @@ export function AdminWeeklyProgramVaClient({
               const dateLabel = formatDateEuropean(dateYmd);
               return (
                 <div key={day} className="glass-card overflow-hidden flex flex-col w-[280px] min-w-[280px] min-h-[480px] shrink-0">
-                  <div className="border-b border-white/10 bg-black/40 px-5 py-4 shrink-0">
-                    <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
-                    <p className="mt-1 text-sm text-white/50">{dateLabel}</p>
+                  <div className="shrink-0 border-b border-white/10 bg-black/40 px-5 py-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
+                        <p className="mt-1 text-sm text-white/50">{dateLabel}</p>
+                      </div>
+                      {entries.length > 0 ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDuplicateOpenDay(duplicateOpenDay === day ? null : day);
+                            setDuplicateTargetDay(DAYS.find((d) => d !== day) ?? "Tuesday");
+                          }}
+                          className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium text-white/80 hover:bg-white/10"
+                        >
+                          Duplicate
+                        </button>
+                      ) : null}
+                    </div>
+                    {duplicateOpenDay === day && entries.length > 0 ? (
+                      <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
+                        <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Copy to</span>
+                        <CustomSelect
+                          value={duplicateTargetDay}
+                          onChange={(v) => setDuplicateTargetDay(v as WeeklyProgramDay)}
+                          options={DAYS.filter((d) => d !== day).map((d) => ({ value: d, label: d }))}
+                          className="w-full text-xs"
+                          disabled={duplicateBusy}
+                        />
+                        <button
+                          type="button"
+                          disabled={duplicateBusy || duplicateTargetDay === day}
+                          onClick={() => handleDuplicateDay(day, duplicateTargetDay)}
+                          className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-2 py-1.5 text-[11px] font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25 disabled:opacity-50"
+                        >
+                          {duplicateBusy ? "…" : "Copy"}
+                        </button>
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex-1 p-4 space-y-3 min-h-0 overflow-y-auto">
                     {entries.length === 0 ? (
@@ -584,7 +878,6 @@ export function AdminWeeklyProgramVaClient({
                       </div>
                     ) : (
                       entries.map((e) => {
-                        const names = getModelNames(e.model_ids, modelss);
                         const hasConflict = conflictRecordIds.includes(e.id);
                         const modelCount = e.model_ids?.filter(Boolean).length ?? 0;
                         const hasTooManyModels = modelCount > 10;
@@ -603,9 +896,18 @@ export function AdminWeeklyProgramVaClient({
                                 <div className="min-w-0 flex-1">
                                   <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
                                   <p className="mt-1 font-medium text-white/95 truncate text-base">{e.chatter_name || "—"}</p>
-                                  <p className="mt-1 text-sm text-white/65 truncate" title={names.length ? names.join(", ") : undefined}>
-                                    {names.length ? names.join(", ") : "—"}
-                                  </p>
+                                  <div className="mt-1 min-w-0 text-sm text-white/65">
+                                    {e.model_ids.length ? (
+                                      <ModelPeriodNamesRow
+                                        modelIds={e.model_ids}
+                                        idToName={modelIdToDisplayName}
+                                        dateYmd={dateYmd}
+                                        periodDatesByModelId={periodDatesByModelId}
+                                      />
+                                    ) : (
+                                      <span>—</span>
+                                    )}
+                                  </div>
                                 </div>
                                 <div className="flex shrink-0 items-center gap-1">
                                   {hasTooManyModels && (
@@ -651,20 +953,24 @@ export function AdminWeeklyProgramVaClient({
           </div>
           <div className="p-3 space-y-2">
             <div className="grid grid-cols-1 gap-1.5">
-              <Select value={availFilterChatter} onChange={(e) => setAvailFilterChatter(e.target.value)} className="text-xs">
-                <option value="">All VAs</option>
-                {availabilityChatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-              </Select>
-              <Select value={availFilterShiftType} onChange={(e) => setAvailFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="text-xs">
-                <option value="">All types</option>
-                <option value="Morning">Morning</option>
-                <option value="Night">Night</option>
-                <option value="Custom">Custom</option>
-              </Select>
-              <Select value={availFilterDay} onChange={(e) => setAvailFilterDay(e.target.value as WeeklyProgramDay | "")} className="text-xs">
-                <option value="">All days</option>
-                {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </Select>
+              <CustomSelect
+                value={availFilterChatter}
+                onChange={setAvailFilterChatter}
+                options={availChatterSelectOptions}
+                className="text-xs"
+              />
+              <CustomSelect
+                value={availFilterShiftType}
+                onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
+                options={AVAIL_SHIFT_TYPE_OPTIONS}
+                className="text-xs"
+              />
+              <CustomSelect
+                value={availFilterDay}
+                onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
+                options={dayFilterSelectOptions}
+                className="text-xs"
+              />
             </div>
             <div className="max-h-[380px] overflow-y-auto space-y-1.5">
               {filteredAvailabilityRequests.length === 0 ? (
@@ -682,6 +988,9 @@ export function AdminWeeklyProgramVaClient({
                           <p className="mt-0.5 text-[11px] text-white/60">
                             {r.day} · {r.entry_type === "day_off" ? "day off" : r.shift_type}{timeStr}
                           </p>
+                          {r.notes?.trim() ? (
+                            <p className="mt-1 text-sm text-white/50 italic">{r.notes.trim()}</p>
+                          ) : null}
                         </div>
                         <span className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${
                           r.status === "submitted" ? "bg-amber-500/20 text-amber-300" :
@@ -710,15 +1019,26 @@ export function AdminWeeklyProgramVaClient({
         </div>
       </aside>
 
+      <AnimatePresence>
       {(createOpen || editingEntry || prefillFromAvailability) && (
-        <div className="fixed inset-0 z-50 flex overflow-hidden" role="dialog" aria-modal="true" aria-label="Create or edit shift">
+        <motion.div
+          key="va-weekly-shift-sheet"
+          className="fixed inset-0 z-50 flex overflow-hidden"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create or edit shift"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+        >
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden onClick={() => { setCreateOpen(false); setEditingEntry(null); setPrefillFromAvailability(null); setError(null); }} />
           {/* Mobile: full-screen sheet. Desktop: offset for sidebar, side panel */}
           <div
             className="relative flex h-full w-full flex-col overflow-hidden md:ml-64 md:w-[calc(100vw-16rem)] md:flex-row md:flex-1 md:flex-shrink-0 md:items-stretch md:gap-6 md:p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-black/95 shadow-2xl md:min-w-[380px] md:max-w-2xl md:rounded-2xl md:border md:border-white/10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
+            <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-black/95 shadow-2xl md:min-w-[380px] md:max-w-4xl md:rounded-2xl md:border md:border-white/10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
                 <ShiftEntryModal
                   asPanel
@@ -743,20 +1063,24 @@ export function AdminWeeklyProgramVaClient({
               </div>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                 <div className="grid grid-cols-1 gap-3 shrink-0">
-                  <Select value={availFilterChatter} onChange={(e) => setAvailFilterChatter(e.target.value)} className="text-sm">
-                    <option value="">All VAs</option>
-                    {availabilityChatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-                  </Select>
-                  <Select value={availFilterShiftType} onChange={(e) => setAvailFilterShiftType(e.target.value as WeeklyProgramShiftType | "")} className="text-sm">
-                    <option value="">All types</option>
-                    <option value="Morning">Morning</option>
-                    <option value="Night">Night</option>
-                    <option value="Custom">Custom</option>
-                  </Select>
-                  <Select value={availFilterDay} onChange={(e) => setAvailFilterDay(e.target.value as WeeklyProgramDay | "")} className="text-sm">
-                    <option value="">All days</option>
-                    {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-                  </Select>
+                  <CustomSelect
+                    value={availFilterChatter}
+                    onChange={setAvailFilterChatter}
+                    options={availChatterSelectOptions}
+                    className="text-sm"
+                  />
+                  <CustomSelect
+                    value={availFilterShiftType}
+                    onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
+                    options={AVAIL_SHIFT_TYPE_OPTIONS}
+                    className="text-sm"
+                  />
+                  <CustomSelect
+                    value={availFilterDay}
+                    onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
+                    options={dayFilterSelectOptions}
+                    className="text-sm"
+                  />
                 </div>
                 <div className="min-h-0 flex-1 overflow-y-auto space-y-2 pt-4">
                   {filteredAvailabilityRequests.length === 0 ? (
@@ -774,6 +1098,9 @@ export function AdminWeeklyProgramVaClient({
                               <p className="mt-1 text-xs text-white/60">
                                 {r.day} · {r.entry_type === "day_off" ? "day off" : r.shift_type}{timeStr}
                               </p>
+                              {r.notes?.trim() ? (
+                                <p className="mt-1 text-sm text-white/50 italic">{r.notes.trim()}</p>
+                              ) : null}
                             </div>
                             <span className={`shrink-0 rounded-md px-2 py-0.5 text-[11px] font-medium ${
                               r.status === "submitted" ? "bg-amber-500/20 text-amber-300" :
@@ -801,8 +1128,9 @@ export function AdminWeeklyProgramVaClient({
               </div>
             </aside>
           </div>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -842,11 +1170,6 @@ type ModalProps = {
   /** When true, render as a panel (no overlay/centering) for split layout with helper. */
   asPanel?: boolean;
 };
-
-function isoTimeToHHmm(iso: string | undefined): string {
-  if (!iso || iso.length < 16) return "";
-  return iso.slice(11, 16);
-}
 
 function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvailability, coverageBoard, lastAssignmentMap, programs, onClose, onCreate, onUpdate, asPanel }: ModalProps) {
   const isEdit = !!entry;
@@ -919,6 +1242,23 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const assignmentsInModal: Record<string, { date: string; dateTime: string; relative: string }> =
     (isEdit ? (lastAssignmentMap ?? {}) : (modalLastAssignments ?? {}));
   const chatterName = chatters.find((c) => c.id === chatterId)?.full_name ?? "";
+
+  const vaFormSelectOptions = React.useMemo(
+    () => [
+      { value: "", label: "Select VA" },
+      ...chatters.map((c) => ({ value: c.id, label: c.full_name })),
+    ],
+    [chatters]
+  );
+  const dayFormSelectOptions = React.useMemo(() => DAYS.map((d) => ({ value: d, label: d })), []);
+  const shiftTypeFormSelectOptions = React.useMemo(
+    () => [
+      { value: "Morning", label: "Morning (12:00–20:00)" },
+      { value: "Night", label: "Night (20:00–03:00)" },
+      { value: "Custom", label: "Custom" },
+    ],
+    []
+  );
 
   const suggestions = React.useMemo(() => {
     const out: { type: string; text: string }[] = [];
@@ -1092,29 +1432,52 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const title = isEdit ? "Edit scheduled shift" : "Create scheduled shift";
   const subtitle = "VA, day, shift type, and assign models.";
 
-  const tooManyModelsDialog = showTooManyModelsConfirm ? (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="too-many-models-title">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden onClick={() => setShowTooManyModelsConfirm(false)} />
-      <div
-        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-black/95 shadow-2xl shadow-black/50 backdrop-blur-xl px-6 py-5"
-        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.12)" }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-start gap-4">
+  const tooManyModelsDialog = (
+    <AnimatePresence>
+      {showTooManyModelsConfirm ? (
+        <motion.div
+          key="too-many-models-va"
+          className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="too-many-models-title"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+        >
+          <motion.div
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            aria-hidden
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowTooManyModelsConfirm(false)}
+          />
+          <motion.div
+            className="relative w-full max-w-md rounded-2xl border border-white/10 bg-black/95 px-6 py-5 shadow-2xl shadow-black/50 backdrop-blur-xl"
+            style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.12)" }}
+            onClick={(e) => e.stopPropagation()}
+            initial={{ opacity: 0, scale: 0.94, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 6 }}
+            transition={{ type: "spring", stiffness: 380, damping: 32 }}
+          >
+            <div className="flex items-start gap-4">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400" aria-hidden>
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
           </span>
           <div className="min-w-0 flex-1">
             <h2 id="too-many-models-title" className="text-lg font-semibold tracking-tight text-white">Too many models assigned</h2>
             <p className="mt-2 text-sm text-white/70">
-              This chatter currently has more than 10 models assigned in this shift. Managing too many models may reduce performance.
+              This VA currently has more than 10 models assigned in this shift. Managing too many models may reduce performance.
             </p>
             <p className="mt-1 text-sm text-white/60">Is this okay?</p>
-            <div className="mt-5 flex gap-3">
+            <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => setShowTooManyModelsConfirm(false)}
-                className="rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 transition-colors"
+                className="tap-active min-h-[44px] rounded-xl border border-white/20 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors duration-200 hover:bg-white/10 md:min-h-0"
               >
                 Cancel
               </button>
@@ -1125,16 +1488,19 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
                   await performSave();
                 }}
                 disabled={saving}
-                className="rounded-xl border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/20 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/30 transition-colors disabled:opacity-50"
+                className="tap-active inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/20 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] transition-colors duration-200 hover:bg-[hsl(330,80%,55%)]/30 disabled:opacity-50 md:min-h-0"
               >
+                {saving ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
                 {saving ? "Saving…" : "Yes, continue"}
               </button>
             </div>
           </div>
-        </div>
-      </div>
-    </div>
-  ) : null;
+            </div>
+          </motion.div>
+        </motion.div>
+      ) : null}
+    </AnimatePresence>
+  );
 
   const formContent = (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
@@ -1176,55 +1542,59 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         )}
         <div>
           <Label>VA</Label>
-          <Select required value={chatterId} onChange={(e) => setChatterId(e.target.value)} className="mt-1 w-full">
-            <option value="">Select VA</option>
-            {chatters.map((c) => <option key={c.id} value={c.id}>{c.full_name}</option>)}
-          </Select>
+          <CustomSelect
+            required
+            value={chatterId}
+            onChange={setChatterId}
+            options={vaFormSelectOptions}
+            className="mt-1 w-full"
+          />
         </div>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <Label>Day</Label>
-            <Select required value={day} onChange={(e) => setDay(e.target.value as WeeklyProgramDay)} className="mt-1 w-full">
-              {DAYS.map((d) => <option key={d} value={d}>{d}</option>)}
-            </Select>
+            <CustomSelect
+              required
+              value={day}
+              onChange={(v) => setDay(v as WeeklyProgramDay)}
+              options={dayFormSelectOptions}
+              className="mt-1 w-full"
+            />
           </div>
           <div>
             <Label>Shift type</Label>
-            <Select required value={shiftType} onChange={(e) => { setShiftType(e.target.value as WeeklyProgramShiftType); setCustomTimeError(null); }} className="mt-1 w-full">
-              <option value="Morning">Morning (12:00–20:00)</option>
-              <option value="Night">Night (20:00–03:00)</option>
-              <option value="Custom">Custom</option>
-            </Select>
+            <CustomSelect
+              required
+              value={shiftType}
+              onChange={(v) => {
+                setShiftType(v as WeeklyProgramShiftType);
+                setCustomTimeError(null);
+              }}
+              options={shiftTypeFormSelectOptions}
+              className="mt-1 w-full"
+            />
           </div>
         </div>
         <div
-          className={`grid grid-cols-2 gap-3 overflow-hidden transition-all duration-300 ease-out ${
-            shiftType === "Custom" ? "max-h-32 opacity-100" : "max-h-0 opacity-0"
+          className={`grid grid-cols-1 gap-4 overflow-hidden transition-all duration-300 ease-out sm:grid-cols-2 ${
+            shiftType === "Custom" ? "max-h-[220px] opacity-100" : "max-h-0 opacity-0"
           }`}
           aria-hidden={shiftType !== "Custom"}
         >
-          <div>
-            <Label>Start time <span className="text-red-400">*</span></Label>
-            <input
-              type="time"
-              value={customStartTime}
-              onChange={(e) => { setCustomStartTime(e.target.value); setCustomTimeError(null); }}
-              className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white transition-colors focus:border-[hsl(330,80%,55%)]/60 focus:outline-none focus:ring-2 focus:ring-[hsl(330,80%,55%)]/20 focus:bg-white/[0.08] hover:border-white/15 [color-scheme:dark]"
-              required={shiftType === "Custom"}
-              aria-invalid={!!customTimeError}
-            />
-          </div>
-          <div>
-            <Label>End time <span className="text-red-400">*</span></Label>
-            <input
-              type="time"
-              value={customEndTime}
-              onChange={(e) => { setCustomEndTime(e.target.value); setCustomTimeError(null); }}
-              className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white transition-colors focus:border-[hsl(330,80%,55%)]/60 focus:outline-none focus:ring-2 focus:ring-[hsl(330,80%,55%)]/20 focus:bg-white/[0.08] hover:border-white/15 [color-scheme:dark]"
-              required={shiftType === "Custom"}
-              aria-invalid={!!customTimeError}
-            />
-          </div>
+          <CustomTime12hBlock
+            label="Start time"
+            required
+            value={customStartTime}
+            onChange={(v) => { setCustomStartTime(v); setCustomTimeError(null); }}
+            ariaInvalid={!!customTimeError}
+          />
+          <CustomTime12hBlock
+            label="End time"
+            required
+            value={customEndTime}
+            onChange={(v) => { setCustomEndTime(v); setCustomTimeError(null); }}
+            ariaInvalid={!!customTimeError}
+          />
         </div>
         {customTimeError && (
           <p className="text-sm text-rose-300/95">{customTimeError}</p>
@@ -1272,7 +1642,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
               </button>
             ))}
           </div>
-          <div className="mt-1.5 max-h-[40vh] overflow-y-auto rounded-lg border border-white/10 bg-white/[0.04] p-1.5 space-y-1 md:max-h-40">
+          <div className="mt-1.5 min-h-[300px] max-h-[400px] overflow-y-auto rounded-lg border border-white/10 bg-white/[0.04] p-1.5 space-y-1">
             {filteredModels.length === 0 ? (
               <p className="py-3 text-center text-sm text-white/50">No models match</p>
             ) : (
@@ -1284,7 +1654,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
                 return (
                   <div
                     key={m.id}
-                    className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-2 transition-colors ${
+                    className={`flex items-center justify-between gap-2 rounded-md px-2.5 py-3 transition-colors ${
                       isTaken ? "bg-white/[0.02] opacity-75" : "hover:bg-white/[0.06]"
                     } ${isTaken ? "cursor-not-allowed" : ""}`}
                   >
@@ -1293,18 +1663,24 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
                         checked={selectedModelIds.has(m.id)}
                         onChange={() => toggleModel(m.id)}
                         label=""
-                        className="shrink-0"
+                        className="shrink-0 [&_input]:h-5 [&_input]:w-5 [&_input]:min-h-0"
                         disabled={isTaken}
                       />
                       <div className="min-w-0">
                         <p className={`font-medium truncate ${isTaken ? "text-white/60" : "text-white/95"}`}>
                           {m.model_name}
                         </p>
-                        <p className="mt-0.5 text-xs">
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs">
                           {isTaken ? (
-                            <span className="text-amber-400/90">Taken by {availability.takenBy}</span>
+                            <span className="inline-flex items-center gap-1.5 text-amber-400/90">
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-amber-400 animate-pulse" aria-hidden />
+                              Taken by {availability.takenBy}
+                            </span>
                           ) : (
-                            <span className="text-emerald-400/90">Free</span>
+                            <span className="inline-flex items-center gap-1.5 text-emerald-400/90">
+                              <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
+                              Free
+                            </span>
                           )}
                         </p>
                       </div>
@@ -1364,7 +1740,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   return (
     <>
       {tooManyModelsDialog}
-      <GlassModal onClose={onClose} title={title} subtitle={subtitle}>
+      <GlassModal onClose={onClose} title={title} subtitle={subtitle} className="md:max-w-4xl">
         {formContent}
       </GlassModal>
     </>

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "chatterswebsite-cron",
+  "main": "index.js",
+  "compatibility_date": "2024-12-30",
+  "triggers": {
+    "crons": ["*/5 * * * *", "*/15 * * * *", "0 0 * * *", "0 21 * * *"]
+  },
+  "vars": {
+    "APP_URL": "https://chatterswebsite.mikee-kara.workers.dev",
+    "UPDATE_STREAKS_CRON_URL": "https://chatterswebsite.mikee-kara.workers.dev/api/cron/update-streaks"
+  }
+}

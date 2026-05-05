@@ -14,6 +14,7 @@ import { getLastAssignmentBatch } from "@/services/shifts";
 import type { LastAssignmentInfo } from "@/services/shifts";
 import { getTimesForShiftType, buildCustomShiftTimes, addDays, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
+import { notifyActiveChattersWeeklyProgramPublished } from "@/services/weekly-program-publish-notify";
 
 export async function getLastAssignmentsForChatterAction(
   chatterId: string,
@@ -93,6 +94,7 @@ export async function createProgramAction(fields: {
     const created = await createWeeklyProgram(createFields);
     revalidatePath(ROUTES.admin.weeklyProgram);
     revalidatePath(ROUTES.chatter.weeklyProgram);
+    await notifyActiveChattersWeeklyProgramPublished(weekMonday);
     return { success: true, id: created.id, week_start: weekMonday };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -175,6 +177,7 @@ export async function updateProgramAction(
     });
     revalidatePath(ROUTES.admin.weeklyProgram);
     revalidatePath(ROUTES.chatter.weeklyProgram);
+    await notifyActiveChattersWeeklyProgramPublished(weekStart);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

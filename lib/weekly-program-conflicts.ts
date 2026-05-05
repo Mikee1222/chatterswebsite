@@ -58,7 +58,7 @@ export function getWeeklyProgramConflicts(
   modelIdToName: Record<string, string>,
   options?: { tooManyModelsThreshold?: number }
 ): { conflicts: Conflict[]; summary: ConflictSummary } {
-  const threshold = options?.tooManyModelsThreshold ?? 6;
+  void options?.tooManyModelsThreshold;
   const conflicts: Conflict[] = [];
   const weekStart = programs[0]?.week_start ?? "";
 
@@ -141,19 +141,6 @@ export function getWeeklyProgramConflicts(
       modelId: mid,
       modelName: modelIdToName[mid] ?? mid,
     });
-  }
-
-  for (const p of programs) {
-    if (p.model_ids.length >= threshold) {
-      conflicts.push({
-        type: "too_many_models",
-        message: `${p.chatter_name ?? "Chatter"} has ${p.model_ids.length} models in one shift (${p.day} ${p.shift_type})`,
-        recordIds: [p.id],
-        day: p.day,
-        shiftType: p.shift_type,
-        chatterName: p.chatter_name ?? undefined,
-      });
-    }
   }
 
   const summary: ConflictSummary = {

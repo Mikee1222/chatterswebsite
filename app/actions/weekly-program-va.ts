@@ -12,6 +12,7 @@ import {
 import type { CreateWeeklyProgramVaFields } from "@/services/weekly-program-va";
 import { getTimesForShiftType, buildCustomShiftTimes, addDays, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
+import { notifyActiveVAsWeeklyProgramVaPublished } from "@/services/weekly-program-publish-notify";
 
 export type CreateProgramVaResult = { success: true; id: string; week_start: string } | { success: false; error: string };
 export type UpdateProgramVaResult = { success: true } | { success: false; error: string };
@@ -82,6 +83,7 @@ export async function createProgramVaAction(fields: {
     const created = await createWeeklyProgramVa(createFields);
     revalidatePath(ROUTES.admin.weeklyProgramVa);
     revalidatePath(ROUTES.va.weeklyProgram);
+    await notifyActiveVAsWeeklyProgramVaPublished(weekMonday);
     return { success: true, id: created.id, week_start: weekMonday };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -164,6 +166,7 @@ export async function updateProgramVaAction(
     });
     revalidatePath(ROUTES.admin.weeklyProgramVa);
     revalidatePath(ROUTES.va.weeklyProgram);
+    await notifyActiveVAsWeeklyProgramVaPublished(weekStart);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

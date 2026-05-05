@@ -1,3 +1,6 @@
+"use client";
+
+import { motion } from "framer-motion";
 import { formatDateTimeEuropean } from "@/lib/format";
 import type { ActivityLog } from "@/types";
 
@@ -21,15 +24,21 @@ export function ActivityLogsTable({ logs }: { logs: ActivityLog[] }) {
               </td>
             </tr>
           ) : (
-            logs.map((log) => (
-              <tr key={log.id} className="border-b border-white/5 hover:bg-white/5">
+            logs.map((log, index) => (
+              <motion.tr
+                key={log.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
+                className="border-b border-white/5 hover:bg-white/5"
+              >
                 <td className="p-3 text-white/70">
                   {formatDateTimeEuropean(log.created_at)}
                 </td>
                 <td className="p-3 font-medium text-white/90">{log.actor_name}</td>
                 <td className="p-3 text-white/80">{log.action_type}</td>
                 <td className="p-3 text-white/70">{log.summary || "—"}</td>
-              </tr>
+              </motion.tr>
             ))
           )}
         </tbody>

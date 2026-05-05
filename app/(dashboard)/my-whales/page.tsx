@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MyWhalesClient } from "@/components/my-whales-client";
 import { getSessionFromCookies } from "@/lib/auth";
@@ -32,17 +31,9 @@ export default async function MyWhalesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-white">My whales</h1>
-          <p className="mt-1 text-sm text-white/60">Whales assigned to you</p>
-        </div>
-        <Link
-          href={ROUTES.chatter.myWhalesNew}
-          className="rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2.5 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)]"
-        >
-          New whale
-        </Link>
+      <div>
+        <h1 className="text-xl font-semibold text-white">My whales</h1>
+        <p className="mt-1 text-sm text-white/60">Whales assigned to you — use the + button to add a whale.</p>
       </div>
 
       <MyWhalesClient whales={whales} modelNames={modelNames} />

@@ -3,18 +3,37 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekAndChatter } from "@/services/weekly-program";
 import { listAllModelss } from "@/services/modelss";
-import { formatTimeFromISO } from "@/lib/format";
-import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel } from "@/lib/weekly-program";
+import { formatTimeFromISO, formatDateOnlyEuropean } from "@/lib/format";
+import { addDays, parseWeekStart } from "@/lib/weekly-program";
 import { WeeklyProgramDaySwiper } from "@/components/weekly-program-day-swiper";
+import { getPeriodDatesByModelForWeek } from "@/services/model-periods";
+import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
+import { ChatterWeeklyProgramNavClient } from "@/components/chatter-weekly-program-nav";
+import { getMondayOfWeekFromYmdAthens, getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
 
 const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-export default async function WeeklyProgramPage() {
+export default async function WeeklyProgramPage({
+  searchParams,
+}: {
+  searchParams: { week_start?: string };
+}) {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
-  const weekStart = normalizeWeekStart(getThisWeekMonday());
+  const rawWeek = searchParams.week_start?.trim();
+
+  if (rawWeek && !parseWeekStart(rawWeek)) {
+    redirect(ROUTES.chatter.weeklyProgram);
+  }
+
+  const weekStart = rawWeek ? getMondayOfWeekFromYmdAthens(rawWeek) : getWeekStartYmdInAthens(0);
+
+  if (rawWeek && rawWeek.slice(0, 10) !== weekStart) {
+    redirect(`${ROUTES.chatter.weeklyProgram}?week_start=${encodeURIComponent(weekStart)}`);
+  }
+
   const [entries, modelss] = await Promise.all([
     getProgramsForWeekAndChatter(weekStart, chatterId).catch(() => []),
     listAllModelss().catch(() => []),
@@ -35,6 +54,14 @@ export default async function WeeklyProgramPage() {
   const workingDays = new Set(entries.map((e) => e.day)).size;
   const assignedModelIds = new Set(entries.flatMap((e) => e.model_ids).filter(Boolean));
   const modelCount = assignedModelIds.size;
+  const weekEnd = addDays(weekStart, 6);
+  const modelIdsForPeriods = Array.from(assignedModelIds);
+  const periodDatesByModelId =
+    modelIdsForPeriods.length > 0
+      ? await getPeriodDatesByModelForWeek(modelIdsForPeriods, weekStart, weekEnd).catch(() => ({} as Record<string, string[]>))
+      : {};
+
+  const weekLabel = formatDateOnlyEuropean(weekStart);
 
   return (
     <div className="space-y-8">
@@ -52,7 +79,7 @@ export default async function WeeklyProgramPage() {
           Weekly program
         </h1>
         <p className="mt-2 text-white/60">
-          Week starting {formatWeekLabel(weekStart)}. Morning 12:00–20:00, Night 20:00–03:00.
+          Week of {weekLabel}. Morning 12:00–20:00, Night 20:00–03:00.
         </p>
 
         {entries.length > 0 && (
@@ -79,17 +106,30 @@ export default async function WeeklyProgramPage() {
             </div>
           </div>
         )}
+
+        <ChatterWeeklyProgramNavClient
+          weekStart={weekStart}
+          weekLabel={weekLabel}
+          programPath={ROUTES.chatter.weeklyProgram}
+        />
       </div>
 
       {/* Mobile: day swiper */}
       {entries.length > 0 && (
-        <WeeklyProgramDaySwiper byDay={byDay} weekStart={weekStart} idToName={idToName} />
+        <WeeklyProgramDaySwiper
+          byDay={byDay}
+          weekStart={weekStart}
+          idToName={idToName}
+          periodDatesByModelId={periodDatesByModelId}
+        />
       )}
 
       {/* Desktop: week by day cards */}
       {entries.length > 0 && (
       <div className="hidden md:block space-y-6">
-        {byDay.map(({ day, entries: dayEntries }) => (
+        {byDay.map(({ day, entries: dayEntries }) => {
+          const dateYmd = addDays(weekStart, DAY_ORDER.indexOf(day));
+          return (
           <div
             key={day}
             className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl"
@@ -131,16 +171,12 @@ export default async function WeeklyProgramPage() {
                         </span>
                       </div>
                       {e.model_ids.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {e.model_ids.map((id) => (
-                            <span
-                              key={id}
-                              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/90"
-                            >
-                              {idToName[id] || id}
-                            </span>
-                          ))}
-                        </div>
+                        <ModelPeriodNamesRow
+                          modelIds={e.model_ids}
+                          idToName={idToName}
+                          dateYmd={dateYmd}
+                          periodDatesByModelId={periodDatesByModelId}
+                        />
                       )}
                       {e.notes?.trim() && (
                         <p className="text-xs text-white/50 leading-relaxed">
@@ -155,7 +191,8 @@ export default async function WeeklyProgramPage() {
               )}
             </div>
           </div>
-        ))}
+        );
+        })}
       </div>
       )}
 

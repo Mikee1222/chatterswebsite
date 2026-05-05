@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { addDays, buildCustomShiftTimes, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
+import { notify, notifyAdmins } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { formSubmittedAdmin } from "@/lib/notification-copy";
 import {
   createWeeklyAvailabilityRequest,
   getRequestByWeekDayChatter,
@@ -12,6 +15,8 @@ import {
   countDayOffForWeek,
   updateWeeklyAvailabilityRequest,
 } from "@/services/weekly-availability-requests";
+import { awardPoints } from "@/services/points-engine";
+import { getPointsConfig } from "@/services/points-config";
 import type { WeeklyProgramDay, WeeklyProgramShiftType, WeeklyAvailabilityEntryType } from "@/types";
 
 /** Convert (week_start, day, HH:mm start, HH:mm end) to full ISO datetimes for Airtable. Handles overnight (end < start = next day). */
@@ -107,6 +112,38 @@ export async function submitAvailabilityAction(fields: {
       }),
       notes: fields.notes ?? "",
     });
+    setTimeout(() => {
+      void getPointsConfig()
+        .then((pointsConfig) =>
+          awardPoints(
+            chatterId,
+            pointsConfig.AVAILABILITY_SUBMITTED,
+            "Submitted availability",
+            "streak",
+            created.id
+          )
+        )
+        .catch((e) => console.error("[points-engine] submitAvailability awardPoints failed", e));
+    }, 100);
+    const { title, body } = formSubmittedAdmin("Weekly availability form", chatterName, new Date());
+    await notifyAdmins({
+      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
+      entity_type: "form",
+      entity_id: created.id,
+      actor_name: chatterName,
+    }).catch((e) => console.error("[notify] availability_submitted failed", e));
+    await notify({
+      user_id: chatterId,
+      event_type: NOTIFICATION_EVENT.AVAILABILITY_SUBMITTED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "📅 Availability submitted",
+      body: "Your availability for next week has been recorded.",
+      entity_type: "system",
+      entity_id: created.id,
+    }).catch((e) => console.error("[notify] availability_submitted failed", e));
     revalidatePath(ROUTES.chatter.weeklyAvailability);
     revalidatePath(ROUTES.admin.weeklyProgram);
     return { success: true, id: created.id };

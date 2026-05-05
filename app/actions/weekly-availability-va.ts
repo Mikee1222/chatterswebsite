@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { addDays, buildCustomShiftTimes, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
+import { notify, notifyAdmins } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { formSubmittedAdmin } from "@/lib/notification-copy";
 import {
   createWeeklyAvailabilityRequestVa,
   getRequestByWeekDayVa,
@@ -106,6 +109,25 @@ export async function submitAvailabilityVaAction(fields: {
       }),
       notes: fields.notes ?? "",
     });
+    const { title, body } = formSubmittedAdmin("Weekly availability form (VA)", vaName, new Date());
+    await notifyAdmins({
+      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
+      entity_type: "form",
+      entity_id: created.id,
+      actor_name: vaName,
+    }).catch(() => {});
+    await notify({
+      user_id: vaId,
+      event_type: NOTIFICATION_EVENT.AVAILABILITY_SUBMITTED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "📅 Availability submitted",
+      body: "Your availability for next week has been recorded.",
+      entity_type: "system",
+      entity_id: created.id,
+    }).catch(() => {});
     revalidatePath(ROUTES.va.weeklyAvailability);
     revalidatePath(ROUTES.admin.weeklyProgramVa);
     return { success: true, id: created.id };

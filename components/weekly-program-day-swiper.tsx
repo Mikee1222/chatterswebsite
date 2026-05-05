@@ -5,6 +5,7 @@ import { formatTimeFromISO, formatDateEuropean } from "@/lib/format";
 import { addDays } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
 import type { WeeklyProgramRecord } from "@/types";
+import { PeriodDayIndicator } from "@/components/period-day-indicator";
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -14,9 +15,10 @@ type Props = {
   byDay: ByDayItem[];
   weekStart: string;
   idToName: Record<string, string>;
+  periodDatesByModelId?: Record<string, string[]>;
 };
 
-export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName }: Props) {
+export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName, periodDatesByModelId = {} }: Props) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
 
@@ -36,8 +38,6 @@ export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName }: Props) {
       <p className="text-base font-semibold text-white/90">Week</p>
       <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-none">
         {DAYS.map((d, idx) => {
-          const dayItem = byDay.find((x) => x.day === d);
-          const hasShifts = dayItem && dayItem.entries.length > 0;
           const isToday = d === todayWeekday;
           return (
             <button
@@ -45,11 +45,12 @@ export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName }: Props) {
               type="button"
               onClick={() => goToDay(idx)}
               className={cn(
-                "shrink-0 rounded-xl border px-3 py-2.5 text-sm font-medium transition-colors",
+                "flex h-12 shrink-0 items-center justify-center rounded-xl border px-3 text-sm font-medium transition-colors",
                 activeIndex === idx
-                  ? "border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,65%)]"
+                  ? "border-pink-500/60 bg-pink-600/45 text-white shadow-[0_0_16px_-4px_rgba(236,72,153,0.5)]"
                   : "border-white/10 bg-white/5 text-white/80 hover:bg-white/10",
-                isToday && "ring-1 ring-[hsl(330,80%,55%)]/40"
+                isToday && activeIndex !== idx && "ring-1 ring-pink-400/50",
+                isToday && activeIndex === idx && "ring-2 ring-pink-300/60"
               )}
             >
               {d.slice(0, 3)}
@@ -75,46 +76,45 @@ export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName }: Props) {
                 boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 32px -8px hsl(330 80% 55% / 0.08)",
               }}
             >
-              <div className="border-b border-white/10 bg-white/[0.04] px-4 py-3">
-                <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
-                <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
+              <div className="border-b border-white/10 bg-white/[0.04] px-4 py-4">
+                <p className="text-2xl font-bold tracking-tight text-white">{day}</p>
+                <p className="mt-0.5 text-base text-white/60">{dateLabel}</p>
                 {isToday && (
-                  <span className="mt-1.5 inline-block rounded-full bg-[hsl(330,80%,55%)]/20 px-2 py-0.5 text-xs font-medium text-[hsl(330,90%,65%)]">
+                  <span className="mt-2 inline-block rounded-full bg-pink-600 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white shadow-[0_2px_12px_-2px_rgba(219,39,119,0.6)]">
                     Today
                   </span>
                 )}
               </div>
-              <div className="p-4 space-y-3">
+              <div className="space-y-4 p-4">
                 {entries.length === 0 ? (
                   <p className="py-6 text-center text-sm text-white/45">No shifts</p>
                 ) : (
                   entries.map((e) => (
                     <div
                       key={e.id}
-                      className="rounded-xl border border-white/10 bg-white/[0.06] p-4"
+                      className="rounded-2xl border border-white/10 bg-white/5 p-5"
                     >
-                      <span
-                        className="rounded-lg border px-2.5 py-1 text-xs font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]"
-                        style={{
-                          borderColor: "hsl(330 80% 55% / 0.4)",
-                          backgroundColor: "hsl(330 80% 55% / 0.12)",
-                        }}
-                      >
+                      <span className="inline-flex rounded-full border border-pink-500/45 bg-pink-600/20 px-3 py-1.5 text-sm font-bold uppercase tracking-wide text-pink-100">
                         {e.shift_type}
                       </span>
-                      <p className="mt-2 font-mono text-sm tabular-nums text-white/90">
+                      <p className="mt-3 text-xl font-semibold tabular-nums text-pink-400">
                         {e.start_time ? formatTimeFromISO(e.start_time) : "—"} – {e.end_time ? formatTimeFromISO(e.end_time) : "—"}
                       </p>
                       {e.model_ids.length > 0 && (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {e.model_ids.map((id) => (
-                            <span
-                              key={id}
-                              className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/90"
-                            >
-                              {idToName[id] || id}
-                            </span>
-                          ))}
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {e.model_ids.map((id) => {
+                            const label = idToName[id] || id;
+                            const inPeriod = (periodDatesByModelId[id] ?? []).includes(dateYmd);
+                            return (
+                              <span
+                                key={id}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/10 text-white text-sm font-medium"
+                              >
+                                {label}
+                                {inPeriod ? <PeriodDayIndicator className="shrink-0" /> : null}
+                              </span>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

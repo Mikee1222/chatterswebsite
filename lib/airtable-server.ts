@@ -8,6 +8,57 @@ import { sanitizePayloadForAirtable } from "@/lib/airtable-sanitize";
 const AIRTABLE_API = "https://api.airtable.com/v0";
 const AIRTABLE_META_API = "https://api.airtable.com/v0/meta";
 
+/** Short-lived dedupe cache for identical listRecords GETs (reduces 429s from parallel refreshes). */
+const LIST_RECORDS_CACHE_TTL_MS = 30_000;
+type ListRecordsCacheEntry = {
+  expiresAt: number;
+  payload: { records: AirtableRecord<unknown>[]; offset?: string };
+};
+const listRecordsReadCache = new Map<string, ListRecordsCacheEntry>();
+
+function pruneExpiredListRecordsCache() {
+  const now = Date.now();
+  for (const [key, entry] of listRecordsReadCache) {
+    if (entry.expiresAt <= now) listRecordsReadCache.delete(key);
+  }
+}
+
+/** Drop cached `listRecords` pages for a table so creates/updates/deletes are visible immediately. */
+export function invalidateListRecordsReadCacheForTable(tableName: string): void {
+  for (const key of [...listRecordsReadCache.keys()]) {
+    try {
+      const parsed = JSON.parse(key) as { t?: string };
+      if (parsed.t === tableName) listRecordsReadCache.delete(key);
+    } catch {
+      listRecordsReadCache.delete(key);
+    }
+  }
+}
+
+function listRecordsCacheKey(tableName: string, params: ListParams): string {
+  return JSON.stringify({
+    t: tableName,
+    pageSize: params.pageSize ?? null,
+    offset: params.offset ?? null,
+    filterByFormula: params.filterByFormula ?? null,
+    sort: params.sort ?? null,
+    fields: params.fields ?? null,
+  });
+}
+
+function cloneListRecordsPayload<T>(
+  data: { records: AirtableRecord<T>[]; offset?: string }
+): { records: AirtableRecord<T>[]; offset?: string } {
+  return {
+    records: data.records.map((r) => ({
+      id: r.id,
+      createdTime: r.createdTime,
+      fields: { ...(r.fields as object) } as T,
+    })),
+    offset: data.offset,
+  };
+}
+
 function getConfig() {
   const token = process.env.AIRTABLE_TOKEN;
   const baseId = process.env.AIRTABLE_BASE_ID;
@@ -126,11 +177,15 @@ export async function listRecords<T = Record<string, unknown>>(
   if (params.pageSize) url.searchParams.set("pageSize", String(params.pageSize));
   if (params.offset) url.searchParams.set("offset", params.offset);
   if (params.filterByFormula) url.searchParams.set("filterByFormula", params.filterByFormula);
-  if (params.fields?.length) url.searchParams.set("fields[]", params.fields.join("&fields[]="));
+  if (params.fields?.length) {
+    for (const fieldName of params.fields) {
+      url.searchParams.append("fields[]", fieldName);
+    }
+  }
   if (params.sort?.length) {
-    params.sort.forEach((s) => {
-      url.searchParams.append("sort[0][field]", s.field);
-      url.searchParams.append("sort[0][direction]", s.direction ?? "asc");
+    params.sort.forEach((s, i) => {
+      url.searchParams.append(`sort[${i}][field]`, s.field);
+      url.searchParams.append(`sort[${i}][direction]`, s.direction ?? "asc");
     });
   }
   if (params.filterByFormula) {
@@ -144,9 +199,22 @@ export async function listRecords<T = Record<string, unknown>>(
       queryString: url.searchParams.toString(),
     });
   }
+
+  pruneExpiredListRecordsCache();
+  const cacheKey = listRecordsCacheKey(tableName, params);
+  const cached = listRecordsReadCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cloneListRecordsPayload<T>(cached.payload as { records: AirtableRecord<T>[]; offset?: string });
+  }
+
   try {
     const data = await airtableFetch<{ records: AirtableRecord<T>[]; offset?: string }>(url.toString());
-    return data;
+    const snapshot = cloneListRecordsPayload<T>(data);
+    listRecordsReadCache.set(cacheKey, {
+      expiresAt: Date.now() + LIST_RECORDS_CACHE_TTL_MS,
+      payload: snapshot as { records: AirtableRecord<unknown>[]; offset?: string },
+    });
+    return snapshot;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes("422") && msg.includes("INVALID_FILTER_BY_FORMULA") && params.filterByFormula) {
@@ -193,7 +261,33 @@ export async function createRecord<T = Record<string, unknown>>(
     method: "POST",
     body: JSON.stringify({ fields: sanitized }),
   });
+  invalidateListRecordsReadCacheForTable(tableName);
   return { id: data.id, createdTime: data.createdTime, fields: data.fields };
+}
+
+/** Batch create (max 10 records per Airtable request). Each row is sanitized like createRecord. */
+export async function batchCreateRecords<T = Record<string, unknown>>(
+  tableName: string,
+  records: Record<string, unknown>[]
+): Promise<AirtableRecord<T>[]> {
+  if (records.length === 0) return [];
+  const { baseId } = getConfig();
+  const url = `${AIRTABLE_API}/${baseId}/${encodeURIComponent(tableName)}`;
+  const out: AirtableRecord<T>[] = [];
+  for (let i = 0; i < records.length; i += 10) {
+    const chunk = records.slice(i, i + 10);
+    const data = await airtableFetch<{ records: AirtableRecord<T>[] }>(url, {
+      method: "POST",
+      body: JSON.stringify({
+        records: chunk.map((fields) => ({
+          fields: sanitizePayloadForAirtable(tableName, fields, "create"),
+        })),
+      }),
+    });
+    out.push(...(data.records ?? []));
+  }
+  invalidateListRecordsReadCacheForTable(tableName);
+  return out;
 }
 
 /**
@@ -220,7 +314,30 @@ export async function updateRecord<T = Record<string, unknown>>(
     method: "PATCH",
     body: JSON.stringify({ fields: sanitized }),
   });
+  invalidateListRecordsReadCacheForTable(tableName);
   return { id: data.id, createdTime: data.createdTime, fields: data.fields };
+}
+
+/** Batch partial updates (max 10 records per Airtable request). Each payload is sanitized like updateRecord. */
+export async function batchUpdateRecords(
+  tableName: string,
+  updates: { id: string; fields: Record<string, unknown> }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  const { baseId } = getConfig();
+  const url = `${AIRTABLE_API}/${baseId}/${encodeURIComponent(tableName)}`;
+  for (let i = 0; i < updates.length; i += 10) {
+    const chunk = updates.slice(i, i + 10);
+    const records = chunk.map((u) => ({
+      id: u.id,
+      fields: sanitizePayloadForAirtable(tableName, u.fields, "update"),
+    }));
+    await airtableFetch<{ records: unknown[] }>(url, {
+      method: "PATCH",
+      body: JSON.stringify({ records }),
+    });
+    invalidateListRecordsReadCacheForTable(tableName);
+  }
 }
 
 /** Delete a record. Airtable returns 200 with { deleted: true }. */
@@ -235,6 +352,7 @@ export async function deleteRecord(tableName: string, recordId: string): Promise
     const text = await res.text();
     throw new Error(`Airtable API ${res.status}: ${text}`);
   }
+  invalidateListRecordsReadCacheForTable(tableName);
 }
 
 /** Fetch all pages of records. */

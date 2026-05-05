@@ -3,6 +3,7 @@
 import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
 import type { ModelRecord } from "@/types";
+import { listAllUsers } from "@/services/users";
 
 const TABLE = "modelss";
 
@@ -23,6 +24,9 @@ type Fields = {
   notes?: string;
   created_at?: string;
   updated_at?: string;
+  avg_cycle_length?: number | null;
+  avg_period_length?: number | null;
+  period_notes?: string;
 };
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
@@ -45,6 +49,9 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
     notes: f.notes ?? "",
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
+    avg_cycle_length: typeof f.avg_cycle_length === "number" ? f.avg_cycle_length : null,
+    avg_period_length: typeof f.avg_period_length === "number" ? f.avg_period_length : null,
+    period_notes: typeof f.period_notes === "string" ? f.period_notes : "",
   };
 }
 
@@ -58,6 +65,9 @@ export type ModelssWriteFields = {
   last_chatter?: string[];
   last_chatter_name?: string;
   last_exit_at?: string;
+  avg_cycle_length?: number | null;
+  avg_period_length?: number | null;
+  period_notes?: string;
 };
 
 export async function listModelss(params: ListParams = {}) {
@@ -68,6 +78,25 @@ export async function listModelss(params: ListParams = {}) {
 export async function listAllModelss(filterByFormula?: string) {
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
   return records.map(mapRecord);
+}
+
+/**
+ * Returns only modelss that have a linked user account with role=model, status=active.
+ * Use only for admin model-account operational screens (schedules, tasks, live streams, customs).
+ * Other pages should use listAllModelss() for full agency operations.
+ */
+export async function listOperationalModelsWithAccounts(): Promise<ModelRecord[]> {
+  const [users, allModelss] = await Promise.all([
+    listAllUsers(),
+    listAllModelss(),
+  ]);
+  const operationalModelIds = new Set<string>();
+  for (const u of users) {
+    if (u.role === "model" && (u.status ?? "").toLowerCase() === "active" && u.linked_model_id) {
+      operationalModelIds.add(u.linked_model_id);
+    }
+  }
+  return allModelss.filter((m) => operationalModelIds.has(m.id));
 }
 
 export async function getModelById(recordId: string): Promise<ModelRecord | null> {
@@ -91,7 +120,8 @@ export async function getOccupiedModelss() {
 
 export async function updateModel(recordId: string, fields: Partial<Fields & ModelssWriteFields>) {
   const rec = await updateRecord(TABLE, recordId, fields as Partial<Fields>);
-  return mapRecord(rec as AirtableRecord<Fields>);
+  const after = mapRecord(rec as AirtableRecord<Fields>);
+  return after;
 }
 
 /** Admin create: model_name, platform, status, priority, notes. Defaults: current_status=free, priority=medium, linked/snapshot fields empty. */

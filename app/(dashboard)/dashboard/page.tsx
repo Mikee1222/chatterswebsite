@@ -10,11 +10,12 @@ export default async function DashboardPage() {
     listAllUsers().catch(() => []),
   ]);
 
+  const isAdmin = user?.role === "admin";
+
   if (user?.role === "chatter") redirect(ROUTES.chatter.home);
   if (user?.role === "virtual_assistant") redirect(ROUTES.va.home);
+  if (user?.role === "model") redirect(ROUTES.model.home);
   if (user?.role === "admin" || user?.role === "manager") redirect(ROUTES.admin.home);
-
-  const isAdmin = user?.role === "admin";
 
   return (
     <div className="space-y-6">

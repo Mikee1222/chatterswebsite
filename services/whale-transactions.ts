@@ -140,25 +140,32 @@ export async function createWhaleTransaction(fields: CreateWhaleTransactionField
   const rec = await createRecord<Fields>(TABLE, payload as Fields);
   const transaction = mapRecord(rec as AirtableRecord<Fields>);
 
-  const { notify, notifyAdmins } = await import("./notification-service");
-  await notify({
-    user_id: fields.chatter_record_id,
+  // Routing: whale_session_submitted → admin_only (see lib/notification-routing.ts)
+  const { notifyAdmins } = await import("./notification-service");
+  const { whaleSessionSubmittedAdmin } = await import("@/lib/notification-copy");
+  const currency = (fields.currency ?? "usd").toLowerCase();
+  const adminCopy = whaleSessionSubmittedAdmin(
+    fields.chatter_name,
+    fields.whale_username,
+    fields.amount,
+    currency,
+    fields.model_name
+  );
+  await notifyAdmins({
     event_type: "whale_session_submitted",
     priority: "normal",
-    title: "Whale session submitted",
-    body: `${fields.whale_username} · ${fields.amount} ${fields.currency ?? "usd"}`,
+    title: adminCopy.title,
+    body: adminCopy.body,
     entity_type: "whale",
     entity_id: transaction.id,
   }).catch(() => {});
 
-  await notifyAdmins({
-    event_type: "whale_session_submitted",
-    priority: "normal",
-    title: "Whale session submitted",
-    body: `${fields.chatter_name}: ${fields.whale_username} · ${fields.amount} ${fields.currency ?? "usd"} · ${fields.model_name}`,
-    entity_type: "whale",
-    entity_id: transaction.id,
-  }).catch(() => {});
+  try {
+    const { updateChallengeProgress } = await import("@/services/challenges");
+    await updateChallengeProgress(fields.chatter_record_id, "transactions", 1);
+  } catch (e) {
+    console.error("[challenges] updateChallengeProgress transactions failed", e);
+  }
 
   return transaction;
 }

@@ -4,7 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getActiveShifts, createShiftModel, updateShiftModel, listShiftModels } from "@/services/shifts";
 import { getModelById, updateModel } from "@/services/modelss";
 import { createActivityLog } from "@/services/activity-logs";
-import { notify } from "@/services/notification-service";
+import { broadcastRealtimeToAll } from "@/lib/realtime-broadcast";
 import { firstLinkedId } from "@/lib/airtable-linked";
 
 /** Enter a model (chatter only, during active shift). modelRecordId = Airtable record id of the model (modelss). */
@@ -43,6 +43,7 @@ export async function enterModel(modelRecordId: string) {
     current_shift_id: myShift.id,
     entered_at: now,
   });
+  await broadcastRealtimeToAll({ type: "model_status_changed", model_id: modelRecordId, status: "occupied" }).catch(() => {});
 
   const { updateShift } = await import("@/services/shifts");
   await updateShift(myShift.id, { models_count: newCount });
@@ -55,16 +56,6 @@ export async function enterModel(modelRecordId: string) {
     entity_id: modelRecordId,
     summary: `${chatterName} entered ${modelRecord.model_name}`,
   });
-
-  await notify({
-    user_id: chatterRecordId,
-    event_type: "model_taken",
-    priority: "normal",
-    title: "Entered model",
-    body: `You entered ${modelRecord.model_name}`,
-    entity_type: "model",
-    entity_id: modelRecordId,
-  }).catch(() => {});
 
   return { success: true };
 }
@@ -110,6 +101,7 @@ export async function leaveModel(shiftModelRecordId: string) {
       current_chatter_name: "",
       current_shift_id: "",
     });
+    await broadcastRealtimeToAll({ type: "model_status_changed", model_id: modelRecordId, status: "free" }).catch(() => {});
   }
 
   if (shiftRecordId) {
@@ -126,16 +118,6 @@ export async function leaveModel(shiftModelRecordId: string) {
     entity_id: modelRecordId ?? "",
     summary: `${user.fullName ?? user.email} left ${smRec.fields.model_name ?? "model"}`,
   });
-
-  await notify({
-    user_id: chatterRecordId,
-    event_type: "model_became_free",
-    priority: "low",
-    title: "Left model",
-    body: `You left ${smRec.fields.model_name ?? "model"}`,
-    entity_type: "model",
-    entity_id: modelRecordId ?? "",
-  }).catch(() => {});
 
   return { success: true };
 }

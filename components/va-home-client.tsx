@@ -13,6 +13,8 @@ type Props = {
   todayHours: string;
   shiftCardData: VaHomeShiftCardData;
   recentActivity: ActivityItem[];
+  /** Pending / in-progress tasks due today (optional summary). */
+  openTasksToday?: number;
 };
 
 function formatLiveDurationMinutes(date: string, startTime: string | null): number {
@@ -95,6 +97,7 @@ export function VaHomeClient({
   todayHours,
   shiftCardData,
   recentActivity,
+  openTasksToday = 0,
 }: Props) {
   const [liveDurationMinutes, setLiveDurationMinutes] = React.useState(0);
   const liveData = shiftCardData.kind === "live" ? shiftCardData : null;
@@ -122,6 +125,16 @@ export function VaHomeClient({
         </a>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 content-start">
+          <a
+            href={ROUTES.va.tasks}
+            className="glass-card flex flex-col p-5 transition-all hover:bg-white/[0.08] hover:shadow-[0_0_24px_-4px_rgba(236,72,153,0.12)]"
+          >
+            <p className="text-sm font-medium text-white/60">VA tasks</p>
+            <p className="mt-1 text-2xl font-semibold text-white">
+              {openTasksToday > 0 ? `${openTasksToday} due today` : "View tasks"}
+            </p>
+            <p className="mt-1 text-xs text-white/45">Calendar & reminders</p>
+          </a>
           <a
             href={ROUTES.va.weeklyProgram}
             className="glass-card flex flex-col p-5 transition-all hover:bg-white/[0.08] hover:shadow-[0_0_24px_-4px_rgba(236,72,153,0.12)]"

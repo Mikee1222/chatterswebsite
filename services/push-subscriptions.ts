@@ -38,14 +38,44 @@ function mapRecord(rec: AirtableRecord<Fields>): PushSubscriptionRecord {
   };
 }
 
-/** Get subscriptions for user. push_subscriptions table has no "active" field – filter by user_id only. */
+const PUSH_DEBUG = "[push-debug]";
+
+function subscriptionSortKey(rec: PushSubscriptionRecord): number {
+  const t = Date.parse(rec.created_at);
+  return Number.isFinite(t) ? t : 0;
+}
+
+/**
+ * Get subscriptions for user (push sends are capped per Worker subrequest limit).
+ * Returns at most the 2 most recently created subscriptions for this user.
+ */
 export async function getActiveSubscriptionsForUser(userId: string): Promise<PushSubscriptionRecord[]> {
   try {
+    const filterFormula = `{user_id} = "${userId.replace(/"/g, '""')}"`;
     const records = await listAllRecords<Fields>(TABLE, {
-      filterByFormula: `{user_id} = "${userId.replace(/"/g, '""')}"`,
+      filterByFormula: filterFormula,
     });
-    return records.map(mapRecord);
+    const mapped = records.map(mapRecord);
+    const sorted = [...mapped].sort((a, b) => {
+      const diff = subscriptionSortKey(b) - subscriptionSortKey(a);
+      if (diff !== 0) return diff;
+      return (b.id ?? "").localeCompare(a.id ?? "");
+    });
+    const result = sorted.slice(0, 2);
+    console.log(
+      PUSH_DEBUG,
+      "subscriptions found count",
+      JSON.stringify({
+        recipient_user_id: userId,
+        total_in_airtable: mapped.length,
+        returned: result.length,
+        capped_at: 2,
+        filter: "user_id equals recipient, newest first",
+      })
+    );
+    return result;
   } catch (err) {
+    console.log(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ stage: "getActiveSubscriptionsForUser", recipient_user_id: userId, error: err instanceof Error ? err.message : String(err) }));
     if (process.env.NODE_ENV !== "production") {
       console.warn("[push-subscriptions] getActiveSubscriptionsForUser failed", err);
     }

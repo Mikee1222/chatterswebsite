@@ -7,10 +7,10 @@
  *
  *   Auth:        /login, /dashboard
  *   Chatter:     /home, /shift, /weekly-program, /weekly-availability, /request-custom,
- *                /my-whales, /my-whales/new, /log-transaction
- *   VA:          /va-home, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
- *   Admin:       /admin, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models,
- *                /admin/shift-activity, /admin/whales, /admin/customs, /admin/accounts
+ *                /my-whales, /my-whales/new, /log-transaction, /rewards, /spin-wheel, /challenges, /admin/spin-results
+ *   VA:          /va-home, /va-tasks, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
+ *   Admin:       /admin, /admin/va-tasks, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models,
+ *                /admin/shift-activity, /admin/rewards, /admin/challenges, /admin/spin-results, /admin/whales, /admin/customs, /admin/accounts, /admin/rewards-config
  *   Accounts:    /accounts, /accounts/new, /accounts/[id]/edit, /accounts/[id]/reset-password,
  *                /accounts/modelss/new, /accounts/modelss/[id]/edit
  *   Other:       /settings, /active-shifts, /task-shifts, /free-modelss, /whales, /whales/[id]
@@ -30,11 +30,15 @@ export const ROUTES = {
     myWhales: "/my-whales",
     myWhalesNew: "/my-whales/new",
     logTransaction: "/log-transaction",
+    rewards: "/rewards",
+    spinWheel: "/spin-wheel",
+    challenges: "/challenges",
   },
 
   /** Virtual assistant (role: virtual_assistant) */
   va: {
     home: "/va-home",
+    tasks: "/va-tasks",
     shift: "/va-shift",
     weeklyProgram: "/va-weekly-program",
     weeklyAvailability: "/va-weekly-availability",
@@ -53,6 +57,29 @@ export const ROUTES = {
     whales: "/admin/whales",
     customs: "/admin/customs",
     accounts: "/admin/accounts",
+    /** Model operations (modelss) */
+    modelAvailability: "/admin/model-availability",
+    modelSchedules: "/admin/model-schedules",
+    modelTasks: "/admin/model-tasks",
+    modelLiveStreams: "/admin/model-live-streams",
+    modelCustoms: "/admin/model-customs",
+    vaTasks: "/admin/va-tasks",
+    rewardsConfig: "/admin/rewards-config",
+    rewards: "/admin/rewards",
+    challenges: "/admin/challenges",
+    spinResults: "/admin/spin-results",
+  },
+
+  /** Model (role: model) – modelss-linked user */
+  model: {
+    home: "/model",
+    dashboard: "/model",
+    weeklyAvailability: "/model/availability",
+    schedule: "/model/schedule",
+    tasks: "/model/tasks",
+    liveStreams: "/model/live-streams",
+    customs: "/model/customs",
+    settings: "/settings",
   },
 
   /** Shared: accounts (admin-only UI) */
@@ -97,6 +124,13 @@ export function weeklyAvailabilityUrl(weekStart?: string): string {
 /** Build VA weekly availability URL with optional week_start query. */
 export function vaWeeklyAvailabilityUrl(weekStart?: string): string {
   const base = ROUTES.va.weeklyAvailability;
+  if (!weekStart) return base;
+  return `${base}?week_start=${encodeURIComponent(weekStart)}`;
+}
+
+/** Build model weekly availability URL with optional week_start query. */
+export function modelWeeklyAvailabilityUrl(weekStart?: string): string {
+  const base = ROUTES.model.weeklyAvailability;
   if (!weekStart) return base;
   return `${base}?week_start=${encodeURIComponent(weekStart)}`;
 }

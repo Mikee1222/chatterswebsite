@@ -13,6 +13,14 @@ import type { AppNotification } from "@/types";
 
 type ConnectionStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
 
+export type RealtimeEvent =
+  | { type: "notification_created"; notification: AppNotification; unreadCount?: number }
+  | { type: "shift_started"; chatter_id: string; shift_id: string }
+  | { type: "shift_ended"; chatter_id: string; shift_id: string }
+  | { type: "model_status_changed"; model_id: string; status: string }
+  | { type: "whale_registered"; whale_id: string; username?: string }
+  | { type: "custom_request_created"; [key: string]: unknown };
+
 type RealtimeContextValue = {
   connectionStatus: ConnectionStatus;
   unreadCount: number;
@@ -25,7 +33,25 @@ type RealtimeContextValue = {
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
-const WS_URL = process.env.NEXT_PUBLIC_REALTIME_WS_URL || "";
+const REALTIME_DEBUG = "[realtime-debug]";
+
+function getWsUrl(): string {
+  if (typeof window === "undefined") return "";
+  const external = process.env.NEXT_PUBLIC_REALTIME_WS_URL;
+  if (external) return external;
+  const base = process.env.NEXT_PUBLIC_APP_URL || "";
+  if (base) {
+    const host = base.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const protocol = base.startsWith("https") ? "wss:" : "ws:";
+    return `${protocol}//${host}/api/ws`;
+  }
+  const origin = window.location.origin;
+  const protocol = origin.startsWith("https") ? "wss:" : "ws:";
+  const host = window.location.host;
+  return `${protocol}//${host}/api/ws`;
+}
+
+const WS_URL = typeof window !== "undefined" ? getWsUrl() : "";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
@@ -33,11 +59,15 @@ export function RealtimeProvider({
   children,
   initialUnreadCount = 0,
   addToast,
+  onRealtimeEvent,
 }: {
   children: ReactNode;
   initialUnreadCount?: number;
   addToast?: (n: AppNotification) => void;
+  onRealtimeEvent?: (event: RealtimeEvent) => void;
 }) {
+  const onRealtimeEventRef = useRef(onRealtimeEvent);
+  onRealtimeEventRef.current = onRealtimeEvent;
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [unreadCount, setUnreadCountState] = useState(initialUnreadCount);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -83,11 +113,13 @@ export function RealtimeProvider({
       setConnectionStatus("idle");
       return;
     }
+    if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client connecting", WS_URL);
     setConnectionStatus("connecting");
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
     ws.onopen = () => {
+      if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client connected");
       reconnectAttemptRef.current = 0;
       fetch("/api/realtime-token")
         .then((r) => r.json())
@@ -102,6 +134,7 @@ export function RealtimeProvider({
         const data = JSON.parse(event.data as string);
         if (data.type === "authenticated") {
           setConnectionStatus("connected");
+          if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client authenticated");
           return;
         }
         if (data.type === "error") {
@@ -109,9 +142,18 @@ export function RealtimeProvider({
           ws.close();
           return;
         }
-        if (data.type === "notification" && data.notification) {
+        if ((data.type === "notification" || data.type === "notification_created") && data.notification) {
           setUnreadCountState((c) => (typeof data.unreadCount === "number" ? data.unreadCount : c + 1));
-          addNotification(data.notification);
+          addNotification(data.notification as AppNotification);
+        }
+        if (
+          data.type === "shift_started" ||
+          data.type === "shift_ended" ||
+          data.type === "model_status_changed" ||
+          data.type === "whale_registered" ||
+          data.type === "custom_request_created"
+        ) {
+          onRealtimeEventRef.current?.(data as RealtimeEvent);
         }
       } catch {
         // ignore parse errors
@@ -119,6 +161,7 @@ export function RealtimeProvider({
     };
 
     ws.onclose = () => {
+      if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client closed");
       wsRef.current = null;
       setConnectionStatus("disconnected");
       if (!WS_URL) return;
