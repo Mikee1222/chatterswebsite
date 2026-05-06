@@ -14,16 +14,7 @@
     "nodejs_compat"
   ],
   "vars": {
-    "ADMIN_AIRTABLE_USER_IDS": "recA62rgP2WK9Jbp2,rec71mX8kFyxMDMwY",
-    "AIRTABLE_BASE_ID": "appfCUBei2fna7I1u",
-    "AIRTABLE_TOKEN": "patOz0SEVA9UwAuLw.3de9f6ac1439ba195be1f368216af123da9aa4402cb9d5d55b009d939433911a",
-    "DEMO_LOGIN_EMAIL": "mikee.kara@gmail.com",
-    "DEMO_LOGIN_ROLE": "admin",
-    "INFLOWW_AGENCY_OID": "1082871397744702",
-    "INFLOWW_API_KEY": "sk-1082871397744702RJxB3y1kuDBow3Jz050RAju68oicdBaRViSpSczP4",
-    "NEXT_PUBLIC_APP_URL": "https://gunzoteam.com",
-    "NEXT_PUBLIC_REALTIME_WS_URL": "",
-    "VAPID_PUBLIC_KEY": "BDiZxYcEe5WSJsV8FHeYca6adpb6K1CYPB6wBrrSYN3wLL6t_LkGev0IP0-C8A4pgrNWCGEAktTOUCU0_w5M63w"
+
   },
   "routes": [
     {
