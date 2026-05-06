@@ -155,6 +155,14 @@ const MODELSS_NEW_FIELDS: Array<{ name: string; spec: Record<string, unknown> }>
       description: "Period-related notes on the modelss row",
     },
   },
+  {
+    name: "period_tracking_enabled",
+    spec: {
+      name: "period_tracking_enabled",
+      type: "checkbox",
+      description: "When checked, the model sees period tracking on Settings (and related UI).",
+    },
+  },
 ];
 
 async function createTableField(

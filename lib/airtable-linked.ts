@@ -41,10 +41,10 @@ export function escapeAirtableString(s: string): string {
   return s.replace(/"/g, '""');
 }
 
-/** Filter formula: linked field contains given record id. Uses double quotes (valid Airtable syntax). */
+/** Filter formula: linked field contains given record id. Uses ARRAYJOIN so FIND matches record ids reliably. */
 export function formulaLinkedContains(fieldName: string, recordId: string): string {
   const escaped = escapeAirtableString(recordId);
-  return `FIND("${escaped}", {${fieldName}} & "") > 0`;
+  return `FIND("${escaped}", ARRAYJOIN({${fieldName}}) & "") > 0`;
 }
 
 /** Filter formula: linked field equals single record id. Uses double quotes (valid Airtable syntax). */

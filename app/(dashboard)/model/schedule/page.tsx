@@ -1,11 +1,18 @@
+import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelScheduleClient } from "@/components/model-schedule-client";
 import { listModelScheduleItems } from "@/services/model-schedule";
 import { listModelLiveStreams } from "@/services/model-live-streams";
-import { getPeriodDatesForWeek, getCurrentPeriod } from "@/services/model-periods";
-import { getThisWeekMonday, addDays } from "@/lib/weekly-program";
+import { getCurrentPeriod, getPeriodDatesForWeek, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
+import { getModelAvailabilityRequestsForWeek } from "@/services/weekly-availability-requests-models";
+import { getModelTimeOffRequestsForRange } from "@/services/model-time-off-requests";
+import { getThisWeekMonday, addDays, normalizeWeekStart } from "@/lib/weekly-program";
 import { modelLiveStreamPlatformLabel } from "@/lib/airtable-options";
+import { modelScheduleUrl } from "@/lib/routes";
 import type { ModelScheduleItem } from "@/types";
+import { Suspense } from "react";
+import { ModelRouteEmptyState } from "@/components/model-route-feedback";
+import { ModelPeriodTrackerWidget } from "@/components/model-period-tracker-widget";
 
 /** Merge model_schedule items and model_live_streams into one list so schedule shows both. */
 function mergeScheduleWithLives(
@@ -44,9 +51,9 @@ function mergeScheduleWithLives(
 export default async function ModelSchedulePage({
   searchParams,
 }: {
-  searchParams?: { week?: string };
+  searchParams?: { week_start?: string; week?: string; action?: string };
 }) {
-  const { linkedModelId, modelRecord, language } = await getModelContext();
+  const { linkedModelId, modelRecord } = await getModelContext();
 
   if (!linkedModelId || !modelRecord) {
     return (
@@ -57,32 +64,85 @@ export default async function ModelSchedulePage({
     );
   }
 
-  const weekParam = typeof searchParams?.week === "string" ? searchParams.week.trim().slice(0, 10) : "";
-  const weekStart =
-    /^\d{4}-\d{2}-\d{2}$/.test(weekParam) ? weekParam : getThisWeekMonday();
+  const rawWeek =
+    typeof searchParams?.week_start === "string"
+      ? searchParams.week_start.trim()
+      : typeof searchParams?.week === "string"
+        ? searchParams.week.trim().slice(0, 10)
+        : "";
+  const weekStart = normalizeWeekStart(rawWeek || getThisWeekMonday());
+  const actionRaw = typeof searchParams?.action === "string" ? searchParams.action.trim() : "";
+  const initialAction = actionRaw === "submit" || actionRaw === "request-off" ? actionRaw : null;
+
+  if (rawWeek && rawWeek !== weekStart) {
+    redirect(modelScheduleUrl({ weekStart, action: initialAction ?? undefined }));
+  }
+
   const weekEnd = addDays(weekStart, 6);
   const fromDate = weekStart;
   const toDate = addDays(weekStart, 20);
-  const [scheduleItems, liveStreams, periodDates, currentPeriod] = await Promise.all([
-    listModelScheduleItems(linkedModelId, { fromDate, toDate }).catch(() => []),
-    listModelLiveStreams(linkedModelId),
-    getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd).catch(() => [] as string[]),
-    getCurrentPeriod(linkedModelId).catch(() => null),
-  ]);
+  let scheduleItems: ModelScheduleItem[] = [];
+  let liveStreams: Awaited<ReturnType<typeof listModelLiveStreams>> = [];
+  let periodDates: string[] = [];
+  let currentPeriod: Awaited<ReturnType<typeof getCurrentPeriod>> = null;
+  let predictedPeriodStart: string | null = null;
+  let periodHistory: Awaited<ReturnType<typeof getPeriodsForModel>> = [];
+  let availabilityRequests: Awaited<ReturnType<typeof getModelAvailabilityRequestsForWeek>> = [];
+  let timeOffRequests: Awaited<ReturnType<typeof getModelTimeOffRequestsForRange>> = [];
+  try {
+    [scheduleItems, liveStreams, periodDates, currentPeriod, periodHistory, availabilityRequests, timeOffRequests] = await Promise.all([
+      listModelScheduleItems(linkedModelId, { fromDate, toDate }),
+      listModelLiveStreams(linkedModelId),
+      getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd),
+      getCurrentPeriod(linkedModelId),
+      getPeriodsForModel(linkedModelId),
+      getModelAvailabilityRequestsForWeek(weekStart, linkedModelId),
+      getModelTimeOffRequestsForRange(linkedModelId, weekStart, weekEnd).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn("Time off requests not available:", message);
+        return [];
+      }),
+    ]);
+    const upcoming = await getUpcomingPeriod(linkedModelId, modelRecord);
+    predictedPeriodStart = upcoming?.predicted_start ?? null;
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Failed to load model schedule.");
+  }
   const initialItems = mergeScheduleWithLives(scheduleItems, liveStreams, fromDate, toDate);
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-white">Schedule</h1>
-      <p className="text-sm text-white/60">Your program, scheduled customs, and live streams.</p>
-      <ModelScheduleClient
-        modelId={linkedModelId}
-        language={language}
-        initialItems={initialItems}
-        weekStart={weekStart}
-        periodDates={periodDates}
-        currentPeriod={currentPeriod}
-      />
+      <p className="text-sm text-white/60">
+        Your program, scheduled customs, live streams, weekly availability, and time-off requests.
+      </p>
+      {modelRecord.period_tracking_enabled ? (
+        <ModelPeriodTrackerWidget
+          periods={periodHistory}
+          predictedNextStart={predictedPeriodStart}
+          avgCycleLength={modelRecord.avg_cycle_length ?? null}
+          avgPeriodLength={modelRecord.avg_period_length ?? null}
+        />
+      ) : null}
+      {initialItems.length === 0 && availabilityRequests.length === 0 && timeOffRequests.length === 0 ? (
+        <ModelRouteEmptyState
+          title="No schedule items yet"
+          description="Your upcoming schedule is empty for now. You can still submit weekly availability or request time off."
+        />
+      ) : null}
+      <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-white/[0.04]" />}>
+        <ModelScheduleClient
+          modelId={linkedModelId}
+          initialItems={initialItems}
+          weekStart={weekStart}
+          periodDates={periodDates}
+          predictedPeriodStart={predictedPeriodStart}
+          currentPeriod={currentPeriod}
+          initialAvailability={availabilityRequests}
+          initialTimeOff={timeOffRequests}
+          initialAction={initialAction}
+        />
+      </Suspense>
     </div>
   );
 }

@@ -23,6 +23,7 @@ import {
   type CreateUserInput,
   type UpdateUserInput,
 } from "@/services/users";
+import { devLog } from "@/lib/dev-log";
 
 async function requireAdmin() {
   const user = await getSessionFromCookies();
@@ -152,7 +153,7 @@ export async function deleteUserAction(recordId: string) {
   }
   try {
     await deleteUserLinkedRecordsBeforeUserDelete(id);
-    console.log("[delete-user]", { userId: id, step: "deleting user record" });
+    devLog("[delete-user]", { userId: id, step: "deleting user record" });
     await deleteRecord("users", id);
     revalidatePath(ROUTES.accounts);
     redirect(ROUTES.accounts + "?success=user_deleted");

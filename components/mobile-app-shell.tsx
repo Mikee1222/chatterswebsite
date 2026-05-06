@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   Home,
   Calendar,
@@ -11,7 +11,6 @@ import {
   Users,
   UserCheck,
   Menu,
-  X,
   FileText,
   Receipt,
   Package,
@@ -29,13 +28,18 @@ import {
   Sparkles,
   Trophy,
   Target,
-  Plus,
+  LineChart,
+  CalendarDays,
+  CalendarClock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
+import { getModelT, getModelShellTitle, MODEL_NAV_HREF_TO_LABEL_KEY } from "@/lib/model-i18n";
+import type { ModelLang } from "@/lib/model-i18n";
 import {
   getMobileMainTabDisplays,
   getNavItemsForRole,
+  navHrefIsActive,
   navStorageProfileForRole,
   type NavIconKey,
   type NavItem,
@@ -46,7 +50,10 @@ import type { SessionUser } from "@/types";
 import type { Shift } from "@/types";
 import { logout } from "@/app/actions/auth";
 import { MobileFab } from "@/components/mobile-fab";
-import { QuickActionsMenu } from "@/components/quick-actions-menu";
+import { FloatingActionButton } from "@/components/floating-action-button";
+import { VaFloatingActionButton } from "@/components/va-quick-actions-modal";
+import { AdminFloatingQuickActionsButton } from "@/components/admin-quick-actions-modal";
+import { MoreMenuModal } from "@/components/more-menu-modal";
 import { MobileFabVisibilityProvider } from "@/contexts/mobile-fab-visibility-context";
 import { LiveShiftMiniBar } from "@/components/live-shift-mini-bar";
 import { NotificationBell } from "@/components/notification-bell";
@@ -54,6 +61,12 @@ import { useNotificationCenter } from "@/contexts/notification-center-context";
 import { useRealtime } from "@/contexts/realtime-context";
 import { useNotificationPrompt } from "@/contexts/notification-prompt-context";
 import { usePwa } from "@/components/pwa-provider";
+
+/** Row layout aligned with VA quick actions (`va-quick-actions-modal.tsx`). */
+const MORE_MENU_ROW_CLASS =
+  "flex min-h-[52px] items-center gap-3 rounded-xl px-3 py-3.5 text-left text-[15px] font-medium transition-colors active:bg-white/10 touch-manipulation";
+const MORE_MENU_ICON_WRAP_CLASS =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400";
 
 const BETA_BADGE_CLASS =
   "ml-1 inline-flex shrink-0 items-center rounded-md bg-pink-500/20 px-1.5 py-0.5 text-[10px] font-bold uppercase text-pink-400";
@@ -81,6 +94,10 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   Settings,
   Sparkles,
   Trophy,
+  Target,
+  LineChart,
+  CalendarDays,
+  CalendarClock,
 };
 
 function getMobileTitle(pathname: string): string {
@@ -95,6 +112,12 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.va.shift) return "Start mistake shift";
   if (pathname === ROUTES.va.liveShifts || pathname === ROUTES.admin.liveShifts) return "Live shifts";
   if (pathname === ROUTES.va.models || pathname === ROUTES.admin.models) return "Models";
+  if (pathname.startsWith(`${ROUTES.admin.models}/`)) return "Model";
+  if (pathname === ROUTES.admin.customRequests) return "Custom requests";
+  if (pathname === ROUTES.va.contentAssignments) return "Content assignments";
+  if (pathname === ROUTES.va.scheduleOverview) return "Schedule overview";
+  if (pathname === "/admin/schedule-overview" || pathname.startsWith("/admin/schedule-overview/")) return "Schedule overview";
+  if (pathname === ROUTES.va.customRequests) return "Custom requests";
   if (pathname === ROUTES.chatter.myWhales || pathname.startsWith(ROUTES.chatter.myWhales)) return "My whales";
   if (pathname === ROUTES.admin.whales || pathname.startsWith(ROUTES.admin.whales)) return "Whales";
   if (pathname === ROUTES.chatter.logTransaction) return "Whale session";
@@ -103,6 +126,7 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.accounts || pathname.startsWith("/accounts")) return "Accounts";
   if (pathname === ROUTES.admin.accounts) return "Accounts";
   if (pathname === ROUTES.admin.shiftActivity) return "Shift activity";
+  if (pathname === ROUTES.admin.earnings || pathname.startsWith(`${ROUTES.admin.earnings}/`)) return "Earnings";
   if (pathname === ROUTES.admin.rewardsConfig) return "Rewards config";
   if (pathname === ROUTES.admin.rewards) return "Rewards";
   if (pathname === ROUTES.chatter.rewards) return "Rewards";
@@ -115,6 +139,9 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.va.weeklyAvailability) return "My availability";
   if (pathname === ROUTES.admin.home) return "Admin";
   if (pathname === ROUTES.model.home || pathname === ROUTES.model.dashboard || pathname.startsWith("/model")) {
+    if (pathname === ROUTES.model.myEarnings) return "My earnings";
+    if (pathname === ROUTES.model.contentCalendar) return "Content calendar";
+    if (pathname === ROUTES.model.contentAssignments) return "VA content";
     if (pathname === ROUTES.model.weeklyAvailability) return "Weekly availability";
     if (pathname === ROUTES.model.schedule) return "Schedule";
     if (pathname === ROUTES.model.tasks) return "Tasks";
@@ -124,6 +151,8 @@ function getMobileTitle(pathname: string): string {
     return "Model";
   }
   if (pathname === ROUTES.admin.modelAvailability) return "Model availability";
+  if (pathname === ROUTES.admin.modelSchedulesOverview) return "Schedule overview";
+  if (pathname === ROUTES.admin.vaContentAssignments) return "VA content";
   if (pathname === ROUTES.admin.modelSchedules) return "Model schedules";
   if (pathname === ROUTES.admin.modelTasks) return "Model tasks";
   if (pathname === ROUTES.admin.modelLiveStreams) return "Model live streams";
@@ -131,11 +160,6 @@ function getMobileTitle(pathname: string): string {
   return "App";
 }
 
-function isActive(pathname: string, href: string): boolean {
-  if (pathname === href) return true;
-  if (href !== "/" && pathname.startsWith(href + "/")) return true;
-  return false;
-}
 
 type MobileAppShellProps = {
   user: SessionUser;
@@ -143,6 +167,9 @@ type MobileAppShellProps = {
   activeShift?: Shift | null;
   activeShiftModelsCount?: number | null;
   hiddenNavByProfile: Record<NavStorageProfile, string[]>;
+  navBadgeCounts?: Record<string, number>;
+  /** Model UI language from cookie / Airtable — translates bottom tabs + More menu labels. */
+  modelUiLanguage?: ModelLang;
 };
 
 export function MobileAppShell({
@@ -151,11 +178,11 @@ export function MobileAppShell({
   activeShift = null,
   activeShiftModelsCount = null,
   hiddenNavByProfile,
+  navBadgeCounts,
+  modelUiLanguage,
 }: MobileAppShellProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const [moreOpen, setMoreOpen] = React.useState(false);
-  const [quickActionsOpen, setQuickActionsOpen] = React.useState(false);
   const [mounted, setMounted] = React.useState(false);
   const notificationCenter = useNotificationCenter();
   const realtime = useRealtime();
@@ -180,25 +207,55 @@ export function MobileAppShell({
     [hiddenNavByProfile, profile]
   );
 
-  const allItems: NavItem[] = React.useMemo(() => {
+  const baseNavItems: NavItem[] = React.useMemo(() => {
     return getNavItemsForRole(role, hiddenForRole);
   }, [role, hiddenForRole]);
 
+  const allItems: NavItem[] = React.useMemo(() => {
+    if (role !== "model" || !modelUiLanguage) return baseNavItems;
+    const t = getModelT(modelUiLanguage);
+    return baseNavItems.map((item) => {
+      const key = MODEL_NAV_HREF_TO_LABEL_KEY[item.href];
+      const label = key ? t(key) : item.label;
+      const badge =
+        item.href === ROUTES.model.myEarnings && item.badge ? t("nav.comingSoon") : item.badge;
+      return { ...item, label, badge };
+    });
+  }, [baseNavItems, role, modelUiLanguage]);
+
   const mainTabRows = React.useMemo(() => {
-    return getMobileMainTabDisplays(role, hiddenForRole);
-  }, [role, hiddenForRole]);
+    const displays = getMobileMainTabDisplays(role, hiddenForRole);
+    if (role !== "model" || !modelUiLanguage) return displays.map(({ item }) => ({ item }));
+    const t = getModelT(modelUiLanguage);
+    return displays.map(({ item }) => {
+      const key = MODEL_NAV_HREF_TO_LABEL_KEY[item.href];
+      const label = key ? t(key) : item.label;
+      return { item: { ...item, label } };
+    });
+  }, [role, hiddenForRole, modelUiLanguage]);
 
   const mainHrefSet = React.useMemo(() => new Set(mainTabRows.map((r) => r.item.href)), [mainTabRows]);
   const moreItems = allItems.filter((item) => !mainHrefSet.has(item.href));
 
-  const title = getMobileTitle(pathname);
+  const navHrefs = React.useMemo(() => allItems.map((i) => i.href), [allItems]);
+  const navActive = React.useCallback((href: string) => navHrefIsActive(pathname, href, navHrefs), [pathname, navHrefs]);
+
+  const moreTabActive = React.useMemo(() => moreItems.some((item) => navActive(item.href)), [moreItems, navActive]);
+
+  const title = React.useMemo(() => {
+    if (user.role === "model" && modelUiLanguage) {
+      const m = getModelShellTitle(pathname, modelUiLanguage);
+      if (m) return m;
+    }
+    return getMobileTitle(pathname);
+  }, [pathname, user.role, modelUiLanguage]);
   const shiftHref = user.role === "chatter" ? ROUTES.chatter.shift : user.role === "virtual_assistant" ? ROUTES.va.shift : null;
 
   return (
     <MobileFabVisibilityProvider>
-      <div className="min-h-[100dvh] flex flex-col md:min-h-0">
+      <div className="flex min-h-[100dvh] flex-col bg-[var(--bg-base)] md:min-h-0 md:bg-transparent">
         <header
-          className="sticky top-0 z-30 shrink-0 overflow-hidden border-b border-white/10 bg-black/60 backdrop-blur-xl md:hidden"
+          className="sticky top-0 z-30 shrink-0 overflow-hidden border-b border-white/10 bg-zinc-900/80 backdrop-blur-xl md:hidden"
           style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
         >
           <div className="flex h-[56px] min-h-[56px] max-h-[56px] w-full min-w-0 items-center justify-between gap-2 px-4">
@@ -226,55 +283,72 @@ export function MobileAppShell({
         )}
 
         {user.role === "chatter" ? (
-          <>
-            <button
-              type="button"
-              onClick={() => setQuickActionsOpen(true)}
-              className="fixed bottom-[88px] right-4 z-50 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-pink-400/35 bg-gradient-to-br from-pink-500 to-fuchsia-600 text-white shadow-[0_14px_32px_rgba(236,72,153,0.45)] transition-transform hover:scale-[1.03] active:scale-[0.98] md:hidden"
-              aria-label="Open quick actions"
-            >
-              <Plus className="h-6 w-6" />
-            </button>
-            {quickActionsOpen ? (
-              <QuickActionsMenu
-                onClose={() => setQuickActionsOpen(false)}
-                openAddWhale={() => router.push(ROUTES.chatter.myWhalesNew)}
-                openTransactionForm={() => router.push(ROUTES.chatter.logTransaction)}
-              />
-            ) : null}
-          </>
+          <FloatingActionButton user={user} />
+        ) : user.role === "admin" || user.role === "manager" ? (
+          <AdminFloatingQuickActionsButton user={user} />
+        ) : user.role === "model" ? null : user.role === "virtual_assistant" ? (
+          <VaFloatingActionButton user={user} />
         ) : (
           <MobileFab user={user} />
         )}
 
         <nav
-          className="fixed bottom-0 left-0 right-0 z-40 flex h-[72px] items-center justify-around border-t border-white/10 bg-black/90 backdrop-blur-xl md:hidden"
+          className="fixed bottom-0 left-0 right-0 z-40 flex h-[64px] items-stretch justify-around gap-0.5 border-t border-white/[0.09] bg-zinc-950/92 px-1 pt-1 backdrop-blur-xl md:hidden"
           style={{
-            paddingBottom: "env(safe-area-inset-bottom)",
-            boxShadow: "0 -4px 24px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.05)",
+            paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))",
+            boxShadow: "0 -8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
-          {mainTabRows.map(({ item, shortLabel }) => {
+          {mainTabRows.map(({ item }) => {
             const href = item.href;
             const Icon = ICON_MAP[item.iconKey] ?? Home;
-            const active = isActive(pathname, href);
-            return (
-              <Link
-                key={href}
-                href={href}
-                className={cn(
-                  "flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors",
-                  "border-0 bg-transparent shadow-none outline-none ring-0",
-                  active
-                    ? "bg-[hsl(330,88%,58%)]/18 text-[hsl(330,92%,72%)]"
-                    : "text-white/60 hover:text-white/90"
-                )}
-              >
-                <Icon className="h-6 w-6 shrink-0" />
-                <span className="flex max-w-full items-center justify-center gap-0.5 truncate">
-                  <span className="truncate">{shortLabel}</span>
-                  {item.beta ? <NavBetaBadge /> : null}
+            const active = !item.disabled && navActive(href);
+            const tabClass = cn(
+              "relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-0.5 py-1.5 transition-all duration-200 ease-out",
+              "border-0 bg-transparent shadow-none outline-none ring-0",
+              item.disabled
+                ? "cursor-not-allowed text-white/35"
+                : active
+                  ? "text-pink-200"
+                  : "text-white/45 active:scale-[0.96] hover:bg-white/[0.06] hover:text-white/90"
+            );
+            const iconWrap = (
+              <>
+                {active ? (
+                  <span
+                    className="absolute left-1/2 top-1.5 h-1 w-8 -translate-x-1/2 rounded-full bg-gradient-to-r from-pink-400 via-pink-300 to-fuchsia-400 shadow-[0_0_14px_rgba(236,72,153,0.55)]"
+                    aria-hidden
+                  />
+                ) : null}
+                <Icon
+                  className={cn(
+                    "relative z-10 h-6 w-6 shrink-0 transition-[transform,filter] duration-200",
+                    item.disabled && "opacity-50",
+                    active && "scale-[1.06] drop-shadow-[0_0_10px_rgba(236,72,153,0.4)]"
+                  )}
+                  aria-hidden
+                />
+                <span className="sr-only">
+                  {item.label}
+                  {item.beta ? " (beta)" : ""}
                 </span>
+              </>
+            );
+            if (item.disabled) {
+              return (
+                <div
+                  key={href}
+                  className={tabClass}
+                  aria-label={`${item.label} (${item.badge ?? "unavailable"})`}
+                  role="group"
+                >
+                  {iconWrap}
+                </div>
+              );
+            }
+            return (
+              <Link key={href} href={href} prefetch className={tabClass}>
+                {iconWrap}
               </Link>
             );
           })}
@@ -282,144 +356,179 @@ export function MobileAppShell({
             type="button"
             onClick={() => setMoreOpen(true)}
             className={cn(
-              "flex min-h-[48px] min-w-0 flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 text-[10px] font-semibold uppercase tracking-wider transition-colors",
-              "border-0 bg-transparent text-white/60 shadow-none outline-none ring-0 hover:text-white/90"
+              "relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-2 transition-all duration-200 ease-out",
+              "border-0 bg-transparent shadow-none outline-none ring-0",
+              moreOpen
+                ? "bg-white/10 text-white"
+                : moreTabActive
+                  ? "text-pink-200 hover:bg-white/[0.06]"
+                  : "text-white/45 hover:bg-white/[0.06] hover:text-white/90"
             )}
+            aria-expanded={moreOpen}
+            aria-haspopup="dialog"
+            aria-label="More navigation"
           >
-            <Menu className="h-6 w-6 shrink-0" />
-            <span className="max-w-full truncate">MORE</span>
+            {moreTabActive && !moreOpen ? (
+              <span
+                className="absolute left-1/2 top-1.5 h-1 w-8 -translate-x-1/2 rounded-full bg-gradient-to-r from-pink-400/90 to-fuchsia-400/90 opacity-90 shadow-[0_0_12px_rgba(236,72,153,0.45)]"
+                aria-hidden
+              />
+            ) : null}
+            <Menu className="relative z-10 h-7 w-7 shrink-0" aria-hidden />
+            <span className="sr-only">More menu</span>
           </button>
         </nav>
       </div>
 
-      {moreOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-[110] bg-black/70 backdrop-blur-sm md:hidden"
-            aria-hidden
-            onClick={() => setMoreOpen(false)}
-          />
-          <div
-            className="fixed inset-0 top-auto z-[120] flex max-h-[85dvh] flex-col rounded-t-2xl border border-white/10 border-b-0 bg-black/95 backdrop-blur-xl md:hidden transition-transform duration-200 ease-out"
-            style={{
-              paddingBottom: "env(safe-area-inset-bottom)",
-              boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
-            }}
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-4 py-4">
-              <span className="text-base font-semibold text-white">More</span>
+      <MoreMenuModal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" userRole={user.role}>
+        <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2">
+          {moreItems.map((link) => {
+            const Icon = ICON_MAP[link.iconKey] ?? Users;
+            const active = !link.disabled && navActive(link.href);
+            if (link.disabled) {
+              return (
+                <li key={link.href}>
+                  <div
+                    className={cn(MORE_MENU_ROW_CLASS, "cursor-not-allowed text-white/40")}
+                    aria-disabled="true"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 text-white/35">
+                      <Icon className="h-5 w-5 opacity-50" />
+                    </span>
+                    <span className="flex min-w-0 flex-1 items-center gap-2">
+                      <span className="truncate">{link.label}</span>
+                      {link.badge ? (
+                        <span className="shrink-0 rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/45">
+                          {link.badge}
+                        </span>
+                      ) : null}
+                    </span>
+                  </div>
+                </li>
+              );
+            }
+            return (
+              <li key={link.href}>
+                <Link
+                  href={link.href}
+                  prefetch
+                  onClick={() => setMoreOpen(false)}
+                  className={cn(MORE_MENU_ROW_CLASS, active ? "bg-pink-500/10 text-pink-100" : "text-white/95")}
+                >
+                  <span className={cn(MORE_MENU_ICON_WRAP_CLASS, active && "bg-pink-500/30 text-pink-300")}>
+                    <Icon className="h-5 w-5" />
+                  </span>
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <span className="truncate">{link.label}</span>
+                    {link.beta ? <NavBetaBadge /> : null}
+                    {link.badge ? <span className="text-[10px] uppercase text-white/40">{link.badge}</span> : null}
+                    {(navBadgeCounts?.[link.href] ?? 0) > 0 ? (
+                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-pink-500 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-white">
+                        {(navBadgeCounts?.[link.href] ?? 0) > 99 ? "99+" : navBadgeCounts?.[link.href]}
+                      </span>
+                    ) : null}
+                  </span>
+                </Link>
+              </li>
+            );
+          })}
+          {!allItems.some((i) => i.href === ROUTES.settings) && (
+            <li>
+              <Link
+                href={ROUTES.settings}
+                prefetch
+                onClick={() => setMoreOpen(false)}
+                className={cn(
+                  MORE_MENU_ROW_CLASS,
+                  navActive(ROUTES.settings) ? "bg-pink-500/10 text-pink-100" : "text-white/95"
+                )}
+              >
+                <span
+                  className={cn(
+                    MORE_MENU_ICON_WRAP_CLASS,
+                    navActive(ROUTES.settings) && "bg-pink-500/30 text-pink-300"
+                  )}
+                >
+                  <Settings className="h-5 w-5" />
+                </span>
+                Settings
+              </Link>
+            </li>
+          )}
+          {notificationCenter && (
+            <li>
               <button
                 type="button"
-                onClick={() => setMoreOpen(false)}
-                className="flex h-10 w-10 items-center justify-center rounded-xl text-white/70 hover:bg-white/10 hover:text-white"
-                aria-label="Close"
+                onClick={() => {
+                  notificationCenter.setOpen(true);
+                  setMoreOpen(false);
+                }}
+                className={cn(MORE_MENU_ROW_CLASS, "w-full text-white/95")}
               >
-                <X className="h-5 w-5" />
+                <span className={MORE_MENU_ICON_WRAP_CLASS}>
+                  <Bell className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1 text-left">Notifications</span>
+                {mounted && unreadCount > 0 ? (
+                  <span className="flex h-6 min-w-[1.5rem] shrink-0 items-center justify-center rounded-full bg-pink-500 px-2 text-[11px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                ) : null}
               </button>
-            </div>
-            <ul className="flex-1 space-y-0.5 overflow-y-auto p-4">
-              {moreItems.map((link) => {
-                const Icon = ICON_MAP[link.iconKey] ?? Users;
-                const active = isActive(pathname, link.href);
-                return (
-                  <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      onClick={() => setMoreOpen(false)}
-                      className={cn(
-                        "flex items-center gap-4 rounded-xl px-4 py-4 text-base font-medium transition-colors",
-                        active ? "bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,65%)]" : "text-white/90 hover:bg-white/10"
-                      )}
-                    >
-                      <Icon className="h-5 w-5 shrink-0" />
-                      <span className="flex min-w-0 flex-1 items-center gap-1">
-                        <span className="truncate">{link.label}</span>
-                        {link.beta ? <NavBetaBadge /> : null}
-                      </span>
-                    </Link>
-                  </li>
-                );
-              })}
-              {!allItems.some((i) => i.href === ROUTES.settings) && (
-                <li>
-                  <Link
-                    href={ROUTES.settings}
-                    onClick={() => setMoreOpen(false)}
-                    className={cn(
-                      "flex items-center gap-4 rounded-xl px-4 py-4 text-base font-medium transition-colors",
-                      isActive(pathname, ROUTES.settings) ? "bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,65%)]" : "text-white/90 hover:bg-white/10"
-                    )}
-                  >
-                    <Settings className="h-5 w-5 shrink-0" />
-                    Settings
-                  </Link>
-                </li>
-              )}
-              {notificationCenter && (
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      notificationCenter.setOpen(true);
-                      setMoreOpen(false);
-                    }}
-                    className="flex w-full items-center gap-4 rounded-xl px-4 py-4 text-base font-medium text-white/90 hover:bg-white/10"
-                  >
-                    <Bell className="h-5 w-5 shrink-0" />
-                    <span className="flex-1 text-left">Notifications</span>
-                    {mounted && unreadCount > 0 && (
-                      <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-[hsl(330,80%,55%)] px-1.5 text-[11px] font-semibold text-white">
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </span>
-                    )}
-                  </button>
-                </li>
-              )}
-              {mounted && (canInstall || needsAddToHomeScreen) && (
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setInstallSheetOpen(true);
-                      setMoreOpen(false);
-                    }}
-                    className="flex w-full items-center gap-4 rounded-xl px-4 py-4 text-base font-medium text-white/90 hover:bg-white/10"
-                  >
-                    <Download className="h-5 w-5 shrink-0" />
-                    <span className="flex-1 text-left">Install app</span>
-                  </button>
-                </li>
-              )}
-              {mounted && notificationPermission !== null && notificationPermission !== "granted" && (
-                <li>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      openNotificationPrompt();
-                      setMoreOpen(false);
-                    }}
-                    className="flex w-full items-center gap-4 rounded-xl px-4 py-4 text-base font-medium text-white/90 hover:bg-white/10"
-                  >
-                    <BellPlus className="h-5 w-5 shrink-0" />
-                    <span className="flex-1 text-left">Enable notifications</span>
-                  </button>
-                </li>
-              )}
-              <li className="border-t border-white/10 pt-3">
-                <form action={logout}>
-                  <button
-                    type="submit"
-                    className="flex w-full items-center gap-4 rounded-xl px-4 py-4 text-base font-medium text-white/80 hover:bg-white/10 hover:text-white"
-                  >
-                    <LogOut className="h-5 w-5 shrink-0" />
-                    Log out
-                  </button>
-                </form>
-              </li>
-            </ul>
-          </div>
-        </>
-      )}
+            </li>
+          )}
+          {mounted && (canInstall || needsAddToHomeScreen) && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  setInstallSheetOpen(true);
+                  setMoreOpen(false);
+                }}
+                className={cn(MORE_MENU_ROW_CLASS, "w-full text-white/95")}
+              >
+                <span className={MORE_MENU_ICON_WRAP_CLASS}>
+                  <Download className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1 text-left">Install app</span>
+              </button>
+            </li>
+          )}
+          {mounted && notificationPermission !== null && notificationPermission !== "granted" && (
+            <li>
+              <button
+                type="button"
+                onClick={() => {
+                  openNotificationPrompt();
+                  setMoreOpen(false);
+                }}
+                className={cn(MORE_MENU_ROW_CLASS, "w-full text-white/95")}
+              >
+                <span className={MORE_MENU_ICON_WRAP_CLASS}>
+                  <BellPlus className="h-5 w-5" />
+                </span>
+                <span className="min-w-0 flex-1 text-left">Enable notifications</span>
+              </button>
+            </li>
+          )}
+          <li className="border-t border-white/10 pt-2">
+            <form action={logout}>
+              <button
+                type="submit"
+                className={cn(
+                  MORE_MENU_ROW_CLASS,
+                  "w-full text-red-400 hover:bg-red-500/10 active:bg-red-500/15"
+                )}
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-500/15 text-red-400">
+                  <LogOut className="h-5 w-5" />
+                </span>
+                Log out
+              </button>
+            </form>
+          </li>
+        </ul>
+      </MoreMenuModal>
     </MobileFabVisibilityProvider>
   );
 }

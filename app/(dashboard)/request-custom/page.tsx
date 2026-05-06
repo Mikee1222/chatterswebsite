@@ -6,6 +6,7 @@ import { listCustomRequestsByChatter } from "@/services/custom-requests";
 import { FormCard } from "@/components/ui/form";
 import { RequestCustomForm } from "@/components/request-custom-form";
 import { CustomRequestHistory } from "@/components/custom-request-history";
+import { devLog } from "@/lib/dev-log";
 
 export default async function RequestCustomPage() {
   const user = await getSessionFromCookies();
@@ -18,7 +19,7 @@ export default async function RequestCustomPage() {
     listCustomRequestsByChatter(chatterRecordId).catch(() => []),
   ]);
   if (process.env.NODE_ENV !== "production") {
-    console.log("[request-custom page] history debug", {
+    devLog("[request-custom page] history debug", {
       currentUserEmail: user.email,
       currentUserId: user.id,
       currentAirtableUserRecordId: user.airtableUserId ?? "(null)",

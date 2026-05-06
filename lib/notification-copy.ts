@@ -169,6 +169,61 @@ export function whaleRegisteredAdmin(whaleName: string): { title: string; body: 
   };
 }
 
+/** Whale registered — chatter (self); same dual path as shift_started (notify + notifyAdmins). */
+export function whaleRegisteredSelf(whaleUsername: string): { title: string; body: string } {
+  return {
+    title: "🐋 Whale added",
+    body: `${whaleUsername} is saved in My Whales.`,
+  };
+}
+
+/** Chatter added whale — admin copy (model not assigned yet). */
+export function whaleRegisteredAdminFromChatter(chatterName: string, whaleUsername: string): { title: string; body: string } {
+  return {
+    title: "🐋 New whale added",
+    body: `${chatterName} added a new whale: ${whaleUsername}. Tap to assign a model.`,
+  };
+}
+
+/** Chatter added whale with model — admin copy. */
+export function whaleRegisteredAdminFromChatterWithModel(
+  chatterName: string,
+  whaleUsername: string,
+  modelName: string
+): { title: string; body: string } {
+  return {
+    title: "🐋 New whale added",
+    body: `${chatterName} added ${whaleUsername} with model ${modelName}.`,
+  };
+}
+
+/** Chatter submitted a whale; waiting for admin to assign a chatter (no auto-assign). */
+export function whaleSubmittedAwaitingAssignmentChatter(whaleUsername: string): { title: string; body: string } {
+  return {
+    title: "🐋 Whale submitted",
+    body: `We received @${whaleUsername}. An admin will assign a chatter — it will appear in My whales once assigned.`,
+  };
+}
+
+/** Admin: new whale needs chatter assignment. */
+export function whaleNeedsChatterAssignmentAdmin(chatterName: string, whaleUsername: string, modelName?: string): { title: string; body: string } {
+  const detail = modelName?.trim()
+    ? `${chatterName} added @${whaleUsername} (model: ${modelName}). Assign a chatter in Whales.`
+    : `${chatterName} added @${whaleUsername}. Assign a chatter in Whales.`;
+  return {
+    title: "🐋 Whale needs assignment",
+    body: detail,
+  };
+}
+
+/** Chatter was assigned to a whale by admin. */
+export function whaleAssignedToYou(whaleUsername: string): { title: string; body: string } {
+  return {
+    title: "🐋 Whale assigned to you",
+    body: `You've been assigned @${whaleUsername}. Open My whales to manage.`,
+  };
+}
+
 /** Whale assigned — admin. */
 export function whaleAssignedAdmin(whaleName: string, assigneeName: string): { title: string; body: string } {
   return {
@@ -300,9 +355,30 @@ export function customScheduledAdmin(
   scheduledTime?: string
 ): { title: string; body: string } {
   const at = scheduledTime ? ` at ${scheduledTime}` : "";
+  const who = modelName?.trim() ? `${modelName.trim()} — ` : "";
   return {
     title: "🗓 Custom scheduled",
-    body: `Scheduled for ${scheduledDate}${at}.`,
+    body: `${who}Scheduled for ${scheduledDate}${at}.`,
+  };
+}
+
+/** Model scheduled your custom — chatter. */
+export function customScheduledChatter(customTitle: string, scheduledDate: string, timeRange?: string): {
+  title: string;
+  body: string;
+} {
+  const when = timeRange ? `${scheduledDate} (${timeRange})` : scheduledDate;
+  return {
+    title: "🗓 Custom scheduled",
+    body: `${customTitle} is scheduled for ${when}.`,
+  };
+}
+
+/** Model marked custom as uploaded — chatter / admin body line. */
+export function customUploadedChatter(customTitle: string): { title: string; body: string } {
+  return {
+    title: "✅ Custom uploaded",
+    body: `${customTitle} was marked as uploaded by your model.`,
   };
 }
 

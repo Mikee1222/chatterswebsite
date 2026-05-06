@@ -1,10 +1,12 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import {
   createContext,
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -35,23 +37,18 @@ const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
 const REALTIME_DEBUG = "[realtime-debug]";
 
-function getWsUrl(): string {
-  if (typeof window === "undefined") return "";
-  const external = process.env.NEXT_PUBLIC_REALTIME_WS_URL;
-  if (external) return external;
-  const base = process.env.NEXT_PUBLIC_APP_URL || "";
-  if (base) {
-    const host = base.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const protocol = base.startsWith("https") ? "wss:" : "ws:";
-    return `${protocol}//${host}/api/ws`;
-  }
-  const origin = window.location.origin;
-  const protocol = origin.startsWith("https") ? "wss:" : "ws:";
-  const host = window.location.host;
-  return `${protocol}//${host}/api/ws`;
+/**
+ * WebSocket URL for the separate realtime Worker (`realtime/` + `NEXT_PUBLIC_REALTIME_WS_URL`).
+ * We intentionally do **not** fall back to `/api/ws` on the app origin — that route does not exist
+ * on the Next/OpenNext worker and causes console noise and failed upgrade requests in production.
+ */
+function useConfiguredRealtimeWsUrl(): string {
+  return useMemo(() => {
+    const raw = process.env.NEXT_PUBLIC_REALTIME_WS_URL;
+    return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : "";
+  }, []);
 }
 
-const WS_URL = typeof window !== "undefined" ? getWsUrl() : "";
 const RECONNECT_BASE_MS = 1000;
 const RECONNECT_MAX_MS = 30000;
 
@@ -76,6 +73,9 @@ export function RealtimeProvider({
   const reconnectAttemptRef = useRef(0);
   const addToastRef = useRef(addToast);
   addToastRef.current = addToast;
+  const wsUrl = useConfiguredRealtimeWsUrl();
+  const wsUrlRef = useRef(wsUrl);
+  wsUrlRef.current = wsUrl;
 
   const setUnreadCount = useCallback((n: number | ((prev: number) => number)) => {
     setUnreadCountState(n);
@@ -109,17 +109,18 @@ export function RealtimeProvider({
   }, []);
 
   const connect = useCallback(() => {
-    if (!WS_URL) {
+    const url = wsUrlRef.current;
+    if (!url) {
       setConnectionStatus("idle");
       return;
     }
-    if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client connecting", WS_URL);
+    if (typeof window !== "undefined") devLog(REALTIME_DEBUG, "client connecting", url);
     setConnectionStatus("connecting");
-    const ws = new WebSocket(WS_URL);
+    const ws = new WebSocket(url);
     wsRef.current = ws;
 
     ws.onopen = () => {
-      if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client connected");
+      if (typeof window !== "undefined") devLog(REALTIME_DEBUG, "client connected");
       reconnectAttemptRef.current = 0;
       fetch("/api/realtime-token")
         .then((r) => r.json())
@@ -134,7 +135,7 @@ export function RealtimeProvider({
         const data = JSON.parse(event.data as string);
         if (data.type === "authenticated") {
           setConnectionStatus("connected");
-          if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client authenticated");
+          if (typeof window !== "undefined") devLog(REALTIME_DEBUG, "client authenticated");
           return;
         }
         if (data.type === "error") {
@@ -161,10 +162,10 @@ export function RealtimeProvider({
     };
 
     ws.onclose = () => {
-      if (typeof window !== "undefined") console.log(REALTIME_DEBUG, "client closed");
+      if (typeof window !== "undefined") devLog(REALTIME_DEBUG, "client closed");
       wsRef.current = null;
       setConnectionStatus("disconnected");
-      if (!WS_URL) return;
+      if (!wsUrlRef.current) return;
       const delay = Math.min(
         RECONNECT_BASE_MS * 2 ** reconnectAttemptRef.current,
         RECONNECT_MAX_MS
@@ -187,15 +188,15 @@ export function RealtimeProvider({
   // When WebSocket is not configured, poll unread count at a stable interval (no storm on failure)
   const POLL_INTERVAL_MS = 30000;
   useEffect(() => {
-    if (WS_URL) return;
+    if (wsUrl) return;
     const t = setInterval(() => {
       refreshUnreadCount().then(() => {});
     }, POLL_INTERVAL_MS);
     return () => clearInterval(t);
-  }, [WS_URL, refreshUnreadCount]);
+  }, [wsUrl, refreshUnreadCount]);
 
   useEffect(() => {
-    if (!WS_URL) return;
+    if (!wsUrl) return;
     connect();
     return () => {
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
@@ -204,7 +205,7 @@ export function RealtimeProvider({
         wsRef.current = null;
       }
     };
-  }, [connect]);
+  }, [connect, wsUrl]);
 
   const value: RealtimeContextValue = {
     connectionStatus,

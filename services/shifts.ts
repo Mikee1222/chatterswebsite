@@ -15,6 +15,7 @@ import { firstLinkedId, snapshotText, formulaLinkedContains } from "@/lib/airtab
 import { formatRelativeTime } from "@/lib/format";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { Shift, ShiftModel } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const SHIFTS_TABLE = "shifts";
 
@@ -30,7 +31,7 @@ async function getShiftsStatusFieldName(): Promise<string> {
     if (statusField?.name) {
       cachedStatusFieldName = statusField.name;
       if (process.env.NODE_ENV !== "production") {
-        console.log("[shifts] status field from schema", {
+        devLog("[shifts] status field from schema", {
           fieldName: cachedStatusFieldName,
           options: statusField.options?.choices?.map((c) => c.name),
         });
@@ -49,7 +50,7 @@ async function getShiftsStatusFieldName(): Promise<string> {
       if (key) {
         cachedStatusFieldName = key;
         if (process.env.NODE_ENV !== "production") {
-          console.log("[shifts] status field from sample record", {
+          devLog("[shifts] status field from sample record", {
             fieldName: cachedStatusFieldName,
             value: sample[key],
           });
@@ -298,7 +299,7 @@ export async function getActiveShiftByStaff(
   const shifts = await listAllShifts(formula, "shifts.getActiveShiftByStaff");
   const found = shifts.find((s) => s.chatter_id === userRecordId) ?? null;
   if (process.env.NODE_ENV !== "production" && found) {
-    console.log("[getActiveShiftByStaff]", { userRecordId, staffRole, shiftId: found.id });
+    devLog("[getActiveShiftByStaff]", { userRecordId, staffRole, shiftId: found.id });
   }
   return found;
 }
@@ -343,7 +344,7 @@ export async function createShift(fields: ShiftWriteFields) {
   const rec = await createRecord(SHIFTS_TABLE, fields as Record<string, unknown>) as AirtableRecord<ShiftFields>;
   if (process.env.NODE_ENV !== "production") {
     const f = rec.fields;
-    console.log("[createShift] created record", {
+    devLog("[createShift] created record", {
       airtableRecordId: rec.id,
       shift_id: f.shift_id,
       chatterLinkedFieldValue: f.chatter,

@@ -12,6 +12,7 @@ import { firstLinkedId, linkedRecordIds, snapshotText } from "@/lib/airtable-lin
 import { WEEKLY_PROGRAM_DAY_OPTIONS, WEEKLY_PROGRAM_SHIFT_TYPES, ensureMondayForQuery, airtableWeekStartToMonday } from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const TABLE = "weekly_program_va";
 
@@ -154,7 +155,7 @@ export async function getProgramsForWeekVa(weekStart: string): Promise<WeeklyPro
       const mappedAll = all.map((r) => mapRecord(r as AirtableRecord<Fields>));
       const forWeek = mappedAll.filter((p) => p.week_start === weekYmd);
       if (process.env.NODE_ENV !== "production" && forWeek.length > 0) {
-        console.log("[getProgramsForWeekVa] fetch-then-filter (DATESTR missed records)", {
+        devLog("[getProgramsForWeekVa] fetch-then-filter (DATESTR missed records)", {
           weekYmd,
           total_fetched: all.length,
           after_normalized_week_filter: forWeek.length,
@@ -171,7 +172,7 @@ export async function getProgramsForWeekVa(weekStart: string): Promise<WeeklyPro
   const mapped = rawRecords.map((r) => mapRecord(r as AirtableRecord<Fields>));
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[getProgramsForWeekVa] query", {
+    devLog("[getProgramsForWeekVa] query", {
       week_start_queried: weekYmd,
       field_name_used: fieldName,
       fetched_count: rawRecords.length,
@@ -182,7 +183,7 @@ export async function getProgramsForWeekVa(weekStart: string): Promise<WeeklyPro
     });
     rawRecords.slice(0, 5).forEach((r, i) => {
       const f = r.fields as unknown as Record<string, unknown>;
-      console.log(`[getProgramsForWeekVa] raw record ${i + 1}`, {
+      devLog(`[getProgramsForWeekVa] raw record ${i + 1}`, {
         id: r.id,
         program_id: f.program_id ?? f["Program id"],
         week_start: f.week_start ?? f["Week start"],

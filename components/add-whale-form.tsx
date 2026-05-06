@@ -1,4 +1,5 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -70,7 +71,7 @@ export function AddWhaleForm({ open, onOpenChange }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    console.log("[AddWhaleForm] submit fired", { username: username.trim() });
+    devLog("[AddWhaleForm] submit fired", { username: username.trim() });
     setError(null);
     const u = username.trim();
     if (!u) {

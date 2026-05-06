@@ -10,6 +10,7 @@ import { eurToUsd } from "@/lib/exchange";
 import { formatDateEuropean, displayName } from "@/lib/format";
 import { getNowInAthens } from "@/lib/airtable-datetime";
 import { ChatterHomeClient } from "@/components/chatter-home-client";
+import { ChatterHomePageClient } from "@/components/chatter-home-page-client";
 import type { WhaleTransaction } from "@/types";
 
 export type HomeShiftCardData =
@@ -96,16 +97,16 @@ export default async function ChatterHomePage() {
       : null;
 
   return (
-    <div className="space-y-8">
+    <ChatterHomePageClient>
       <div
-        className="rounded-2xl border border-white/10 bg-black/40 px-6 py-5 backdrop-blur-xl"
-        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 32px -8px hsl(330 80% 55% / 0.08)" }}
+        className="rounded-2xl border border-pink-500/15 bg-gradient-to-br from-pink-500/[0.08] via-black/45 to-fuchsia-950/25 px-6 py-6 backdrop-blur-xl transition-shadow duration-300 hover:border-pink-400/25 hover:shadow-[0_0_40px_-8px_hsl(330_80%_55%/0.2)]"
+        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 0 36px -10px hsl(330 80% 55% / 0.12)" }}
       >
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Dashboard</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-200/50">Dashboard</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
           Welcome back{user.fullName ? `, ${user.fullName.split(" ")[0]}` : ""}
         </h1>
-        <p className="mt-1 text-white/60">Your chatter dashboard</p>
+        <p className="mt-1.5 text-[15px] text-white/65">Your chatter dashboard</p>
       </div>
 
       <ChatterHomeClient
@@ -117,10 +118,10 @@ export default async function ChatterHomePage() {
 
       <section>
         <div
-          className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl"
-          style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 32px -8px hsl(330 80% 55% / 0.06)" }}
+          className="overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-black/50 backdrop-blur-xl transition-shadow duration-300 hover:border-pink-500/20 hover:shadow-[0_12px_40px_-12px_hsl(330_80%_55%/0.15)]"
+          style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 32px -8px hsl(330 80% 55% / 0.08)" }}
         >
-          <div className="border-b border-white/10 bg-white/[0.04] px-5 py-4">
+          <div className="border-b border-white/10 bg-gradient-to-r from-pink-500/10 to-transparent px-5 py-4">
             <h2 className="text-sm font-semibold uppercase tracking-wider text-white/90">Recent activity</h2>
           </div>
           {transactions.length === 0 ? (
@@ -130,7 +131,10 @@ export default async function ChatterHomePage() {
           ) : (
             <ul className="divide-y divide-white/5">
               {transactions.slice(0, 8).map((tx: WhaleTransaction) => (
-                <li key={tx.id} className="flex items-center justify-between px-4 py-3">
+                <li
+                  key={tx.id}
+                  className="flex items-center justify-between px-4 py-3 transition-colors duration-200 hover:bg-white/[0.04]"
+                >
                   <div>
                     <p className="font-medium text-white/90">{displayName(tx.whale_username)}</p>
                     <p className="text-xs text-white/50">
@@ -143,6 +147,6 @@ export default async function ChatterHomePage() {
           )}
         </div>
       </section>
-    </div>
+    </ChatterHomePageClient>
   );
 }

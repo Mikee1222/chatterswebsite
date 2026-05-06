@@ -22,6 +22,8 @@ const TABLE = "weekly_availability_requests_models";
 type Fields = {
   request_id?: string;
   week_start?: string;
+  /** multipleRecordLinks → modelss; legacy: `model_id` */
+  model?: string | string[];
   model_id?: string | string[];
   model_name?: string;
   day?: string;
@@ -56,7 +58,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelWeeklyAvailabilityRequest 
     id: rec.id,
     request_id: f.request_id ?? "",
     week_start: (f.week_start ?? "").slice(0, 10),
-    model_id: firstLinkedId(f.model_id) ?? "",
+    model_id: firstLinkedId(f.model ?? f.model_id) ?? "",
     model_name: f.model_name ?? "",
     day: parseDay(f.day),
     entry_type: parseEntryType(f.entry_type),
@@ -103,7 +105,7 @@ export async function createModelAvailabilityRequest(input: {
   const rec = await createRecord<Fields>(TABLE, {
     request_id: `avail_model_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     week_start: ensureMondayForQuery(input.week_start),
-    model_id: [input.model_id],
+    model: [input.model_id],
     model_name: input.model_name,
     day: input.day,
     entry_type: input.entry_type,

@@ -2,6 +2,7 @@ import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, typ
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
 import { buildWhalesFilterFormula, WHALES_DEFAULT_PAGE_SIZE, type WhalesListFilters } from "@/lib/whales-filters";
 import type { Whale } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const TABLE = "whales";
 
@@ -100,6 +101,12 @@ export async function listAllWhales(filterByFormula?: string) {
   return records.map(mapRecord);
 }
 
+/** Whales with no chatter assigned (admin badge + assignment queue). */
+export async function countWhalesWithoutChatter(): Promise<number> {
+  const all = await listAllWhales();
+  return all.filter((w) => !w.assigned_chatter_id?.trim()).length;
+}
+
 /** Global status counts across all whales (for dashboard summary cards). Fetches only status field. */
 export type WhaleStatusCounts = {
   total: number;
@@ -170,7 +177,7 @@ export async function getWhalesByChatter(chatterRecordId: string): Promise<Whale
       assigned_chatter_id: w.assigned_chatter_id,
       assigned_chatter_name: w.assigned_chatter_name,
     }));
-    console.log("[getWhalesByChatter]", {
+    devLog("[getWhalesByChatter]", {
       chatterRecordId,
       totalFetched: all.length,
       matchedCount: matched.length,

@@ -4,10 +4,8 @@
  * Full-viewport decorative layer (`fixed`, `z-0`, behind in-flow content that stacks above).
  */
 export function AnimatedBackground() {
-  console.log("[AnimatedBackground] rendering");
-
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+    <div className="pointer-events-none fixed inset-0 z-0 hidden overflow-hidden md:block">
       {/* Gradient orbs — boosted for visibility while debugging */}
       <div
         className="animate-float-slow absolute -left-1/3 -top-1/3 h-[600px] w-[600px] rounded-full blur-3xl"

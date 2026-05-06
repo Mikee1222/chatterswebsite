@@ -27,6 +27,10 @@ export type LiveTimerProps = {
   className?: string;
   /** Render as child of this element; default span */
   as?: "span" | "p" | "div";
+  /** Larger tabular display for shift / break hero */
+  variant?: "default" | "hero";
+  /** Soft glow pulse after mount while the clock is running */
+  glowPulse?: boolean;
 };
 
 const STABLE_PLACEHOLDER = "00:00:00";
@@ -42,6 +46,8 @@ export function LiveTimer({
   placeholder = STABLE_PLACEHOLDER,
   className,
   as: Tag = "span",
+  variant = "default",
+  glowPulse = false,
 }: LiveTimerProps) {
   const [mounted, setMounted] = React.useState(false);
   const [now, setNow] = React.useState(0);
@@ -49,6 +55,8 @@ export function LiveTimer({
   const startMs = startTime ? new Date(startTime).getTime() : 0;
   const elapsedMs = mounted && startMs ? now - startMs : 0;
   const display = mounted && startMs ? formatDurationMs(elapsedMs) : placeholder;
+  const running = mounted && !!startMs;
+  const pulse = glowPulse && running && display !== placeholder;
 
   React.useEffect(() => {
     setMounted(true);
@@ -58,5 +66,45 @@ export function LiveTimer({
     return () => clearInterval(id);
   }, []);
 
-  return <Tag className={className}>{display}</Tag>;
+  const heroClass =
+    "block font-bold tabular-nums tracking-tight text-[clamp(2rem,6vw,3.25rem)] leading-none md:text-[3.5rem] [font-variant-numeric:tabular-nums] " +
+    (mode === "break" ? "text-amber-50" : "text-pink-50");
+  const pulseClass =
+    pulse && (mode === "break" ? "live-timer-break-pulse" : "live-timer-hero-pulse");
+  const merged =
+    variant === "hero"
+      ? [heroClass, pulseClass, className].filter(Boolean).join(" ")
+      : [className].filter(Boolean).join(" ");
+
+  return (
+    <>
+      <Tag className={merged}>{display}</Tag>
+      <style jsx global>{`
+        @keyframes live-timer-glow-pulse {
+          0%,
+          100% {
+            text-shadow: 0 0 14px rgba(236, 72, 153, 0.5), 0 0 2px rgba(255, 255, 255, 0.12);
+          }
+          50% {
+            text-shadow: 0 0 32px rgba(236, 72, 153, 0.85), 0 0 6px rgba(253, 224, 255, 0.25);
+          }
+        }
+        @keyframes live-timer-break-pulse {
+          0%,
+          100% {
+            text-shadow: 0 0 12px rgba(251, 191, 36, 0.45);
+          }
+          50% {
+            text-shadow: 0 0 28px rgba(251, 191, 36, 0.9);
+          }
+        }
+        .live-timer-hero-pulse {
+          animation: live-timer-glow-pulse 2.2s ease-in-out infinite;
+        }
+        .live-timer-break-pulse {
+          animation: live-timer-break-pulse 2.2s ease-in-out infinite;
+        }
+      `}</style>
+    </>
+  );
 }

@@ -63,6 +63,25 @@ export async function listAllUsers(): Promise<UserRecord[]> {
   return records.map((r) => mapRecord(r));
 }
 
+/**
+ * Airtable `users` record id for an active model account linked to this `modelss` row.
+ * Used for notify({ user_id }) — same pattern as shift notifications (always Airtable user id).
+ */
+export async function getActiveModelUserAirtableIdByLinkedModelRecordId(
+  modelssRecordId: string | null | undefined
+): Promise<string | null> {
+  const id = modelssRecordId?.trim();
+  if (!id) return null;
+  const users = await listAllUsers();
+  const found = users.find(
+    (x) =>
+      x.role === "model" &&
+      x.linked_model_id === id &&
+      (x.status ?? "").toLowerCase() === "active"
+  );
+  return found?.id ?? null;
+}
+
 /** For display / accounts list; does not include password_hash. */
 export async function getUserByEmail(email: string): Promise<UserRecord | null> {
   const { users } = await listUsers({

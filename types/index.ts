@@ -118,6 +118,8 @@ export interface ModelRecord {
   /** Rolling average period length (days) from logged periods. */
   avg_period_length?: number | null;
   period_notes?: string;
+  /** When true, model sees period tracking tools (e.g. Settings). Checkbox on modelss. */
+  period_tracking_enabled?: boolean | null;
 }
 
 /** Logged period row in Airtable table model_periods. */
@@ -131,6 +133,11 @@ export interface ModelPeriodRecord {
   notes: string;
   logged_by: string;
   created_at: string | null;
+  came_early?: boolean;
+  missed_period?: boolean;
+  predicted_next_date?: string | null;
+  /** Per-row flag from Airtable when present; UI guard prefers modelss.period_tracking_enabled. */
+  tracking_enabled?: boolean;
 }
 
 export type PeriodLoggedBy = "model" | "admin" | "va";
@@ -201,12 +208,13 @@ export type CustomRequestStatus =
 
 /** custom_requests.admin_status (single-select). */
 export type CustomRequestAdminStatus = "pending" | "accepted" | "rejected";
-/** custom_requests.model_status (single-select). */
+/** custom_requests.model_status (single-select). Add `uploaded` as an Airtable choice if writes fail. */
 export type CustomRequestModelStatus =
   | "waiting_schedule"
   | "scheduled"
   | "in_progress"
   | "completed"
+  | "uploaded"
   | "declined";
 
 export interface CustomRequest {
@@ -230,8 +238,13 @@ export interface CustomRequest {
   model_scheduled_end: string | null;
   admin_notes: string;
   model_notes: string;
+  /** Airtable `custom_requests.decline_reason` when admin rejects. */
+  decline_reason?: string;
   /** linked_schedule_item link → model_schedule */
   linked_schedule_item_id: string | null;
+  /** When the model marked the custom as uploaded (Airtable dateTime). */
+  uploaded_at: string | null;
+  uploaded_by_model?: boolean;
   created_at: string;
   updated_at: string;
   /** Legacy/compat: same as request_title or request_details. */
@@ -259,6 +272,7 @@ export type ModelScheduleItemType =
   | "promo"
   | "meeting"
   | "rest"
+  | "time_off"
   | "other";
 
 export interface ModelScheduleItem {
@@ -305,6 +319,44 @@ export interface ModelTaskRecord {
   updated_at: string;
 }
 
+/** `va_content_assignments` row (VA → model content). */
+export interface VaContentAssignmentRecord {
+  id: string;
+  assignment_id: string;
+  model_id: string;
+  va_id: string | null;
+  title: string;
+  description: string;
+  content_type: string;
+  file_url: string | null;
+  file_attachment: { id?: string; url?: string; filename?: string; size?: number; type?: string }[];
+  deadline: string | null;
+  scheduled_date: string | null;
+  status: string;
+  priority: string;
+  model_notes: string;
+  va_notes: string;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Serializable row for model VA content UI (no internal notes). */
+export type ModelContentAssignmentCardDTO = {
+  id: string;
+  title: string;
+  description: string;
+  deadline: string | null;
+  scheduled_date: string | null;
+  completed_at: string | null;
+  file_url: string | null;
+  file_attachment: { url?: string; filename?: string }[];
+  priority: string;
+  status: string;
+  va_name: string | null;
+  content_type: string;
+};
+
 export interface ModelLiveStreamRecord {
   id: string;
   /** Link to modelss */
@@ -341,6 +393,19 @@ export interface ModelWeeklyAvailabilityRequest {
   end_time: string | null;
   notes: string;
   status: WeeklyAvailabilityRequestStatus;
+  created_at: string;
+}
+
+/** `model_time_off_requests` — model-requested blackout dates. */
+export interface ModelTimeOffRequest {
+  id: string;
+  request_id: string;
+  model_id: string;
+  model_name: string;
+  start_date: string;
+  end_date: string;
+  reason: string;
+  status: string;
   created_at: string;
 }
 
@@ -527,6 +592,13 @@ export type NotificationEventType =
   | "model_live_scheduled"
   | "model_missed_live"
   | "model_content_completed"
+  | "model_content_scheduled"
+  | "va_content_assigned"
+  | "period_3_day_reminder"
+  | "period_predicted_day"
+  | "period_confirmed_early"
+  | "period_overdue"
+  | "period_prediction_reset"
   // Task
   | "task_shift_started"
   | "task_shift_ended"
@@ -543,6 +615,9 @@ export type NotificationEventType =
   | "custom_status_changed"
   | "custom_approved"
   | "custom_rejected"
+  | "custom_declined"
+  | "custom_edited"
+  | "custom_uploaded"
   | "custom_scheduled"
   | "custom_deadline_approaching"
   | "custom_overdue"

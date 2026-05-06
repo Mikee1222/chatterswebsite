@@ -1,0 +1,95 @@
+import type { AdminScheduleOverviewRow } from "@/lib/admin-schedule-overview-rows";
+import { buildAdminScheduleOverviewRows } from "@/lib/admin-schedule-overview-rows";
+import { addDays, addWeeks, getThisWeekMonday, parseWeekStart } from "@/lib/weekly-program";
+import { listAcceptedCustomRequestsInDateRange } from "@/services/custom-requests";
+import { listAllModelLiveStreamsInRange } from "@/services/model-live-streams";
+import { listAllModelScheduleItemsInRange } from "@/services/model-schedule";
+import { listAllModelss } from "@/services/modelss";
+import { listAllUsers } from "@/services/users";
+import { listAllVAContentAssignmentsInRange } from "@/services/va-content-assignments";
+
+const WEEKS_PAD = 8;
+
+export type ScheduleOverviewPageModelOption = { id: string; name: string };
+
+export type ScheduleOverviewPageData = {
+  weekStart: string;
+  windowStart: string;
+  windowEnd: string;
+  modelOptions: ScheduleOverviewPageModelOption[];
+  rows: AdminScheduleOverviewRow[];
+};
+
+/**
+ * Shared loader for admin and VA schedule overview pages (±WEEKS_PAD weeks from selected Monday).
+ * When `allowedModelIds` is non-null, all lists are filtered to those ids (empty array = empty scope).
+ * Pass null for the full agency view (same as admin).
+ */
+export async function loadScheduleOverviewPageData(opts: {
+  weekParam: string;
+  /** Restrict to these model record ids; null = all models from listAllModelss(). */
+  allowedModelIds: string[] | null;
+}): Promise<ScheduleOverviewPageData> {
+  const trimmed = opts.weekParam.trim().slice(0, 10);
+  const weekStart = parseWeekStart(trimmed) ?? getThisWeekMonday();
+  const windowStart = addWeeks(weekStart, -WEEKS_PAD);
+  const windowEnd = addDays(addWeeks(weekStart, WEEKS_PAD), 6);
+
+  const allowed: Set<string> | null = opts.allowedModelIds == null ? null : new Set(opts.allowedModelIds);
+
+  const [allModels, scheduleItemsRaw, liveStreamsRaw, customsRaw, vaRaw, users] = await Promise.all([
+    listAllModelss().catch(() => []),
+    listAllModelScheduleItemsInRange({ fromDate: windowStart, toDate: windowEnd }).catch(() => []),
+    listAllModelLiveStreamsInRange({ fromDate: windowStart, toDate: windowEnd }).catch(() => []),
+    listAcceptedCustomRequestsInDateRange(windowStart, windowEnd).catch(() => []),
+    listAllVAContentAssignmentsInRange(windowStart, windowEnd).catch(() => []),
+    listAllUsers().catch(() => []),
+  ]);
+
+  const models =
+    allowed === null ? allModels : allowed.size === 0 ? [] : allModels.filter((m) => allowed.has(m.id));
+  const scheduleItems =
+    allowed === null
+      ? scheduleItemsRaw
+      : allowed.size === 0
+        ? []
+        : scheduleItemsRaw.filter((s) => allowed.has(s.model_id));
+  const liveStreams =
+    allowed === null
+      ? liveStreamsRaw
+      : allowed.size === 0
+        ? []
+        : liveStreamsRaw.filter((l) => allowed.has(l.model_id));
+  const customs =
+    allowed === null
+      ? customsRaw
+      : allowed.size === 0
+        ? []
+        : customsRaw.filter((c) => allowed.has(c.assigned_model_id));
+  const vaAssignments =
+    allowed === null ? vaRaw : allowed.size === 0 ? [] : vaRaw.filter((v) => allowed.has(v.model_id));
+
+  const userNamesById = Object.fromEntries(users.map((u) => [u.id, u.full_name?.trim() || u.email || u.id]));
+
+  const rows = buildAdminScheduleOverviewRows({
+    models,
+    scheduleItems,
+    customs,
+    vaAssignments,
+    liveStreams,
+    userNamesById,
+  });
+
+  const modelOptions = models.map((m) => ({
+    id: m.id,
+    name: (m.model_name || m.model_id || m.id).trim() || m.id,
+  }));
+
+  return {
+    weekStart,
+    windowStart,
+    windowEnd,
+    modelOptions,
+    rows,
+  };
+}

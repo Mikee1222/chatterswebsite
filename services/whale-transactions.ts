@@ -4,6 +4,9 @@ import {
   listRecords,
   listAllRecords,
   createRecord,
+  deleteRecord,
+  getRecord,
+  updateRecord,
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
@@ -14,6 +17,9 @@ import type {
   TransactionCurrency,
   TransactionType,
 } from "@/types";
+import { devLog } from "@/lib/dev-log";
+import { notifyAdmins } from "@/services/notification-service";
+import { whaleSessionSubmittedAdmin } from "@/lib/notification-copy";
 
 const TABLE = "whale_transactions";
 
@@ -85,7 +91,7 @@ export async function listTransactionsByChatter(chatterRecordId: string, limit =
   const limited = matched.slice(0, limit);
   if (process.env.NODE_ENV !== "production") {
     const sample = allRecords[0];
-    console.log("[listTransactionsByChatter]", {
+    devLog("[listTransactionsByChatter]", {
       chatterRecordId,
       totalFetched: allRecords.length,
       matchedCount: matched.length,
@@ -140,9 +146,6 @@ export async function createWhaleTransaction(fields: CreateWhaleTransactionField
   const rec = await createRecord<Fields>(TABLE, payload as Fields);
   const transaction = mapRecord(rec as AirtableRecord<Fields>);
 
-  // Routing: whale_session_submitted → admin_only (see lib/notification-routing.ts)
-  const { notifyAdmins } = await import("./notification-service");
-  const { whaleSessionSubmittedAdmin } = await import("@/lib/notification-copy");
   const currency = (fields.currency ?? "usd").toLowerCase();
   const adminCopy = whaleSessionSubmittedAdmin(
     fields.chatter_name,
@@ -158,6 +161,8 @@ export async function createWhaleTransaction(fields: CreateWhaleTransactionField
     body: adminCopy.body,
     entity_type: "whale",
     entity_id: transaction.id,
+    actor_user_id: fields.chatter_record_id,
+    actor_name: fields.chatter_name,
   }).catch(() => {});
 
   try {
@@ -168,4 +173,63 @@ export async function createWhaleTransaction(fields: CreateWhaleTransactionField
   }
 
   return transaction;
+}
+
+async function assertWhaleTransactionOwnedByChatter(
+  recordId: string,
+  chatterRecordId: string
+): Promise<WhaleTransaction> {
+  const rec = await getRecord<Fields>(TABLE, recordId);
+  const owner = firstLinkedId(rec.fields.chatter);
+  if (owner !== chatterRecordId) {
+    throw new Error("You can only change your own session records.");
+  }
+  return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+export type UpdateWhaleTransactionFields = {
+  model_name?: string;
+  date?: string;
+  time?: string;
+  session_length_minutes?: number;
+  amount?: number;
+  currency?: TransactionCurrency;
+  type?: TransactionType;
+  note?: string;
+};
+
+/**
+ * Partial update; caller must be the linked chatter. Does not change whale or chatter links.
+ */
+export async function updateWhaleTransactionForChatter(
+  recordId: string,
+  chatterRecordId: string,
+  fields: UpdateWhaleTransactionFields
+) {
+  await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
+  if (fields.session_length_minutes != null) {
+    const m = fields.session_length_minutes;
+    if (typeof m !== "number" || !Number.isInteger(m) || m < 0) {
+      throw new Error("Session length must be a whole number (0 or more).");
+    }
+  }
+  const payload: Partial<Fields> = {};
+  if (fields.model_name !== undefined) payload.model_name = fields.model_name;
+  if (fields.date !== undefined) payload.date = fields.date;
+  if (fields.time !== undefined) payload.time = fields.time;
+  if (fields.session_length_minutes !== undefined) payload.session_length_minutes = fields.session_length_minutes;
+  if (fields.amount !== undefined) payload.amount = fields.amount;
+  if (fields.currency !== undefined) payload.currency = fields.currency;
+  if (fields.type !== undefined) payload.type = fields.type;
+  if (fields.note !== undefined) payload.note = fields.note;
+  if (Object.keys(payload).length === 0) {
+    return assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
+  }
+  const updated = await updateRecord<Fields>(TABLE, recordId, payload);
+  return mapRecord(updated as AirtableRecord<Fields>);
+}
+
+export async function deleteWhaleTransactionForChatter(recordId: string, chatterRecordId: string) {
+  await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
+  await deleteRecord(TABLE, recordId);
 }

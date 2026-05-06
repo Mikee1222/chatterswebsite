@@ -3,7 +3,11 @@
 import { loadEnvConfig } from "@next/env";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { AUTH_COOKIE_NAME } from "@/lib/auth-config";
+import {
+  AUTH_COOKIE_NAME,
+  SESSION_EPHEMERAL_JWT_MAX_AGE_SEC,
+  SESSION_REMEMBER_MAX_AGE_SEC,
+} from "@/lib/auth-config";
 import { ROUTES } from "@/lib/routes";
 
 /** Next.js redirect() throws; re-throw so redirect is not swallowed. */
@@ -37,27 +41,33 @@ export async function login(formData: FormData) {
     redirect(`${ROUTES.login}?error=${encodeURIComponent("Email and password are required")}`);
   }
 
+  const rememberMe = formData.get("remember_me") === "on" || formData.get("remember_me") === "true";
+  const jwtMaxAgeSec = rememberMe ? SESSION_REMEMBER_MAX_AGE_SEC : SESSION_EPHEMERAL_JWT_MAX_AGE_SEC;
+
   // 1. Try Airtable user (hashed password)
   try {
     const user = await getUserByEmailForAuth(submittedEmail);
     if (user?.can_login && user.password_hash) {
       const valid = await verifyPassword(submittedPassword, user.password_hash);
       if (valid) {
-        const token = await setSession({
-          id: user.id,
-          email: user.email,
-          role: user.role,
-          airtableUserId: user.id,
-          fullName: user.full_name,
-        });
-        const rememberMe = formData.get("remember_me") === "on" || formData.get("remember_me") === "true";
+        const token = await setSession(
+          {
+            id: user.id,
+            email: user.email,
+            role: user.role,
+            airtableUserId: user.id,
+            fullName: user.full_name,
+          },
+          jwtMaxAgeSec
+        );
         const cookieStore = await cookies();
         cookieStore.set(AUTH_COOKIE_NAME, token, {
           httpOnly: true,
           secure: process.env.NODE_ENV === "production",
           sameSite: "lax",
           path: "/",
-          ...(rememberMe && { maxAge: 60 * 60 * 24 * 30 }),
+          // Remember me: persistent cookie (30 days). Unchecked: session cookie (no maxAge → cleared when browser closes).
+          ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
         });
         redirect(ROUTES.dashboard);
       }
@@ -70,21 +80,23 @@ export async function login(formData: FormData) {
   // 2. Demo fallback (env vars)
   const { email: demoEmail, password: demoPassword, role: demoRole } = getDemoCredentials();
   if (submittedEmail === demoEmail && submittedPassword === demoPassword) {
-    const token = await setSession({
-      id: "demo-user",
-      email: demoEmail,
-      role: demoRole,
-      airtableUserId: null,
-      fullName: "Demo User",
-    });
-    const rememberMe = formData.get("remember_me") === "on" || formData.get("remember_me") === "true";
+    const token = await setSession(
+      {
+        id: "demo-user",
+        email: demoEmail,
+        role: demoRole,
+        airtableUserId: null,
+        fullName: "Demo User",
+      },
+      jwtMaxAgeSec
+    );
     const cookieStore = await cookies();
     cookieStore.set(AUTH_COOKIE_NAME, token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      ...(rememberMe && { maxAge: 60 * 60 * 24 * 30 }),
+      ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
     });
     redirect(ROUTES.dashboard);
   }

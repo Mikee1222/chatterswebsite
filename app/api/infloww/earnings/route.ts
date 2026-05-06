@@ -1,21 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  getInflowwEarnings,
-  getInflowwModels,
-  getInflowwTransactions,
-  InflowwApiError,
-} from "@/lib/infloww-api";
+import { getSessionFromCookies } from "@/lib/auth";
+import { getInflowwEarningsSnapshot, InflowwApiError } from "@/lib/infloww-api";
 import type { InflowwEarningsResponse } from "@/types/infloww";
+import { listEarningsAgencyCutConfig } from "@/services/earnings-config";
 
 type CacheEntry = { expiresAt: number; data: InflowwEarningsResponse };
 const cache = new Map<string, CacheEntry>();
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const CACHE_TTL_MS = 15 * 60 * 1000;
 
-function cacheKey(from: string, to: string, modelId: string) {
-  return `${from}|${to}|${modelId}`;
+function cacheKey(from: string, to: string, modelId: string, agencySig: string) {
+  return `${from}|${to}|${modelId}|${agencySig}`;
 }
 
 export async function GET(req: NextRequest) {
+  const user = await getSessionFromCookies();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  if (user.role !== "admin" && user.role !== "manager") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
   const from = req.nextUrl.searchParams.get("from") ?? "";
   const to = req.nextUrl.searchParams.get("to") ?? "";
   const modelId = req.nextUrl.searchParams.get("modelId") ?? "";
@@ -24,33 +29,30 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Missing from/to date range." }, { status: 400 });
   }
 
-  const key = cacheKey(from, to, modelId);
   const now = Date.now();
-  const hit = cache.get(key);
-  if (hit && hit.expiresAt > now) {
-    return NextResponse.json(hit.data, {
-      headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=300" },
-    });
-  }
 
   try {
-    const [earnings, models, transactions] = await Promise.all([
-      getInflowwEarnings({ from, to, modelId: modelId || undefined }),
-      getInflowwModels(),
-      getInflowwTransactions({ from, to, modelId: modelId || undefined }),
-    ]);
+    const agencyPct: Record<string, number> = await listEarningsAgencyCutConfig().catch(() => ({}));
+    const agencySig =
+      Object.keys(agencyPct)
+        .sort()
+        .map((k) => `${k}:${agencyPct[k] ?? 0}`)
+        .join(";") || "none";
+    const key = cacheKey(from, to, modelId, agencySig);
+    const hit = cache.get(key);
+    if (hit && hit.expiresAt > now) {
+      return NextResponse.json(hit.data, {
+        headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=300" },
+      });
+    }
 
-    const totals = earnings.reduce(
-      (acc, row) => {
-        acc.gross += row.gross_earnings;
-        acc.net += row.net_earnings;
-        acc.cut += row.agency_cut;
-        return acc;
-      },
-      { gross: 0, net: 0, cut: 0 }
-    );
+    const response = await getInflowwEarningsSnapshot({
+      from,
+      to,
+      modelId: modelId || undefined,
+      agencyCutPercentByModelId: agencyPct,
+    });
 
-    const response: InflowwEarningsResponse = { earnings, models, transactions, totals };
     cache.set(key, { data: response, expiresAt: now + CACHE_TTL_MS });
 
     return NextResponse.json(response, {

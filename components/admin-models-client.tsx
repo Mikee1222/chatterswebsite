@@ -1,14 +1,19 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2 } from "lucide-react";
+import { Pencil, Search, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
 import { formatDateTimeEuropean, formatDateEuropean } from "@/lib/format";
-import { Input, Label, Textarea } from "@/components/ui/form";
+import { Label, Textarea } from "@/components/ui/form";
+import { FormInput } from "@/components/ui/form-input";
+import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+import { AdminRowAvatar, RecordStatusBadge } from "@/components/admin-list-primitives";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { logPeriodAction, deletePeriodAction } from "@/app/actions/model-periods";
@@ -244,13 +249,16 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
           options={prioritySelectOptions}
           className="w-36"
         />
-        <Input
-          type="text"
-          placeholder="Current chatter"
-          value={filterChatter}
-          onChange={(e) => setFilterChatter(e.target.value)}
-          className="w-40"
-        />
+        <div className="relative w-full min-w-[160px] max-w-[220px] sm:w-52">
+          <Search className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
+          <FormInput
+            type="text"
+            placeholder="Filter by chatter…"
+            value={filterChatter}
+            onChange={(e) => setFilterChatter(e.target.value)}
+            className="!min-h-11 !py-3 pl-10"
+          />
+        </div>
       </div>
 
       <div className="space-y-4 md:hidden">
@@ -271,11 +279,24 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
                 whileHover={{ scale: 1.01 }}
-                className="rounded-2xl border border-white/10 bg-white/[0.06] p-4"
+                className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 transition-[transform,box-shadow,border-color] duration-200 hover:border-pink-500/20 hover:shadow-[0_12px_40px_-24px_rgba(236,72,153,0.25)]"
                 style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
               >
-                <p className="text-base font-semibold text-white/95">{m.model_name}</p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="flex items-start gap-3">
+                  <AdminRowAvatar name={m.model_name || "?"} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-semibold text-white/95">{m.model_name}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      {m.platform ? (
+                        <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/60">
+                          {m.platform}
+                        </span>
+                      ) : null}
+                      <RecordStatusBadge status={m.status} />
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
                   <span
                     className={`inline-flex items-center gap-1.5 ${
                       m.current_status === "occupied"
@@ -323,7 +344,21 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                     ))}
                   </div>
                 )}
-                <div className="mt-4 flex justify-end border-t border-white/10 pt-3">
+                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-3">
+                  <Link
+                    href={ROUTES.admin.modelDetail(m.id)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
+                  >
+                    <Settings2 className="h-4 w-4" aria-hidden />
+                    Admin
+                  </Link>
+                  <Link
+                    href={ROUTES.modelEdit(m.id)}
+                    className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition-colors hover:border-pink-500/30 hover:bg-pink-500/10 hover:text-white"
+                  >
+                    <Pencil className="h-4 w-4" aria-hidden />
+                    Edit
+                  </Link>
                   <button
                     type="button"
                     disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
@@ -332,7 +367,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                     title="Delete model"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
-                    Delete model
+                    Delete
                   </button>
                 </div>
               </motion.div>
@@ -343,20 +378,20 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
 
       <div className="glass-card hidden overflow-x-auto md:block">
         <table className="w-full min-w-[960px] text-sm">
-          <thead className="border-b border-white/10 bg-black/40 text-left text-xs font-medium uppercase tracking-wider text-white/50">
+          <thead className="border-b border-white/10 bg-gradient-to-r from-black/60 via-black/50 to-pink-950/20 text-left text-xs font-medium uppercase tracking-wider text-white/50">
             <tr>
-              <th className="p-3 font-medium">Model</th>
-              <th className="p-3 font-medium min-w-[200px]">Period</th>
-              <th className="p-3 font-medium">Chatter</th>
-              <th className="p-3 font-medium">VA in model</th>
-              <th className="p-3 font-medium">Entered at</th>
-              <th className="p-3 font-medium">Last chatter</th>
-              <th className="p-3 font-medium">Last exit</th>
-              <th className="p-3 font-medium">Priority</th>
-              <th className="p-3 font-medium w-14 text-center"> </th>
+              <th className="p-3.5 font-medium">Model</th>
+              <th className="p-3.5 font-medium min-w-[200px]">Period</th>
+              <th className="p-3.5 font-medium">Chatter</th>
+              <th className="p-3.5 font-medium">VA in model</th>
+              <th className="p-3.5 font-medium">Entered at</th>
+              <th className="p-3.5 font-medium">Last chatter</th>
+              <th className="p-3.5 font-medium">Last exit</th>
+              <th className="p-3.5 font-medium">Priority</th>
+              <th className="p-3.5 font-medium w-[88px] text-center">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody className="divide-y divide-white/[0.06]">
             {filtered.length === 0 ? (
               <tr>
                 <td colSpan={9} className="p-8 text-center text-white/50">
@@ -380,10 +415,28 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
-                    className="hover:bg-white/[0.03]"
+                    className={cn(
+                      "group transition-[background-color,box-shadow] duration-200 ease-out",
+                      "hover:bg-gradient-to-r hover:from-white/[0.05] hover:to-pink-500/[0.04] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+                    )}
                   >
-                    <td className="p-3 align-top font-medium text-white/90">{m.model_name}</td>
-                    <td className="p-3 align-top text-xs text-white/70">
+                    <td className="p-3.5 align-top">
+                      <div className="flex items-start gap-3">
+                        <AdminRowAvatar name={m.model_name || "?"} className="ring-1 ring-white/10" />
+                        <div className="min-w-0">
+                          <p className="font-semibold text-white/95">{m.model_name}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                            {m.platform ? (
+                              <span className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/55">
+                                {m.platform}
+                              </span>
+                            ) : null}
+                            <RecordStatusBadge status={m.status} />
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="p-3.5 align-top text-xs text-white/70">
                       <PeriodSection summary={summary} onLogClick={() => openLog(m)} />
                       {summary.history.length > 0 && (
                         <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto border-t border-white/10 pt-2 text-[11px] text-white/50">
@@ -405,7 +458,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                         </ul>
                       )}
                     </td>
-                    <td className="p-3 align-top">
+                    <td className="p-3.5 align-top">
                       <span
                         className={`inline-flex items-center gap-1.5 ${
                           m.current_status === "occupied"
@@ -422,7 +475,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                         {m.current_status === "occupied" ? m.current_chatter_name || "Occupied" : "Free"}
                       </span>
                     </td>
-                    <td className="p-3 align-top">
+                    <td className="p-3.5 align-top">
                       {vaNames.length > 0 ? (
                         <span className="rounded-full border border-[hsl(330,80%,55%)]/30 bg-[hsl(330,80%,55%)]/15 px-2 py-0.5 text-[hsl(330,90%,75%)]">
                           {vaNames.join(", ")}
@@ -431,12 +484,26 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                         <span className="text-white/45">—</span>
                       )}
                     </td>
-                    <td className="p-3 align-top text-white/70">{m.entered_at ? formatDateTimeEuropean(m.entered_at) : "—"}</td>
-                    <td className="p-3 align-top text-white/70">{m.last_chatter_name || "—"}</td>
-                    <td className="p-3 align-top text-white/70">{m.last_exit_at ? formatDateTimeEuropean(m.last_exit_at) : "—"}</td>
-                    <td className="p-3 align-top text-white/60">{m.priority || "—"}</td>
-                    <td className="p-3 align-top">
-                      <div className="flex justify-end">
+                    <td className="p-3.5 align-top text-white/70">{m.entered_at ? formatDateTimeEuropean(m.entered_at) : "—"}</td>
+                    <td className="p-3.5 align-top text-white/70">{m.last_chatter_name || "—"}</td>
+                    <td className="p-3.5 align-top text-white/70">{m.last_exit_at ? formatDateTimeEuropean(m.last_exit_at) : "—"}</td>
+                    <td className="p-3.5 align-top text-white/60">{m.priority || "—"}</td>
+                    <td className="p-3.5 align-top">
+                      <div className="flex justify-end gap-1 opacity-90 transition-opacity group-hover:opacity-100">
+                        <Link
+                          href={ROUTES.admin.modelDetail(m.id)}
+                          className="rounded-lg p-2 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+                          title="Admin model settings"
+                        >
+                          <Settings2 className="h-4 w-4" aria-hidden />
+                        </Link>
+                        <Link
+                          href={ROUTES.modelEdit(m.id)}
+                          className="rounded-lg p-2 text-white/55 transition-colors hover:bg-pink-500/15 hover:text-pink-200"
+                          title="Edit model"
+                        >
+                          <Pencil className="h-4 w-4" aria-hidden />
+                        </Link>
                         <button
                           type="button"
                           disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
@@ -487,11 +554,11 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
             <form onSubmit={submitLog} className="mt-4 space-y-3">
               <div>
                 <Label>Start date</Label>
-                <Input type="date" value={logStart} onChange={(e) => setLogStart(e.target.value)} className="mt-1" required />
+                <FormInput type="date" value={logStart} onChange={(e) => setLogStart(e.target.value)} className="mt-1" required />
               </div>
               <div>
                 <Label>End date</Label>
-                <Input type="date" value={logEnd} onChange={(e) => setLogEnd(e.target.value)} className="mt-1" required />
+                <FormInput type="date" value={logEnd} onChange={(e) => setLogEnd(e.target.value)} className="mt-1" required />
               </div>
               <div>
                 <Label>Notes</Label>

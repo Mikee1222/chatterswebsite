@@ -25,6 +25,7 @@ function revalidatePeriodRelatedPaths() {
   revalidatePath(ROUTES.chatter.weeklyProgram);
   revalidatePath(ROUTES.va.shift);
   revalidatePath(ROUTES.chatter.shift);
+  revalidatePath(ROUTES.settings);
 }
 
 function resolveLoggedBy(role: string | undefined): PeriodLoggedBy {

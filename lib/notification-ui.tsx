@@ -16,20 +16,51 @@ import type { NotificationCategory, NotificationPriority } from "@/types";
 import { getEventTag as getEventTagFromRoutes } from "@/lib/notification-routes";
 import type { NotificationEventType } from "@/types";
 
-/** Relative time for notification list and toasts. */
-export function formatTime(iso: string): string {
+/**
+ * Human-readable time plus full absolute string for tooltips / aria.
+ * Recent items stay compact (e.g. "3m ago"); older items show date + time.
+ */
+export function formatNotificationTime(iso: string): { label: string; title: string } {
   try {
     const d = new Date(iso);
+    const title = d.toLocaleString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
     const now = new Date();
-    const diff = now.getTime() - d.getTime();
-    if (diff < 60000) return "Just now";
-    if (diff < 3600000) return `${Math.floor(diff / 60000)} min ago`;
-    if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;
-    if (diff < 86400000 * 2) return "Yesterday";
-    return d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+    const diffMs = now.getTime() - d.getTime();
+    if (diffMs < 60_000) return { label: "Just now", title };
+    if (diffMs < 3600_000) return { label: `${Math.floor(diffMs / 60_000)}m ago`, title };
+    if (diffMs < 86400_000) return { label: `${Math.floor(diffMs / 3600_000)}h ago`, title };
+    const startToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const startYesterday = startToday - 86400_000;
+    const t = d.getTime();
+    if (t >= startYesterday && t < startToday) {
+      const timeOnly = d.toLocaleTimeString(undefined, { timeStyle: "short" });
+      return { label: `Yesterday · ${timeOnly}`, title };
+    }
+    if (d.getFullYear() === now.getFullYear()) {
+      return {
+        label: d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
+        title,
+      };
+    }
+    return {
+      label: d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
+      title,
+    };
   } catch {
-    return "";
+    return { label: "", title: "" };
   }
+}
+
+/** Short label only (backwards compatible). */
+export function formatTime(iso: string): string {
+  return formatNotificationTime(iso).label;
 }
 
 export function getEventTag(eventType: NotificationEventType): string {
@@ -70,6 +101,9 @@ export function getTitleEmoji(eventType: NotificationEventType): string {
       return "⏹️";
     case "model_live_scheduled":
       return "📅";
+    case "model_content_scheduled":
+    case "va_content_assigned":
+      return "📅";
     case "model_content_completed":
     case "task_completed":
     case "task_finished":
@@ -81,7 +115,12 @@ export function getTitleEmoji(eventType: NotificationEventType): string {
     case "custom_approved":
       return "🎬";
     case "custom_rejected":
+    case "custom_declined":
       return "❌";
+    case "custom_edited":
+      return "✏️";
+    case "custom_uploaded":
+      return "📤";
     case "custom_scheduled":
       return "📅";
     case "form_submitted":

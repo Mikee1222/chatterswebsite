@@ -10,6 +10,10 @@ import { ClientRedirect } from "@/components/client-redirect";
 import { getActiveShiftByChatter, getActiveShiftByStaff, getActiveShiftModels } from "@/services/shifts";
 import { getSystemSetting } from "@/services/system-settings";
 import { parseHiddenNavSettingJson } from "@/lib/nav-config";
+import { getModelDashboardLanguage } from "@/lib/model-context-server";
+import { countPendingVAContentAssignments } from "@/services/va-content-assignments";
+import { countWhalesWithoutChatter } from "@/services/whales";
+import type { ModelLang } from "@/lib/model-i18n";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({
@@ -38,6 +42,16 @@ export default async function DashboardLayout({
 
   const hiddenNavRaw = await getSystemSetting("hidden_nav_items").catch(() => null);
   const hiddenNavByProfile = parseHiddenNavSettingJson(hiddenNavRaw);
+  const navBadgeCounts: Record<string, number> = {};
+  if (user.role === "admin" || user.role === "manager") {
+    navBadgeCounts[ROUTES.admin.vaContentAssignments] = await countPendingVAContentAssignments().catch(() => 0);
+    navBadgeCounts[ROUTES.admin.whales] = await countWhalesWithoutChatter().catch(() => 0);
+  }
+
+  let modelUiLanguage: ModelLang | undefined;
+  if (user.role === "model") {
+    modelUiLanguage = await getModelDashboardLanguage(user);
+  }
 
   return (
     <Providers>
@@ -45,7 +59,12 @@ export default async function DashboardLayout({
         <AnimatedBackground />
         <div className="dashboard-glow-tl" aria-hidden />
         <div className="dashboard-glow-br" aria-hidden />
-        <Sidebar user={user} hiddenNavByProfile={hiddenNavByProfile} />
+        <Sidebar
+          user={user}
+          hiddenNavByProfile={hiddenNavByProfile}
+          navBadgeCounts={navBadgeCounts}
+          modelUiLanguage={modelUiLanguage}
+        />
         <div className="dashboard-content pl-0 md:pl-64">
           <Topbar user={user} />
           <MobileAppShell
@@ -53,11 +72,12 @@ export default async function DashboardLayout({
             activeShift={activeShift}
             activeShiftModelsCount={activeShiftModelsCount}
             hiddenNavByProfile={hiddenNavByProfile}
+            navBadgeCounts={navBadgeCounts}
+            modelUiLanguage={modelUiLanguage}
           >
             <main
               data-main-content
-              className="mobile-app-main min-h-[100dvh] p-4 max-md:px-4 max-md:py-5 md:p-6 md:min-h-0"
-              style={{ paddingBottom: "90px" }}
+              className="mobile-app-main min-h-[100dvh] overflow-x-hidden p-4 pb-[calc(var(--mobile-bottom-nav-height)+3.75rem+env(safe-area-inset-bottom,0px))] max-md:px-4 max-md:py-5 md:overflow-x-visible md:p-6 md:pb-6 md:min-h-0"
             >
               {children}
             </main>

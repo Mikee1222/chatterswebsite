@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { runCheckBreakReminders } from "@/services/check-break-reminders";
-import { listShiftsOnBreak } from "@/services/shifts";
 
 function isCronAuthorized(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -22,20 +21,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  console.log("[break-reminders] cron triggered", { now: new Date().toISOString() });
-
   try {
-    const shifts = await listShiftsOnBreak();
-    console.log("[break-reminders] found shifts on break", {
-      count: shifts.length,
-      shifts: shifts.map((s) => ({
-        id: s.id,
-        chatter_id: s.chatter_id,
-        status: s.status,
-        break_reminder_at: s.break_reminder_at,
-      })),
-    });
-
     const result = await runCheckBreakReminders();
     return NextResponse.json(result);
   } catch (err) {

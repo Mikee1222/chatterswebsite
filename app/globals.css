@@ -55,10 +55,16 @@
     @apply border-border;
   }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     @apply text-foreground antialiased;
     background: var(--bg-base);
     min-height: 100vh;
+    -webkit-tap-highlight-color: transparent;
+    overscroll-behavior-y: contain;
   }
 }
 
@@ -187,11 +193,17 @@
   --mobile-section-gap: 16px;
   --mobile-item-gap: 12px;
   --mobile-tap-min-height: 48px;
-  --mobile-bottom-nav-height: 72px;
+  --mobile-bottom-nav-height: 64px;
 }
 
 /* Mobile: bottom tab bar must stay visible — .dashboard-bg overflow:hidden can clip fixed descendants; keep nav above scrolling content */
 @media (max-width: 767px) {
+  /* Match desktop base: near-black canvas without full-viewport pink/purple glows */
+  .dashboard-glow-tl,
+  .dashboard-glow-br {
+    display: none;
+  }
+
   .dashboard-bg {
     overflow-x: hidden;
     overflow-y: visible;
@@ -382,4 +394,33 @@
 
 .animate-shimmer {
   animation: shimmer 2s infinite;
+}
+
+/* ========== Mobile dashboards: safe areas + touch polish ========== */
+@layer utilities {
+  .safe-area-inset-top {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  .safe-area-inset-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .safe-area-inset-left {
+    padding-left: env(safe-area-inset-left, 0px);
+  }
+
+  .safe-area-inset-right {
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom, 0px));
+  }
+
+  /** Use on primary CTAs / icon buttons when extra tap area is needed */
+  .touch-target-min {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }

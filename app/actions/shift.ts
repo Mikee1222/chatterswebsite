@@ -72,6 +72,7 @@ import {
   taskShiftStartedAdmin,
   taskShiftEndedAdmin,
 } from "@/lib/notification-copy";
+import { devLog } from "@/lib/dev-log";
 
 export type StartShiftResult = { success: true; shiftId: string } | { success: false; error: string };
 
@@ -91,7 +92,7 @@ export async function startShiftWithModels(
     }
     const existing = await getActiveShiftByChatter(chatterRecordId);
     if (existing) {
-      console.log("[startShiftWithModels] already has active shift", { shiftId: existing.id });
+      devLog("[startShiftWithModels] already has active shift", { shiftId: existing.id });
       return { success: false, error: "You already have an active shift. Use the dashboard to add models or end it." };
     }
 
@@ -99,7 +100,7 @@ export async function startShiftWithModels(
     try {
       chatterUserFetched = await getUserByAirtableId(chatterRecordId);
     } catch (fetchErr) {
-      console.log(
+      devLog(
         "[startShiftWithModels] chatter user fetch threw",
         JSON.stringify({
           chatterRecordId,
@@ -107,7 +108,7 @@ export async function startShiftWithModels(
         })
       );
     }
-    console.log(
+    devLog(
       "[startShiftWithModels] chatter user record (from users table by chatterRecordId)",
       JSON.stringify(
         chatterUserFetched
@@ -130,7 +131,7 @@ export async function startShiftWithModels(
     const date = now.toISOString().slice(0, 10);
     const startTime = now.toISOString();
     const shiftId = `shift_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    console.log("[startShiftWithModels] creating shift with", {
+    devLog("[startShiftWithModels] creating shift with", {
       chatterRecordId,
       chatterLinkedValue: [chatterRecordId],
       chatter_name: chatterName,
@@ -188,7 +189,7 @@ export async function startShiftWithModels(
         await broadcastRealtimeToAll({ type: "model_status_changed", model_id: e.modelRecordId, status: "occupied" }).catch(() => {});
       }
     }
-    console.log("[startShiftWithModels] created shift", {
+    devLog("[startShiftWithModels] created shift", {
       shiftId: created.id,
       start_time: startTime,
       modelsAttached: modelNames.length,
@@ -208,12 +209,15 @@ export async function startShiftWithModels(
         body: selfCopy.body,
         entity_type: NOTIFICATION_ENTITY.SHIFT,
         entity_id: created.id,
+        actor_user_id: chatterRecordId,
+        actor_name: chatterName,
+        _triggerSource: "startShiftWithModels",
       });
     } catch (e) {
       console.error("[notify] shift_started chatter failed", e);
     }
     try {
-      console.log("[shift_started_debug]", {
+      devLog("[shift_started_debug]", {
         chatterRecordId,
         chatterName,
         modelNames,
@@ -229,7 +233,7 @@ export async function startShiftWithModels(
         actor_user_id: chatterRecordId,
         actor_name: chatterName,
       });
-      console.log(
+      devLog(
         "[startShiftWithModels] notifyAdmins finished",
         JSON.stringify({
           returnValue: notifyAdminsReturn === undefined ? "undefined (notifyAdmins returns void)" : notifyAdminsReturn,
@@ -288,8 +292,26 @@ export async function addModelToShift(params: {
       current_shift_id: params.shiftRecordId,
       entered_at: now,
     });
-    console.log("[addModelToShift] attached model", { modelRecordId: params.modelRecordId, modelName: params.modelName });
+    devLog("[addModelToShift] attached model", { modelRecordId: params.modelRecordId, modelName: params.modelName });
     revalidatePath(ROUTES.chatter.shift);
+    try {
+      await notify({
+        user_id: params.chatterRecordId,
+        event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "Model added to shift",
+        body: params.modelName.trim()
+          ? `You're now chatting with ${params.modelName.trim()}.`
+          : "A model was added to your shift.",
+        entity_type: "model",
+        entity_id: params.modelRecordId,
+        actor_user_id: params.chatterRecordId,
+        actor_name: params.chatterName,
+        _triggerSource: "addModelToShift",
+      });
+    } catch (e) {
+      console.error("[notify] addModelToShift failed", e);
+    }
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -309,7 +331,7 @@ export async function removeModelFromShift(
   modelRecordId: string
 ): Promise<RemoveModelFromShiftResult> {
   try {
-    console.log("[removeModel] called", { shiftId: shiftRecordId, modelRecordId });
+    devLog("[removeModel] called", { shiftId: shiftRecordId, modelRecordId });
     if (!shiftRecordId?.trim() || !modelRecordId?.trim()) {
       return { success: false, error: "Missing shift or model." };
     }
@@ -317,7 +339,7 @@ export async function removeModelFromShift(
     const models = await listShiftModels(shiftRecordId);
     const attachment = models.find((m) => m.model_id === modelRecordId && !m.left_at);
     if (!attachment) {
-      console.log("[removeModel] no active shift_model row", { shiftRecordId, modelRecordId });
+      devLog("[removeModel] no active shift_model row", { shiftRecordId, modelRecordId });
       return { success: false, error: "This model is not on this shift anymore." };
     }
 
@@ -325,6 +347,10 @@ export async function removeModelFromShift(
     const now = new Date().toISOString();
     const model = await getModelById(modelRecordId);
     await updateShiftModel(shiftModelRecordId, { left_at: now });
+
+    const chatterIdForNotify = (attachment.chatter_id ?? "").trim();
+    const modelLabel = (attachment.model_name ?? "").trim() || "Model";
+
     await updateModel(modelRecordId, {
       current_status: "free",
       current_chatter: [],
@@ -342,9 +368,26 @@ export async function removeModelFromShift(
       const endedShift = await getShiftById(shiftRecordId);
       const endedModels = await listShiftModels(shiftRecordId);
       const endedModelNames = endedModels.map((sm) => sm.model_name).filter(Boolean);
-      console.log("[removeModelFromShift] last model removed, shift auto-ended", { shiftId: shiftRecordId });
+      devLog("[removeModelFromShift] last model removed, shift auto-ended", { shiftId: shiftRecordId });
       revalidatePath(ROUTES.chatter.shift);
       if (endedShift?.chatter_id) {
+        const selfCopy = shiftCompletedSelf(now, endedModelNames, endedShift.worked_minutes ?? undefined);
+        try {
+          await notify({
+            user_id: endedShift.chatter_id,
+            event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
+            priority: NOTIFICATION_PRIORITY.NORMAL,
+            title: selfCopy.title,
+            body: selfCopy.body,
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: shiftRecordId,
+            actor_user_id: endedShift.chatter_id,
+            actor_name: endedShift.chatter_name ?? undefined,
+            _triggerSource: "removeModelFromShift_autoEnd",
+          });
+        } catch (e) {
+          console.error("[notify] removeModelFromShift shift_ended self failed", e);
+        }
         const adminCopy = shiftCompletedAdmin(endedShift.chatter_name ?? "Staff", now, endedModelNames, endedShift.worked_minutes ?? undefined);
         try {
           await notifyAdmins({
@@ -364,6 +407,24 @@ export async function removeModelFromShift(
       return { success: true, shiftEnded: true };
     }
     revalidatePath(ROUTES.chatter.shift);
+    if (chatterIdForNotify) {
+      try {
+        await notify({
+          user_id: chatterIdForNotify,
+          event_type: NOTIFICATION_EVENT.MODEL_BECAME_FREE,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "Model removed from shift",
+          body: `${modelLabel} is off your shift.`,
+          entity_type: "model",
+          entity_id: modelRecordId,
+          actor_user_id: chatterIdForNotify,
+          actor_name: attachment.chatter_name ?? undefined,
+          _triggerSource: "removeModelFromShift",
+        });
+      } catch (e) {
+        console.error("[notify] removeModelFromShift model_became_free failed", e);
+      }
+    }
     return { success: true, shiftEnded: false };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -409,7 +470,7 @@ export async function startBreak(
     break_started_at: breakStartedIso,
     break_reminder_at: breakReminderAt,
   });
-  console.log("[break-reminder] set", {
+  devLog("[break-reminder] set", {
     shiftId: shiftRecordId,
     reminderAt: breakReminderAt,
     reminderMins: reminderMinutes ?? null,
@@ -541,7 +602,7 @@ export async function endShift(shiftRecordId: string) {
   await updateShift(shiftRecordId, { end_time: now, status: "completed" });
   const shift = await getShiftById(shiftRecordId);
   revalidatePath(ROUTES.chatter.shift);
-  console.log("[shift_ended_debug]", {
+  devLog("[shift_ended_debug]", {
     shiftChatterId: shift?.chatter_id,
     shiftChatterName: shift?.chatter_name,
     shiftRecordId,
@@ -614,7 +675,7 @@ export async function endShift(shiftRecordId: string) {
       }, 100);
     }
   }
-  console.log("[endShift] completed", { shiftRecordId, modelsReleased: pendingRelease.length });
+  devLog("[endShift] completed", { shiftRecordId, modelsReleased: pendingRelease.length });
 }
 
 // ——— Virtual assistant mistake shift (VA can enter model even if chatter is in it; no model occupancy updates) ———

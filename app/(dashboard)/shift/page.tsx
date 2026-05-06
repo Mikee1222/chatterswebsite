@@ -13,6 +13,7 @@ import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import { getTodayYmd } from "@/lib/weekly-program";
 import type { ModelRecord } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const MAX_BREAK_MINUTES = 45;
 
@@ -77,7 +78,7 @@ export default async function ShiftPage() {
   const airtableUserId = user.airtableUserId ?? null;
   const notificationUserId = getNotificationUserId(user);
   const chatterId = notificationUserId ?? "";
-  console.log("[auth-debug] shift page", JSON.stringify({
+  devLog("[auth-debug] shift page", JSON.stringify({
     resolved_session_user_id: user.id,
     resolved_airtable_user_id: airtableUserId,
     resolved_notification_user_id: notificationUserId ?? null,
@@ -145,7 +146,7 @@ export default async function ShiftPage() {
         modelNames: p.model_ids.map((id) => modelNameById.get(id) ?? id).filter(Boolean),
       })),
     };
-    console.log("[shift page] load", {
+    devLog("[shift page] load", {
       currentUserAirtableRecordId: airtableUserId,
       currentUserInternalId: user.id,
       chatterIdUsedForQuery: chatterId || "(empty)",

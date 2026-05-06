@@ -8,10 +8,24 @@ import { firstLinkedId } from "@/lib/airtable-linked";
 import { createWhale, updateWhale, getWhaleById, type WhaleWriteFields } from "@/services/whales";
 import { awardPoints, maybeAwardWhaleUpdatePoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
-import { notifyAdmins } from "@/services/notification-service";
+import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import {
+  whaleSubmittedAwaitingAssignmentChatter,
+  whaleNeedsChatterAssignmentAdmin,
+  whaleAssignedToYou,
+} from "@/lib/notification-copy";
+import { devLog } from "@/lib/dev-log";
 
 const WHALES_TABLE = "whales";
+
+async function requireAdminManager(): Promise<{ ok: true } | { ok: false; error: string }> {
+  const user = await getSessionFromCookies();
+  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+    return { ok: false, error: "Unauthorized" };
+  }
+  return { ok: true };
+}
 
 export type CreateWhaleChatterResult = { success: true } | { success: false; error: string };
 
@@ -27,7 +41,7 @@ export async function createWhaleAction(input: {
 }): Promise<CreateWhaleChatterResult> {
   try {
     const usernameTrim = input.username?.trim() ?? "";
-    console.log("[createWhale] called", { username: usernameTrim });
+    devLog("[createWhale] called", { username: usernameTrim });
 
     const user = await getSessionFromCookies();
     if (!user || user.role !== "chatter") {
@@ -69,8 +83,6 @@ export async function createWhaleAction(input: {
       status: "Active",
       spend_level: "low",
       total_spent: 0,
-      assigned_chatter: [chatterRecordId],
-      assigned_chatter_name: chatterName,
     };
 
     const rec = await createRecord(WHALES_TABLE, fields);
@@ -83,12 +95,29 @@ export async function createWhaleAction(input: {
         .catch((e) => console.error("[points-engine] createWhaleAction awardPoints failed", e));
     }, 100);
 
+    const chatterSubmitted = whaleSubmittedAwaitingAssignmentChatter(username);
+    const adminNeedsAssign = whaleNeedsChatterAssignmentAdmin(chatterName, username);
+    try {
+      await notify({
+        user_id: chatterRecordId,
+        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: chatterSubmitted.title,
+        body: chatterSubmitted.body,
+        entity_type: NOTIFICATION_ENTITY.WHALE,
+        entity_id: rec.id,
+        actor_user_id: chatterRecordId,
+        actor_name: chatterName,
+      });
+    } catch (e) {
+      console.error("[notify] createWhaleAction notify chatter failed", e);
+    }
     try {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "🐋 New whale added",
-        body: `${chatterName} added a new whale: ${username}. Tap to assign a model.`,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: adminNeedsAssign.title,
+        body: adminNeedsAssign.body,
         entity_type: NOTIFICATION_ENTITY.WHALE,
         entity_id: rec.id,
         actor_user_id: chatterRecordId,
@@ -125,7 +154,7 @@ export async function createWhaleWithModelAction(input: {
   relationship_status: string;
   notes: string;
 }): Promise<AssignWhaleResult> {
-  console.log("[createWhaleWithModel] called", { username: input.username?.trim() });
+  devLog("[createWhaleWithModel] called", { username: input.username?.trim() });
   try {
     const user = await getSessionFromCookies();
     if (!user || user.role !== "chatter") {
@@ -144,17 +173,48 @@ export async function createWhaleWithModelAction(input: {
     }
 
     const whale_id = `whale_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const modelNameTrim = input.modelName.trim();
     const whale = await createWhale({
       whale_id,
       username: u,
-      assigned_chatter: [chatterId],
-      assigned_chatter_name: chatterName,
       assigned_model: [input.modelRecordId],
-      assigned_model_name: input.modelName.trim(),
+      assigned_model_name: modelNameTrim,
       relationship_status: rs,
       notes: input.notes.trim(),
       status: "Active",
     });
+
+    const chatterSubmitted = whaleSubmittedAwaitingAssignmentChatter(u);
+    const adminNeedsAssign = whaleNeedsChatterAssignmentAdmin(chatterName, u, modelNameTrim);
+    try {
+      await notify({
+        user_id: chatterId,
+        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: chatterSubmitted.title,
+        body: chatterSubmitted.body,
+        entity_type: NOTIFICATION_ENTITY.WHALE,
+        entity_id: whale.id,
+        actor_user_id: chatterId,
+        actor_name: chatterName,
+      });
+    } catch (e) {
+      console.error("[notify] createWhaleWithModelAction notify chatter failed", e);
+    }
+    try {
+      await notifyAdmins({
+        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: adminNeedsAssign.title,
+        body: adminNeedsAssign.body,
+        entity_type: NOTIFICATION_ENTITY.WHALE,
+        entity_id: whale.id,
+        actor_user_id: chatterId,
+        actor_name: chatterName,
+      });
+    } catch (e) {
+      console.error("[notify] createWhaleWithModelAction notifyAdmins failed", e);
+    }
 
     setTimeout(() => {
       void getPointsConfig()
@@ -191,6 +251,9 @@ export async function assignWhaleToChatter(
   chatterName: string
 ): Promise<AssignWhaleResult> {
   try {
+    const gate = await requireAdminManager();
+    if (!gate.ok) return { success: false, error: gate.error };
+
     await updateWhale(whaleRecordId, {
       assigned_chatter: [chatterRecordId],
       assigned_chatter_name: chatterName,
@@ -198,6 +261,22 @@ export async function assignWhaleToChatter(
     const whale = await getWhaleById(whaleRecordId);
     revalidatePath(ROUTES.admin.whales);
     revalidatePath(ROUTES.chatter.myWhales);
+    const uName = (whale?.username || whale?.whale_id || "fan").trim();
+    try {
+      const assignedCopy = whaleAssignedToYou(uName);
+      await notify({
+        user_id: chatterRecordId,
+        event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: assignedCopy.title,
+        body: assignedCopy.body,
+        entity_type: NOTIFICATION_ENTITY.WHALE,
+        entity_id: whaleRecordId,
+        actor_name: chatterName,
+      });
+    } catch (e) {
+      console.error("[notify] assignWhaleToChatter notify chatter failed", e);
+    }
     try {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
@@ -225,6 +304,9 @@ export async function assignWhaleToModel(
   modelName: string
 ): Promise<AssignWhaleResult> {
   try {
+    const gate = await requireAdminManager();
+    if (!gate.ok) return { success: false, error: gate.error };
+
     await updateWhale(whaleRecordId, {
       assigned_model: [modelRecordId],
       assigned_model_name: modelName,
@@ -255,6 +337,9 @@ export async function assignWhaleToModel(
 /** Clear assigned model from a whale. */
 export async function clearWhaleModel(whaleRecordId: string): Promise<AssignWhaleResult> {
   try {
+    const gate = await requireAdminManager();
+    if (!gate.ok) return { success: false, error: gate.error };
+
     await updateWhale(whaleRecordId, {
       assigned_model: [],
       assigned_model_name: "",
@@ -271,6 +356,9 @@ export async function clearWhaleModel(whaleRecordId: string): Promise<AssignWhal
 /** Clear assigned chatter from a whale. */
 export async function clearWhaleChatter(whaleRecordId: string): Promise<AssignWhaleResult> {
   try {
+    const gate = await requireAdminManager();
+    if (!gate.ok) return { success: false, error: gate.error };
+
     await updateWhale(whaleRecordId, {
       assigned_chatter: [],
       assigned_chatter_name: "",

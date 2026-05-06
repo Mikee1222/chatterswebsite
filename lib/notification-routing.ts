@@ -99,9 +99,40 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   model_live_scheduled: { rule: "admin_only", description: "Admins only." },
   model_missed_live: { rule: "admin_only", description: "Admins only." },
   model_content_completed: { rule: "admin_and_actor", description: "Admins + assigned party." },
+  model_content_scheduled: {
+    rule: "assigned_user_only",
+    description: "Assigned VA when the model picks a date for VA-delivered content.",
+  },
+  va_content_assigned: {
+    rule: "assigned_model_only",
+    description: "The model user when a VA creates a content assignment for them.",
+  },
+  period_3_day_reminder: {
+    rule: "assigned_model_only",
+    description: "The linked model user (period tracking reminder ~3 days before expected start).",
+  },
+  period_predicted_day: {
+    rule: "assigned_model_only",
+    description: "The linked model user on predicted period start day (period tracking).",
+  },
+  period_confirmed_early: {
+    rule: "assigned_model_only",
+    description: "The linked model user when early period start is logged.",
+  },
+  period_overdue: {
+    rule: "assigned_model_only",
+    description: "The linked model user when expected period window needs logging (period tracking).",
+  },
+  period_prediction_reset: {
+    rule: "assigned_model_only",
+    description: "The linked model user when prediction is cleared or recalibrated.",
+  },
 
   // ---- Whale ----
-  whale_registered: { rule: "admin_only", description: "Admins only." },
+  whale_registered: {
+    rule: "admin_and_actor",
+    description: "Admins + the chatter who registered the whale (same dual path as shift_started).",
+  },
   whale_assigned: { rule: "admin_only", description: "Admins only." },
   whale_followup: { rule: "admin_only", description: "Admins only." },
   whale_spent: { rule: "admin_only", description: "Admins only." },
@@ -120,6 +151,9 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   custom_approved: { rule: "assigned_party_only", description: "Assigned party." },
   custom_rejected: { rule: "assigned_party_only", description: "Assigned party." },
+  custom_declined: { rule: "assigned_chatter_only", description: "Chatter who requested the custom (agency decline)." },
+  custom_edited: { rule: "assigned_party_only", description: "Chatter and/or model when agency edits terms." },
+  custom_uploaded: { rule: "admin_and_assigned_chatter", description: "Chatter + admins when model uploads deliverables." },
   custom_scheduled: { rule: "admin_only", description: "Admins only (or assigned if needed)." },
   custom_deadline_approaching: { rule: "admin_only", description: "Admins only." },
   custom_overdue: { rule: "admin_only", description: "Admins only." },
@@ -161,7 +195,6 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
 /** Event types that must go only to admins (no chatters/VAs unless they are the actor for admin_and_actor). */
 export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "whale_session_submitted",
-  "whale_registered",
   "whale_assigned",
   "whale_followup",
   "whale_spent",
@@ -204,4 +237,6 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "level_up",
   "spin_available",
   "challenge_completed",
+  "model_content_scheduled",
+  "va_content_assigned",
 ];

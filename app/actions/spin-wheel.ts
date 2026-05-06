@@ -59,15 +59,38 @@ export async function spinWheelAction(): Promise<
     return { success: false, error: msg };
   }
 
+  let pointsAwardedFromSpin = false;
   try {
     if (prize.prize_type === "points") {
       const pts = Math.max(0, Math.floor(Number.parseFloat(prize.prize_value) || 0));
       if (pts > 0) {
+        pointsAwardedFromSpin = true;
         await awardPoints(userId, pts, `Spin wheel: ${prize.label}`, "spin", spinRec.id);
       }
     }
   } catch (e) {
     console.error("[spin-wheel] awardPoints failed", e);
+  }
+
+  if (!pointsAwardedFromSpin) {
+    try {
+      const [{ notify }, { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY }] = await Promise.all([
+        import("@/services/notification-service"),
+        import("@/lib/notification-types"),
+      ]);
+      await notify({
+        user_id: userId,
+        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "🎰 Spin complete",
+        body: `You won: ${prize.label}`,
+        entity_type: "spin_wheel_spin",
+        entity_id: spinRec.id,
+        _triggerSource: "spinWheelAction",
+      }).catch(() => {});
+    } catch {
+      /* non-blocking */
+    }
   }
 
   revalidatePath(ROUTES.chatter.rewards);

@@ -110,7 +110,7 @@ export function PwaInstallBanner() {
       return (
         <div
           className="fixed left-0 right-0 z-[89] md:hidden"
-          style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+          style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}
         >
           <div
             className="mx-3 rounded-2xl border border-white/10 bg-black/95 shadow-2xl backdrop-blur-xl"
@@ -184,7 +184,7 @@ export function PwaInstallBanner() {
       <div
         className="fixed left-0 right-0 z-[89] md:hidden"
         style={{
-          bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
+          bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
         }}
       >
         <div

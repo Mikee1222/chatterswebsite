@@ -19,6 +19,8 @@ import {
   TRANSACTION_CURRENCY_OPTIONS,
 } from "@/lib/airtable-options";
 import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+import { Fish, Filter, History, PenSquare, Plus, Receipt, UserRound } from "lucide-react";
 
 function notesSummary(notes: string | undefined, maxLen = 50): string {
   if (!notes?.trim()) return "—";
@@ -41,6 +43,148 @@ function displayModelName(whale: Whale, modelNames: Record<string, string>): str
   const resolved = whale.assigned_model_id && modelNames[whale.assigned_model_id]?.trim();
   if (resolved) return resolved;
   return "—";
+}
+
+function whaleInitials(username: string | undefined, whaleId: string | undefined): string {
+  const u = (username || "").trim();
+  if (u) {
+    const parts = u.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase().slice(0, 2);
+    return u.slice(0, 2).toUpperCase();
+  }
+  const id = (whaleId || "").trim();
+  return id.slice(0, 2).toUpperCase() || "?";
+}
+
+function WhaleAvatarPlaceholder({
+  username,
+  whaleId,
+  className,
+}: {
+  username: string | undefined;
+  whaleId: string | undefined;
+  className?: string;
+}) {
+  const initials = whaleInitials(username, whaleId);
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-fuchsia-700 text-sm font-bold uppercase tracking-tight text-white shadow-inner ring-2 ring-white/20",
+        "h-12 w-12 text-[13px] md:h-14 md:w-14 md:text-sm",
+        className
+      )}
+      aria-hidden
+    >
+      {initials}
+    </span>
+  );
+}
+
+function WhaleStatusIndicator({ status }: { status: Whale["status"] }) {
+  const dot =
+    status === "Active" ? (
+      <span className="relative flex h-2.5 w-2.5 shrink-0">
+        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-55" />
+        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_hsl(142_76%_50%/0.8)]" />
+      </span>
+    ) : status === "Inactive" ? (
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.45)]" />
+    ) : status === "Dead" ? (
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-white/40" />
+    ) : (
+      <span className="h-2.5 w-2.5 shrink-0 rounded-full bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.45)]" />
+    );
+
+  const label = status === "Deleted Account" ? "Deleted account" : status;
+
+  return (
+    <span
+      className={cn(
+        "inline-flex max-w-full items-center gap-2 rounded-full border border-white/12 bg-black/35 px-2.5 py-1 text-xs font-semibold text-white/95 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]",
+        status === "Active" && "border-emerald-500/35 bg-emerald-500/10",
+        status === "Inactive" && "border-amber-500/30 bg-amber-500/10"
+      )}
+      title={status}
+    >
+      {dot}
+      <span className="min-w-0 truncate">{label}</span>
+    </span>
+  );
+}
+
+function MyWhalesEmptyState({
+  type,
+  onClearFilters,
+}: {
+  type: "none" | "filters";
+  onClearFilters?: () => void;
+}) {
+  if (type === "filters") {
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="flex flex-col items-center px-4 py-16 text-center"
+      >
+        <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-2xl border border-white/12 bg-gradient-to-br from-white/[0.08] to-black/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <Filter className="h-9 w-9 text-pink-200/70" aria-hidden />
+        </div>
+        <p className="text-lg font-semibold text-white">No whales match these filters</p>
+        <p className="mt-2 max-w-md text-sm leading-relaxed text-white/50">
+          Adjust search or a dropdown — your assigned whales are still on file.
+        </p>
+        {onClearFilters ? (
+          <button
+            type="button"
+            onClick={onClearFilters}
+            className="mt-8 rounded-xl border border-pink-400/40 bg-gradient-to-r from-pink-500/25 to-fuchsia-600/20 px-6 py-2.5 text-sm font-semibold text-pink-50 shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.35)] transition hover:brightness-110"
+          >
+            Clear filters
+          </button>
+        ) : null}
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex flex-col items-center px-4 py-16 text-center"
+    >
+      <div className="relative mb-8">
+        <div
+          className="absolute inset-0 -m-6 animate-pulse rounded-full bg-pink-500/25 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative flex h-32 w-32 items-center justify-center rounded-full border border-pink-400/35 bg-gradient-to-br from-pink-500/35 via-fuchsia-900/40 to-violet-950/50 shadow-[0_0_40px_-10px_hsl(330_80%_55%/0.45),inset_0_1px_0_rgba(255,255,255,0.12)]">
+          <Fish className="h-16 w-16 text-pink-50/95 drop-shadow-[0_2px_12px_rgba(0,0,0,0.35)]" strokeWidth={1.25} aria-hidden />
+        </div>
+        <motion.div
+          className="absolute -bottom-1 -right-1 flex h-11 w-11 items-center justify-center rounded-full border border-white/15 bg-black/60 shadow-lg backdrop-blur-sm"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ delay: 0.15, type: "spring", stiffness: 400, damping: 22 }}
+          aria-hidden
+        >
+          <UserRound className="h-5 w-5 text-pink-200/90" />
+        </motion.div>
+      </div>
+      <p className="text-lg font-semibold text-white">No whales yet</p>
+      <p className="mt-2 max-w-md text-sm leading-relaxed text-white/50">
+        When whales are assigned to you, they show up here. Use the + button in the app header to add one yourself.
+      </p>
+      <Link
+        href={ROUTES.chatter.myWhalesNew}
+        className="mt-8 inline-flex items-center gap-2 rounded-xl border border-pink-400/45 bg-gradient-to-r from-pink-500/30 to-fuchsia-600/25 px-6 py-3 text-sm font-semibold text-white shadow-[0_0_28px_-8px_hsl(330_80%_55%/0.4)] transition hover:brightness-110"
+      >
+        <Plus className="h-4 w-4 shrink-0 opacity-90" aria-hidden />
+        Add a whale
+      </Link>
+    </motion.div>
+  );
 }
 
 function Badge({
@@ -521,8 +665,9 @@ function LogTransactionQuickForm({
         <button
           type="submit"
           disabled={pending}
-          className="rounded-lg border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/25 px-3 py-2 text-xs font-semibold text-[hsl(330,90%,80%)] hover:bg-[hsl(330,80%,55%)]/35 disabled:opacity-50"
+          className="inline-flex min-h-[40px] items-center justify-center gap-2 rounded-xl border border-pink-400/45 bg-gradient-to-r from-pink-500/35 to-fuchsia-600/30 px-4 py-2 text-xs font-semibold text-white shadow-[0_0_20px_-8px_hsl(330_80%_55%/0.35)] transition hover:brightness-110 disabled:pointer-events-none disabled:opacity-45"
         >
+          <Receipt className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
           {pending ? "Saving…" : "Log transaction"}
         </button>
         <ButtonSecondary type="button" onClick={onClose}>
@@ -548,18 +693,13 @@ function WhaleChatterCard({
   const [logOpen, setLogOpen] = React.useState(false);
   const logAnchorRef = React.useRef<HTMLButtonElement>(null);
 
-  const avatarLetter = (whale.username?.trim()?.[0] ?? whale.whale_id?.trim()?.[0] ?? "?").toUpperCase();
-  const statusChipClass =
-    whale.status === "Active"
-      ? "bg-green-500/20 text-green-400"
-      : whale.status === "Inactive"
-        ? "bg-amber-500/20 text-amber-300"
-        : whale.status === "Dead"
-          ? "bg-white/10 text-white/70"
-          : "bg-red-500/20 text-red-300";
-
   const canToggle = whale.status === "Active" || whale.status === "Inactive";
   const nextStatus = whale.status === "Active" ? "Inactive" : "Active";
+
+  const actionGhost =
+    "border-white/15 bg-black/25 text-white/90 hover:border-pink-400/30 hover:bg-pink-500/10 hover:text-white";
+  const actionPrimary =
+    "border-pink-400/40 bg-gradient-to-r from-pink-500/30 to-fuchsia-600/25 text-pink-50 shadow-[0_0_20px_-8px_hsl(330_80%_55%/0.35)] hover:brightness-110";
 
   return (
     <motion.div
@@ -568,21 +708,32 @@ function WhaleChatterCard({
       transition={{ duration: 0.2, delay: Math.min(rowIndex, 12) * 0.03, ease: "easeOut" }}
       className="min-w-0"
     >
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08]">
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pink-500/20 text-lg font-bold text-pink-400">
-              {avatarLetter}
-            </div>
-            <div className="min-w-0">
-              <h3 className="truncate text-base font-semibold text-white">{whale.username || "—"}</h3>
-              <p className="truncate font-mono text-xs text-white/40">{whale.whale_id || "—"}</p>
+      <div
+        className={cn(
+          "group relative overflow-hidden rounded-2xl border border-white/[0.12] p-5 transition-all duration-300",
+          "bg-gradient-to-br from-pink-500/[0.12] via-violet-950/20 to-black/85",
+          "shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_16px_40px_-20px_rgba(236,72,153,0.2)]",
+          "hover:border-pink-400/25 hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_20px_48px_-16px_hsl(330_80%_55%/0.22)]"
+        )}
+      >
+        <div
+          className="pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-fuchsia-500/10 opacity-80 blur-3xl transition-opacity group-hover:opacity-100"
+          aria-hidden
+        />
+        <div className="relative mb-4 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <WhaleAvatarPlaceholder username={whale.username} whaleId={whale.whale_id} />
+            <div className="min-w-0 flex-1">
+              <h3 className="truncate text-base font-semibold text-white md:text-lg">{whale.username || "—"}</h3>
+              <p className="truncate font-mono text-xs text-white/45">{whale.whale_id || "—"}</p>
             </div>
           </div>
-          <span className={`shrink-0 rounded-lg px-2 py-1 text-xs font-medium ${statusChipClass}`}>{whale.status}</span>
+          <div className="shrink-0 pt-0.5">
+            <WhaleStatusIndicator status={whale.status} />
+          </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="relative mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Model</p>
             <p className="mt-1 text-sm font-medium text-white">{displayModelName(whale, modelNames)}</p>
@@ -629,39 +780,57 @@ function WhaleChatterCard({
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
+        <div className="relative grid grid-cols-2 gap-2 sm:flex sm:flex-wrap">
+          <motion.button
             ref={logAnchorRef}
             type="button"
+            whileTap={{ scale: 0.98 }}
             onClick={() => setLogOpen(true)}
-            className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-3 py-1.5 text-xs font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25"
+            className={cn(
+              "inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all sm:min-w-0",
+              actionPrimary
+            )}
           >
-            Log transaction
-          </button>
+            <Receipt className="h-3.5 w-3.5 shrink-0 opacity-90" aria-hidden />
+            Log session
+          </motion.button>
           <FloatingPopover open={logOpen} onClose={() => setLogOpen(false)} anchorRef={logAnchorRef} className="w-[min(100vw-2rem,22rem)]">
             <LogTransactionQuickForm whale={whale} modelNames={modelNames} onClose={() => setLogOpen(false)} />
           </FloatingPopover>
-          <button
+          <motion.button
             type="button"
+            whileTap={{ scale: 0.98 }}
             onClick={() => setHistoryOpen(true)}
-            className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
+            className={cn(
+              "inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+              actionGhost
+            )}
           >
-            View history
-          </button>
+            <History className="h-3.5 w-3.5 shrink-0 text-white/60" aria-hidden />
+            History
+          </motion.button>
           <Link
-            href={`/my-whales/${whale.id}/edit`}
-            className="inline-flex items-center rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
+            href={ROUTES.chatter.myWhaleEdit(whale.id)}
+            className={cn(
+              "inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+              actionGhost
+            )}
           >
-            Full edit
+            <PenSquare className="h-3.5 w-3.5 shrink-0 text-white/60" aria-hidden />
+            Edit
           </Link>
           {canToggle ? (
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.98 }}
               onClick={() => void onSave(whale.id, { status: nextStatus })}
-              className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
+              className={cn(
+                "col-span-2 inline-flex min-h-[42px] items-center justify-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all sm:col-span-1",
+                "border-amber-400/30 bg-amber-500/10 text-amber-50 hover:border-amber-300/45 hover:bg-amber-500/18"
+              )}
             >
               Mark {nextStatus}
-            </button>
+            </motion.button>
           ) : null}
         </div>
       </div>
@@ -675,7 +844,17 @@ function WhaleChatterCard({
   );
 }
 
-export function MyWhalesTable({ whales, modelNames = {} }: { whales: Whale[]; modelNames?: Record<string, string> }) {
+export function MyWhalesTable({
+  whales,
+  modelNames = {},
+  emptyState = null,
+  onClearFilters,
+}: {
+  whales: Whale[];
+  modelNames?: Record<string, string>;
+  emptyState?: "none" | "filters" | null;
+  onClearFilters?: () => void;
+}) {
   const router = useRouter();
 
   const handleSave = React.useCallback(
@@ -696,8 +875,14 @@ export function MyWhalesTable({ whales, modelNames = {} }: { whales: Whale[]; mo
     [router]
   );
 
+  if (emptyState === "filters") {
+    return <MyWhalesEmptyState type="filters" onClearFilters={onClearFilters} />;
+  }
+  if (emptyState === "none") {
+    return <MyWhalesEmptyState type="none" />;
+  }
   if (whales.length === 0) {
-    return <p className="py-12 text-center text-sm text-white/50">No whales assigned yet.</p>;
+    return <MyWhalesEmptyState type="none" />;
   }
 
   return (

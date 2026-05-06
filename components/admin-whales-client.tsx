@@ -4,7 +4,21 @@ import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Trash2 } from "lucide-react";
+import {
+  Activity,
+  DollarSign,
+  Filter,
+  Heart,
+  Search,
+  Skull,
+  SlidersHorizontal,
+  StickyNote,
+  Trash2,
+  TrendingUp,
+  User,
+  Users,
+} from "lucide-react";
+import { MobileCard } from "@/components/mobile-card";
 import { CustomSelect } from "@/components/ui/custom-select";
 import {
   assignWhaleToChatter,
@@ -14,8 +28,13 @@ import {
   updateWhaleFields,
 } from "@/app/actions/whales";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
-import { Input, Textarea, ButtonSecondary } from "@/components/ui/form";
+import { ButtonSecondary } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import type { Whale } from "@/types";
 import {
   RELATIONSHIP_STATUS_OPTIONS,
@@ -178,12 +197,12 @@ function ModelCell({
         {saving ? <span className="text-[10px] text-white/40">Saving…</span> : <span className="text-white/40">▾</span>}
       </button>
       <InlinePopover open={open} onClose={() => setOpen(false)} wrapperRef={wrapperRef} className="w-64 p-2">
-        <Input
+        <FormInput
           type="text"
           placeholder="Search models…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-2 text-sm"
+          className="!min-h-10 py-2 text-sm"
         />
         <div className="max-h-52 overflow-y-auto">
           <button
@@ -275,12 +294,12 @@ function ChatterCell({
         </button>
       )}
       <InlinePopover open={open} onClose={() => setOpen(false)} wrapperRef={wrapperRef} className="min-w-[200px] p-2">
-        <Input
+        <FormInput
           type="text"
           placeholder="Search chatters…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="mb-2 text-sm"
+          className="!min-h-10 py-2 text-sm"
         />
         <div className="max-h-52 overflow-y-auto">
           <button
@@ -507,7 +526,7 @@ function NotesCell({
         {saving && <span className="ml-1 text-[10px] text-white/40">Saving…</span>}
       </button>
       <InlinePopover open={open} onClose={() => setOpen(false)} wrapperRef={wrapperRef} className="w-72 p-3">
-        <Textarea
+        <FormTextarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={4}
@@ -650,46 +669,45 @@ function AdminEditWhaleModal({
         <h2 className="text-lg font-semibold text-white">Edit whale</h2>
         <p className="mt-1 text-sm text-white/50">{whale.username || whale.whale_id}</p>
         <form onSubmit={submit} className="mt-5 space-y-4">
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-white/50">Username</label>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1.5" />
-          </div>
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-white/50">Relationship</label>
-            <div className="mt-1.5">
-              <CustomSelect
-                value={relationship}
-                onChange={(v) => setRelationship(v as typeof relationship)}
-                placeholder="—"
-                options={[
-                  { value: "", label: "—" },
-                  ...RELATIONSHIP_STATUS_OPTIONS.map((o) => ({ value: o, label: label(o) })),
-                ]}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-white/50">Status</label>
-            <div className="mt-1.5">
-              <CustomSelect
-                value={status}
-                onChange={(v) => setStatus(v as Whale["status"])}
-                options={WHALE_STATUS_OPTIONS.map((o) => ({ value: o, label: o }))}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="text-xs font-medium uppercase tracking-wider text-white/50">Notes</label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={5} className="mt-1.5" />
-          </div>
+          <FormField label="Username" icon={<User />} htmlFor={`admin-whale-edit-user-${whale.id}`}>
+            <FormInput
+              id={`admin-whale-edit-user-${whale.id}`}
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+            />
+          </FormField>
+          <FormField label="Relationship" icon={<Heart />} htmlFor={`admin-whale-edit-rel-${whale.id}`}>
+            <CustomSelect
+              id={`admin-whale-edit-rel-${whale.id}`}
+              value={relationship}
+              onChange={(v) => setRelationship(v as typeof relationship)}
+              placeholder="—"
+              options={[
+                { value: "", label: "—" },
+                ...RELATIONSHIP_STATUS_OPTIONS.map((o) => ({ value: o, label: label(o) })),
+              ]}
+            />
+          </FormField>
+          <FormField label="Status" icon={<Activity />} htmlFor={`admin-whale-edit-status-${whale.id}`}>
+            <CustomSelect
+              id={`admin-whale-edit-status-${whale.id}`}
+              value={status}
+              onChange={(v) => setStatus(v as Whale["status"])}
+              options={WHALE_STATUS_OPTIONS.map((o) => ({ value: o, label: o }))}
+            />
+          </FormField>
+          <FormField label="Notes" icon={<StickyNote />} htmlFor={`admin-whale-edit-notes-${whale.id}`}>
+            <FormTextarea
+              id={`admin-whale-edit-notes-${whale.id}`}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={5}
+            />
+          </FormField>
           <div className="flex flex-wrap gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={pending}
-              className="rounded-xl border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/25 px-4 py-2.5 text-sm font-semibold text-[hsl(330,90%,80%)] hover:bg-[hsl(330,80%,55%)]/35 disabled:opacity-50"
-            >
+            <FormSubmitButton type="submit" disabled={pending} loading={pending} className="min-w-[10rem]">
               {pending ? "Saving…" : "Save changes"}
-            </button>
+            </FormSubmitButton>
             <ButtonSecondary type="button" onClick={onClose}>
               Cancel
             </ButtonSecondary>
@@ -742,7 +760,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
       className="min-w-0"
     >
       <div
-        className={`rounded-2xl border border-white/10 bg-white/5 p-5 transition-all hover:border-white/20 hover:bg-white/[0.08] ${
+        className={`rounded-2xl border border-white/[0.12] bg-white/[0.05] p-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] ring-1 ring-white/[0.04] transition-all hover:border-pink-400/25 hover:bg-white/[0.08] hover:shadow-[0_0_40px_-20px_rgba(236,72,153,0.25)] ${
           deleting ? "pointer-events-none opacity-60" : ""
         }`}
       >
@@ -754,7 +772,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-pink-500/20 text-lg font-bold text-pink-400">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-violet-600 text-lg font-bold text-white shadow-md shadow-pink-500/25 ring-2 ring-white/10">
                 {avatarLetter}
               </div>
               <div className="min-w-0">
@@ -1048,6 +1066,10 @@ export function AdminWhalesClient({
 
   const maxModelRev = Math.max(1, ...revenueByModel.map(([, v]) => v));
   const maxChatterRev = Math.max(1, ...revenueByChatter.map(([, v]) => v));
+  const totalTxnRevenue = React.useMemo(
+    () => revenueByModel.reduce((sum, [, v]) => sum + (Number.isFinite(v) ? v : 0), 0),
+    [revenueByModel]
+  );
 
   const updateWhaleInList = React.useCallback((whaleId: string, patch: Partial<Whale>) => {
     setLocalWhales((prev) =>
@@ -1172,51 +1194,66 @@ export function AdminWhalesClient({
     pushFiltersToUrl({ chatter: "", model: "", relationship: "", status: "", q: "" }, null);
   }, [pushFiltersToUrl]);
 
+  const selectTriggerClass =
+    "border-white/12 bg-black/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-pink-400/25 hover:bg-white/[0.06]";
+
   const adminFilterFields = (
-    <div className="flex flex-col gap-3 md:flex-row md:flex-wrap">
-      <div className="min-w-0 flex-1 md:min-w-[200px]">
-        <p className="mb-1 text-xs uppercase tracking-wider text-white/40">Search</p>
+    <div className="flex flex-col gap-4 md:flex-row md:flex-wrap md:gap-3">
+      <div className="min-w-0 flex-1 md:min-w-[220px]">
+        <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-pink-200/70">
+          <Search className="h-3 w-3 opacity-80" aria-hidden />
+          Search
+        </p>
         <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-pink-300/40" aria-hidden />
           <input
             type="search"
-            placeholder="Search username…"
+            placeholder="Username or whale ID…"
             value={filterSearch}
             onChange={(e) => onFilterChange({ q: e.target.value })}
-            className="h-11 w-full rounded-xl border border-white/10 bg-white/5 py-0 pl-10 pr-4 text-sm text-white placeholder:text-white/30 outline-none ring-0 transition-colors focus:border-white/25 focus:bg-white/[0.07]"
+            className={cn(
+              "h-11 w-full rounded-xl border py-0 pl-10 pr-4 text-sm text-white outline-none transition-all",
+              "border-white/12 bg-black/35 placeholder:text-white/35",
+              "shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+              "focus:border-pink-400/45 focus:bg-black/50 focus:ring-2 focus:ring-pink-500/20"
+            )}
           />
         </div>
       </div>
       <div className="min-w-0 flex-1 md:min-w-[160px]">
-        <p className="mb-1 text-xs uppercase tracking-wider text-white/40">Chatter</p>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Chatter</p>
         <CustomSelect
           value={filterChatter}
           onChange={(v) => onFilterChange({ chatter: v })}
           options={chatterFilterOptions}
+          triggerClassName={selectTriggerClass}
         />
       </div>
       <div className="min-w-0 flex-1 md:min-w-[160px]">
-        <p className="mb-1 text-xs uppercase tracking-wider text-white/40">Model</p>
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Model</p>
         <CustomSelect
           value={filterModel}
           onChange={(v) => onFilterChange({ model: v })}
           options={modelFilterOptionsSelect}
+          triggerClassName={selectTriggerClass}
         />
       </div>
-      <div className="min-w-0 flex-1 md:min-w-[140px]">
-        <p className="mb-1 text-xs uppercase tracking-wider text-white/40">Relationship</p>
+      <div className="min-w-0 flex-1 md:min-w-[150px]">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Relationship</p>
         <CustomSelect
           value={filterRelationship}
           onChange={(v) => onFilterChange({ relationship: v })}
           options={relationshipFilterOptions}
+          triggerClassName={selectTriggerClass}
         />
       </div>
-      <div className="min-w-0 flex-1 md:min-w-[140px]">
-        <p className="mb-1 text-xs uppercase tracking-wider text-white/40">Status</p>
+      <div className="min-w-0 flex-1 md:min-w-[150px]">
+        <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Status</p>
         <CustomSelect
           value={filterStatus}
           onChange={(v) => onFilterChange({ status: v })}
           options={statusFilterOptions}
+          triggerClassName={selectTriggerClass}
         />
       </div>
     </div>
@@ -1287,34 +1324,74 @@ export function AdminWhalesClient({
   }, [whalePendingDelete, router]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6 md:space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Whales</h1>
-        <p className="mt-1 text-sm text-white/60">All whales. Edit inline. Revenue from whale_transactions.</p>
+        <h1 className="bg-gradient-to-r from-white via-white to-white/75 bg-clip-text text-2xl font-semibold tracking-tight text-transparent md:text-3xl">
+          Whales
+        </h1>
+        <p className="mt-1.5 max-w-2xl text-sm text-white/55">
+          All whales. Edit inline. Revenue from whale_transactions.
+        </p>
       </div>
 
       {/* Summary stats (global totals across all whales, not filtered table) */}
-      <div className="flex flex-wrap gap-3">
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-white/50">Total</p>
-          <p className="mt-0.5 text-xl font-semibold text-white">{statusCounts.total}</p>
-        </div>
-        <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-emerald-300/80">Active</p>
-          <p className="mt-0.5 text-xl font-semibold text-emerald-300">{statusCounts.active}</p>
-        </div>
-        <div className="rounded-2xl border border-amber-500/20 bg-amber-500/10 px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-amber-300/80">Inactive</p>
-          <p className="mt-0.5 text-xl font-semibold text-amber-300">{statusCounts.inactive}</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-white/50">Dead</p>
-          <p className="mt-0.5 text-xl font-semibold text-white/90">{statusCounts.dead}</p>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3">
-          <p className="text-xs font-medium uppercase tracking-wider text-white/50">Deleted account</p>
-          <p className="mt-0.5 text-xl font-semibold text-white/90">{statusCounts.deleted}</p>
-        </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+        <MobileCard padding="md">
+          <div className="space-y-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-zinc-800/80 ring-1 ring-white/[0.06]">
+              <Users className="h-5 w-5 text-zinc-300" aria-hidden />
+            </div>
+            <p className="text-2xl font-bold tabular-nums text-white">{statusCounts.total}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Total</p>
+          </div>
+        </MobileCard>
+        <MobileCard padding="md" className="border-emerald-500/15">
+          <div className="space-y-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/20">
+              <TrendingUp className="h-5 w-5 text-emerald-400" aria-hidden />
+            </div>
+            <p className="text-2xl font-bold tabular-nums text-emerald-300">{statusCounts.active}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-emerald-400/80">Active</p>
+          </div>
+        </MobileCard>
+        <MobileCard padding="md" className="border-amber-500/15">
+          <div className="space-y-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/15 ring-1 ring-amber-400/20">
+              <User className="h-5 w-5 text-amber-300" aria-hidden />
+            </div>
+            <p className="text-2xl font-bold tabular-nums text-amber-200">{statusCounts.inactive}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-400/80">Inactive</p>
+          </div>
+        </MobileCard>
+        <MobileCard padding="md">
+          <div className="space-y-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/[0.06] ring-1 ring-white/[0.08]">
+              <Skull className="h-5 w-5 text-zinc-400" aria-hidden />
+            </div>
+            <p className="text-2xl font-bold tabular-nums text-white/90">{statusCounts.dead}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">Dead</p>
+          </div>
+        </MobileCard>
+        <MobileCard padding="md" className="border-red-500/20">
+          <div className="space-y-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/15 ring-1 ring-red-400/25">
+              <Trash2 className="h-5 w-5 text-red-400" aria-hidden />
+            </div>
+            <p className="text-2xl font-bold tabular-nums text-red-200/90">{statusCounts.deleted}</p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-red-400/80">Deleted</p>
+          </div>
+        </MobileCard>
+        <MobileCard padding="md" className="border-pink-500/20">
+          <div className="space-y-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-pink-500/15 ring-1 ring-pink-400/25">
+              <DollarSign className="h-5 w-5 text-pink-400" aria-hidden />
+            </div>
+            <p className="text-2xl font-bold tabular-nums text-pink-100">
+              ${totalTxnRevenue.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+            </p>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-pink-400/80">Txn revenue</p>
+          </div>
+        </MobileCard>
       </div>
 
       {/* Revenue bars */}
@@ -1392,36 +1469,90 @@ export function AdminWhalesClient({
       />
 
       {/* Filters + search (debounced) */}
-      <div className="mb-6 rounded-2xl border border-white/10 bg-white/5 p-4">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <div
+        className={cn(
+          "relative mb-6 overflow-hidden rounded-2xl border border-white/[0.12] p-4 md:p-5",
+          "bg-gradient-to-br from-pink-500/[0.09] via-violet-950/25 to-black/80",
+          "shadow-[0_0_0_1px_rgba(255,255,255,0.04),inset_0_1px_0_rgba(255,255,255,0.06),0_20px_50px_-24px_rgba(236,72,153,0.18)]"
+        )}
+      >
+        <div
+          className="pointer-events-none absolute -right-16 -top-24 h-48 w-48 rounded-full bg-fuchsia-500/15 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative mb-4 flex flex-wrap items-center justify-between gap-2">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="hidden text-sm font-semibold text-white md:inline">Filters</h2>
+            <h2 className="hidden items-center gap-2 text-sm font-semibold text-white md:inline-flex">
+              <SlidersHorizontal className="h-4 w-4 text-pink-300/90" aria-hidden />
+              Filters
+            </h2>
             {activeFilterCount > 0 ? (
-              <span className="hidden h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-[hsl(330,80%,55%)]/25 px-2 text-xs font-semibold text-[hsl(330,90%,78%)] md:inline-flex">
+              <span className="hidden h-6 min-w-[1.5rem] items-center justify-center rounded-full border border-pink-400/30 bg-pink-500/20 px-2 text-xs font-semibold text-pink-100 md:inline-flex">
                 {activeFilterCount}
               </span>
             ) : null}
             <button
               type="button"
               onClick={() => setMobileFiltersOpen(true)}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-white transition-colors hover:border-white/20 hover:bg-white/8 md:hidden"
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/15 bg-black/35 px-4 text-sm font-semibold text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-all hover:border-pink-400/35 hover:bg-pink-500/10 md:hidden"
             >
+              <Filter className="h-4 w-4 text-pink-300/90" aria-hidden />
               Filters
               {activeFilterCount > 0 ? (
-                <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full bg-[hsl(330,80%,55%)]/25 px-1.5 text-[10px] font-semibold text-[hsl(330,90%,78%)]">
+                <span className="flex h-5 min-w-[1.25rem] items-center justify-center rounded-full border border-pink-400/35 bg-pink-500/25 px-1.5 text-[10px] font-bold text-pink-50">
                   {activeFilterCount}
                 </span>
               ) : null}
             </button>
           </div>
           {activeFilterCount > 0 ? (
-            <button type="button" onClick={clearAllFilters} className="text-xs text-pink-400 hover:text-pink-300">
+            <button
+              type="button"
+              onClick={clearAllFilters}
+              className="rounded-lg border border-pink-400/25 bg-pink-500/10 px-3 py-1.5 text-xs font-semibold text-pink-200 transition-colors hover:border-pink-300/40 hover:bg-pink-500/20"
+            >
               Clear all
             </button>
           ) : null}
         </div>
 
-        <div className="hidden md:block">{adminFilterFields}</div>
+        <div className="relative hidden md:block">{adminFilterFields}</div>
+        <div className="mt-4 flex flex-col gap-2 border-t border-white/[0.08] pt-4 md:mt-5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Quick status</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => onFilterChange({ status: "" })}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                !filterStatus
+                  ? "border-pink-500/45 bg-pink-500/20 text-pink-100"
+                  : "border-white/12 bg-black/30 text-white/65 hover:border-white/25 hover:text-white/90"
+              )}
+            >
+              All statuses
+            </button>
+            {WHALE_STATUS_OPTIONS.map((st) => (
+              <button
+                key={st}
+                type="button"
+                onClick={() => onFilterChange({ status: st })}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                  filterStatus === st
+                    ? "border-pink-500/45 bg-pink-500/20 text-pink-100"
+                    : st === "Active"
+                      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200/90 hover:border-emerald-400/40"
+                      : st === "Inactive"
+                        ? "border-amber-500/25 bg-amber-500/10 text-amber-200/90 hover:border-amber-400/40"
+                        : "border-white/12 bg-black/30 text-white/65 hover:border-white/25 hover:text-white/90"
+                )}
+              >
+                {st}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -1443,7 +1574,7 @@ export function AdminWhalesClient({
               role="dialog"
               aria-modal="true"
               aria-labelledby="admin-whale-filters-sheet-title"
-              className="absolute bottom-0 left-0 right-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl bg-[#111] p-6 pb-8 shadow-2xl"
+              className="absolute bottom-0 left-0 right-0 max-h-[85dvh] overflow-y-auto rounded-t-2xl border-t border-pink-500/20 bg-gradient-to-b from-zinc-950 to-black p-6 pb-8 shadow-2xl"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
@@ -1460,7 +1591,7 @@ export function AdminWhalesClient({
               <button
                 type="button"
                 onClick={() => setMobileFiltersOpen(false)}
-                className="mt-6 w-full rounded-xl border border-white/15 bg-white/5 py-3 text-sm font-medium text-white hover:bg-white/10"
+                className="mt-6 w-full rounded-xl border border-pink-400/35 bg-gradient-to-r from-pink-500/25 to-fuchsia-600/20 py-3.5 text-sm font-semibold text-pink-50 shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.35)] transition hover:brightness-110"
               >
                 Done
               </button>

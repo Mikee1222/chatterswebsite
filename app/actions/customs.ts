@@ -25,7 +25,7 @@ export async function deleteCustomRequestAction(
     await deleteCustomRequestRecord(id);
     revalidatePath(ROUTES.admin.customs);
     revalidatePath(ROUTES.chatter.requestCustom);
-    revalidatePath("/model/customs");
+    revalidatePath(ROUTES.model.customs);
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -42,7 +42,7 @@ export async function updateCustomStatusAction(
     const customTitle = (updated.request_title ?? "").trim() || "Custom request";
     revalidatePath(ROUTES.admin.customs);
     revalidatePath(ROUTES.chatter.requestCustom);
-    revalidatePath("/model/customs");
+    revalidatePath(ROUTES.model.customs);
     if (updated.requested_by_chatter_id) {
       try {
         await notify({

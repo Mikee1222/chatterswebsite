@@ -13,6 +13,7 @@ import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-p
 import { AdminWeeklyProgramVaClient } from "@/components/admin-weekly-program-va-client";
 import type { WeeklyProgramRecord } from "@/types";
 import type { ModelRecord } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 export default async function AdminWeeklyProgramVaPage({
   searchParams,
@@ -34,7 +35,7 @@ export default async function AdminWeeklyProgramVaPage({
   ]);
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[admin weekly-program-va page] loader", {
+    devLog("[admin weekly-program-va page] loader", {
       selected_week_start: weekStart,
       displayed_week_label: formatWeekLabel(weekStart),
       fetched_programs_count: programs.length,

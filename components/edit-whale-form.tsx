@@ -1,23 +1,20 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { Activity, Heart, Sparkles, StickyNote, User } from "lucide-react";
 import { updateWhaleFields } from "@/app/actions/whales";
 import type { AppNotification, Whale } from "@/types";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/contexts/toast-context";
-import {
-  Label,
-  Textarea,
-  SubmitButton,
-  btnSecondaryClass,
-  formSpace,
-} from "@/components/ui/form";
-import { CustomSelect } from "@/components/ui/custom-select";
-
-const selectTapClass = "[&_button]:min-h-12 [&_button]:h-auto";
+import { btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 const EDIT_RELATIONSHIP_OPTIONS = [
   { value: "", label: "—" },
@@ -70,14 +67,16 @@ function normalizeStatus(s: string): EditStatusValue {
 export function EditWhaleForm({ whale }: { whale: Whale }) {
   const router = useRouter();
   const { addToast } = useToast();
-  const [relationshipStatus, setRelationshipStatus] = React.useState(() => normalizeRelationship(whale.relationship_status));
+  const [relationshipStatus, setRelationshipStatus] = React.useState(() =>
+    normalizeRelationship(whale.relationship_status)
+  );
   const [status, setStatus] = React.useState(() => normalizeStatus(whale.status));
   const [notes, setNotes] = React.useState(whale.notes);
   const [pending, setPending] = React.useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    console.log("[edit-whale] saving", {
+    devLog("[edit-whale] saving", {
       whaleId: whale.id,
       relationship_status: relationshipStatus,
       status,
@@ -109,46 +108,64 @@ export function EditWhaleForm({ whale }: { whale: Whale }) {
   }
 
   return (
-    <form onSubmit={submit} className={cn(formSpace, "max-md:pb-[80px]")}>
-      <div>
-        <Label className="text-white/50">Username</Label>
-        <p className="mt-1 text-[15px] text-white/90">{whale.username}</p>
-      </div>
-      <div>
-        <Label className="text-white/50">Model</Label>
-        <p className="mt-1 text-[15px] text-white/90">{whale.assigned_model_name || "—"}</p>
-      </div>
-      <div className={cn("relative", selectTapClass)}>
-        <Label>Relationship status</Label>
-        <CustomSelect
+    <form onSubmit={submit} className={cn(formSpace, "max-md:pb-[80px] space-y-4")}>
+      <FormField label="Username" icon={<User />} description="Whale handle (read-only).">
+        <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-[15px] text-white/90">
+          {whale.username}
+        </p>
+      </FormField>
+      <FormField label="Model" icon={<Sparkles />} description="Assigned model (read-only).">
+        <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-[15px] text-white/90">
+          {whale.assigned_model_name || "—"}
+        </p>
+      </FormField>
+      <FormField label="Relationship status" icon={<Heart />} htmlFor={`edit-whale-relationship-${whale.id}`}>
+        <FormSelect
+          id={`edit-whale-relationship-${whale.id}`}
           key={`edit-whale-relationship-${whale.id}`}
-          portaled
           value={relationshipStatus}
-          onChange={(v) => setRelationshipStatus(normalizeRelationship(v))}
-          options={[...EDIT_RELATIONSHIP_OPTIONS]}
-        />
-      </div>
-      <div className={cn("relative", selectTapClass)}>
-        <Label>Status</Label>
-        <CustomSelect
+          onChange={(e) => setRelationshipStatus(normalizeRelationship(e.target.value))}
+        >
+          {EDIT_RELATIONSHIP_OPTIONS.map((o) => (
+            <option key={o.value || "dash"} value={o.value} className={selectOptionClass}>
+              {o.label}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
+      <FormField label="Status" icon={<Activity />} htmlFor={`edit-whale-status-${whale.id}`}>
+        <FormSelect
+          id={`edit-whale-status-${whale.id}`}
           key={`edit-whale-status-${whale.id}`}
-          portaled
           value={status}
-          onChange={(v) => setStatus(normalizeStatus(v))}
-          options={[...EDIT_STATUS_OPTIONS]}
+          onChange={(e) => setStatus(normalizeStatus(e.target.value))}
+        >
+          {EDIT_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value} className={selectOptionClass}>
+              {o.label}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
+      <FormField label="Notes" icon={<StickyNote />} htmlFor={`edit-whale-notes-${whale.id}`}>
+        <FormTextarea
+          id={`edit-whale-notes-${whale.id}`}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          rows={4}
         />
-      </div>
-      <div>
-        <Label>Notes</Label>
-        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={4} />
-      </div>
-      <div className="flex flex-col gap-3 pt-3 md:flex-row md:flex-wrap md:items-center md:gap-4 md:pt-2">
-        <SubmitButton disabled={pending} className="min-h-12 w-full sm:w-auto">
-          {pending ? "Saving..." : "Save changes"}
-        </SubmitButton>
+      </FormField>
+      <div className="flex flex-col gap-3 pt-2 md:flex-row md:flex-wrap md:items-stretch">
+        <FormSubmitButton
+          disabled={pending}
+          loading={pending}
+          className="w-full min-h-12 md:min-w-[12rem] md:flex-1"
+        >
+          {pending ? "Saving…" : "Save changes"}
+        </FormSubmitButton>
         <Link
           href={ROUTES.chatter.myWhales}
-          className={cn(btnSecondaryClass, "inline-flex min-h-12 w-full items-center justify-center sm:w-auto")}
+          className={cn(btnSecondaryClass, "inline-flex min-h-12 w-full items-center justify-center md:w-auto md:px-8")}
         >
           Cancel
         </Link>

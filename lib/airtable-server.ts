@@ -4,6 +4,7 @@
  */
 
 import { sanitizePayloadForAirtable } from "@/lib/airtable-sanitize";
+import { devLog } from "@/lib/dev-log";
 
 const AIRTABLE_API = "https://api.airtable.com/v0";
 const AIRTABLE_META_API = "https://api.airtable.com/v0/meta";
@@ -100,7 +101,7 @@ export async function getBaseSchema(): Promise<AirtableBaseSchema> {
   const shiftsTable = data.tables?.find((t) => t.name === "shifts" || t.name === "Shifts");
   if (shiftsTable && process.env.NODE_ENV !== "production") {
     const statusField = shiftsTable.fields.find((f) => f.name.toLowerCase() === "status");
-    console.log("[getBaseSchema] shifts table discovered", {
+    devLog("[getBaseSchema] shifts table discovered", {
       tableId: shiftsTable.id,
       tableName: shiftsTable.name,
       fieldNames: shiftsTable.fields.map((f) => f.name),
@@ -119,7 +120,7 @@ export async function getSampleRecordFields(tableName: string): Promise<Record<s
   if (!rec?.fields) return null;
   const fieldNames = Object.keys(rec.fields);
   if (process.env.NODE_ENV !== "production") {
-    console.log("[getSampleRecordFields]", {
+    devLog("[getSampleRecordFields]", {
       tableName,
       fieldNames,
       statusValue: (rec.fields as Record<string, unknown>).status ?? (rec.fields as Record<string, unknown>).Status,
@@ -190,7 +191,7 @@ export async function listRecords<T = Record<string, unknown>>(
   }
   if (params.filterByFormula) {
     const encodedFormula = url.searchParams.get("filterByFormula") ?? "(not set)";
-    console.log("[listRecords] filterByFormula request", {
+    devLog("[listRecords] filterByFormula request", {
       tableName,
       caller: params._caller ?? "unknown",
       rawFormula: params.filterByFormula,
@@ -250,7 +251,7 @@ export async function createRecord<T = Record<string, unknown>>(
   const { baseId } = getConfig();
   const sanitized = sanitizePayloadForAirtable(tableName, fields as Record<string, unknown>, "create");
   if (process.env.NODE_ENV !== "production") {
-    console.log("[airtable createRecord] outgoing payload", {
+    devLog("[airtable createRecord] outgoing payload", {
       table: tableName,
       fields: sanitized,
       fieldKeys: Object.keys(sanitized),
@@ -302,7 +303,7 @@ export async function updateRecord<T = Record<string, unknown>>(
   const { baseId } = getConfig();
   const sanitized = sanitizePayloadForAirtable(tableName, fields as Record<string, unknown>, "update");
   if (process.env.NODE_ENV !== "production") {
-    console.log("[airtable updateRecord] outgoing payload", {
+    devLog("[airtable updateRecord] outgoing payload", {
       table: tableName,
       recordId,
       fields: sanitized,

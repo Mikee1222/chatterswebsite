@@ -4,14 +4,12 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { login } from "@/app/actions/auth";
 import { AnimatedBackground } from "@/components/animated-background";
-import { Label, Input, FormError, SubmitButton, Checkbox } from "@/components/ui/form";
+import { FormError, Checkbox } from "@/components/ui/form";
 import { LoginPasswordField } from "@/components/login-password-field";
-
-const inputFocusClass =
-  "rounded-xl px-4 py-3 focus:border-pink-500/50 focus:ring-2 focus:ring-pink-500/20 focus:outline-none transition-all";
-
-const signInButtonClass =
-  "rounded-xl py-3.5 shadow-lg shadow-pink-500/30 hover:shadow-pink-500/50 hover:-translate-y-0.5 transition-all duration-200 bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { Lock, Mail } from "lucide-react";
 
 export default async function LoginPage({
   searchParams,
@@ -57,29 +55,40 @@ export default async function LoginPage({
                   <FormError>{error}</FormError>
                 </div>
               ) : null}
-              <form action={login} className="space-y-5">
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
+              <form action={login} className="space-y-4">
+                <FormField label="Email" icon={<Mail />} htmlFor="email" required>
+                  <FormInput
                     id="email"
                     name="email"
                     type="email"
                     autoComplete="email"
                     required
                     placeholder="you@example.com"
-                    className={`w-full bg-white/5 border-white/10 text-white placeholder:text-white/30 ${inputFocusClass}`}
                   />
+                </FormField>
+                <FormField label="Password" icon={<Lock />} htmlFor="password" required>
+                  <LoginPasswordField
+                    id="password"
+                    name="password"
+                    required
+                    omitLabel
+                    placeholder="••••••••"
+                    className="pr-12"
+                  />
+                </FormField>
+                <div className="space-y-2 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                  <Checkbox
+                    id="remember_me"
+                    name="remember_me"
+                    value="on"
+                    label="Remember me for 30 days"
+                  />
+                  <p className="pl-8 text-xs leading-relaxed text-white/45">
+                    If unchecked, you stay signed in until you close the browser or after 24 hours of use. Checked keeps
+                    you signed in for up to 30 days.
+                  </p>
                 </div>
-                <LoginPasswordField
-                  name="password"
-                  required
-                  placeholder="••••••••"
-                  className={`w-full bg-white/5 border-white/10 text-white placeholder:text-white/30 pr-12 ${inputFocusClass}`}
-                />
-                <div>
-                  <Checkbox id="remember_me" name="remember_me" value="on" label="Remember me" />
-                </div>
-                <SubmitButton className={signInButtonClass}>Sign in</SubmitButton>
+                <FormSubmitButton className="w-full">Sign in</FormSubmitButton>
               </form>
             </div>
           </div>

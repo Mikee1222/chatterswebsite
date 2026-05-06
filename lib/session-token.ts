@@ -6,12 +6,7 @@
 
 import { SignJWT } from "jose/jwt/sign";
 import { jwtVerify } from "jose/jwt/verify";
-import {
-  AUTH_COOKIE_NAME,
-  SESSION_MAX_AGE_SEC,
-  getSessionJwtSecret,
-  type AuthUser,
-} from "./auth-config";
+import { AUTH_COOKIE_NAME, getSessionJwtSecret, type AuthUser } from "./auth-config";
 
 export { AUTH_COOKIE_NAME, getSessionJwtSecret };
 
@@ -27,9 +22,10 @@ function encodeSecret(secret: string): Uint8Array {
   return new TextEncoder().encode(secret);
 }
 
-export async function signSessionToken(user: AuthUser): Promise<string> {
+export async function signSessionToken(user: AuthUser, maxAgeSeconds: number): Promise<string> {
   const secret = getSessionJwtSecret();
   const key = encodeSecret(secret);
+  const ttl = Math.max(60, Math.floor(maxAgeSeconds));
   const jwt = await new SignJWT({
     id: user.id,
     email: user.email,
@@ -39,7 +35,7 @@ export async function signSessionToken(user: AuthUser): Promise<string> {
   } as SessionPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
-    .setExpirationTime(`${SESSION_MAX_AGE_SEC}s`)
+    .setExpirationTime(`${ttl}s`)
     .sign(key);
   return jwt;
 }

@@ -7,9 +7,10 @@ import {
   listShiftModels,
 } from "@/services/shifts";
 import { formatDateEuropean, formatDateTimeEuropean } from "@/lib/format";
-import { VaHomeClient } from "@/components/va-home-client";
+import { addDays } from "@/lib/weekly-program";
+import { VaHomeClient, type VaHomeTaskItem } from "@/components/va-home-client";
 import { getVaTasksForUser } from "@/services/va-tasks";
-import type { Shift } from "@/types";
+import type { Shift, VaTaskPriority, VaTaskRecord, VaTaskStatus } from "@/types";
 
 function localYmdFromDue(isoLike: string | null): string {
   if (!isoLike?.trim()) return "";
@@ -89,12 +90,40 @@ function hoursFromMinutes(m: number): string {
   return min ? `${h}h ${min}m` : `${h}h`;
 }
 
+const PRIORITY_ORDER: Record<VaTaskPriority, number> = {
+  urgent: 0,
+  high: 1,
+  normal: 2,
+  low: 3,
+};
+
+function isOpenTask(status: VaTaskStatus): boolean {
+  return status === "pending" || status === "in_progress";
+}
+
+function toHomeTaskRow(t: VaTaskRecord): VaHomeTaskItem {
+  return {
+    id: t.id,
+    title: t.title?.trim() || "Task",
+    status: t.status,
+    priority: t.priority,
+  };
+}
+
+function sortTasksForHome(a: VaTaskRecord, b: VaTaskRecord): number {
+  const pa = PRIORITY_ORDER[a.priority] ?? 2;
+  const pb = PRIORITY_ORDER[b.priority] ?? 2;
+  if (pa !== pb) return pa - pb;
+  return (a.due_date ?? "").localeCompare(b.due_date ?? "");
+}
+
 export default async function VaHomePage() {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "virtual_assistant") redirect(ROUTES.dashboard);
 
   const vaId = user.airtableUserId ?? user.id;
-  const vaName = user.fullName ?? user.email ?? "VA";
+  const displayName = (user.fullName ?? user.email ?? "VA").trim();
+  const firstName = displayName.split(/\s+/)[0] ?? displayName;
   const [allShifts, shiftCardData, vaTasks] = await Promise.all([
     getShiftsByChatter(vaId, "virtual_assistant").catch(() => []),
     getVaHomeShiftCardData(vaId),
@@ -102,12 +131,22 @@ export default async function VaHomePage() {
   ]);
 
   const todayY = todayYmdLocal();
-  const openTasksToday = vaTasks.filter(
-    (t) =>
-      (t.status === "pending" || t.status === "in_progress") &&
-      t.due_date &&
-      localYmdFromDue(t.due_date) === todayY
-  ).length;
+
+  const todaysTasks = vaTasks
+    .filter((t) => isOpenTask(t.status) && t.due_date && localYmdFromDue(t.due_date) === todayY)
+    .sort(sortTasksForHome)
+    .slice(0, 10)
+    .map(toHomeTaskRow);
+
+  const pendingReports = vaTasks
+    .filter((t) => {
+      if (!isOpenTask(t.status) || !t.due_date) return false;
+      const y = localYmdFromDue(t.due_date);
+      return y !== "" && y < todayY;
+    })
+    .sort(sortTasksForHome)
+    .slice(0, 12)
+    .map(toHomeTaskRow);
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
@@ -150,22 +189,22 @@ export default async function VaHomePage() {
   recentActivity.sort((a, b) => b.at.localeCompare(a.at));
   const recent = recentActivity.slice(0, 10);
 
-  return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-xl font-semibold text-white">
-          Welcome back{vaName ? `, ${vaName.split(" ")[0]}` : ""}
-        </h1>
-        <p className="mt-1 text-sm text-white/60">Virtual assistant ops dashboard</p>
-      </div>
+  const weekEndY = addDays(weekStart, 6);
+  const weekRangeLabel = `${formatDateEuropean(weekStart)} – ${formatDateEuropean(weekEndY)}`;
 
+  return (
+    <div className="pb-4 md:pb-6">
       <VaHomeClient
+        firstName={firstName}
+        displayName={displayName}
+        weekRangeLabel={weekRangeLabel}
         totalWorkedHours={hoursFromMinutes(totalMinutes)}
         weekHours={hoursFromMinutes(weekMinutes)}
         todayHours={hoursFromMinutes(todayMinutes)}
         shiftCardData={shiftCardData}
+        todaysTasks={todaysTasks}
+        pendingReports={pendingReports}
         recentActivity={recent}
-        openTasksToday={openTasksToday}
       />
     </div>
   );

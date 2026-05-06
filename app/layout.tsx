@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { ToasterProvider } from "@/components/toaster-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -12,7 +13,7 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Chatter",
   },
-  manifest: "/manifest",
+  manifest: "/manifest.webmanifest",
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",
@@ -36,6 +37,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className="min-h-screen text-[hsl(0,0%,98%)]">
         {children}
+        <ToasterProvider />
       </body>
     </html>
   );

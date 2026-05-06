@@ -27,6 +27,7 @@ type Fields = {
   avg_cycle_length?: number | null;
   avg_period_length?: number | null;
   period_notes?: string;
+  period_tracking_enabled?: boolean;
 };
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
@@ -52,6 +53,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
     avg_cycle_length: typeof f.avg_cycle_length === "number" ? f.avg_cycle_length : null,
     avg_period_length: typeof f.avg_period_length === "number" ? f.avg_period_length : null,
     period_notes: typeof f.period_notes === "string" ? f.period_notes : "",
+    period_tracking_enabled: f.period_tracking_enabled === true,
   };
 }
 
@@ -68,6 +70,8 @@ export type ModelssWriteFields = {
   avg_cycle_length?: number | null;
   avg_period_length?: number | null;
   period_notes?: string;
+  /** Airtable checkbox on modelss — add via scripts/setup-period-tracking.ts if missing. */
+  period_tracking_enabled?: boolean | null;
 };
 
 export async function listModelss(params: ListParams = {}) {

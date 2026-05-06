@@ -57,6 +57,7 @@ export async function submitModelAvailabilityAction(input: SubmitInput): Promise
       notes: input.notes?.trim() || "",
     });
     revalidatePath(ROUTES.model.weeklyAvailability);
+    revalidatePath(ROUTES.model.schedule);
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Submit failed." };
@@ -84,6 +85,7 @@ export async function updateModelAvailabilityAction(
       notes: patch.notes?.trim() ?? "",
     });
     revalidatePath(ROUTES.model.weeklyAvailability);
+    revalidatePath(ROUTES.model.schedule);
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Update failed." };
@@ -98,6 +100,7 @@ export async function deleteModelAvailabilityAction(recordId: string): Promise<A
   try {
     await deleteModelAvailabilityRequest(recordId);
     revalidatePath(ROUTES.model.weeklyAvailability);
+    revalidatePath(ROUTES.model.schedule);
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Delete failed." };

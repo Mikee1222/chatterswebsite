@@ -2,13 +2,26 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
+import { Calendar, Clock, ListChecks, StickyNote } from "lucide-react";
 import { submitModelAvailabilityAction, updateModelAvailabilityAction, deleteModelAvailabilityAction } from "@/app/actions/weekly-availability-models";
 import { formatTimeRange } from "@/lib/format";
 import { modelWeeklyAvailabilityUrl } from "@/lib/routes";
 import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
 import { PeriodDayIndicator } from "@/components/period-day-indicator";
-import { Label, Select, Textarea, SubmitButton } from "@/components/ui/form";
+import { selectOptionClass } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import type { ModelWeeklyAvailabilityRequest, WeeklyProgramDay, ModelAvailabilityEntryType } from "@/types";
+
+const fieldMotion = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+} as const;
 
 const DAYS: WeeklyProgramDay[] = [
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
@@ -145,6 +158,7 @@ export function ModelWeeklyAvailabilityClient({
   const periodDateSet = React.useMemo(() => new Set(periodDatesThisWeek), [periodDatesThisWeek]);
 
   return (
+    <>
     <div className="space-y-8">
       <div className="rounded-2xl border border-white/10 bg-black/40 px-6 py-5 backdrop-blur-xl" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 32px -8px hsl(330 80% 55% / 0.08)" }}>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">
@@ -197,63 +211,104 @@ export function ModelWeeklyAvailabilityClient({
               {editingRequest ? t(language, "Edit entry", "Editar entrada") : t(language, "Add entry", "Añadir entrada")}
             </h3>
           </div>
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            <div>
-              <Label>{t(language, "Entry type", "Tipo de entrada")}</Label>
-              <Select value={entryType} onChange={(e) => setEntryType(e.target.value as ModelAvailabilityEntryType)} className="mt-1">
-                {ENTRY_TYPES.map((opt) => (
-                  <option key={opt.value} value={opt.value}>{t(language, opt.labelEn, opt.labelEs)}</option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <Label>{t(language, "Day", "Día")}</Label>
-              {editingRequest ? (
-                <p className="mt-1 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white/90">{day}</p>
-              ) : (
-                <Select value={day} onChange={(e) => setDay(e.target.value as WeeklyProgramDay)} className="mt-1">
-                  {DAYS.map((d) => (
-                    <option key={d} value={d}>{d}</option>
+          <form onSubmit={handleSubmit} className="model-weekly-availability-page mt-4 space-y-4">
+            <motion.div {...fieldMotion}>
+              <FormField
+                label={t(language, "Entry type", "Tipo de entrada")}
+                icon={<ListChecks />}
+                htmlFor="model-avail-entry-type"
+              >
+                <FormSelect
+                  id="model-avail-entry-type"
+                  value={entryType}
+                  onChange={(e) => setEntryType(e.target.value as ModelAvailabilityEntryType)}
+                >
+                  {ENTRY_TYPES.map((opt) => (
+                    <option key={opt.value} value={opt.value} className={selectOptionClass}>
+                      {t(language, opt.labelEn, opt.labelEs)}
+                    </option>
                   ))}
-                </Select>
-              )}
-            </div>
+                </FormSelect>
+              </FormField>
+            </motion.div>
+            <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.05 }}>
+              <FormField label={t(language, "Day", "Día")} icon={<Calendar />} htmlFor="model-avail-day">
+                {editingRequest ? (
+                  <FormInput
+                    id="model-avail-day"
+                    readOnly
+                    tabIndex={-1}
+                    value={day}
+                    className="cursor-default opacity-95"
+                    aria-readonly="true"
+                  />
+                ) : (
+                  <FormSelect
+                    id="model-avail-day"
+                    value={day}
+                    onChange={(e) => setDay(e.target.value as WeeklyProgramDay)}
+                  >
+                    {DAYS.map((d) => (
+                      <option key={d} value={d} className={selectOptionClass}>
+                        {d}
+                      </option>
+                    ))}
+                  </FormSelect>
+                )}
+              </FormField>
+            </motion.div>
             {needsTime && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>{t(language, "Start time", "Hora inicio")}</Label>
-                  <input
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label={t(language, "Start time", "Hora inicio")} icon={<Clock />} htmlFor="model-avail-start" required>
+                  <FormInput
+                    id="model-avail-start"
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white [color-scheme:dark]"
+                    className="weekly-avail-time-input"
                   />
-                </div>
-                <div>
-                  <Label>{t(language, "End time", "Hora fin")}</Label>
-                  <input
+                </FormField>
+                <FormField label={t(language, "End time", "Hora fin")} icon={<Clock />} htmlFor="model-avail-end" required>
+                  <FormInput
+                    id="model-avail-end"
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white [color-scheme:dark]"
+                    className="weekly-avail-time-input"
                   />
-                </div>
+                </FormField>
               </div>
             )}
-            <div>
-              <Label>{t(language, "Notes (optional)", "Notas (opcional)")}</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t(language, "e.g. prefer morning", "ej. prefiero mañana")} className="mt-1" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <SubmitButton type="submit" disabled={submitting}>
+            <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.1 }}>
+              <FormField
+                label={t(language, "Notes (optional)", "Notas (opcional)")}
+                icon={<StickyNote />}
+                htmlFor="model-avail-notes"
+              >
+                <FormTextarea
+                  id="model-avail-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder={t(language, "e.g. prefer morning", "ej. prefiero mañana")}
+                />
+              </FormField>
+            </motion.div>
+            <motion.div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-stretch" layout>
+              <FormSubmitButton disabled={submitting} loading={submitting} className="sm:flex-1">
                 {submitting ? t(language, "Saving…", "Guardando…") : editingRequest ? t(language, "Save changes", "Guardar cambios") : t(language, "Submit", "Enviar")}
-              </SubmitButton>
+              </FormSubmitButton>
               {editingRequest && (
-                <button type="button" onClick={handleCancelEdit} className="rounded-2xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleCancelEdit}
+                  className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/10 sm:self-stretch"
+                >
                   {t(language, "Cancel", "Cancelar")}
-                </button>
+                </motion.button>
               )}
-            </div>
+            </motion.div>
           </form>
         </div>
 
@@ -306,5 +361,16 @@ export function ModelWeeklyAvailabilityClient({
         </div>
       </div>
     </div>
+      <style jsx global>{`
+        .model-weekly-availability-page .weekly-avail-time-input {
+          accent-color: rgb(236 72 153);
+          color-scheme: dark;
+        }
+        .model-weekly-availability-page .weekly-avail-time-input::-webkit-calendar-picker-indicator {
+          filter: invert(0.85) sepia(1) saturate(5) hue-rotate(280deg) opacity(0.85);
+          cursor: pointer;
+        }
+      `}</style>
+    </>
   );
 }

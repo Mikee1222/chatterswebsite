@@ -61,12 +61,28 @@ export type NavIconKey =
   | "Settings"
   | "Sparkles"
   | "Trophy"
-  | "Target";
+  | "Target"
+  | "LineChart"
+  | "CalendarDays"
+  | "CalendarClock";
+
+/** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
+export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
+  if (pathname === href) return true;
+  if (href === "/" || !pathname.startsWith(`${href}/`)) return false;
+  return !allHrefs.some(
+    (o) => o !== href && o.length > href.length && (pathname === o || pathname.startsWith(`${o}/`))
+  );
+}
 
 export type NavItem = {
   href: string;
   label: string;
   iconKey: NavIconKey;
+  /** When true, item is non-navigable (e.g. coming soon). */
+  disabled?: boolean;
+  /** Small pill next to label (e.g. "Coming soon"). */
+  badge?: string;
   beta?: boolean;
   /** If true, only `admin` role sees this link (managers use the same admin nav profile but skip these). */
   adminOnly?: boolean;
@@ -84,14 +100,11 @@ export function navStorageProfileForRole(role: NavRole): NavStorageProfile {
   return "chatter";
 }
 
+/** Core destinations only — shift, availability, customs, etc. live under the + quick actions menu. */
 const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.home, label: "Home", iconKey: "Home" },
   { href: ROUTES.chatter.weeklyProgram, label: "Weekly program", iconKey: "Calendar" },
-  { href: ROUTES.chatter.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
-  { href: ROUTES.chatter.shift, label: "Start a shift", iconKey: "PlayCircle" },
-  { href: ROUTES.chatter.requestCustom, label: "Request a custom", iconKey: "FileText" },
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
-  { href: ROUTES.chatter.logTransaction, label: "Whale session", iconKey: "Receipt" },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
@@ -100,11 +113,10 @@ const chatterNav: NavItem[] = [
 const vaNav: NavItem[] = [
   { href: ROUTES.va.home, label: "Home", iconKey: "Home" },
   { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo" },
-  { href: ROUTES.va.weeklyProgram, label: "Weekly program", iconKey: "Calendar" },
+  { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays" },
+  { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
+  { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
-  { href: ROUTES.va.shift, label: "Start mistake shift", iconKey: "Wrench" },
-  { href: ROUTES.va.liveShifts, label: "Live shifts", iconKey: "Radio" },
-  { href: ROUTES.va.models, label: "Models free / taken", iconKey: "UserCheck" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
@@ -114,33 +126,39 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.weeklyProgramVa, label: "VA weekly program", iconKey: "CalendarCheck" },
   { href: ROUTES.admin.liveShifts, label: "Live shifts", iconKey: "Radio" },
   { href: ROUTES.admin.models, label: "Models", iconKey: "UserCheck" },
+  { href: ROUTES.admin.whales, label: "Whales", iconKey: "Users" },
   { href: ROUTES.admin.modelAvailability, label: "Model availability", iconKey: "CalendarCheck" },
+  { href: ROUTES.admin.modelSchedulesOverview, label: "Schedule overview", iconKey: "CalendarDays" },
+  { href: ROUTES.admin.vaContentAssignments, label: "VA Content", iconKey: "FileText" },
   { href: ROUTES.admin.modelSchedules, label: "Model schedules", iconKey: "Calendar" },
   { href: ROUTES.admin.modelTasks, label: "Model tasks", iconKey: "FileText" },
   { href: ROUTES.admin.modelLiveStreams, label: "Model live streams", iconKey: "Radio", beta: true },
   { href: ROUTES.admin.modelCustoms, label: "Model customs", iconKey: "Package" },
-  { href: ROUTES.admin.shiftActivity, label: "Shift activity", iconKey: "Activity" },
+  { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
+  { href: ROUTES.admin.earnings, label: "Earnings", iconKey: "LineChart", adminOnly: true },
+  { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
   { href: ROUTES.admin.vaTasks, label: "VA tasks", iconKey: "ListTodo" },
   { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
-  { href: ROUTES.admin.spinResults, label: "Spin results", iconKey: "Package" },
-  { href: ROUTES.admin.whales, label: "Whales", iconKey: "Users", beta: true },
-  { href: ROUTES.admin.customs, label: "Customs", iconKey: "Package", beta: true },
-  { href: "/hours", label: "Hours", iconKey: "Calendar", beta: true },
-  { href: "/activity-logs", label: "Activity logs", iconKey: "Activity", beta: true },
   { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
-/** Model sidebar & mobile: home, weekly availability, schedule, tasks, live streams, customs, settings. First 4 = mobile bottom tabs; rest = More drawer. */
+/** Model: home, earnings (placeholder), calendar, schedule, settings; customs / lives / availability on + menu. */
 const modelNav: NavItem[] = [
   { href: ROUTES.model.home, label: "Home", iconKey: "Home" },
-  { href: ROUTES.model.weeklyAvailability, label: "Weekly availability", iconKey: "CalendarCheck" },
-  { href: ROUTES.model.schedule, label: "Schedule", iconKey: "Calendar" },
-  { href: ROUTES.model.tasks, label: "Tasks", iconKey: "FileText" },
-  { href: ROUTES.model.liveStreams, label: "Live streams", iconKey: "Radio", beta: true },
-  { href: ROUTES.model.customs, label: "Customs", iconKey: "Package", beta: true },
+  {
+    href: ROUTES.model.myEarnings,
+    label: "My earnings",
+    iconKey: "LineChart",
+    disabled: true,
+    badge: "Coming soon",
+  },
+  { href: ROUTES.model.contentCalendar, label: "Content calendar", iconKey: "CalendarDays" },
+  { href: ROUTES.model.contentAssignments, label: "VA content", iconKey: "FileText" },
+  { href: ROUTES.model.schedule, label: "My schedule", iconKey: "CalendarClock" },
+  { href: ROUTES.model.customs, label: "Custom requests", iconKey: "Package" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
@@ -176,16 +194,21 @@ export function getNavItemsForRole(role: NavRole, hiddenItems?: string[]): NavIt
 export function getMainTabHrefs(role: NavRole): [string, string, string, string] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   if (r === "chatter") {
-    return [ROUTES.chatter.home, ROUTES.chatter.weeklyProgram, ROUTES.chatter.shift, ROUTES.chatter.myWhales];
+    return [ROUTES.chatter.home, ROUTES.chatter.weeklyProgram, ROUTES.chatter.myWhales, ROUTES.settings];
   }
   if (r === "virtual_assistant") {
-    return [ROUTES.va.home, ROUTES.va.weeklyProgram, ROUTES.va.shift, ROUTES.va.models];
+    return [ROUTES.va.home, ROUTES.va.tasks, ROUTES.va.weeklyAvailability, ROUTES.settings];
   }
   if (r === "admin" || r === "manager") {
     return [ROUTES.admin.home, ROUTES.admin.weeklyProgram, ROUTES.admin.liveShifts, ROUTES.admin.models];
   }
   if (r === "model") {
-    return [ROUTES.model.home, ROUTES.model.weeklyAvailability, ROUTES.model.schedule, ROUTES.model.tasks];
+    return [
+      ROUTES.model.home,
+      ROUTES.model.myEarnings,
+      ROUTES.model.contentCalendar,
+      ROUTES.model.schedule,
+    ];
   }
   return [ROUTES.dashboard, ROUTES.dashboard, ROUTES.dashboard, ROUTES.dashboard];
 }
@@ -193,10 +216,10 @@ export function getMainTabHrefs(role: NavRole): [string, string, string, string]
 /** Labels for the 4 main mobile tabs (HOME, PROGRAM, SHIFT/LIVE, WHALES/MODELS). */
 export function getMainTabLabels(role: NavRole): [string, string, string, string] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
-  if (r === "chatter") return ["HOME", "PROGRAM", "SHIFT", "WHALES"];
-  if (r === "virtual_assistant") return ["HOME", "PROGRAM", "SHIFT", "MODELS"];
+  if (r === "chatter") return ["HOME", "PROGRAM", "WHALES", "SETTINGS"];
+  if (r === "virtual_assistant") return ["HOME", "TASKS", "AVAIL.", "SETTINGS"];
   if (r === "admin" || r === "manager") return ["HOME", "PROGRAM", "LIVE", "MODELS"];
-  if (r === "model") return ["HOME", "AVAIL.", "SCHEDULE", "TASKS"];
+  if (r === "model") return ["HOME", "EARNINGS", "CALENDAR", "SCHEDULE"];
   return ["HOME", "DASHBOARD", "DASHBOARD", "MORE"];
 }
 

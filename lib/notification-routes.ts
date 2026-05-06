@@ -10,6 +10,8 @@ import { ROUTES } from "@/lib/routes";
 /** Build target path for push notification click (entity_type + role). Used by backend when sending push. */
 export function getPushTargetPath(entityType: string, role?: UserRole | null): string {
   const isAdmin = role === "admin" || role === "manager";
+  const isModel = role === "model";
+  const isVa = role === "virtual_assistant";
   switch (entityType) {
     case "whale":
       return isAdmin ? ROUTES.admin.whales : ROUTES.chatter.logTransaction;
@@ -19,12 +21,21 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return ROUTES.va.liveShifts;
     case "va_task":
       return ROUTES.va.tasks;
+    case "va_content_assignment":
+      if (isModel) return ROUTES.model.contentCalendar;
+      return ROUTES.va.tasks;
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
       return isAdmin ? ROUTES.admin.modelLiveStreams : ROUTES.model.liveStreams;
     case "custom_request":
-      return isAdmin ? ROUTES.admin.customs : ROUTES.chatter.requestCustom;
+      if (isAdmin) return ROUTES.admin.customRequests;
+      if (isVa) return ROUTES.va.customRequests;
+      if (isModel) return ROUTES.model.customs;
+      return ROUTES.chatter.requestCustom;
+    case "spin_wheel_spin":
+      if (isAdmin) return ROUTES.admin.spinResults;
+      return ROUTES.chatter.rewards;
     case "system":
     case "account":
       return ROUTES.settings;
@@ -37,6 +48,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
   const { entity_type, entity_id } = n;
   if (!entity_id) return null;
   const isAdmin = role === "admin" || role === "manager";
+  const isModel = role === "model";
+  const isVa = role === "virtual_assistant";
   switch (entity_type) {
     case "whale":
       return isAdmin ? ROUTES.admin.whales : ROUTES.chatter.logTransaction;
@@ -46,12 +59,21 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return ROUTES.va.liveShifts;
     case "va_task":
       return ROUTES.va.tasks;
+    case "va_content_assignment":
+      if (isModel) return ROUTES.model.contentCalendar;
+      return ROUTES.va.tasks;
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
       return isAdmin ? ROUTES.admin.modelLiveStreams : ROUTES.model.liveStreams;
     case "custom_request":
-      return isAdmin ? ROUTES.admin.customs : ROUTES.chatter.requestCustom;
+      if (isAdmin) return ROUTES.admin.customRequests;
+      if (isVa) return ROUTES.va.customRequests;
+      if (isModel) return ROUTES.model.customs;
+      return ROUTES.chatter.requestCustom;
+    case "spin_wheel_spin":
+      if (isAdmin) return ROUTES.admin.spinResults;
+      return ROUTES.chatter.rewards;
     case "system":
     case "account":
       return ROUTES.settings;
@@ -88,6 +110,9 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "custom_status_changed":
     case "custom_approved":
     case "custom_rejected":
+    case "custom_declined":
+    case "custom_edited":
+    case "custom_uploaded":
     case "custom_scheduled":
     case "custom_deadline_approaching":
     case "custom_overdue":
@@ -101,6 +126,8 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "tasks_not_started":
     case "va_task_reminder":
     case "model_content_completed":
+    case "model_content_scheduled":
+    case "va_content_assigned":
       return "Task";
     case "model_became_free":
     case "model_taken":
@@ -136,6 +163,10 @@ export function isAdminPriorityEvent(eventType: AppNotification["event_type"]): 
     eventType === "custom_request_updated" ||
     eventType === "custom_approved" ||
     eventType === "custom_rejected" ||
+    eventType === "custom_declined" ||
+    eventType === "custom_edited" ||
+    eventType === "custom_uploaded" ||
+    eventType === "custom_scheduled" ||
     eventType === "custom_deadline_approaching" ||
     eventType === "custom_overdue" ||
     eventType === "break_started" ||

@@ -16,6 +16,7 @@ import type {
   NotificationPriority,
   NotificationPreference,
 } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 /** Map event type to Airtable category. Categories must match Airtable single-select. */
 const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
@@ -47,6 +48,13 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   model_live_scheduled: "model",
   model_missed_live: "model",
   model_content_completed: "task",
+  model_content_scheduled: "task",
+  va_content_assigned: "task",
+  period_3_day_reminder: "model",
+  period_predicted_day: "model",
+  period_confirmed_early: "model",
+  period_overdue: "model",
+  period_prediction_reset: "model",
   whale_registered: "whale",
   whale_assigned: "whale",
   whale_followup: "whale",
@@ -58,6 +66,9 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   custom_status_changed: "custom_request",
   custom_approved: "custom_request",
   custom_rejected: "custom_request",
+  custom_declined: "custom_request",
+  custom_edited: "custom_request",
+  custom_uploaded: "custom_request",
   custom_scheduled: "custom_request",
   custom_deadline_approaching: "custom_request",
   custom_overdue: "custom_request",
@@ -135,7 +146,7 @@ function maskAirtableId(id: string): string {
 }
 
 function logAdminAirtableUserIdsEnv(context: string, resolvedIds: string[]) {
-  console.log(
+  devLog(
     NOTIF,
     "admin_notification_recipients_masked",
     JSON.stringify({
@@ -176,7 +187,7 @@ function logCategoryPrefKeyReference() {
     category: c,
     preference_key_checked: CATEGORY_TO_PREF_KEY[c],
   }));
-  console.log(PUSH_AUDIT, "category_to_preference_key_map", JSON.stringify({ mappings: rows }));
+  devLog(PUSH_AUDIT, "category_to_preference_key_map", JSON.stringify({ mappings: rows }));
 }
 
 function logNotifyPushOutcome(
@@ -188,7 +199,7 @@ function logNotifyPushOutcome(
     extra?: Record<string, unknown>;
   }
 ) {
-  console.log(
+  devLog(
     PUSH_AUDIT,
     "notify_push_outcome",
     JSON.stringify({
@@ -228,7 +239,7 @@ async function sendWebPushToSubscriptionsSequentially(
     const path = getPushTargetPath(payload.entity_type, sub.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined);
     const innerPayload = { title: payload.title, body: payload.body, url: path, tag: payload.entity_type };
     if (eventType === "shift_started") {
-      console.log(NOTIF, "web_push_full_payload", JSON.stringify({
+      devLog(NOTIF, "web_push_full_payload", JSON.stringify({
         recipient_user_id: logRecipientUserId,
         subscription_index: index,
         endpoint_preview: sub.endpoint?.slice(0, 96),
@@ -243,15 +254,15 @@ async function sendWebPushToSubscriptionsSequentially(
       }));
     }
     index += 1;
-    console.log(PUSH_DEBUG, "sending push now", JSON.stringify({ recipient_user_id: logRecipientUserId, endpoint_preview: sub.endpoint?.slice(0, 60) }));
+    devLog(PUSH_DEBUG, "sending push now", JSON.stringify({ recipient_user_id: logRecipientUserId, endpoint_preview: sub.endpoint?.slice(0, 60) }));
     const success = await sendPushToSubscription(sub, payload);
     if (success) {
       pushSuccessCount++;
-      console.log(PUSH_DEBUG, "push success", JSON.stringify({ recipient_user_id: logRecipientUserId }));
-      console.log(NOTIF, "12 after_push_send", JSON.stringify({ success: true, recipient_user_id: logRecipientUserId }));
+      devLog(PUSH_DEBUG, "push success", JSON.stringify({ recipient_user_id: logRecipientUserId }));
+      devLog(NOTIF, "12 after_push_send", JSON.stringify({ success: true, recipient_user_id: logRecipientUserId }));
     } else {
-      console.log(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ recipient_user_id: logRecipientUserId, note: "see sendWebPush log above for error" }));
-      console.log(NOTIF, "12 after_push_send", JSON.stringify({ success: false, recipient_user_id: logRecipientUserId, error_message: "sendWebPush returned false" }));
+      devLog(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ recipient_user_id: logRecipientUserId, note: "see sendWebPush log above for error" }));
+      devLog(NOTIF, "12 after_push_send", JSON.stringify({ success: false, recipient_user_id: logRecipientUserId, error_message: "sendWebPush returned false" }));
     }
   }
   return pushSuccessCount;
@@ -279,7 +290,7 @@ function logShiftStartedAdminOutcome(
   outcome: { pushSent: boolean; stage: string; detail?: string }
 ) {
   if (options.event_type !== "shift_started" || options._triggerSource !== "notifyAdmins") return;
-  console.log(NOTIF, "shift_started_admin_outcome", JSON.stringify({
+  devLog(NOTIF, "shift_started_admin_outcome", JSON.stringify({
     recipient_user_id: options.user_id,
     entity_id: options.entity_id,
     ...outcome,
@@ -296,13 +307,13 @@ export async function notify(options: NotifyOptions) {
 
   if (options.event_type === "shift_started") {
     if (options._triggerSource === "notifyAdmins") {
-      console.log(NOTIF, "SHIFT_STARTED notifyAdmins_deliver_to_admin", JSON.stringify({
+      devLog(NOTIF, "SHIFT_STARTED notifyAdmins_deliver_to_admin", JSON.stringify({
         admin_recipient_user_id: options.user_id,
         entity_id: options.entity_id,
         actor_user_id: options.actor_user_id ?? null,
       }));
     } else {
-      console.log(NOTIF, "SHIFT_STARTED notify chatter", JSON.stringify({
+      devLog(NOTIF, "SHIFT_STARTED notify chatter", JSON.stringify({
         chatter_user_id: options.user_id,
         entity_id: options.entity_id,
         trigger: options._triggerSource ?? "notify",
@@ -312,12 +323,12 @@ export async function notify(options: NotifyOptions) {
   }
 
   // 1. When the notification flow starts (this is the exact title/body used for Airtable, push, and realtime)
-  console.log(NOTIF, "payload_content", JSON.stringify({
+  devLog(NOTIF, "payload_content", JSON.stringify({
     event_type: options.event_type,
     title: options.title,
     body: options.body,
   }));
-  console.log(NOTIF, "1 flow_start", JSON.stringify({
+  devLog(NOTIF, "1 flow_start", JSON.stringify({
     source_function: options._triggerSource ?? "notify",
     trigger_event: options.event_type,
     actor_user_id: options.actor_user_id ?? null,
@@ -329,7 +340,7 @@ export async function notify(options: NotifyOptions) {
     entity_id: options.entity_id,
     title: options.title,
   }));
-  console.log(
+  devLog(
     PUSH_AUDIT,
     "notify_event_category_pref_key",
     JSON.stringify({
@@ -369,10 +380,10 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (!notification) {
-    console.log(NOTIF, "skip", JSON.stringify({ reason: "invalid payload or Airtable create failed", recipient_user_id: options.user_id }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "invalid payload or Airtable create failed", recipient_user_id: options.user_id }));
     logShiftStartedAdminOutcome(options, { pushSent: false, stage: "no_notification_record", detail: "createNotification returned null" });
     if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-      console.log(LIVE_NOTIF, "notification_record_created", JSON.stringify({ recipient_user_id: options.user_id, created: false, reason: "createNotification returned null" }));
+      devLog(LIVE_NOTIF, "notification_record_created", JSON.stringify({ recipient_user_id: options.user_id, created: false, reason: "createNotification returned null" }));
     }
     logNotifyPushOutcome(options, {
       push_sent: false,
@@ -383,27 +394,27 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-    console.log(LIVE_NOTIF, "notification_record_created", JSON.stringify({ recipient_user_id: options.user_id, created: true, notification_id: notification.id }));
+    devLog(LIVE_NOTIF, "notification_record_created", JSON.stringify({ recipient_user_id: options.user_id, created: true, notification_id: notification.id }));
   }
 
-  console.log(PUSH_DEBUG, "event entered push decision branch", JSON.stringify({ event_type: options.event_type, recipient_user_id: options.user_id, priority }));
+  devLog(PUSH_DEBUG, "event entered push decision branch", JSON.stringify({ event_type: options.event_type, recipient_user_id: options.user_id, priority }));
 
   // 4. Right before loading notification_preferences
-  console.log(NOTIF, "4 before_load_preferences", JSON.stringify({ recipient_user_id: options.user_id }));
+  devLog(NOTIF, "4 before_load_preferences", JSON.stringify({ recipient_user_id: options.user_id }));
 
   const prefs = await getPreferencesByUserId(options.user_id);
 
-  console.log(PUSH_DEBUG, "recipient user id", JSON.stringify({ recipient_user_id: options.user_id }));
-  console.log(PUSH_DEBUG, "preferences loaded", JSON.stringify({ has_prefs: !!prefs }));
+  devLog(PUSH_DEBUG, "recipient user id", JSON.stringify({ recipient_user_id: options.user_id }));
+  devLog(PUSH_DEBUG, "preferences loaded", JSON.stringify({ has_prefs: !!prefs }));
   if (prefs) {
-    console.log(PUSH_DEBUG, "push_enabled value", JSON.stringify({ push_enabled: prefs.push_enabled }));
-    console.log(PUSH_DEBUG, "mute_all value", JSON.stringify({ mute_all: prefs.mute_all }));
-    console.log(PUSH_DEBUG, "critical_only value", JSON.stringify({ critical_only: prefs.critical_only }));
-    console.log(PUSH_DEBUG, "event_type and priority being evaluated", JSON.stringify({ event_type: options.event_type, priority, category }));
+    devLog(PUSH_DEBUG, "push_enabled value", JSON.stringify({ push_enabled: prefs.push_enabled }));
+    devLog(PUSH_DEBUG, "mute_all value", JSON.stringify({ mute_all: prefs.mute_all }));
+    devLog(PUSH_DEBUG, "critical_only value", JSON.stringify({ critical_only: prefs.critical_only }));
+    devLog(PUSH_DEBUG, "event_type and priority being evaluated", JSON.stringify({ event_type: options.event_type, priority, category }));
   }
 
   // 5. Right after loading notification_preferences
-  console.log(NOTIF, "5 after_load_preferences", JSON.stringify({
+  devLog(NOTIF, "5 after_load_preferences", JSON.stringify({
     recipient_user_id: options.user_id,
     in_app_enabled: prefs?.in_app_enabled ?? null,
     push_enabled: prefs?.push_enabled ?? null,
@@ -414,7 +425,7 @@ export async function notify(options: NotifyOptions) {
   if (prefs) {
     logCategoryPrefKeyReference();
     const prefKey = CATEGORY_TO_PREF_KEY[category];
-    console.log(
+    devLog(
       PUSH_AUDIT,
       "prefs_row_values_for_category_gate",
       JSON.stringify({
@@ -436,7 +447,7 @@ export async function notify(options: NotifyOptions) {
 
   if (prefs && options.event_type === "shift_started" && options._triggerSource === "notifyAdmins") {
     const pushProbe = shouldSendPush(prefs, category, priority);
-    console.log(NOTIF, "shift_started_admin_shift_alerts_pref", JSON.stringify({
+    devLog(NOTIF, "shift_started_admin_shift_alerts_pref", JSON.stringify({
       recipient_user_id: options.user_id,
       shift_alerts: prefs.shift_alerts,
       push_enabled: prefs.push_enabled,
@@ -450,11 +461,11 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (!prefs) {
-    console.log(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: "no preferences record", rule: "getPreferencesByUserId returned null", recipient_user_id: options.user_id }));
-    console.log(NOTIF, "skip", JSON.stringify({ reason: "no preferences record", recipient_user_id: options.user_id }));
+    devLog(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: "no preferences record", rule: "getPreferencesByUserId returned null", recipient_user_id: options.user_id }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "no preferences record", recipient_user_id: options.user_id }));
     logShiftStartedAdminOutcome(options, { pushSent: false, stage: "no_preferences_record" });
     if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-      console.log(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: "no_preferences_record" }));
+      devLog(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: "no_preferences_record" }));
     }
     logNotifyPushOutcome(options, {
       push_sent: false,
@@ -467,7 +478,7 @@ export async function notify(options: NotifyOptions) {
   {
     const now = new Date();
     const inQuiet = isInQuietHours(prefs);
-    console.log(
+    devLog(
       PUSH_AUDIT,
       "quiet_hours_probe",
       JSON.stringify({
@@ -484,11 +495,11 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (isInQuietHours(prefs)) {
-    console.log(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: "quiet hours", rule: "isInQuietHours(prefs) is true", recipient_user_id: options.user_id }));
-    console.log(NOTIF, "skip", JSON.stringify({ reason: "quiet hours", recipient_user_id: options.user_id }));
+    devLog(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: "quiet hours", rule: "isInQuietHours(prefs) is true", recipient_user_id: options.user_id }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "quiet hours", recipient_user_id: options.user_id }));
     logShiftStartedAdminOutcome(options, { pushSent: false, stage: "quiet_hours" });
     if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-      console.log(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: "quiet_hours" }));
+      devLog(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: "quiet_hours" }));
     }
     logNotifyPushOutcome(options, {
       push_sent: false,
@@ -499,7 +510,7 @@ export async function notify(options: NotifyOptions) {
   }
 
   const pushDecision = shouldSendPush(prefs, category, priority);
-  console.log(
+  devLog(
     PUSH_AUDIT,
     "shouldSendPush_evaluation",
     JSON.stringify({
@@ -512,11 +523,11 @@ export async function notify(options: NotifyOptions) {
     })
   );
   if (!pushDecision.send) {
-    console.log(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: pushDecision.skipReason, rule: pushDecision.skipReason, recipient_user_id: options.user_id }));
-    console.log(NOTIF, "skip", JSON.stringify({ reason: pushDecision.skipReason ?? "shouldSendPush false", recipient_user_id: options.user_id }));
+    devLog(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: pushDecision.skipReason, rule: pushDecision.skipReason, recipient_user_id: options.user_id }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: pushDecision.skipReason ?? "shouldSendPush false", recipient_user_id: options.user_id }));
     logShiftStartedAdminOutcome(options, { pushSent: false, stage: "push_prefs_blocked", detail: pushDecision.skipReason });
     if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-      console.log(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: pushDecision.skipReason ?? "shouldSendPush_false" }));
+      devLog(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: pushDecision.skipReason ?? "shouldSendPush_false" }));
     }
     logNotifyPushOutcome(options, {
       push_sent: false,
@@ -527,8 +538,8 @@ export async function notify(options: NotifyOptions) {
   }
 
   // 9. Right before loading push_subscriptions
-  console.log(NOTIF, "9 before_load_push_subscriptions", JSON.stringify({ recipient_user_id: options.user_id }));
-  console.log("[auth-debug] notification sending", JSON.stringify({
+  devLog(NOTIF, "9 before_load_push_subscriptions", JSON.stringify({ recipient_user_id: options.user_id }));
+  devLog("[auth-debug] notification sending", JSON.stringify({
     user_id_used_when_sending_notifications: options.user_id,
     recipient_user_id: options.user_id,
     source: options._triggerSource ?? "notify",
@@ -537,10 +548,10 @@ export async function notify(options: NotifyOptions) {
 
   const subscriptions = await getActiveSubscriptionsForUser(options.user_id);
 
-  console.log(PUSH_DEBUG, "subscriptions found count", JSON.stringify({ recipient_user_id: options.user_id, count: subscriptions.length }));
+  devLog(PUSH_DEBUG, "subscriptions found count", JSON.stringify({ recipient_user_id: options.user_id, count: subscriptions.length }));
 
   if (options.event_type === "shift_started") {
-    console.log(NOTIF, "shift_started_subscriptions_found", JSON.stringify({
+    devLog(NOTIF, "shift_started_subscriptions_found", JSON.stringify({
       recipient_user_id: options.user_id,
       trigger: options._triggerSource ?? "notify",
       count: subscriptions.length,
@@ -556,13 +567,13 @@ export async function notify(options: NotifyOptions) {
   }
 
   // 10. Right after loading push_subscriptions
-  console.log(NOTIF, "10 after_load_push_subscriptions", JSON.stringify({
+  devLog(NOTIF, "10 after_load_push_subscriptions", JSON.stringify({
     recipient_user_id: options.user_id,
     active_subscriptions_count: subscriptions.length,
   }));
 
   if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-    console.log(LIVE_NOTIF, "push_subscription_lookup", JSON.stringify({
+    devLog(LIVE_NOTIF, "push_subscription_lookup", JSON.stringify({
       recipient_user_id: options.user_id,
       subscriptions_count: subscriptions.length,
       event_type: options.event_type,
@@ -570,11 +581,11 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (subscriptions.length === 0) {
-    console.log(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: "no subscriptions", rule: "getActiveSubscriptionsForUser returned empty array", recipient_user_id: options.user_id }));
-    console.log(NOTIF, "skip", JSON.stringify({ reason: "no subscriptions", recipient_user_id: options.user_id }));
+    devLog(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: "no subscriptions", rule: "getActiveSubscriptionsForUser returned empty array", recipient_user_id: options.user_id }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "no subscriptions", recipient_user_id: options.user_id }));
     logShiftStartedAdminOutcome(options, { pushSent: false, stage: "no_push_subscriptions" });
     if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-      console.log(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: "no_subscriptions" }));
+      devLog(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: "no_subscriptions" }));
     }
     logNotifyPushOutcome(options, {
       push_sent: false,
@@ -585,7 +596,7 @@ export async function notify(options: NotifyOptions) {
   }
 
   // 11. Right before sending web push
-  console.log(NOTIF, "11 before_send_web_push", JSON.stringify({
+  devLog(NOTIF, "11 before_send_web_push", JSON.stringify({
     recipient_user_id: options.user_id,
     event_type: options.event_type,
     title: options.title,
@@ -605,7 +616,7 @@ export async function notify(options: NotifyOptions) {
   );
 
   if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
-    console.log(LIVE_NOTIF, "push_send_result", JSON.stringify({
+    devLog(LIVE_NOTIF, "push_send_result", JSON.stringify({
       recipient_user_id: options.user_id,
       push_sent: pushSuccessCount > 0,
       push_success_count: pushSuccessCount,
@@ -646,7 +657,7 @@ export type NotifyAllUsersOptions = Omit<NotifyOptions, "user_id">;
  */
 export async function notifyAllUsers(options: NotifyAllUsersOptions) {
   const users = await listAllUsers();
-  console.log(NOTIF, "notifyAllUsers", JSON.stringify({ recipient_count: users.length, event_type: options.event_type }));
+  devLog(NOTIF, "notifyAllUsers", JSON.stringify({ recipient_count: users.length, event_type: options.event_type }));
   // Sequential (not Promise.all): each notify completes Airtable + push before the next user.
   for (const u of users) {
     if (!u.id) continue;
@@ -661,23 +672,23 @@ export async function notifyAdmins(options: NotifyAdminsOptions) {
   logAdminAirtableUserIdsEnv("notifyAdmins", adminIds);
   const targets =
     onlyUserIds && onlyUserIds.length > 0 ? adminIds.filter((id) => onlyUserIds.includes(id)) : adminIds;
-  console.log(NOTIF, "admin_recipients", JSON.stringify({ count: targets.length, filtered: !!onlyUserIds?.length }));
+  devLog(NOTIF, "admin_recipients", JSON.stringify({ count: targets.length, filtered: !!onlyUserIds?.length }));
   if (isLiveNotificationEvent(notifyPayload.event_type)) {
-    console.log(LIVE_NOTIF, "admin_recipient_resolution", JSON.stringify({
+    devLog(LIVE_NOTIF, "admin_recipient_resolution", JSON.stringify({
       event_type: notifyPayload.event_type,
       admin_user_ids: targets,
       source: "admin_notification_ids_or_ADMIN_AIRTABLE_USER_IDS",
     }));
   }
   if (adminIds.length === 0 || targets.length === 0) {
-    console.log(NOTIF, "skip", JSON.stringify({ reason: "no recipient", detail: "admin_notification_ids and ADMIN_AIRTABLE_USER_IDS are empty", recipient_user_ids: [] }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "no recipient", detail: "admin_notification_ids and ADMIN_AIRTABLE_USER_IDS are empty", recipient_user_ids: [] }));
     if (isLiveNotificationEvent(notifyPayload.event_type)) {
-      console.log(LIVE_NOTIF, "admin_notify_skipped", JSON.stringify({ reason: "no admin notification recipient IDs" }));
+      devLog(LIVE_NOTIF, "admin_notify_skipped", JSON.stringify({ reason: "no admin notification recipient IDs" }));
     }
-    console.log(PUSH_AUDIT, "notifyAdmins_skipped", JSON.stringify({ reason: "no admin ids", push_sent_aggregate: false }));
+    devLog(PUSH_AUDIT, "notifyAdmins_skipped", JSON.stringify({ reason: "no admin ids", push_sent_aggregate: false }));
     return;
   }
-  console.log(NOTIF, "1 flow_start", JSON.stringify({
+  devLog(NOTIF, "1 flow_start", JSON.stringify({
     source_function: "notifyAdmins",
     trigger_event: notifyPayload.event_type,
     actor_user_id: notifyPayload.actor_user_id ?? null,
@@ -690,7 +701,7 @@ export async function notifyAdmins(options: NotifyAdminsOptions) {
     title: notifyPayload.title,
   }));
   if (notifyPayload.event_type === "shift_started") {
-    console.log(NOTIF, "SHIFT_STARTED notifyAdmins", JSON.stringify({
+    devLog(NOTIF, "SHIFT_STARTED notifyAdmins", JSON.stringify({
       admin_ids: targets,
       admin_count: targets.length,
       entity_id: notifyPayload.entity_id,
@@ -702,7 +713,7 @@ export async function notifyAdmins(options: NotifyAdminsOptions) {
   let adminsPushNotSent = 0;
   let adminsNotifyErrors = 0;
   for (const user_id of targets) {
-    console.log(NOTIF, "notifyAdmins_per_admin_start", JSON.stringify({
+    devLog(NOTIF, "notifyAdmins_per_admin_start", JSON.stringify({
       event_type: notifyPayload.event_type,
       recipient_user_id: user_id,
       entity_id: notifyPayload.entity_id,
@@ -711,13 +722,13 @@ export async function notifyAdmins(options: NotifyAdminsOptions) {
       const result = await notify({ ...notifyPayload, user_id, _triggerSource: "notifyAdmins" });
       if (result.pushSent) adminsPushSent += 1;
       else adminsPushNotSent += 1;
-      console.log(NOTIF, "notifyAdmins_per_admin_done", JSON.stringify({
+      devLog(NOTIF, "notifyAdmins_per_admin_done", JSON.stringify({
         event_type: notifyPayload.event_type,
         recipient_user_id: user_id,
         pushSent: result.pushSent,
         has_notification: !!result.notification,
       }));
-      console.log(
+      devLog(
         PUSH_AUDIT,
         "notifyAdmins_per_admin_push_outcome",
         JSON.stringify({
@@ -737,7 +748,7 @@ export async function notifyAdmins(options: NotifyAdminsOptions) {
       }));
     }
   }
-  console.log(
+  devLog(
     PUSH_AUDIT,
     "notifyAdmins_batch_summary",
     JSON.stringify({
@@ -760,11 +771,11 @@ export async function notifyAdminsOnce(
   const adminIds = await getAdminNotificationIds();
   logAdminAirtableUserIdsEnv("notifyAdminsOnce", adminIds);
   if (adminIds.length === 0) {
-    console.log(NOTIF, "skip", JSON.stringify({ reason: "no recipient", detail: "admin_notification_ids and ADMIN_AIRTABLE_USER_IDS are empty", recipient_user_ids: [] }));
-    console.log(PUSH_AUDIT, "notifyAdminsOnce_skipped", JSON.stringify({ reason: "no admin ids", push_sent_aggregate: false }));
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "no recipient", detail: "admin_notification_ids and ADMIN_AIRTABLE_USER_IDS are empty", recipient_user_ids: [] }));
+    devLog(PUSH_AUDIT, "notifyAdminsOnce_skipped", JSON.stringify({ reason: "no admin ids", push_sent_aggregate: false }));
     return;
   }
-  console.log(NOTIF, "1 flow_start", JSON.stringify({
+  devLog(NOTIF, "1 flow_start", JSON.stringify({
     source_function: "notifyAdminsOnce",
     trigger_event: options.event_type,
     actor_user_id: options.actor_user_id ?? null,
@@ -782,7 +793,7 @@ export async function notifyAdminsOnce(
   // Sequential (not Promise.all): one admin at a time.
   for (const user_id of adminIds) {
     // 2. Right before duplicate-prevention logic
-    console.log(NOTIF, "2 before_duplicate_check", JSON.stringify({
+    devLog(NOTIF, "2 before_duplicate_check", JSON.stringify({
       recipient_user_id: user_id,
       event_type: options.event_type,
       entity_type: options.entity_type,
@@ -792,21 +803,21 @@ export async function notifyAdminsOnce(
     // 3. Right after duplicate-prevention logic
     if (exists) {
       onceSkippedDuplicate += 1;
-      console.log(NOTIF, "3 after_duplicate_check", JSON.stringify({ duplicate_found: true, skipped: true, recipient_user_id: user_id }));
-      console.log(NOTIF, "skip", JSON.stringify({ reason: "duplicate prevented", recipient_user_id: user_id, event_type: options.event_type }));
-      console.log(
+      devLog(NOTIF, "3 after_duplicate_check", JSON.stringify({ duplicate_found: true, skipped: true, recipient_user_id: user_id }));
+      devLog(NOTIF, "skip", JSON.stringify({ reason: "duplicate prevented", recipient_user_id: user_id, event_type: options.event_type }));
+      devLog(
         PUSH_AUDIT,
         "notifyAdminsOnce_per_admin_skipped_duplicate",
         JSON.stringify({ recipient_user_id: user_id, event_type: options.event_type, push_not_attempted: true })
       );
       continue;
     }
-    console.log(NOTIF, "3 after_duplicate_check", JSON.stringify({ duplicate_found: false, continue: true, recipient_user_id: user_id }));
+    devLog(NOTIF, "3 after_duplicate_check", JSON.stringify({ duplicate_found: false, continue: true, recipient_user_id: user_id }));
     try {
       const onceResult = await notify({ ...notifyOncePayload, user_id, _triggerSource: "notifyAdminsOnce" });
       if (onceResult.pushSent) oncePushSent += 1;
       else oncePushNotSent += 1;
-      console.log(
+      devLog(
         PUSH_AUDIT,
         "notifyAdminsOnce_per_admin_push_outcome",
         JSON.stringify({
@@ -820,7 +831,7 @@ export async function notifyAdminsOnce(
       oncePushNotSent += 1;
     }
   }
-  console.log(
+  devLog(
     PUSH_AUDIT,
     "notifyAdminsOnce_batch_summary",
     JSON.stringify({

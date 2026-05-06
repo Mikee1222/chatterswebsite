@@ -1,4 +1,5 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 import { createPortal } from "react-dom";
@@ -14,8 +15,9 @@ import {
 import { ROUTES } from "@/lib/routes";
 import { formatDateTimeEuropean } from "@/lib/format";
 import { Input, FormError } from "@/components/ui/form";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Coffee, Loader2, LogOut, RefreshCw, UserCircle2, UserPlus } from "lucide-react";
 import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 import { LiveTimer } from "@/components/live-timer";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
 import { useToast } from "@/contexts/toast-context";
@@ -100,6 +102,80 @@ function formatEnteredAt(enteredAt: string | null): string {
   const m = display.getUTCMinutes();
   return `${h < 10 ? `0${h}` : h}:${m < 10 ? `0${m}` : m}`;
 }
+
+/** Initials avatar — no photo field on modelss slim row today. */
+function ModelAvatar({ name, className }: { name: string; className?: string }) {
+  const initial = name.trim().slice(0, 1).toUpperCase() || "?";
+  return (
+    <span
+      className={cn(
+        "flex shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-fuchsia-600 text-sm font-bold uppercase text-white shadow-inner ring-2 ring-white/15",
+        "h-11 w-11 md:h-12 md:w-12",
+        className
+      )}
+      aria-hidden
+    >
+      {initial}
+    </span>
+  );
+}
+
+function FreeModelIntelCard({ model }: { model: ModelRecord }) {
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+      className="flex items-center gap-3 rounded-xl border border-emerald-400/25 bg-gradient-to-r from-emerald-500/[0.1] to-white/[0.03] px-3 py-3.5 sm:px-4"
+    >
+      <ModelAvatar name={model.model_name} className="h-9 w-9 text-xs md:h-10 md:w-10" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-white/95">{model.model_name}</p>
+        <p className="mt-0.5 text-xs font-medium text-emerald-200/80">Available</p>
+      </div>
+    </motion.div>
+  );
+}
+
+function TakenModelIntelCard({ model }: { model: ModelRecord }) {
+  const chatter = model.current_chatter_name?.trim() || "";
+  const chatterInitial = chatter.slice(0, 1).toUpperCase() || "?";
+  return (
+    <motion.div
+      layout
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 400, damping: 32 }}
+      className="flex items-center gap-3 rounded-xl border border-pink-500/20 bg-gradient-to-r from-pink-500/[0.08] to-white/[0.04] px-3 py-3.5 sm:px-4"
+    >
+      <ModelAvatar name={model.model_name} className="h-9 w-9 text-xs md:h-10 md:w-10" />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-semibold text-white/95">{model.model_name}</p>
+        <div className="mt-2">
+          <span className="inline-flex max-w-full items-center gap-2 rounded-lg border border-white/12 bg-black/30 px-2.5 py-1.5">
+            <span
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-500/50 to-indigo-600/40 text-[10px] font-bold uppercase text-white ring-1 ring-white/20"
+              aria-hidden
+            >
+              {chatterInitial}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-white/45">
+                <UserCircle2 className="h-3 w-3 shrink-0 opacity-90" aria-hidden />
+                Chattering
+              </span>
+              <span className="block truncate text-xs font-medium text-pink-100/95">{chatter || "—"}</span>
+            </span>
+          </span>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+const shiftActionBtn =
+  "inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 hover:scale-[1.02] hover:shadow-lg active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40 md:min-h-0";
 
 // --- Add model to shift modal (multi-select; mobile: portaled + fixed bottom actions above nav) ---
 function AddModelToShiftModal({
@@ -614,7 +690,7 @@ export function ShiftClient({
 
   React.useEffect(() => {
     if (activeShift) {
-      console.log("[shift] active shift loaded", {
+      devLog("[shift] active shift loaded", {
         shiftId: activeShift.id,
         start_time: activeShift.start_time,
         modelsAttached: shiftModels.length,
@@ -729,7 +805,7 @@ export function ShiftClient({
     const sm = removeConfirmModel;
     if (!sm || !activeShift) return;
     submittingRef.current = true;
-    console.log("[remove-model]", {
+    devLog("[remove-model]", {
       shiftId: activeShift.id,
       modelRecordId: sm.model_id,
       modelName: sm.model_name,
@@ -911,37 +987,22 @@ export function ShiftClient({
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="glass-card p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Free models</h3>
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-3">
               {freeModelss.length === 0 ? (
                 <p className="text-sm text-white/45">None available</p>
               ) : (
-                freeModelss.map((m) => (
-                  <div
-                    key={m.id}
-                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/90"
-                  >
-                    {m.model_name}
-                  </div>
-                ))
+                freeModelss.map((m) => <FreeModelIntelCard key={m.id} model={m} />)
               )}
             </div>
           </div>
           <div className="glass-card p-5">
             <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Taken models</h3>
-            <p className="mt-1 text-xs text-white/45">Current chatter shown</p>
-            <div className="mt-4 space-y-2">
+            <p className="mt-1 text-xs text-white/45">Who is on each model right now</p>
+            <div className="mt-4 space-y-3">
               {occupiedModelss.length === 0 ? (
                 <p className="text-sm text-white/45">None</p>
               ) : (
-                occupiedModelss.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-                  >
-                    <span className="font-medium text-white/90">{m.model_name}</span>
-                    <span className="text-white/55">→ {m.current_chatter_name || "—"}</span>
-                  </div>
-                ))
+                occupiedModelss.map((m) => <TakenModelIntelCard key={m.id} model={m} />)
               )}
             </div>
           </div>
@@ -1041,83 +1102,110 @@ export function ShiftClient({
           </div>
         </div>
 
-        <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4 md:mt-8 md:gap-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/45">Started at</p>
-            <p className="mt-1 text-sm md:text-base text-white/95">{startedAtLabel}</p>
+        <div className="mt-6 grid gap-6 md:mt-8 md:grid-cols-12 md:gap-6">
+          <div className="md:col-span-3">
+            <p className="text-xs font-semibold uppercase tracking-wider text-white/50">Started at</p>
+            <p className="mt-1.5 text-sm font-medium text-white md:text-base">{startedAtLabel}</p>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-white/45">Duration</p>
-            <p className="mt-1 font-mono text-2xl tabular-nums text-[hsl(330,90%,75%)] md:text-4xl" style={{ textShadow: "0 0 24px hsl(330 80% 55% / 0.3)" }}>
+          <div className="md:col-span-5">
+            <p className="text-xs font-semibold uppercase tracking-wider text-pink-200/80">Shift duration</p>
+            <div className="mt-2 rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-500/[0.12] via-black/50 to-fuchsia-950/25 px-4 py-5 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_40px_-12px_rgba(236,72,153,0.25)] md:px-5 md:py-6">
               {activeShift?.start_time ? (
-                <LiveTimer startTime={activeShift.start_time} />
+                <LiveTimer startTime={activeShift.start_time} variant="hero" glowPulse as="div" />
               ) : (
-                "—"
+                <span className="block text-3xl font-bold text-white/35">—</span>
               )}
-            </p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-amber-400/80">Break</p>
+          <div className="md:col-span-4">
+            <p className="text-xs font-semibold uppercase tracking-wider text-amber-300/90">Break timer</p>
             {isOnBreak ? (
               <>
-                <p className="mt-1 font-mono text-2xl tabular-nums text-amber-300 md:text-4xl" style={{ textShadow: "0 0 24px hsl(38 92% 50% / 0.35)" }}>
+                <div className="mt-2 rounded-2xl border border-amber-500/35 bg-gradient-to-br from-amber-500/15 via-black/45 to-black/60 px-4 py-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_32px_-10px_rgba(251,191,36,0.2)] md:px-5 md:py-5">
                   {breakStartedAtIso ? (
-                    <LiveTimer startTime={breakStartedAtIso} mode="break" />
+                    <LiveTimer startTime={breakStartedAtIso} mode="break" variant="hero" glowPulse as="div" />
                   ) : (
-                    "00:00:00"
+                    <span className="block text-3xl font-bold text-amber-200/50">00:00:00</span>
                   )}
+                </div>
+                <p className="mt-2 text-xs font-medium text-amber-100/85 md:text-sm">
+                  {totalBreakUsedDisplay} / {maxBreakMinutes} min used
                 </p>
-                <p className="mt-1 text-xs md:text-sm text-amber-200/80">{totalBreakUsedDisplay} / {maxBreakMinutes} min used</p>
               </>
             ) : (
-              <p className="mt-1 text-sm text-amber-200/90">{totalBreakUsedDisplay} / {maxBreakMinutes} min used</p>
+              <p className="mt-2 text-sm font-medium text-amber-100/90 md:text-base">
+                {totalBreakUsedDisplay} / {maxBreakMinutes} min used
+              </p>
             )}
           </div>
         </div>
 
         {/* Desktop: inline action buttons */}
         <div className="mt-6 hidden flex-wrap items-center gap-3 md:mt-8 md:flex">
-          <button
+          <motion.button
             type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={() => {
               setSelectedAddModelIds(new Set());
               setError(null);
               setShowAddModelModal(true);
             }}
             disabled={shiftControlsBusy}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] shadow-[0_0_20px_-6px_rgba(236,72,153,0.25)] hover:bg-[hsl(330,80%,55%)]/20 disabled:cursor-not-allowed disabled:opacity-40"
+            className={cn(
+              shiftActionBtn,
+              "border border-pink-400/40 bg-gradient-to-r from-pink-500/20 to-fuchsia-600/15 text-pink-100 shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.35)] hover:border-pink-300/55 hover:from-pink-500/30 hover:to-fuchsia-600/25"
+            )}
           >
+            <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
             Add model
-          </button>
+          </motion.button>
           {canStartBreak && (
-            <button
+            <motion.button
               type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={openBreakConfirmModal}
               disabled={shiftControlsBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className={cn(
+                shiftActionBtn,
+                "border border-white/18 bg-white/[0.07] text-white shadow-md hover:border-amber-400/35 hover:bg-amber-500/10 hover:text-amber-50"
+              )}
             >
+              <Coffee className="h-4 w-4 shrink-0 text-amber-200/90" aria-hidden />
               Start break
-            </button>
+            </motion.button>
           )}
           {isOnBreak && (
-            <button
+            <motion.button
               type="button"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
               onClick={handleEndBreak}
               disabled={shiftControlsBusy}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-4 py-2.5 text-sm font-medium text-white shadow-[0_0_20px_-4px_rgba(236,72,153,0.35)] hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
+              className={cn(
+                shiftActionBtn,
+                "border border-pink-400/30 bg-gradient-to-r from-pink-500 to-fuchsia-600 text-white shadow-[0_0_28px_-6px_hsl(330_80%_55%/0.45)] hover:brightness-110"
+              )}
             >
               {breakAction === "ending" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
               {breakAction === "ending" ? "Ending break…" : "End break"}
-            </button>
+            </motion.button>
           )}
-          <button
+          <motion.button
             type="button"
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
             onClick={handleEndShift}
             disabled={shiftControlsBusy}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className={cn(
+              shiftActionBtn,
+              "border border-red-400/45 bg-red-500/15 text-red-100 hover:border-red-400/60 hover:bg-red-500/25 hover:shadow-[0_0_24px_-8px_rgba(248,113,113,0.35)]"
+            )}
           >
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden />
             End shift
-          </button>
+          </motion.button>
         </div>
       </div>
 
@@ -1145,29 +1233,53 @@ export function ShiftClient({
                 </p>
               ) : (
                 shiftModels.map((sm) => (
-                  <div
+                  <motion.div
                     key={sm.id}
-                    className="flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3"
+                    layout
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ type: "spring", stiffness: 380, damping: 28 }}
+                    className="flex items-center justify-between gap-4 rounded-2xl border border-white/12 bg-gradient-to-r from-white/[0.07] to-black/40 px-4 py-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition-shadow hover:border-pink-500/25 hover:shadow-[0_8px_28px_-12px_hsl(330_80%_55%/0.15)] md:px-5"
                   >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-white/95">{sm.model_name}</p>
-                      <p className="text-xs text-white/50">Entered {formatEnteredAt(sm.entered_at)}</p>
-                      {modelIdsInActivePeriodToday.includes(sm.model_id) && (
-                        <p className="mt-1 text-[11px] text-amber-200/90">⚠️ Possible content restrictions today</p>
-                      )}
+                    <div className="flex min-w-0 flex-1 items-center gap-3">
+                      <ModelAvatar name={sm.model_name} />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold text-white">{sm.model_name}</p>
+                        <motion.p
+                          key={sm.entered_at ?? sm.id}
+                          initial={{ opacity: 0, x: -6 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ type: "spring", stiffness: 420, damping: 28 }}
+                          className="mt-0.5 text-xs text-white/55"
+                        >
+                          Entered{" "}
+                          <motion.span
+                            key={`${sm.id}-${formatEnteredAt(sm.entered_at)}`}
+                            className="inline-block font-mono tabular-nums text-pink-100/90"
+                            initial={{ opacity: 0.35, scale: 0.96 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                          >
+                            {formatEnteredAt(sm.entered_at)}
+                          </motion.span>
+                        </motion.p>
+                        {modelIdsInActivePeriodToday.includes(sm.model_id) && (
+                          <p className="mt-1 text-[11px] text-amber-200/90">⚠️ Possible content restrictions today</p>
+                        )}
+                      </div>
                     </div>
                     <button
                       type="button"
                       onClick={() => openRemoveModelConfirm(sm)}
                       disabled={removingId !== null || isEndingShift || removeConfirmModel !== null}
-                      className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm font-medium text-white/70 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:rounded-lg md:px-3 md:py-1.5 md:text-xs"
+                      className="inline-flex min-h-[44px] shrink-0 items-center justify-center gap-2 rounded-xl border border-white/20 px-4 py-2 text-sm font-medium text-white/75 transition-colors hover:border-red-400/35 hover:bg-red-500/10 hover:text-red-100 disabled:cursor-not-allowed disabled:opacity-50 md:min-h-0 md:rounded-lg md:px-3 md:py-1.5 md:text-xs"
                     >
                       {removingId === sm.id ? (
                         <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
                       ) : null}
                       {removingId === sm.id ? "Removing…" : "Remove"}
                     </button>
-                  </div>
+                  </motion.div>
                 ))
               )}
             </div>
@@ -1179,47 +1291,70 @@ export function ShiftClient({
             <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Shift controls</h3>
             <p className="mt-1 text-xs text-white/50">Add model, break, end shift</p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => {
                   setSelectedAddModelIds(new Set());
                   setError(null);
                   setShowAddModelModal(true);
                 }}
                 disabled={shiftControlsBusy}
-                className="rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-3 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 disabled:cursor-not-allowed disabled:opacity-40"
+                className={cn(
+                  shiftActionBtn,
+                  "rounded-lg border border-pink-400/40 bg-pink-500/15 px-3 py-2 text-sm text-pink-100 hover:bg-pink-500/25"
+                )}
               >
+                <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
                 Add model
-              </button>
+              </motion.button>
               {canStartBreak && (
-                <button
+                <motion.button
                   type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={openBreakConfirmModal}
                   disabled={shiftControlsBusy}
-                  className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                  className={cn(
+                    shiftActionBtn,
+                    "rounded-lg border border-white/18 bg-white/[0.07] px-3 py-2 text-sm text-white hover:border-amber-400/30 hover:bg-amber-500/10"
+                  )}
                 >
+                  <Coffee className="h-4 w-4 shrink-0 text-amber-200/90" aria-hidden />
                   Start break
-                </button>
+                </motion.button>
               )}
               {isOnBreak && (
-                <button
+                <motion.button
                   type="button"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
                   onClick={handleEndBreak}
                   disabled={shiftControlsBusy}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[hsl(330,80%,55%)] px-3 py-2 text-sm text-white hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
+                  className={cn(
+                    shiftActionBtn,
+                    "rounded-lg bg-gradient-to-r from-pink-500 to-fuchsia-600 px-3 py-2 text-sm text-white shadow-[0_0_20px_-6px_hsl(330_80%_55%/0.4)] hover:brightness-110"
+                  )}
                 >
                   {breakAction === "ending" ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden /> : null}
                   {breakAction === "ending" ? "Ending break…" : "End break"}
-                </button>
+                </motion.button>
               )}
-              <button
+              <motion.button
                 type="button"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={handleEndShift}
                 disabled={shiftControlsBusy}
-                className="inline-flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                className={cn(
+                  shiftActionBtn,
+                  "rounded-lg border border-red-400/45 bg-red-500/15 px-3 py-2 text-sm text-red-100 hover:bg-red-500/25"
+                )}
               >
+                <LogOut className="h-4 w-4 shrink-0" aria-hidden />
                 End shift
-              </button>
+              </motion.button>
             </div>
           </div>
 
@@ -1227,13 +1362,13 @@ export function ShiftClient({
             <h3 className="text-sm font-semibold uppercase tracking-wider text-amber-400/80">Break tracker</h3>
             {isOnBreak ? (
               <>
-                <p className="mt-2 font-mono text-2xl tabular-nums text-amber-300" style={{ textShadow: "0 0 16px hsl(38 92% 50% / 0.25)" }}>
+                <div className="mt-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-3">
                   {breakStartedAtIso ? (
-                    <LiveTimer startTime={breakStartedAtIso} mode="break" />
+                    <LiveTimer startTime={breakStartedAtIso} mode="break" variant="hero" glowPulse as="div" />
                   ) : (
-                    "00:00:00"
+                    <span className="block text-2xl font-bold text-amber-200/50">00:00:00</span>
                   )}
-                </p>
+                </div>
                 <p className="mt-1 text-sm text-amber-200/80">{totalBreakUsedDisplay} / {maxBreakMinutes} min used</p>
                 <p className="mt-0.5 text-xs text-amber-200/60">{remainingBreak} min remaining</p>
               </>
@@ -1269,37 +1404,22 @@ export function ShiftClient({
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="glass-card p-5">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Free models</h3>
-          <div className="mt-4 space-y-2">
+          <div className="mt-4 space-y-3">
             {freeModelss.length === 0 ? (
               <p className="text-sm text-white/45">None available</p>
             ) : (
-              freeModelss.map((m) => (
-                <div
-                  key={m.id}
-                  className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/90"
-                >
-                  {m.model_name}
-                </div>
-              ))
+              freeModelss.map((m) => <FreeModelIntelCard key={m.id} model={m} />)
             )}
           </div>
         </div>
         <div className="glass-card p-5">
           <h3 className="text-sm font-semibold uppercase tracking-wider text-white/70">Taken models</h3>
-          <p className="mt-1 text-xs text-white/45">Current chatter shown</p>
-          <div className="mt-4 space-y-2">
+          <p className="mt-1 text-xs text-white/45">Who is on each model right now</p>
+          <div className="mt-4 space-y-3">
             {occupiedModelss.length === 0 ? (
               <p className="text-sm text-white/45">None</p>
             ) : (
-              occupiedModelss.map((m) => (
-                <div
-                  key={m.id}
-                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm"
-                >
-                  <span className="font-medium text-white/90">{m.model_name}</span>
-                  <span className="text-white/55">→ {m.current_chatter_name || "—"}</span>
-                </div>
-              ))
+              occupiedModelss.map((m) => <TakenModelIntelCard key={m.id} model={m} />)
             )}
           </div>
         </div>
@@ -1307,54 +1427,61 @@ export function ShiftClient({
 
       {/* Mobile: sticky control bar above bottom nav */}
       <div
-        className="fixed left-0 right-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur-xl md:hidden"
+        className="fixed left-0 right-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-black/95 py-3 pl-4 pr-[5.25rem] backdrop-blur-md md:hidden"
         style={{
-          bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
+          bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
           boxShadow: "0 -4px 20px rgba(0,0,0,0.4)",
         }}
       >
-        <div className="grid grid-cols-2 gap-2">
-          <button
+        <div className="grid min-w-0 grid-cols-2 gap-2">
+          <motion.button
             type="button"
+            whileTap={{ scale: 0.98 }}
             onClick={() => {
               setSelectedAddModelIds(new Set());
               setError(null);
               setShowAddModelModal(true);
             }}
             disabled={shiftControlsBusy}
-            className="min-h-[48px] rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25 disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-pink-400/40 bg-pink-500/15 px-3 py-3 text-sm font-semibold text-pink-100 shadow-[0_0_20px_-8px_hsl(330_80%_55%/0.35)] hover:bg-pink-500/25 disabled:cursor-not-allowed disabled:opacity-40"
           >
+            <UserPlus className="h-4 w-4 shrink-0" aria-hidden />
             Add model
-          </button>
+          </motion.button>
           {canStartBreak && (
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.98 }}
               onClick={openBreakConfirmModal}
               disabled={shiftControlsBusy}
-              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-white/18 bg-white/[0.07] px-3 py-3 text-sm font-semibold text-white hover:border-amber-400/35 hover:bg-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40"
             >
-              Start break
-            </button>
+              <Coffee className="h-4 w-4 shrink-0 text-amber-200" aria-hidden />
+              Break
+            </motion.button>
           )}
           {isOnBreak && (
-            <button
+            <motion.button
               type="button"
+              whileTap={{ scale: 0.98 }}
               onClick={handleEndBreak}
               disabled={shiftControlsBusy}
-              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[hsl(330,80%,55%)] px-4 py-3 text-sm font-medium text-white hover:bg-[hsl(330,80%,50%)] disabled:cursor-not-allowed disabled:opacity-40"
+              className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-fuchsia-600 px-3 py-3 text-sm font-semibold text-white shadow-[0_0_20px_-6px_hsl(330_80%_55%/0.4)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
             >
               {breakAction === "ending" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
-              {breakAction === "ending" ? "Ending break…" : "End break"}
-            </button>
+              {breakAction === "ending" ? "Ending…" : "End break"}
+            </motion.button>
           )}
-          <button
+          <motion.button
             type="button"
+            whileTap={{ scale: 0.98 }}
             onClick={handleEndShift}
             disabled={shiftControlsBusy}
-            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex min-h-[48px] items-center justify-center gap-2 rounded-xl border border-red-400/45 bg-red-500/15 px-3 py-3 text-sm font-semibold text-red-100 hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            <LogOut className="h-4 w-4 shrink-0" aria-hidden />
             End shift
-          </button>
+          </motion.button>
         </div>
       </div>
 

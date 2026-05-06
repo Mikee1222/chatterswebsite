@@ -1,5 +1,3 @@
-"use server";
-
 import {
   listAllRecords,
   getRecord,
@@ -8,11 +6,14 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
+import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { ModelLiveStreamRecord } from "@/types";
 
 const TABLE = "model_live_streams";
 
 type Fields = {
+  /** multipleRecordLinks → modelss (canonical API name); legacy: `model_id` */
+  model?: string | string[];
   model_id?: string | string[];
   date?: string;
   planned_start?: string;
@@ -32,7 +33,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelLiveStreamRecord {
   const f = rec.fields;
   return {
     id: rec.id,
-    model_id: firstLinkedId(f.model_id) ?? "",
+    model_id: firstLinkedId(f.model ?? f.model_id) ?? "",
     date: (f.date ?? "").slice(0, 10),
     planned_start: f.planned_start ?? null,
     planned_end: f.planned_end ?? null,
@@ -57,6 +58,19 @@ export async function listModelLiveStreams(modelId: string): Promise<ModelLiveSt
     .sort((a, b) => a.date.localeCompare(b.date) || (a.planned_start ?? "").localeCompare(b.planned_start ?? ""));
 }
 
+/** All models; optional inclusive date bounds (YYYY-MM-DD). */
+export async function listAllModelLiveStreamsInRange(opts?: {
+  fromDate?: string;
+  toDate?: string;
+}): Promise<ModelLiveStreamRecord[]> {
+  const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "date", direction: "asc" }] });
+  let rows = records.map(mapRecord);
+  if (opts?.fromDate) rows = rows.filter((r) => r.date >= opts.fromDate!);
+  if (opts?.toDate) rows = rows.filter((r) => r.date <= opts.toDate!);
+  rows.sort((a, b) => a.date.localeCompare(b.date) || (a.planned_start ?? "").localeCompare(b.planned_start ?? ""));
+  return rows;
+}
+
 export async function getModelLiveStreamById(id: string): Promise<ModelLiveStreamRecord | null> {
   try {
     const rec = await getRecord<Fields>(TABLE, id);
@@ -66,9 +80,16 @@ export async function getModelLiveStreamById(id: string): Promise<ModelLiveStrea
   }
 }
 
+/** True when this row represents an active ad-hoc or in-session live (not ended). */
+export function isActiveLiveStreamRecord(r: Pick<ModelLiveStreamRecord, "status" | "actual_end">): boolean {
+  if (r.actual_end) return false;
+  const st = (r.status ?? "").trim().toLowerCase();
+  return st === "live" || st === "in_progress";
+}
+
 export async function getActiveLiveStreamForModel(modelId: string): Promise<ModelLiveStreamRecord | null> {
   const all = await listModelLiveStreams(modelId);
-  return all.find((s) => s.status === "in_progress" && !s.actual_end) ?? null;
+  return all.find((s) => isActiveLiveStreamRecord(s)) ?? null;
 }
 
 export async function createModelLiveStream(input: {
@@ -85,7 +106,7 @@ export async function createModelLiveStream(input: {
   details_es?: string;
 }): Promise<ModelLiveStreamRecord> {
   const rec = await createRecord<Fields>(TABLE, {
-    model_id: [input.model_id],
+    model: [input.model_id],
     date: input.date,
     planned_start: input.planned_start ?? undefined,
     planned_end: input.planned_end ?? undefined,

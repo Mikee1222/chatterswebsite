@@ -7,6 +7,8 @@ import type { ModelTaskRecord, ModelTaskStatus } from "@/types";
 const TABLE = "model_tasks";
 
 type Fields = {
+  /** Link → modelss; some bases use `model_id` as the link column name. */
+  model?: string | string[];
   model_id?: string | string[];
   title?: string;
   type?: string;
@@ -31,7 +33,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelTaskRecord {
   const f = rec.fields;
   return {
     id: rec.id,
-    model_id: firstLinkedId(f.model_id) ?? "",
+    model_id: firstLinkedId(f.model ?? f.model_id) ?? "",
     title: f.title ?? "",
     type: f.type ?? "",
     required: Boolean(f.required),

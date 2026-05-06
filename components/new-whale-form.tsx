@@ -1,24 +1,21 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2 } from "lucide-react";
+import { Heart, Sparkles, StickyNote, User } from "lucide-react";
 import { createWhaleWithModelAction } from "@/app/actions/whales";
 import type { AppNotification, RelationshipStatus } from "@/types";
 import { RELATIONSHIP_STATUS_OPTIONS } from "@/lib/airtable-options";
 import { ROUTES } from "@/lib/routes";
 import { useToast } from "@/contexts/toast-context";
-import {
-  Label,
-  Input,
-  Textarea,
-  FormActions,
-  SubmitButton,
-  btnSecondaryClass,
-  formSpace,
-} from "@/components/ui/form";
-import { CustomSelect } from "@/components/ui/custom-select";
+import { btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -62,7 +59,7 @@ export function NewWhaleForm({ modelOptions, chatterId: _cid, chatterName: _cnam
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    console.log("[NewWhaleForm] submit fired", { username: username.trim(), modelId });
+    devLog("[NewWhaleForm] submit fired", { username: username.trim(), modelId });
     setFormError(null);
     if (!modelId) {
       setFormError("Select a model.");
@@ -101,60 +98,64 @@ export function NewWhaleForm({ modelOptions, chatterId: _cid, chatterName: _cnam
   }
 
   return (
-    <form onSubmit={submit} className={formSpace} noValidate>
-      <div>
-        <Label>Whale username</Label>
-        <Input
+    <form onSubmit={submit} className={`${formSpace} space-y-4`} noValidate>
+      <FormField label="Whale username" icon={<User />} htmlFor="new-whale-username" required>
+        <FormInput
+          id="new-whale-username"
           value={username}
           onChange={(e) => setUsername(e.target.value)}
           required
           placeholder="@username"
         />
-      </div>
-      <div>
-        <Label>Model</Label>
-        <CustomSelect
+      </FormField>
+      <FormField label="Model" icon={<Sparkles />} htmlFor="new-whale-model" required>
+        <FormSelect
+          id="new-whale-model"
           value={modelId}
-          onChange={handleModelChange}
+          onChange={(e) => handleModelChange(e.target.value)}
           required
-          placeholder="Select model"
-          options={[
-            { value: "", label: "Select model" },
-            ...modelOptions.map((m) => ({ value: m.id, label: m.name })),
-          ]}
-        />
-      </div>
-      <div>
-        <Label>Relationship status</Label>
-        <CustomSelect
+        >
+          <option value="" disabled className={selectOptionClass}>
+            Select model
+          </option>
+          {modelOptions.map((m) => (
+            <option key={m.id} value={m.id} className={selectOptionClass}>
+              {m.name}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
+      <FormField label="Relationship status" icon={<Heart />} htmlFor="new-whale-relationship">
+        <FormSelect
+          id="new-whale-relationship"
           value={relationshipStatus}
-          onChange={(v) => setRelationshipStatus(v as RelationshipStatus)}
-          options={RELATIONSHIP_STATUS_OPTIONS.map((r) => ({ value: r, label: r }))}
-        />
-      </div>
-      <div>
-        <Label>Notes</Label>
-        <Textarea
+          onChange={(e) => setRelationshipStatus(e.target.value as RelationshipStatus)}
+        >
+          {RELATIONSHIP_STATUS_OPTIONS.map((r) => (
+            <option key={r} value={r} className={selectOptionClass}>
+              {r}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
+      <FormField label="Notes" icon={<StickyNote />} htmlFor="new-whale-notes" description="Optional context for your team.">
+        <FormTextarea
+          id="new-whale-notes"
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
           placeholder="Optional"
         />
-      </div>
+      </FormField>
       {formError ? <p className="text-sm text-rose-300">{formError}</p> : null}
-      <FormActions>
-        <SubmitButton disabled={pending}>
-          {pending ? (
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-              Creating…
-            </span>
-          ) : (
-            "Create whale"
-          )}
-        </SubmitButton>
-        <Link href={ROUTES.chatter.myWhales} className={btnSecondaryClass}>Cancel</Link>
-      </FormActions>
+      <div className="flex flex-col gap-3 pt-1">
+        <FormSubmitButton disabled={pending} loading={pending} className="w-full">
+          {pending ? "Creating…" : "Create whale"}
+        </FormSubmitButton>
+        <Link href={ROUTES.chatter.myWhales} className={`${btnSecondaryClass} flex min-h-[52px] w-full items-center justify-center`}>
+          Cancel
+        </Link>
+      </div>
     </form>
   );
 }

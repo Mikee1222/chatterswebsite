@@ -2,11 +2,15 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, UserMinus } from "lucide-react";
-import { CustomSelect } from "@/components/ui/custom-select";
+import { Loader2, UserMinus, UserPlus } from "lucide-react";
+import { FormField } from "@/components/ui/form-field";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { useToast } from "@/contexts/toast-context";
 import { addAdminNotificationUser, removeAdminNotificationUser } from "@/app/actions/admin-settings";
 import type { AppNotification } from "@/types";
+
+const selectOptionClass = "bg-[#1a1a1a] text-white";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -159,21 +163,35 @@ export function AdminNotificationsSettings({
           </ul>
         )}
 
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-white/60">Add recipient</h3>
-        <p className="mb-4 text-sm text-white/50">Active users who can log in. Already listed users are hidden.</p>
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end">
-          <div className="relative z-[10] min-w-0 flex-1">
-            <CustomSelect value={selectId} onChange={setSelectId} options={selectOptions} placeholder="Select user" />
-          </div>
-          <button
+        <div className="space-y-4">
+          <FormField
+            label="Add recipient"
+            icon={<UserPlus />}
+            htmlFor="admin-notif-add-user"
+            description="Active users who can log in. Already listed users are hidden."
+          >
+            <FormSelect
+              id="admin-notif-add-user"
+              value={selectId}
+              onChange={(e) => setSelectId(e.target.value)}
+              disabled={pickableUsers.length === 0}
+            >
+              {selectOptions.map((o) => (
+                <option key={o.value || "empty"} value={o.value} className={selectOptionClass}>
+                  {o.label}
+                </option>
+              ))}
+            </FormSelect>
+          </FormField>
+          <FormSubmitButton
             type="button"
             disabled={adding || !selectId || pickableUsers.length === 0}
+            loading={adding}
             onClick={() => void onAdd()}
-            className="inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl bg-pink-600 px-6 text-sm font-semibold text-white transition-colors hover:bg-pink-500 disabled:pointer-events-none disabled:opacity-50"
+            className="w-full text-[15px] disabled:pointer-events-none disabled:opacity-50"
           >
-            {adding ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-            Add user
-          </button>
+            {adding ? "Adding…" : "Add user"}
+          </FormSubmitButton>
         </div>
         {pickableUsers.length === 0 ? (
           <p className="mt-4 text-xs text-white/45">No additional active users to add.</p>

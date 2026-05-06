@@ -1,6 +1,5 @@
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { listAllUsers } from "@/services/users";
-import { sendPushNotification } from "@/lib/push-notifications";
 
 const PRIZES = "spin_wheel_prizes";
 const SPINS = "spin_wheel_spins";
@@ -150,16 +149,4 @@ export function computeSpinRotationDelta(winIndex: number, prizeCount: number): 
   const arc = 360 / n;
   const fullTurns = 5 + Math.floor(Math.random() * 4);
   return fullTurns * 360 - (winIndex + 0.5) * arc;
-}
-
-export async function notifySpinUnlocked(userId: string, previousSpins: number, totalPoints: number): Promise<void> {
-  const spinsAvailable = Math.floor(totalPoints / 500);
-  if (spinsAvailable > previousSpins) {
-    console.log("[spin-wheel] free spin unlocked", { userId, spinsAvailable });
-    await sendPushNotification(userId, {
-      title: "🎰 Free spin unlocked!",
-      body: `You have ${spinsAvailable} free spin${spinsAvailable > 1 ? "s" : ""} available`,
-      data: { type: "spin_unlocked" },
-    });
-  }
 }

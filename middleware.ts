@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { AUTH_COOKIE_NAME } from "@/lib/auth-config";
 import { ROUTES } from "@/lib/routes";
 import { verifySessionToken } from "@/lib/session-token";
+import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access";
 
 const PUBLIC_PATHS = [ROUTES.login];
 
@@ -53,7 +54,21 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(loginUrl);
   }
 
-  return NextResponse.next();
+  if (pathname === "/model" || pathname.startsWith("/model/")) {
+    if (user.role !== "model") {
+      return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
+    }
+  }
+
+  if (user.role === "virtual_assistant" && pathname.startsWith("/admin")) {
+    if (!isVaReadableAdminSchedulePath(pathname)) {
+      return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
+    }
+  }
+
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set("x-pathname", pathname);
+  return NextResponse.next({ request: { headers: requestHeaders } });
 }
 
 // Run middleware for app routes only; do NOT run for static/PWA assets (they bypass auth via isPublicAssetPath if they ever hit middleware)

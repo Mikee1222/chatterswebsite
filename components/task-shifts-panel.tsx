@@ -4,7 +4,13 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { startTaskShift, endTaskShift } from "@/app/actions/shifts";
 import { formatDateTimeEuropean } from "@/lib/format";
-import { Label, Input, Select, ButtonSecondary, SubmitButton } from "@/components/ui/form";
+import { ButtonSecondary, selectOptionClass } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { FileText, ListTodo, Type } from "lucide-react";
 import type { Shift } from "@/types";
 import type { StaffTaskType } from "@/types";
 
@@ -90,27 +96,27 @@ export function TaskShiftsPanel({
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="glass-panel w-full max-w-md p-6">
             <h2 className="mb-4 text-lg font-semibold text-white">Start task shift</h2>
-            <form onSubmit={handleStart} className="space-y-5">
-              <div>
-                <Label htmlFor="task-shift-type">Shift type *</Label>
-                <Select
+            <form onSubmit={handleStart} className="space-y-4">
+              <FormField label="Shift type" icon={<ListTodo />} htmlFor="task-shift-type" required>
+                <FormSelect
                   id="task-shift-type"
                   value={shiftType}
                   onChange={(e) => setShiftType(e.target.value)}
                   required
                 >
-                  <option value="">Select...</option>
+                  <option value="" disabled className={selectOptionClass}>
+                    Select…
+                  </option>
                   {typeOptions.map((o) => (
-                    <option key={o.value} value={o.value}>
+                    <option key={o.value} value={o.value} className={selectOptionClass}>
                       {o.label}
                     </option>
                   ))}
-                </Select>
-              </div>
+                </FormSelect>
+              </FormField>
               {shiftType === "other" && (
-                <div>
-                  <Label htmlFor="task-label">Task label *</Label>
-                  <Input
+                <FormField label="Task label" icon={<Type />} htmlFor="task-label" required description="Required when type is Other.">
+                  <FormInput
                     id="task-label"
                     type="text"
                     value={taskLabel}
@@ -118,23 +124,22 @@ export function TaskShiftsPanel({
                     required={shiftType === "other"}
                     placeholder="Describe the task"
                   />
-                </div>
+                </FormField>
               )}
-              <div>
-                <Label htmlFor="task-notes">Notes (optional)</Label>
-                <Input
+              <FormField label="Notes (optional)" icon={<FileText />} htmlFor="task-notes">
+                <FormTextarea
                   id="task-notes"
-                  type="text"
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
                   placeholder="Optional notes"
                 />
-              </div>
-              <div className="flex flex-wrap gap-3 pt-2">
-                <ButtonSecondary type="button" onClick={() => setShowModal(false)}>
+              </FormField>
+              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:flex-wrap sm:justify-end">
+                <ButtonSecondary type="button" onClick={() => setShowModal(false)} className="w-full sm:w-auto">
                   Cancel
                 </ButtonSecondary>
-                <SubmitButton>Start shift</SubmitButton>
+                <FormSubmitButton className="w-full sm:min-w-[10rem] sm:flex-1">Start shift</FormSubmitButton>
               </div>
             </form>
           </div>

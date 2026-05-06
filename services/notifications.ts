@@ -6,6 +6,7 @@ import {
   getRecord,
   createRecord,
   updateRecord,
+  deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import {
@@ -17,6 +18,7 @@ import {
 } from "@/lib/notifications-schema";
 import type { AppNotification, NotificationCategory, NotificationEventType, NotificationPriority } from "@/types";
 import type { NotificationMetadataItem } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 type Fields = Record<string, unknown>;
 
@@ -73,7 +75,7 @@ export async function createNotification(fields: {
 
   const validation = validateNotificationPayload(fields);
   if (!validation.valid) {
-    console.log(NOTIF, "skip", JSON.stringify({
+    devLog(NOTIF, "skip", JSON.stringify({
       reason: "invalid payload",
       code: validation.code,
       error: validation.error,
@@ -101,12 +103,12 @@ export async function createNotification(fields: {
   // When the notifications table has a "metadata" column, you can add: if (fields.metadata?.length) payload[NOTIFICATION_FIELDS.metadata] = JSON.stringify(fields.metadata);
 
   // 6. Right before creating the airtable notification record
-  console.log(NOTIF, "6 before_airtable_create", JSON.stringify({ table: NOTIFICATIONS_TABLE, payload }));
+  devLog(NOTIF, "6 before_airtable_create", JSON.stringify({ table: NOTIFICATIONS_TABLE, payload }));
 
   try {
     const rec = await createRecord(NOTIFICATIONS_TABLE, payload as Record<string, string | number | boolean | null>);
     // 7. Right after successful airtable notification create
-    console.log(NOTIF, "7 after_airtable_create", JSON.stringify({
+    devLog(NOTIF, "7 after_airtable_create", JSON.stringify({
       created_record_id: rec.id,
       recipient_user_id: fields.user_id,
       event_type: fields.event_type,
@@ -114,7 +116,7 @@ export async function createNotification(fields: {
     return mapRecord(rec as AirtableRecord<Fields>);
   } catch (err) {
     // 8. If airtable notification create is skipped, log the exact reason
-    console.log(NOTIF, "8 airtable_create_skipped", JSON.stringify({
+    devLog(NOTIF, "8 airtable_create_skipped", JSON.stringify({
       reason: "Airtable create failed",
       recipient_user_id: fields.user_id,
       error: err instanceof Error ? err.message : String(err),
@@ -142,7 +144,7 @@ export async function listNotificationsForUser(
   if (params.since) {
     formula = `AND(${formula}, IS_AFTER({${NOTIFICATION_FIELDS.created_at}}, "${params.since}"))`;
   }
-  console.log(NOTIFY_UI_DEBUG, "listNotificationsForUser", JSON.stringify({ recipient_user_id: userId, unreadOnly: params.unreadOnly ?? false, since: params.since ?? null }));
+  devLog(NOTIFY_UI_DEBUG, "listNotificationsForUser", JSON.stringify({ recipient_user_id: userId, unreadOnly: params.unreadOnly ?? false, since: params.since ?? null }));
   const { records, offset } = await listRecords<Fields>(NOTIFICATIONS_TABLE, {
     filterByFormula: formula,
     sort: [{ field: NOTIFICATION_FIELDS.created_at, direction: "desc" }],
@@ -150,18 +152,18 @@ export async function listNotificationsForUser(
     offset: params.offset,
   });
   const notifications = records.map(mapRecord);
-  console.log(NOTIFY_UI_DEBUG, "listNotificationsForUser_result", JSON.stringify({ recipient_user_id: userId, notifications_returned: notifications.length }));
+  devLog(NOTIFY_UI_DEBUG, "listNotificationsForUser_result", JSON.stringify({ recipient_user_id: userId, notifications_returned: notifications.length }));
   return { notifications, offset };
 }
 
 export async function getUnreadCount(userId: string): Promise<number> {
   const escaped = userId.replace(/"/g, '""');
   const formula = `AND({${NOTIFICATION_FIELDS.user_id}} = "${escaped}", ${unreadReadAtFormula()})`;
-  console.log(NOTIFY_UI_DEBUG, "getUnreadCount", JSON.stringify({ airtable_filter: formula, recipient_user_id: userId }));
+  devLog(NOTIFY_UI_DEBUG, "getUnreadCount", JSON.stringify({ airtable_filter: formula, recipient_user_id: userId }));
   const all = await listAllRecords<Fields>(NOTIFICATIONS_TABLE, {
     filterByFormula: formula,
   });
-  console.log(NOTIFY_UI_DEBUG, "getUnreadCount_result", JSON.stringify({ recipient_user_id: userId, unread_count: all.length }));
+  devLog(NOTIFY_UI_DEBUG, "getUnreadCount_result", JSON.stringify({ recipient_user_id: userId, unread_count: all.length }));
   return all.length;
 }
 
@@ -170,8 +172,19 @@ export async function markAsRead(recordId: string) {
   const rec = await updateRecord<Fields>(NOTIFICATIONS_TABLE, recordId, {
     [NOTIFICATION_FIELDS.read_at]: readAtValue,
   });
-  console.log(NOTIFY_UI_DEBUG, "mark_single_read", JSON.stringify({ recordId }));
+  devLog(NOTIFY_UI_DEBUG, "mark_single_read", JSON.stringify({ recordId }));
   return mapRecord(rec);
+}
+
+/** Deletes one notification only if it belongs to the given user (Airtable user id). */
+export async function deleteNotificationForUser(recordId: string, expectedUserId: string): Promise<void> {
+  const rec = await getRecord<Fields>(NOTIFICATIONS_TABLE, recordId);
+  const uid = String((rec.fields as Fields)[NOTIFICATION_FIELDS.user_id] ?? "");
+  if (uid !== expectedUserId) {
+    throw new Error("Notification not found or access denied");
+  }
+  await deleteRecord(NOTIFICATIONS_TABLE, recordId);
+  devLog(NOTIFY_UI_DEBUG, "delete_notification", JSON.stringify({ recordId }));
 }
 
 /** Mark every unread notification for this user as read (no page limit). */
@@ -201,7 +214,7 @@ export async function markAllAsRead(userId: string) {
       );
     }
   }
-  console.log(NOTIFY_UI_DEBUG, "mark_all_read", JSON.stringify({ userId, found: allUnread.length, patched: marked }));
+  devLog(NOTIFY_UI_DEBUG, "mark_all_read", JSON.stringify({ userId, found: allUnread.length, patched: marked }));
   return marked;
 }
 

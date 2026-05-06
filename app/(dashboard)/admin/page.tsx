@@ -9,6 +9,7 @@ import { listAllCustomRequests } from "@/services/custom-requests";
 import { listAllUsers } from "@/services/users";
 import { eurToUsd } from "@/lib/exchange";
 import { AdminHomeClient } from "@/components/admin-home-client";
+import { buildAdminRecentActivity, buildAdminSparklineWow } from "@/lib/admin-home-dashboard";
 import type { WhaleTransaction } from "@/types";
 
 function filterByMonth(transactions: WhaleTransaction[], yearMonth: string): WhaleTransaction[] {
@@ -92,6 +93,10 @@ export default async function AdminHomePage({
   const avgRevenuePerSession =
     stats.sessionCount > 0 ? stats.totalRevenue / stats.sessionCount : 0;
 
+  const recentActivity = buildAdminRecentActivity(allTransactions, customs, 14);
+  const sparklineWow = buildAdminSparklineWow(allTransactions);
+  const totalModelsCount = modelss.length;
+
   return (
     <Suspense fallback={<div className="text-white/60">Loading…</div>}>
       <AdminHomeClient
@@ -114,6 +119,9 @@ export default async function AdminHomePage({
         freeModelsCount={freeCount}
         takenModelsCount={takenCount}
         pendingCustomsCount={pendingCustoms}
+        totalModelsCount={totalModelsCount}
+        recentActivity={recentActivity}
+        sparklineWow={sparklineWow}
       />
     </Suspense>
   );

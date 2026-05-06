@@ -128,6 +128,29 @@ export function modelLiveStreamPlatformLabel(value: string): string {
   return value;
 }
 
+/** Platforms the model dashboard offers for impromptu "Go Live" (subset of Airtable options). */
+export const MODEL_GO_LIVE_PLATFORM_OPTIONS = ["instagram", "tiktok", "onlyfans"] as const;
+
+export type ModelGoLivePlatformOption = (typeof MODEL_GO_LIVE_PLATFORM_OPTIONS)[number];
+
+export function isModelGoLivePlatform(value: string): value is ModelGoLivePlatformOption {
+  return MODEL_GO_LIVE_PLATFORM_OPTIONS.includes(value as ModelGoLivePlatformOption);
+}
+
+/**
+ * model_live_streams.status – match Airtable single-select (scheduled rows + ad-hoc live/ended).
+ */
+export const MODEL_LIVE_STREAM_STATUS_OPTIONS = [
+  "scheduled",
+  "in_progress",
+  "live",
+  "ended",
+  "cancelled",
+  "completed",
+] as const;
+
+export type ModelLiveStreamStatusOption = (typeof MODEL_LIVE_STREAM_STATUS_OPTIONS)[number];
+
 /**
  * model_tasks.type (single-select). Match Airtable single-select options exactly.
  * Expected: script, mass, live_prep, live_stream, custom, content, admin_note, other.

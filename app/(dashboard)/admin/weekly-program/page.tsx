@@ -13,6 +13,7 @@ import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-p
 import { AdminWeeklyProgramClient } from "@/components/admin-weekly-program-client";
 import type { WeeklyProgramRecord } from "@/types";
 import type { ModelRecord } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 export default async function AdminWeeklyProgramPage({
   searchParams,
@@ -34,7 +35,7 @@ export default async function AdminWeeklyProgramPage({
   ]);
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[admin weekly-program page] loader", {
+    devLog("[admin weekly-program page] loader", {
       selected_week_start: weekStart,
       displayed_week_label: formatWeekLabel(weekStart),
       source: searchParams.week_start?.trim() ? "url" : "default_current_week",

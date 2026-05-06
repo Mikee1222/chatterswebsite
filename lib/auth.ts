@@ -7,9 +7,12 @@ import { cookies } from "next/headers";
 import { AUTH_COOKIE_NAME, type AuthUser } from "./auth-config";
 import { signSessionToken, verifySessionToken } from "./session-token";
 
-/** Create a session token (JWT) for the user. Stored in cookie; no server-side store. */
-export async function setSession(user: AuthUser): Promise<string> {
-  return signSessionToken(user);
+/**
+ * Create a session JWT for the user.
+ * @param maxAgeSeconds — JWT `exp` (and should match cookie `maxAge` when using "Remember me").
+ */
+export async function setSession(user: AuthUser, maxAgeSeconds: number): Promise<string> {
+  return signSessionToken(user, maxAgeSeconds);
 }
 
 /** No-op for JWT sessions; logout just clears the cookie. */

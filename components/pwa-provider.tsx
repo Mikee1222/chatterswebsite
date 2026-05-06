@@ -1,4 +1,5 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 
@@ -125,7 +126,7 @@ export function PwaProvider({ children }: { children: React.ReactNode }) {
       .register("/sw.js")
       .then((reg) => {
         if (process.env.NODE_ENV !== "production") {
-          console.log("[PWA] Service worker registered: yes", reg.scope);
+          devLog("[PWA] Service worker registered: yes", reg.scope);
         }
       })
       .catch((err) => {

@@ -4,6 +4,7 @@ import {
   getRecord,
   createRecord,
   updateRecord,
+  deleteRecord,
   getBaseSchema,
   type AirtableRecord,
   type ListParams,
@@ -17,6 +18,7 @@ import type {
   WeeklyAvailabilityRequestStatus,
   WeeklyAvailabilityEntryType,
 } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const TABLE = "weekly_availability_requests";
 
@@ -160,7 +162,7 @@ export async function getRequestsForWeek(
         field_keys: Object.keys(f),
       };
     });
-    console.log("[getRequestsForWeek] RAW Airtable records (unfiltered sample)", {
+    devLog("[getRequestsForWeek] RAW Airtable records (unfiltered sample)", {
       queried_week_normalized_to_monday: weekYmd,
       input_week_start: weekStart,
       sample_count: exactValues.length,
@@ -200,7 +202,7 @@ export async function getRequestsForWeek(
               _caller: "weekly-availability-requests.getRequestsForWeek_retry",
             });
             if (records.length > 0 && process.env.NODE_ENV !== "production") {
-              console.log("[getRequestsForWeek] retry with alt field", { altFieldName, count: records.length });
+              devLog("[getRequestsForWeek] retry with alt field", { altFieldName, count: records.length });
             }
             if (records.length > 0) break;
           } catch (_) {
@@ -221,7 +223,7 @@ export async function getRequestsForWeek(
           ? forWeek.filter((r) => r.chatter_id === chatterRecordId)
           : forWeek;
       if (process.env.NODE_ENV !== "production") {
-        console.log("[getRequestsForWeek] fetch-then-filter", {
+        devLog("[getRequestsForWeek] fetch-then-filter", {
           total_fetched: all.length,
           after_week_filter: forWeek.length,
           after_chatter_filter: result.length,
@@ -243,7 +245,7 @@ export async function getRequestsForWeek(
       : mapped;
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[getRequestsForWeek] result", {
+    devLog("[getRequestsForWeek] result", {
       week_start_normalized_to_monday: weekYmd,
       input_week_start: weekStart,
       chatter_filter: chatterRecordId ?? "(all)",
@@ -324,7 +326,7 @@ export async function createWeeklyAvailabilityRequest(
   const rec = await createRecord<Fields>(TABLE, payload as Fields);
   if (process.env.NODE_ENV !== "production") {
     const f = rec.fields as unknown as Record<string, unknown>;
-    console.log("[createWeeklyAvailabilityRequest] created record", {
+    devLog("[createWeeklyAvailabilityRequest] created record", {
       airtable_record_id: rec.id,
       request_id: f.request_id ?? payload.request_id,
       week_start: f.week_start ?? f["Week start"] ?? payload.week_start,
@@ -368,4 +370,10 @@ export async function updateWeeklyAvailabilityRequest(
   }
   const rec = await updateRecord<Fields>(TABLE, recordId, payload as Partial<Fields>);
   return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+export async function deleteWeeklyAvailabilityRequest(recordId: string): Promise<void> {
+  const id = recordId?.trim();
+  if (!id) throw new Error("Missing record id");
+  await deleteRecord(TABLE, id);
 }

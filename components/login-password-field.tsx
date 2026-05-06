@@ -5,14 +5,16 @@ import { Eye, EyeOff } from "lucide-react";
 import { Label } from "@/components/ui/form";
 
 const inputClass =
-  "w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 pr-12 text-[15px] text-white placeholder:text-white/40 transition-colors focus:border-[hsl(330,80%,55%)]/60 focus:outline-none focus:ring-2 focus:ring-[hsl(330,80%,55%)]/20 focus:bg-white/[0.08] hover:border-white/15";
+  "w-full min-h-[52px] rounded-xl border border-white/12 bg-[#1a1a1a] px-4 py-4 pr-12 text-[15px] text-white placeholder:text-white/40 [color-scheme:dark] transition-[border-color,box-shadow,background-color] duration-150 ease-out hover:border-pink-400/30 hover:bg-[#1f1f1f] focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/25 focus:bg-[#1f1f1f]";
 
-export function LoginPasswordField(props: React.ComponentPropsWithoutRef<"input">) {
+export function LoginPasswordField(
+  props: React.ComponentPropsWithoutRef<"input"> & { omitLabel?: boolean }
+) {
   const [showPassword, setShowPassword] = React.useState(false);
-  const { className = "", ...rest } = props;
+  const { className = "", omitLabel: _omit, ...rest } = props;
   return (
     <div>
-      <Label htmlFor={props.id ?? "password"}>Password</Label>
+      {!_omit ? <Label htmlFor={props.id ?? "password"}>Password</Label> : null}
       <div className="relative">
         <input
           {...rest}

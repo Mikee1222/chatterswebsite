@@ -11,6 +11,7 @@ import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { getTimesForShiftType } from "@/lib/weekly-program";
 import { getPointsConfig, type PointsConfig } from "@/services/points-config";
 import type { Shift, WeeklyProgramShiftType } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const CHATTER_POINTS = "chatter_points";
 const POINTS_TRANSACTIONS = "points_transactions";
@@ -122,10 +123,8 @@ async function notifyAfterPointsAwarded(params: {
       import("@/services/notification-service"),
       import("@/lib/notification-types"),
     ]);
-    const { sendPushNotification } = await import("@/lib/push-notifications");
 
     if (points > 0) {
-      console.log("[points-engine] sending notification", { userId, points, reason });
       await notify({
         user_id: userId,
         event_type: NOTIFICATION_EVENT.POINTS_AWARDED,
@@ -134,11 +133,6 @@ async function notifyAfterPointsAwarded(params: {
         entity_type: "points_transaction",
         entity_id: entityId,
         _triggerSource: "awardPoints",
-      });
-      await sendPushNotification(userId, {
-        title: `+${points} points earned!`,
-        body: reason,
-        data: { type: "points_awarded", points },
       });
     }
 
@@ -164,8 +158,6 @@ async function notifyAfterPointsAwarded(params: {
         entity_id: userId,
         _triggerSource: "awardPoints",
       });
-      const { notifySpinUnlocked } = await import("@/services/spin-wheel");
-      await notifySpinUnlocked(userId, prevSpins, nextTotal);
     }
   } catch (e) {
     console.error("[points-engine] notifyAfterPointsAwarded failed", e);
@@ -925,7 +917,7 @@ export async function fixAllChatterLevels(): Promise<{ examined: number; updated
     if (haveRaw === want) continue;
     await updateRecord<ChatterPointsFields>(CHATTER_POINTS, r.id, { level: want });
     updated += 1;
-    console.log("[points-engine] fixAllChatterLevels updated", {
+    devLog("[points-engine] fixAllChatterLevels updated", {
       recordId: r.id,
       user_id: r.fields?.user_id,
       total_points: total,
@@ -934,7 +926,7 @@ export async function fixAllChatterLevels(): Promise<{ examined: number; updated
     });
   }
   if (updated > 0) invalidateLeaderboardCache();
-  console.log("[points-engine] fixAllChatterLevels finished", { examined: rows.length, updated });
+  devLog("[points-engine] fixAllChatterLevels finished", { examined: rows.length, updated });
   return { examined: rows.length, updated };
 }
 
@@ -984,7 +976,7 @@ export async function runLevelFromPointsMigrationIfNeeded(): Promise<void> {
   if (marker === "done") return;
   const summary = await fixAllChatterLevels();
   await setLevelFromPointsMigrationMarker("done");
-  console.log("[points-engine] level-from-points migration completed and marked done", summary);
+  devLog("[points-engine] level-from-points migration completed and marked done", summary);
 }
 
 const LEVEL_DROP_MIGRATION_BOOT_KEY = "__chatterPointsLevelFromPointsBoot2026";

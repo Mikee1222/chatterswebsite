@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getHoursSummary } from "@/services/hours";
 import { listAllUsers } from "@/services/users";
-import { Select, btnSecondaryClass } from "@/components/ui/form";
+import { HoursFiltersClient } from "@/components/hours-filters-client";
 
 function getWeekStart(date: Date): string {
   const d = new Date(date);
@@ -65,29 +65,12 @@ export default async function HoursPage({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <form method="get" className="flex flex-wrap items-center gap-2">
-          <input type="hidden" name="role" value={params.role ?? ""} />
-          <input type="hidden" name="user" value={params.user ?? ""} />
-          <Select name="period" defaultValue={period} className="min-w-0">
-            <option value="today">Today</option>
-            <option value="week">This week</option>
-            <option value="month">This month</option>
-          </Select>
-          <button type="submit" className={btnSecondaryClass}>Apply</button>
-        </form>
-        {user.role === "admin" && (
-          <form method="get" className="flex flex-wrap items-center gap-2">
-            <input type="hidden" name="period" value={period} />
-            <Select name="role" defaultValue={params.role ?? ""} className="min-w-0">
-              <option value="">All roles</option>
-              <option value="chatter">Chatter</option>
-              <option value="virtual_assistant">Virtual assistant</option>
-            </Select>
-            <button type="submit" className={btnSecondaryClass}>Filter</button>
-          </form>
-        )}
-      </div>
+      <HoursFiltersClient
+        period={period}
+        role={params.role ?? ""}
+        user={params.user ?? ""}
+        showAdminRoleFilter={user.role === "admin"}
+      />
 
       <div className="grid gap-4 sm:grid-cols-3">
         <div className="glass-card p-5">

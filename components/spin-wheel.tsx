@@ -180,13 +180,16 @@ function localToast(
 ): AppNotification {
   return {
     id,
+    notification_id: id,
     user_id: "local-user",
-    event_type: "SYSTEM_ALERT",
+    category: "system",
+    event_type: "system_alert",
+    priority,
     title,
     body,
     entity_type: "system",
-    priority,
-    read: false,
+    entity_id: "",
+    read_at: null,
     created_at: new Date().toISOString(),
   };
 }
@@ -287,10 +290,10 @@ export function SpinWheel({
   function applyWheelTransform(deg: number) {
     const el = wheelRef.current;
     if (!el) return;
-    const v = `rotate(${deg}deg)`;
+    /** ViewBox center (200,200) — fill-box on <g> can be off-center for donut slices; keep spin axis on hub. */
     el.style.transformBox = "fill-box";
-    el.style.transformOrigin = "center";
-    el.style.transform = v;
+    el.style.transformOrigin = "200px 200px";
+    el.style.transform = `rotate(${deg}deg)`;
   }
 
   React.useEffect(() => {
@@ -298,11 +301,15 @@ export function SpinWheel({
   }, [rotation, spinning]);
 
   const wheelTransformStyle: React.CSSProperties = spinning
-    ? { willChange: "transform" }
+    ? {
+        willChange: "transform",
+        transformBox: "fill-box",
+        transformOrigin: "200px 200px",
+      }
     : {
         transform: `rotate(${rotation}deg)`,
         transformBox: "fill-box",
-        transformOrigin: "center",
+        transformOrigin: "200px 200px",
         willChange: "transform",
       };
 
@@ -580,13 +587,22 @@ export function SpinWheel({
                     </g>
                   );
                 })}
+                <foreignObject x="0" y="0" width="400" height="400" pointerEvents="none">
+                  {/* XHTML body in foreignObject requires xmlns; not in React's div typings. */}
+                  <div
+                    {...({
+                      xmlns: "http://www.w3.org/1999/xhtml",
+                      className: "wheel-gleam-fo",
+                      "aria-hidden": true,
+                    } as React.HTMLAttributes<HTMLDivElement>)}
+                  />
+                </foreignObject>
               </g>
 
               <circle cx="200" cy="200" r="60" fill="url(#centerGradient)" />
               <circle cx="200" cy="200" r="60" fill="#0a0a0a" stroke="#d97706" strokeWidth="2" />
             </svg>
 
-            <div className="pointer-events-none absolute inset-0 rounded-full wheel-gleam" aria-hidden />
             <div className="pointer-events-none absolute left-1/2 top-1/2 z-20 flex h-[60px] w-[60px] -translate-x-1/2 -translate-y-1/2 items-center justify-center overflow-hidden rounded-full">
               {!logoFailed ? (
                 <img
@@ -657,7 +673,11 @@ export function SpinWheel({
 
       {modal}
       <style jsx>{`
-        .wheel-gleam {
+        .wheel-gleam-fo {
+          width: 400px;
+          height: 400px;
+          border-radius: 50%;
+          pointer-events: none;
           background: linear-gradient(120deg, transparent 35%, rgba(255, 255, 255, 0.18) 50%, transparent 65%);
           animation: wheel-gleam 4s ease-in-out infinite;
           mix-blend-mode: screen;
@@ -682,19 +702,14 @@ export function SpinWheel({
             opacity: 0.8;
           }
         }
+        /* Vertical bob only — any rotate here desyncs the fixed pointer from segment geometry. */
         @keyframes wheel-float {
           0%,
           100% {
-            transform: translateY(0px) rotate(0deg);
-          }
-          25% {
-            transform: translateY(-5px) rotate(1deg);
+            transform: translateY(0);
           }
           50% {
-            transform: translateY(0px) rotate(0deg);
-          }
-          75% {
-            transform: translateY(-5px) rotate(-1deg);
+            transform: translateY(-5px);
           }
         }
         @keyframes wheel-gleam {

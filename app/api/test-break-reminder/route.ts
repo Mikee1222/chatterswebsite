@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { runCheckBreakReminders } from "@/services/check-break-reminders";
+import { devLog } from "@/lib/dev-log";
 
 function isCronAuthorized(request: Request): boolean {
   const cronSecret = process.env.CRON_SECRET;
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  console.log("[test-break-reminder] manual run", { now: new Date().toISOString() });
+  devLog("[test-break-reminder] manual run", { now: new Date().toISOString() });
 
   try {
     const result = await runCheckBreakReminders();

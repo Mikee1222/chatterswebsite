@@ -13,6 +13,8 @@ export type CustomSelectProps = {
   options: CustomSelectOption[];
   placeholder?: string;
   className?: string;
+  /** Merged onto the trigger button (e.g. pink border accents). */
+  triggerClassName?: string;
   disabled?: boolean;
   required?: boolean;
   name?: string;
@@ -36,6 +38,7 @@ export function CustomSelect({
   options,
   placeholder,
   className,
+  triggerClassName,
   disabled,
   required,
   name,
@@ -188,7 +191,7 @@ export function CustomSelect({
         aria-labelledby={ariaLabelledby}
         aria-label={ariaLabel}
         onClick={() => !disabled && setOpen(!open)}
-        className={defaultButtonClass}
+        className={cn(defaultButtonClass, triggerClassName)}
       >
         <span className={value ? "text-white" : "text-white/40"}>
           {currentLabel || placeholder || "Select…"}

@@ -8,6 +8,7 @@
 
 import { buildPushPayload } from "@block65/webcrypto-web-push";
 import type { PushSubscriptionRecord } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const PUSH_DEBUG = "[push-debug]";
 
@@ -37,7 +38,7 @@ export async function sendWebPush(
 ): Promise<boolean> {
   const keys = getVapidKeys();
   if (!keys) {
-    console.log(PUSH_DEBUG, "push skipped", JSON.stringify({ reason: "VAPID not configured" }));
+    devLog(PUSH_DEBUG, "push skipped", JSON.stringify({ reason: "VAPID not configured" }));
     return false;
   }
 
@@ -49,7 +50,7 @@ export async function sendWebPush(
   });
 
   const run = pushSendQueue.then(async (): Promise<boolean> => {
-    console.log(PUSH_DEBUG, "using workers-compatible send path");
+    devLog(PUSH_DEBUG, "using workers-compatible send path");
     const vapid = {
       subject: "mailto:support@example.com",
       publicKey: keys.publicKey,
@@ -75,11 +76,11 @@ export async function sendWebPush(
         : fetchPayload.body
     });
     if (res.ok || res.status === 201) {
-      console.log(PUSH_DEBUG, "push success", JSON.stringify({ endpoint_preview: subscription.endpoint?.slice(0, 60) }));
+      devLog(PUSH_DEBUG, "push success", JSON.stringify({ endpoint_preview: subscription.endpoint?.slice(0, 60) }));
       return true;
     }
     const text = await res.text();
-    console.log(PUSH_DEBUG, "push failure", JSON.stringify({
+    devLog(PUSH_DEBUG, "push failure", JSON.stringify({
       status: res.status,
       statusText: res.statusText,
       body_preview: text?.slice(0, 200) ?? null,
@@ -88,7 +89,7 @@ export async function sendWebPush(
     return false;
   }).catch((err) => {
     const errorMessage = err instanceof Error ? err.message : String(err);
-    console.log(PUSH_DEBUG, "push failure", JSON.stringify({
+    devLog(PUSH_DEBUG, "push failure", JSON.stringify({
       error_message: errorMessage,
       endpoint_preview: subscription.endpoint?.slice(0, 60) ?? null,
     }));

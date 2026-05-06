@@ -5,6 +5,7 @@ import { formulaLinkedContains } from "@/lib/airtable-linked";
 import { listAllShifts, listShiftModelsForShifts } from "@/services/shifts";
 import { listAllWeeklyProgram } from "@/services/weekly-program";
 import { listAllWeeklyProgramVa } from "@/services/weekly-program-va";
+import { devLog } from "@/lib/dev-log";
 
 const esc = (s: string) => s.replace(/"/g, '""');
 
@@ -38,7 +39,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   const whaleFormula = formulaLinkedContains("assigned_chatter", userId);
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting notifications" });
+    devLog("[delete-user]", { userId, step: "deleting notifications" });
     const notifRecs = await listAllFromAirtable<{ id: string }>("notifications", { filterByFormula: userFormula });
     await deleteRecordsWithLogging(userId, "notifications", "notifications", notifRecs.map((r) => r.id));
   } catch (err) {
@@ -50,7 +51,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting notification preferences" });
+    devLog("[delete-user]", { userId, step: "deleting notification preferences" });
     const prefRecs = await listAllFromAirtable<{ id: string }>("notification_preferences", { filterByFormula: userFormula });
     await deleteRecordsWithLogging(userId, "notification_preferences", "notification_preferences", prefRecs.map((r) => r.id));
   } catch (err) {
@@ -62,7 +63,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting push subscriptions" });
+    devLog("[delete-user]", { userId, step: "deleting push subscriptions" });
     const pushRecs = await listAllFromAirtable<{ id: string }>("push_subscriptions", { filterByFormula: userFormula });
     await deleteRecordsWithLogging(userId, "push_subscriptions", "push_subscriptions", pushRecs.map((r) => r.id));
   } catch (err) {
@@ -74,7 +75,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting weekly availability requests" });
+    devLog("[delete-user]", { userId, step: "deleting weekly availability requests" });
     const availRecs = await listAllFromAirtable<{ id: string }>("weekly_availability_requests", { filterByFormula: chatterFormula });
     await deleteRecordsWithLogging(userId, "weekly_availability_requests", "weekly_availability_requests", availRecs.map((r) => r.id));
   } catch (err) {
@@ -86,7 +87,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting weekly program rows" });
+    devLog("[delete-user]", { userId, step: "deleting weekly program rows" });
     const progChatter = await listAllWeeklyProgram(chatterFormula);
     await deleteRecordsWithLogging(userId, "weekly_program", "weekly_program", progChatter.map((r) => r.id));
   } catch (err) {
@@ -98,7 +99,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting VA weekly program rows" });
+    devLog("[delete-user]", { userId, step: "deleting VA weekly program rows" });
     const progVa = await listAllWeeklyProgramVa(chatterFormula);
     await deleteRecordsWithLogging(userId, "weekly_program_va", "weekly_program_va", progVa.map((r) => r.id));
   } catch (err) {
@@ -110,12 +111,12 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "deleting shift_models for user shifts" });
+    devLog("[delete-user]", { userId, step: "deleting shift_models for user shifts" });
     const shifts = await listAllShifts(chatterFormula, "accounts-delete.listShiftsForUser");
     const shiftIds = shifts.map((s) => s.id);
     const shiftModels = await listShiftModelsForShifts(shiftIds);
     await deleteRecordsWithLogging(userId, "shift_models", "shift_models", shiftModels.map((m) => m.id));
-    console.log("[delete-user]", { userId, step: "deleting shifts" });
+    devLog("[delete-user]", { userId, step: "deleting shifts" });
     await deleteRecordsWithLogging(userId, "shifts", "shifts", shiftIds);
   } catch (err) {
     console.error("[delete-user]", {
@@ -126,7 +127,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "unlinking whales (assigned_chatter)" });
+    devLog("[delete-user]", { userId, step: "unlinking whales (assigned_chatter)" });
     const whales = await listAllFromAirtable<{ id: string }>("whales", { filterByFormula: whaleFormula });
     for (const r of whales) {
       try {
@@ -149,7 +150,7 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
   }
 
   try {
-    console.log("[delete-user]", { userId, step: "unlinking custom requests (requested_by_chatter)" });
+    devLog("[delete-user]", { userId, step: "unlinking custom requests (requested_by_chatter)" });
     const customs = await listAllFromAirtable<{ id: string }>("custom_requests", { filterByFormula: customRequestChatterFormula });
     for (const r of customs) {
       try {

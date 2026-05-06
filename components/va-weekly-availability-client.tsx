@@ -2,12 +2,26 @@
 
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { motion } from "framer-motion";
+import { Calendar, Clock, ListChecks, StickyNote } from "lucide-react";
 import { submitAvailabilityVaAction, updateAvailabilityVaAction } from "@/app/actions/weekly-availability-va";
-import { formatDateEuropean } from "@/lib/format";
 import { vaWeeklyAvailabilityUrl } from "@/lib/routes";
 import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
-import { Label, Select, Textarea, SubmitButton } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { cn } from "@/lib/utils";
 import type { WeeklyAvailabilityRequest, WeeklyProgramDay, WeeklyProgramShiftType, WeeklyAvailabilityEntryType } from "@/types";
+
+const selectOptionClass = "bg-[#1a1a1a] text-white";
+
+const fieldMotion = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
+} as const;
 
 function isoTimeToHHmm(iso: string | undefined): string {
   if (!iso || iso.length < 16) return "";
@@ -143,7 +157,32 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
 
   const daysWithSubmission = React.useMemo(() => new Set(requests.map((r) => r.day)), [requests]);
 
+  const dayOptionsAvailable = React.useMemo(
+    () => DAYS.filter((d) => editingRequest != null || !daysWithSubmission.has(d)).map((d) => ({ value: d, label: d })),
+    [editingRequest, daysWithSubmission]
+  );
+
+  React.useEffect(() => {
+    if (editingRequest) return;
+    if (dayOptionsAvailable.length === 0) return;
+    if (!dayOptionsAvailable.some((o) => o.value === day)) {
+      setDay(dayOptionsAvailable[0]!.value as WeeklyProgramDay);
+    }
+  }, [day, dayOptionsAvailable, editingRequest]);
+
+  const entryTypeOptions = [
+    { value: "availability", label: "Availability" },
+    { value: "day_off", label: "Day off" },
+  ];
+
+  const shiftOptions = [
+    { value: "Morning", label: "Morning (12:00–20:00)" },
+    { value: "Night", label: "Night (20:00–03:00)" },
+    { value: "Custom", label: "Custom" },
+  ];
+
   return (
+    <>
     <div className="space-y-8">
       <div
         className="rounded-2xl border border-white/10 bg-black/40 px-6 py-5 backdrop-blur-xl"
@@ -190,87 +229,153 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
               {editingRequest ? "Edit availability" : "Add availability"}
             </h2>
           </div>
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            <div>
-              <Label>Entry type</Label>
-              <Select value={entryType} onChange={(e) => setEntryType(e.target.value as WeeklyAvailabilityEntryType)} className="mt-1">
-                <option value="availability">Availability</option>
-                <option value="day_off">Day off</option>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <Label>Day</Label>
-                {editingRequest ? (
-                  <p className="mt-1 rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white/90">{day}</p>
-                ) : (
-                  <Select value={day} onChange={(e) => setDay(e.target.value as WeeklyProgramDay)} className="mt-1">
-                    {DAYS.map((d) => (
-                      <option key={d} value={d} disabled={daysWithSubmission.has(d)}>
-                        {d}{daysWithSubmission.has(d) ? " (already submitted)" : ""}
-                      </option>
-                    ))}
-                  </Select>
-                )}
-              </div>
+          <form onSubmit={handleSubmit} className="weekly-availability-page mt-4 space-y-4">
+            <motion.div {...fieldMotion}>
+              <FormField label="Entry type" icon={<ListChecks />} htmlFor="va-avail-entry-type">
+                <FormSelect
+                  id="va-avail-entry-type"
+                  value={entryType}
+                  onChange={(e) => setEntryType(e.target.value as WeeklyAvailabilityEntryType)}
+                >
+                  {entryTypeOptions.map((o) => (
+                    <option key={o.value} value={o.value} className={selectOptionClass}>
+                      {o.label}
+                    </option>
+                  ))}
+                </FormSelect>
+              </FormField>
+            </motion.div>
+            <div className={cn("grid grid-cols-1 gap-4", entryType === "availability" && "sm:grid-cols-2")}>
+              <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.04 }}>
+                <FormField
+                  label="Day"
+                  icon={<Calendar />}
+                  htmlFor={
+                    editingRequest ? "va-avail-day" : dayOptionsAvailable.length > 0 ? "va-avail-day" : "va-avail-day-empty"
+                  }
+                  required={!editingRequest && dayOptionsAvailable.length > 0}
+                >
+                  {editingRequest ? (
+                    <FormInput
+                      id="va-avail-day"
+                      readOnly
+                      tabIndex={-1}
+                      value={day}
+                      className="cursor-default opacity-95"
+                      aria-readonly="true"
+                    />
+                  ) : dayOptionsAvailable.length > 0 ? (
+                    <FormSelect
+                      id="va-avail-day"
+                      value={
+                        dayOptionsAvailable.some((o) => o.value === day)
+                          ? day
+                          : (dayOptionsAvailable[0]?.value ?? "Monday")
+                      }
+                      onChange={(e) => setDay(e.target.value as WeeklyProgramDay)}
+                      required
+                    >
+                      {dayOptionsAvailable.map((o) => (
+                        <option key={o.value} value={o.value} className={selectOptionClass}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  ) : (
+                    <p
+                      id="va-avail-day-empty"
+                      className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/55"
+                    >
+                      You’ve already submitted for every day this week.
+                    </p>
+                  )}
+                </FormField>
+              </motion.div>
               {entryType === "availability" && (
-                <div>
-                  <Label>Shift type</Label>
-                  <Select value={shiftType} onChange={(e) => setShiftType(e.target.value as WeeklyProgramShiftType)} className="mt-1">
-                    <option value="Morning">Morning (12:00–20:00)</option>
-                    <option value="Night">Night (20:00–03:00)</option>
-                    <option value="Custom">Custom</option>
-                  </Select>
-                </div>
+                <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.08 }}>
+                  <FormField label="Shift type" icon={<Clock />} htmlFor="va-avail-shift-type">
+                    <FormSelect
+                      id="va-avail-shift-type"
+                      value={shiftType}
+                      onChange={(e) => setShiftType(e.target.value as WeeklyProgramShiftType)}
+                    >
+                      {shiftOptions.map((o) => (
+                        <option key={o.value} value={o.value} className={selectOptionClass}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </FormSelect>
+                  </FormField>
+                </motion.div>
               )}
             </div>
             {entryType === "availability" && shiftType === "Custom" && (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Start time <span className="text-red-400">*</span></Label>
-                    <input
-                      type="time"
-                      value={customStart}
-                      onChange={(e) => setCustomStart(e.target.value)}
-                      className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white [color-scheme:dark]"
-                      aria-invalid={!customStart.trim()}
-                      aria-describedby={!customStart.trim() || !customEnd.trim() ? "custom-time-error-va" : undefined}
-                    />
-                  </div>
-                  <div>
-                    <Label>End time <span className="text-red-400">*</span></Label>
-                    <input
-                      type="time"
-                      value={customEnd}
-                      onChange={(e) => setCustomEnd(e.target.value)}
-                      className="mt-1 w-full rounded-2xl border border-white/10 bg-white/[0.06] px-4 py-3 text-[15px] text-white [color-scheme:dark]"
-                      aria-invalid={!customEnd.trim()}
-                      aria-describedby={!customStart.trim() || !customEnd.trim() ? "custom-time-error-va" : undefined}
-                    />
-                  </div>
-                </div>
-                {(!customStart.trim() || !customEnd.trim()) && (
-                  <p id="custom-time-error-va" className="text-sm text-amber-300" role="alert">
-                    Start and end time are required for Custom shift.
-                  </p>
-                )}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <FormField label="Start" icon={<Clock />} htmlFor="va-avail-custom-start" required>
+                  <FormInput
+                    id="va-avail-custom-start"
+                    type="time"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="weekly-avail-time-input"
+                    error={
+                      !customStart.trim() && entryType === "availability" && shiftType === "Custom"
+                        ? "Start time is required for a custom shift."
+                        : undefined
+                    }
+                  />
+                </FormField>
+                <FormField label="End" icon={<Clock />} htmlFor="va-avail-custom-end" required>
+                  <FormInput
+                    id="va-avail-custom-end"
+                    type="time"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="weekly-avail-time-input"
+                    error={
+                      !customEnd.trim() && entryType === "availability" && shiftType === "Custom"
+                        ? "End time is required for a custom shift."
+                        : undefined
+                    }
+                  />
+                </FormField>
               </div>
             )}
-            <div>
-              <Label>Notes (optional)</Label>
-              <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="e.g. prefer morning" className="mt-1" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <SubmitButton type="submit" disabled={submitting}>
+            <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.1 }}>
+              <FormField
+                label="Notes (optional)"
+                icon={<StickyNote />}
+                htmlFor="va-avail-notes"
+                description="Anything admins should know for the VA program."
+              >
+                <FormTextarea
+                  id="va-avail-notes"
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={3}
+                  placeholder="e.g. prefer morning"
+                />
+              </FormField>
+            </motion.div>
+            <motion.div className="flex flex-col gap-2 pt-1 sm:flex-row sm:items-stretch" layout>
+              <FormSubmitButton
+                disabled={submitting || (!editingRequest && dayOptionsAvailable.length === 0)}
+                loading={submitting}
+                className="sm:min-w-0 sm:flex-1"
+              >
                 {submitting ? "Saving…" : editingRequest ? "Save changes" : "Submit availability"}
-              </SubmitButton>
+              </FormSubmitButton>
               {editingRequest && (
-                <button type="button" onClick={handleCancelEdit} className="rounded-2xl border border-white/15 bg-white/5 px-5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 transition-colors">
+                <motion.button
+                  type="button"
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleCancelEdit}
+                  className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/10 sm:self-stretch"
+                >
                   Cancel
-                </button>
+                </motion.button>
               )}
-            </div>
+            </motion.div>
           </form>
         </div>
 
@@ -330,5 +435,16 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
         </div>
       </div>
     </div>
+      <style jsx global>{`
+        .weekly-availability-page .weekly-avail-time-input {
+          accent-color: rgb(236 72 153);
+          color-scheme: dark;
+        }
+        .weekly-availability-page .weekly-avail-time-input::-webkit-calendar-picker-indicator {
+          filter: invert(0.85) sepia(1) saturate(5) hue-rotate(280deg) opacity(0.85);
+          cursor: pointer;
+        }
+      `}</style>
+  </>
   );
 }

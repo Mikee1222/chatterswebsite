@@ -9,6 +9,7 @@ import {
   updatePushSubscription,
 } from "@/services/push-subscriptions";
 import type { UserRole } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 type SubscribeBody = {
   endpoint: string;
@@ -23,12 +24,12 @@ export async function POST(request: Request) {
   }
   const userId = getNotificationUserId(user);
   const session = user;
-  console.log("[push-subscribe-debug]", {
+  devLog("[push-subscribe-debug]", {
     session_user_id: (session as { userId?: string }).userId ?? session.id,
     airtable_user_id: session.airtableUserId,
     notification_user_id: getNotificationUserId(session),
   });
-  console.log(AUTH_DEBUG, "push-subscribe", JSON.stringify({
+  devLog(AUTH_DEBUG, "push-subscribe", JSON.stringify({
     resolved_session_user_id: user.id,
     resolved_airtable_user_id: user.airtableUserId ?? null,
     user_id_used_when_saving_push_subscriptions: userId ?? null,
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
         auth: keys.auth,
         role: role ?? undefined,
       });
-      console.log("[push/subscribe] Airtable save success (updated existing)", existing.id);
+      devLog("[push/subscribe] Airtable save success (updated existing)", existing.id);
       return NextResponse.json({ success: true });
     }
 
@@ -74,7 +75,7 @@ export async function POST(request: Request) {
       auth: keys.auth,
       role: role ?? undefined,
     });
-    console.log("[push/subscribe] Airtable save success (created new)");
+    devLog("[push/subscribe] Airtable save success (created new)");
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error("[push/subscribe] Airtable save failure", err);

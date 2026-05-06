@@ -4,6 +4,16 @@ import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
+
+/** Next.js redirect() throws; re-throw so redirect can complete. */
+function isRedirectError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    String((err as { digest?: string }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
 import {
   getPreferencesByUserId,
   createDefaultPreferencesForUser,
@@ -22,37 +32,48 @@ export async function getMyNotificationPreferences(): Promise<NotificationPrefer
   return prefs;
 }
 
-export async function updateMyNotificationPreferences(formData: FormData) {
-  const user = await getSessionFromCookies();
-  if (!user) redirect(ROUTES.login);
-  const userId = user.airtableUserId ?? user.id;
-  let prefs = await getPreferencesByUserId(userId);
-  if (!prefs) prefs = await createDefaultPreferencesForUser(userId);
+export type UpdateNotificationPreferencesResult = { ok: true } | { ok: false; error: string };
 
-  const push_enabled = formData.get("push_enabled") === "on";
-  const in_app_enabled = formData.get("in_app_enabled") === "on";
-  const critical_only = formData.get("critical_only") === "on";
-  const whale_alerts = formData.get("whale_alerts") === "on";
-  const shift_alerts = formData.get("shift_alerts") === "on";
-  const model_alerts = formData.get("model_alerts") === "on";
-  const system_alerts = formData.get("system_alerts") === "on";
-  const task_alerts = formData.get("task_alerts") === "on";
-  const mute_all = formData.get("mute_all") === "on";
-  const quiet_hours_start = (formData.get("quiet_hours_start") as string)?.trim() ?? "";
-  const quiet_hours_end = (formData.get("quiet_hours_end") as string)?.trim() ?? "";
+export async function updateMyNotificationPreferences(
+  formData: FormData
+): Promise<UpdateNotificationPreferencesResult> {
+  try {
+    const user = await getSessionFromCookies();
+    if (!user) redirect(ROUTES.login);
+    const userId = user.airtableUserId ?? user.id;
+    let prefs = await getPreferencesByUserId(userId);
+    if (!prefs) prefs = await createDefaultPreferencesForUser(userId);
 
-  await updateNotificationPreference(prefs.id, {
-    push_enabled,
-    in_app_enabled,
-    critical_only,
-    whale_alerts,
-    shift_alerts,
-    model_alerts,
-    system_alerts,
-    task_alerts,
-    mute_all,
-    quiet_hours_start,
-    quiet_hours_end,
-  });
-  revalidatePath(ROUTES.settings);
+    const push_enabled = formData.get("push_enabled") === "on";
+    const in_app_enabled = formData.get("in_app_enabled") === "on";
+    const critical_only = formData.get("critical_only") === "on";
+    const whale_alerts = formData.get("whale_alerts") === "on";
+    const shift_alerts = formData.get("shift_alerts") === "on";
+    const model_alerts = formData.get("model_alerts") === "on";
+    const system_alerts = formData.get("system_alerts") === "on";
+    const task_alerts = formData.get("task_alerts") === "on";
+    const mute_all = formData.get("mute_all") === "on";
+    const quiet_hours_start = (formData.get("quiet_hours_start") as string)?.trim() ?? "";
+    const quiet_hours_end = (formData.get("quiet_hours_end") as string)?.trim() ?? "";
+
+    await updateNotificationPreference(prefs.id, {
+      push_enabled,
+      in_app_enabled,
+      critical_only,
+      whale_alerts,
+      shift_alerts,
+      model_alerts,
+      system_alerts,
+      task_alerts,
+      mute_all,
+      quiet_hours_start,
+      quiet_hours_end,
+    });
+    revalidatePath(ROUTES.settings);
+    return { ok: true };
+  } catch (e) {
+    if (isRedirectError(e)) throw e;
+    const msg = e instanceof Error ? e.message : "Something went wrong while saving.";
+    return { ok: false, error: msg };
+  }
 }

@@ -5,7 +5,18 @@
  */
 
 export const AUTH_COOKIE_NAME = "chatter_session";
-export const SESSION_MAX_AGE_SEC = 60 * 60 * 24 * 7; // 7 days
+
+/** "Remember me" checked: JWT and optional cookie max-age (30 days). */
+export const SESSION_REMEMBER_MAX_AGE_SEC = 60 * 60 * 24 * 30;
+
+/**
+ * "Remember me" unchecked: JWT lifetime for an open browser session.
+ * Cookie is set **without** `maxAge` so it is a browser session cookie (cleared when the browser app closes).
+ */
+export const SESSION_EPHEMERAL_JWT_MAX_AGE_SEC = 60 * 60 * 24; // 24 hours
+
+/** @deprecated Prefer SESSION_REMEMBER_MAX_AGE_SEC or SESSION_EPHEMERAL_JWT_MAX_AGE_SEC */
+export const SESSION_MAX_AGE_SEC = SESSION_REMEMBER_MAX_AGE_SEC;
 
 const DEV_FALLBACK_SECRET = "chatter-dev-session-secret-min-32-chars";
 

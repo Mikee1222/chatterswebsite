@@ -1,19 +1,25 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Calendar, CalendarDays, Clock, Layers, Loader2, Moon, Search, StickyNote, Sun, UserRound } from "lucide-react";
 import {
   createProgramAction,
   updateProgramAction,
   deleteProgramAction,
 } from "@/app/actions/weekly-program";
 import { formatTimeEuropean, formatDateEuropean, formatDateTimeEuropean, formatTimeFromISO, isoToEuropeanDisplay, parseEuropeanDateInput } from "@/lib/format";
-import { GlassModal, Input, Label, Textarea, Checkbox, SubmitButton, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { GlassModal, Checkbox, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { CustomSelect, CUSTOM_SELECT_HOUR_12_OPTIONS, type CustomSelectOption } from "@/components/ui/custom-select";
 import { adminWeeklyProgramUrl, adminWeeklyProgramVaUrl } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import { getTimesForShiftType, buildCustomShiftTimes, getThisWeekMonday, addDays, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
 import { getWeeklyProgramConflicts } from "@/lib/weekly-program-conflicts";
 import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/lib/weekly-program-conflicts";
@@ -21,11 +27,18 @@ import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } fr
 import type { ModelRecord } from "@/types";
 import type { WeeklyAvailabilityRequest } from "@/types";
 import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
+import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/admin-list-primitives";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
   if (!startIso || !endIso) return "—";
   return `${formatTimeFromISO(startIso)}–${formatTimeFromISO(endIso)}`;
+}
+
+function shiftCardAccentClass(shiftType: WeeklyProgramShiftType): string {
+  if (shiftType === "Morning") return "border-l-[3px] border-l-amber-400/55";
+  if (shiftType === "Night") return "border-l-[3px] border-l-indigo-400/55";
+  return "border-l-[3px] border-l-pink-400/55";
 }
 
 /** Duration in hours between two ISO timestamps (supports overnight). */
@@ -276,21 +289,10 @@ function ModelCoverageTableCell({ cell }: { cell: CoverageCell }) {
         : "No coverage";
   const flexCls = chips.length > 2 ? "flex flex-col gap-1" : "flex flex-wrap gap-1";
   return (
-    <td className="min-w-[120px] px-2 py-1.5 text-center align-top" title={title}>
-      <div className={flexCls}>
+    <td className="min-w-[120px] border-l border-white/[0.04] px-2 py-2 text-center align-top" title={title}>
+      <div className={cn(flexCls, "justify-center")}>
         {chips.map((c, i) => (
-          <span
-            key={i}
-            className={
-              c.tone === "covered"
-                ? "rounded-lg bg-green-500/20 px-2 py-1 text-xs font-medium text-green-400"
-                : c.tone === "gap"
-                  ? "rounded-lg bg-yellow-500/20 px-2 py-1 text-xs font-medium text-yellow-400"
-                  : "rounded-lg bg-red-500/20 px-2 py-1 text-xs font-medium text-red-400"
-            }
-          >
-            {c.text}
-          </span>
+          <CoverageSlotChip key={i} tone={c.tone} text={c.text} />
         ))}
       </div>
     </td>
@@ -402,7 +404,7 @@ function buildClientCoverageBoard(
           models: p.model_ids,
           range: p.start_time && p.end_time ? formatTimeRange(p.start_time, p.end_time) : "—",
         }));
-        console.log("[coverage]", {
+        devLog("[coverage]", {
           day,
           shiftType: "Morning",
           modelName: idToName[m.id] ?? m.id,
@@ -410,7 +412,7 @@ function buildClientCoverageBoard(
           coverageTier: metaM.tier,
           gapHint: metaM.gapHint,
         });
-        console.log("[coverage]", {
+        devLog("[coverage]", {
           day,
           shiftType: "Night",
           modelName: idToName[m.id] ?? m.id,
@@ -562,7 +564,7 @@ function CustomTime12hBlock({
   onChange,
   ariaInvalid,
 }: {
-  label: React.ReactNode;
+  label: string;
   required?: boolean;
   value: string;
   onChange: (next: string) => void;
@@ -574,12 +576,8 @@ function CustomTime12hBlock({
     onChange(hhmm12To24(next.h12, next.minute, next.pm));
   };
   return (
-    <div>
-      <Label>
-        {label}
-        {required ? <span className="text-red-400"> *</span> : null}
-      </Label>
-      <div className="mt-1 flex flex-wrap items-center gap-2">
+    <FormField label={label} icon={<Clock />} required={required}>
+      <div className="flex flex-wrap items-center gap-2">
         <CustomSelect
           value={String(h12)}
           onChange={(v) => sync({ h12: Number(v) })}
@@ -588,7 +586,7 @@ function CustomTime12hBlock({
           aria-invalid={ariaInvalid}
         />
         <span className="text-white/50">:</span>
-        <Input
+        <FormInput
           type="number"
           min={0}
           max={59}
@@ -598,7 +596,7 @@ function CustomTime12hBlock({
             const v = parseInt(e.target.value, 10);
             sync({ minute: Number.isNaN(v) ? 0 : Math.min(59, Math.max(0, v)) });
           }}
-          className="mt-0 w-[4.25rem] shrink-0 px-2 py-2 text-center text-[15px] md:min-h-0"
+          className="!min-h-[44px] w-[4.25rem] shrink-0 px-2 py-2 text-center text-[15px] md:!min-h-0"
           aria-invalid={ariaInvalid}
         />
         <button
@@ -611,7 +609,7 @@ function CustomTime12hBlock({
           {pm ? "PM" : "AM"}
         </button>
       </div>
-    </div>
+    </FormField>
   );
 }
 
@@ -721,7 +719,7 @@ export function AdminWeeklyProgramClient({
 
   React.useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
-      console.log("[admin weekly-program] availability helper panel", {
+      devLog("[admin weekly-program] availability helper panel", {
         selected_week_start: effectiveWeekStart,
         fetched_weekly_availability_requests_count: Array.isArray(availabilityRequests) ? availabilityRequests.length : 0,
         filtered_count_after_helper_filters: filteredAvailabilityRequests.length,
@@ -772,7 +770,7 @@ export function AdminWeeklyProgramClient({
 
   React.useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
-      console.log("[admin weekly-program client] render", {
+      devLog("[admin weekly-program client] render", {
         selected_week_start: effectiveWeekStart,
         programs_count: programs.length,
         filtered_count: filtered.length,
@@ -1173,24 +1171,37 @@ export function AdminWeeklyProgramClient({
       <section className="space-y-4">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-white/60">Model coverage</h2>
         <div className="grid gap-6 lg:grid-cols-2">
-          <div className="glass-card overflow-hidden">
-            <div className="border-b border-white/10 bg-black/40 px-4 py-3">
-              <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">Morning</p>
+          <div className="glass-card overflow-hidden shadow-[inset_0_0_0_1px_rgba(251,191,36,0.08)]">
+            <div className="flex items-center gap-2 border-b border-amber-500/15 bg-gradient-to-r from-amber-500/10 to-transparent px-4 py-3">
+              <Sun className="h-4 w-4 text-amber-300/90" aria-hidden />
+              <p className="text-sm font-semibold uppercase tracking-wider text-amber-100/95">Morning</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[400px] text-sm">
                 <thead>
-                  <tr className="border-b border-white/10">
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-white/50">Model</th>
+                  <tr className="border-b border-white/10 bg-black/35">
+                    <th className="sticky left-0 z-[1] bg-[#0c0c0c] px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-white/50 shadow-[1px_0_0_rgba(255,255,255,0.06)]">
+                      Model
+                    </th>
                     {resolvedCoverageBoard.days.map((d) => (
-                      <th key={d} className="min-w-[120px] px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white/50">{d.slice(0, 3)}</th>
+                      <th key={d} className="min-w-[120px] px-2 py-2.5 text-center text-xs font-medium uppercase tracking-wider text-white/50">
+                        {d.slice(0, 3)}
+                      </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/[0.05]">
                   {resolvedCoverageBoard.morning.map((row, idx) => (
-                    <tr key={resolvedCoverageBoard.modelNames[idx]} className="border-b border-white/5">
-                      <td className="px-3 py-2 font-medium text-white/90">{resolvedCoverageBoard.modelNames[idx]}</td>
+                    <tr
+                      key={resolvedCoverageBoard.modelNames[idx]}
+                      className="transition-[background-color,box-shadow] duration-150 ease-out hover:bg-amber-500/[0.04]"
+                    >
+                      <td className="sticky left-0 z-[1] bg-[#0a0a0a]/95 px-3 py-2.5 font-medium text-white/90 shadow-[1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-sm">
+                        <span className="flex items-center gap-2.5">
+                          <AdminRowAvatar name={resolvedCoverageBoard.modelNames[idx] ?? "?"} size="sm" />
+                          <span className="truncate">{resolvedCoverageBoard.modelNames[idx]}</span>
+                        </span>
+                      </td>
                       {row.map((cell) => (
                         <ModelCoverageTableCell key={cell.day} cell={cell} />
                       ))}
@@ -1200,24 +1211,37 @@ export function AdminWeeklyProgramClient({
               </table>
             </div>
           </div>
-          <div className="glass-card overflow-hidden">
-            <div className="border-b border-white/10 bg-black/40 px-4 py-3">
-              <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">Night</p>
+          <div className="glass-card overflow-hidden shadow-[inset_0_0_0_1px_rgba(129,140,248,0.12)]">
+            <div className="flex items-center gap-2 border-b border-indigo-500/15 bg-gradient-to-r from-indigo-500/12 to-transparent px-4 py-3">
+              <Moon className="h-4 w-4 text-indigo-300/90" aria-hidden />
+              <p className="text-sm font-semibold uppercase tracking-wider text-indigo-100/95">Night</p>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[400px] text-sm">
                 <thead>
-                  <tr className="border-b border-white/10">
-                    <th className="px-3 py-2 text-left text-xs font-medium uppercase tracking-wider text-white/50">Model</th>
+                  <tr className="border-b border-white/10 bg-black/35">
+                    <th className="sticky left-0 z-[1] bg-[#0c0c0c] px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-white/50 shadow-[1px_0_0_rgba(255,255,255,0.06)]">
+                      Model
+                    </th>
                     {resolvedCoverageBoard.days.map((d) => (
-                      <th key={d} className="min-w-[120px] px-2 py-2 text-center text-xs font-medium uppercase tracking-wider text-white/50">{d.slice(0, 3)}</th>
+                      <th key={d} className="min-w-[120px] px-2 py-2.5 text-center text-xs font-medium uppercase tracking-wider text-white/50">
+                        {d.slice(0, 3)}
+                      </th>
                     ))}
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-white/[0.05]">
                   {resolvedCoverageBoard.night.map((row, idx) => (
-                    <tr key={resolvedCoverageBoard.modelNames[idx]} className="border-b border-white/5">
-                      <td className="px-3 py-2 font-medium text-white/90">{resolvedCoverageBoard.modelNames[idx]}</td>
+                    <tr
+                      key={resolvedCoverageBoard.modelNames[idx]}
+                      className="transition-[background-color,box-shadow] duration-150 ease-out hover:bg-indigo-500/[0.05]"
+                    >
+                      <td className="sticky left-0 z-[1] bg-[#0a0a0a]/95 px-3 py-2.5 font-medium text-white/90 shadow-[1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-sm">
+                        <span className="flex items-center gap-2.5">
+                          <AdminRowAvatar name={resolvedCoverageBoard.modelNames[idx] ?? "?"} size="sm" />
+                          <span className="truncate">{resolvedCoverageBoard.modelNames[idx]}</span>
+                        </span>
+                      </td>
                       {row.map((cell) => (
                         <ModelCoverageTableCell key={cell.day} cell={cell} />
                       ))}
@@ -1271,8 +1295,17 @@ export function AdminWeeklyProgramClient({
                     entries.map((e) => {
                       const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
                       return (
-                        <div key={e.id} className="rounded-xl border border-white/10 bg-white/[0.06] p-4">
-                          <p className="text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
+                        <div
+                          key={e.id}
+                          className={cn(
+                            "rounded-xl border border-white/10 bg-white/[0.06] p-4 pl-3.5",
+                            shiftCardAccentClass(e.shift_type)
+                          )}
+                        >
+                          <div className="flex flex-wrap items-center gap-2">
+                            <ShiftTypeBadge shiftType={e.shift_type} />
+                          </div>
+                          <p className="mt-2 text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
                             <span className="text-white/50">Models:</span>
                             {e.model_ids.length ? (
@@ -1349,15 +1382,18 @@ export function AdminWeeklyProgramClient({
                         return (
                           <div
                             key={e.id}
-                            className={`rounded-xl border transition-all hover:border-white/20 ${
+                            className={cn(
+                              "rounded-xl border pl-3.5 transition-all hover:border-white/20",
+                              shiftCardAccentClass(e.shift_type),
                               hasConflict
                                 ? "border-amber-500/40 bg-amber-500/5 ring-1 ring-amber-500/30"
                                 : "border-white/10 bg-white/[0.04] hover:bg-white/[0.06]"
-                            }`}
+                            )}
                           >
                             <div className="p-4">
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
+                                  <ShiftTypeBadge shiftType={e.shift_type} className="mb-2" />
                                   <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
                                   <p className="mt-1 font-medium text-white/95 truncate text-base">{e.chatter_name || "—"}</p>
                                   <div className="mt-1 min-w-0 text-sm text-white/65">
@@ -2016,30 +2052,30 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
             </div>
           </div>
         )}
-        <div>
-          <Label>Chatter</Label>
+        <FormField label="Chatter" icon={<UserRound />} htmlFor="wp-modal-chatter" required>
           <CustomSelect
+            id="wp-modal-chatter"
             required
             value={chatterId}
             onChange={setChatterId}
             options={chatterFormSelectOptions}
-            className="mt-1 w-full"
+            className="w-full"
           />
-        </div>
+        </FormField>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div>
-            <Label>Day</Label>
+          <FormField label="Day" icon={<CalendarDays />} htmlFor="wp-modal-day" required>
             <CustomSelect
+              id="wp-modal-day"
               required
               value={day}
               onChange={(v) => setDay(v as WeeklyProgramDay)}
               options={dayFormSelectOptions}
-              className="mt-1 w-full"
+              className="w-full"
             />
-          </div>
-          <div>
-            <Label>Shift type</Label>
+          </FormField>
+          <FormField label="Shift type" icon={<Layers />} htmlFor="wp-modal-shift-type" required>
             <CustomSelect
+              id="wp-modal-shift-type"
               required
               value={shiftType}
               onChange={(v) => {
@@ -2047,9 +2083,9 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
                 setCustomTimeError(null);
               }}
               options={shiftTypeFormSelectOptions}
-              className="mt-1 w-full"
+              className="w-full"
             />
-          </div>
+          </FormField>
         </div>
         <div
           className={`grid grid-cols-1 gap-4 overflow-hidden transition-all duration-300 ease-out sm:grid-cols-2 ${
@@ -2075,9 +2111,9 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         {customTimeError && (
           <p className="text-sm text-rose-300/95">{customTimeError}</p>
         )}
-        <div>
-          <Label>Week start</Label>
-          <Input
+        <FormField label="Week start" icon={<Calendar />} htmlFor="wp-modal-week-start" required>
+          <FormInput
+            id="wp-modal-week-start"
             type="text"
             inputMode="numeric"
             placeholder="dd/mm/yyyy"
@@ -2089,18 +2125,20 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
               if (iso) setWeekStartVal(iso);
               else setWeekStartDisplay(isoToEuropeanDisplay(weekStartVal));
             }}
-            className="mt-1 w-full"
           />
-        </div>
-        <div>
-          <Label>Assign models</Label>
-          <p className="mt-0.5 text-[11px] text-white/50">Taken models are disabled for this day/time.</p>
-          <Input
+        </FormField>
+        <FormField
+          label="Assign models"
+          icon={<Search />}
+          htmlFor="wp-modal-model-search"
+          description="Taken models are disabled for this day/time."
+        >
+          <FormInput
+            id="wp-modal-model-search"
             type="search"
             placeholder="Search models…"
             value={modelSearch}
             onChange={(e) => setModelSearch(e.target.value)}
-            className="mt-1.5 w-full"
           />
           <div className="mt-1.5 flex w-full items-center gap-0.5 rounded-lg border border-white/10 bg-white/[0.04] p-0.5">
             {(["all", "free", "taken"] as const).map((key) => (
@@ -2174,17 +2212,16 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
           {selectedModelIds.size > 0 && (
             <p className="mt-1.5 text-xs text-white/55">{selectedModelIds.size} model{selectedModelIds.size !== 1 ? "s" : ""} selected</p>
           )}
-        </div>
-        <div>
-          <Label>Notes</Label>
-          <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional" className="mt-1 w-full" />
-        </div>
+        </FormField>
+        <FormField label="Notes" icon={<StickyNote />} htmlFor="wp-modal-notes">
+          <FormTextarea id="wp-modal-notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Optional" />
+        </FormField>
         </div>
         <div className="sticky bottom-0 z-10 flex w-full flex-col gap-3 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur-xl md:flex-row md:justify-end md:border-t-0 md:bg-transparent md:px-5 md:py-0 md:pt-4 md:backdrop-blur-none" style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))", paddingLeft: "max(1rem, env(safe-area-inset-left))", paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
           <ButtonSecondary type="button" onClick={onClose} className="w-full md:w-auto">Cancel</ButtonSecondary>
-          <SubmitButton type="submit" disabled={saving} className="w-full md:w-auto">
+          <FormSubmitButton type="submit" disabled={saving} loading={saving} className="w-full md:w-auto md:min-w-[10rem]">
             {saving ? "Saving…" : isEdit ? "Update" : "Create"}
-          </SubmitButton>
+          </FormSubmitButton>
         </div>
       </form>
   );

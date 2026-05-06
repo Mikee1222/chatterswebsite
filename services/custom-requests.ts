@@ -46,6 +46,9 @@ type Fields = {
   admin_notes?: string;
   model_notes?: string;
   linked_schedule_item?: string | string[];
+  uploaded_at?: string;
+  uploaded_by_model?: boolean;
+  decline_reason?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -56,7 +59,8 @@ function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
     ? f.admin_status
     : "pending";
   const modelStatus = (f.model_status === "waiting_schedule" || f.model_status === "scheduled" ||
-    f.model_status === "in_progress" || f.model_status === "completed" || f.model_status === "declined")
+    f.model_status === "in_progress" || f.model_status === "completed" || f.model_status === "uploaded" ||
+    f.model_status === "declined")
     ? f.model_status
     : "waiting_schedule";
   const req: CustomRequest = {
@@ -78,7 +82,10 @@ function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
     model_scheduled_end: f.model_scheduled_end ?? null,
     admin_notes: f.admin_notes ?? "",
     model_notes: f.model_notes ?? "",
+    decline_reason: typeof f.decline_reason === "string" ? f.decline_reason : "",
     linked_schedule_item_id: firstLinkedId(f.linked_schedule_item) ?? null,
+    uploaded_at: (f.uploaded_at ?? "").trim() || null,
+    uploaded_by_model: Boolean(f.uploaded_by_model),
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
   };
@@ -101,6 +108,43 @@ export async function listCustomRequestsByModel(assignedModelRecordId: string): 
   });
   const matched = all.filter((rec) => firstLinkedId(rec.fields.assigned_model) === assignedModelRecordId);
   return matched.map((r) => mapRecord(r as AirtableRecord<Fields>));
+}
+
+/** Customs assigned to this model with agency acceptance (`admin_status === 'accepted'`). */
+export async function listApprovedCustomRequestsByModel(assignedModelRecordId: string): Promise<CustomRequest[]> {
+  const rows = await listCustomRequestsByModel(assignedModelRecordId);
+  return rows.filter((r) => r.admin_status === "accepted");
+}
+
+function customPrimaryDateKey(r: CustomRequest): string | null {
+  const sched = r.model_scheduled_date?.trim().slice(0, 10);
+  if (sched && /^\d{4}-\d{2}-\d{2}$/.test(sched)) return sched;
+  const dl = r.deadline_requested?.trim().slice(0, 10);
+  if (dl && /^\d{4}-\d{2}-\d{2}$/.test(dl)) return dl;
+  return r.created_at?.trim().slice(0, 10) ?? null;
+}
+
+/**
+ * Agency-approved customs (`admin_status === 'accepted'` in Airtable; product language “approved”)
+ * whose primary date (scheduled date, else deadline, else created) falls in [fromDate, toDate] inclusive.
+ */
+export async function listAcceptedCustomRequestsInDateRange(fromDate: string, toDate: string): Promise<CustomRequest[]> {
+  const all = await listAllRecords<Fields>(TABLE, {
+    sort: [{ field: "created_at", direction: "desc" }],
+  });
+  return all
+    .map((r) => mapRecord(r as AirtableRecord<Fields>))
+    .filter((r) => r.admin_status === "accepted")
+    .filter((r) => {
+      const d = customPrimaryDateKey(r);
+      return d != null && d >= fromDate && d <= toDate;
+    });
+}
+
+/** Accepted customs still waiting for the model to schedule (`waiting_schedule`). */
+export async function countApprovedCustomRequestsWaitingSchedule(assignedModelRecordId: string): Promise<number> {
+  const rows = await listApprovedCustomRequestsByModel(assignedModelRecordId);
+  return rows.filter((r) => r.model_status === "waiting_schedule").length;
 }
 
 /** List custom requests by chatter (requested_by_chatter link). */
@@ -169,6 +213,15 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
     actor_name: fields.chatter_name,
   }).catch((e) => console.error("[notify] custom_request_created failed", e));
 
+  const { notifyActiveVirtualAssistantsCustomCreated } = await import("@/services/custom-request-notify-vas");
+  await notifyActiveVirtualAssistantsCustomCreated({
+    chatter_name: fields.chatter_name ?? "",
+    request_title,
+    model_name: fields.model_name ?? "",
+    fan_username: fields.fan_username,
+    entity_id: request.id,
+  }).catch((e) => console.error("[notify] VA custom_request_created failed", e));
+
   const { broadcastRealtimeToAll } = await import("@/lib/realtime-broadcast");
   await broadcastRealtimeToAll({ type: "custom_request_created", custom_request_id: request.id }).catch(() => {});
 
@@ -180,6 +233,24 @@ export async function listAllCustomRequests(): Promise<CustomRequest[]> {
     sort: [{ field: "created_at", direction: "desc" }],
   });
   return records.map((r) => mapRecord(r as AirtableRecord<Fields>));
+}
+
+/** Admin queue: `admin_status` pending only (Airtable value is `pending`, not `declined`). */
+export async function listAdminPendingCustomRequests(): Promise<CustomRequest[]> {
+  const records = await listAllRecords<Fields>(TABLE, {
+    filterByFormula: `{admin_status} = "pending"`,
+    sort: [{ field: "created_at", direction: "desc" }],
+  });
+  return records.map((r) => mapRecord(r as AirtableRecord<Fields>));
+}
+
+/** Partial update for admin edit / decline fields (sanitized via updateRecord). */
+export async function patchCustomRequestRecord(
+  recordId: string,
+  fields: Partial<Pick<Fields, "request_details" | "price" | "deadline_requested" | "admin_status" | "decline_reason">>
+): Promise<CustomRequest> {
+  const rec = await updateRecord<Fields>(TABLE, recordId, fields);
+  return mapRecord(rec as AirtableRecord<Fields>);
 }
 
 /** Update admin_status (admin accept/reject). */
@@ -201,6 +272,8 @@ export async function updateCustomRequestModelSchedule(
     model_scheduled_end?: string | null;
     model_notes?: string;
     linked_schedule_item_id?: string | null;
+    uploaded_at?: string | null;
+    uploaded_by_model?: boolean;
   }
 ): Promise<CustomRequest> {
   const prev = await getCustomRequestById(recordId);
@@ -219,21 +292,30 @@ export async function updateCustomRequestModelSchedule(
   if (input.linked_schedule_item_id !== undefined) {
     fields.linked_schedule_item = input.linked_schedule_item_id ? [input.linked_schedule_item_id] : [];
   }
+  if (input.uploaded_at !== undefined) {
+    fields.uploaded_at = input.uploaded_at?.trim() ? input.uploaded_at.trim() : "";
+  }
+  if (input.uploaded_by_model !== undefined) {
+    fields.uploaded_by_model = input.uploaded_by_model;
+  }
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   const updated = mapRecord(rec as AirtableRecord<Fields>);
-  if (
-    input.model_status === "completed" &&
+  const becameDelivered =
+    (input.model_status === "completed" || input.model_status === "uploaded") &&
     prev &&
     prev.model_status !== "completed" &&
-    updated.requested_by_chatter_id
-  ) {
+    prev.model_status !== "uploaded" &&
+    updated.requested_by_chatter_id;
+  if (becameDelivered) {
+    const reason =
+      input.model_status === "uploaded" ? "Custom request uploaded" : "Custom request completed";
     setTimeout(() => {
       void getPointsConfig()
         .then((pointsConfig) =>
           awardPoints(
             updated.requested_by_chatter_id,
             pointsConfig.CUSTOM_COMPLETED,
-            "Custom request completed",
+            reason,
             "custom",
             recordId
           )
@@ -284,7 +366,7 @@ function customRequestRawTerminal(adminRaw: string, modelRaw: string): boolean {
   const a = String(adminRaw ?? "").toLowerCase().trim();
   const m = String(modelRaw ?? "").toLowerCase().trim();
   if (a === "rejected" || a === "accepted" || a === "approved" || a === "cancelled") return true;
-  if (m === "completed" || m === "declined") return true;
+  if (m === "completed" || m === "uploaded" || m === "declined") return true;
   return false;
 }
 

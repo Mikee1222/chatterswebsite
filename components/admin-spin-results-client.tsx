@@ -6,15 +6,7 @@ import { Loader2 } from "lucide-react";
 import { markSpinClaimedAction } from "@/app/actions/spin-wheel";
 import type { AdminSpinRow } from "@/services/spin-wheel";
 import { cn } from "@/lib/utils";
-
-function formatDate(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
-  return new Intl.DateTimeFormat(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(t);
-}
+import { formatDateTimeEuropean } from "@/lib/format";
 
 function isCashLike(row: AdminSpinRow): boolean {
   const t = row.prize_type.toLowerCase();
@@ -138,7 +130,9 @@ export function AdminSpinResultsClient({
                             ? row.prize_value.trim() || "—"
                             : "—"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-white/55">{formatDate(row.created_at)}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-white/55">
+                        {formatDateTimeEuropean(row.created_at)}
+                      </td>
                       <td className="px-4 py-3">
                         <span
                           className={cn(

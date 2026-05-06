@@ -14,6 +14,7 @@ import {
   getRequestsForWeek,
   countDayOffForWeek,
   updateWeeklyAvailabilityRequest,
+  deleteWeeklyAvailabilityRequest,
 } from "@/services/weekly-availability-requests";
 import { awardPoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
@@ -225,6 +226,38 @@ export async function updateAvailabilityAction(
       }),
       notes: fields.notes ?? "",
     });
+    revalidatePath(ROUTES.chatter.weeklyAvailability);
+    revalidatePath(ROUTES.admin.weeklyProgram);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
+  }
+}
+
+export type DeleteAvailabilityResult = { success: true } | { success: false; error: string };
+
+/** Chatter may delete their own request while it is still `submitted` (not yet used in a program). */
+export async function deleteAvailabilityAction(recordId: string): Promise<DeleteAvailabilityResult> {
+  const user = await getSessionFromCookies();
+  if (!user) return { success: false, error: "Not authenticated." };
+  if (user.role !== "chatter") return { success: false, error: "Only chatters can delete availability." };
+
+  const chatterId = user.airtableUserId ?? user.id;
+  const existing = await getWeeklyAvailabilityRequestById(recordId);
+  if (!existing) return { success: false, error: "Availability entry not found." };
+  if (existing.chatter_id !== chatterId) {
+    return { success: false, error: "You can only delete your own availability." };
+  }
+  if (existing.status !== "submitted") {
+    return {
+      success: false,
+      error: "Only pending submissions can be deleted. Contact an admin if this entry should change.",
+    };
+  }
+
+  try {
+    await deleteWeeklyAvailabilityRequest(recordId);
     revalidatePath(ROUTES.chatter.weeklyAvailability);
     revalidatePath(ROUTES.admin.weeklyProgram);
     return { success: true };

@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { listAllShifts } from "@/services/shifts";
 import { AdminShiftActivityClient } from "@/components/admin-shift-activity-client";
 import type { Shift } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 /** Week starts Monday; returns Monday 00:00 and Sunday 23:59:59 for the week containing d. */
 function weekBounds(d: Date): { start: Date; end: Date } {
@@ -115,7 +116,7 @@ export default async function AdminShiftActivityPage({
 
   if (process.env.NODE_ENV === "development") {
     // eslint-disable-next-line no-console
-    console.log("[shift-activity]", {
+    devLog("[shift-activity]", {
       range,
       from: params.from,
       to: params.to,

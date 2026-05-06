@@ -12,6 +12,7 @@ import { firstLinkedId, linkedRecordIds, snapshotText } from "@/lib/airtable-lin
 import { WEEKLY_PROGRAM_DAY_OPTIONS, WEEKLY_PROGRAM_SHIFT_TYPES, ensureMondayForQuery, airtableWeekStartToMonday } from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const TABLE = "weekly_program";
 
@@ -105,7 +106,7 @@ export async function getProgramsForWeek(weekStart: string): Promise<WeeklyProgr
         formula = weekStartFormula(fieldName, weekYmd);
         rawRecords = await listAllRecords<Fields>(TABLE, { filterByFormula: formula, _caller: "getProgramsForWeek_retry" });
         if (process.env.NODE_ENV !== "production") {
-          console.log("[getProgramsForWeek] retry with discovered week field", { fieldName, formula, count: rawRecords.length });
+          devLog("[getProgramsForWeek] retry with discovered week field", { fieldName, formula, count: rawRecords.length });
         }
       }
     }
@@ -117,7 +118,7 @@ export async function getProgramsForWeek(weekStart: string): Promise<WeeklyProgr
       const mapped = all.map((r) => mapRecord(r as AirtableRecord<Fields>));
       const forWeek = mapped.filter((p) => p.week_start === weekYmd);
       if (process.env.NODE_ENV !== "production" && forWeek.length > 0) {
-        console.log("[getProgramsForWeek] fetch-then-filter (DATESTR missed records)", {
+        devLog("[getProgramsForWeek] fetch-then-filter (DATESTR missed records)", {
           weekYmd,
           total_fetched: all.length,
           after_normalized_week_filter: forWeek.length,
@@ -132,7 +133,7 @@ export async function getProgramsForWeek(weekStart: string): Promise<WeeklyProgr
   }
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[getProgramsForWeek] query", {
+    devLog("[getProgramsForWeek] query", {
       week_start_queried: weekYmd,
       exact_formula: formula,
       total_records_fetched: rawRecords.length,
@@ -141,7 +142,7 @@ export async function getProgramsForWeek(weekStart: string): Promise<WeeklyProgr
     if (rawRecords.length > 0) {
       rawRecords.slice(0, 5).forEach((r, i) => {
         const f = r.fields as Record<string, unknown>;
-        console.log(`[getProgramsForWeek] raw record ${i + 1}`, {
+        devLog(`[getProgramsForWeek] raw record ${i + 1}`, {
           id: r.id,
           field_names: Object.keys(f),
           week_start: f.week_start ?? (f as Record<string, unknown>)["Week start"],
@@ -156,7 +157,7 @@ export async function getProgramsForWeek(weekStart: string): Promise<WeeklyProgr
       if (one?.fields) {
         const keys = Object.keys(one.fields);
         const weekLike = keys.filter((k) => /week|start|date/i.test(k));
-        console.log("[getProgramsForWeek] ZERO records – sample record (any week)", {
+        devLog("[getProgramsForWeek] ZERO records – sample record (any week)", {
           sample_record_id: one.id,
           all_field_names: keys,
           week_like_fields: weekLike,
@@ -221,7 +222,7 @@ export async function createWeeklyProgram(fields: CreateWeeklyProgramFields): Pr
   if (process.env.NODE_ENV !== "production") {
     const raw = rec.fields as Record<string, unknown>;
     const dateFromStart = typeof raw.start_time === "string" ? (raw.start_time as string).slice(0, 10) : "";
-    console.log("[weekly-program create] exact Airtable saved record", {
+    devLog("[weekly-program create] exact Airtable saved record", {
       airtable_record_id: rec.id,
       week_start: raw.week_start ?? raw["Week start"],
       date: dateFromStart,
@@ -239,7 +240,7 @@ export async function createWeeklyProgram(fields: CreateWeeklyProgramFields): Pr
     const refetched = await getRecord<Record<string, unknown>>(TABLE, rec.id).catch(() => null);
     if (refetched?.fields) {
       const f = refetched.fields as Record<string, unknown>;
-      console.log("[weekly-program create] refetched from Airtable (exact keys)", {
+      devLog("[weekly-program create] refetched from Airtable (exact keys)", {
         id: refetched.id,
         field_names: Object.keys(f),
         week_start_in_airtable: f.week_start ?? f["Week start"],

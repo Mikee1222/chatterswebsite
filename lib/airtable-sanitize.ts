@@ -9,7 +9,13 @@
 
 import { NOTIFICATIONS_TABLE } from "@/lib/notifications-schema";
 import { isTimeOnlyString } from "@/lib/airtable-datetime";
-import { MODEL_LIVE_STREAM_PLATFORM_OPTIONS, MODEL_TASK_TYPE_OPTIONS } from "@/lib/airtable-options";
+import {
+  MODEL_LIVE_STREAM_PLATFORM_OPTIONS,
+  MODEL_LIVE_STREAM_STATUS_OPTIONS,
+  MODEL_TASK_TYPE_OPTIONS,
+  TRANSACTION_CURRENCY_OPTIONS,
+  TRANSACTION_TYPES,
+} from "@/lib/airtable-options";
 
 /** Normalize field name for comparison: lowercase, spaces -> underscore. Airtable may use "Created At" or "created_at". */
 function normalizeFieldName(name: string): string {
@@ -34,6 +40,8 @@ const DATE_TIME_FIELD_NORMALIZED = new Set([
   "actual_start",
   "actual_end",
   "deadline_requested",
+  "deadline",
+  "scheduled_date",
   "date",
   "due_date",
   "completed_at",
@@ -130,8 +138,19 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
     "done",
     "skipped",
   ]),
-  model_status: new Set(["waiting_schedule", "scheduled", "in_progress", "completed", "declined"]),
-  item_type: new Set(["script", "mass_message", "live_stream", "custom", "content_shoot", "promo", "meeting", "rest", "other"]),
+  model_status: new Set(["waiting_schedule", "scheduled", "in_progress", "completed", "uploaded", "declined"]),
+  item_type: new Set([
+    "script",
+    "mass_message",
+    "live_stream",
+    "custom",
+    "content_shoot",
+    "promo",
+    "meeting",
+    "rest",
+    "time_off",
+    "other",
+  ]),
   custom_type: new Set([
     "video",
     "photo_set",
@@ -161,6 +180,7 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
 const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> = {
   model_live_streams: {
     platform: new Set(MODEL_LIVE_STREAM_PLATFORM_OPTIONS),
+    status: new Set([...MODEL_LIVE_STREAM_STATUS_OPTIONS]),
   },
   model_tasks: {
     type: new Set(MODEL_TASK_TYPE_OPTIONS),
@@ -200,6 +220,15 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   model_periods: {
     logged_by: new Set(["model", "admin", "va"]),
   },
+  va_content_assignments: {
+    status: new Set(["pending", "scheduled", "completed", "cancelled"]),
+    priority: new Set(["low", "normal", "high", "urgent"]),
+    content_type: new Set(["PDF", "Video Script", "Photo Guide", "Other"]),
+  },
+  whale_transactions: {
+    type: new Set(TRANSACTION_TYPES as unknown as string[]),
+    currency: new Set(TRANSACTION_CURRENCY_OPTIONS as unknown as string[]),
+  },
 };
 
 function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: string): Set<string> | null {
@@ -230,10 +259,12 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   weekly_availability_requests: new Set(["created_at"]),
   weekly_availability_requests_va: new Set(["created_at"]),
   weekly_availability_requests_models: new Set(["created_at"]),
+  model_time_off_requests: new Set(["created_at"]),
   staff_task_types: new Set(["created_at"]),
   monthly_targets: new Set(["created_at", "updated_at"]),
   va_tasks: new Set(["created_at"]),
   model_periods: new Set(["created_at"]),
+  va_content_assignments: new Set(["created_at", "updated_at"]),
   chatter_points: new Set(["created_at", "updated_at"]),
   points_transactions: new Set(["updated_at"]),
   challenges: new Set(["created_at", "updated_at"]),

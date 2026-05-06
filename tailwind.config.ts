@@ -8,6 +8,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      screens: {
+        xs: "375px",
+      },
       colors: {
         background: "hsl(0 0% 5%)",
         foreground: "hsl(0 0% 98%)",
@@ -44,6 +47,20 @@ const config: Config = {
         glass: "0 8px 32px 0 rgba(0,0,0,0.2)",
         "pink-glow": "0 0 20px -5px hsl(330 80% 55% / 0.4)",
         "pink-soft": "0 0 40px -10px hsl(330 80% 55% / 0.2)",
+      },
+      keyframes: {
+        "form-shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "15%": { transform: "translateX(-6px)" },
+          "30%": { transform: "translateX(6px)" },
+          "45%": { transform: "translateX(-4px)" },
+          "60%": { transform: "translateX(4px)" },
+          "75%": { transform: "translateX(-2px)" },
+          "90%": { transform: "translateX(2px)" },
+        },
+      },
+      animation: {
+        "form-shake": "form-shake 0.42s ease-in-out both",
       },
     },
   },

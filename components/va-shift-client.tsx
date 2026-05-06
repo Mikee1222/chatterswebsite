@@ -13,8 +13,10 @@ import {
 } from "@/app/actions/shift";
 import { ROUTES } from "@/lib/routes";
 import { formatTimeFromISO, formatDateTimeEuropean } from "@/lib/format";
-import { Input, FormError } from "@/components/ui/form";
-import { Loader2, RefreshCw } from "lucide-react";
+import { FormError } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { Loader2, RefreshCw, Search } from "lucide-react";
 import { motion } from "framer-motion";
 import { LiveTimer } from "@/components/live-timer";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
@@ -95,13 +97,16 @@ function VaAddModelModal({
             You can enter any model (even if a chatter is in it). Select one to add.
           </p>
           <div className="mt-3 md:mt-4">
-            <Input
-              type="search"
-              placeholder="Search by model or chatter…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="py-2.5 md:py-3"
-            />
+            <FormField label="Search models" icon={<Search />} htmlFor="va-add-model-search">
+              <FormInput
+                id="va-add-model-search"
+                type="search"
+                placeholder="Search by model or chatter…"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                autoComplete="off"
+              />
+            </FormField>
           </div>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-4 md:max-h-[50vh] md:flex-none">
@@ -213,13 +218,17 @@ function VaModelSelectModal({
                 You can select any model (including those with a chatter). Overlap is allowed for mistake-checking.
               </p>
               <div className="mt-3 md:mt-4">
-                <Input
-                  type="search"
-                  placeholder="Search by model or chatter…"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="min-h-[44px] py-2.5 md:py-3 text-base md:text-sm"
-                />
+                <FormField label="Search models" icon={<Search />} htmlFor="va-start-shift-model-search">
+                  <FormInput
+                    id="va-start-shift-model-search"
+                    type="search"
+                    placeholder="Search by model or chatter…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    autoComplete="off"
+                    className="text-base md:text-sm"
+                  />
+                </FormField>
               </div>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-4 md:max-h-[50vh] md:flex-none">
@@ -809,7 +818,7 @@ export function VaShiftClient({
       <div
         className="fixed left-0 right-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur-xl md:hidden"
         style={{
-          bottom: "calc(72px + env(safe-area-inset-bottom, 0px))",
+          bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
           boxShadow: "0 -4px 20px rgba(0,0,0,0.4)",
         }}
       >

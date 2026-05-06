@@ -45,6 +45,30 @@ export function getTodayYmdAthens(): string {
   return shiftedUtcDateToYmd(getNowInAthens());
 }
 
+function parseYmdParts(ymd: string): { y: number; m: number; d: number } | null {
+  const s = ymd.trim().slice(0, 10);
+  const parts = s.split("-").map((x) => Number.parseInt(x, 10));
+  if (parts.length !== 3 || parts.some((x) => Number.isNaN(x))) return null;
+  return { y: parts[0]!, m: parts[1]!, d: parts[2]! };
+}
+
+/**
+ * UTC epoch ms for Athens midnight on `ymd` (YYYY-MM-DD), using the same fixed UTC+3
+ * convention as `getTodayYmdAthens` (not full IANA timezone).
+ */
+export function athensYmdStartUtcMs(ymd: string): number {
+  const p = parseYmdParts(ymd);
+  if (!p) return Number.NaN;
+  return Date.UTC(p.y, p.m - 1, p.d, 0, 0, 0, 0) - ATHENS_OFFSET_MS;
+}
+
+/** UTC epoch ms for last ms of Athens wall day `ymd` (same +3 convention). */
+export function athensYmdEndUtcMs(ymd: string): number {
+  const p = parseYmdParts(ymd);
+  if (!p) return Number.NaN;
+  return Date.UTC(p.y, p.m - 1, p.d, 23, 59, 59, 999) - ATHENS_OFFSET_MS;
+}
+
 /** Monday YYYY-MM-DD of the week containing `ymd` (Athens +3 convention). */
 export function getMondayOfWeekFromYmdAthens(ymd: string): string {
   const s = ymd.trim().slice(0, 10);

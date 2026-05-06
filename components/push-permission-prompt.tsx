@@ -1,4 +1,5 @@
 "use client";
+import { devLog } from "@/lib/dev-log";
 
 import * as React from "react";
 import type { UserRole } from "@/types";
@@ -10,7 +11,7 @@ const DISMISS_RESHOW_DAYS = 7;
 
 function pushLog(...args: unknown[]) {
   if (process.env.NODE_ENV !== "production") {
-    console.log("[Push]", ...args);
+    devLog("[Push]", ...args);
   }
 }
 
@@ -401,7 +402,7 @@ function PromptCard({
     return (
       <div
         className="fixed left-0 right-0 z-[90] px-3 md:hidden"
-        style={{ bottom: "calc(72px + env(safe-area-inset-bottom, 0px))" }}
+        style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}
       >
         {card}
       </div>

@@ -4,6 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getWhalesByChatter } from "@/services/whales";
 import { listAllModelss } from "@/services/modelss";
+import { devLog } from "@/lib/dev-log";
 
 export default async function MyWhalesPage() {
   const user = await getSessionFromCookies();
@@ -20,7 +21,7 @@ export default async function MyWhalesPage() {
   }
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[my-whales page]", {
+    devLog("[my-whales page]", {
       currentUserEmail: user.email,
       internalUserId: user.id,
       airtableUserRecordId: user.airtableUserId ?? "(null)",

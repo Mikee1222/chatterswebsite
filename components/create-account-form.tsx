@@ -1,104 +1,147 @@
 "use client";
 
 import * as React from "react";
+import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import {
+  Headphones,
+  KeyRound,
+  Languages,
+  Link2,
+  Lock,
+  Mail,
+  StickyNote,
+  User,
+  Users,
+  UserCog,
+} from "lucide-react";
 import { createAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
 import type { UserRole } from "@/types";
-import {
-  Label,
-  Input,
-  Textarea,
-  Checkbox,
-  FormActions,
-  SubmitButton,
-  btnSecondaryClass,
-  formSpace,
-} from "@/components/ui/form";
-import { CustomSelect } from "@/components/ui/custom-select";
+import { Checkbox, btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
 
+function CreateAccountSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <FormSubmitButton className="w-full" loading={pending} disabled={pending}>
+      {pending ? "Creating…" : "Create user"}
+    </FormSubmitButton>
+  );
+}
+
 type Props = {
   modelOptions?: { id: string; model_name: string }[];
+  /** Pre-select role (e.g. from `/accounts/new?role=chatter`). */
+  defaultRole?: UserRole;
 };
 
-export function CreateAccountForm({ modelOptions = [] }: Props) {
-  const [role, setRole] = React.useState<UserRole>("chatter");
+export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
+  const [role, setRole] = React.useState<UserRole>(defaultRole ?? "chatter");
   const [linkedModelId, setLinkedModelId] = React.useState("");
   const [languagePreference, setLanguagePreference] = React.useState("en");
 
   return (
-    <form action={createAccount} className={formSpace}>
-      <div>
-        <Label htmlFor="full_name">Full name</Label>
-        <Input id="full_name" name="full_name" type="text" required placeholder="Jane Doe" />
-      </div>
-      <div>
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" required placeholder="jane@example.com" />
-      </div>
-      <div>
-        <Label htmlFor="role">Role</Label>
-        <CustomSelect
+    <form action={createAccount} className={`${formSpace} space-y-4`}>
+      <FormField label="Full name" icon={<User />} htmlFor="full_name" required staggerIndex={0}>
+        <FormInput id="full_name" name="full_name" type="text" required placeholder="Jane Doe" />
+      </FormField>
+      <FormField label="Email" icon={<Mail />} htmlFor="email" required staggerIndex={1}>
+        <FormInput id="email" name="email" type="email" required placeholder="jane@example.com" />
+      </FormField>
+      <FormField
+        label="Role"
+        icon={role === "virtual_assistant" ? <Headphones /> : role === "chatter" ? <Users /> : <UserCog />}
+        htmlFor="role"
+        required
+        staggerIndex={2}
+      >
+        <FormSelect
           id="role"
           name="role"
           value={role}
-          onChange={(v) => setRole(v as UserRole)}
-          options={ROLES.map((r) => ({ value: r, label: r.replace("_", " ") }))}
-        />
-      </div>
+          onChange={(e) => setRole(e.target.value as UserRole)}
+          required
+        >
+          {ROLES.map((r) => (
+            <option key={r} value={r} className={selectOptionClass}>
+              {r.replace("_", " ")}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
       {role === "model" && (
         <>
-          <div>
-            <Label htmlFor="linked_model_id">Linked model</Label>
-            <CustomSelect
+          <FormField label="Linked model" icon={<Link2 />} htmlFor="linked_model_id" required staggerIndex={3}>
+            <FormSelect
               id="linked_model_id"
               name="linked_model_id"
               value={linkedModelId}
-              onChange={setLinkedModelId}
-              options={[
-                { value: "", label: "Select model" },
-                ...modelOptions.map((m) => ({ value: m.id, label: m.model_name })),
-              ]}
-            />
-          </div>
-          <div>
-            <Label htmlFor="language_preference">Language</Label>
-            <CustomSelect
+              onChange={(e) => setLinkedModelId(e.target.value)}
+              required
+            >
+              <option value="" disabled className={selectOptionClass}>
+                Select model
+              </option>
+              {modelOptions.map((m) => (
+                <option key={m.id} value={m.id} className={selectOptionClass}>
+                  {m.model_name}
+                </option>
+              ))}
+            </FormSelect>
+          </FormField>
+          <FormField label="Language" icon={<Languages />} htmlFor="language_preference" staggerIndex={4}>
+            <FormSelect
               id="language_preference"
               name="language_preference"
               value={languagePreference}
-              onChange={setLanguagePreference}
-              options={[
-                { value: "en", label: "English" },
-                { value: "es", label: "Spanish" },
-              ]}
-            />
-          </div>
+              onChange={(e) => setLanguagePreference(e.target.value)}
+            >
+              <option value="en" className={selectOptionClass}>
+                English
+              </option>
+              <option value="es" className={selectOptionClass}>
+                Spanish
+              </option>
+            </FormSelect>
+          </FormField>
         </>
       )}
-      <div>
-        <Label htmlFor="password">Password (min 8 characters)</Label>
-        <Input
+      <FormField label="Password (min 8 characters)" icon={<Lock />} htmlFor="password" staggerIndex={5}>
+        <FormInput
           id="password"
           name="password"
           type="password"
           minLength={8}
           placeholder="••••••••"
         />
+      </FormField>
+      <FormField
+        label="Can log in"
+        icon={<KeyRound />}
+        htmlFor="can_login"
+        description="Uncheck to create the account without dashboard access."
+        staggerIndex={6}
+      >
+        <div className="flex justify-end pt-0.5">
+          <Checkbox id="can_login" name="can_login" defaultChecked />
+        </div>
+      </FormField>
+      <FormField label="Notes" icon={<StickyNote />} htmlFor="notes" description="Optional internal note." staggerIndex={7}>
+        <FormTextarea id="notes" name="notes" rows={3} placeholder="Optional" />
+      </FormField>
+      <div className="flex flex-col gap-3 pt-2">
+        <CreateAccountSubmit />
+        <Link href={ROUTES.accounts} className={`${btnSecondaryClass} flex min-h-[52px] w-full items-center justify-center`}>
+          Cancel
+        </Link>
       </div>
-      <div>
-        <Checkbox id="can_login" name="can_login" defaultChecked label="Can log in" />
-      </div>
-      <div>
-        <Label htmlFor="notes">Notes</Label>
-        <Textarea id="notes" name="notes" rows={2} placeholder="Optional" />
-      </div>
-      <FormActions>
-        <SubmitButton>Create user</SubmitButton>
-        <Link href={ROUTES.accounts} className={btnSecondaryClass}>Cancel</Link>
-      </FormActions>
     </form>
   );
 }

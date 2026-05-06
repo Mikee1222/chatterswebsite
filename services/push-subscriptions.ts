@@ -7,6 +7,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import type { PushSubscriptionRecord } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const TABLE = "push_subscriptions";
 
@@ -62,7 +63,7 @@ export async function getActiveSubscriptionsForUser(userId: string): Promise<Pus
       return (b.id ?? "").localeCompare(a.id ?? "");
     });
     const result = sorted.slice(0, 2);
-    console.log(
+    devLog(
       PUSH_DEBUG,
       "subscriptions found count",
       JSON.stringify({
@@ -75,7 +76,7 @@ export async function getActiveSubscriptionsForUser(userId: string): Promise<Pus
     );
     return result;
   } catch (err) {
-    console.log(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ stage: "getActiveSubscriptionsForUser", recipient_user_id: userId, error: err instanceof Error ? err.message : String(err) }));
+    devLog(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ stage: "getActiveSubscriptionsForUser", recipient_user_id: userId, error: err instanceof Error ? err.message : String(err) }));
     if (process.env.NODE_ENV !== "production") {
       console.warn("[push-subscriptions] getActiveSubscriptionsForUser failed", err);
     }

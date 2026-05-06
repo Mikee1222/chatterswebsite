@@ -3,7 +3,6 @@
 import { listShiftsOnBreak, updateShift } from "@/services/shifts";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { sendPushNotification } from "@/lib/push-notifications";
 
 /**
  * How far past `break_reminder_at` we still send a push. Must cover gaps between cron runs
@@ -45,24 +44,16 @@ export async function runCheckBreakReminders(): Promise<CheckBreakRemindersResul
 
     if (shift.chatter_id) {
       try {
-        console.log("[break-reminders] sending notification to", {
-          userId: shift.chatter_id,
-          shiftId: shift.id,
-          reminderAt: raw,
-        });
+        /** Use `shift_starting_soon` so category is `shift` (same push prefs as shift alerts); Airtable stores `system_alert`. */
         await notify({
           user_id: shift.chatter_id,
-          event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-          priority: NOTIFICATION_PRIORITY.NORMAL,
+          event_type: NOTIFICATION_EVENT.SHIFT_STARTING_SOON,
+          priority: NOTIFICATION_PRIORITY.HIGH,
           title: "⏰ Break reminder",
-          body: "Your break reminder! Time to get back to work.",
+          body: "Your break reminder — time to get back to work.",
           entity_type: NOTIFICATION_ENTITY.SHIFT,
-          entity_id: shift.id,
-        });
-        await sendPushNotification(shift.chatter_id, {
-          title: "Break reminder",
-          body: "Your break is ending soon. Ready to get back?",
-          data: { type: "break_reminder", shiftId: shift.id },
+          entity_id: `break_reminder:${shift.id}:${raw}`,
+          _triggerSource: "break_reminder_cron",
         });
         sent++;
       } catch (e) {

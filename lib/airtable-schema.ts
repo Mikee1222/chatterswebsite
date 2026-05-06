@@ -29,6 +29,7 @@ const API_SUPPORTED = new Set([
   "dateTime", "date", "checkbox", "singleSelect", "multipleRecordLinks",
   "email", "url", "phoneNumber", "rating", "duration", "barcode", "button",
   "count", "multipleLookupValues", "rollup", "multipleSelect", "attachment",
+  "multipleAttachments",
   "autoNumber", "lastModifiedBy", "createdBy", "button", "externalSyncSource",
 ]);
 
@@ -66,6 +67,13 @@ export const AIRTABLE_TABLES: TableDef[] = [
       { name: "quiet_hours_end", def: { type: "singleLineText" } },
       { name: "mute_all", def: { type: "checkbox" } },
       { name: "updated_at", def: { type: "lastModifiedTime" } },
+    ],
+  },
+  {
+    name: "earnings_config",
+    fields: [
+      { name: "model_id", def: { type: "singleLineText" } },
+      { name: "agency_cut_percent", def: { type: "number" } },
     ],
   },
 ];

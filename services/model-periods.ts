@@ -8,20 +8,27 @@ import {
 } from "@/lib/airtable-server";
 import { firstLinkedId, formulaLinkedContains } from "@/lib/airtable-linked";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
-import { updateModel } from "@/services/modelss";
+import { getModelById, updateModel } from "@/services/modelss";
 import type { ModelPeriodRecord, ModelRecord } from "@/types";
+import { devLog } from "@/lib/dev-log";
 
 const TABLE = "model_periods";
 
 type Fields = {
   start_date?: string;
   end_date?: string;
+  /** Link to modelss; legacy: `model_id` */
+  model?: string | string[];
   model_id?: string | string[];
   cycle_length_days?: number;
   period_length_days?: number;
   notes?: string;
   logged_by?: string;
   created_at?: string;
+  came_early?: boolean;
+  missed_period?: boolean;
+  predicted_next_date?: string | null;
+  tracking_enabled?: boolean;
 };
 
 function ymdOnly(value: unknown): string {
@@ -33,9 +40,12 @@ function ymdOnly(value: unknown): string {
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelPeriodRecord {
   const f = rec.fields;
+  const predRaw = f.predicted_next_date;
+  const predicted =
+    predRaw != null && String(predRaw).trim() !== "" ? ymdOnly(String(predRaw)) : null;
   return {
     id: rec.id,
-    model_id: firstLinkedId(f.model_id) ?? "",
+    model_id: firstLinkedId(f.model ?? f.model_id) ?? "",
     start_date: ymdOnly(f.start_date),
     end_date: ymdOnly(f.end_date),
     cycle_length_days: typeof f.cycle_length_days === "number" ? f.cycle_length_days : null,
@@ -43,6 +53,10 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelPeriodRecord {
     notes: typeof f.notes === "string" ? f.notes : "",
     logged_by: typeof f.logged_by === "string" ? f.logged_by : "",
     created_at: typeof f.created_at === "string" ? f.created_at : null,
+    came_early: f.came_early === true,
+    missed_period: f.missed_period === true,
+    predicted_next_date: predicted,
+    tracking_enabled: f.tracking_enabled === true,
   };
 }
 
@@ -86,8 +100,23 @@ export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
 
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
   if (!modelId) return [];
-  const formula = formulaLinkedContains("model_id", modelId);
-  const records = await listAllRecords<Fields>(TABLE, { filterByFormula: formula });
+  let records: AirtableRecord<Fields>[];
+  try {
+    records = await listAllRecords<Fields>(TABLE, {
+      filterByFormula: formulaLinkedContains("model_id", modelId),
+    });
+  } catch {
+    try {
+      records = await listAllRecords<Fields>(TABLE, {
+        filterByFormula: formulaLinkedContains("model", modelId),
+      });
+    } catch {
+      const all = await listAllRecords<Fields>(TABLE, {});
+      records = all.filter(
+        (rec) => firstLinkedId(rec.fields.model ?? rec.fields.model_id) === modelId
+      );
+    }
+  }
   const mapped = records.map(mapRecord).filter((p) => p.start_date && p.end_date);
   mapped.sort((a, b) => b.start_date.localeCompare(a.start_date));
   return mapped;
@@ -102,6 +131,32 @@ export async function getCurrentPeriod(modelId: string): Promise<ModelPeriodReco
 }
 
 /**
+ * Row to attach cycle flags: active bleed window if today falls inside it, otherwise the most
+ * recently started logged period (same ordering as {@link getPeriodsForModel}).
+ */
+export async function getPeriodRecordForFlags(modelId: string): Promise<ModelPeriodRecord | null> {
+  const current = await getCurrentPeriod(modelId);
+  if (current) return current;
+  const periods = await getPeriodsForModel(modelId);
+  return periods[0] ?? null;
+}
+
+/** Writes {@link getUpcomingPeriod} onto the latest logged period row when that field exists in Airtable. */
+export async function syncLatestPeriodPredictedNext(
+  modelId: string,
+  model?: ModelRecord | null
+): Promise<void> {
+  const periods = await getPeriodsForModel(modelId);
+  const latest = periods[0];
+  if (!latest) return;
+  const m = model === undefined ? await getModelById(modelId) : model;
+  const upcoming = await getUpcomingPeriod(modelId, m);
+  await updatePeriod(latest.id, {
+    predicted_next_date: upcoming?.predicted_start ?? null,
+  });
+}
+
+/**
  * Predict next period start: last logged start + avg_cycle_length from modelss (default 28 if unset).
  */
 export async function getUpcomingPeriod(
@@ -109,8 +164,11 @@ export async function getUpcomingPeriod(
   model?: ModelRecord | null
 ): Promise<{ predicted_start: string } | null> {
   const periods = await getPeriodsForModel(modelId);
-  const lastStart = periods[0]?.start_date;
+  const latest = periods[0];
+  const lastStart = latest?.start_date;
   if (!lastStart) return null;
+  /** Service rule: do not surface a prediction while the latest logged period is marked missed. */
+  if (latest?.missed_period) return null;
   const cycle =
     typeof model?.avg_cycle_length === "number" && model.avg_cycle_length > 0
       ? model.avg_cycle_length
@@ -151,6 +209,9 @@ export type UpdateModelPeriodInput = Partial<{
   period_length_days: number | null;
   notes: string;
   logged_by: string;
+  came_early: boolean;
+  missed_period: boolean;
+  predicted_next_date: string | null;
 }>;
 
 export async function updatePeriod(id: string, data: UpdateModelPeriodInput): Promise<ModelPeriodRecord> {
@@ -161,6 +222,14 @@ export async function updatePeriod(id: string, data: UpdateModelPeriodInput): Pr
   if (data.period_length_days !== undefined) payload.period_length_days = data.period_length_days ?? undefined;
   if (data.notes !== undefined) payload.notes = data.notes;
   if (data.logged_by !== undefined) payload.logged_by = data.logged_by;
+  if (data.came_early !== undefined) payload.came_early = data.came_early;
+  if (data.missed_period !== undefined) payload.missed_period = data.missed_period;
+  if (data.predicted_next_date !== undefined) {
+    payload.predicted_next_date =
+      data.predicted_next_date === null || data.predicted_next_date === ""
+        ? null
+        : data.predicted_next_date;
+  }
   const rec = await updateRecord<Fields>(TABLE, id, payload);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
@@ -184,13 +253,13 @@ export async function getPeriodDatesForWeek(
   weekEnd: string
 ): Promise<string[]> {
   if (!modelId) {
-    console.log("[getPeriodDatesForWeek]", JSON.stringify({ reason: "empty_modelId", table: TABLE }));
+    devLog("[getPeriodDatesForWeek]", JSON.stringify({ reason: "empty_modelId", table: TABLE }));
     return [];
   }
   // Use same overlap query + in-code model filter as weekly program (avoids FIND-on-link edge cases).
   const byModel = await getPeriodDatesByModelForWeek([modelId], weekStart, weekEnd);
   const dates = byModel[modelId] ?? [];
-  console.log(
+  devLog(
     "[getPeriodDatesForWeek]",
     JSON.stringify({
       table: TABLE,
@@ -272,4 +341,91 @@ export async function syncModelPeriodAveragesToModelss(modelId: string): Promise
   if (Object.keys(payload).length > 0) {
     await updateModel(modelId, payload);
   }
+}
+
+/** Log a new period from start date only; end date = start + avg period length (default 5 days). */
+export async function logModelPeriodFromStartDate(
+  modelId: string,
+  startDate: string,
+  notes: string | undefined,
+  loggedBy: "model" | "admin" | "va"
+): Promise<ModelPeriodRecord> {
+  const start = startDate.trim().slice(0, 10);
+  const model = await getModelById(modelId);
+  const periodDays =
+    typeof model?.avg_period_length === "number" && model.avg_period_length > 0
+      ? model.avg_period_length
+      : 5;
+  const end = addDays(start, Math.max(1, periodDays) - 1);
+  const existing = await getPeriodsForModel(modelId);
+  const asc = [...existing].sort((a, b) => a.start_date.localeCompare(b.start_date));
+  const prev = asc.filter((p) => p.start_date < start).pop() ?? null;
+  const cycle_length_days = prev ? Math.max(1, daysBetweenStarts(prev.start_date, start)) : null;
+  const row = await createPeriod({
+    model_id: modelId,
+    start_date: start,
+    end_date: end,
+    notes: notes?.trim(),
+    logged_by: loggedBy,
+    cycle_length_days,
+  });
+  await syncModelPeriodAveragesToModelss(modelId);
+  const refreshed = await getModelById(modelId);
+  await syncLatestPeriodPredictedNext(modelId, refreshed);
+  return row;
+}
+
+export async function markCurrentPeriodCameEarly(modelId: string): Promise<void> {
+  const row = await getPeriodRecordForFlags(modelId);
+  if (!row) throw new Error("NO_PERIOD_ROW");
+  await updatePeriod(row.id, { came_early: true });
+  await syncModelPeriodAveragesToModelss(modelId);
+  const model = await getModelById(modelId);
+  await syncLatestPeriodPredictedNext(modelId, model);
+}
+
+export async function markCurrentPeriodMissed(modelId: string): Promise<void> {
+  const row = await getPeriodRecordForFlags(modelId);
+  if (!row) throw new Error("NO_PERIOD_ROW");
+  await updatePeriod(row.id, { missed_period: true, predicted_next_date: null });
+}
+
+/** JSON shape for model period UI / API: current bleed row, computed next start, rolling averages on modelss. */
+export type ModelCycleInfoResponse = {
+  current_period: ModelPeriodRecord | null;
+  predicted_next_start: string | null;
+  avg_cycle_length: number | null;
+  avg_period_length: number | null;
+};
+
+export type ModelPeriodTrackingSnapshot = {
+  periods: ModelPeriodRecord[];
+  current_period: ModelPeriodRecord | null;
+  predicted_next_start: string | null;
+  avg_cycle_length: number | null;
+  avg_period_length: number | null;
+};
+
+export async function getModelCycleInfoResponse(modelId: string): Promise<ModelCycleInfoResponse> {
+  const model = await getModelById(modelId);
+  const current = await getCurrentPeriod(modelId);
+  const upcoming = await getUpcomingPeriod(modelId, model);
+  return {
+    current_period: current,
+    predicted_next_start: upcoming?.predicted_start ?? null,
+    avg_cycle_length: model?.avg_cycle_length ?? null,
+    avg_period_length: model?.avg_period_length ?? null,
+  };
+}
+
+/** Full tracking payload for widgets and cron jobs (single model). */
+export async function getModelPeriodTrackingSnapshot(modelId: string): Promise<ModelPeriodTrackingSnapshot> {
+  const [periods, cycle] = await Promise.all([getPeriodsForModel(modelId), getModelCycleInfoResponse(modelId)]);
+  return {
+    periods,
+    current_period: cycle.current_period,
+    predicted_next_start: cycle.predicted_next_start,
+    avg_cycle_length: cycle.avg_cycle_length,
+    avg_period_length: cycle.avg_period_length,
+  };
 }

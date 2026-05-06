@@ -1,24 +1,39 @@
 "use client";
 
 import * as React from "react";
+import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import {
+  Activity,
+  KeyRound,
+  Languages,
+  Link2,
+  Mail,
+  StickyNote,
+  User,
+  UserCog,
+} from "lucide-react";
 import { updateAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
 import type { UserRecord, UserRole } from "@/types";
-import {
-  Label,
-  Input,
-  Textarea,
-  Checkbox,
-  FormActions,
-  SubmitButton,
-  btnSecondaryClass,
-  formSpace,
-} from "@/components/ui/form";
-import { CustomSelect } from "@/components/ui/custom-select";
+import { Checkbox, btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
+import { FormField } from "@/components/ui/form-field";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
+import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
 const STATUSES = ["active", "inactive", "suspended"];
+
+function EditAccountSubmit() {
+  const { pending } = useFormStatus();
+  return (
+    <FormSubmitButton className="w-full" loading={pending} disabled={pending}>
+      {pending ? "Saving…" : "Save changes"}
+    </FormSubmitButton>
+  );
+}
 
 type Props = { user: UserRecord; modelOptions?: { id: string; model_name: string }[] };
 
@@ -29,77 +44,100 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
   const [accountStatus, setAccountStatus] = React.useState(user.status || "active");
 
   return (
-    <form action={updateAccount} className={formSpace}>
+    <form action={updateAccount} className={`${formSpace} space-y-4`}>
       <input type="hidden" name="recordId" value={user.id} />
-      <div>
-        <Label htmlFor="full_name">Full name</Label>
-        <Input id="full_name" name="full_name" type="text" required defaultValue={user.full_name} />
-      </div>
-      <div>
-        <Label htmlFor="email">Email</Label>
-        <Input id="email" name="email" type="email" required defaultValue={user.email} />
-      </div>
-      <div>
-        <Label htmlFor="role">Role</Label>
-        <CustomSelect
+      <FormField label="Full name" icon={<User />} htmlFor="full_name" required>
+        <FormInput id="full_name" name="full_name" type="text" required defaultValue={user.full_name} />
+      </FormField>
+      <FormField label="Email" icon={<Mail />} htmlFor="email" required>
+        <FormInput id="email" name="email" type="email" required defaultValue={user.email} />
+      </FormField>
+      <FormField label="Role" icon={<UserCog />} htmlFor="role" required>
+        <FormSelect
           id="role"
           name="role"
           value={role}
-          onChange={(v) => setRole(v as UserRole)}
-          options={ROLES.map((r) => ({ value: r, label: r.replace("_", " ") }))}
-        />
-      </div>
+          onChange={(e) => setRole(e.target.value as UserRole)}
+          required
+        >
+          {ROLES.map((r) => (
+            <option key={r} value={r} className={selectOptionClass}>
+              {r.replace("_", " ")}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
       {role === "model" && (
         <>
-          <div>
-            <Label htmlFor="linked_model_id">Linked model</Label>
-            <CustomSelect
+          <FormField label="Linked model" icon={<Link2 />} htmlFor="linked_model_id" required>
+            <FormSelect
               id="linked_model_id"
               name="linked_model_id"
               value={linkedModelId}
-              onChange={setLinkedModelId}
-              options={[
-                { value: "", label: "Select model" },
-                ...modelOptions.map((m) => ({ value: m.id, label: m.model_name })),
-              ]}
-            />
-          </div>
-          <div>
-            <Label htmlFor="language_preference">Language</Label>
-            <CustomSelect
+              onChange={(e) => setLinkedModelId(e.target.value)}
+              required
+            >
+              <option value="" disabled className={selectOptionClass}>
+                Select model
+              </option>
+              {modelOptions.map((m) => (
+                <option key={m.id} value={m.id} className={selectOptionClass}>
+                  {m.model_name}
+                </option>
+              ))}
+            </FormSelect>
+          </FormField>
+          <FormField label="Language" icon={<Languages />} htmlFor="language_preference">
+            <FormSelect
               id="language_preference"
               name="language_preference"
               value={languagePreference}
-              onChange={setLanguagePreference}
-              options={[
-                { value: "en", label: "English" },
-                { value: "es", label: "Spanish" },
-              ]}
-            />
-          </div>
+              onChange={(e) => setLanguagePreference(e.target.value)}
+            >
+              <option value="en" className={selectOptionClass}>
+                English
+              </option>
+              <option value="es" className={selectOptionClass}>
+                Spanish
+              </option>
+            </FormSelect>
+          </FormField>
         </>
       )}
-      <div>
-        <Label htmlFor="status">Status</Label>
-        <CustomSelect
+      <FormField label="Status" icon={<Activity />} htmlFor="status" required>
+        <FormSelect
           id="status"
           name="status"
           value={accountStatus}
-          onChange={setAccountStatus}
-          options={STATUSES.map((s) => ({ value: s, label: s }))}
-        />
+          onChange={(e) => setAccountStatus(e.target.value)}
+          required
+        >
+          {STATUSES.map((s) => (
+            <option key={s} value={s} className={selectOptionClass}>
+              {s}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
+      <FormField
+        label="Can log in"
+        icon={<KeyRound />}
+        htmlFor="can_login"
+        description="Allow this user to sign in to the dashboard."
+      >
+        <div className="flex justify-end pt-0.5">
+          <Checkbox id="can_login" name="can_login" defaultChecked={user.can_login} />
+        </div>
+      </FormField>
+      <FormField label="Notes" icon={<StickyNote />} htmlFor="notes" description="Optional internal note.">
+        <FormTextarea id="notes" name="notes" rows={3} defaultValue={user.notes} placeholder="Optional" />
+      </FormField>
+      <div className="flex flex-col gap-3 pt-2">
+        <EditAccountSubmit />
+        <Link href={ROUTES.accounts} className={`${btnSecondaryClass} flex min-h-[52px] w-full items-center justify-center`}>
+          Cancel
+        </Link>
       </div>
-      <div>
-        <Checkbox id="can_login" name="can_login" defaultChecked={user.can_login} label="Can log in" />
-      </div>
-      <div>
-        <Label htmlFor="notes">Notes</Label>
-        <Textarea id="notes" name="notes" rows={2} defaultValue={user.notes} placeholder="Optional" />
-      </div>
-      <FormActions>
-        <SubmitButton>Save changes</SubmitButton>
-        <Link href={ROUTES.accounts} className={btnSecondaryClass}>Cancel</Link>
-      </FormActions>
     </form>
   );
 }

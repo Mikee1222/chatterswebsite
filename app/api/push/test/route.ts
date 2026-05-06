@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getActiveSubscriptionsForUser } from "@/services/push-subscriptions";
 import { sendWebPush } from "@/lib/web-push-server";
+import { devLog } from "@/lib/dev-log";
 
 /** POST: send a test push to the current user's subscriptions (for verifying push works). */
 export async function POST() {
@@ -36,7 +37,7 @@ export async function POST() {
   }
 
   if (process.env.NODE_ENV !== "production") {
-    console.log("[push/test] sent to", sent, "of", subscriptions.length, "subscriptions");
+    devLog("[push/test] sent to", sent, "of", subscriptions.length, "subscriptions");
   }
 
   return NextResponse.json({

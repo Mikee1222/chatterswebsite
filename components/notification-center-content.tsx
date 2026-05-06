@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { BellOff, Check, Loader2, Trash2 } from "lucide-react";
 import type { AppNotification } from "@/types";
 import type { UserRole } from "@/types";
 import { ROUTES } from "@/lib/routes";
 import { getEntityUrl, isAdminPriorityEvent } from "@/lib/notification-routes";
 import {
-  formatTime,
+  formatNotificationTime,
   getEventTag,
   getPriorityStyle,
   getTitleEmoji,
@@ -39,6 +40,7 @@ type NotificationCenterContentProps = {
   unreadCount: number;
   onMarkRead: (id: string) => Promise<void>;
   onMarkAllRead: () => Promise<void>;
+  onDelete?: (ids: string[]) => Promise<void>;
   onNavigate?: () => void;
   role?: UserRole | null;
   compact?: boolean;
@@ -83,6 +85,7 @@ export function NotificationCenterContent({
   unreadCount,
   onMarkRead,
   onMarkAllRead,
+  onDelete,
   onNavigate,
   role,
   compact = true,
@@ -205,14 +208,36 @@ export function NotificationCenterContent({
       </div>
       <div className={`${listContainer} ${listPadding}`}>
         {filteredList.length === 0 ? (
-          <div className={`text-center text-white/50 ${emptyPadding}`}>
-            {tab === "unread"
-              ? "No unread notifications"
-              : tab === "important"
-                ? "No important notifications"
-                : tab !== "all" && (tab === "shift" || tab === "task" || tab === "custom_request" || tab === "model" || tab === "system")
-                  ? `No ${tab.replace("_", " ")} notifications`
-                  : "No notifications"}
+          <div className={`flex flex-col items-center justify-center gap-3 text-center ${emptyPadding}`}>
+            <div
+              className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+              aria-hidden
+            >
+              <BellOff className="h-7 w-7" strokeWidth={1.5} />
+            </div>
+            <div className="max-w-[260px] space-y-1.5">
+              <p className="font-semibold text-white/90">
+                {tab === "unread"
+                  ? "You're all caught up"
+                  : tab === "important"
+                    ? "Nothing urgent here"
+                    : tab !== "all" && (tab === "shift" || tab === "task" || tab === "custom_request" || tab === "model" || tab === "system")
+                      ? `No ${tab === "custom_request" ? "custom" : tab} alerts`
+                      : "No notifications yet"}
+              </p>
+              <p className="text-sm leading-relaxed text-white/50">
+                {tab === "unread"
+                  ? "Unread items will show up here when something needs your attention."
+                  : "When shifts, tasks, or updates arrive, they will appear in this list."}
+              </p>
+            </div>
+            <Link
+              href={ROUTES.settings}
+              onClick={onNavigate}
+              className="mt-1 rounded-xl border border-white/10 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:border-white/20 hover:bg-white/[0.1] hover:text-white"
+            >
+              Notification settings
+            </Link>
           </div>
         ) : (
           <ul className={isMobile ? "space-y-3" : "divide-y divide-white/5"}>
@@ -239,6 +264,8 @@ export function NotificationCenterContent({
                             isMobile={isMobile}
                             compact={compact}
                             onItemClick={handleItemClick}
+                            onMarkRead={onMarkRead}
+                            onDelete={onDelete}
                           />
                         </li>
                       ) : (
@@ -246,11 +273,11 @@ export function NotificationCenterContent({
                           <NotificationGroupCard
                             group={chunk.group}
                             role={role}
-                            isAdmin={isAdmin}
                             itemPadding={itemPadding}
-                            isMobile={isMobile}
                             compact={compact}
                             onItemClick={handleItemClick}
+                            onMarkRead={onMarkRead}
+                            onDelete={onDelete}
                           />
                         </li>
                       )
@@ -280,19 +307,19 @@ export function NotificationCenterContent({
 function NotificationGroupCard({
   group,
   role,
-  isAdmin,
   itemPadding,
-  isMobile,
   compact,
   onItemClick,
+  onMarkRead,
+  onDelete,
 }: {
   group: AppNotification[];
   role?: UserRole | null;
-  isAdmin?: boolean;
   itemPadding: string;
-  isMobile?: boolean;
   compact?: boolean;
   onItemClick: (n: AppNotification) => void;
+  onMarkRead: (id: string) => Promise<void>;
+  onDelete?: (ids: string[]) => Promise<void>;
 }) {
   const primary = group[0];
   const count = group.length;
@@ -300,17 +327,42 @@ function NotificationGroupCard({
   const url = getEntityUrl(primary, role);
   const isUnread = group.some((n) => !n.read_at);
   const titleEmoji = getTitleEmoji(primary.event_type);
-  const handleClick = () => {
-    onItemClick(primary);
+  const timeFmt = formatNotificationTime(primary.created_at);
+  const [busy, setBusy] = React.useState<"read" | "delete" | null>(null);
+
+  const handleMarkGroupRead = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUnread || busy) return;
+    setBusy("read");
+    try {
+      await Promise.all(group.filter((n) => !n.read_at).map((n) => onMarkRead(n.id)));
+    } finally {
+      setBusy(null);
+    }
   };
-  const cardClass = `rounded-xl border transition-all duration-200 ${
+
+  const handleDeleteGroup = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onDelete || busy) return;
+    setBusy("delete");
+    try {
+      await onDelete(group.map((n) => n.id));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cardClass = `flex min-w-0 overflow-hidden rounded-xl border transition-all duration-200 ${
     isUnread
       ? "border-white/20 bg-white/[0.08] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] hover:bg-white/[0.10]"
       : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
   }`;
   const body = count === 1 ? primary.body : `${primary.title} — ${count} similar`;
-  const inner = (
-    <div className="flex gap-3">
+  const mainClass = `flex min-w-0 flex-1 gap-3 ${itemPadding} text-left`;
+  const mainInner = (
+    <>
       <NotificationCategoryIcon
         category={primary.category}
         eventType={primary.event_type}
@@ -318,29 +370,77 @@ function NotificationGroupCard({
         withBg
       />
       <div className="min-w-0 flex-1 space-y-1">
-        <p className={`font-semibold leading-tight ${isUnread ? "text-white" : "text-white/80"} ${compact ? "text-sm" : "text-base"}`}>
-          {titleEmoji && `${titleEmoji} `}
-          {count} {tag}{count > 1 ? "s" : ""}
-        </p>
+        <div className="flex items-start gap-2">
+          <p
+            className={`min-w-0 flex-1 font-semibold leading-tight ${isUnread ? "text-white" : "text-white/80"} ${compact ? "text-sm" : "text-base"}`}
+          >
+            {titleEmoji && `${titleEmoji} `}
+            {count} {tag}
+            {count > 1 ? "s" : ""}
+          </p>
+          {isUnread && (
+            <span
+              className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-[hsl(330,80%,55%)]"
+              style={{ boxShadow: "0 0 8px hsl(330,80%,55%)" }}
+              aria-hidden
+            />
+          )}
+        </div>
         <p className={`line-clamp-2 text-sm ${isUnread ? "text-white/75" : "text-white/55"}`}>{body}</p>
-        <p className="text-[11px] text-white/40">{formatTime(primary.created_at)}</p>
+        <p className="text-[11px] text-white/40" title={timeFmt.title}>
+          {timeFmt.label}
+        </p>
       </div>
-      {isUnread && (
-        <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[hsl(330,80%,55%)]" style={{ boxShadow: "0 0 8px hsl(330,80%,55%)" }} aria-hidden />
-      )}
-    </div>
+    </>
   );
+
+  const actions =
+    (isUnread || onDelete) && (
+      <div className="flex shrink-0 flex-col justify-center gap-1 border-l border-white/[0.06] py-2 pr-2 pl-1.5">
+        {isUnread && (
+          <button
+            type="button"
+            title="Mark as read"
+            aria-label="Mark group as read"
+            disabled={busy !== null}
+            onClick={handleMarkGroupRead}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-white/55 transition-colors hover:bg-white/10 hover:text-[hsl(330,90%,72%)] disabled:opacity-40"
+          >
+            {busy === "read" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={2} />}
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            title="Delete"
+            aria-label="Delete notifications"
+            disabled={busy !== null}
+            onClick={handleDeleteGroup}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-white/55 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+          >
+            {busy === "delete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={2} />}
+          </button>
+        )}
+      </div>
+    );
+
   if (url) {
     return (
-      <Link href={url} onClick={handleClick} className={`block ${itemPadding} ${cardClass}`}>
-        {inner}
-      </Link>
+      <div className={cardClass}>
+        <Link href={url} onClick={() => onItemClick(primary)} className={mainClass}>
+          {mainInner}
+        </Link>
+        {actions}
+      </div>
     );
   }
   return (
-    <button type="button" onClick={handleClick} className={`w-full text-left ${itemPadding} ${cardClass}`}>
-      {inner}
-    </button>
+    <div className={cardClass}>
+      <button type="button" onClick={() => onItemClick(primary)} className={mainClass}>
+        {mainInner}
+      </button>
+      {actions}
+    </div>
   );
 }
 
@@ -352,6 +452,8 @@ function NotificationCard({
   isMobile,
   compact,
   onItemClick,
+  onMarkRead,
+  onDelete,
 }: {
   n: AppNotification;
   role?: UserRole | null;
@@ -360,19 +462,46 @@ function NotificationCard({
   isMobile?: boolean;
   compact?: boolean;
   onItemClick: (n: AppNotification) => void;
+  onMarkRead: (id: string) => Promise<void>;
+  onDelete?: (ids: string[]) => Promise<void>;
 }) {
   const url = getEntityUrl(n, role);
   const isUnread = !n.read_at;
   const tag = getEventTag(n.event_type);
   const priorityHighlight = isAdmin && isAdminPriorityEvent(n.event_type);
   const priorityStyle = getPriorityStyle(n.priority);
+  const timeFmt = formatNotificationTime(n.created_at);
+  const [busy, setBusy] = React.useState<"read" | "delete" | null>(null);
 
   const hasMetadata = n.metadata && n.metadata.length > 0;
-  // Server sends full title with emoji; do not prepend to avoid duplication
   const titleEmoji = "";
 
+  const handleMarkReadOnly = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isUnread || busy) return;
+    setBusy("read");
+    try {
+      await onMarkRead(n.id);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleDeleteOnly = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!onDelete || busy) return;
+    setBusy("delete");
+    try {
+      await onDelete([n.id]);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const cardInner = (
-    <div className="flex gap-3">
+    <>
       <NotificationCategoryIcon
         category={n.category}
         eventType={n.event_type}
@@ -382,17 +511,24 @@ function NotificationCard({
       <div className="min-w-0 flex-1 space-y-1.5">
         <div className="flex flex-wrap items-baseline gap-2">
           <p
-            className={`font-semibold break-words leading-tight transition-colors duration-200 ${
+            className={`min-w-0 flex-1 font-semibold break-words leading-tight transition-colors duration-200 ${
               isUnread ? "text-white" : "text-white/80"
             } ${compact ? "text-sm" : isMobile ? "text-[15px]" : "text-base"}`}
           >
             {titleEmoji && `${titleEmoji} `}
             {n.title}
           </p>
-          <span
-            className="shrink-0 rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/60"
-          >
-            {tag}
+          <span className="inline-flex shrink-0 items-center gap-2">
+            <span className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/60">
+              {tag}
+            </span>
+            {isUnread && (
+              <span
+                className="h-2 w-2 rounded-full bg-[hsl(330,80%,55%)]"
+                style={{ boxShadow: "0 0 8px hsl(330,80%,55%)" }}
+                aria-hidden
+              />
+            )}
           </span>
         </div>
         <p
@@ -405,30 +541,23 @@ function NotificationCard({
         {hasMetadata && (
           <div className="flex flex-wrap gap-1.5">
             {n.metadata!.map((m, i) => (
-              <span
-                key={i}
-                className="rounded-md bg-white/[0.08] px-2 py-0.5 text-[11px] text-white/60"
-              >
+              <span key={i} className="rounded-md bg-white/[0.08] px-2 py-0.5 text-[11px] text-white/60">
                 {m.label}: {m.value}
               </span>
             ))}
           </div>
         )}
-        <p className={`text-white/40 transition-colors duration-200 ${compact ? "text-[11px] mt-0.5" : isMobile ? "text-xs mt-1" : "text-[11px] mt-0.5"}`}>
-          {formatTime(n.created_at)}
+        <p
+          className={`text-white/40 transition-colors duration-200 ${compact ? "text-[11px] mt-0.5" : isMobile ? "text-xs mt-1" : "text-[11px] mt-0.5"}`}
+          title={timeFmt.title}
+        >
+          {timeFmt.label}
         </p>
       </div>
-      {isUnread && (
-        <span
-          className="mt-2 h-2 w-2 shrink-0 rounded-full bg-[hsl(330,80%,55%)] transition-opacity duration-200"
-          style={{ boxShadow: "0 0 8px hsl(330,80%,55%)" }}
-          aria-hidden
-        />
-      )}
-    </div>
+    </>
   );
 
-  const cardClass = `rounded-xl border transition-all duration-200 ${
+  const cardClass = `flex min-w-0 overflow-hidden rounded-xl border transition-all duration-200 ${
     isUnread
       ? "border-white/20 bg-white/[0.08] shadow-[0_0_0_1px_rgba(255,255,255,0.05)] hover:bg-white/[0.10]"
       : "border-white/10 bg-white/[0.03] hover:bg-white/[0.06]"
@@ -439,26 +568,53 @@ function NotificationCard({
       ? { borderLeftWidth: 3, borderLeftColor: priorityStyle.borderColor }
       : undefined;
 
+  const mainClass = `flex min-w-0 flex-1 gap-3 ${itemPadding} text-left`;
+  const actions =
+    (isUnread || onDelete) && (
+      <div className="flex shrink-0 flex-col justify-center gap-1 border-l border-white/[0.06] py-2 pr-2 pl-1.5">
+        {isUnread && (
+          <button
+            type="button"
+            title="Mark as read"
+            aria-label="Mark as read"
+            disabled={busy !== null}
+            onClick={handleMarkReadOnly}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-white/55 transition-colors hover:bg-white/10 hover:text-[hsl(330,90%,72%)] disabled:opacity-40"
+          >
+            {busy === "read" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" strokeWidth={2} />}
+          </button>
+        )}
+        {onDelete && (
+          <button
+            type="button"
+            title="Delete"
+            aria-label="Delete notification"
+            disabled={busy !== null}
+            onClick={handleDeleteOnly}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-white/55 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-40"
+          >
+            {busy === "delete" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" strokeWidth={2} />}
+          </button>
+        )}
+      </div>
+    );
+
   if (url) {
     return (
-      <Link
-        href={url}
-        onClick={() => onItemClick(n)}
-        className={`block ${itemPadding} ${cardClass}`}
-        style={priorityBorderStyle}
-      >
-        {cardInner}
-      </Link>
+      <div className={cardClass} style={priorityBorderStyle}>
+        <Link href={url} onClick={() => onItemClick(n)} className={mainClass}>
+          {cardInner}
+        </Link>
+        {actions}
+      </div>
     );
   }
   return (
-    <button
-      type="button"
-      onClick={() => onItemClick(n)}
-      className={`w-full text-left ${itemPadding} ${cardClass}`}
-      style={priorityBorderStyle}
-    >
-      {cardInner}
-    </button>
+    <div className={cardClass} style={priorityBorderStyle}>
+      <button type="button" onClick={() => onItemClick(n)} className={mainClass}>
+        {cardInner}
+      </button>
+      {actions}
+    </div>
   );
 }

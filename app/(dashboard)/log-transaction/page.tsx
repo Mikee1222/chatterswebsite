@@ -6,6 +6,7 @@ import { listTransactionsByChatter } from "@/services/whale-transactions";
 import { FormCard } from "@/components/ui/form";
 import { LogTransactionForm } from "@/components/log-transaction-form";
 import { WhaleSessionHistory } from "@/components/whale-session-history";
+import { devLog } from "@/lib/dev-log";
 
 export default async function LogTransactionPage() {
   const user = await getSessionFromCookies();
@@ -18,7 +19,7 @@ export default async function LogTransactionPage() {
     listTransactionsByChatter(chatterId, 50).catch(() => []),
   ]);
   if (process.env.NODE_ENV !== "production") {
-    console.log("[log-transaction page] history debug", {
+    devLog("[log-transaction page] history debug", {
       currentUserEmail: user.email,
       currentUserId: user.id,
       currentAirtableUserRecordId: user.airtableUserId ?? "(null)",
@@ -28,7 +29,7 @@ export default async function LogTransactionPage() {
   }
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_1.2fr]">
+    <div className="grid min-w-0 grid-cols-1 gap-6 lg:grid-cols-[1fr_1.2fr] lg:gap-8">
       <div className="min-w-0">
         <FormCard title="Whale session" subtitle="Record a session with a whale">
           <LogTransactionForm
