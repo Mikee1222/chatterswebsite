@@ -78,7 +78,7 @@ export function BeautifulDetailModal({
           <Dialog.Portal forceMount>
             <Dialog.Overlay asChild forceMount>
               <motion.div
-                className="fixed inset-0 z-[200] bg-black/75 backdrop-blur-sm"
+                className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -86,12 +86,18 @@ export function BeautifulDetailModal({
             </Dialog.Overlay>
             <Dialog.Content asChild forceMount>
               <motion.div
+                className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+              >
+                <motion.div
                 initial={{ opacity: 0, y: 14, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
                 exit={{ opacity: 0, y: 14, scale: 0.97 }}
                 transition={{ duration: 0.2 }}
                 className={cn(
-                  "fixed left-1/2 top-1/2 z-[201] w-[min(calc(100vw-2rem),740px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-3xl border border-white/12 bg-zinc-950 shadow-2xl",
+                  "w-[90vw] max-w-[600px] max-h-[90vh] overflow-hidden rounded-3xl border border-white/12 bg-zinc-950 shadow-2xl",
                   className
                 )}
               >
@@ -147,7 +153,7 @@ export function BeautifulDetailModal({
                   </div>
                 </div>
 
-                <div className="max-h-[72vh] space-y-5 overflow-y-auto px-6 py-5">
+                <div className="max-h-[calc(90vh-12rem)] space-y-5 overflow-y-auto px-6 py-5">
                   {stats.length > 0 ? (
                     <div className="grid gap-3 sm:grid-cols-2">
                       {stats.map((s) => (
@@ -239,6 +245,7 @@ export function BeautifulDetailModal({
                 </div>
 
                 {footer ? <div className="border-t border-white/10 px-6 py-4">{footer}</div> : null}
+                </motion.div>
               </motion.div>
             </Dialog.Content>
           </Dialog.Portal>

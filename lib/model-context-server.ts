@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getRecord } from "@/lib/airtable-server";
@@ -54,19 +55,19 @@ export async function getModelApiContext(): Promise<{
   return { user, linkedModelId, modelRecord, language };
 }
 
-export async function getModelContext(): Promise<{
+export const getModelContext = cache(async (): Promise<{
   user: AuthUser | null;
   linkedModelId: string | null;
   modelRecord: ModelRecord | null;
   language: "en" | "es";
-}> {
+}> => {
   const user = await getSessionFromCookies();
   if (!user) return { user: null, linkedModelId: null, modelRecord: null, language: "en" };
   if (user.role !== "model") redirect(ROUTES.dashboard);
 
   const { linkedModelId, modelRecord, language } = await loadModelContextForUser(user);
   return { user, linkedModelId, modelRecord, language };
-}
+});
 
 /**
  * UI language for model users: `language` cookie (if set) wins, else Airtable `language_preference`.
