@@ -1,3 +1,0 @@
-'use client'
-import { createContext } from 'react';
-export const ModelContext = createContext<any>(null);

@@ -5,6 +5,7 @@ import { firstLinkedId, linkedRecordIds, formulaLinkedContains } from "@/lib/air
 import type { VaContentAssignmentRecord } from "@/types";
 
 const TABLE = "va_content_assignments";
+const DEBUG_PREFIX = "[va-content-assignments]";
 
 /** Airtable attachment cell item (subset). */
 export type VaAttachmentCell = {
@@ -121,34 +122,88 @@ const MODEL_LINK_FIELD_NAMES = ["model", "assigned_model"] as const;
 
 /** List rows linked to this modelss id: try known link field API names, then scan. */
 async function listAssignmentRecordsByModelLink(modelRecordId: string): Promise<AirtableRecord<Fields>[]> {
+  console.log(`${DEBUG_PREFIX} model query start`, {
+    table: TABLE,
+    modelRecordId,
+    candidateFields: [...MODEL_LINK_FIELD_NAMES],
+  });
   for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
-      return await listAllRecords<Fields>(TABLE, {
-        filterByFormula: formulaLinkedContains(fieldName, modelRecordId),
+      const filterByFormula = formulaLinkedContains(fieldName, modelRecordId);
+      const records = await listAllRecords<Fields>(TABLE, {
+        filterByFormula,
       });
-    } catch {
+      console.log(`${DEBUG_PREFIX} model query success`, {
+        table: TABLE,
+        fieldName,
+        filterByFormula,
+        recordsReturned: records.length,
+      });
+      return records;
+    } catch (error) {
+      console.error(`${DEBUG_PREFIX} model query failed on field`, {
+        table: TABLE,
+        fieldName,
+        filterByFormula: formulaLinkedContains(fieldName, modelRecordId),
+        error: error instanceof Error ? error.message : String(error),
+      });
       /* next field name */
     }
   }
   const all = await listAllRecords<Fields>(TABLE);
-  return all.filter((r) => modelLinkIds(r.fields).includes(modelRecordId));
+  const filtered = all.filter((r) => modelLinkIds(r.fields).includes(modelRecordId));
+  console.log(`${DEBUG_PREFIX} model query fallback scan`, {
+    table: TABLE,
+    scanned: all.length,
+    recordsReturned: filtered.length,
+  });
+  return filtered;
 }
 
 /** Prefer server-side filter; try each known link field name; if all fail, list all and filter in JS. */
 async function fetchAssignmentRecordsForVaUser(vaUserRecordId: string): Promise<AirtableRecord<Fields>[]> {
+  console.log(`${DEBUG_PREFIX} va query start`, {
+    table: TABLE,
+    vaUserRecordId,
+    candidateFields: [...VA_FILTER_LINK_FIELD_NAMES],
+  });
   for (const fieldName of VA_FILTER_LINK_FIELD_NAMES) {
     try {
-      return await listAllRecords<Fields>(TABLE, {
-        filterByFormula: formulaLinkedContains(fieldName, vaUserRecordId),
+      const filterByFormula = formulaLinkedContains(fieldName, vaUserRecordId);
+      const records = await listAllRecords<Fields>(TABLE, {
+        filterByFormula,
       });
-    } catch {
+      console.log(`${DEBUG_PREFIX} va query success`, {
+        table: TABLE,
+        fieldName,
+        filterByFormula,
+        recordsReturned: records.length,
+      });
+      return records;
+    } catch (error) {
+      console.error(`${DEBUG_PREFIX} va query failed on field`, {
+        table: TABLE,
+        fieldName,
+        filterByFormula: formulaLinkedContains(fieldName, vaUserRecordId),
+        error: error instanceof Error ? error.message : String(error),
+      });
       /* field missing or formula error — try next */
     }
   }
   try {
     const all = await listAllRecords<Fields>(TABLE);
-    return all.filter((r) => vaLinkIds(r.fields).includes(vaUserRecordId));
-  } catch {
+    const filtered = all.filter((r) => vaLinkIds(r.fields).includes(vaUserRecordId));
+    console.log(`${DEBUG_PREFIX} va query fallback scan`, {
+      table: TABLE,
+      scanned: all.length,
+      recordsReturned: filtered.length,
+    });
+    return filtered;
+  } catch (error) {
+    console.error(`${DEBUG_PREFIX} va query fallback scan failed`, {
+      table: TABLE,
+      error: error instanceof Error ? error.message : String(error),
+    });
     return [];
   }
 }

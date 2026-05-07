@@ -1,8 +1,24 @@
+export const dynamic = "force-dynamic";
+
 import { getModelContext } from "@/lib/model-context-server";
 import { listModelTasks } from "@/services/model-tasks";
 
 export default async function ModelTasksPage() {
-  const { user, linkedModelId, modelRecord, language } = await getModelContext();
+  let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  let language: Awaited<ReturnType<typeof getModelContext>>["language"] = "en";
+  try {
+    ({ user, linkedModelId, modelRecord, language } = await getModelContext());
+  } catch (error) {
+    console.error("[model/tasks] getModelContext failed; rendering fallback", error);
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-white">Tasks</h1>
+        <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -25,8 +41,7 @@ export default async function ModelTasksPage() {
   }
 
   const tasks = await listModelTasks(linkedModelId).catch((error) => {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[model/tasks] listModelTasks failed; using [] fallback", { message });
+    console.error("[model/tasks] listModelTasks failed; using [] fallback", error);
     return [];
   });
 

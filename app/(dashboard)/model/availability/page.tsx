@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelWeeklyAvailabilityClient } from "@/components/model-weekly-availability-client";
@@ -11,7 +13,20 @@ export default async function ModelAvailabilityPage({
 }: {
   searchParams: { week_start?: string };
 }) {
-  const { linkedModelId, modelRecord, language } = await getModelContext();
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  let language: Awaited<ReturnType<typeof getModelContext>>["language"] = "en";
+  try {
+    ({ linkedModelId, modelRecord, language } = await getModelContext());
+  } catch (error) {
+    console.error("[model/availability] getModelContext failed; rendering fallback", error);
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-white">Weekly availability</h1>
+        <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+      </div>
+    );
+  }
 
   if (!linkedModelId || !modelRecord) {
     return (
@@ -28,8 +43,14 @@ export default async function ModelAvailabilityPage({
 
   const weekEnd = addDays(weekStart, 6);
   const [requests, periodDatesThisWeek] = await Promise.all([
-    getModelAvailabilityRequestsForWeek(weekStart, linkedModelId).catch(() => []),
-    getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd).catch(() => [] as string[]),
+    getModelAvailabilityRequestsForWeek(weekStart, linkedModelId).catch((error) => {
+      console.error("[model/availability] getModelAvailabilityRequestsForWeek failed; using [] fallback", error);
+      return [];
+    }),
+    getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd).catch((error) => {
+      console.error("[model/availability] getPeriodDatesForWeek failed; using [] fallback", error);
+      return [] as string[];
+    }),
   ]);
 
   return (
