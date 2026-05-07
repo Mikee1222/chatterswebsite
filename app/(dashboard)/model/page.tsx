@@ -9,7 +9,22 @@ import { countPendingVAContentAssignmentsForModel } from "@/services/va-content-
 import { Suspense } from "react";
 
 export default async function ModelHomePage() {
-  const { user, modelRecord, linkedModelId } = await getModelContext();
+  let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  try {
+    ({ user, modelRecord, linkedModelId } = await getModelContext());
+  } catch (error) {
+    console.error("[model/home] getModelContext failed; rendering fallback", error);
+    return (
+      <MobileDashboardLayout>
+        <div className="space-y-4">
+          <h1 className="text-xl font-semibold text-white">Home</h1>
+          <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+        </div>
+      </MobileDashboardLayout>
+    );
+  }
 
   if (!user) {
     return (
@@ -48,33 +63,27 @@ export default async function ModelHomePage() {
     pendingVaAssignmentsCount,
   ] = await Promise.all([
     getCurrentPeriod(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/home] getCurrentPeriod failed; using null fallback", { message });
+      console.error("[model/home] getCurrentPeriod failed; using null fallback", error);
       return null;
     }),
     getPeriodsForModel(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/home] getPeriodsForModel failed; using [] fallback", { message });
+      console.error("[model/home] getPeriodsForModel failed; using [] fallback", error);
       return [];
     }),
     getUpcomingPeriod(linkedModelId, modelRecord).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/home] getUpcomingPeriod failed; using null fallback", { message });
+      console.error("[model/home] getUpcomingPeriod failed; using null fallback", error);
       return null;
     }),
     getActiveLiveStreamForModel(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/home] getActiveLiveStreamForModel failed; using null fallback", { message });
+      console.error("[model/home] getActiveLiveStreamForModel failed; using null fallback", error);
       return null;
     }),
     countApprovedCustomRequestsWaitingSchedule(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/home] countApprovedCustomRequestsWaitingSchedule failed; using 0 fallback", { message });
+      console.error("[model/home] countApprovedCustomRequestsWaitingSchedule failed; using 0 fallback", error);
       return 0;
     }),
     countPendingVAContentAssignmentsForModel(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/home] countPendingVAContentAssignmentsForModel failed; using 0 fallback", { message });
+      console.error("[model/home] countPendingVAContentAssignmentsForModel failed; using 0 fallback", error);
       return 0;
     }),
   ]);

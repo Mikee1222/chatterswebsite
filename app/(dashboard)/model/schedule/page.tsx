@@ -53,7 +53,19 @@ export default async function ModelSchedulePage({
 }: {
   searchParams?: { week_start?: string; week?: string; action?: string };
 }) {
-  const { linkedModelId, modelRecord } = await getModelContext();
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  try {
+    ({ linkedModelId, modelRecord } = await getModelContext());
+  } catch (error) {
+    console.error("[model/schedule] getModelContext failed; rendering fallback", error);
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-white">Schedule</h1>
+        <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+      </div>
+    );
+  }
 
   if (!linkedModelId || !modelRecord) {
     return (
@@ -100,45 +112,37 @@ export default async function ModelSchedulePage({
     predictedPeriodStart,
   ] = await Promise.all([
     listModelScheduleItems(linkedModelId, { fromDate, toDate }).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] listModelScheduleItems failed; using [] fallback", { message });
+      console.error("[model/schedule] listModelScheduleItems failed; using [] fallback", error);
       return [];
     }),
     listModelLiveStreams(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] listModelLiveStreams failed; using [] fallback", { message });
+      console.error("[model/schedule] listModelLiveStreams failed; using [] fallback", error);
       return [];
     }),
     getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] getPeriodDatesForWeek failed; using [] fallback", { message });
+      console.error("[model/schedule] getPeriodDatesForWeek failed; using [] fallback", error);
       return [];
     }),
     getCurrentPeriod(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] getCurrentPeriod failed; using null fallback", { message });
+      console.error("[model/schedule] getCurrentPeriod failed; using null fallback", error);
       return null;
     }),
     getPeriodsForModel(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] getPeriodsForModel failed; using [] fallback", { message });
+      console.error("[model/schedule] getPeriodsForModel failed; using [] fallback", error);
       return [];
     }),
     getModelAvailabilityRequestsForWeek(weekStart, linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] getModelAvailabilityRequestsForWeek failed; using [] fallback", { message });
+      console.error("[model/schedule] getModelAvailabilityRequestsForWeek failed; using [] fallback", error);
       return [];
     }),
     getModelTimeOffRequestsForRange(linkedModelId, weekStart, weekEnd).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/schedule] getModelTimeOffRequestsForRange failed; using [] fallback", { message });
+      console.error("[model/schedule] getModelTimeOffRequestsForRange failed; using [] fallback", error);
       return [];
     }),
     getUpcomingPeriod(linkedModelId, modelRecord)
       .then((upcoming) => upcoming?.predicted_start ?? null)
       .catch((error) => {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn("[model/schedule] getUpcomingPeriod failed; using null fallback", { message });
+        console.error("[model/schedule] getUpcomingPeriod failed; using null fallback", error);
         return null;
       }),
   ]);

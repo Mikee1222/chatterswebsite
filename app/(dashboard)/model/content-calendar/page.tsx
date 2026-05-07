@@ -11,7 +11,20 @@ import { Suspense } from "react";
  * This page only includes customs with `admin_status === "accepted"`.
  */
 export default async function ModelContentCalendarPage() {
-  const { user, linkedModelId, modelRecord } = await getModelContext();
+  let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  try {
+    ({ user, linkedModelId, modelRecord } = await getModelContext());
+  } catch (error) {
+    console.error("[model/content-calendar] getModelContext failed; rendering fallback", error);
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-white">Content calendar</h1>
+        <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -38,18 +51,15 @@ export default async function ModelContentCalendarPage() {
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
   [assignments, allCustoms, tasks] = await Promise.all([
     listVAContentAssignmentsForModel(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", { message });
+      console.error("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", error);
       return [];
     }),
     listCustomRequestsByModel(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/content-calendar] listCustomRequestsByModel failed; using [] fallback", { message });
+      console.error("[model/content-calendar] listCustomRequestsByModel failed; using [] fallback", error);
       return [];
     }),
     listModelTasks(linkedModelId).catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn("[model/content-calendar] listModelTasks failed; using [] fallback", { message });
+      console.error("[model/content-calendar] listModelTasks failed; using [] fallback", error);
       return [];
     }),
   ]);

@@ -5,7 +5,21 @@ import { ModelRouteEmptyState } from "@/components/model-route-feedback";
 import { Suspense } from "react";
 
 export default async function ModelCustomRequestsPage() {
-  const { user, linkedModelId, modelRecord, language } = await getModelContext();
+  let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  let language: Awaited<ReturnType<typeof getModelContext>>["language"] = "en";
+  try {
+    ({ user, linkedModelId, modelRecord, language } = await getModelContext());
+  } catch (error) {
+    console.error("[model/custom-requests] getModelContext failed; rendering fallback", error);
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-white">Custom requests</h1>
+        <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return (
@@ -31,8 +45,7 @@ export default async function ModelCustomRequestsPage() {
   try {
     requests = await listApprovedCustomRequestsByModel(linkedModelId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[model/custom-requests] falling back to empty data", { message });
+    console.error("[model/custom-requests] listApprovedCustomRequestsByModel failed; using [] fallback", error);
   }
 
   return (

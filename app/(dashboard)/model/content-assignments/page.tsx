@@ -8,7 +8,21 @@ import { ModelRouteEmptyState } from "@/components/model-route-feedback";
 import { Suspense } from "react";
 
 export default async function ModelContentAssignmentsPage() {
-  const { user, linkedModelId, modelRecord, language } = await getModelContext();
+  let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
+  let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
+  let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
+  let language: Awaited<ReturnType<typeof getModelContext>>["language"] = "en";
+  try {
+    ({ user, linkedModelId, modelRecord, language } = await getModelContext());
+  } catch (error) {
+    console.error("[model/content-assignments] getModelContext failed; rendering fallback", error);
+    return (
+      <div className="space-y-4">
+        <h1 className="text-xl font-semibold text-white">VA content</h1>
+        <p className="text-white/70">Unable to load account context right now. Please try again.</p>
+      </div>
+    );
+  }
   const tr = getModelT(language);
 
   if (!user) {
@@ -35,14 +49,16 @@ export default async function ModelContentAssignmentsPage() {
   try {
     rows = await listVAContentAssignmentsForModel(linkedModelId);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[model/content-assignments] falling back to empty data", { message });
+    console.error("[model/content-assignments] listVAContentAssignmentsForModel failed; using [] fallback", error);
   }
   const vaIds = [...new Set(rows.map((r) => r.va_id).filter(Boolean))] as string[];
   const vaNames = new Map<string, string>();
   await Promise.all(
     vaIds.map(async (id) => {
-      const u = await getUserByAirtableId(id).catch(() => null);
+      const u = await getUserByAirtableId(id).catch((error) => {
+        console.error("[model/content-assignments] getUserByAirtableId failed; using null fallback", error);
+        return null;
+      });
       if (u?.full_name?.trim()) vaNames.set(id, u.full_name.trim());
       else if (u?.email) vaNames.set(id, u.email);
     })
