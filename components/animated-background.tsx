@@ -5,7 +5,7 @@
  */
 export function AnimatedBackground() {
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 hidden overflow-hidden md:block">
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
       {/* Gradient orbs — boosted for visibility while debugging */}
       <div
         className="animate-float-slow absolute -left-1/3 -top-1/3 h-[600px] w-[600px] rounded-full blur-3xl"
