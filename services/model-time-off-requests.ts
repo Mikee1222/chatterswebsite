@@ -60,7 +60,14 @@ export async function getModelTimeOffRequestsForRange(
   toYmd: string
 ): Promise<ModelTimeOffRequest[]> {
   if (!modelId || !fromYmd || !toYmd) return [];
-  const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "start_date", direction: "desc" }] });
+  let records: AirtableRecord<Fields>[] = [];
+  try {
+    records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "start_date", direction: "desc" }] });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model-time-off-requests] returning empty fallback", { table: TABLE, message });
+    return [];
+  }
   return records
     .map(mapRecord)
     .filter((r) => r.model_id === modelId && rangeOverlaps(r.start_date, r.end_date, fromYmd, toYmd));

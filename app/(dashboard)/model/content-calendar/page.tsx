@@ -43,7 +43,8 @@ export default async function ModelContentCalendarPage() {
       listModelTasks(linkedModelId),
     ]);
   } catch (error) {
-    throw error instanceof Error ? error : new Error("Failed to load content calendar.");
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model/content-calendar] falling back to empty data", { message });
   }
 
   const customs = allCustoms.filter((c) => c.admin_status === "accepted");

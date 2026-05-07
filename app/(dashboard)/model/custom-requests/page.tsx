@@ -31,7 +31,8 @@ export default async function ModelCustomRequestsPage() {
   try {
     requests = await listApprovedCustomRequestsByModel(linkedModelId);
   } catch (error) {
-    throw error instanceof Error ? error : new Error("Failed to load custom requests.");
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model/custom-requests] falling back to empty data", { message });
   }
 
   return (

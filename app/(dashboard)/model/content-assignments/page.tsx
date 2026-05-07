@@ -35,7 +35,8 @@ export default async function ModelContentAssignmentsPage() {
   try {
     rows = await listVAContentAssignmentsForModel(linkedModelId);
   } catch (error) {
-    throw error instanceof Error ? error : new Error("Failed to load VA content assignments.");
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model/content-assignments] falling back to empty data", { message });
   }
   const vaIds = [...new Set(rows.map((r) => r.va_id).filter(Boolean))] as string[];
   const vaNames = new Map<string, string>();

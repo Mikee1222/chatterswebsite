@@ -50,16 +50,8 @@ export default async function ModelHomePage() {
         countPendingVAContentAssignmentsForModel(linkedModelId),
       ]);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to load model home data. Please try again in a moment.";
-    return (
-      <MobileDashboardLayout>
-        <div className="rounded-2xl border border-red-500/25 bg-red-500/[0.08] p-6 text-sm text-red-100/90">
-          <h2 className="mb-2 text-lg font-semibold text-white">Could not load home</h2>
-          <p className="text-red-100/80">{message}</p>
-        </div>
-      </MobileDashboardLayout>
-    );
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model/home] falling back to empty data", { message });
   }
 
   const activeLive = activeLiveRecord

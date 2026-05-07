@@ -106,7 +106,8 @@ export default async function ModelSchedulePage({
     const upcoming = await getUpcomingPeriod(linkedModelId, modelRecord);
     predictedPeriodStart = upcoming?.predicted_start ?? null;
   } catch (error) {
-    throw error instanceof Error ? error : new Error("Failed to load model schedule.");
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model/schedule] falling back to empty data", { message });
   }
   const initialItems = mergeScheduleWithLives(scheduleItems, liveStreams, fromDate, toDate);
 
