@@ -77,7 +77,7 @@ export default async function DashboardLayout({
           >
             <main
               data-main-content
-              className="mobile-app-main min-h-[100dvh] overflow-x-hidden p-4 pb-[calc(var(--mobile-bottom-nav-height)+3.75rem+env(safe-area-inset-bottom,0px))] max-md:px-4 max-md:py-5 md:overflow-x-visible md:p-6 md:pb-6 md:min-h-0"
+              className="mobile-app-main relative z-10 min-h-[100dvh] overflow-x-hidden bg-[#0a0a0a] p-4 pb-[calc(var(--mobile-bottom-nav-height)+3.75rem+env(safe-area-inset-bottom,0px))] max-md:px-4 max-md:py-5 md:overflow-x-visible md:p-6 md:pb-6 md:min-h-0 md:bg-transparent"
             >
               {children}
             </main>
