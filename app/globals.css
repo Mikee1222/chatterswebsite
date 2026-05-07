@@ -198,12 +198,6 @@
 
 /* Mobile: bottom tab bar must stay visible — .dashboard-bg overflow:hidden can clip fixed descendants; keep nav above scrolling content */
 @media (max-width: 767px) {
-  /* Match desktop base: near-black canvas without full-viewport pink/purple glows */
-  .dashboard-glow-tl,
-  .dashboard-glow-br {
-    display: none;
-  }
-
   .dashboard-bg {
     overflow-x: hidden;
     overflow-y: visible;
