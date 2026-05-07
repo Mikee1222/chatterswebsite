@@ -253,7 +253,7 @@ export function MobileAppShell({
 
   return (
     <MobileFabVisibilityProvider>
-      <div className="flex min-h-[100dvh] flex-col bg-[var(--bg-base)] md:min-h-0 md:bg-transparent">
+      <div className="flex min-h-[100dvh] flex-col bg-transparent md:min-h-0">
         <header
           className="sticky top-0 z-30 shrink-0 overflow-hidden border-b border-white/10 bg-zinc-900/80 backdrop-blur-xl md:hidden"
           style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
