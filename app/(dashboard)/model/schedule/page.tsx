@@ -89,26 +89,59 @@ export default async function ModelSchedulePage({
   let periodHistory: Awaited<ReturnType<typeof getPeriodsForModel>> = [];
   let availabilityRequests: Awaited<ReturnType<typeof getModelAvailabilityRequestsForWeek>> = [];
   let timeOffRequests: Awaited<ReturnType<typeof getModelTimeOffRequestsForRange>> = [];
-  try {
-    [scheduleItems, liveStreams, periodDates, currentPeriod, periodHistory, availabilityRequests, timeOffRequests] = await Promise.all([
-      listModelScheduleItems(linkedModelId, { fromDate, toDate }),
-      listModelLiveStreams(linkedModelId),
-      getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd),
-      getCurrentPeriod(linkedModelId),
-      getPeriodsForModel(linkedModelId),
-      getModelAvailabilityRequestsForWeek(weekStart, linkedModelId),
-      getModelTimeOffRequestsForRange(linkedModelId, weekStart, weekEnd).catch((error) => {
+  [
+    scheduleItems,
+    liveStreams,
+    periodDates,
+    currentPeriod,
+    periodHistory,
+    availabilityRequests,
+    timeOffRequests,
+    predictedPeriodStart,
+  ] = await Promise.all([
+    listModelScheduleItems(linkedModelId, { fromDate, toDate }).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] listModelScheduleItems failed; using [] fallback", { message });
+      return [];
+    }),
+    listModelLiveStreams(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] listModelLiveStreams failed; using [] fallback", { message });
+      return [];
+    }),
+    getPeriodDatesForWeek(linkedModelId, weekStart, weekEnd).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] getPeriodDatesForWeek failed; using [] fallback", { message });
+      return [];
+    }),
+    getCurrentPeriod(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] getCurrentPeriod failed; using null fallback", { message });
+      return null;
+    }),
+    getPeriodsForModel(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] getPeriodsForModel failed; using [] fallback", { message });
+      return [];
+    }),
+    getModelAvailabilityRequestsForWeek(weekStart, linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] getModelAvailabilityRequestsForWeek failed; using [] fallback", { message });
+      return [];
+    }),
+    getModelTimeOffRequestsForRange(linkedModelId, weekStart, weekEnd).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/schedule] getModelTimeOffRequestsForRange failed; using [] fallback", { message });
+      return [];
+    }),
+    getUpcomingPeriod(linkedModelId, modelRecord)
+      .then((upcoming) => upcoming?.predicted_start ?? null)
+      .catch((error) => {
         const message = error instanceof Error ? error.message : String(error);
-        console.warn("Time off requests not available:", message);
-        return [];
+        console.warn("[model/schedule] getUpcomingPeriod failed; using null fallback", { message });
+        return null;
       }),
-    ]);
-    const upcoming = await getUpcomingPeriod(linkedModelId, modelRecord);
-    predictedPeriodStart = upcoming?.predicted_start ?? null;
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[model/schedule] falling back to empty data", { message });
-  }
+  ]);
   const initialItems = mergeScheduleWithLives(scheduleItems, liveStreams, fromDate, toDate);
 
   return (

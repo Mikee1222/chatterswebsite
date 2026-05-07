@@ -39,20 +39,45 @@ export default async function ModelHomePage() {
   let activeLiveRecord = null;
   let pendingCustomRequestsCount = 0;
   let pendingVaAssignmentsCount = 0;
-  try {
-    [currentPeriod, periods, upcomingPeriod, activeLiveRecord, pendingCustomRequestsCount, pendingVaAssignmentsCount] =
-      await Promise.all([
-        getCurrentPeriod(linkedModelId),
-        getPeriodsForModel(linkedModelId),
-        getUpcomingPeriod(linkedModelId, modelRecord),
-        getActiveLiveStreamForModel(linkedModelId),
-        countApprovedCustomRequestsWaitingSchedule(linkedModelId),
-        countPendingVAContentAssignmentsForModel(linkedModelId),
-      ]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[model/home] falling back to empty data", { message });
-  }
+  [
+    currentPeriod,
+    periods,
+    upcomingPeriod,
+    activeLiveRecord,
+    pendingCustomRequestsCount,
+    pendingVaAssignmentsCount,
+  ] = await Promise.all([
+    getCurrentPeriod(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/home] getCurrentPeriod failed; using null fallback", { message });
+      return null;
+    }),
+    getPeriodsForModel(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/home] getPeriodsForModel failed; using [] fallback", { message });
+      return [];
+    }),
+    getUpcomingPeriod(linkedModelId, modelRecord).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/home] getUpcomingPeriod failed; using null fallback", { message });
+      return null;
+    }),
+    getActiveLiveStreamForModel(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/home] getActiveLiveStreamForModel failed; using null fallback", { message });
+      return null;
+    }),
+    countApprovedCustomRequestsWaitingSchedule(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/home] countApprovedCustomRequestsWaitingSchedule failed; using 0 fallback", { message });
+      return 0;
+    }),
+    countPendingVAContentAssignmentsForModel(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/home] countPendingVAContentAssignmentsForModel failed; using 0 fallback", { message });
+      return 0;
+    }),
+  ]);
 
   const activeLive = activeLiveRecord
     ? {

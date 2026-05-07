@@ -24,7 +24,11 @@ export default async function ModelTasksPage() {
     );
   }
 
-  const tasks = await listModelTasks(linkedModelId);
+  const tasks = await listModelTasks(linkedModelId).catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("[model/tasks] listModelTasks failed; using [] fallback", { message });
+    return [];
+  });
 
   return (
     <div className="space-y-8 pb-8 md:space-y-10 md:pb-10">

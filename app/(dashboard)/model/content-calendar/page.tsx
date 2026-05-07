@@ -36,16 +36,23 @@ export default async function ModelContentCalendarPage() {
   let assignments: Awaited<ReturnType<typeof listVAContentAssignmentsForModel>> = [];
   let allCustoms: Awaited<ReturnType<typeof listCustomRequestsByModel>> = [];
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
-  try {
-    [assignments, allCustoms, tasks] = await Promise.all([
-      listVAContentAssignmentsForModel(linkedModelId),
-      listCustomRequestsByModel(linkedModelId),
-      listModelTasks(linkedModelId),
-    ]);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("[model/content-calendar] falling back to empty data", { message });
-  }
+  [assignments, allCustoms, tasks] = await Promise.all([
+    listVAContentAssignmentsForModel(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", { message });
+      return [];
+    }),
+    listCustomRequestsByModel(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/content-calendar] listCustomRequestsByModel failed; using [] fallback", { message });
+      return [];
+    }),
+    listModelTasks(linkedModelId).catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("[model/content-calendar] listModelTasks failed; using [] fallback", { message });
+      return [];
+    }),
+  ]);
 
   const customs = allCustoms.filter((c) => c.admin_status === "accepted");
 
