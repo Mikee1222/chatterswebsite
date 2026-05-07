@@ -1,23 +1,33 @@
+import { redirect } from "next/navigation";
+import { getModelContext } from "@/lib/model-context-server";
+import { ModelQuickActionsFab } from "@/components/model-quick-actions-modal";
+
 export const dynamic = "force-dynamic";
 
-import { redirect } from "next/navigation";
-import { ROUTES } from "@/lib/routes";
-import { getModelContext } from "@/lib/model-context-server";
-import { StaticEnLanguageProvider } from "@/lib/language-provider";
-import { ModelQuickActionsFab } from "@/components/model-quick-actions-modal";
-import { ModelRouteLoadingSkeleton } from "@/components/model-route-feedback";
-import { Suspense } from "react";
+function isRedirectError(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "digest" in err &&
+    String((err as { digest?: string }).digest).startsWith("NEXT_REDIRECT")
+  );
+}
 
-/** Model area: only users with role `model` may access `/model/*` (middleware + this layout). */
 export default async function ModelLayout({ children }: { children: React.ReactNode }) {
-  const { user } = await getModelContext();
-  if (!user) redirect(ROUTES.login);
-  if (user.role !== "model") redirect(ROUTES.dashboard);
+  let ctx: Awaited<ReturnType<typeof getModelContext>>;
+  try {
+    ctx = await getModelContext();
+    if (!ctx?.user) redirect("/login");
+    if (ctx.user.role !== "model") redirect("/login");
+  } catch (e) {
+    if (isRedirectError(e)) throw e;
+    redirect("/login");
+  }
 
   return (
-    <StaticEnLanguageProvider>
-      <ModelQuickActionsFab user={user} />
-      <Suspense fallback={<ModelRouteLoadingSkeleton blocks={4} />}>{children}</Suspense>
-    </StaticEnLanguageProvider>
+    <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
+      {children}
+      <ModelQuickActionsFab user={ctx.user} />
+    </div>
   );
 }
