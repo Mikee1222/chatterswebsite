@@ -66,3 +66,4 @@ package-lock 2.json
 # Local junk / accidental copies
 .foo/
 .next-nope/
+.vercel

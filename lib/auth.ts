@@ -49,6 +49,17 @@ export async function hashPassword(password: string): Promise<string> {
 
 /** Verify password against stored hash. */
 export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  // Backward compatibility: older deployments may have bcrypt hashes in Airtable.
+  // Vercel Node runtime supports bcryptjs reliably.
+  if (storedHash.startsWith("$2a$") || storedHash.startsWith("$2b$") || storedHash.startsWith("$2y$")) {
+    try {
+      const bcryptjs = await import("bcryptjs");
+      return await bcryptjs.compare(password, storedHash);
+    } catch {
+      return false;
+    }
+  }
+
   const { scrypt } = await import("crypto");
   const [salt, key] = storedHash.split(":");
   if (!salt || !key) return false;

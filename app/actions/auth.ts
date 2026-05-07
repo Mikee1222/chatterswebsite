@@ -36,19 +36,41 @@ function getDemoCredentials(): { email: string; password: string; role: "admin" 
 export async function login(formData: FormData) {
   const submittedEmail = (formData.get("email") as string)?.trim().toLowerCase() ?? "";
   const submittedPassword = (formData.get("password") as string)?.trim() ?? "";
+  const logPrefix = "[auth.login]";
+  const obfuscatedEmail = submittedEmail ? `${submittedEmail.slice(0, 2)}***@***` : "(empty)";
 
   if (!submittedEmail || !submittedPassword) {
+    console.log(`${logPrefix} missing credentials`, {
+      emailPresent: !!submittedEmail,
+      passwordPresent: !!submittedPassword,
+    });
     redirect(`${ROUTES.login}?error=${encodeURIComponent("Email and password are required")}`);
   }
 
   const rememberMe = formData.get("remember_me") === "on" || formData.get("remember_me") === "true";
   const jwtMaxAgeSec = rememberMe ? SESSION_REMEMBER_MAX_AGE_SEC : SESSION_EPHEMERAL_JWT_MAX_AGE_SEC;
+  console.log(`${logPrefix} attempt`, {
+    email: obfuscatedEmail,
+    rememberMe,
+  });
 
   // 1. Try Airtable user (hashed password)
   try {
     const user = await getUserByEmailForAuth(submittedEmail);
+    console.log(`${logPrefix} airtable lookup`, {
+      email: obfuscatedEmail,
+      userFound: !!user,
+      canLogin: !!user?.can_login,
+      hasPasswordHash: !!user?.password_hash,
+      role: user?.role ?? null,
+      hashType: user?.password_hash?.startsWith("$2") ? "bcrypt" : user?.password_hash?.includes(":") ? "scrypt" : "unknown",
+    });
     if (user?.can_login && user.password_hash) {
       const valid = await verifyPassword(submittedPassword, user.password_hash);
+      console.log(`${logPrefix} password verify`, {
+        email: obfuscatedEmail,
+        valid,
+      });
       if (valid) {
         const token = await setSession(
           {
@@ -69,11 +91,16 @@ export async function login(formData: FormData) {
           // Remember me: persistent cookie (30 days). Unchecked: session cookie (no maxAge → cleared when browser closes).
           ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
         });
+        console.log(`${logPrefix} login success (airtable)`, { email: obfuscatedEmail, role: user.role });
         redirect(ROUTES.dashboard);
       }
     }
   } catch (err) {
     if (isRedirectError(err)) throw err;
+    console.error(`${logPrefix} airtable auth error`, {
+      email: obfuscatedEmail,
+      error: err instanceof Error ? err.message : String(err),
+    });
     // Airtable not configured or error; fall back to demo
   }
 
@@ -98,9 +125,11 @@ export async function login(formData: FormData) {
       path: "/",
       ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
     });
+    console.log(`${logPrefix} login success (demo fallback)`, { email: obfuscatedEmail, role: demoRole });
     redirect(ROUTES.dashboard);
   }
 
+  console.log(`${logPrefix} invalid credentials`, { email: obfuscatedEmail });
   redirect(`${ROUTES.login}?error=${encodeURIComponent("Invalid email or password")}`);
 }
 
