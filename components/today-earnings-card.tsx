@@ -15,7 +15,7 @@ export type TodayEarningsCardProps = {
 };
 
 export function TodayEarningsCard({ embedded = false }: TodayEarningsCardProps) {
-  const refreshInterval = useAdaptiveRefreshInterval(5 * 60 * 1000, 0);
+  const refreshInterval = useAdaptiveRefreshInterval(7200 * 1000, 0);
   const query = useAdminTodayEarnings({ refreshInterval });
   const earnings = query.data?.totals?.gross ?? null;
   const displayYmd = getTodayYmdAthens();
@@ -77,7 +77,7 @@ export function TodayEarningsCard({ embedded = false }: TodayEarningsCardProps) 
           <p className={`text-white/50 ${embedded ? "mt-0.5 text-xs" : "mt-1 text-sm"}`}>
             {displayYmd ? formatDateYmd(displayYmd) : formatDate(new Date().toISOString())} · Gross (pre OF 20%)
           </p>
-          <p className="mt-0.5 text-[10px] text-white/40">Infloww · Refreshes every 5 min</p>
+          <p className="mt-0.5 text-[10px] text-white/40">Infloww · Refreshes every 2h</p>
         </>
       ) : null}
     </>

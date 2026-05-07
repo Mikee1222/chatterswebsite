@@ -76,17 +76,89 @@ export function formatDateLong(
   return formatDateEuropean(dateInput);
 }
 
-/** Time range helper for schedule UI (HH:mm - HH:mm). */
+/** Model schedule / calendar: Athens wall time, 24h (handles ISO from Airtable). */
+const SCHEDULE_TIME_ZONE = "Europe/Athens";
+const SCHEDULE_TIME_LOCALE = "el-GR";
+
+/**
+ * Format a schedule time for display (ISO datetime, `HH:mm`, or `HH:mm:ss`).
+ * Uses Europe/Athens so Airtable UTC instants match local wall clock.
+ */
+export function formatScheduleTime(isoString: string | null | undefined): string {
+  if (isoString == null || isoString === "") return "—";
+  const t = String(isoString).trim();
+  const hhmmss = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/;
+  const m = hhmmss.exec(t);
+  if (m) {
+    return `${pad2(Number(m[1]))}:${pad2(Number(m[2]))}`;
+  }
+  try {
+    const d = new Date(t);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleTimeString(SCHEDULE_TIME_LOCALE, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: SCHEDULE_TIME_ZONE,
+      });
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const d = new Date(`1970-01-01T${t}`);
+    if (!Number.isNaN(d.getTime())) {
+      return d.toLocaleTimeString(SCHEDULE_TIME_LOCALE, {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        timeZone: "UTC",
+      });
+    }
+  } catch {
+    /* ignore */
+  }
+  return t;
+}
+
+/** Weekday + calendar date line for schedule day cards (Athens). */
+export function formatScheduleWeekdayDateLine(dateYmd: string, locale: "en-GB" | "es" = "en-GB"): string {
+  const ymd = String(dateYmd).trim().slice(0, 10);
+  if (!DATE_ONLY_ISO.test(ymd)) return dateYmd;
+  const d = new Date(`${ymd}T12:00:00Z`);
+  const loc = locale === "es" ? "es" : "en-GB";
+  const wd = d.toLocaleDateString(loc, { weekday: "short", timeZone: SCHEDULE_TIME_ZONE });
+  const rest = d.toLocaleDateString(loc, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: SCHEDULE_TIME_ZONE,
+  });
+  return `${wd} · ${rest}`;
+}
+
+/** `live_stream` → `Live Stream` for schedule badges. */
+export function formatScheduleItemTypeForDisplay(raw: string | null | undefined): string {
+  if (raw == null || raw === "") return "—";
+  return String(raw)
+    .replace(/_/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(" ");
+}
+
+/** Time range helper for schedule UI (24h, en dash). */
 export function formatTimeRange(
   start: string | null | undefined,
   end: string | null | undefined
 ): string {
-  const startText = formatTimeEuropean(start);
-  const endText = formatTimeEuropean(end);
+  const startText = formatScheduleTime(start);
+  const endText = formatScheduleTime(end);
   if (startText === "—" && endText === "—") return "—";
   if (startText === "—") return endText;
   if (endText === "—") return startText;
-  return `${startText} - ${endText}`;
+  return `${startText}\u2013${endText}`;
 }
 
 /** Date and time: "19 May 2026, 14:30" (24h per en-GB). */
@@ -101,18 +173,9 @@ export function formatDateTimeEuropean(dateInput: string | Date | null | undefin
   return formatDateTimeUk(s || null);
 }
 
-/** Time only, European 24h (e.g. 14:30). Use when you have a separate time string. */
+/** Time only, 24h — delegates to {@link formatScheduleTime} (ISO + `HH:mm` + Athens for datetimes). */
 export function formatTimeEuropean(timeInput: string | null | undefined): string {
-  if (timeInput == null || timeInput === "") return "—";
-  const t = String(timeInput).trim();
-  if (/^\d{1,2}:\d{2}$/.test(t)) return t;
-  try {
-    const d = new Date(`1970-01-01T${t}`);
-    if (Number.isNaN(d.getTime())) return t;
-    return d.toLocaleTimeString(EU_LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false });
-  } catch {
-    return t;
-  }
+  return formatScheduleTime(timeInput);
 }
 
 /** Current time as HH:mm (European 24h). Use for live clock display. */

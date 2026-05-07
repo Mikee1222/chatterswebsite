@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getUserByAirtableId } from "@/services/users";
 import { ROUTES } from "@/lib/routes";
+import { addDays } from "@/lib/weekly-program";
+import { getModelById } from "@/services/modelss";
 import {
   createPeriod,
   deletePeriod,
@@ -79,8 +81,21 @@ export async function logPeriodAction(
   if (!allowed) return { success: false, error: "You cannot log periods for this model." };
 
   const start = startDate.trim().slice(0, 10);
-  const end = endDate.trim().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(start) || !/^\d{4}-\d{2}-\d{2}$/.test(end) || start > end) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(start)) {
+    return { success: false, error: "Invalid dates." };
+  }
+
+  let end = endDate.trim().slice(0, 10);
+  const endLooksValid = /^\d{4}-\d{2}-\d{2}$/.test(end);
+  if (!endLooksValid || end < start) {
+    const model = await getModelById(modelId);
+    const periodDays =
+      typeof model?.avg_period_length === "number" && model.avg_period_length > 0
+        ? Math.min(14, Math.round(model.avg_period_length))
+        : 5;
+    end = addDays(start, Math.max(1, periodDays) - 1);
+  }
+  if (start > end) {
     return { success: false, error: "Invalid dates." };
   }
 

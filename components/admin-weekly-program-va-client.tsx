@@ -153,7 +153,7 @@ function CustomTime12hBlock({
   return (
     <FormField label={label} icon={<Clock />} required={required}>
       <div className="flex flex-wrap items-center gap-2">
-        <CustomSelect
+        <CustomSelect portaled
           value={String(h12)}
           onChange={(v) => sync({ h12: Number(v) })}
           options={CUSTOM_SELECT_HOUR_12_OPTIONS}
@@ -566,19 +566,19 @@ export function AdminWeeklyProgramVaClient({
         {mobileHelperOpen && (
           <div className="p-4 space-y-3">
             <div className="grid grid-cols-1 gap-2">
-              <CustomSelect
+              <CustomSelect portaled
                 value={availFilterChatter}
                 onChange={setAvailFilterChatter}
                 options={availChatterSelectOptions}
                 className="min-h-[48px] text-sm"
               />
-              <CustomSelect
+              <CustomSelect portaled
                 value={availFilterShiftType}
                 onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
                 options={AVAIL_SHIFT_TYPE_OPTIONS}
                 className="min-h-[48px] text-sm"
               />
-              <CustomSelect
+              <CustomSelect portaled
                 value={availFilterDay}
                 onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
                 options={dayFilterSelectOptions}
@@ -648,19 +648,19 @@ export function AdminWeeklyProgramVaClient({
           <span className="ml-0 md:ml-2 text-sm font-medium text-white/80 w-full md:w-auto">Week of {formatWeekLabel(effectiveWeekStart)}</span>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <CustomSelect
+          <CustomSelect portaled
             value={filterChatter}
             onChange={setFilterChatter}
             options={chatterFilterSelectOptions}
             className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0"
           />
-          <CustomSelect
+          <CustomSelect portaled
             value={filterModel}
             onChange={setFilterModel}
             options={modelFilterSelectOptions}
             className="w-full min-h-[44px] sm:min-w-[140px] sm:min-h-0"
           />
-          <CustomSelect
+          <CustomSelect portaled
             value={filterShiftType}
             onChange={(v) => setFilterShiftType(v as WeeklyProgramShiftType | "")}
             options={SHIFT_FILTER_OPTIONS}
@@ -806,7 +806,7 @@ export function AdminWeeklyProgramVaClient({
                   <div className="flex flex-wrap items-end gap-2 border-b border-white/10 bg-black/30 px-4 py-2">
                     <div className="min-w-[140px] flex-1">
                       <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Copy to</span>
-                      <CustomSelect
+                      <CustomSelect portaled
                         value={duplicateTargetDay}
                         onChange={(v) => setDuplicateTargetDay(v as WeeklyProgramDay)}
                         options={DAYS.filter((d) => d !== day).map((d) => ({ value: d, label: d }))}
@@ -898,7 +898,7 @@ export function AdminWeeklyProgramVaClient({
                     {duplicateOpenDay === day && entries.length > 0 ? (
                       <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
                         <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Copy to</span>
-                        <CustomSelect
+                        <CustomSelect portaled
                           value={duplicateTargetDay}
                           onChange={(v) => setDuplicateTargetDay(v as WeeklyProgramDay)}
                           options={DAYS.filter((d) => d !== day).map((d) => ({ value: d, label: d }))}
@@ -1004,19 +1004,19 @@ export function AdminWeeklyProgramVaClient({
           </div>
           <div className="p-3 space-y-2">
             <div className="grid grid-cols-1 gap-1.5">
-              <CustomSelect
+              <CustomSelect portaled
                 value={availFilterChatter}
                 onChange={setAvailFilterChatter}
                 options={availChatterSelectOptions}
                 className="text-xs"
               />
-              <CustomSelect
+              <CustomSelect portaled
                 value={availFilterShiftType}
                 onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
                 options={AVAIL_SHIFT_TYPE_OPTIONS}
                 className="text-xs"
               />
-              <CustomSelect
+              <CustomSelect portaled
                 value={availFilterDay}
                 onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
                 options={dayFilterSelectOptions}
@@ -1114,19 +1114,19 @@ export function AdminWeeklyProgramVaClient({
               </div>
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
                 <div className="grid grid-cols-1 gap-3 shrink-0">
-                  <CustomSelect
+                  <CustomSelect portaled
                     value={availFilterChatter}
                     onChange={setAvailFilterChatter}
                     options={availChatterSelectOptions}
                     className="text-sm"
                   />
-                  <CustomSelect
+                  <CustomSelect portaled
                     value={availFilterShiftType}
                     onChange={(v) => setAvailFilterShiftType(v as WeeklyProgramShiftType | "")}
                     options={AVAIL_SHIFT_TYPE_OPTIONS}
                     className="text-sm"
                   />
-                  <CustomSelect
+                  <CustomSelect portaled
                     value={availFilterDay}
                     onChange={(v) => setAvailFilterDay(v as WeeklyProgramDay | "")}
                     options={dayFilterSelectOptions}
@@ -1555,7 +1555,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
 
   const formContent = (
     <form onSubmit={handleSubmit} className="flex min-h-0 flex-col">
-        <div className="flex-1 space-y-5 p-4 pb-32 md:pb-5" style={{ paddingLeft: "max(1rem, env(safe-area-inset-left))", paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto overflow-x-hidden p-4 pb-32 md:pb-5" style={{ paddingLeft: "max(1rem, env(safe-area-inset-left))", paddingRight: "max(1rem, env(safe-area-inset-right))" }}>
         <div className="rounded-xl border border-white/10 bg-black/40 px-3.5 py-3">
           <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs">
             <span className="font-medium text-[hsl(330,90%,75%)]">{preview.timeRange}</span>
@@ -1592,7 +1592,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
           </div>
         )}
         <FormField label="VA" icon={<Headphones />} htmlFor="wp-va-modal-va" required>
-          <CustomSelect
+          <CustomSelect portaled
             id="wp-va-modal-va"
             required
             value={chatterId}
@@ -1603,7 +1603,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         </FormField>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <FormField label="Day" icon={<CalendarDays />} htmlFor="wp-va-modal-day" required>
-            <CustomSelect
+            <CustomSelect portaled
               id="wp-va-modal-day"
               required
               value={day}
@@ -1613,7 +1613,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
             />
           </FormField>
           <FormField label="Shift type" icon={<Layers />} htmlFor="wp-va-modal-shift-type" required>
-            <CustomSelect
+            <CustomSelect portaled
               id="wp-va-modal-shift-type"
               required
               value={shiftType}
@@ -1627,8 +1627,10 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
           </FormField>
         </div>
         <div
-          className={`grid grid-cols-1 gap-4 overflow-hidden transition-all duration-300 ease-out sm:grid-cols-2 ${
-            shiftType === "Custom" ? "max-h-[220px] opacity-100" : "max-h-0 opacity-0"
+          className={`grid grid-cols-1 gap-4 transition-all duration-300 ease-out sm:grid-cols-2 ${
+            shiftType === "Custom"
+              ? "max-h-[min(520px,85vh)] overflow-visible opacity-100"
+              : "pointer-events-none max-h-0 overflow-hidden opacity-0"
           }`}
           aria-hidden={shiftType !== "Custom"}
         >

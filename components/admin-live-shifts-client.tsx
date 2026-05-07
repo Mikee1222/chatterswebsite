@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Send, RefreshCw } from "lucide-react";
+import { Send, RefreshCw, Calendar, Users } from "lucide-react";
 import { formatDateTimeEuropean } from "@/lib/format";
 import type { Shift } from "@/types";
 import { LiveTimer } from "@/components/live-timer";
@@ -19,9 +19,26 @@ const CHATTER_TELEGRAM: Record<string, string> = {
 };
 
 const MAX_BREAK_MINUTES = 45;
-const cardShadow = "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.08)";
-const cardShadowOnBreak = "0 0 0 1px rgba(251,191,36,0.2), 0 0 24px -8px rgba(245,158,11,0.15)";
-const sectionShadow = "0 0 0 1px rgba(255,255,255,0.05), 0 0 32px -8px hsl(330 80% 55% / 0.06)";
+
+/** Minutes elapsed since break_started_at (live tick for badge). */
+function useBreakSessionMinutesSoFar(breakStartedAt: string | null, isOnBreak: boolean): number {
+  const [mins, setMins] = React.useState(0);
+  React.useEffect(() => {
+    if (!isOnBreak || !breakStartedAt) {
+      setMins(0);
+      return;
+    }
+    const tick = () => {
+      const startMs = new Date(breakStartedAt).getTime();
+      if (!startMs) return;
+      setMins(Math.max(0, Math.floor((Date.now() - startMs) / 60_000)));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [isOnBreak, breakStartedAt]);
+  return mins;
+}
 
 /** Live-updating break used display (X / 45 min used) when on break. */
 function BreakUsedLive({
@@ -56,32 +73,56 @@ function BreakUsedLive({
   );
 }
 
-/** Uses the same real-time shift state as the actual shift page: status from record + break_started_at. */
+/** Pill from shift.break_minutes + live on-break session (no backend changes). */
+function BreakSummaryBadge({ shift, isOnBreak }: { shift: LiveShiftWithModels; isOnBreak: boolean }) {
+  const breakStartedAt = shift.break_started_at;
+  const completedMins = shift.break_minutes ?? 0;
+  const sessionMins = useBreakSessionMinutesSoFar(breakStartedAt, isOnBreak && Boolean(breakStartedAt));
+
+  if (isOnBreak && breakStartedAt) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center rounded-full border border-red-500/25 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400"
+        title="Currently on break"
+      >
+        ⏸ On break · {sessionMins} min so far
+      </span>
+    );
+  }
+  if (completedMins > 0) {
+    return (
+      <span
+        className="inline-flex shrink-0 items-center rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400"
+        title="Total break time used this shift"
+      >
+        ☕ {completedMins} min break
+      </span>
+    );
+  }
+  return null;
+}
+
 function ShiftCard({ shift, subtitle, index = 0 }: { shift: LiveShiftWithModels; subtitle?: string; index?: number }) {
   const isOnBreak = shift.status === "on_break" || Boolean(shift.break_started_at);
   const hasBreakStart = Boolean(shift.break_started_at);
   const running = !isOnBreak;
   const chatterName = shift.chatter_name || "—";
-  const telegramUsername =
-    chatterName !== "—" ? CHATTER_TELEGRAM[chatterName] : undefined;
+  const telegramUsername = chatterName !== "—" ? CHATTER_TELEGRAM[chatterName] : undefined;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
-      whileHover={{ scale: 1.01 }}
-      className={`rounded-xl border p-5 transition ${
-        isOnBreak
-          ? "border-amber-500/30 bg-amber-500/[0.06] hover:bg-amber-500/[0.08]"
-          : "border-white/10 bg-white/[0.04] hover:bg-white/[0.06]"
+      className={`mb-3 rounded-2xl border border-white/10 bg-white/[0.08] p-5 transition-all last:mb-0 hover:bg-white/10 ${
+        isOnBreak ? "ring-1 ring-amber-500/15" : ""
       }`}
-      style={{ boxShadow: isOnBreak ? cardShadowOnBreak : cardShadow }}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="text-lg font-semibold tracking-tight text-white">{chatterName}</span>
+          <div className="flex flex-wrap items-center gap-2 gap-y-1.5">
+            <span className="text-lg font-bold tracking-tight text-white">{chatterName}</span>
+            <BreakSummaryBadge shift={shift} isOnBreak={isOnBreak} />
             {telegramUsername && (
               <a
                 href={`tg://resolve?domain=${telegramUsername}`}
@@ -94,9 +135,9 @@ function ShiftCard({ shift, subtitle, index = 0 }: { shift: LiveShiftWithModels;
               </a>
             )}
           </div>
-          {subtitle && <p className="mt-0.5 text-xs text-white/45 uppercase tracking-wider">{subtitle}</p>}
-          <p className="mt-1 text-xs text-white/50">
-            Started {shift.start_time ? formatDateTimeEuropean(shift.start_time) : "—"}
+          {subtitle && <p className="mt-0.5 text-xs text-white/40">{subtitle}</p>}
+          <p className="mt-0.5 text-xs text-white/40">
+            Started at: {shift.start_time ? formatDateTimeEuropean(shift.start_time) : "—"}
           </p>
         </div>
         <span
@@ -105,30 +146,25 @@ function ShiftCard({ shift, subtitle, index = 0 }: { shift: LiveShiftWithModels;
               ? "border-amber-500/50 bg-amber-500/25 text-amber-200"
               : "border-emerald-500/40 bg-emerald-500/20 text-emerald-300"
           }`}
-          style={
-            isOnBreak
-              ? { boxShadow: "0 0 14px -2px rgba(245,158,11,0.4)" }
-              : { boxShadow: "0 0 12px -2px rgba(16,185,129,0.3)" }
-          }
         >
           <span
-            className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "bg-emerald-400 animate-pulse" : "bg-amber-400 animate-pulse"}`}
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${running ? "animate-pulse bg-emerald-400" : "animate-pulse bg-amber-400"}`}
             aria-hidden
           />
           {isOnBreak ? "ON BREAK" : "ACTIVE"}
         </span>
       </div>
-      <p className="mt-4 font-mono text-2xl tabular-nums text-[hsl(330,90%,75%)]" style={{ textShadow: "0 0 16px hsl(330 80% 55% / 0.25)" }}>
-        {shift.start_time ? (
-          <LiveTimer startTime={shift.start_time} className="tabular-nums" />
-        ) : (
-          "—"
-        )}
-      </p>
-      <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-white/45">Duration</p>
+
+      <div className="mt-4">
+        <div className="text-pink-400 text-3xl font-bold tabular-nums font-mono [font-variant-numeric:tabular-nums]">
+          {shift.start_time ? <LiveTimer startTime={shift.start_time} className="tabular-nums font-mono font-bold" /> : "—"}
+        </div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-white/30">Duration</p>
+      </div>
+
       {isOnBreak && hasBreakStart && (
         <>
-          <p className="mt-4 font-mono text-xl tabular-nums text-amber-300" style={{ textShadow: "0 0 12px rgba(245,158,11,0.2)" }}>
+          <p className="mt-4 font-mono text-xl tabular-nums text-amber-300">
             <LiveTimer startTime={shift.break_started_at} mode="break" />
           </p>
           <p className="mt-0.5 text-xs font-semibold uppercase tracking-wider text-amber-400/80">Break</p>
@@ -139,41 +175,49 @@ function ShiftCard({ shift, subtitle, index = 0 }: { shift: LiveShiftWithModels;
           />
         </>
       )}
+
       {shift.modelNames.length > 0 ? (
-        <div className="mt-4 flex flex-wrap gap-2">
+        <div className="mt-3 flex flex-wrap gap-2">
           {shift.modelNames.map((name) => (
-            <span
-              key={name}
-              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/90"
-            >
+            <span key={name} className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-white/70">
               {name}
             </span>
           ))}
         </div>
       ) : (
-        <p className="mt-4 text-sm text-white/45">No models assigned</p>
+        <p className="mt-3 text-sm text-white/45">No models assigned</p>
       )}
     </motion.div>
   );
 }
 
-function StatCard({ label, value }: { label: string; value: React.ReactNode }) {
+function StatCard({
+  label,
+  value,
+  dotClass,
+}: {
+  label: string;
+  value: React.ReactNode;
+  dotClass: string;
+}) {
   return (
-    <div
-      className="rounded-xl border border-white/10 bg-black/40 px-4 py-4 backdrop-blur-xl"
-      style={{ boxShadow: sectionShadow }}
-    >
-      <p className="text-xs font-semibold uppercase tracking-wider text-white/45">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
+    <div className="flex flex-col gap-1 rounded-2xl border border-white/10 bg-white/5 p-5">
+      <div className="flex items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+        <p className="text-xs font-semibold uppercase tracking-widest text-white/40">{label}</p>
+      </div>
+      <p className="mt-1 text-4xl font-bold tabular-nums text-white">{value}</p>
     </div>
   );
 }
 
-function EmptyState({ message, sub }: { message: string; sub?: string }) {
+function EmptyState({ message, sub, icon: Icon }: { message: string; sub?: string; icon?: React.ComponentType<{ className?: string }> }) {
+  const I = Icon ?? Calendar;
   return (
-    <div className="flex flex-col items-center justify-center rounded-xl border border-white/5 bg-white/[0.02] py-16 text-center">
-      <p className="text-base font-medium text-white/60">{message}</p>
-      {sub && <p className="mt-1 text-sm text-white/40">{sub}</p>}
+    <div className="flex min-h-[200px] flex-col items-center justify-center gap-3 py-12 text-center">
+      <I className="h-10 w-10 text-white/20" aria-hidden />
+      <p className="text-white/50">{message}</p>
+      {sub && <p className="max-w-xs text-sm text-white/30">{sub}</p>}
     </div>
   );
 }
@@ -201,64 +245,54 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <div
-        className="rounded-2xl border border-white/10 bg-black/40 px-6 py-5 backdrop-blur-xl"
-        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 48px -12px hsl(330 80% 55% / 0.1)" }}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-white/40">Operations</p>
-            <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Live shifts</h1>
-            <p className="mt-1 text-white/60">Real-time visibility. Chatter and VA shifts.</p>
-          </div>
-          <button
-            type="button"
-            onClick={handleRefresh}
-            className="flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60 transition-all hover:bg-white/10 hover:text-white"
-          >
-            <RefreshCw className={`h-3.5 w-3.5 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
-            <span>{refreshing ? "Refreshing..." : "Refresh"}</span>
-          </button>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-widest text-white/40">Operations</p>
+          <h1 className="mt-1 text-4xl font-bold text-white">Live shifts</h1>
+          <p className="mt-2 text-sm text-white/50">Real-time visibility into chatter and VA shifts.</p>
         </div>
-      </div>
-
-      {/* Stats row */}
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-        <StatCard label="Active chatters" value={chatterShifts.length} />
-        <StatCard label="Active VAs" value={vaShifts.length} />
-        <StatCard label="Total active shifts" value={totalShifts} />
-        <StatCard label="Models currently active" value={totalModels} />
-      </div>
-
-      {/* Two columns */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <div
-          className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl"
-          style={{ boxShadow: sectionShadow }}
+        <button
+          type="button"
+          onClick={handleRefresh}
+          className="flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white transition-colors hover:bg-white/10"
         >
-          <div className="border-b border-white/10 bg-white/[0.04] px-5 py-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/90">Live chatter shifts</h2>
-          </div>
-          <div className="p-4 space-y-4">
+          <RefreshCw className={`h-4 w-4 shrink-0 ${refreshing ? "animate-spin" : ""}`} aria-hidden />
+          <span>{refreshing ? "Refreshing…" : "Refresh"}</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <StatCard label="Active Chatters" value={chatterShifts.length} dotClass="bg-pink-400 shadow-[0_0_8px_hsl(330_90%_70%_/_0.5)]" />
+        <StatCard label="Active VAs" value={vaShifts.length} dotClass="bg-purple-400 shadow-[0_0_8px_rgb(192_132_252_/_0.45)]" />
+        <StatCard label="Total Active Shifts" value={totalShifts} dotClass="bg-sky-400 shadow-[0_0_8px_rgb(56_189_248_/_0.45)]" />
+        <StatCard label="Models Currently Active" value={totalModels} dotClass="bg-emerald-400 shadow-[0_0_8px_rgb(52_211_153_/_0.45)]" />
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div>
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/40">Live chatter shifts</h2>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             {chatterShifts.length === 0 ? (
-              <EmptyState message="No live chatter shifts" sub="Shifts will appear here when chatters are live" />
+              <EmptyState
+                message="No live chatter shifts"
+                sub="Shifts will appear here when chatters are live"
+                icon={Calendar}
+              />
             ) : (
               chatterShifts.map((s, i) => <ShiftCard key={s.id} shift={s} index={i} />)
             )}
           </div>
         </div>
 
-        <div
-          className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl"
-          style={{ boxShadow: sectionShadow }}
-        >
-          <div className="border-b border-white/10 bg-white/[0.04] px-5 py-4">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/90">Live VA shifts</h2>
-          </div>
-          <div className="p-4 space-y-4">
+        <div>
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-widest text-white/40">Live VA shifts</h2>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
             {vaShifts.length === 0 ? (
-              <EmptyState message="No live VA shifts" sub="VA shifts will appear here when active" />
+              <EmptyState
+                message="No live VA shifts"
+                sub="VA shifts will appear here when active"
+                icon={Users}
+              />
             ) : (
               vaShifts.map((s, i) => <ShiftCard key={s.id} shift={s} subtitle="Mistake check" index={i} />)
             )}
@@ -267,10 +301,7 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
       </div>
 
       {totalShifts === 0 && (
-        <div
-          className="rounded-2xl border border-white/10 bg-black/40 py-16 text-center backdrop-blur-xl"
-          style={{ boxShadow: sectionShadow }}
-        >
+        <div className="rounded-2xl border border-white/10 bg-white/5 py-16 text-center">
           <p className="text-lg font-medium text-white/70">No live shifts right now</p>
           <p className="mt-1 text-sm text-white/50">When chatters or VAs start a shift, they will appear here.</p>
         </div>

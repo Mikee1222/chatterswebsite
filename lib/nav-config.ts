@@ -136,7 +136,8 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.modelCustoms, label: "Model customs", iconKey: "Package" },
   { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
   { href: ROUTES.admin.earnings, label: "Earnings", iconKey: "LineChart", adminOnly: true },
-  { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
+  // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.
+  // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
   { href: ROUTES.admin.vaTasks, label: "VA tasks", iconKey: "ListTodo" },
   { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },

@@ -1,34 +1,37 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
 import { getModelById } from "@/services/modelss";
 import { getUpcomingPeriod, markCurrentPeriodMissed } from "@/services/model-periods";
 import { sendPeriodPredictionResetNotification } from "@/services/period-notifications";
 
-const bodySchema = z.object({}).strict();
-
-async function parseOptionalEmptyBody(req: Request): Promise<NextResponse | null> {
-  const text = await req.text();
-  if (!text.trim()) return null;
-  let json: unknown;
-  try {
-    json = JSON.parse(text) as unknown;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const parsed = bodySchema.safeParse(json);
-  if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
-  }
-  return null;
-}
-
+/**
+ * POST /api/model/period/missed
+ * Body: optional JSON object or empty body. Extra keys are ignored (client may send `{}` or nothing).
+ */
 export async function POST(req: Request) {
   const ctx = await requireModelApiContext();
   if (!ctx.ok) return ctx.response;
 
-  const bad = await parseOptionalEmptyBody(req);
-  if (bad) return bad;
+  let text = "";
+  try {
+    text = await req.text();
+  } catch {
+    text = "";
+  }
+  console.log("[period/missed] raw length:", text.length, "preview:", text.slice(0, 500));
+
+  if (text.trim() !== "") {
+    let json: unknown;
+    try {
+      json = JSON.parse(text) as unknown;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    console.log("[period/missed] received body:", json);
+    if (json === null || typeof json !== "object" || Array.isArray(json)) {
+      return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+    }
+  }
 
   try {
     const model = await getModelById(ctx.linkedModelId);

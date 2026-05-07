@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Calendar, Clock, Gauge, Layers, ListChecks, Palmtree, StickyNote, Timer } from "lucide-react";
 import { addDays, getThisWeekMonday, formatWeekLabel, WEEKLY_PROGRAM_DAY_OPTIONS, normalizeWeekStart } from "@/lib/weekly-program";
-import { formatTimeRange, formatDateLong } from "@/lib/format";
+import { formatTimeRange, formatDateLong, formatScheduleWeekdayDateLine, formatScheduleItemTypeForDisplay } from "@/lib/format";
 import { modelScheduleUrl } from "@/lib/routes";
 import type {
   ModelScheduleItem,
@@ -78,7 +78,6 @@ export function ModelScheduleClient({
   const { t } = useTranslations();
   const { language } = useLanguage();
   const locale = language === "es" ? "es" : "en-GB";
-  const calLocale = language === "es" ? "es" : "en-US";
 
   const itemTypeLabel = React.useCallback(
     (itemType: string) => {
@@ -267,9 +266,6 @@ export function ModelScheduleClient({
         {weekDates.map((date, idx) => {
           const dayItems = itemsByDate.get(date) ?? [];
           const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
-          const dayShort = new Date(date + "T12:00:00").toLocaleDateString(calLocale, {
-            weekday: "short",
-          });
           const availRows = availabilityByDay.get(weekday) ?? [];
           const offRows = dateInTimeOff(date);
           const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
@@ -288,7 +284,7 @@ export function ModelScheduleClient({
                 </div>
               )}
               <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">
-                {dayShort} · {formatDateLong(date)}
+                {formatScheduleWeekdayDateLine(date, locale)}
               </p>
               {offRows.length > 0 && (
                 <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
@@ -325,14 +321,18 @@ export function ModelScheduleClient({
                         onClick={() => setSelectedItem(item)}
                         className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.1]"
                       >
-                        <span className="font-medium text-white/90">
-                          {item.title || itemTypeLabel(item.item_type)}
-                        </span>
-                        {(item.start_time || item.end_time) && (
-                          <span className="ml-2 text-sm text-white/60">{formatTimeRange(item.start_time, item.end_time)}</span>
-                        )}
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="min-w-0 flex-1 font-semibold capitalize text-white">
+                            {item.title?.trim() || itemTypeLabel(item.item_type)}
+                          </span>
+                          {(item.start_time || item.end_time) && (
+                            <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-white/50">
+                              {formatTimeRange(item.start_time, item.end_time)}
+                            </span>
+                          )}
+                        </div>
                         {item.duration_minutes != null && (
-                          <span className="ml-2 text-xs text-white/50">{item.duration_minutes} min</span>
+                          <p className="mt-1 text-xs text-white/50">{item.duration_minutes} min</p>
                         )}
                       </button>
                     </li>
@@ -413,7 +413,16 @@ export function ModelScheduleClient({
         title={selectedItem?.title || t("schedule.scheduleItem")}
         subtitle={
           selectedItem
-            ? `${itemTypeLabel(selectedItem.item_type)} · ${formatDateLong(selectedItem.date)}${selectedItem.start_time || selectedItem.end_time ? ` · ${formatTimeRange(selectedItem.start_time, selectedItem.end_time)}` : ""}`
+            ? `${(() => {
+                const l = itemTypeLabel(selectedItem.item_type);
+                return l.startsWith("schedule.itemTypes.")
+                  ? formatScheduleItemTypeForDisplay(selectedItem.item_type)
+                  : l;
+              })()} · ${formatDateLong(selectedItem.date)}${
+                selectedItem.start_time || selectedItem.end_time
+                  ? ` · ${formatTimeRange(selectedItem.start_time, selectedItem.end_time)}`
+                  : ""
+              }`
             : ""
         }
         badge={
@@ -425,7 +434,13 @@ export function ModelScheduleClient({
             ? [
                 {
                   label: t("common.type"),
-                  value: selectedItem.item_type,
+                  value: (() => {
+                    const lbl = itemTypeLabel(selectedItem.item_type);
+                    if (lbl.startsWith("schedule.itemTypes.")) {
+                      return formatScheduleItemTypeForDisplay(selectedItem.item_type);
+                    }
+                    return lbl;
+                  })(),
                   accent: "pink" as const,
                   icon: <Layers className="h-5 w-5" aria-hidden />,
                 },

@@ -20,6 +20,9 @@ type Fields = {
   /** Link to modelss; legacy: `model_id` */
   model?: string | string[];
   model_id?: string | string[];
+  /** Some bases use capitalized link field names */
+  Model?: string | string[];
+  Models?: string | string[];
   cycle_length_days?: number;
   period_length_days?: number;
   notes?: string;
@@ -38,6 +41,10 @@ function ymdOnly(value: unknown): string {
   return s;
 }
 
+function linkedModelIdFromPeriodFields(f: Fields): string | null {
+  return firstLinkedId(f.model ?? f.model_id ?? f.Model ?? f.Models);
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): ModelPeriodRecord {
   const f = rec.fields;
   const predRaw = f.predicted_next_date;
@@ -45,7 +52,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelPeriodRecord {
     predRaw != null && String(predRaw).trim() !== "" ? ymdOnly(String(predRaw)) : null;
   return {
     id: rec.id,
-    model_id: firstLinkedId(f.model ?? f.model_id) ?? "",
+    model_id: linkedModelIdFromPeriodFields(f) ?? "",
     start_date: ymdOnly(f.start_date),
     end_date: ymdOnly(f.end_date),
     cycle_length_days: typeof f.cycle_length_days === "number" ? f.cycle_length_days : null,
@@ -98,24 +105,29 @@ export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
   }
 }
 
+const MODEL_LINK_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const;
+
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
   if (!modelId) return [];
-  let records: AirtableRecord<Fields>[];
-  try {
-    records = await listAllRecords<Fields>(TABLE, {
-      filterByFormula: formulaLinkedContains("model_id", modelId),
-    });
-  } catch {
+  let records: AirtableRecord<Fields>[] | null = null;
+  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
       records = await listAllRecords<Fields>(TABLE, {
-        filterByFormula: formulaLinkedContains("model", modelId),
+        filterByFormula: formulaLinkedContains(fieldName, modelId),
       });
-    } catch {
-      const all = await listAllRecords<Fields>(TABLE, {});
-      records = all.filter(
-        (rec) => firstLinkedId(rec.fields.model ?? rec.fields.model_id) === modelId
-      );
+      break;
+    } catch (err) {
+      if (process.env.NODE_ENV !== "production") {
+        devLog("[getPeriodsForModel] filter formula failed; trying next link field name", {
+          fieldName,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
+  }
+  if (records == null) {
+    const all = await listAllRecords<Fields>(TABLE, {});
+    records = all.filter((rec) => linkedModelIdFromPeriodFields(rec.fields as Fields) === modelId);
   }
   const mapped = records.map(mapRecord).filter((p) => p.start_date && p.end_date);
   mapped.sort((a, b) => b.start_date.localeCompare(a.start_date));
@@ -198,6 +210,9 @@ export async function createPeriod(data: CreateModelPeriodInput): Promise<ModelP
     period_length_days: periodLen ?? undefined,
     notes: data.notes?.trim() || undefined,
     logged_by: data.logged_by,
+    /** Explicit so new rows never inherit an accidental checked state from Airtable defaults. */
+    missed_period: false,
+    came_early: false,
   });
   return mapRecord(rec as AirtableRecord<Fields>);
 }

@@ -30,7 +30,7 @@ const defaultButtonClass =
   "flex h-11 w-full min-h-0 items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white transition-all hover:border-white/20 hover:bg-white/8 disabled:pointer-events-none disabled:opacity-50";
 
 const panelSurfaceClass =
-  "rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl max-md:max-h-[200px] max-md:overflow-y-auto md:max-h-[300px] md:overflow-y-auto";
+  "rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl max-h-48 overflow-y-auto scroll-smooth md:max-h-72";
 
 export function CustomSelect({
   value,
@@ -142,8 +142,8 @@ export function CustomSelect({
               position: "fixed",
               left: portalPos.left,
               width: portalPos.width,
-              zIndex: 9999,
-              maxHeight: 200,
+              zIndex: 10050,
+              maxHeight: 288,
               overflowY: "auto",
               ...(portalPos.top != null ? { top: portalPos.top } : {}),
               ...(portalPos.bottom != null ? { bottom: portalPos.bottom } : {}),
