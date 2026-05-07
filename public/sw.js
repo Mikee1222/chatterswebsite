@@ -53,10 +53,27 @@ self.addEventListener("notificationclick", (event) => {
   );
 });
 
-/* Optional: cache static assets for offline shell */
+/**
+ * Navigation and API responses must never be served from cache — stale HTML/RSC payloads
+ * cause blank or wrong UI. Only static assets below use cache-first.
+ */
+function isNetworkOnlyPath(pathname) {
+  if (pathname === "/model" || pathname.startsWith("/model/")) return true;
+  if (pathname === "/api" || pathname.startsWith("/api/")) return true;
+  if (pathname === "/login" || pathname.startsWith("/login/")) return true;
+  return false;
+}
+
+/* Optional: cache static assets for offline shell only */
 self.addEventListener("fetch", (event) => {
   const u = new URL(event.request.url);
   if (u.origin !== self.location.origin) return;
+
+  if (isNetworkOnlyPath(u.pathname)) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   if (u.pathname.startsWith("/_next/static/") || u.pathname.startsWith("/icons/")) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
