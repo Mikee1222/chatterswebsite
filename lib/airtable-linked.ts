@@ -41,6 +41,11 @@ export function escapeAirtableString(s: string): string {
   return s.replace(/"/g, '""');
 }
 
+/** Filter formula: linked field has no linked records (length of joined ids is zero). */
+export function formulaLinkedIsEmpty(fieldName: string): string {
+  return `LEN(ARRAYJOIN({${fieldName}}) & "") = 0`;
+}
+
 /** Filter formula: linked field contains given record id. Uses ARRAYJOIN so FIND matches record ids reliably. */
 export function formulaLinkedContains(fieldName: string, recordId: string): string {
   const escaped = escapeAirtableString(recordId);

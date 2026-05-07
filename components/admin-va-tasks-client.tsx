@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Trash2 } from "lucide-react";
+import { ClipboardList, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDateEuropean } from "@/lib/format";
 import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
@@ -9,6 +9,7 @@ import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification, VaTaskRecord, VaTaskStatus, VaTaskPriority, VaRecurrenceType, VaRecurrenceDay } from "@/types";
 import { CustomSelect } from "@/components/ui/custom-select";
+import { cn } from "@/lib/utils";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -74,6 +75,44 @@ function FormSection({ title, children }: { title: string; children: React.React
       </div>
       <div className="space-y-4">{children}</div>
     </div>
+  );
+}
+
+const filterSelectTriggerClass =
+  "h-11 min-h-[2.75rem] rounded-xl border border-white/10 bg-white/5 text-sm text-white hover:border-white/15 hover:bg-white/8";
+
+const filterDateInputClass =
+  "h-11 w-full min-w-[10.5rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition-colors [color-scheme:dark] placeholder:text-white/35 focus:border-pink-500/40 focus:ring-2 focus:ring-pink-500/20";
+
+function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
+  const k = (priority || "normal").toLowerCase();
+  const variant =
+    k === "urgent"
+      ? "border border-red-500/30 bg-red-500/20 text-red-300"
+      : k === "high"
+        ? "border border-amber-500/30 bg-amber-500/20 text-amber-300"
+        : "border border-white/15 bg-white/10 text-white/65";
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
+      {priority}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: VaTaskStatus }) {
+  const k = (status || "").toLowerCase();
+  const variant =
+    k === "pending"
+      ? "border border-amber-500/30 bg-amber-500/20 text-amber-300"
+      : k === "done"
+        ? "border border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
+        : k === "skipped"
+          ? "border border-red-500/30 bg-red-500/20 text-red-300"
+          : "border border-white/15 bg-white/10 text-white/65";
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
+      {status.replace(/_/g, " ")}
+    </span>
   );
 }
 
@@ -290,75 +329,143 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
     return t.assigned_to_ids.map((id) => nameById[id] ?? id).join(", ");
   };
 
+  const filtersActive = Boolean(filterVa || filterStatus || filterFrom || filterTo);
+
+  const clearFilters = () => {
+    setFilterVa("");
+    setFilterStatus("");
+    setFilterFrom("");
+    setFilterTo("");
+  };
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">VA tasks</h1>
+          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/60">
+            Create, assign, filter, and manage operational tasks for VAs.
+          </p>
+        </div>
         <button
           type="button"
           onClick={openCreate}
-          className="rounded-xl border border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/20 px-4 py-2.5 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/30"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-950/25 transition hover:opacity-90"
         >
+          <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
           New task
         </button>
       </div>
 
-      <div className="flex flex-wrap gap-3 rounded-2xl border border-white/10 bg-black/30 p-4 text-sm">
-        <label className="flex flex-col gap-1 text-white/70">
-          <span>VA</span>
-          <CustomSelect value={filterVa} onChange={setFilterVa} options={filterVaOptions} />
-        </label>
-        <label className="flex flex-col gap-1 text-white/70">
-          <span>Status</span>
-          <CustomSelect value={filterStatus} onChange={setFilterStatus} options={filterStatusOptions} />
-        </label>
-        <label className="flex flex-col gap-1 text-white/70">
-          <span>From date</span>
-          <input
-            type="date"
-            value={filterFrom}
-            onChange={(e) => setFilterFrom(e.target.value)}
-            className="rounded-lg border border-white/15 bg-black/50 px-3 py-2 text-white"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-white/70">
-          <span>To date</span>
-          <input
-            type="date"
-            value={filterTo}
-            onChange={(e) => setFilterTo(e.target.value)}
-            className="rounded-lg border border-white/15 bg-black/50 px-3 py-2 text-white"
-          />
-        </label>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
+        <div className="flex flex-col flex-wrap gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="flex min-w-0 flex-1 flex-col flex-wrap gap-4 sm:flex-row sm:items-end lg:flex-nowrap lg:gap-4">
+            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[200px]">
+              <span className="mb-1 block text-xs text-white/40">VA</span>
+              <CustomSelect
+                value={filterVa}
+                onChange={setFilterVa}
+                options={filterVaOptions}
+                triggerClassName={filterSelectTriggerClass}
+                portaled
+              />
+            </label>
+            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[200px]">
+              <span className="mb-1 block text-xs text-white/40">Status</span>
+              <CustomSelect
+                value={filterStatus}
+                onChange={setFilterStatus}
+                options={filterStatusOptions}
+                triggerClassName={filterSelectTriggerClass}
+                portaled
+              />
+            </label>
+            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[180px]">
+              <span className="mb-1 block text-xs text-white/40">From date</span>
+              <input
+                type="date"
+                value={filterFrom}
+                onChange={(e) => setFilterFrom(e.target.value)}
+                className={filterDateInputClass}
+              />
+            </label>
+            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[180px]">
+              <span className="mb-1 block text-xs text-white/40">To date</span>
+              <input
+                type="date"
+                value={filterTo}
+                onChange={(e) => setFilterTo(e.target.value)}
+                className={filterDateInputClass}
+              />
+            </label>
+          </div>
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="shrink-0 rounded-xl border border-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white/55 transition hover:border-white/10 hover:bg-white/5 hover:text-white/80"
+            >
+              Clear filters
+            </button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-0">
         {grouped.length === 0 ? (
-          <p className="rounded-2xl border border-white/10 bg-white/5 p-8 text-center text-white/50">No tasks match filters.</p>
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-16 text-center backdrop-blur-xl">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
+              <ClipboardList className="h-7 w-7" aria-hidden />
+            </div>
+            <p className="mt-5 text-base font-semibold text-white/90">No tasks found</p>
+            <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/50">
+              Adjust your filters or create a new task.
+            </p>
+          </div>
         ) : (
-          grouped.map(({ dateKey, list }) => (
-            <section key={dateKey}>
-              <h2 className="mb-3 text-lg font-semibold text-white">
+          grouped.map(({ dateKey, list }, idx) => (
+            <section key={dateKey} className={idx !== 0 ? "mt-6" : ""}>
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-white/40">
                 {dateKey === "__none__" ? "No due date" : formatDateEuropean(dateKey)}
               </h2>
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {list.map((t) => (
                   <li
                     key={t.id}
-                    className="flex flex-wrap items-start gap-3 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm"
+                    className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 transition-all hover:bg-white/8 sm:flex-row sm:items-start sm:justify-between"
                   >
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-white">{t.title}</p>
-                      {t.description ? <p className="mt-1 text-white/55">{t.description}</p> : null}
-                      <p className="mt-2 text-xs text-white/45">
-                        Assigned: {assignedLabel(t)} · {t.priority} · {t.status}
-                        {t.is_recurring ? " · recurring" : ""}
+                      <p className="text-base font-semibold text-white">{t.title}</p>
+                      {t.description ? (
+                        <p className="mt-0.5 text-sm text-white/60">{t.description}</p>
+                      ) : null}
+                      <p className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-white/50">
+                        <span>
+                          Assigned: <span className="text-white/70">{assignedLabel(t)}</span>
+                        </span>
+                        <span className="text-white/30" aria-hidden>
+                          ·
+                        </span>
+                        <PriorityBadge priority={t.priority} />
+                        <span className="text-white/30" aria-hidden>
+                          ·
+                        </span>
+                        <StatusBadge status={t.status} />
+                        {t.is_recurring ? (
+                          <>
+                            <span className="text-white/30" aria-hidden>
+                              ·
+                            </span>
+                            <span className="text-white/45">recurring</span>
+                          </>
+                        ) : null}
                       </p>
                     </div>
-                    <div className="flex shrink-0 gap-2">
+                    <div className="flex shrink-0 items-center justify-end gap-2 sm:pt-0.5">
                       <button
                         type="button"
                         onClick={() => openEdit(t)}
-                        className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-[hsl(330,90%,70%)] hover:bg-white/5"
+                        className="rounded-lg border border-white/10 bg-transparent px-3 py-1.5 text-xs font-medium text-white/80 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
                       >
                         Edit
                       </button>
@@ -366,7 +473,7 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
                         type="button"
                         disabled={confirmingTaskDelete && taskPendingDelete?.id === t.id}
                         onClick={() => setTaskPendingDelete(t)}
-                        className="rounded-lg border border-red-500/30 p-2 text-red-300/90 transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-50"
+                        className="rounded-lg border border-white/10 bg-transparent p-2 text-white/60 transition hover:border-red-500/35 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
                         title="Delete task"
                       >
                         <Trash2 className="h-4 w-4" aria-hidden />

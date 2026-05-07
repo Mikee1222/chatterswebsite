@@ -42,6 +42,12 @@ import {
   HOURS_ACTIVE_OPTIONS,
   whaleStatusBadgeVariant,
 } from "@/lib/airtable-options";
+import { WHALES_STATUS_FILTER_NOT_ASSIGNED } from "@/lib/whales-filters";
+
+const ADMIN_WHALE_QUICK_STATUS_FILTERS: { value: string; label: string }[] = [
+  ...WHALE_STATUS_OPTIONS.map((st) => ({ value: st, label: st })),
+  { value: WHALES_STATUS_FILTER_NOT_ASSIGNED, label: "Not assigned yet" },
+];
 
 type Chatter = { id: string; full_name: string };
 type ModelOption = { id: string; name: string };
@@ -1180,6 +1186,7 @@ export function AdminWhalesClient({
     () => [
       { value: "", label: "Status" },
       ...WHALE_STATUS_OPTIONS.map((o) => ({ value: o, label: o })),
+      { value: WHALES_STATUS_FILTER_NOT_ASSIGNED, label: "Not assigned yet" },
     ],
     []
   );
@@ -1532,23 +1539,23 @@ export function AdminWhalesClient({
             >
               All statuses
             </button>
-            {WHALE_STATUS_OPTIONS.map((st) => (
+            {ADMIN_WHALE_QUICK_STATUS_FILTERS.map(({ value: stValue, label: stLabel }) => (
               <button
-                key={st}
+                key={stValue}
                 type="button"
-                onClick={() => onFilterChange({ status: st })}
+                onClick={() => onFilterChange({ status: stValue })}
                 className={cn(
                   "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  filterStatus === st
+                  filterStatus === stValue
                     ? "border-pink-500/45 bg-pink-500/20 text-pink-100"
-                    : st === "Active"
+                    : stValue === "Active"
                       ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-200/90 hover:border-emerald-400/40"
-                      : st === "Inactive"
+                      : stValue === "Inactive" || stValue === WHALES_STATUS_FILTER_NOT_ASSIGNED
                         ? "border-amber-500/25 bg-amber-500/10 text-amber-200/90 hover:border-amber-400/40"
                         : "border-white/12 bg-black/30 text-white/65 hover:border-white/25 hover:text-white/90"
                 )}
               >
-                {st}
+                {stLabel}
               </button>
             ))}
           </div>

@@ -1,7 +1,12 @@
+import { formulaLinkedIsEmpty } from "@/lib/airtable-linked";
+
 /**
  * Pure helpers for whales list filtering (admin table).
  * No "use server" – safe to use from services and RSC without server-action constraints.
  */
+
+/** Sentinel for Quick Status filter: show whales with no assigned chatter (not a whale `status` value). */
+export const WHALES_STATUS_FILTER_NOT_ASSIGNED = "not_assigned" as const;
 
 /** Filters for server-side whales list (admin). */
 export type WhalesListFilters = {
@@ -26,8 +31,13 @@ export function buildWhalesFilterFormula(filters: WhalesListFilters): string | u
     parts.push(`{relationship_status} = "${v}"`);
   }
   if (filters.status?.trim()) {
-    const v = filters.status.trim().replace(/"/g, '""');
-    parts.push(`{status} = "${v}"`);
+    const s = filters.status.trim();
+    if (s === WHALES_STATUS_FILTER_NOT_ASSIGNED) {
+      parts.push(formulaLinkedIsEmpty("assigned_chatter"));
+    } else {
+      const v = s.replace(/"/g, '""');
+      parts.push(`{status} = "${v}"`);
+    }
   }
   if (filters.usernameSearch?.trim()) {
     const q = filters.usernameSearch.trim().toLowerCase().replace(/"/g, '""').slice(0, 100);

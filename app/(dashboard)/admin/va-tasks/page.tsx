@@ -19,11 +19,7 @@ export default async function AdminVaTasksPage() {
     }));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">VA tasks</h1>
-        <p className="mt-1 text-sm text-white/60">Create, assign, filter, and manage operational tasks for VAs.</p>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
       <AdminVaTasksClient tasks={tasks} vaUsers={vaUsers} />
     </div>
   );
