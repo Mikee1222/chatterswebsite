@@ -380,9 +380,7 @@ export async function runCustomRequestOverdue48hAdminAlerts(): Promise<{ ok: tru
   const adminIds = adminUserIdsFromEnv();
   if (adminIds.length === 0) return { ok: true, alerts_sent: 0 };
 
-  const records = await listAllRecords<Fields>(TABLE, {
-    sort: [{ field: "updated_at", direction: "desc" }],
-  });
+  const records = await listAllRecords<Fields>(TABLE, {});
   const now = Date.now();
   let alerts_sent = 0;
 

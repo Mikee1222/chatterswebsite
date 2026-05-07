@@ -7,6 +7,7 @@ import { getModelDashboardLanguage } from "@/lib/model-context-server";
 import { LanguageProvider } from "@/lib/language-provider";
 import { ModelQuickActionsFab } from "@/components/model-quick-actions-modal";
 import { ModelRouteLoadingSkeleton } from "@/components/model-route-feedback";
+import { ModelRoutesPrefetcher } from "@/components/model-routes-prefetcher";
 import { Suspense } from "react";
 
 /** Model area: only users with role `model` may access `/model/*` (middleware + this layout). */
@@ -21,6 +22,7 @@ export default async function ModelLayout({ children }: { children: React.ReactN
 
   return (
     <LanguageProvider initialLanguage={initialLanguage}>
+      <ModelRoutesPrefetcher />
       <ModelQuickActionsFab user={user} />
       <Suspense fallback={<ModelRouteLoadingSkeleton blocks={4} />}>{children}</Suspense>
     </LanguageProvider>
