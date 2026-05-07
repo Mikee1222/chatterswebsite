@@ -1,26 +1,9 @@
-"use client";
-
-import { AnimatePresence, motion } from "framer-motion";
-import { usePathname } from "next/navigation";
-
 /**
- * Per-navigation page shell motion (fade + slight rise). Does not alter palette;
- * respects reduced motion via Framer’s reducedMotion handling in transition.
+ * Dashboard segment template: keep a stable flex child (`min-h-0`) without Framer
+ * page transitions. AnimatePresence + motion `initial={{ opacity: 0 }}` with
+ * `mode="wait"` was leaving a `min-h-0` wrapper stuck at `opacity: 0` after
+ * navigations — content was interactive but invisible.
  */
 export default function DashboardTemplate({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  return (
-    <AnimatePresence mode="wait">
-      <motion.div
-        key={pathname}
-        initial={{ opacity: 0, y: 8 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 4 }}
-        transition={{ duration: 0.2, ease: "easeOut" }}
-        className="min-h-0"
-      >
-        {children}
-      </motion.div>
-    </AnimatePresence>
-  );
+  return <div className="min-h-0">{children}</div>;
 }
