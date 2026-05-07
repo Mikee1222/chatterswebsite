@@ -27,6 +27,7 @@ import { adminHomeUrl, ROUTES } from "@/lib/routes";
 import { upsertMonthlyTargetAction } from "@/app/actions/monthly-targets";
 import { TodayEarningsCard } from "@/components/today-earnings-card";
 import type { AdminRecentActivityItem, AdminSparklineWow } from "@/lib/admin-home-dashboard";
+import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 
 type ChatterOption = { id: string; full_name: string };
@@ -84,7 +85,7 @@ function formatRelativeTime(iso: string): string {
   if (hr < 36) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
   const days = Math.floor(hr / 24);
   if (days < 14) return `${days} day${days === 1 ? "" : "s"} ago`;
-  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return formatDate(new Date(ms).toISOString());
 }
 
 function BarRow({ label, value, max }: { label: string; value: number; max: number }) {

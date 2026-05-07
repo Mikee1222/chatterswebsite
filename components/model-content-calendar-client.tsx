@@ -24,6 +24,8 @@ import {
   User,
 } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
+import { formatDateEuropean } from "@/lib/format";
+import { formatDateYmd } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import {
@@ -367,7 +369,7 @@ export function ModelContentCalendarClient({
           if (!open) setSelected(null);
         }}
         title={selected?.title ?? "Details"}
-        subtitle={selected ? `${selected.kind.toUpperCase()} · ${selected.dateYmd}` : ""}
+        subtitle={selected ? `${selected.kind.toUpperCase()} · ${formatDateYmd(selected.dateYmd)}` : ""}
         badge={selected?.kind === "custom" ? "Custom request" : selected?.kind === "va" ? "VA assignment" : "Task"}
         headerGradientClass={detailHeaderGradient(selected)}
         stats={
@@ -387,13 +389,13 @@ export function ModelContentCalendarClient({
                 },
                 {
                   label: "Deadline",
-                  value: selected.va.deadline || "—",
+                  value: formatDateEuropean(selected.va.deadline),
                   accent: "amber" as const,
                   icon: <CalendarClock className="h-5 w-5" aria-hidden />,
                 },
                 {
                   label: "Scheduled",
-                  value: selected.va.scheduled_date || "—",
+                  value: formatDateEuropean(selected.va.scheduled_date),
                   accent: "pink" as const,
                   icon: <Timer className="h-5 w-5" aria-hidden />,
                 },
@@ -414,7 +416,7 @@ export function ModelContentCalendarClient({
                   },
                   {
                     label: "Scheduled date",
-                    value: selected.custom.model_scheduled_date || "—",
+                    value: formatDateEuropean(selected.custom.model_scheduled_date),
                     accent: "amber" as const,
                     icon: <CalendarClock className="h-5 w-5" aria-hidden />,
                   },
@@ -441,7 +443,7 @@ export function ModelContentCalendarClient({
                     },
                     {
                       label: "Date",
-                      value: selected.dateYmd,
+                      value: formatDateYmd(selected.dateYmd),
                       accent: "amber" as const,
                       icon: <CalendarClock className="h-5 w-5" aria-hidden />,
                     },

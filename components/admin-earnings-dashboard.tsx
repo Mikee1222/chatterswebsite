@@ -15,6 +15,7 @@ import {
 } from "recharts";
 import { CalendarRange, ChevronDown, TrendingUp, X } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
+import { formatDateYmd } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types";
 import type { InflowwEarningsResponse } from "@/types/infloww";
@@ -238,11 +239,7 @@ export function AdminEarningsDashboard({
       sumByDay.set(d, (sumByDay.get(d) ?? 0) + add);
     }
     return days.map((date) => {
-      const labelPretty = new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
-        month: "long",
-        day: "numeric",
-        year: "numeric",
-      });
+      const labelPretty = formatDateYmd(date);
       return {
         date,
         value: sumByDay.get(date) ?? 0,

@@ -8,6 +8,7 @@ import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
 import { awardManualPointsAction, resetWeeklyLeaderboardCacheAction } from "@/app/actions/rewards";
 import type { AppNotification } from "@/types";
+import { formatDateTime } from "@/lib/format-date";
 import type { AdminPointsLedgerRow, ChatterPointsSummaryRow } from "@/services/points-engine";
 import { cn } from "@/lib/utils";
 import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-select";
@@ -35,16 +36,6 @@ const LEVEL_COLORS: Record<string, string> = {
   Gold: "#ffd700",
   Diamond: "#b9f2ff",
 };
-
-function formatLedgerDate(isoOrYmd: string): string {
-  const s = isoOrYmd.trim();
-  if (!s) return "—";
-  const d = new Date(s);
-  if (!Number.isNaN(d.getTime())) {
-    return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-  }
-  return s.slice(0, 16);
-}
 
 function rankRowClass(rank: number): string {
   if (rank === 1) return "bg-amber-500/[0.09] ring-1 ring-inset ring-amber-500/25";
@@ -438,7 +429,7 @@ export function AdminRewardsClient({
                   <td className="max-w-[220px] truncate px-4 py-3 text-white/60" title={row.reason}>
                     {row.reason}
                   </td>
-                  <td className="px-4 py-3 tabular-nums text-white/55">{formatLedgerDate(row.created_at)}</td>
+                  <td className="px-4 py-3 tabular-nums text-white/55">{formatDateTime(row.created_at)}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end">
                       <button

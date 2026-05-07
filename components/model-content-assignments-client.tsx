@@ -10,6 +10,7 @@ import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
 import type { ModelContentAssignmentCardDTO } from "@/types";
 import { useLanguage } from "@/lib/language-provider";
 import { useTranslations } from "@/lib/use-translations";
+import { formatDateTime as formatDateTimeUk } from "@/lib/format-date";
 
 type Filter = "pending" | "scheduled" | "completed";
 
@@ -24,16 +25,6 @@ function hoursUntil(iso: string | null): number | null {
   const d = new Date(iso).getTime();
   if (!Number.isFinite(d)) return null;
   return (d - Date.now()) / (1000 * 60 * 60);
-}
-
-function formatDateTime(iso: string | null, lang: "en" | "es"): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return iso.slice(0, 16);
-  return d.toLocaleString(lang === "es" ? "es" : "en", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
 }
 
 function priorityClass(p: string): string {
@@ -245,7 +236,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                     {t("assignments.deadline")}
                     {": "}
                     <span className={cn("font-medium text-white/70", urgent && "text-pink-200")}>
-                      {formatDateTime(a.deadline, language)}
+                      {formatDateTimeUk(a.deadline)}
                     </span>
                   </span>
                   {a.va_name ? (
@@ -263,14 +254,14 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                 {st === "scheduled" && a.scheduled_date ? (
                   <p className="mt-2 text-xs text-white/50">
                     {t("assignments.youScheduledFor")}{" "}
-                    <span className="font-medium text-pink-200/95">{formatDateTime(a.scheduled_date, language)}</span>
+                    <span className="font-medium text-pink-200/95">{formatDateTimeUk(a.scheduled_date)}</span>
                   </p>
                 ) : null}
 
                 {st === "completed" && a.completed_at ? (
                   <p className="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-300/90">
                     <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
-                    {t("assignments.completedAt")} {formatDateTime(a.completed_at, language)}
+                    {t("assignments.completedAt")} {formatDateTimeUk(a.completed_at)}
                   </p>
                 ) : null}
 

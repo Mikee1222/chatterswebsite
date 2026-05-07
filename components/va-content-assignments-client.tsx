@@ -7,6 +7,7 @@ import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import { MobileCard } from "@/components/mobile-card";
 import { FormInput } from "@/components/ui/form-input";
 import { gradientClassForContentType } from "@/lib/detail-modal-gradients";
+import { formatDateEuropean } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { ModelRecord, VaContentAssignmentRecord } from "@/types";
 
@@ -16,14 +17,6 @@ type StatusTab = "pending" | "scheduled" | "completed";
 
 function statusKey(s: string): string {
   return (s || "").trim().toLowerCase();
-}
-
-function formatDeadline(iso: string | null): string {
-  if (!iso) return "—";
-  const t = iso.trim().slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  const d = new Date(iso);
-  return Number.isFinite(d.getTime()) ? d.toLocaleDateString() : iso.slice(0, 16);
 }
 
 function priorityClass(p: string): string {
@@ -263,7 +256,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                           {r.title || "—"}
                         </td>
                         <td className="px-4 py-3 text-white/65">{r.content_type || "—"}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-white/70">{formatDeadline(r.deadline)}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-white/70">{formatDateEuropean(r.deadline)}</td>
                         <td className="px-4 py-3 capitalize text-white/80">{statusKey(r.status) || "—"}</td>
                         <td className="px-4 py-3">
                           <span
@@ -311,7 +304,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                         >
                           {r.priority || "normal"}
                         </span>
-                        <span className="text-[11px] text-white/45">Due {formatDeadline(r.deadline)}</span>
+                        <span className="text-[11px] text-white/45">Due {formatDateEuropean(r.deadline)}</span>
                       </div>
                     </div>
                   </MobileCard>
@@ -350,13 +343,13 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                 },
                 {
                   label: "Deadline",
-                  value: formatDeadline(selected.deadline),
+                  value: formatDateEuropean(selected.deadline),
                   accent: "amber" as const,
                   icon: <CalendarClock className="h-5 w-5" aria-hidden />,
                 },
                 {
                   label: "Scheduled",
-                  value: selected.scheduled_date || "—",
+                  value: formatDateEuropean(selected.scheduled_date),
                   accent: "pink" as const,
                   icon: <Timer className="h-5 w-5" aria-hidden />,
                 },

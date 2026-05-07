@@ -1,7 +1,9 @@
 /**
- * European date/time formatting and display-value helpers.
- * All visible dates in the UI must be dd/mm/yyyy (European only). No USA or locale-default formatting.
+ * Date/time display delegates to `@/lib/format-date` (en-GB: "19 May 2026").
+ * Form inputs still use DD/MM helpers: `isoToEuropeanDisplay`, `parseEuropeanDateInput`.
  */
+
+import { formatDate as formatDateUk, formatDateTime as formatDateTimeUk, formatDateYmd } from "@/lib/format-date";
 
 const EU_LOCALE = "en-GB";
 
@@ -13,28 +15,24 @@ function pad2(n: number): string {
 }
 
 /**
- * Format a date-only value (YYYY-MM-DD) as DD/MM/YYYY with no timezone conversion.
- * Use for week_start, day columns, and any scheduling date that must not shift by timezone.
- * Example: "2026-03-02" → "02/03/2026" (never "03/03/2026").
+ * Format a date-only value (YYYY-MM-DD) — no TZ shift ("19 May 2026").
  */
 export function formatDateOnlyEuropean(ymd: string | null | undefined): string {
-  if (ymd == null || typeof ymd !== "string") return "—";
-  const s = ymd.trim();
-  if (!DATE_ONLY_ISO.test(s)) return "—";
-  const dd = s.slice(8, 10);
-  const mm = s.slice(5, 7);
-  const yyyy = s.slice(0, 4);
-  return `${dd}/${mm}/${yyyy}`;
+  return formatDateYmd(ymd);
 }
 
 /**
- * Convert YYYY-MM-DD (ISO date) to display string dd/mm/yyyy. Use for date inputs and any place we show a date from ISO.
+ * Convert YYYY-MM-DD → `dd/mm/yyyy` for **typed date inputs** (must match {@link parseEuropeanDateInput}).
+ * Use {@link formatDate} / {@link formatDateEuropean} for read-only UI labels.
  */
 export function isoToEuropeanDisplay(iso: string | null | undefined): string {
   if (iso == null || typeof iso !== "string") return "";
   const s = iso.trim().slice(0, 10);
   if (!DATE_ONLY_ISO.test(s)) return "";
-  return formatDateOnlyEuropean(s);
+  const dd = s.slice(8, 10);
+  const mm = s.slice(5, 7);
+  const yyyy = s.slice(0, 4);
+  return `${dd}/${mm}/${yyyy}`;
 }
 
 /**
@@ -57,38 +55,25 @@ export function parseEuropeanDateInput(str: string | null | undefined): string |
 export function formatDateEuropean(dateInput: string | Date | null | undefined): string {
   if (dateInput == null || dateInput === "") return "—";
   if (typeof dateInput === "string" && DATE_ONLY_ISO.test(dateInput.trim())) {
-    return formatDateOnlyEuropean(dateInput);
+    return formatDateYmd(dateInput);
   }
-  try {
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (Number.isNaN(d.getTime())) return "—";
-    const dd = pad2(d.getDate());
-    const mm = pad2(d.getMonth() + 1);
-    const yyyy = d.getFullYear();
-    return `${dd}/${mm}/${yyyy}`;
-  } catch {
-    return "—";
-  }
+  const s =
+    typeof dateInput === "string"
+      ? dateInput
+      : typeof dateInput === "object" && dateInput instanceof Date && !Number.isNaN(dateInput.getTime())
+        ? dateInput.toISOString()
+        : "";
+  if (!s) return "—";
+  return formatDateUk(s);
 }
 
-/** Long human-readable date (e.g. Monday, 07 March 2026). */
+/** Schedule-style long date (calendar YMD → stable; ISO → formatted). Matches app-wide formatDate style. */
 export function formatDateLong(
   dateInput: string | Date | null | undefined,
-  locale: "en-GB" | "es" = "en-GB"
+  _locale: "en-GB" | "es" = "en-GB"
 ): string {
-  if (dateInput == null || dateInput === "") return "—";
-  try {
-    if (typeof dateInput === "string" && DATE_ONLY_ISO.test(dateInput.trim())) {
-      const [y, m, d] = dateInput.trim().split("-").map(Number);
-      const dt = new Date(y, (m ?? 1) - 1, d ?? 1);
-      return dt.toLocaleDateString(locale, { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
-    }
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (Number.isNaN(d.getTime())) return "—";
-    return d.toLocaleDateString(locale, { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
-  } catch {
-    return "—";
-  }
+  void _locale;
+  return formatDateEuropean(dateInput);
 }
 
 /** Time range helper for schedule UI (HH:mm - HH:mm). */
@@ -104,18 +89,16 @@ export function formatTimeRange(
   return `${startText} - ${endText}`;
 }
 
-/** European date and time (e.g. 07/03/2026, 14:30). Explicit date part; time uses EU locale 24h. */
+/** Date and time: "19 May 2026, 14:30" (24h per en-GB). */
 export function formatDateTimeEuropean(dateInput: string | Date | null | undefined): string {
   if (dateInput == null || dateInput === "") return "—";
-  try {
-    const d = typeof dateInput === "string" ? new Date(dateInput) : dateInput;
-    if (Number.isNaN(d.getTime())) return "—";
-    const datePart = `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
-    const timePart = d.toLocaleTimeString(EU_LOCALE, { hour: "2-digit", minute: "2-digit", hour12: false });
-    return `${datePart}, ${timePart}`;
-  } catch {
-    return "—";
-  }
+  const s =
+    typeof dateInput === "string"
+      ? dateInput
+      : dateInput instanceof Date && !Number.isNaN(dateInput.getTime())
+        ? dateInput.toISOString()
+        : "";
+  return formatDateTimeUk(s || null);
 }
 
 /** Time only, European 24h (e.g. 14:30). Use when you have a separate time string. */

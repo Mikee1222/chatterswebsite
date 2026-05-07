@@ -14,6 +14,8 @@ import { GlassModal } from "@/components/ui/glass-modal";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { formatDateEuropean } from "@/lib/format";
+import { formatDate } from "@/lib/format-date";
 import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
 import type { CustomRequest, CustomRequestModelStatus } from "@/types";
 
@@ -31,18 +33,8 @@ function displayType(req: CustomRequest): string {
 
 function displayRequestedDate(req: CustomRequest): string {
   const raw = (req.deadline_requested ?? "").trim();
-  if (raw) {
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-    }
-    return raw.slice(0, 10);
-  }
-  const c = (req.created_at ?? "").trim();
-  if (!c) return "—";
-  const d = new Date(c);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  if (raw) return formatDateEuropean(raw);
+  return formatDate((req.created_at ?? "").trim()) || "—";
 }
 
 function modelStatusLabel(lang: Lang, s: CustomRequestModelStatus): string {

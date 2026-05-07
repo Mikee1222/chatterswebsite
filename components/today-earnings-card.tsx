@@ -7,22 +7,12 @@ import {
   useAdaptiveRefreshInterval,
   useAdminTodayEarnings,
 } from "@/lib/hooks/use-dashboard-data";
+import { formatDate, formatDateYmd } from "@/lib/format-date";
 
 export type TodayEarningsCardProps = {
   /** Compact block for embedding inside a stat card (no outer frame). */
   embedded?: boolean;
 };
-
-function formatDisplayYmd(ymd: string): string {
-  const parts = ymd.trim().slice(0, 10).split("-").map((x) => Number.parseInt(x, 10));
-  if (parts.length !== 3 || parts.some((n) => Number.isNaN(n))) return ymd;
-  const [y, mo, da] = parts;
-  return new Date(y, mo - 1, da).toLocaleDateString("en-US", {
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-  });
-}
 
 export function TodayEarningsCard({ embedded = false }: TodayEarningsCardProps) {
   const refreshInterval = useAdaptiveRefreshInterval(5 * 60 * 1000, 0);
@@ -85,7 +75,7 @@ export function TodayEarningsCard({ embedded = false }: TodayEarningsCardProps) 
             })}
           </p>
           <p className={`text-white/50 ${embedded ? "mt-0.5 text-xs" : "mt-1 text-sm"}`}>
-            {displayYmd ? formatDisplayYmd(displayYmd) : new Date().toLocaleDateString()} · Gross (pre OF 20%)
+            {displayYmd ? formatDateYmd(displayYmd) : formatDate(new Date().toISOString())} · Gross (pre OF 20%)
           </p>
           <p className="mt-0.5 text-[10px] text-white/40">Infloww · Refreshes every 5 min</p>
         </>

@@ -3,7 +3,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { formatDateTimeEuropean } from "@/lib/format";
+import { formatDateEuropean, formatDateTimeEuropean } from "@/lib/format";
 import { Label, Textarea } from "@/components/ui/form";
 import { FormInput } from "@/components/ui/form-input";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
@@ -127,13 +127,14 @@ function humanType(type: TypeFilterValue): string {
 }
 
 function formatScheduleLine(req: CustomRequest): string {
-  const date = (req.model_scheduled_date ?? "").trim();
-  if (!date) return "—";
+  const dateRaw = (req.model_scheduled_date ?? "").trim();
+  if (!dateRaw) return "—";
+  const date = formatDateEuropean(dateRaw);
   const a = req.model_scheduled_start ? new Date(req.model_scheduled_start) : null;
   const b = req.model_scheduled_end ? new Date(req.model_scheduled_end) : null;
   if (a && b && !Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime())) {
-    const ta = a.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    const tb = b.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    const ta = a.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
+    const tb = b.toLocaleTimeString("en-GB", { hour: "numeric", minute: "2-digit" });
     return `${date} · ${ta}-${tb}`;
   }
   return date;

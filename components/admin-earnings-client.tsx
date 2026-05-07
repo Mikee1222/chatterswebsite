@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { formatDate } from "@/lib/format-date";
 
 type Creator = { id: string; nickName?: string; name?: string };
 type Group = { id: string; name: string; model_ids: string };
@@ -253,7 +254,7 @@ export function AdminEarningsClient() {
               transactions.map((tx) => (
                 <tr key={tx.id} className="border-b border-white/5">
                   <td className="p-4 text-sm text-white/80">
-                    {tx.createdTime ? new Date(tx.createdTime).toLocaleDateString() : "—"}
+                    {tx.createdTime ? formatDate(tx.createdTime) : "—"}
                   </td>
                   <td className="p-4 text-sm text-white">{tx.creatorName || tx.fanName || "—"}</td>
                   <td className="p-4 text-sm text-white/60">{tx.type || "—"}</td>

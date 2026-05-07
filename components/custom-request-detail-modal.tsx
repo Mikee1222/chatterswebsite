@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { BeautifulDetailModal, type BeautifulDetailTimelineItem } from "@/components/beautiful-detail-modal";
 import { gradientClassForCustomRequest } from "@/lib/detail-modal-gradients";
+import { formatDateEuropean } from "@/lib/format";
+import { formatDate, formatDateTime } from "@/lib/format-date";
 import type { CustomRequest, CustomRequestAdminStatus, CustomRequestModelStatus } from "@/types";
 
 export type CustomRequestDetailLanguage = "en" | "es";
@@ -38,37 +40,14 @@ function displayType(req: CustomRequest): string {
   return (req.custom_type ?? req.request_title ?? "").trim() || "—";
 }
 
-const EN_GB_DATE: Intl.DateTimeFormatOptions = { day: "numeric", month: "long", year: "numeric" };
-
-function formatUkLongDate(raw: string): string {
-  const d = new Date(raw);
-  if (!Number.isNaN(d.getTime())) return d.toLocaleDateString("en-GB", EN_GB_DATE);
-  const slice = raw.trim().slice(0, 10);
-  if (/^\d{4}-\d{2}-\d{2}$/.test(slice)) {
-    const d2 = new Date(`${slice}T12:00:00.000Z`);
-    if (!Number.isNaN(d2.getTime())) return d2.toLocaleDateString("en-GB", EN_GB_DATE);
-  }
-  return raw.trim();
-}
-
-function displayRequestedDate(req: CustomRequest, lang: CustomRequestDetailLanguage): string {
+function displayRequestedDate(req: CustomRequest): string {
   const raw = (req.deadline_requested ?? "").trim();
-  if (raw) {
-    return formatUkLongDate(raw);
-  }
-  const c = (req.created_at ?? "").trim();
-  if (!c) return "—";
-  const d = new Date(c);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-GB", EN_GB_DATE);
+  if (raw) return formatDateEuropean(raw);
+  return formatDate((req.created_at ?? "").trim()) || "—";
 }
 
 function formatCreatedAt(req: CustomRequest): string {
-  const c = (req.created_at ?? "").trim();
-  if (!c) return "—";
-  const d = new Date(c);
-  if (Number.isNaN(d.getTime())) return c.slice(0, 16);
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime((req.created_at ?? "").trim());
 }
 
 function modelStatusLabel(lang: CustomRequestDetailLanguage, s: CustomRequestModelStatus): string {
@@ -97,7 +76,7 @@ function adminStatusLabel(lang: CustomRequestDetailLanguage, s: CustomRequestAdm
 function formatScheduleLine(req: CustomRequest): string {
   const dateRaw = (req.model_scheduled_date ?? "").trim();
   if (!dateRaw) return "—";
-  const dateLabel = formatUkLongDate(dateRaw);
+  const dateLabel = formatDateEuropean(dateRaw);
   const a = req.model_scheduled_start ? new Date(req.model_scheduled_start) : null;
   const b = req.model_scheduled_end ? new Date(req.model_scheduled_end) : null;
   if (a && b && !Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime())) {
@@ -109,11 +88,7 @@ function formatScheduleLine(req: CustomRequest): string {
 }
 
 function formatUploadedAt(req: CustomRequest): string {
-  const raw = (req.uploaded_at ?? "").trim();
-  if (!raw) return "—";
-  const d = new Date(raw);
-  if (Number.isNaN(d.getTime())) return raw;
-  return d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+  return formatDateTime((req.uploaded_at ?? "").trim());
 }
 
 function modelStatusLabelEn(s: CustomRequestModelStatus): string {
@@ -217,7 +192,7 @@ export function CustomRequestDetailModal({
           },
           {
             label: t(language, "Requested", "Solicitado"),
-            value: displayRequestedDate(request, language),
+            value: displayRequestedDate(request),
             accent: "amber" as const,
             icon: <CalendarClock className="h-5 w-5" aria-hidden />,
           },

@@ -15,6 +15,7 @@ import {
 import type { NotificationCategory, NotificationPriority } from "@/types";
 import { getEventTag as getEventTagFromRoutes } from "@/lib/notification-routes";
 import type { NotificationEventType } from "@/types";
+import { formatDateTime } from "@/lib/format-date";
 
 /**
  * Human-readable time plus full absolute string for tooltips / aria.
@@ -23,14 +24,8 @@ import type { NotificationEventType } from "@/types";
 export function formatNotificationTime(iso: string): { label: string; title: string } {
   try {
     const d = new Date(iso);
-    const title = d.toLocaleString(undefined, {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      year: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
+    const title = formatDateTime(iso);
+    if (Number.isNaN(d.getTime())) return { label: "", title };
     const now = new Date();
     const diffMs = now.getTime() - d.getTime();
     if (diffMs < 60_000) return { label: "Just now", title };
@@ -40,19 +35,10 @@ export function formatNotificationTime(iso: string): { label: string; title: str
     const startYesterday = startToday - 86400_000;
     const t = d.getTime();
     if (t >= startYesterday && t < startToday) {
-      const timeOnly = d.toLocaleTimeString(undefined, { timeStyle: "short" });
+      const timeOnly = d.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
       return { label: `Yesterday · ${timeOnly}`, title };
     }
-    if (d.getFullYear() === now.getFullYear()) {
-      return {
-        label: d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }),
-        title,
-      };
-    }
-    return {
-      label: d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }),
-      title,
-    };
+    return { label: formatDateTime(iso), title };
   } catch {
     return { label: "", title: "" };
   }
