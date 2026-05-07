@@ -1,6 +1,7 @@
 "use server";
 
 import { createRecord, listAllRecords, getRecord, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { getModelById } from "@/services/modelss";
 import {
   firstLinkedId,
   linkedRecordIds,
@@ -63,16 +64,23 @@ function parseAttachments(raw: unknown): VaAttachmentCell[] {
     }));
 }
 
+function modelStableOrLinkId(f: Fields): string {
+  const pick = (raw: unknown): string | null => {
+    if (typeof raw === "string") {
+      const t = raw.trim();
+      return t || null;
+    }
+    return firstLinkedId(raw);
+  };
+  return pick(f.model) ?? pick(f.model_id) ?? pick(f.assigned_model) ?? "";
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): VaContentAssignmentRecord {
   const f = rec.fields;
   return {
     id: rec.id,
     assignment_id: f.assignment_id ?? "",
-    model_id:
-      firstLinkedId(f.model) ??
-      firstLinkedId(f.model_id) ??
-      firstLinkedId(f.assigned_model) ??
-      "",
+    model_id: modelStableOrLinkId(f),
     va_id:
       firstLinkedId(f.va) ??
       firstLinkedId(f.va_id) ??
@@ -176,7 +184,26 @@ async function listAssignmentRecordsByModelLink(
   });
 
   if (sid) {
+    // Primary: `model` holds stable text id (e.g. model_1772908052608_mk2psv); use equality, not FIND on linked ids.
+    try {
+      const filterByFormula = formulaTextEquals("model", sid);
+      const records = await listAllRecords<Fields>(TABLE, { filterByFormula });
+      console.log(`${DEBUG_PREFIX} model query (model text id)`, {
+        table: TABLE,
+        filterByFormula,
+        recordsReturned: records.length,
+      });
+      // Authoritative when `model` is a plain-text id field — do not merge with FIND(linked) hits.
+      return records;
+    } catch (error) {
+      console.error(`${DEBUG_PREFIX} model query failed on {model}=stableId`, {
+        table: TABLE,
+        filterByFormula: formulaTextEquals("model", sid),
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
     for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
+      if (fieldName === "model") continue;
       try {
         const filterByFormula = formulaTextEquals(fieldName, sid);
         const records = await listAllRecords<Fields>(TABLE, {
@@ -404,7 +431,12 @@ export async function listVAContentAssignmentsForModel(
 ): Promise<VaContentAssignmentRecord[]> {
   if (!modelRecordId) return [];
   try {
-    const records = await fetchAssignmentRecordsForModel(modelRecordId, stableModelId ?? null);
+    let sid = stableModelId?.trim() ?? "";
+    if (!sid) {
+      const rec = await getModelById(modelRecordId).catch(() => null);
+      sid = rec?.model_id?.trim() ?? "";
+    }
+    const records = await fetchAssignmentRecordsForModel(modelRecordId, sid || null);
     return sortAssignmentsForModel(records.map((r) => mapRecord(r as AirtableRecord<Fields>)));
   } catch {
     return [];
@@ -485,7 +517,18 @@ export async function countPendingVAContentAssignmentsForModel(
     String(r.fields.status ?? "").trim().toLowerCase() === "pending";
 
   if (sid) {
+    try {
+      const formula = `AND(${formulaTextEquals("model", sid)}, {status}="pending")`;
+      const records = await listAllRecords<Fields>(TABLE, {
+        filterByFormula: formula,
+        fields: ["status"],
+      });
+      return records.length;
+    } catch {
+      /* wrong field type or unknown field */
+    }
     for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
+      if (fieldName === "model") continue;
       try {
         const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
         const records = await listAllRecords<Fields>(TABLE, {

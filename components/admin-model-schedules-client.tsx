@@ -25,11 +25,11 @@ import {
   Coffee,
   Table2,
   Target,
-  X,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
+import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import type { AdminScheduleOverviewRow, OverviewNormStatus, OverviewRowKind } from "@/lib/admin-schedule-overview-rows";
 import { addDays, addWeeks, formatWeekLabel, getMondayOfWeek, getThisWeekMonday, parseWeekStart, getTodayYmd } from "@/lib/weekly-program";
 import { formatDateOnlyEuropean } from "@/lib/format";
@@ -160,8 +160,19 @@ function TrendDelta({ current, previous }: { current: number; previous: number }
   );
 }
 
+function headerGradientForRow(row: AdminScheduleOverviewRow): string {
+  if (row.kind === "custom_request") return "from-pink-600/45 via-fuchsia-950/55 to-zinc-950";
+  if (row.kind === "va_content") return "from-blue-600/45 via-slate-950/55 to-zinc-950";
+  if (row.kind === "live_stream") return "from-red-600/45 via-zinc-950/55 to-zinc-950";
+  if (isRestAvailability(row)) return "from-emerald-600/40 via-zinc-950/55 to-zinc-950";
+  return "from-zinc-600/45 via-zinc-950/55 to-zinc-950";
+}
+
 function DetailBody({ row }: { row: AdminScheduleOverviewRow }) {
   const d = row.detail;
+  if (!d) {
+    return <p className="text-sm text-white/55">Details are not available for this row.</p>;
+  }
   if (d.kind === "custom_request") {
     return (
       <div className="space-y-3 text-sm text-white/80">
@@ -1101,87 +1112,34 @@ export function AdminModelSchedulesClient({
         </div>
       ) : null}
 
-      <Dialog.Root open={selected != null} onOpenChange={(o) => !o && setSelected(null)}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[201] max-h-[min(85vh,560px)] w-[min(calc(100vw-2rem),480px)] -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl relative">
-            <motion.div
-              key={selected?.id ?? "closed"}
-              initial={{ opacity: 0, scale: 0.96, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 420, damping: 34 }}
-              className="flex max-h-[min(85vh,560px)] flex-col"
-            >
-              <div className="max-h-[min(85vh,560px)] overflow-y-auto p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 flex-1 items-start gap-3">
-                    <div
-                      className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl text-base font-bold text-white shadow-lg"
-                      style={{
-                        background: selected
-                          ? `linear-gradient(145deg, ${rowHexAndStyle(selected).hex}dd, rgba(24,24,27,1))`
-                          : "linear-gradient(145deg,#52525b,#18181b)",
-                      }}
-                    >
-                      {selected ? initialsFromName(selected.modelName) : ""}
-                    </div>
-                    <div className="min-w-0 pr-10">
-                      {selected ? (
-                        <>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold text-white shadow-sm ring-1 ring-white/15"
-                              style={{ backgroundColor: `${rowHexAndStyle(selected).hex}44` }}
-                            >
-                              {selected.typeLabel}
-                            </span>
-                            <span
-                              className={cn(
-                                "rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
-                                normStatusBadgeClass(selected.normStatus)
-                              )}
-                            >
-                              {selected.normStatus}
-                            </span>
-                          </div>
-                          <Dialog.Title className="mt-2 text-lg font-semibold leading-snug text-white">{selected.title}</Dialog.Title>
-                          <p className="mt-1 text-sm text-white/55">
-                            {selected.modelName} · {formatDateOnlyEuropean(selected.date)}
-                            {selected.timeLabel ? ` · ${selected.timeLabel}` : ""}
-                          </p>
-                          <Dialog.Description className="sr-only">Row details</Dialog.Description>
-                        </>
-                      ) : (
-                        <Dialog.Title className="text-lg font-semibold text-white">Detail</Dialog.Title>
-                      )}
-                    </div>
-                  </div>
-                  <Dialog.Close asChild>
-                    <button
-                      type="button"
-                      className="absolute right-4 top-4 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white/60 hover:bg-white/10 hover:text-white"
-                      aria-label="Close"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </Dialog.Close>
-                </div>
-                {selected ? (
-                  <>
-                    <RelatedContactCard row={selected} className="mt-4" />
-                    <div className="mt-4">
-                      <DetailBody row={selected} />
-                    </div>
-                    {isVaMode && selected.kind === "va_content" && selected.id.startsWith("va:") ? (
-                      <VaContentScheduleActions assignmentId={selected.id.slice(3)} onUpdated={() => router.refresh()} />
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
-            </motion.div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      <BeautifulDetailModal
+        open={selected != null}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+        title={selected?.title ?? "Schedule item"}
+        subtitle={
+          selected
+            ? `${selected.modelName} · ${formatDateOnlyEuropean(selected.date)}${selected.timeLabel ? ` · ${selected.timeLabel}` : ""}`
+            : undefined
+        }
+        badge={selected ? `${selected.typeLabel} · ${selected.normStatus}` : undefined}
+        headerGradientClass={selected ? headerGradientForRow(selected) : undefined}
+        footer={
+          selected && isVaMode && selected.kind === "va_content" && selected.id.startsWith("va:") ? (
+            <VaContentScheduleActions assignmentId={selected.id.slice(3)} onUpdated={() => router.refresh()} />
+          ) : undefined
+        }
+      >
+        {selected ? (
+          <>
+            <RelatedContactCard row={selected} className="mt-0" />
+            <div className="mt-4">
+              <DetailBody row={selected} />
+            </div>
+          </>
+        ) : null}
+      </BeautifulDetailModal>
 
       <Dialog.Root open={exportOpen} onOpenChange={setExportOpen}>
         <Dialog.Portal>

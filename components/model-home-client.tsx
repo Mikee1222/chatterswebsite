@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
-import { Activity, DollarSign, FileText, Heart, Package, Radio, Sparkles, TrendingUp } from "lucide-react";
+import { Activity, DollarSign, FileText, Heart, Loader2, Package, Radio, Sparkles, TrendingUp } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import {
   MODEL_GO_LIVE_PLATFORM_OPTIONS,
@@ -58,8 +58,8 @@ export function ModelHomeClient({
   const reduceMotion = useReducedMotion();
   const router = useRouter();
   const [platform, setPlatform] = React.useState<ModelGoLivePlatformOption>("instagram");
-  const [starting, setStarting] = React.useState(false);
-  const [ending, setEnding] = React.useState(false);
+  const [isStarting, setIsStarting] = React.useState(false);
+  const [isEnding, setIsEnding] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = React.useState(0);
 
@@ -82,9 +82,9 @@ export function ModelHomeClient({
     return () => window.clearInterval(id);
   }, [startedMs]);
 
-  const startLive = React.useCallback(async () => {
+  const handleStartLive = React.useCallback(async () => {
     setActionError(null);
-    setStarting(true);
+    setIsStarting(true);
     try {
       const res = await fetch("/api/model/live/start", {
         method: "POST",
@@ -105,13 +105,13 @@ export function ModelHomeClient({
       }
       router.refresh();
     } finally {
-      setStarting(false);
+      setIsStarting(false);
     }
   }, [platform, router, t]);
 
-  const endLive = React.useCallback(async () => {
+  const handleEndLive = React.useCallback(async () => {
     setActionError(null);
-    setEnding(true);
+    setIsEnding(true);
     try {
       const res = await fetch("/api/model/live/end", {
         method: "POST",
@@ -132,7 +132,7 @@ export function ModelHomeClient({
       }
       router.refresh();
     } finally {
-      setEnding(false);
+      setIsEnding(false);
     }
   }, [activeLive?.id, router, t]);
 
@@ -232,14 +232,21 @@ export function ModelHomeClient({
               </div>
               <button
                 type="button"
-                onClick={() => void endLive()}
-                disabled={ending}
+                onClick={() => void handleEndLive()}
+                disabled={isEnding}
                 className={cn(
-                  "inline-flex min-h-11 items-center justify-center rounded-2xl border border-red-400/40 px-6 text-sm font-semibold text-red-100",
+                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-400/40 px-6 text-sm font-semibold text-red-100",
                   "bg-red-500/15 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                 )}
               >
-                {ending ? t("home.ending") : t("home.endLive")}
+                {isEnding ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    {t("home.ending")}
+                  </>
+                ) : (
+                  t("home.endLive")
+                )}
               </button>
             </div>
           ) : (
@@ -251,12 +258,14 @@ export function ModelHomeClient({
                     <button
                       key={p}
                       type="button"
+                      disabled={isStarting}
                       onClick={() => setPlatform(p)}
                       className={cn(
                         "rounded-xl border px-4 py-2.5 text-sm font-medium transition",
                         platform === p
                           ? "border-pink-400/50 bg-pink-500/20 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                          : "border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:text-white/90"
+                          : "border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:text-white/90",
+                        isStarting && "cursor-not-allowed opacity-45"
                       )}
                     >
                       {modelLiveStreamPlatformLabel(p)}
@@ -266,15 +275,22 @@ export function ModelHomeClient({
               </div>
               <button
                 type="button"
-                onClick={() => void startLive()}
-                disabled={starting}
+                onClick={() => void handleStartLive()}
+                disabled={isStarting}
                 className={cn(
-                  "w-full rounded-2xl px-6 py-4 text-center text-base font-bold tracking-tight text-white shadow-lg transition",
+                  "inline-flex w-full min-h-[52px] items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-bold tracking-tight text-white shadow-lg transition",
                   "bg-gradient-to-r from-pink-500 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60",
                   "ring-1 ring-white/15"
                 )}
               >
-                {starting ? t("home.starting") : t("home.startLive")}
+                {isStarting ? (
+                  <>
+                    <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden />
+                    {t("home.starting")}
+                  </>
+                ) : (
+                  t("home.startLive")
+                )}
               </button>
             </>
           )}

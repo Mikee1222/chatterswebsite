@@ -244,10 +244,19 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
             type="button"
             disabled={busyAction !== null}
             onClick={() => void confirmStartedToday()}
-            className="inline-flex items-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3.5 py-2.5 text-sm font-medium text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-50"
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3.5 py-2.5 text-sm font-medium text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-50"
           >
-            {busyAction === "confirm" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CalendarDays className="h-4 w-4" />}
-            {t("periodTracker.confirmToday")}
+            {busyAction === "confirm" ? (
+              <>
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                {t("common.saving")}
+              </>
+            ) : (
+              <>
+                <CalendarDays className="h-4 w-4 shrink-0" aria-hidden />
+                {t("periodTracker.confirmToday")}
+              </>
+            )}
           </button>
           <button
             type="button"
@@ -333,11 +342,27 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
                 />
               </label>
               <div className="flex justify-end gap-2">
-                <button type="button" className="rounded-xl border border-white/15 px-4 py-2 text-white/80" onClick={() => setOpenLogModal(false)}>
+                <button
+                  type="button"
+                  disabled={busyAction === "log"}
+                  className="rounded-xl border border-white/15 px-4 py-2 text-white/80 disabled:opacity-45"
+                  onClick={() => setOpenLogModal(false)}
+                >
                   {t("common.cancel")}
                 </button>
-                <button type="submit" disabled={busyAction === "log"} className="rounded-xl bg-pink-600 px-4 py-2 font-medium text-white disabled:opacity-50">
-                  {busyAction === "log" ? <Loader2 className="h-4 w-4 animate-spin" /> : t("periodTracker.save")}
+                <button
+                  type="submit"
+                  disabled={busyAction === "log"}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-600 px-4 py-2 font-medium text-white disabled:opacity-50"
+                >
+                  {busyAction === "log" ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      {t("common.saving")}
+                    </>
+                  ) : (
+                    t("periodTracker.save")
+                  )}
                 </button>
               </div>
             </form>
@@ -353,7 +378,8 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
             <div className="mt-5 flex justify-end gap-2">
               <button
                 type="button"
-                className="rounded-xl border border-white/15 px-4 py-2 text-white/80"
+                disabled={busyAction === "missed"}
+                className="rounded-xl border border-white/15 px-4 py-2 text-white/80 disabled:opacity-45"
                 onClick={() => setOpenMissedModal(false)}
               >
                 {t("common.cancel")}
@@ -362,10 +388,19 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
                 type="button"
                 disabled={busyAction === "missed"}
                 onClick={() => void reportMissed()}
-                className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 font-medium text-white disabled:opacity-50"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-amber-600 px-4 py-2 font-medium text-white disabled:opacity-50"
               >
-                {busyAction === "missed" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock3 className="h-4 w-4" />}
-                {t("periodTracker.confirmReset")}
+                {busyAction === "missed" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    {t("common.saving")}
+                  </>
+                ) : (
+                  <>
+                    <Clock3 className="h-4 w-4 shrink-0" aria-hidden />
+                    {t("periodTracker.confirmReset")}
+                  </>
+                )}
               </button>
             </div>
           </div>

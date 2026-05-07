@@ -208,7 +208,9 @@
       "completionNotes": "Completion notes (optional)",
       "completeNotifyVa": "Complete & notify VA",
       "markComplete": "Mark complete",
-      "schedule": "Schedule"
+      "schedule": "Schedule",
+      "scheduling": "Scheduling…",
+      "completing": "Completing…"
     },
     "settings": {
       "profileIntro": "Your name and email are managed by an admin. You can choose the language used in the app for you.",

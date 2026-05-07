@@ -50,17 +50,20 @@ export function ModelPeriodHomeSection({
     setOk(null);
     setSuccessPulse(false);
     setBusy(true);
-    const res = await logPeriodAction(modelId, startDate, endDate, notes.trim() || undefined);
-    setBusy(false);
-    if (!res.success) {
-      setError(res.error);
-      return;
+    try {
+      const res = await logPeriodAction(modelId, startDate, endDate, notes.trim() || undefined);
+      if (!res.success) {
+        setError(res.error);
+        return;
+      }
+      setOk(t("periodTracker.periodLogged"));
+      setSuccessPulse(true);
+      setNotes("");
+      router.refresh();
+      window.setTimeout(() => setSuccessPulse(false), 2200);
+    } finally {
+      setBusy(false);
     }
-    setOk(t("periodTracker.periodLogged"));
-    setSuccessPulse(true);
-    setNotes("");
-    router.refresh();
-    window.setTimeout(() => setSuccessPulse(false), 2200);
   };
 
   const sorted = [...periods].sort((a, b) => b.start_date.localeCompare(a.start_date)).slice(0, 8);

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import { useSWRConfig } from "swr";
-import { ArrowLeft, Package, Sparkles } from "lucide-react";
+import { ArrowLeft, Loader2, Package, Sparkles } from "lucide-react";
 import {
   markMyCustomRequestUploadedAction,
   scheduleMyCustomRequestAction,
@@ -108,38 +108,44 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
     if (!scheduleFor) return;
     setBusy(true);
     setFormError(null);
-    const res = await scheduleMyCustomRequestAction({
-      recordId: scheduleFor.id,
-      date: scheduleDate,
-      startTime: scheduleStart,
-      endTime: scheduleEnd,
-      notes: scheduleNotes,
-    });
-    setBusy(false);
-    if (!res.success) {
-      setFormError(res.error);
-      return;
+    try {
+      const res = await scheduleMyCustomRequestAction({
+        recordId: scheduleFor.id,
+        date: scheduleDate,
+        startTime: scheduleStart,
+        endTime: scheduleEnd,
+        notes: scheduleNotes,
+      });
+      if (!res.success) {
+        setFormError(res.error);
+        return;
+      }
+      setScheduleFor(null);
+      setDetail((d) => (d?.id === scheduleFor.id ? { ...d, model_status: "scheduled" } : d));
+      await mutate(dashboardSwrKeys.notificationsUnreadCount);
+      router.refresh();
+    } finally {
+      setBusy(false);
     }
-    setScheduleFor(null);
-    setDetail((d) => (d?.id === scheduleFor.id ? { ...d, model_status: "scheduled" } : d));
-    await mutate(dashboardSwrKeys.notificationsUnreadCount);
-    router.refresh();
   };
 
   const submitUploaded = async () => {
     if (!confirmUpload) return;
     setBusy(true);
     setFormError(null);
-    const res = await markMyCustomRequestUploadedAction(confirmUpload.id);
-    setBusy(false);
-    if (!res.success) {
-      setFormError(res.error);
-      return;
+    try {
+      const res = await markMyCustomRequestUploadedAction(confirmUpload.id);
+      if (!res.success) {
+        setFormError(res.error);
+        return;
+      }
+      setConfirmUpload(null);
+      setDetail((d) => (d?.id === confirmUpload.id ? { ...d, model_status: "uploaded" } : d));
+      await mutate(dashboardSwrKeys.notificationsUnreadCount);
+      router.refresh();
+    } finally {
+      setBusy(false);
     }
-    setConfirmUpload(null);
-    setDetail((d) => (d?.id === confirmUpload.id ? { ...d, model_status: "uploaded" } : d));
-    await mutate(dashboardSwrKeys.notificationsUnreadCount);
-    router.refresh();
   };
 
   const tabs: { id: FilterTab; label: [string, string]; count: number }[] = [
@@ -341,9 +347,16 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="rounded-xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                 >
-                  {busy ? t(language, "Saving…", "Guardando…") : t(language, "Save schedule", "Guardar")}
+                  {busy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      {t(language, "Saving…", "Guardando…")}
+                    </>
+                  ) : (
+                    t(language, "Save schedule", "Guardar")
+                  )}
                 </button>
               </div>
             </form>
@@ -382,9 +395,16 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
                   type="button"
                   disabled={busy}
                   onClick={() => void submitUploaded()}
-                  className="rounded-xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                 >
-                  {busy ? t(language, "Updating…", "Actualizando…") : t(language, "Confirm", "Confirmar")}
+                  {busy ? (
+                    <>
+                      <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                      {t(language, "Updating…", "Actualizando…")}
+                    </>
+                  ) : (
+                    t(language, "Confirm", "Confirmar")
+                  )}
                 </button>
               </div>
             </div>

@@ -8,7 +8,6 @@ import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
 import type { ModelContentAssignmentCardDTO } from "@/types";
-import { useLanguage } from "@/lib/language-provider";
 import { useTranslations } from "@/lib/use-translations";
 import { formatDateTime as formatDateTimeUk } from "@/lib/format-date";
 
@@ -41,7 +40,6 @@ export type ModelContentAssignmentsClientProps = {
 
 export function ModelContentAssignmentsClient({ assignments }: ModelContentAssignmentsClientProps) {
   const { t } = useTranslations();
-  const { language } = useLanguage();
   const { mutate } = useSWRConfig();
   const active = assignments.filter((a) => (a.status || "").toLowerCase() !== "cancelled");
   const [filter, setFilter] = React.useState<Filter>("pending");
@@ -50,7 +48,8 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
   const [scheduleDate, setScheduleDate] = React.useState("");
   const [scheduleNotes, setScheduleNotes] = React.useState("");
   const [completeNotes, setCompleteNotes] = React.useState("");
-  const [busy, setBusy] = React.useState(false);
+  const [isScheduling, setIsScheduling] = React.useState(false);
+  const [isCompleting, setIsCompleting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const filtered = React.useMemo(() => {
@@ -83,7 +82,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
 
   async function submitSchedule() {
     if (!scheduleFor || !scheduleDate) return;
-    setBusy(true);
+    setIsScheduling(true);
     setError(null);
     try {
       const res = await fetch("/api/model/content-assignments/schedule", {
@@ -98,7 +97,6 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
       const data = (await res.json().catch(() => ({}))) as { error?: unknown };
       if (!res.ok) {
         setError(typeof data.error === "string" ? data.error : t("common.couldNotSave"));
-        setBusy(false);
         return;
       }
       setScheduleFor(null);
@@ -107,13 +105,13 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
     } catch {
       setError(t("common.networkError"));
     } finally {
-      setBusy(false);
+      setIsScheduling(false);
     }
   }
 
   async function submitComplete() {
     if (!completeFor) return;
-    setBusy(true);
+    setIsCompleting(true);
     setError(null);
     try {
       const res = await fetch("/api/model/content-assignments/complete", {
@@ -127,7 +125,6 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
       const data = (await res.json().catch(() => ({}))) as { error?: unknown };
       if (!res.ok) {
         setError(typeof data.error === "string" ? data.error : t("common.couldNotSave"));
-        setBusy(false);
         return;
       }
       setCompleteFor(null);
@@ -136,9 +133,11 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
     } catch {
       setError(t("common.networkError"));
     } finally {
-      setBusy(false);
+      setIsCompleting(false);
     }
   }
+
+  const saving = isScheduling || isCompleting;
 
   const downloadTarget = (a: ModelContentAssignmentCardDTO) => {
     const att = a.file_attachment.find((x) => x.url);
@@ -285,8 +284,9 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                   {st === "pending" ? (
                     <button
                       type="button"
+                      disabled={saving}
                       onClick={() => setScheduleFor(a)}
-                      className="inline-flex min-h-[44px] items-center rounded-xl border border-pink-400/35 bg-pink-500/10 px-4 py-2.5 text-sm font-semibold text-pink-100 transition hover:bg-pink-500/18"
+                      className="inline-flex min-h-[44px] items-center rounded-xl border border-pink-400/35 bg-pink-500/10 px-4 py-2.5 text-sm font-semibold text-pink-100 transition hover:bg-pink-500/18 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {t("assignments.schedule")}
                     </button>
@@ -295,8 +295,9 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                   {st === "scheduled" ? (
                     <button
                       type="button"
+                      disabled={saving}
                       onClick={() => setCompleteFor(a)}
-                      className="inline-flex min-h-[44px] items-center rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/18"
+                      className="inline-flex min-h-[44px] items-center rounded-xl border border-emerald-500/35 bg-emerald-500/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/18 disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {t("assignments.markComplete")}
                     </button>
@@ -320,7 +321,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
           role="dialog"
           aria-modal="true"
           aria-labelledby="schedule-modal-title"
-          onClick={() => !busy && setScheduleFor(null)}
+          onClick={() => !isScheduling && setScheduleFor(null)}
         >
           <div
             className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl"
@@ -353,7 +354,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
             <div className="mt-6 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                disabled={busy}
+                disabled={isScheduling}
                 onClick={() => setScheduleFor(null)}
                 className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/5"
               >
@@ -361,12 +362,18 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
               </button>
               <button
                 type="button"
-                disabled={busy || !scheduleDate}
-                onClick={submitSchedule}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                disabled={isScheduling || !scheduleDate}
+                onClick={() => void submitSchedule()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
               >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {t("assignments.saveNotifyVa")}
+                {isScheduling ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    {t("assignments.scheduling")}
+                  </>
+                ) : (
+                  t("assignments.saveNotifyVa")
+                )}
               </button>
             </div>
           </div>
@@ -379,7 +386,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
           role="dialog"
           aria-modal="true"
           aria-labelledby="complete-modal-title"
-          onClick={() => !busy && setCompleteFor(null)}
+          onClick={() => !isCompleting && setCompleteFor(null)}
         >
           <div
             className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl"
@@ -402,7 +409,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
             <div className="mt-6 flex flex-wrap justify-end gap-2">
               <button
                 type="button"
-                disabled={busy}
+                disabled={isCompleting}
                 onClick={() => setCompleteFor(null)}
                 className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/5"
               >
@@ -410,12 +417,18 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
               </button>
               <button
                 type="button"
-                disabled={busy}
-                onClick={submitComplete}
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                disabled={isCompleting}
+                onClick={() => void submitComplete()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
               >
-                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {t("assignments.completeNotifyVa")}
+                {isCompleting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    {t("assignments.completing")}
+                  </>
+                ) : (
+                  t("assignments.completeNotifyVa")
+                )}
               </button>
             </div>
           </div>

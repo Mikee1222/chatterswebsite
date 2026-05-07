@@ -120,21 +120,25 @@ function LogPeriodModal({
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || !data.success) {
         setError(data.error || t("periodTracker.couldNotSave"));
-        setBusy(false);
         return;
       }
-      setBusy(false);
       onLogged();
       onClose();
     } catch {
       setError(t("common.networkError"));
+    } finally {
       setBusy(false);
     }
   };
 
   return createPortal(
     <div className="fixed inset-0 z-[200] flex items-end justify-center p-4 md:items-center">
-      <button type="button" className="absolute inset-0 bg-black/75 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/75 backdrop-blur-sm"
+        aria-label="Close"
+        onClick={() => !busy && onClose()}
+      />
       <div
         className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl"
         role="dialog"
@@ -183,8 +187,14 @@ function LogPeriodModal({
               disabled={busy}
               className="flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50"
             >
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-              {t("common.submit")}
+              {busy ? (
+                <>
+                  <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                  {t("common.saving")}
+                </>
+              ) : (
+                t("common.submit")
+              )}
             </button>
           </div>
         </form>
@@ -235,13 +245,12 @@ export function ModelPeriodTracker({
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
       if (!res.ok || !data.success) {
         setFlagError(data.error || t("periodTracker.updateFailed"));
-        setFlagBusy(null);
         return;
       }
-      setFlagBusy(null);
       router.refresh();
     } catch {
       setFlagError(t("common.networkError"));
+    } finally {
       setFlagBusy(null);
     }
   };
@@ -309,19 +318,19 @@ export function ModelPeriodTracker({
           type="button"
           disabled={!canFlag || flagBusy !== null}
           onClick={() => void patchFlag("came_early")}
-          className="rounded-xl bg-amber-500/90 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-40"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-amber-500/90 px-4 py-2.5 text-sm font-semibold text-zinc-950 hover:bg-amber-400 disabled:opacity-40"
         >
-          {flagBusy === "early" ? <Loader2 className="inline h-4 w-4 animate-spin" /> : null}{" "}
-          {t("periodTracker.cameEarly")}
+          {flagBusy === "early" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+          {flagBusy === "early" ? t("common.saving") : t("periodTracker.cameEarly")}
         </button>
         <button
           type="button"
           disabled={!canFlag || flagBusy !== null}
           onClick={() => void patchFlag("missed_period")}
-          className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+          className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40"
         >
-          {flagBusy === "missed" ? <Loader2 className="inline h-4 w-4 animate-spin" /> : null}{" "}
-          {t("periodTracker.didNotComeReset")}
+          {flagBusy === "missed" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+          {flagBusy === "missed" ? t("common.saving") : t("periodTracker.didNotComeReset")}
         </button>
       </div>
 

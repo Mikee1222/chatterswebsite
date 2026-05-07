@@ -84,6 +84,8 @@ function inflowwAuthorizationHeaderValue(apiKey: string): string {
 
 function inflowwHeaders(): Record<string, string> {
   const { apiKey, oid } = getInflowwEnv();
+  // Infloww Open API: INFLOWW_API_KEY → Authorization (raw or Bearer via INFLOWW_AUTH_SCHEME);
+  // INFLOWW_AGENCY_OID → x-oid header (agency / organisation id in Infloww).
   return {
     Authorization: inflowwAuthorizationHeaderValue(apiKey),
     "x-oid": oid,
@@ -475,37 +477,46 @@ export async function fetchInflowwTransactionsForCreator(
   endMs: number,
   creatorName: string
 ): Promise<InflowwTransaction[]> {
-  const out: InflowwTransaction[] = [];
-  let cursor: string | undefined;
-  const times = txTimeQueryParams(startMs, endMs);
-  const range = { startMs, endMs };
-  let pages = 0;
-  const MAX_PAGES = 200;
-  do {
-    pages += 1;
-    if (pages > MAX_PAGES) break;
-    const qp = new URLSearchParams({
-      creatorId,
-      startTime: times.startTime,
-      endTime: times.endTime,
-      limit: "100",
-    });
-    if (cursor) qp.set("cursor", cursor);
-    const payload = await inflowwFetchJson<unknown>("/transactions", qp);
-    const rows = pickArray(payload);
-    inflowwDebug("transactions page", {
-      creatorId,
-      page: pages,
-      rowCount: rows.length,
-      hasNextCursor: Boolean(nextCursorFrom(payload)),
-    });
-    for (let i = 0; i < rows.length; i++) {
-      out.push(mapTransactionRow(rows[i], out.length + i, creatorId, creatorName, range));
+  try {
+    const out: InflowwTransaction[] = [];
+    let cursor: string | undefined;
+    const times = txTimeQueryParams(startMs, endMs);
+    const range = { startMs, endMs };
+    let pages = 0;
+    const MAX_PAGES = 200;
+    do {
+      pages += 1;
+      if (pages > MAX_PAGES) break;
+      const qp = new URLSearchParams({
+        creatorId,
+        startTime: times.startTime,
+        endTime: times.endTime,
+        limit: "100",
+      });
+      if (cursor) qp.set("cursor", cursor);
+      const payload = await inflowwFetchJson<unknown>("/transactions", qp);
+      const rows = pickArray(payload);
+      inflowwDebug("transactions page", {
+        creatorId,
+        page: pages,
+        rowCount: rows.length,
+        hasNextCursor: Boolean(nextCursorFrom(payload)),
+      });
+      for (let i = 0; i < rows.length; i++) {
+        out.push(mapTransactionRow(rows[i], out.length + i, creatorId, creatorName, range));
+      }
+      cursor = nextCursorFrom(payload);
+      if (rows.length === 0) break;
+    } while (cursor);
+    return filterTransactionsByRange(out, startMs, endMs);
+  } catch (e) {
+    // Infloww returns 400 for unknown creator id / bad status mapping — treat as no rows so dashboards still load.
+    if (e instanceof InflowwApiError && e.status === 400) {
+      inflowwDebug("transactions skipped (400)", { creatorId, message: e.message });
+      return [];
     }
-    cursor = nextCursorFrom(payload);
-    if (rows.length === 0) break;
-  } while (cursor);
-  return filterTransactionsByRange(out, startMs, endMs);
+    throw e;
+  }
 }
 
 /** Roll up transactions into per–creator per–calendar-day rows (stable noon-UTC `date` per row). */

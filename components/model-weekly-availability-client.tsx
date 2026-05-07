@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Calendar, Clock, ListChecks, StickyNote } from "lucide-react";
+import { Calendar, Clock, ListChecks, Loader2, StickyNote } from "lucide-react";
 import { submitModelAvailabilityAction, updateModelAvailabilityAction, deleteModelAvailabilityAction } from "@/app/actions/weekly-availability-models";
 import { formatTimeRange } from "@/lib/format";
 import { modelWeeklyAvailabilityUrl } from "@/lib/routes";
@@ -68,6 +68,7 @@ export function ModelWeeklyAvailabilityClient({
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   React.useEffect(() => setRequests(initialRequests), [weekStart, initialRequests]);
 
@@ -106,46 +107,54 @@ export function ModelWeeklyAvailabilityClient({
       return;
     }
     setSubmitting(true);
-    if (editingRequest) {
-      const res = await updateModelAvailabilityAction(editingRequest.id, {
+    try {
+      if (editingRequest) {
+        const res = await updateModelAvailabilityAction(editingRequest.id, {
+          entry_type: entryType,
+          start_time: needsTime ? startTime : null,
+          end_time: needsTime ? endTime : null,
+          notes: notes.trim() || undefined,
+        });
+        if (!res.success) {
+          setError(res.error);
+          return;
+        }
+        setSuccess(t(language, "Availability updated.", "Disponibilidad actualizada."));
+        setEditingRequest(null);
+        router.refresh();
+        return;
+      }
+      const res = await submitModelAvailabilityAction({
+        week_start: weekStart,
+        day,
         entry_type: entryType,
         start_time: needsTime ? startTime : null,
         end_time: needsTime ? endTime : null,
         notes: notes.trim() || undefined,
       });
-      setSubmitting(false);
       if (!res.success) {
         setError(res.error);
         return;
       }
-      setSuccess(t(language, "Availability updated.", "Disponibilidad actualizada."));
-      setEditingRequest(null);
+      setSuccess(t(language, "Availability submitted.", "Disponibilidad enviada."));
+      setNotes("");
       router.refresh();
-      return;
+    } finally {
+      setSubmitting(false);
     }
-    const res = await submitModelAvailabilityAction({
-      week_start: weekStart,
-      day,
-      entry_type: entryType,
-      start_time: needsTime ? startTime : null,
-      end_time: needsTime ? endTime : null,
-      notes: notes.trim() || undefined,
-    });
-    setSubmitting(false);
-    if (!res.success) {
-      setError(res.error);
-      return;
-    }
-    setSuccess(t(language, "Availability submitted.", "Disponibilidad enviada."));
-    setNotes("");
-    router.refresh();
   };
 
   const handleDelete = async (recordId: string) => {
     if (!confirm(t(language, "Delete this entry?", "¿Eliminar esta entrada?"))) return;
-    const res = await deleteModelAvailabilityAction(recordId);
-    if (res.success) router.refresh();
-    else setError(res.error);
+    setDeletingId(recordId);
+    setError(null);
+    try {
+      const res = await deleteModelAvailabilityAction(recordId);
+      if (res.success) router.refresh();
+      else setError(res.error);
+    } finally {
+      setDeletingId(null);
+    }
   };
 
   const byDay = React.useMemo(() => {
@@ -302,8 +311,9 @@ export function ModelWeeklyAvailabilityClient({
                 <motion.button
                   type="button"
                   whileTap={{ scale: 0.97 }}
+                  disabled={submitting}
                   onClick={handleCancelEdit}
-                  className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/10 sm:self-stretch"
+                  className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white/80 transition-colors hover:border-white/25 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45 sm:self-stretch"
                 >
                   {t(language, "Cancel", "Cancelar")}
                 </motion.button>
@@ -344,11 +354,24 @@ export function ModelWeeklyAvailabilityClient({
                         </div>
                         {r.notes?.trim() && <p className="mt-1 text-white/50 truncate">{r.notes}</p>}
                         <div className="mt-2 flex gap-2">
-                          <button type="button" onClick={() => handleEdit(r)} className="rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 transition-colors">
+                          <button
+                            type="button"
+                            disabled={submitting || deletingId !== null}
+                            onClick={() => handleEdit(r)}
+                            className="rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
                             {t(language, "Edit", "Editar")}
                           </button>
-                          <button type="button" onClick={() => handleDelete(r.id)} className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/20 transition-colors">
-                            {t(language, "Delete", "Eliminar")}
+                          <button
+                            type="button"
+                            disabled={submitting || deletingId !== null}
+                            onClick={() => void handleDelete(r.id)}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            {deletingId === r.id ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden /> : null}
+                            {deletingId === r.id
+                              ? t(language, "Deleting…", "Eliminando…")
+                              : t(language, "Delete", "Eliminar")}
                           </button>
                         </div>
                       </div>

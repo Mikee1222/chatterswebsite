@@ -61,6 +61,17 @@ export async function GET(req: NextRequest) {
   } catch (error) {
     if (error instanceof InflowwApiError) {
       const maybeRateLimited = error.status === 429;
+      if (error.status === 400 && /invalid\s+creator|creator\s+status/i.test(error.message)) {
+        const empty: InflowwEarningsResponse = {
+          earnings: [],
+          transactions: [],
+          models: [],
+          totals: { gross: 0, net: 0, cut: 0 },
+        };
+        return NextResponse.json(empty, {
+          headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=120" },
+        });
+      }
       return NextResponse.json(
         { error: error.message, rateLimited: maybeRateLimited },
         { status: error.status }

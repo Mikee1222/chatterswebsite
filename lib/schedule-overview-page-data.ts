@@ -67,7 +67,16 @@ export async function loadScheduleOverviewPageData(opts: {
         ? []
         : customsRaw.filter((c) => allowed.has(c.assigned_model_id));
   const vaAssignments =
-    allowed === null ? vaRaw : allowed.size === 0 ? [] : vaRaw.filter((v) => allowed.has(v.model_id));
+    allowed === null
+      ? vaRaw
+      : allowed.size === 0
+        ? []
+        : vaRaw.filter((v) => {
+            if (allowed.has(v.model_id)) return true;
+            const sid = (v.model_id ?? "").trim();
+            if (!sid) return false;
+            return models.some((m) => allowed.has(m.id) && (m.model_id ?? "").trim() === sid);
+          });
 
   const userNamesById = Object.fromEntries(users.map((u) => [u.id, u.full_name?.trim() || u.email || u.id]));
 

@@ -208,7 +208,9 @@
       "completionNotes": "Notas al completar (opcional)",
       "completeNotifyVa": "Completar y avisar a la VA",
       "markComplete": "Marcar hecho",
-      "schedule": "Programar"
+      "schedule": "Programar",
+      "scheduling": "Programando…",
+      "completing": "Completando…"
     },
     "settings": {
       "profileIntro": "Tu nombre y correo los gestiona un administrador. Puedes elegir el idioma de la aplicación para ti.",

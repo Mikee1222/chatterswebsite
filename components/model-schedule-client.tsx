@@ -378,7 +378,9 @@ export function ModelScheduleClient({
           <FormField label={t("common.notes")} icon={<StickyNote />} htmlFor="sched-avail-notes">
             <FormTextarea id="sched-avail-notes" value={availNotes} onChange={(e) => setAvailNotes(e.target.value)} rows={3} />
           </FormField>
-          <FormSubmitButton loading={availSubmitting}>{t("schedule.submitAvailability")}</FormSubmitButton>
+          <FormSubmitButton loading={availSubmitting}>
+            {availSubmitting ? t("common.saving") : t("schedule.submitAvailability")}
+          </FormSubmitButton>
         </form>
       </div>
 
@@ -397,7 +399,9 @@ export function ModelScheduleClient({
           <FormField label={t("common.reason")} icon={<StickyNote />} htmlFor="sched-off-reason" required>
             <FormTextarea id="sched-off-reason" value={offReason} onChange={(e) => setOffReason(e.target.value)} rows={4} required />
           </FormField>
-          <FormSubmitButton loading={offSubmitting}>{t("schedule.submitRequest")}</FormSubmitButton>
+          <FormSubmitButton loading={offSubmitting}>
+            {offSubmitting ? t("common.saving") : t("schedule.submitRequest")}
+          </FormSubmitButton>
         </form>
       </div>
 

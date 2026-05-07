@@ -30,6 +30,9 @@ export async function GET() {
     );
   } catch (error) {
     if (error instanceof InflowwApiError) {
+      if (error.status === 400 && /invalid\s+creator|creator\s+status/i.test(error.message)) {
+        return NextResponse.json({ date: today, gross: 0, net: 0, agency_cut: 0 });
+      }
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     const message = error instanceof Error ? error.message : "Unknown error";

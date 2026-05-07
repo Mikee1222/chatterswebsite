@@ -75,6 +75,18 @@ export async function GET() {
     );
   } catch (error) {
     if (error instanceof InflowwApiError) {
+      if (error.status === 400 && /invalid\s+creator|creator\s+status/i.test(error.message)) {
+        return NextResponse.json(
+          {
+            week_start: weekStart,
+            week_end: weekEnd,
+            gross: 0,
+            net: 0,
+            agency_cut: 0,
+          },
+          { headers: { "Cache-Control": "no-store" } }
+        );
+      }
       return NextResponse.json({ error: error.message }, { status: error.status });
     }
     const message = error instanceof Error ? error.message : "Unknown error";
