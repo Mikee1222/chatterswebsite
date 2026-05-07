@@ -38,20 +38,29 @@ function displayType(req: CustomRequest): string {
   return (req.custom_type ?? req.request_title ?? "").trim() || "—";
 }
 
+const EN_GB_DATE: Intl.DateTimeFormatOptions = { day: "numeric", month: "long", year: "numeric" };
+
+function formatUkLongDate(raw: string): string {
+  const d = new Date(raw);
+  if (!Number.isNaN(d.getTime())) return d.toLocaleDateString("en-GB", EN_GB_DATE);
+  const slice = raw.trim().slice(0, 10);
+  if (/^\d{4}-\d{2}-\d{2}$/.test(slice)) {
+    const d2 = new Date(`${slice}T12:00:00.000Z`);
+    if (!Number.isNaN(d2.getTime())) return d2.toLocaleDateString("en-GB", EN_GB_DATE);
+  }
+  return raw.trim();
+}
+
 function displayRequestedDate(req: CustomRequest, lang: CustomRequestDetailLanguage): string {
   const raw = (req.deadline_requested ?? "").trim();
   if (raw) {
-    const d = new Date(raw);
-    if (!Number.isNaN(d.getTime())) {
-      return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-    }
-    return raw.slice(0, 10);
+    return formatUkLongDate(raw);
   }
   const c = (req.created_at ?? "").trim();
   if (!c) return "—";
   const d = new Date(c);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return d.toLocaleDateString("en-GB", EN_GB_DATE);
 }
 
 function formatCreatedAt(req: CustomRequest): string {
@@ -86,16 +95,17 @@ function adminStatusLabel(lang: CustomRequestDetailLanguage, s: CustomRequestAdm
 }
 
 function formatScheduleLine(req: CustomRequest): string {
-  const date = (req.model_scheduled_date ?? "").trim();
-  if (!date) return "—";
+  const dateRaw = (req.model_scheduled_date ?? "").trim();
+  if (!dateRaw) return "—";
+  const dateLabel = formatUkLongDate(dateRaw);
   const a = req.model_scheduled_start ? new Date(req.model_scheduled_start) : null;
   const b = req.model_scheduled_end ? new Date(req.model_scheduled_end) : null;
   if (a && b && !Number.isNaN(a.getTime()) && !Number.isNaN(b.getTime())) {
     const ta = a.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
     const tb = b.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-    return `${date} · ${ta}–${tb}`;
+    return `${dateLabel} · ${ta}–${tb}`;
   }
-  return date;
+  return dateLabel;
 }
 
 function formatUploadedAt(req: CustomRequest): string {

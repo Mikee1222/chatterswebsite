@@ -38,15 +38,21 @@ export async function POST(request: Request) {
   const { assignment_id, scheduled_date, notes } = parsed.data;
   const scheduled_iso = scheduledIsoFromDateOnly(scheduled_date);
 
-  const before = await getVAContentAssignmentForModel(assignment_id, ctx.linkedModelId);
+  const stable = ctx.modelRecord.model_id?.trim() || null;
+  const before = await getVAContentAssignmentForModel(assignment_id, ctx.linkedModelId, stable);
   if (!before || before.status !== "pending") {
     return NextResponse.json({ error: "Assignment not found or not pending." }, { status: 404 });
   }
 
-  const updated = await scheduleVAContentAssignmentForModel(assignment_id, ctx.linkedModelId, {
-    scheduled_date_iso: scheduled_iso,
-    notes,
-  });
+  const updated = await scheduleVAContentAssignmentForModel(
+    assignment_id,
+    ctx.linkedModelId,
+    {
+      scheduled_date_iso: scheduled_iso,
+      notes,
+    },
+    stable,
+  );
 
   if (!updated) {
     return NextResponse.json({ error: "Could not update assignment." }, { status: 500 });

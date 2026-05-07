@@ -84,7 +84,7 @@ export default async function ModelHomePage() {
       console.error("[model/home] countApprovedCustomRequestsWaitingSchedule failed; using 0 fallback", error);
       return 0;
     }),
-    countPendingVAContentAssignmentsForModel(linkedModelId).catch((error) => {
+    countPendingVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id).catch((error) => {
       console.error("[model/home] countPendingVAContentAssignmentsForModel failed; using 0 fallback", error);
       return 0;
     }),

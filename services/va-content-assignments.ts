@@ -1,7 +1,12 @@
 "use server";
 
 import { createRecord, listAllRecords, getRecord, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
-import { firstLinkedId, linkedRecordIds, formulaLinkedContains } from "@/lib/airtable-linked";
+import {
+  firstLinkedId,
+  linkedRecordIds,
+  formulaLinkedContains,
+  formulaTextEquals,
+} from "@/lib/airtable-linked";
 import type { VaContentAssignmentRecord } from "@/types";
 
 const TABLE = "va_content_assignments";
@@ -120,13 +125,81 @@ const VA_FILTER_LINK_FIELD_NAMES = ["va", "va_id", "VA", "assigned_va", "virtual
 
 const MODEL_LINK_FIELD_NAMES = ["model", "assigned_model"] as const;
 
-/** List rows linked to this modelss id: try known link field API names, then scan. */
-async function listAssignmentRecordsByModelLink(modelRecordId: string): Promise<AirtableRecord<Fields>[]> {
+/**
+ * Fields that may store stable model id text (e.g. `model_1772908052608_mk2psv`) vs linked `rec…` ids.
+ * Airtable rejects `{field}=…` formulas on wrong column types → try names and swallow errors.
+ */
+const MODEL_STABLE_TEXT_FIELD_NAMES = ["model", "model_id"] as const;
+
+function trimmedStr(v: unknown): string | null {
+  return typeof v === "string" && v.trim() ? v.trim() : null;
+}
+
+/** Row ties to models table record id (`rec…`) and/or stable `modelss.model_id` text. */
+function modelFieldsMatchQuery(
+  f: Fields,
+  airtableModelRecordId: string,
+  stableModelId?: string | null,
+): boolean {
+  if (modelLinkIds(f).includes(airtableModelRecordId)) return true;
+  const sid = stableModelId?.trim();
+  if (!sid) return false;
+  if (trimmedStr(f.model) === sid) return true;
+  if (trimmedStr(f.model_id) === sid) return true;
+  if (trimmedStr(f.assigned_model) === sid) return true;
+  return false;
+}
+
+function assignmentMappedModelMatches(
+  row: VaContentAssignmentRecord,
+  airtableModelRecordId: string,
+  stableModelId?: string | null,
+): boolean {
+  if (row.model_id === airtableModelRecordId) return true;
+  const sid = stableModelId?.trim();
+  return Boolean(sid && row.model_id === sid);
+}
+
+/** List VA rows for a modelss Airtable id and/or stable `model_id` string on `modelss`. */
+async function listAssignmentRecordsByModelLink(
+  modelRecordId: string,
+  stableModelId?: string | null,
+): Promise<AirtableRecord<Fields>[]> {
+  const sid = stableModelId?.trim();
+
   console.log(`${DEBUG_PREFIX} model query start`, {
     table: TABLE,
     modelRecordId,
-    candidateFields: [...MODEL_LINK_FIELD_NAMES],
+    stableModelId: sid ?? "",
+    candidateTextFields: [...MODEL_STABLE_TEXT_FIELD_NAMES],
+    candidateLinkFields: [...MODEL_LINK_FIELD_NAMES],
   });
+
+  if (sid) {
+    for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
+      try {
+        const filterByFormula = formulaTextEquals(fieldName, sid);
+        const records = await listAllRecords<Fields>(TABLE, {
+          filterByFormula,
+        });
+        console.log(`${DEBUG_PREFIX} model query (text id)`, {
+          table: TABLE,
+          fieldName,
+          filterByFormula,
+          recordsReturned: records.length,
+        });
+        if (records.length > 0) return records;
+      } catch (error) {
+        console.error(`${DEBUG_PREFIX} model query failed on text field`, {
+          table: TABLE,
+          fieldName,
+          filterByFormula: formulaTextEquals(fieldName, sid),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
   for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
       const filterByFormula = formulaLinkedContains(fieldName, modelRecordId);
@@ -151,7 +224,7 @@ async function listAssignmentRecordsByModelLink(modelRecordId: string): Promise<
     }
   }
   const all = await listAllRecords<Fields>(TABLE);
-  const filtered = all.filter((r) => modelLinkIds(r.fields).includes(modelRecordId));
+  const filtered = all.filter((r) => modelFieldsMatchQuery(r.fields, modelRecordId, sid));
   console.log(`${DEBUG_PREFIX} model query fallback scan`, {
     table: TABLE,
     scanned: all.length,
@@ -208,8 +281,11 @@ async function fetchAssignmentRecordsForVaUser(vaUserRecordId: string): Promise<
   }
 }
 
-async function fetchAssignmentRecordsForModel(modelRecordId: string): Promise<AirtableRecord<Fields>[]> {
-  return listAssignmentRecordsByModelLink(modelRecordId);
+async function fetchAssignmentRecordsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null,
+): Promise<AirtableRecord<Fields>[]> {
+  return listAssignmentRecordsByModelLink(modelRecordId, stableModelId);
 }
 
 function sortAssignmentsForVa(rows: VaContentAssignmentRecord[]): VaContentAssignmentRecord[] {
@@ -318,11 +394,17 @@ export async function listAllVAContentAssignmentsInRange(fromDate: string, toDat
   }
 }
 
-/** VA → model content rows linked to this modelss record id. */
-export async function listVAContentAssignmentsForModel(modelRecordId: string): Promise<VaContentAssignmentRecord[]> {
+/**
+ * VA → model content rows linked to this modelss **Airtable record id**, and/or rows where `model`
+ * / `model_id` stores stable text id (`modelss.model_id`, e.g. `model_1772908052608_mk2psv`).
+ */
+export async function listVAContentAssignmentsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null,
+): Promise<VaContentAssignmentRecord[]> {
   if (!modelRecordId) return [];
   try {
-    const records = await fetchAssignmentRecordsForModel(modelRecordId);
+    const records = await fetchAssignmentRecordsForModel(modelRecordId, stableModelId ?? null);
     return sortAssignmentsForModel(records.map((r) => mapRecord(r as AirtableRecord<Fields>)));
   } catch {
     return [];
@@ -393,10 +475,30 @@ export async function cancelVAContentAssignment(
 }
 
 /** Count of assignments in `pending` for this model (server-only; uses Airtable filter). */
-export async function countPendingVAContentAssignmentsForModel(modelRecordId: string): Promise<number> {
+export async function countPendingVAContentAssignmentsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null,
+): Promise<number> {
   if (!modelRecordId) return 0;
+  const sid = stableModelId?.trim();
   const isPending = (r: AirtableRecord<Fields>) =>
     String(r.fields.status ?? "").trim().toLowerCase() === "pending";
+
+  if (sid) {
+    for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
+      try {
+        const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
+        const records = await listAllRecords<Fields>(TABLE, {
+          filterByFormula: formula,
+          fields: ["status"],
+        });
+        return records.length;
+      } catch {
+        /* field type mismatch or unknown field */
+      }
+    }
+  }
+
   for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
       const formula = `AND(${formulaLinkedContains(fieldName, modelRecordId)}, {status}="pending")`;
@@ -411,22 +513,23 @@ export async function countPendingVAContentAssignmentsForModel(modelRecordId: st
   }
   try {
     const all = await listAllRecords<Fields>(TABLE);
-    return all.filter((r) => modelLinkIds(r.fields).includes(modelRecordId) && isPending(r)).length;
+    return all.filter((r) => modelFieldsMatchQuery(r.fields, modelRecordId, sid) && isPending(r)).length;
   } catch {
     return 0;
   }
 }
 
-/** Load one row and ensure it belongs to the given modelss id. */
+/** Load one row and ensure it belongs to the given modelss Airtable id and/or stable model id text. */
 export async function getVAContentAssignmentForModel(
   assignmentRecordId: string,
-  modelRecordId: string
+  modelRecordId: string,
+  stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord | null> {
   if (!assignmentRecordId || !modelRecordId) return null;
   try {
     const rec = await getRecord<Fields>(TABLE, assignmentRecordId);
     const row = mapRecord(rec as AirtableRecord<Fields>);
-    return row.model_id === modelRecordId ? row : null;
+    return assignmentMappedModelMatches(row, modelRecordId, stableModelId) ? row : null;
   } catch {
     return null;
   }
@@ -454,9 +557,14 @@ function appendModelNoteBlock(existing: string, block: string): string {
 export async function scheduleVAContentAssignmentForModel(
   assignmentRecordId: string,
   modelRecordId: string,
-  input: ScheduleVAContentAssignmentInput
+  input: ScheduleVAContentAssignmentInput,
+  stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord | null> {
-  const current = await getVAContentAssignmentForModel(assignmentRecordId, modelRecordId);
+  const current = await getVAContentAssignmentForModel(
+    assignmentRecordId,
+    modelRecordId,
+    stableModelId,
+  );
   if (!current || current.status !== "pending") return null;
 
   const noteBlock =
@@ -478,9 +586,14 @@ export async function scheduleVAContentAssignmentForModel(
 export async function completeVAContentAssignmentForModel(
   assignmentRecordId: string,
   modelRecordId: string,
-  input: CompleteVAContentAssignmentInput
+  input: CompleteVAContentAssignmentInput,
+  stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord | null> {
-  const current = await getVAContentAssignmentForModel(assignmentRecordId, modelRecordId);
+  const current = await getVAContentAssignmentForModel(
+    assignmentRecordId,
+    modelRecordId,
+    stableModelId,
+  );
   if (!current || current.status !== "scheduled") return null;
 
   const completedAt = new Date().toISOString();

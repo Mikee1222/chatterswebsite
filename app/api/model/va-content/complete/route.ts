@@ -28,9 +28,15 @@ export async function POST(req: Request) {
 
   const assignmentId = parsed.data.assignment_id.trim();
   try {
-    const updated = await completeVAContentAssignmentForModel(assignmentId, ctx.linkedModelId, {
-      completion_notes: parsed.data.completion_notes,
-    });
+    const stable = ctx.modelRecord.model_id?.trim() || null;
+    const updated = await completeVAContentAssignmentForModel(
+      assignmentId,
+      ctx.linkedModelId,
+      {
+        completion_notes: parsed.data.completion_notes,
+      },
+      stable,
+    );
     if (!updated) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }

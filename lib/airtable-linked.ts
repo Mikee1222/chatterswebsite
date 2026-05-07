@@ -52,3 +52,9 @@ export function formulaLinkedEquals(fieldName: string, recordId: string): string
   const escaped = escapeAirtableString(recordId);
   return `{${fieldName}} = "${escaped}"`;
 }
+
+/** Filter formula: single-line text / long text field equals literal (e.g. stable `model_id` like `model_…`). */
+export function formulaTextEquals(fieldName: string, value: string): string {
+  const escaped = escapeAirtableString(value);
+  return `{${fieldName}} = "${escaped}"`;
+}

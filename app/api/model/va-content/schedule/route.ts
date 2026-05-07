@@ -31,10 +31,16 @@ export async function POST(req: Request) {
 
   const assignmentId = parsed.data.assignment_id.trim();
   try {
-    const updated = await scheduleVAContentAssignmentForModel(assignmentId, ctx.linkedModelId, {
-      scheduled_date_iso: parsed.data.scheduled_date,
-      notes: parsed.data.notes,
-    });
+    const stable = ctx.modelRecord.model_id?.trim() || null;
+    const updated = await scheduleVAContentAssignmentForModel(
+      assignmentId,
+      ctx.linkedModelId,
+      {
+        scheduled_date_iso: parsed.data.scheduled_date,
+        notes: parsed.data.notes,
+      },
+      stable,
+    );
     if (!updated) {
       return NextResponse.json({ error: "Invalid request" }, { status: 400 });
     }

@@ -32,14 +32,20 @@ export async function POST(request: Request) {
 
   const { assignment_id, completion_notes } = parsed.data;
 
-  const before = await getVAContentAssignmentForModel(assignment_id, ctx.linkedModelId);
+  const stable = ctx.modelRecord.model_id?.trim() || null;
+  const before = await getVAContentAssignmentForModel(assignment_id, ctx.linkedModelId, stable);
   if (!before || before.status !== "scheduled") {
     return NextResponse.json({ error: "Assignment not found or not scheduled." }, { status: 404 });
   }
 
-  const updated = await completeVAContentAssignmentForModel(assignment_id, ctx.linkedModelId, {
-    completion_notes,
-  });
+  const updated = await completeVAContentAssignmentForModel(
+    assignment_id,
+    ctx.linkedModelId,
+    {
+      completion_notes,
+    },
+    stable,
+  );
 
   if (!updated) {
     return NextResponse.json({ error: "Could not update assignment." }, { status: 500 });

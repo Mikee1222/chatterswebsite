@@ -52,7 +52,7 @@ export default async function ModelContentCalendarPage() {
   let allCustoms: Awaited<ReturnType<typeof listCustomRequestsByModel>> = [];
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
   [assignments, allCustoms, tasks] = await Promise.all([
-    listVAContentAssignmentsForModel(linkedModelId).catch((error) => {
+    listVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id).catch((error) => {
       console.error("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", error);
       return [];
     }),

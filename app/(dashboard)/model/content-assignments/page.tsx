@@ -49,7 +49,7 @@ export default async function ModelContentAssignmentsPage() {
 
   let rows: Awaited<ReturnType<typeof listVAContentAssignmentsForModel>> = [];
   try {
-    rows = await listVAContentAssignmentsForModel(linkedModelId);
+    rows = await listVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id);
   } catch (error) {
     console.error("[model/content-assignments] listVAContentAssignmentsForModel failed; using [] fallback", error);
   }
