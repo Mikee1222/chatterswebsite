@@ -1,12 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { useRouter } from "next/navigation";
 import { updateMyModelLanguageAction } from "@/app/actions/model-profile";
 import type { ModelLang } from "@/lib/model-i18n";
 
 type LanguageContextValue = {
   language: ModelLang;
+  /** Updates UI immediately; persists to server/cookie in the background (no router refresh). */
   setLanguage: (lang: ModelLang) => Promise<void>;
 };
 
@@ -20,7 +20,6 @@ export function LanguageProvider({
   children: React.ReactNode;
 }) {
   const [language, setLangState] = React.useState<ModelLang>(initialLanguage);
-  const router = useRouter();
 
   React.useEffect(() => {
     setLangState(initialLanguage);
@@ -28,29 +27,15 @@ export function LanguageProvider({
 
   const setLanguage = React.useCallback(async (lang: ModelLang) => {
     const next = lang === "es" ? "es" : "en";
-    const res = await updateMyModelLanguageAction(next);
-    if (!res.success) {
-      throw new Error(res.error ?? "Could not save language.");
-    }
-    document.cookie = `language=${next}; path=/; max-age=31536000; SameSite=Lax`;
     setLangState(next);
-    router.refresh();
-  }, [router]);
+    if (typeof document !== "undefined") {
+      document.cookie = `language=${next}; path=/; max-age=31536000; SameSite=Lax`;
+    }
+    void updateMyModelLanguageAction(next).catch(() => {});
+  }, []);
 
   const value = React.useMemo(() => ({ language, setLanguage }), [language, setLanguage]);
 
-  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
-}
-
-/** Fixed EN + no-op setLanguage: isolates layout blank-page issues tied to LanguageProvider / router.refresh. */
-export function StaticEnLanguageProvider({ children }: { children: React.ReactNode }) {
-  const value = React.useMemo<LanguageContextValue>(
-    () => ({
-      language: "en",
-      setLanguage: async () => {},
-    }),
-    []
-  );
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 

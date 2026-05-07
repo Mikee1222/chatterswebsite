@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
+import { LanguageProvider } from "@/lib/language-provider";
 import { ModelQuickActionsFab } from "@/components/model-quick-actions-modal";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,11 @@ export default async function ModelLayout({ children }: { children: React.ReactN
   }
 
   return (
-    <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
-      {children}
-      <ModelQuickActionsFab user={ctx.user} />
-    </div>
+    <LanguageProvider initialLanguage="en">
+      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
+        {children}
+        <ModelQuickActionsFab user={ctx.user} />
+      </div>
+    </LanguageProvider>
   );
 }
