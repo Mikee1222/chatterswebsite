@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * Full-viewport decorative layer (`fixed`, `z-0`, behind in-flow content that stacks above).
+ * Decorative layer inside `.dashboard-bg` (`absolute` + z-0 so it never competes with fixed
+ * overlays or compositor ordering glitches from `position: fixed` + `isolation: isolate`).
  */
 export function AnimatedBackground() {
   return (
-    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+    <div className="pointer-events-none absolute inset-0 z-0 overflow-hidden">
       {/* Gradient orbs — boosted for visibility while debugging */}
       <div
         className="animate-float-slow absolute -left-1/3 -top-1/3 h-[600px] w-[600px] rounded-full blur-3xl"

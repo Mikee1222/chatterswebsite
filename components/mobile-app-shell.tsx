@@ -274,7 +274,7 @@ export function MobileAppShell({
           </div>
         </header>
 
-        <div className="min-h-0 flex-1">
+        <div className="relative z-20 min-h-0 flex-1">
           {children}
         </div>
 

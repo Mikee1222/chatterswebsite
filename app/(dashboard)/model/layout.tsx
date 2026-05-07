@@ -27,7 +27,7 @@ export default async function ModelLayout({ children }: { children: React.ReactN
 
   return (
     <LanguageProvider initialLanguage="en">
-      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh" }}>
+      <div className="relative z-20 min-h-[100vh]">
         {children}
         <ModelQuickActionsFab user={ctx.user} />
       </div>
