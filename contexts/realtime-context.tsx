@@ -181,10 +181,6 @@ export function RealtimeProvider({
     };
   }, [addNotification]);
 
-  useEffect(() => {
-    refreshUnreadCount();
-  }, [refreshUnreadCount]);
-
   // When WebSocket is not configured, poll unread count at a stable interval (no storm on failure)
   const POLL_INTERVAL_MS = 30000;
   useEffect(() => {

@@ -50,10 +50,14 @@ export function NotificationBell({ role }: NotificationBellProps) {
   const open = centerContext ? centerContext.open : localOpen;
   const setOpen = centerContext ? centerContext.setOpen : setLocalOpen;
 
-  const unreadRefreshInterval = useAdaptiveRefreshInterval(15_000, 0);
+  const unreadRefreshInterval = useAdaptiveRefreshInterval(0, 0);
   const unreadQuery = useNotificationsUnreadCount({
     initialData: { count: 0 },
     refreshInterval: unreadRefreshInterval,
+    swr: {
+      revalidateOnMount: false,
+      revalidateIfStale: false,
+    },
   });
   const unreadCount = realtime ? realtime.unreadCount : (unreadQuery.data?.count ?? 0);
   const setUnreadCount = realtime
