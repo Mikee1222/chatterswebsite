@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getModelContext } from "@/lib/model-context-server";
 import { listCustomRequestsByModel } from "@/services/custom-requests";
 import { listModelTasks } from "@/services/model-tasks";

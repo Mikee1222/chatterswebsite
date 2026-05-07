@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getModelContext } from "@/lib/model-context-server";
 import { getModelT } from "@/lib/model-i18n";
 import { listVAContentAssignmentsForModel } from "@/services/va-content-assignments";

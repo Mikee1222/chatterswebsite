@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getModelContext } from "@/lib/model-context-server";
 import { MobileDashboardLayout } from "@/components/mobile-dashboard-layout";
 import { ModelPeriodHomeSection } from "@/components/model-period-home-section";

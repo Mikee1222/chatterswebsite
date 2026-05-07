@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelScheduleClient } from "@/components/model-schedule-client";
