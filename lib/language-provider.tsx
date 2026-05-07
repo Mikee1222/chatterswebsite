@@ -42,6 +42,18 @@ export function LanguageProvider({
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
+/** Fixed EN + no-op setLanguage: isolates layout blank-page issues tied to LanguageProvider / router.refresh. */
+export function StaticEnLanguageProvider({ children }: { children: React.ReactNode }) {
+  const value = React.useMemo<LanguageContextValue>(
+    () => ({
+      language: "en",
+      setLanguage: async () => {},
+    }),
+    []
+  );
+  return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
+}
+
 export function useLanguage(): LanguageContextValue {
   const ctx = React.useContext(LanguageContext);
   if (!ctx) {
