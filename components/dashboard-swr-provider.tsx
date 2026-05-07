@@ -11,13 +11,17 @@ export function DashboardSwrProvider({ children }: DashboardSwrProviderProps) {
   return (
     <SWRConfig
       value={{
-        revalidateOnFocus: true,
-        revalidateOnReconnect: true,
+        revalidateOnFocus: false,
+        revalidateOnReconnect: false,
         dedupingInterval: 20_000,
         focusThrottleInterval: 10_000,
         errorRetryCount: 2,
         errorRetryInterval: 8_000,
-        shouldRetryOnError: true,
+        shouldRetryOnError: false,
+        keepPreviousData: true,
+        onError: () => {
+          // Intentionally no-op: keep previous SWR data rendered on transient revalidation failures.
+        },
       }}
     >
       {children}
