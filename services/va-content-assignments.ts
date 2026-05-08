@@ -1,6 +1,7 @@
 "use server";
 
 import { createRecord, listAllRecords, getRecord, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
 import {
   firstLinkedId,
@@ -126,10 +127,33 @@ function modelLinkIds(f: Fields): string[] {
 }
 
 /**
+ * Single-line text columns that may store the app `users.user_id` (e.g. `user_1772875569566_i2wv85a5`)
+ * instead of a linked `rec…` users row id.
+ */
+const VA_STABLE_TEXT_FIELD_NAMES = ["va_id"] as const;
+
+/**
  * Link field API names to try for server-side filter (one field per attempt).
  * A single OR() across names fails if any referenced field does not exist in the base.
  */
 const VA_FILTER_LINK_FIELD_NAMES = ["va", "va_id", "VA", "assigned_va", "virtual_assistant"] as const;
+
+/**
+ * All Airtable identity keys to match for this VA: users table record id (`rec…`) plus stable `user_id` when present.
+ */
+async function vaIdentityLookupKeys(vaUserRecordId: string): Promise<string[]> {
+  const rid = vaUserRecordId?.trim();
+  if (!rid) return [];
+  const keys = new Set<string>([rid]);
+  try {
+    const profile = await getUserByAirtableId(rid);
+    const stable = profile?.user_id?.trim();
+    if (stable) keys.add(stable);
+  } catch {
+    /* ignore */
+  }
+  return [...keys];
+}
 
 const MODEL_LINK_FIELD_NAMES = ["model", "assigned_model"] as const;
 
@@ -260,16 +284,36 @@ async function listAssignmentRecordsByModelLink(
   return filtered;
 }
 
-/** Prefer server-side filter; try each known link field name; if all fail, list all and filter in JS. */
-async function fetchAssignmentRecordsForVaUser(vaUserRecordId: string): Promise<AirtableRecord<Fields>[]> {
-  console.log(`${DEBUG_PREFIX} va query start`, {
-    table: TABLE,
-    vaUserRecordId,
-    candidateFields: [...VA_FILTER_LINK_FIELD_NAMES],
-  });
+/** Prefer server-side filter; try stable text `va_id`, then each known link field; fallback list+JS. */
+async function fetchAssignmentRecordsForSingleVaLookupKey(lookupKey: string): Promise<AirtableRecord<Fields>[]> {
+  const key = lookupKey.trim();
+  if (!key) return [];
+
+  console.log(`${DEBUG_PREFIX} filtering by VA lookup key`, { lookupKey: key });
+
+  if (key.startsWith("user_")) {
+    for (const fieldName of VA_STABLE_TEXT_FIELD_NAMES) {
+      try {
+        const filterByFormula = formulaTextEquals(fieldName, key);
+        const records = await listAllRecords<Fields>(TABLE, { filterByFormula });
+        console.log(`${DEBUG_PREFIX} va query (stable text on ${fieldName})`, {
+          filterByFormula,
+          recordsReturned: records.length,
+        });
+        if (records.length > 0) return records;
+      } catch (error) {
+        console.error(`${DEBUG_PREFIX} va query failed on text field`, {
+          fieldName,
+          filterByFormula: formulaTextEquals(fieldName, key),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  }
+
   for (const fieldName of VA_FILTER_LINK_FIELD_NAMES) {
     try {
-      const filterByFormula = formulaLinkedContains(fieldName, vaUserRecordId);
+      const filterByFormula = formulaLinkedContains(fieldName, key);
       const records = await listAllRecords<Fields>(TABLE, {
         filterByFormula,
       });
@@ -284,7 +328,7 @@ async function fetchAssignmentRecordsForVaUser(vaUserRecordId: string): Promise<
       console.error(`${DEBUG_PREFIX} va query failed on field`, {
         table: TABLE,
         fieldName,
-        filterByFormula: formulaLinkedContains(fieldName, vaUserRecordId),
+        filterByFormula: formulaLinkedContains(fieldName, key),
         error: error instanceof Error ? error.message : String(error),
       });
       /* field missing or formula error — try next */
@@ -292,11 +336,20 @@ async function fetchAssignmentRecordsForVaUser(vaUserRecordId: string): Promise<
   }
   try {
     const all = await listAllRecords<Fields>(TABLE);
-    const filtered = all.filter((r) => vaLinkIds(r.fields).includes(vaUserRecordId));
+    const filtered = all.filter((r) => vaLinkIds(r.fields).includes(key));
     console.log(`${DEBUG_PREFIX} va query fallback scan`, {
       table: TABLE,
+      lookupKey: key,
       scanned: all.length,
       recordsReturned: filtered.length,
+      firstVaRaw:
+        filtered[0]?.fields != null
+          ? {
+              va: (filtered[0].fields as Fields).va,
+              va_id: (filtered[0].fields as Fields).va_id,
+              VA: (filtered[0].fields as Fields).VA,
+            }
+          : null,
     });
     return filtered;
   } catch (error) {
@@ -306,6 +359,36 @@ async function fetchAssignmentRecordsForVaUser(vaUserRecordId: string): Promise<
     });
     return [];
   }
+}
+
+/** Merge rows for `rec…` users id and stable `user_…` app id so text `va_id` and link columns both match. */
+async function fetchAssignmentRecordsForVaUser(
+  vaUserRecordId: string,
+  precomputedKeys?: string[]
+): Promise<AirtableRecord<Fields>[]> {
+  const keys =
+    precomputedKeys != null && precomputedKeys.length > 0
+      ? [...new Set(precomputedKeys.map((k) => k.trim()).filter(Boolean))]
+      : await vaIdentityLookupKeys(vaUserRecordId);
+  console.log(`${DEBUG_PREFIX} va query start`, {
+    table: TABLE,
+    vaUserRecordId,
+    lookupKeys: keys,
+    candidateTextFields: [...VA_STABLE_TEXT_FIELD_NAMES],
+    candidateLinkFields: [...VA_FILTER_LINK_FIELD_NAMES],
+  });
+  const byId = new Map<string, AirtableRecord<Fields>>();
+  for (const k of keys) {
+    const batch = await fetchAssignmentRecordsForSingleVaLookupKey(k);
+    for (const r of batch) byId.set(r.id, r);
+  }
+  const merged = [...byId.values()];
+  console.log(`${DEBUG_PREFIX} merged VA assignment records`, {
+    keysTried: keys,
+    totalUnique: merged.length,
+    firstRecordVaId: merged[0]?.fields != null ? (merged[0].fields as Fields).va_id : undefined,
+  });
+  return merged;
 }
 
 async function fetchAssignmentRecordsForModel(
@@ -350,11 +433,13 @@ export async function getVAContentAssignmentForVa(
   assignmentRecordId: string,
   vaUserRecordId: string
 ): Promise<VaContentAssignmentRecord | null> {
-  if (!assignmentRecordId || !vaUserRecordId) return null;
+  if (!assignmentRecordId || !vaUserRecordId?.trim()) return null;
   try {
+    const keys = await vaIdentityLookupKeys(vaUserRecordId);
     const rec = await getRecord<Fields>(TABLE, assignmentRecordId);
     const f = rec.fields;
-    if (!vaLinkIds(f).includes(vaUserRecordId)) return null;
+    const linkIds = vaLinkIds(f);
+    if (!keys.some((k) => linkIds.includes(k))) return null;
     return mapRecord(rec as AirtableRecord<Fields>);
   } catch {
     return null;
@@ -386,8 +471,11 @@ export async function appendVAContentAssignmentVaNotes(
 
 /** All content assignments created by / assigned to this VA (users record id). */
 export async function listVAContentAssignmentsForVaUser(vaUserRecordId: string): Promise<VaContentAssignmentRecord[]> {
-  if (!vaUserRecordId) return [];
-  const records = await fetchAssignmentRecordsForVaUser(vaUserRecordId);
+  if (!vaUserRecordId?.trim()) return [];
+  const keys = await vaIdentityLookupKeys(vaUserRecordId);
+  console.log(`${DEBUG_PREFIX} listVAContentAssignmentsForVaUser`, { lookupKeys: keys });
+  const records = await fetchAssignmentRecordsForVaUser(vaUserRecordId, keys);
+  console.log(`${DEBUG_PREFIX} records mapped for VA`, { count: records.length });
   return sortAssignmentsForVa(records.map((r) => mapRecord(r as AirtableRecord<Fields>)));
 }
 
