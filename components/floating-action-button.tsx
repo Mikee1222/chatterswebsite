@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { CHATTER_QUICK_ACTIONS, QuickActionsModal } from "@/components/quick-actions-modal";
+import { FeedbackQuickActionNavRow } from "@/components/feedback-quick-action-menu-item";
 
 const FAB_BTN_CLASS = cn(
   "flex h-14 w-14 items-center justify-center rounded-2xl text-white shadow-lg transition-transform",
@@ -95,6 +96,7 @@ export function FloatingActionButton({ user }: FloatingActionButtonProps) {
                   </Link>
                 </li>
               ))}
+              <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
             </ul>
           </nav>
         ) : null}

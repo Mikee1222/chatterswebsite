@@ -8,6 +8,7 @@ import { NotificationPromptProvider } from "@/contexts/notification-prompt-conte
 import { PwaProvider } from "@/components/pwa-provider";
 import { ToastViewport } from "@/components/toast-viewport";
 import { DashboardSwrProvider } from "@/components/dashboard-swr-provider";
+import { FeedbackModalProvider } from "@/contexts/feedback-modal-context";
 
 /**
  * Toast + realtime + notification center + PWA + notification prompt (for re-entry from More/settings).
@@ -21,7 +22,7 @@ export function Providers(props: { children: React.ReactNode }) {
             <NotificationPromptProvider>
               <PwaProvider>
                 <ToastViewport />
-                {props.children}
+                <FeedbackModalProvider>{props.children}</FeedbackModalProvider>
               </PwaProvider>
             </NotificationPromptProvider>
           </NotificationCenterProvider>

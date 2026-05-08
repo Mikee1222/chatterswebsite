@@ -317,6 +317,8 @@ TABLE: custom_requests
   - uploaded_at (dateTime)
   - uploaded_by_model (checkbox)
   - model_id (singleLineText)
+  - assigned_va (singleLineText)
+  - updated_at (dateTime)
 
 TABLE: earnings_config
 ────────────────────────────────────────────────────
@@ -341,7 +343,7 @@ TABLE: feedback
   - admin_notes (multilineText)
   - created_at (dateTime)
 
-TABLE: FeedBack
+TABLE: FeedBackcc
 ────────────────────────────────────────────────────
   - Client Name  (Telegram) (singleLineText)
   - 1) Πως θα περιέγραφες την συνολική εμπειρία σου μέχρι τώρα; (singleSelect)
@@ -448,6 +450,13 @@ TABLE: model_expense_requests
   - admin_notes (multilineText)
   - created_at (dateTime)
   - updated_at (dateTime)
+
+TABLE: model_groups
+────────────────────────────────────────────────────
+  - name (singleLineText)
+  - model_ids (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - description (multilineText)
+  - created_at (dateTime)
 
 TABLE: model_live_streams
 ────────────────────────────────────────────────────
@@ -653,6 +662,7 @@ TABLE: modelss
   - model_content_requests (multipleRecordLinks) → linkedTableId: tblN1fROxwWJ5eTII
   - model_expense_requests (multipleRecordLinks) → linkedTableId: tbltVfVfIfs0076U8
   - model_personal_events (multipleRecordLinks) → linkedTableId: tblvPLFiLzKLtqKU3
+  - model_groups (multipleRecordLinks) → linkedTableId: tblccO5nIbwmdvcQN
 
 TABLE: monthly_targets
 ────────────────────────────────────────────────────
@@ -712,7 +722,7 @@ TABLE: notifications
   - type (singleSelect)
      Options [6]: shift, task_shift, model, whale, system, account
   - category (singleSelect)
-     Options [5]: shift, model, whale, system, task
+     Options [6]: shift, model, whale, system, task, custom_request
   - priority (singleSelect)
      Options [5]: low, normal, high, critical, urgent
   - Attachments (multipleAttachments)
@@ -1264,7 +1274,7 @@ TABLE: Αυτοαξιολογηση
 ✅ feedback
 ✅ model_content_requests
 ✅ model_expense_requests
-❌ model_groups
+✅ model_groups
 ✅ model_live_streams
 ✅ model_periods
 ✅ model_personal_events
@@ -1301,7 +1311,7 @@ TABLE: Αυτοαξιολογηση
 ℹ️  Chatters — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
 ℹ️  Chatters Apply Form — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
 ℹ️  Creators — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
-ℹ️  FeedBack — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  FeedBackcc — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
 ℹ️  Fines & Bonuses — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
 ℹ️  MSS — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
 ℹ️  Mistakes — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
@@ -1327,7 +1337,7 @@ TABLE: Αυτοαξιολογηση
 ========== SINGLE-SELECT OPTIONS (code ⊂ Airtable) ==========
 
 ✅ notifications.event_type: all codebase options present in Airtable
-⚠️  notifications.category: Airtable missing choices used/named in code: custom_request
+✅ notifications.category: all codebase options present in Airtable
 ✅ custom_requests.admin_status: all codebase options present in Airtable
 ✅ custom_requests.model_status: all codebase options present in Airtable
 ✅ custom_requests.custom_type: all codebase options present in Airtable
@@ -1397,7 +1407,7 @@ TABLE: Αυτοαξιολογηση
 ✅ shifts: expected fields present (incl. known aliases)
 ✅ shift_models: expected fields present (incl. known aliases)
 ✅ weekly_availability_requests_models: expected fields present (incl. known aliases)
-❌ custom_requests: missing fields → assigned_va, updated_at
+✅ custom_requests: expected fields present (incl. known aliases)
 ✅ feedback: expected fields present (incl. known aliases)
 ✅ model_tasks: expected fields present (incl. known aliases)
 
@@ -1409,20 +1419,20 @@ NOTE: Code links models via users.linked_model → modelss, not users.linked_mod
 
 MISSING TABLES:
 
-  ❌ model_groups → try: npm run create:model-groups-table
+  (none)
 
 MISSING / MISMATCH SELECT OPTIONS (add choices in Airtable to match codebase):
 
-  ⚠️  notifications.category: Airtable missing choices used/named in code: custom_request
+  (none flagged)
 
 MISSING FIELDS:
 
-  ❌ custom_requests: missing fields → assigned_va, updated_at
+  (none flagged for audited tables)
 
 -------------------------------------
 SUMMARY (strict counts above):
-  Tables missing: 1
-  Select-option mismatches flagged: 1
-  Field mismatches flagged: 1
-  Loose total issues: ~3
+  Tables missing: 0
+  Select-option mismatches flagged: 0
+  Field mismatches flagged: 0
+  Loose total issues: ~0
 =====================================

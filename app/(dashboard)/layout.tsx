@@ -5,7 +5,6 @@ import { Sidebar } from "@/components/sidebar";
 import { Topbar } from "@/components/topbar";
 import { MobileAppShell } from "@/components/mobile-app-shell";
 import { DashboardPwaPrompts } from "@/components/dashboard-pwa-prompts";
-import { FeedbackButton } from "@/components/feedback-button";
 import { Providers } from "@/components/providers";
 import { ClientRedirect } from "@/components/client-redirect";
 import { getActiveShiftByChatter, getActiveShiftByStaff, getActiveShiftModels } from "@/services/shifts";
@@ -83,7 +82,6 @@ export default async function DashboardLayout({
               {children}
             </main>
             <DashboardPwaPrompts user={user} />
-            <FeedbackButton />
           </MobileAppShell>
         </div>
       </div>

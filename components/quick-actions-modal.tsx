@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import { CalendarCheck, DollarSign, FileText, Play, UserPlus, X } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 
@@ -136,6 +137,7 @@ export function QuickActionsModal({ open, onClose }: QuickActionsModalProps) {
                     </Link>
                   </li>
                 ))}
+                <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
           </>

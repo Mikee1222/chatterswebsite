@@ -23,6 +23,7 @@ import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
+import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 const SWIPE_CLOSE_PX = 100;
@@ -189,6 +190,7 @@ export function AdminQuickActionsModal({ open, onClose, actions }: AdminQuickAct
                     </Link>
                   </li>
                 ))}
+                <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
           </>
@@ -275,6 +277,7 @@ export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActi
                   </Link>
                 </li>
               ))}
+              <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
             </ul>
           </nav>
         ) : null}

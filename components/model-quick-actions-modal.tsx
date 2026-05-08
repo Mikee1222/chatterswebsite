@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/auth-config";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { useTranslations } from "@/lib/use-translations";
+import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 
@@ -138,6 +139,7 @@ export function ModelQuickActionsModal({ open, onClose }: ModelQuickActionsModal
                     </Link>
                   </li>
                 ))}
+                <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
           </>
@@ -229,6 +231,7 @@ export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
                   </Link>
                 </li>
               ))}
+              <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
             </ul>
           </nav>
         ) : null}
