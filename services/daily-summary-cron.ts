@@ -7,6 +7,7 @@ import { getShiftsForDate, listShiftModelsForShifts } from "@/services/shifts";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
 import { countCustomRequestsPendingOrInProgress } from "@/services/custom-requests";
 import { findExistingNotification } from "@/services/notifications";
+import { getAdminNotificationIds } from "@/services/admin-notification-settings";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
@@ -19,12 +20,6 @@ function workedMinutesForShift(s: Shift): number {
     if (!Number.isNaN(a) && !Number.isNaN(b) && b > a) return Math.round((b - a) / 60000);
   }
   return 0;
-}
-
-function adminUserIdsFromEnv(): string[] {
-  const raw = process.env.ADMIN_AIRTABLE_USER_IDS;
-  if (!raw || typeof raw !== "string") return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 const AIRTABLE_SYSTEM_ALERT = "system_alert";
@@ -83,7 +78,7 @@ Models active: ${modelNames}
 Whale revenue: €${whaleTotal}
 Pending customs: ${pendingCustoms}`;
 
-  const adminIds = adminUserIdsFromEnv();
+  const adminIds = await getAdminNotificationIds();
   const needing: string[] = [];
   for (const id of adminIds) {
     const dup = await findExistingNotification(id, "system", entityId, AIRTABLE_SYSTEM_ALERT).catch(() => true);

@@ -262,20 +262,23 @@ export async function assignWhaleToChatter(
     revalidatePath(ROUTES.admin.whales);
     revalidatePath(ROUTES.chatter.myWhales);
     const uName = (whale?.username || whale?.whale_id || "fan").trim();
-    try {
-      const assignedCopy = whaleAssignedToYou(uName);
-      await notify({
-        user_id: chatterRecordId,
-        event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
-        priority: NOTIFICATION_PRIORITY.HIGH,
-        title: assignedCopy.title,
-        body: assignedCopy.body,
-        entity_type: NOTIFICATION_ENTITY.WHALE,
-        entity_id: whaleRecordId,
-        actor_name: chatterName,
-      });
-    } catch (e) {
-      console.error("[notify] assignWhaleToChatter notify chatter failed", e);
+    const assigneeId = chatterRecordId?.trim();
+    if (assigneeId) {
+      try {
+        const assignedCopy = whaleAssignedToYou(uName);
+        await notify({
+          user_id: assigneeId,
+          event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
+          priority: NOTIFICATION_PRIORITY.HIGH,
+          title: assignedCopy.title,
+          body: assignedCopy.body,
+          entity_type: NOTIFICATION_ENTITY.WHALE,
+          entity_id: whaleRecordId,
+          actor_name: chatterName,
+        });
+      } catch (e) {
+        console.error("[notify] assignWhaleToChatter notify chatter failed", e);
+      }
     }
     try {
       await notifyAdmins({
@@ -285,7 +288,7 @@ export async function assignWhaleToChatter(
         body: `${whale?.username || whale?.whale_id || "Whale"} assigned to ${chatterName}.`,
         entity_type: NOTIFICATION_ENTITY.WHALE,
         entity_id: whaleRecordId,
-        actor_user_id: chatterRecordId,
+        actor_user_id: assigneeId || undefined,
         actor_name: chatterName,
       });
     } catch (e) {

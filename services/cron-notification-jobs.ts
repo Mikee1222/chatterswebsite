@@ -6,6 +6,7 @@ import { listAllUsers } from "@/services/users";
 import { getRequestsForWeek } from "@/services/weekly-availability-requests";
 import { getRequestsForWeekVa } from "@/services/weekly-availability-requests-va";
 import { listAllCustomRequests } from "@/services/custom-requests";
+import { getAdminNotificationIds } from "@/services/admin-notification-settings";
 import { notify } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -31,12 +32,6 @@ function wallClockEtcGmtMinus3(d = new Date()): { weekday: string; hour: number;
     hour: parseInt(g("hour"), 10) || 0,
     minute: parseInt(g("minute"), 10) || 0,
   };
-}
-
-function adminUserIdsFromEnv(): string[] {
-  const raw = process.env.ADMIN_AIRTABLE_USER_IDS;
-  if (!raw || typeof raw !== "string") return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 function parseDeadlineEndMs(raw: string): number | null {
@@ -170,7 +165,7 @@ export async function runCustomDeadlinesWithin48Hours(): Promise<CustomDeadline4
   const now = Date.now();
   const windowEnd = now + 48 * 60 * 60 * 1000;
   const all = await listAllCustomRequests();
-  const admins = adminUserIdsFromEnv();
+  const admins = await getAdminNotificationIds();
   let notifications_sent = 0;
 
   for (const req of all) {

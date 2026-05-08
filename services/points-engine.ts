@@ -117,6 +117,7 @@ async function notifyAfterPointsAwarded(params: {
 }): Promise<void> {
   const { userId, points, reason, referenceId, prevTotal, nextTotal, prevSpins, nextSpins, prevLevelStored, finalLevel } =
     params;
+  if (!userId?.trim()) return;
   const entityId = referenceId?.trim() || userId;
   try {
     const [{ notify }, { NOTIFICATION_EVENT }] = await Promise.all([

@@ -40,7 +40,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_and_actor",
     description: "Admins + the chatter/VA who ended the shift.",
   },
-  shift_late: { rule: "admin_only", description: "Admins only (oversight)." },
+  shift_late: {
+    rule: "admin_and_assigned_chatter",
+    description: "Scheduled late: chatter + admins (check-late-shifts). Started-late path: admins only (notifyAdminsOnce).",
+  },
   shift_no_show: { rule: "admin_only", description: "Admins only (oversight)." },
   shift_overtime: { rule: "admin_only", description: "Admins only." },
   shift_running_long: { rule: "admin_only", description: "Admins only." },
@@ -57,7 +60,11 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_and_actor",
     description: "Admins + the chatter who ended the break.",
   },
-  break_exceeded: { rule: "admin_only", description: "Admins only." },
+  break_exceeded: {
+    rule: "admin_and_actor",
+    description:
+      "notifyAdminsOnce to admins when break >45m; separate deduped notify to the chatter on shift (check-late-shifts).",
+  },
   break_too_long: { rule: "admin_only", description: "Admins only." },
 
   // ---- Task shift ----
@@ -133,7 +140,11 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_and_actor",
     description: "Admins + the chatter who registered the whale (same dual path as shift_started).",
   },
-  whale_assigned: { rule: "admin_only", description: "Admins only." },
+  whale_assigned: {
+    rule: "admin_and_assigned_chatter",
+    description:
+      "On chatter assignment: notifyAdmins + notify(assigned chatter). Model-only assignment: admins only. Unassign path may notify previous chatter (same Airtable event_type).",
+  },
   whale_followup: { rule: "admin_only", description: "Admins only." },
   whale_spent: { rule: "admin_only", description: "Admins only." },
   whale_session_submitted: {
@@ -142,7 +153,11 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
 
   // ---- Custom request ----
-  custom_request_created: { rule: "admin_only", description: "Admins only (new submission for review)." },
+  custom_request_created: {
+    rule: "admin_only",
+    description:
+      "notifyAdmins for admins; **also** all active VAs receive the same event via custom-request-notify-vas.ts (queue visibility).",
+  },
   custom_request_updated: { rule: "admin_only", description: "Admins only." },
   custom_request_submitted: { rule: "admin_only", description: "Admins only." },
   custom_status_changed: {
@@ -153,9 +168,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   custom_rejected: { rule: "assigned_party_only", description: "Assigned party." },
   custom_declined: { rule: "assigned_chatter_only", description: "Chatter who requested the custom (agency decline)." },
   custom_edited: { rule: "assigned_party_only", description: "Chatter and/or model when agency edits terms." },
-  custom_uploaded: { rule: "admin_and_assigned_chatter", description: "Chatter + admins when model uploads deliverables." },
-  custom_scheduled: { rule: "admin_only", description: "Admins only (or assigned if needed)." },
-  custom_deadline_approaching: { rule: "admin_only", description: "Admins only." },
+  custom_uploaded: {
+    rule: "assigned_party_only",
+    description: "Chatter (if requester), admins, linked model user, assigned VA when model uploads (see model/custom/uploaded + notify-vas).",
+  },
+  custom_scheduled: {
+    rule: "assigned_party_only",
+    description: "Chatter (if requester), admins, linked model user when model schedules (see model/custom/schedule).",
+  },
+  custom_deadline_approaching: {
+    rule: "assigned_party_only",
+    description: "Requesting chatter (if any) and admins for 48h deadline window (cron-notification-jobs).",
+  },
   custom_overdue: { rule: "admin_only", description: "Admins only." },
 
   // ---- Forms / system ----
@@ -192,27 +216,24 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
 };
 
-/** Event types that must go only to admins (no chatters/VAs unless they are the actor for admin_and_actor). */
+/**
+ * Subset of events where **typical** paths are admin-only. Some names here also have non-admin
+ * recipients in specific flows — always prefer `NOTIFICATION_ROUTING` per event when auditing.
+ */
 export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "whale_session_submitted",
-  "whale_assigned",
   "whale_followup",
   "whale_spent",
-  "custom_request_created",
   "custom_request_updated",
   "custom_request_submitted",
-  "custom_scheduled",
-  "custom_deadline_approaching",
   "custom_overdue",
   "form_submitted",
   "schedule_updated",
   "availability_submitted",
-  "shift_late",
   "shift_no_show",
   "shift_overtime",
   "shift_running_long",
   "chatter_no_models",
-  "break_exceeded",
   "break_too_long",
   "task_overdue",
   "tasks_not_started",

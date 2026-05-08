@@ -253,6 +253,7 @@ async function challengesMatchingMetricInWindow(metric: ChallengeMetric, userId:
 }
 
 async function completeChallengeIfNeeded(userId: string, ch: ChallengeRow, current: number): Promise<void> {
+  if (!userId?.trim()) return;
   if (current < ch.target_value) return;
   const row = await findProgressRecord(userId, ch.id);
   if (row?.fields.completed) return;

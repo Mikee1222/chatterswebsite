@@ -12,6 +12,7 @@ import {
 } from "@/lib/airtable-server";
 import { awardPoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
+import { getAdminNotificationIds } from "@/services/admin-notification-settings";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
@@ -358,13 +359,6 @@ const STALE_UPDATE_MS = 48 * 60 * 60 * 1000;
 const AIRTABLE_EVENT_CUSTOM_OVERDUE =
   EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.CUSTOM_OVERDUE] ?? "custom_request_updated";
 
-function adminUserIdsFromEnv(): string[] {
-  const raw = process.env.ADMIN_AIRTABLE_USER_IDS;
-  if (!raw || typeof raw !== "string") return [];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
-}
-
-/** Raw Airtable statuses: exclude completed / approved / rejected / cancelled (and model completed / declined). */
 function customRequestRawTerminal(adminRaw: string, modelRaw: string): boolean {
   const a = String(adminRaw ?? "").toLowerCase().trim();
   const m = String(modelRaw ?? "").toLowerCase().trim();
@@ -380,7 +374,7 @@ function customRequestRawTerminal(adminRaw: string, modelRaw: string): boolean {
 export async function runCustomRequestOverdue48hAdminAlerts(): Promise<{ ok: true; alerts_sent: number }> {
   const { findExistingNotification } = await import("@/services/notifications");
   const { notify } = await import("@/services/notification-service");
-  const adminIds = adminUserIdsFromEnv();
+  const adminIds = await getAdminNotificationIds();
   if (adminIds.length === 0) return { ok: true, alerts_sent: 0 };
 
   const records = await listAllRecords<Fields>(TABLE, {});
