@@ -91,6 +91,7 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   /** Live start: higher default so assigned chatters are more likely to receive push (e.g. vs critical_only). */
   model_live_started: "high",
   model_live_ended: "normal",
+  model_live_scheduled: "high",
   task_completed: "normal",
   model_content_completed: "normal",
   model_content_scheduled: "normal",

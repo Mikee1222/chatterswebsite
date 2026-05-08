@@ -40,3 +40,24 @@ export async function notifyActiveVirtualAssistantsCustomCreated(input: {
     }).catch((e) => console.error("[notify] VA custom_request_created failed", e));
   }
 }
+
+/** When a model marks deliverables uploaded, notify the VA linked on `custom_requests.assigned_va` (if any). */
+export async function notifyAssignedVirtualAssistantCustomUploaded(input: {
+  assigned_va_id: string;
+  request_title: string;
+  custom_request_id: string;
+}): Promise<void> {
+  const vaId = input.assigned_va_id?.trim();
+  if (!vaId) return;
+  const customTitle = (input.request_title || "Custom request").trim() || "Custom request";
+  await notify({
+    user_id: vaId,
+    event_type: NOTIFICATION_EVENT.TASK_COMPLETED,
+    priority: NOTIFICATION_PRIORITY.NORMAL,
+    title: "✅ Custom request completed",
+    body: `The custom "${customTitle}" has been uploaded by the model.`,
+    entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+    entity_id: input.custom_request_id,
+    _triggerSource: "notifyAssignedVirtualAssistantCustomUploaded",
+  }).catch((e) => console.error("[notify] VA custom_uploaded failed", e));
+}

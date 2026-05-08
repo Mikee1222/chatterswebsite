@@ -8,6 +8,8 @@ import {
 import { createModelScheduleItemForCustom } from "@/services/model-schedule";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
+import { notifyAssignedVirtualAssistantCustomUploaded } from "@/services/custom-request-notify-vas";
 
 const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
@@ -93,6 +95,22 @@ export async function POST(req: Request) {
       entity_id: recordId,
       actor_name: modelName,
     }).catch(() => {});
+
+    const customTitle = (existing.request_title || "Custom request").trim() || "Custom request";
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(ctx.linkedModelId);
+    if (modelUserId) {
+      await notify({
+        user_id: modelUserId,
+        event_type: NOTIFICATION_EVENT.CUSTOM_SCHEDULED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "🗓 Custom scheduled",
+        body: `A custom "${customTitle}" has been scheduled. Check your calendar.`,
+        entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+        entity_id: recordId,
+        actor_name: modelName,
+        _triggerSource: "model_custom_schedule_api_model",
+      }).catch(() => {});
+    }
 
     return NextResponse.json({ success: true });
   } catch {

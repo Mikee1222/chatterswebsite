@@ -3,13 +3,17 @@
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { getUserByAirtableId } from "@/services/users";
+import {
+  getUserByAirtableId,
+  getActiveModelUserAirtableIdByLinkedModelRecordId,
+} from "@/services/users";
 import {
   getCustomRequestById,
   updateCustomRequestModelSchedule,
 } from "@/services/custom-requests";
 import { createModelScheduleItemForCustom } from "@/services/model-schedule";
 import { notify, notifyAdmins } from "@/services/notification-service";
+import { notifyAssignedVirtualAssistantCustomUploaded } from "@/services/custom-request-notify-vas";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
   customScheduledAdmin,
@@ -156,6 +160,22 @@ export async function scheduleMyCustomRequestAction(input: {
       actor_name: modelName,
     }).catch((e) => console.error("[notify] scheduleMyCustomRequest admins failed", e));
 
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(linkedModelId);
+    if (modelUserId) {
+      await notify({
+        user_id: modelUserId,
+        event_type: NOTIFICATION_EVENT.CUSTOM_SCHEDULED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "🗓 Custom scheduled",
+        body: `A custom "${customTitle}" has been scheduled. Check your calendar.`,
+        entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+        entity_id: id,
+        actor_user_id: createdByRecordId || undefined,
+        actor_name: modelName,
+        _triggerSource: "scheduleMyCustomRequest_model",
+      }).catch((e) => console.error("[notify] scheduleMyCustomRequest model failed", e));
+    }
+
     const { broadcastRealtimeToAll } = await import("@/lib/realtime-broadcast");
     await broadcastRealtimeToAll({ type: "custom_request_updated", custom_request_id: id }).catch(() => {});
 
@@ -236,6 +256,28 @@ export async function markMyCustomRequestUploadedAction(recordId: string): Promi
       actor_user_id: actorUserId,
       actor_name: modelName,
     }).catch((e) => console.error("[notify] markMyCustomRequestUploaded admins failed", e));
+
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(linkedModelId);
+    if (modelUserId) {
+      await notify({
+        user_id: modelUserId,
+        event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "📤 Upload confirmed",
+        body: `Your upload for "${customTitle}" has been received.`,
+        entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+        entity_id: `${id}:upload_model_confirm`,
+        actor_user_id: actorUserId,
+        actor_name: modelName,
+        _triggerSource: "markMyCustomRequestUploaded_model",
+      }).catch((e) => console.error("[notify] markMyCustomRequestUploaded model failed", e));
+    }
+
+    await notifyAssignedVirtualAssistantCustomUploaded({
+      assigned_va_id: existing.assigned_va_id ?? "",
+      request_title: customTitle,
+      custom_request_id: id,
+    });
 
     const { broadcastRealtimeToAll } = await import("@/lib/realtime-broadcast");
     await broadcastRealtimeToAll({ type: "custom_request_updated", custom_request_id: id }).catch(() => {});

@@ -359,12 +359,34 @@ export async function clearWhaleChatter(whaleRecordId: string): Promise<AssignWh
     const gate = await requireAdminManager();
     if (!gate.ok) return { success: false, error: gate.error };
 
+    const before = await getWhaleById(whaleRecordId);
+    const previousChatterId = before?.assigned_chatter_id?.trim() ?? "";
+    const whaleName = (before?.username ?? before?.whale_id ?? "Whale").trim() || "Whale";
+
     await updateWhale(whaleRecordId, {
       assigned_chatter: [],
       assigned_chatter_name: "",
     });
     revalidatePath(ROUTES.admin.whales);
     revalidatePath(ROUTES.chatter.myWhales);
+
+    if (previousChatterId) {
+      try {
+        await notify({
+          user_id: previousChatterId,
+          event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "🐋 Whale unassigned",
+          body: `${whaleName} has been removed from your list.`,
+          entity_type: NOTIFICATION_ENTITY.WHALE,
+          entity_id: whaleRecordId,
+          _triggerSource: "clearWhaleChatter",
+        });
+      } catch (e) {
+        console.error("[notify] clearWhaleChatter notify failed", e);
+      }
+    }
+
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

@@ -4,6 +4,8 @@ import { requireModelApiContext } from "@/lib/model-api-auth";
 import { getCustomRequestById, updateCustomRequestModelSchedule } from "@/services/custom-requests";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
+import { notifyAssignedVirtualAssistantCustomUploaded } from "@/services/custom-request-notify-vas";
 
 const bodySchema = z.object({
   request_id: z.string().min(1),
@@ -43,6 +45,7 @@ export async function POST(req: Request) {
     });
 
     const modelName = (ctx.modelRecord.model_name ?? "").trim() || "Model";
+    const customTitle = (existing.request_title || "Custom request").trim() || "Custom request";
     const chatterId = existing.requested_by_chatter_id?.trim();
     if (chatterId) {
       await notify({
@@ -66,6 +69,27 @@ export async function POST(req: Request) {
       entity_id: recordId,
       actor_name: modelName,
     }).catch(() => {});
+
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(ctx.linkedModelId);
+    if (modelUserId) {
+      await notify({
+        user_id: modelUserId,
+        event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "📤 Upload confirmed",
+        body: `Your upload for "${customTitle}" has been received.`,
+        entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+        entity_id: `${recordId}:upload_model_confirm`,
+        actor_name: modelName,
+        _triggerSource: "model_custom_uploaded_api_model",
+      }).catch(() => {});
+    }
+
+    await notifyAssignedVirtualAssistantCustomUploaded({
+      assigned_va_id: existing.assigned_va_id ?? "",
+      request_title: customTitle,
+      custom_request_id: recordId,
+    });
 
     return NextResponse.json({ success: true });
   } catch {

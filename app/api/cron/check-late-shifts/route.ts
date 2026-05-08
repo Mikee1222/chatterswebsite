@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { runCheckLateShifts } from "@/services/check-late-shifts";
 import { runCustomRequestOverdue48hAdminAlerts } from "@/services/custom-requests";
+import { runModelLiveScheduledReminders } from "@/services/model-live-scheduled-reminders";
 import {
   runSundayAvailabilityReminders,
   runFridayWeeklyAvailabilityReminders,
@@ -27,7 +28,7 @@ function isCronAuthorized(request: Request): boolean {
  * GET /api/cron/check-late-shifts
  * Runs late/no-show checks, Friday (GMT+3) weekly availability reminders, Sunday availability
  * reminders, custom deadline (48h) alerts, custom requests stale 48h+ (admin), and VA task due
- * reminders (next 60 min window; cron every ~15 min).
+ * reminders (next 60 min window; cron every ~15 min), and model live stream 30‑minute reminders.
  * Used by workers/cron-late-shifts and manual calls.
  */
 export async function GET(request: Request) {
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
       customDeadlines48h,
       customOverdue48h,
       vaTaskReminders,
+      modelLiveScheduledReminders,
     ] = await Promise.all([
       runCheckLateShifts(),
       runSundayAvailabilityReminders(),
@@ -50,6 +52,7 @@ export async function GET(request: Request) {
       runCustomDeadlinesWithin48Hours(),
       runCustomRequestOverdue48hAdminAlerts(),
       runVaTaskReminders(),
+      runModelLiveScheduledReminders(),
     ]);
     return NextResponse.json({
       ...lateShifts,
@@ -58,6 +61,7 @@ export async function GET(request: Request) {
       custom_deadlines_48h: customDeadlines48h,
       custom_overdue_48h: customOverdue48h,
       va_task_reminders: vaTaskReminders,
+      model_live_scheduled_reminders: modelLiveScheduledReminders,
     });
   } catch (err) {
     console.error("[cron/check-late-shifts]", err);

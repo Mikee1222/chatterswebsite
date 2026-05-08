@@ -2,7 +2,7 @@
  * Cron Worker:
  * - Every 5 minutes → GET /api/cron/check-break-reminders (chatter break reminders).
  * - Every 15 minutes → GET /api/cron/check-late-shifts (late shifts, breaks, availability, customs, VA tasks,
- *   plus custom requests with no update in 48h+ → admin).
+ *   model live 30‑min reminders, plus custom requests with no update in 48h+ → admin).
  * - Daily at 00:00 UTC → GET /api/cron/daily-summary (yesterday in fixed Athens UTC+3 calendar).
  * - Daily at 21:00 UTC → GET /api/cron/update-streaks (≈ midnight fixed Athens UTC+3 wall clock).
  * Set APP_URL, CRON_SECRET, and UPDATE_STREAKS_CRON_URL (defaults to APP_URL + /api/cron/update-streaks); main app must use the same CRON_SECRET.

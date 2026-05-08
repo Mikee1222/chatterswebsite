@@ -51,6 +51,8 @@ type Fields = {
   decline_reason?: string;
   created_at?: string;
   updated_at?: string;
+  /** Optional multipleRecordLinks → users (VA assigned to handle this custom). */
+  assigned_va?: string | string[];
 };
 
 function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
@@ -69,6 +71,7 @@ function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
     fan_username: f.fan_username ?? "",
     requested_by_chatter_id: firstLinkedId(f.requested_by_chatter) ?? "",
     requested_by_chatter_name: snapshotText(f.requested_by_chatter),
+    assigned_va_id: firstLinkedId(f.assigned_va) ?? "",
     assigned_model_id: firstLinkedId(f.assigned_model) ?? "",
     assigned_model_name: snapshotText(f.assigned_model),
     request_title: f.request_title ?? "",

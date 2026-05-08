@@ -134,6 +134,8 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.chatter.challenges) return "Challenges";
   if (pathname === ROUTES.admin.challenges) return "Challenges";
   if (pathname === ROUTES.admin.spinResults) return "Spin results";
+  if (pathname === ROUTES.admin.testNotifications) return "Test notifications";
+  if (pathname === ROUTES.admin.notificationDiagnostic) return "Notification diagnostic";
   if (pathname === ROUTES.settings) return "Settings";
   if (pathname === ROUTES.chatter.weeklyAvailability) return "My availability";
   if (pathname === ROUTES.va.weeklyAvailability) return "My availability";

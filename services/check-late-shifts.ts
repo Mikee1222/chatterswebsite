@@ -62,6 +62,8 @@ export type CheckLateShiftsResult = {
   /** Chatters notified they are 10+ min late (deduped). */
   shift_scheduled_late_chatter_sent: number;
   break_too_long_sent: number;
+  /** Chatters notified their own break exceeded 45m (deduped). */
+  break_exceeded_chatter_sent: number;
 };
 
 /**
@@ -78,6 +80,7 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
   let shiftStartingSoonCount = 0;
   let shiftScheduledLateChatterCount = 0;
   let breakTooLongCount = 0;
+  let breakExceededChatterCount = 0;
 
   const programs = await getProgramsForWeek(weekStart);
   const programsToday = programs.filter((p) => p.day === todayWeekday);
@@ -234,6 +237,38 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
           EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.BREAK_EXCEEDED]
         )
     );
+
+    const chatterId = shift.chatter_id?.trim();
+    if (chatterId) {
+      const breakChatterEntityId = `${breakEntityId}:chatter_self`;
+      const airtableBreakEv = EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.BREAK_EXCEEDED];
+      const dupChatterSelf = await findExistingNotification(
+        chatterId,
+        NOTIFICATION_ENTITY.SHIFT,
+        breakChatterEntityId,
+        airtableBreakEv
+      ).catch(() => true);
+      if (!dupChatterSelf) {
+        try {
+          await notify({
+            user_id: chatterId,
+            event_type: NOTIFICATION_EVENT.BREAK_EXCEEDED,
+            priority: NOTIFICATION_PRIORITY.HIGH,
+            title: "⚠️ Break time exceeded",
+            body: "You've been on break for over 45 minutes. Please return to your shift.",
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: breakChatterEntityId,
+            actor_user_id: chatterId,
+            actor_name: shift.chatter_name ?? undefined,
+            _triggerSource: "break_exceeded_chatter_self",
+          });
+          breakExceededChatterCount++;
+        } catch (e) {
+          console.error("[check-late-shifts] break_exceeded chatter notify failed", e);
+        }
+      }
+    }
+
     breakTooLongCount++;
   }
 
@@ -246,5 +281,6 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
     shift_starting_soon_sent: shiftStartingSoonCount,
     shift_scheduled_late_chatter_sent: shiftScheduledLateChatterCount,
     break_too_long_sent: breakTooLongCount,
+    break_exceeded_chatter_sent: breakExceededChatterCount,
   };
 }
