@@ -2,7 +2,10 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Calculator, Clock } from "lucide-react";
+import { Calculator, Clock, DollarSign, RefreshCw } from "lucide-react";
+import { RebillModal } from "@/components/rebill-modal";
+import { TipModal } from "@/components/tip-modal";
+import type { ChatterModalModelOption } from "@/components/rebill-modal";
 import { usdToEur } from "@/lib/exchange";
 import { ROUTES } from "@/lib/routes";
 import { formatTimeEuropean, formatDurationMinutes, formatDateEuropean } from "@/lib/format";
@@ -17,6 +20,8 @@ type Props = {
   shiftCardData: HomeShiftCardData;
   assignedWhalesCount: number;
   monthlyTargetData?: MonthlyTargetData;
+  /** Active modelss rows for rebill/tip dropdowns */
+  chatterActiveModels?: ChatterModalModelOption[];
 };
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
@@ -70,9 +75,12 @@ export function ChatterHomeClient({
   shiftCardData,
   assignedWhalesCount,
   monthlyTargetData = null,
+  chatterActiveModels = [],
 }: Props) {
   const [revenueUsd, setRevenueUsd] = React.useState("");
   const [chatterPct, setChatterPct] = React.useState("");
+  const [rebillOpen, setRebillOpen] = React.useState(false);
+  const [tipOpen, setTipOpen] = React.useState(false);
 
   const rev = parseFloat(revenueUsd) || 0;
   const pct = parseFloat(chatterPct) || 0;
@@ -180,6 +188,42 @@ export function ChatterHomeClient({
           <p className="mt-2 text-sm text-white/45">Tap to log a whale session</p>
         </motion.a>
       </Reveal>
+
+      <Reveal delay={0.12}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <motion.button
+            type="button"
+            whileHover={hoverLift}
+            onClick={() => setRebillOpen(true)}
+            className="flex w-full items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition-all hover:bg-white/10"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-500/20">
+              <RefreshCw className="h-5 w-5 text-green-400" aria-hidden />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Add rebill</p>
+              <p className="text-xs text-white/40">Log a subscriber rebill</p>
+            </div>
+          </motion.button>
+          <motion.button
+            type="button"
+            whileHover={hoverLift}
+            onClick={() => setTipOpen(true)}
+            className="flex w-full items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-left transition-all hover:bg-white/10"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-500/20">
+              <DollarSign className="h-5 w-5 text-amber-400" aria-hidden />
+            </div>
+            <div>
+              <p className="text-sm font-semibold text-white">Add missing tip</p>
+              <p className="text-xs text-white/40">Report an unlocked tip</p>
+            </div>
+          </motion.button>
+        </div>
+      </Reveal>
+
+      <RebillModal open={rebillOpen} onClose={() => setRebillOpen(false)} models={chatterActiveModels} />
+      <TipModal open={tipOpen} onClose={() => setTipOpen(false)} models={chatterActiveModels} />
 
       <div className="grid gap-8 lg:grid-cols-2">
         <Reveal delay={0.18}>

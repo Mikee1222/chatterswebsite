@@ -218,6 +218,13 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     type: new Set(["bug", "suggestion", "other"]),
     status: new Set(["new", "in_review", "resolved", "wont_fix"]),
   },
+  rebills: {
+    sub_type: new Set(["paid", "free", "free_trial"]),
+    status: new Set(["pending", "verified", "rejected"]),
+  },
+  tips: {
+    status: new Set(["pending", "verified", "rejected"]),
+  },
   model_content_requests: {
     type: new Set(["script", "mass", "photo_set", "video", "other"]),
     status: new Set(["pending", "approved", "rejected", "in_progress", "completed"]),
@@ -305,6 +312,8 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   points_transactions: new Set(["created_at"]),
   spin_wheel_spins: new Set(["created_at"]),
   feedback: new Set(["created_at"]),
+  rebills: new Set(["created_at"]),
+  tips: new Set(["created_at"]),
   /** Allow client-bumped `updated_at` (blocked globally); keep `created_at` non-writable. */
   custom_requests: new Set(["updated_at"]),
   model_content_requests: new Set(["created_at", "updated_at"]),
