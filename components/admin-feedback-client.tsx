@@ -237,8 +237,17 @@ export function AdminFeedbackClient({ initialRows }: { initialRows: AdminFeedbac
         </div>
       </div>
 
-      <div className="relative flex gap-4 max-lg:flex-col">
-        <div className="min-h-0 flex-1 space-y-2">
+      <div className="relative">
+        {selected ? (
+          <button
+            type="button"
+            aria-label="Close details"
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+            onClick={() => setSelectedId(null)}
+          />
+        ) : null}
+        <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <div className="min-h-0 min-w-0 space-y-2 overflow-y-auto">
           {filtered.map((r) => (
             <button
               type="button"
@@ -275,14 +284,8 @@ export function AdminFeedbackClient({ initialRows }: { initialRows: AdminFeedbac
         </div>
 
         {selected ? (
-          <>
-            <button
-              type="button"
-              aria-label="Close details"
-              className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
-              onClick={() => setSelectedId(null)}
-            />
-            <aside className="fixed inset-x-3 bottom-3 top-20 z-50 overflow-y-auto rounded-2xl border border-white/10 bg-white/5 p-5 lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:flex lg:h-fit lg:w-80 lg:shrink-0 lg:flex-col lg:overflow-visible lg:self-start">
+            <aside className="fixed inset-x-3 bottom-3 top-20 z-50 max-h-[calc(100vh-200px)] min-h-0 min-w-0 overflow-y-auto rounded-2xl border border-white/10 bg-white/5 lg:sticky lg:inset-auto lg:top-4 lg:z-auto lg:h-auto lg:w-full lg:max-w-none lg:self-start">
+              <div className="p-5">
               <div className="mb-4 flex items-start justify-between gap-2">
                 <div className="flex flex-wrap gap-2">
                   <span className={`rounded-full border px-2 py-0.5 text-xs font-medium uppercase ${typeColor(selected.type)}`}>
@@ -318,13 +321,13 @@ export function AdminFeedbackClient({ initialRows }: { initialRows: AdminFeedbac
               </div>
 
               <div className="mb-4 space-y-3">
-                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                <div className="min-w-0 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
                   <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Page</p>
-                  <p className="text-sm text-white/80">{selected.page || "—"}</p>
+                  <p className="break-all text-sm text-white/80">{selected.page || "—"}</p>
                 </div>
-                <div className="rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
+                <div className="min-w-0 rounded-xl border border-white/[0.08] bg-white/[0.03] p-3">
                   <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Details</p>
-                  <p className="whitespace-pre-wrap text-sm text-white/80">{selected.description || "—"}</p>
+                  <p className="break-words whitespace-pre-wrap text-sm text-white/80">{selected.description || "—"}</p>
                 </div>
                 {selected.screenshots.length > 0 ? (
                   <div>
@@ -405,9 +408,10 @@ export function AdminFeedbackClient({ initialRows }: { initialRows: AdminFeedbac
                   </span>
                 </div>
               )}
+              </div>
             </aside>
-          </>
         ) : null}
+        </div>
       </div>
     </div>
   );

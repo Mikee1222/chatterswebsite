@@ -54,7 +54,7 @@ export default async function AdminFeedbackPage() {
   const rows = records.map((r) => mapFeedbackRow(r as AirtableRecord<FeedbackFields>));
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">
+    <div className="w-full max-w-full px-4 py-6 md:px-6">
       <AdminFeedbackClient initialRows={rows} />
     </div>
   );

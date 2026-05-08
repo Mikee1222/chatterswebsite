@@ -18,7 +18,7 @@ export default async function AdminExpenseRequestsPage() {
   for (const m of models) modelNameById[m.id] = m.model_name || m.model_id || m.id;
 
   return (
-    <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">
+    <div className="w-full max-w-full px-4 py-6 md:px-6">
       <AdminExpenseRequestsClient initialRows={rows} modelNameById={modelNameById} />
     </div>
   );
