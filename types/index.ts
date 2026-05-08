@@ -318,6 +318,8 @@ export interface ModelTaskRecord {
   description_es: string | null;
   linked_schedule_item_id: string | null;
   completion_notes: string | null;
+  /** Airtable `date` (calendar / due day), YYYY-MM-DD when parseable */
+  due_date: string | null;
   created_at: string;
   updated_at: string;
 }

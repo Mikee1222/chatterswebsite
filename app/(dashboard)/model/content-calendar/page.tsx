@@ -5,7 +5,6 @@ import { listCustomRequestsByModel } from "@/services/custom-requests";
 import { listModelTasks } from "@/services/model-tasks";
 import { listVAContentAssignmentsForModel } from "@/services/va-content-assignments";
 import { ModelContentCalendarClient } from "@/components/model-content-calendar-client";
-import { ModelRouteEmptyState } from "@/components/model-route-feedback";
 import { Suspense } from "react";
 import { listModelPersonalEventsForModel } from "@/services/model-personal-events";
 
@@ -82,12 +81,6 @@ export default async function ModelContentCalendarPage({
 
   return (
     <div className="space-y-6">
-      {assignments.length === 0 && customs.length === 0 && tasks.length === 0 && personalEvents.length === 0 ? (
-        <ModelRouteEmptyState
-          title="No content planned yet"
-          description="No VA assignments, accepted customs, or tasks are currently scheduled. New work will appear here automatically."
-        />
-      ) : null}
       <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-white/[0.04]" />}>
         <ModelContentCalendarClient
           assignments={assignments}

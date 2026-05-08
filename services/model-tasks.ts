@@ -42,6 +42,15 @@ function parseStatus(raw: unknown): ModelTaskStatus {
   return "pending";
 }
 
+function toDateOnlyYmd(raw: string | null | undefined): string | null {
+  if (raw == null || String(raw).trim() === "") return null;
+  const s = String(raw).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString().slice(0, 10);
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): ModelTaskRecord {
   const f = rec.fields;
   const typeRaw = f.task_type ?? f.type ?? "";
@@ -58,6 +67,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelTaskRecord {
     description_es: f.description_es ?? null,
     linked_schedule_item_id: firstLinkedId(f.linked_schedule_item ?? f.schedule_item) ?? null,
     completion_notes: f.completion_notes ?? null,
+    due_date: f.date ? toDateOnlyYmd(f.date) : null,
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
   };
