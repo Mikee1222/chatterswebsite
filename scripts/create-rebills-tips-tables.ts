@@ -3,8 +3,8 @@
  *
  * Run: `npx tsx scripts/create-rebills-tips-tables.ts`
  *
- * Note: Meta API dateTime requires timeFormat `{ name: "24hour" }` or `"12hour"` —
- * `"international"` is rejected (422).
+ * Specs often use `timeFormat: { name: "international" }`; Airtable Meta API expects
+ * `{ name: "24hour" }` or `{ name: "12hour" }` (`international` → 422).
  */
 
 import dotenv from "dotenv";

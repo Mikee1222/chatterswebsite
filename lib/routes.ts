@@ -13,7 +13,7 @@ import { getThisWeekMonday } from "@/lib/weekly-program";
  *   VA:          /va-home, /va-tasks, /va/schedule-overview, /va/content-assignments, /va/custom-requests, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
  *   Admin:       /admin, /admin/va-tasks, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models,
  *                /admin/shift-activity, /admin/earnings, /admin/earnings-config, /admin/rewards, /admin/challenges, /admin/spin-results, /admin/whales, /admin/whales/[id], /admin/customs, /admin/custom-requests, /admin/accounts, /admin/accounts/[id], /admin/rewards-config,
- *                /admin/model-schedules/overview, /admin/va-content-assignments, /admin/test-notifications, /admin/notification-diagnostic
+ *                /admin/model-schedules/overview, /admin/va-content-assignments, /admin/rebills-tips, /admin/test-notifications, /admin/notification-diagnostic
  *   Accounts:    /accounts, /accounts/new, /accounts/[id]/edit, /accounts/[id]/reset-password,
  *                /accounts/modelss/new, /accounts/modelss/[id]/edit
  *   Model:        /model, /model/earnings, /model/content-calendar, /model/content-assignments, /model/availability, /model/schedule, /model/custom-requests, /settings (shared)
@@ -67,6 +67,7 @@ export const ROUTES = {
     /** Admin model detail (settings / period toggle). */
     modelDetail: (id: string) => `/admin/models/${encodeURIComponent(id)}`,
     customRequests: "/admin/custom-requests",
+    rebillsTips: "/admin/rebills-tips",
     shiftActivity: "/admin/shift-activity",
     earnings: "/admin/earnings",
     earningsConfig: "/admin/earnings-config",
