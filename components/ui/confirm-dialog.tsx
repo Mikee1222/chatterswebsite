@@ -19,6 +19,8 @@ export interface ConfirmDialogProps {
   onReasonChange?: (reason: string) => void;
   /** Placeholder for the optional reason textarea. */
   reasonPlaceholder?: string;
+  requireNameConfirmation?: boolean;
+  nameToConfirm?: string;
 }
 
 export function ConfirmDialog({
@@ -33,9 +35,12 @@ export function ConfirmDialog({
   requireReason = false,
   onReasonChange,
   reasonPlaceholder = "Add a short explanation…",
+  requireNameConfirmation = false,
+  nameToConfirm = "",
 }: ConfirmDialogProps) {
   const [mounted, setMounted] = React.useState(false);
   const [reason, setReason] = React.useState("");
+  const [typedName, setTypedName] = React.useState("");
   const [internalLoading, setInternalLoading] = React.useState(false);
   const wasOpen = React.useRef(false);
 
@@ -45,6 +50,7 @@ export function ConfirmDialog({
     if (open && !wasOpen.current) {
       setReason("");
       onReasonChange?.("");
+      setTypedName("");
     }
     wasOpen.current = open;
   }, [open, onReasonChange]);
@@ -53,9 +59,12 @@ export function ConfirmDialog({
   /** Show note field when required, or when parent wires `onReasonChange` for an optional explanation. */
   const showReasonInput = requireReason || onReasonChange != null;
   const reasonOk = !requireReason || reason.trim().length > 0;
+  const nameOk =
+    !requireNameConfirmation ||
+    typedName.trim().toLowerCase() === (nameToConfirm ?? "").trim().toLowerCase();
 
   async function handleConfirm() {
-    if (!reasonOk || showSpinner) return;
+    if (!reasonOk || !nameOk || showSpinner) return;
     onReasonChange?.(reason.trim());
     const out = onConfirm();
     if (out != null && typeof (out as Promise<void>).then === "function") {
@@ -120,7 +129,7 @@ export function ConfirmDialog({
           <button
             type="button"
             onClick={() => void handleConfirm()}
-            disabled={showSpinner || !reasonOk}
+            disabled={showSpinner || !reasonOk || !nameOk}
             className={cn(
               "flex min-h-[44px] min-w-[7rem] items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45",
               confirmClasses

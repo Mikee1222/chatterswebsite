@@ -5,7 +5,6 @@ import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { Pencil, Search, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
@@ -540,21 +539,19 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
         </table>
       </div>
 
-      <ConfirmDeleteModal
+      <ConfirmDialog
         open={modelPendingDelete != null}
         title="Delete model?"
-        description={
-          <>
-            Delete{" "}
-            <span className="font-medium text-white">{modelPendingDelete?.model_name || "this model"}</span>? This action
-            cannot be undone.
-          </>
-        }
+        description={`This will permanently delete "${modelPendingDelete?.model_name?.trim() || "Model"}" and all linked data (shifts, assignments, requests, etc.). This cannot be undone.`}
         onClose={() => {
           if (!confirmingModelDelete) setModelPendingDelete(null);
         }}
         onConfirm={handleConfirmDeleteModel}
-        confirming={confirmingModelDelete}
+        confirmLabel="Delete permanently"
+        confirmVariant="danger"
+        loading={confirmingModelDelete}
+        requireNameConfirmation
+        nameToConfirm={modelPendingDelete?.model_name?.trim() || "Model"}
       />
 
       <ConfirmDialog

@@ -4,8 +4,7 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies, hashPassword } from "@/lib/auth";
-import { deleteUserLinkedRecordsBeforeUserDelete } from "@/services/accounts-delete";
-import { deleteRecord } from "@/lib/airtable-server";
+import { forceDeleteUser } from "@/services/force-delete-cascade";
 
 /** Next.js redirect() throws; re-throw so redirect is not treated as a normal error. */
 function isRedirectError(err: unknown): boolean {
@@ -152,9 +151,8 @@ export async function deleteUserAction(recordId: string) {
     return;
   }
   try {
-    await deleteUserLinkedRecordsBeforeUserDelete(id);
-    devLog("[delete-user]", { userId: id, step: "deleting user record" });
-    await deleteRecord("users", id);
+    devLog("[delete-user]", { userId: id, step: "forceDeleteUser" });
+    await forceDeleteUser(id);
     revalidatePath(ROUTES.accounts);
     redirect(ROUTES.accounts + "?success=user_deleted");
   } catch (err) {

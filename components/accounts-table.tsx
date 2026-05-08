@@ -8,6 +8,7 @@ import type { UserRecord } from "@/types";
 import { toggleCanLogin, deleteUserAction } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AdminRowAvatar, RecordStatusBadge, UserRoleBadge } from "@/components/admin-list-primitives";
 
 type RoleTab = "all" | "chatter" | "virtual_assistant" | "other";
@@ -33,7 +34,7 @@ function userMatchesRoleTab(u: UserRecord, tab: RoleTab): boolean {
 }
 
 export function AccountsTable({ users }: { users: UserRecord[] }) {
-  const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [roleTab, setRoleTab] = React.useState<RoleTab>("all");
 
@@ -53,13 +54,13 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
   }, [users]);
 
   async function handleConfirmDelete() {
-    if (!deleteConfirmId) return;
-    setDeletingId(deleteConfirmId);
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
     try {
-      await deleteUserAction(deleteConfirmId);
+      await deleteUserAction(deleteTarget.id);
     } finally {
       setDeletingId(null);
-      setDeleteConfirmId(null);
+      setDeleteTarget(null);
     }
   }
 
@@ -67,55 +68,18 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
 
   return (
     <>
-      <AnimatePresence>
-        {deleteConfirmId != null && (
-          <motion.div
-            key="delete-user-dialog"
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-user-title"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.1, ease: "easeOut" }}
-          >
-            <motion.div
-              className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f0f0f] p-6 shadow-xl"
-              style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06)" }}
-              initial={{ opacity: 0, scale: 0.96 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.1, ease: "easeIn" } }}
-              transition={{ duration: 0.15, ease: "easeOut" }}
-            >
-              <h2 id="delete-user-title" className="text-lg font-semibold text-white">
-                Delete user?
-              </h2>
-              <p className="mt-2 text-sm text-white/70">This action cannot be undone.</p>
-              <div className="mt-6 flex justify-end gap-3">
-                <button
-                  type="button"
-                  onClick={() => setDeleteConfirmId(null)}
-                  disabled={deletingId !== null}
-                  className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 disabled:opacity-50"
-                >
-                  Cancel
-                </button>
-                <motion.button
-                  type="button"
-                  onClick={handleConfirmDelete}
-                  disabled={deletingId !== null}
-                  whileTap={{ scale: 0.97 }}
-                  transition={{ duration: 0.12 }}
-                  className="rounded-xl bg-red-600/90 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
-                >
-                  {deletingId ? "Deleting…" : "Delete"}
-                </motion.button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onClose={() => deletingId == null && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete user"
+        description={`This will permanently delete "${deleteTarget?.name ?? ""}" and remove all their data including shifts, assignments, notifications, and points. This cannot be undone.`}
+        confirmLabel="Delete permanently"
+        confirmVariant="danger"
+        loading={deletingId !== null}
+        requireNameConfirmation
+        nameToConfirm={deleteTarget?.name ?? ""}
+      />
 
       <div className="mb-4 flex flex-wrap gap-2 border-b border-white/[0.06] pb-4">
         {tabs.map((tab) => {
@@ -212,7 +176,12 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
                 </form>
                 <button
                   type="button"
-                  onClick={() => setDeleteConfirmId(u.id)}
+                  onClick={() =>
+                    setDeleteTarget({
+                      id: u.id,
+                      name: u.full_name?.trim() || u.email?.trim() || "User",
+                    })
+                  }
                   disabled={deletingId !== null}
                   className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
                 >
@@ -314,7 +283,12 @@ export function AccountsTable({ users }: { users: UserRecord[] }) {
                       </form>
                       <button
                         type="button"
-                        onClick={() => setDeleteConfirmId(u.id)}
+                        onClick={() =>
+                          setDeleteTarget({
+                            id: u.id,
+                            name: u.full_name?.trim() || u.email?.trim() || "User",
+                          })
+                        }
                         disabled={deletingId !== null}
                         className="rounded-lg p-2 text-white/45 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                         title="Delete user"

@@ -7,13 +7,14 @@ import { Pencil, Power, Trash2 } from "lucide-react";
 import type { ModelRecord } from "@/types";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AdminRowAvatar, RecordStatusBadge } from "@/components/admin-list-primitives";
 import { toggleModelStatus, deleteModelAction } from "@/app/actions/modelss";
 
 export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
   const router = useRouter();
   const [togglingId, setTogglingId] = React.useState<string | null>(null);
-  const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<{ id: string; name: string } | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
 
   async function handleToggle(e: React.FormEvent<HTMLFormElement>, recordId: string) {
@@ -29,45 +30,30 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
   }
 
   async function handleConfirmDelete() {
-    if (!deleteConfirmId) return;
-    setDeletingId(deleteConfirmId);
+    if (!deleteTarget) return;
+    setDeletingId(deleteTarget.id);
     try {
-      await deleteModelAction(deleteConfirmId);
+      await deleteModelAction(deleteTarget.id);
     } finally {
       setDeletingId(null);
-      setDeleteConfirmId(null);
+      setDeleteTarget(null);
     }
   }
 
   return (
     <>
-      {/* Delete confirmation modal */}
-      {deleteConfirmId != null && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-model-title">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#0f0f0f] p-6 shadow-xl" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06)" }}>
-            <h2 id="delete-model-title" className="text-lg font-semibold text-white">Delete model?</h2>
-            <p className="mt-2 text-sm text-white/70">This action cannot be undone.</p>
-            <div className="mt-6 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setDeleteConfirmId(null)}
-                disabled={deletingId !== null}
-                className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/10 disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmDelete}
-                disabled={deletingId !== null}
-                className="rounded-xl bg-red-600/90 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-600 disabled:opacity-50"
-              >
-                {deletingId ? "Deleting…" : "Delete"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog
+        open={deleteTarget != null}
+        onClose={() => deletingId == null && setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        title="Delete model?"
+        description={`This will permanently delete "${deleteTarget?.name ?? ""}" and all linked data. This cannot be undone.`}
+        confirmLabel="Delete permanently"
+        confirmVariant="danger"
+        loading={deletingId !== null}
+        requireNameConfirmation
+        nameToConfirm={deleteTarget?.name ?? ""}
+      />
 
       {/* Mobile: stacked cards */}
       <div className="space-y-4 md:hidden">
@@ -123,7 +109,12 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
                 </form>
                 <button
                   type="button"
-                  onClick={() => setDeleteConfirmId(m.id)}
+                  onClick={() =>
+                    setDeleteTarget({
+                      id: m.id,
+                      name: m.model_name?.trim() || m.model_id?.trim() || "Model",
+                    })
+                  }
                   disabled={deletingId !== null}
                   className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-2.5 text-sm font-medium text-red-300 hover:bg-red-500/20 disabled:opacity-50"
                 >
@@ -218,7 +209,12 @@ export function ModelssTable({ modelss }: { modelss: ModelRecord[] }) {
                       </form>
                       <button
                         type="button"
-                        onClick={() => setDeleteConfirmId(m.id)}
+                        onClick={() =>
+                          setDeleteTarget({
+                            id: m.id,
+                            name: m.model_name?.trim() || m.model_id?.trim() || "Model",
+                          })
+                        }
                         disabled={deletingId !== null}
                         className="rounded-lg p-2 text-white/45 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
                         title="Delete"

@@ -4,9 +4,8 @@ import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { deleteRecord } from "@/lib/airtable-server";
-import { getDeleteBlockReasonsForModel } from "@/services/accounts-delete";
 import { getModelById, updateModel } from "@/services/modelss";
+import { forceDeleteModel } from "@/services/force-delete-cascade";
 
 /** Next.js redirect() throws; re-throw so redirect is not treated as a normal error. */
 function isRedirectError(err: unknown): boolean {
@@ -31,7 +30,7 @@ export async function toggleModelStatus(recordId: string) {
   return { success: true };
 }
 
-/** Admin only: delete model after checks. Returns JSON-friendly result (no redirect). */
+/** Admin only: force-delete model (cascade). Returns JSON-friendly result (no redirect). */
 export async function deleteModelForAdmin(
   recordId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
@@ -44,11 +43,7 @@ export async function deleteModelForAdmin(
     return { success: false, error: "Missing model record." };
   }
   try {
-    const check = await getDeleteBlockReasonsForModel(id);
-    if (!check.canDelete) {
-      return { success: false, error: check.summary };
-    }
-    await deleteRecord("modelss", id);
+    await forceDeleteModel(id);
     revalidatePath(ROUTES.admin.models);
     revalidatePath(ROUTES.accounts);
     return { success: true };
@@ -59,7 +54,7 @@ export async function deleteModelForAdmin(
   }
 }
 
-/** Admin only: delete model after checking linked records. Blocks if any references exist. */
+/** Admin only: force-delete model and cascade linked rows (best-effort). */
 export async function deleteModelAction(recordId: string) {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
@@ -70,12 +65,8 @@ export async function deleteModelAction(recordId: string) {
     return;
   }
   try {
-    const check = await getDeleteBlockReasonsForModel(id);
-    if (!check.canDelete) {
-      redirect(ROUTES.accounts + "?error=" + encodeURIComponent(check.summary) + "&section=modelss");
-      return;
-    }
-    await deleteRecord("modelss", id);
+    await forceDeleteModel(id);
+    revalidatePath(ROUTES.admin.models);
     revalidatePath(ROUTES.accounts);
     redirect(ROUTES.accounts + "?success=model_deleted&section=modelss");
   } catch (err) {
