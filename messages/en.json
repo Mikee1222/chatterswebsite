@@ -110,6 +110,9 @@
     "schedule": {
       "availabilitySubmitted": "Availability submitted.",
       "timeOffSent": "Time-off request sent.",
+      "timeOffCancelled": "Time-off request cancelled.",
+      "pendingTimeOff": "Pending time-off",
+      "cancelTimeOff": "Cancel request",
       "periodDay": "Period day",
       "predictedPeriod": "Predicted period",
       "timeOff": "Time off",

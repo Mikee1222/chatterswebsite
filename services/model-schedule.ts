@@ -1,8 +1,8 @@
 "use server";
 
-import { listAllRecords, createRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { listAllRecords, createRecord, getRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
-import type { ModelScheduleItem, ModelScheduleItemType } from "@/types";
+import type { ModelScheduleItem, ModelScheduleItemType, ModelTimeOffRequest } from "@/types";
 
 const TABLE = "model_schedule";
 
@@ -174,4 +174,57 @@ export async function createModelScheduleTimeOff(input: {
   if (creator) payload.created_by = [creator];
   const rec = await createRecord<Fields>(TABLE, payload as Fields);
   return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+/** Parses `details` produced by {@link createModelScheduleTimeOff} (`reason` + `\nThrough YYYY-MM-DD`). */
+export function parseTimeOffRangeFromScheduleDetails(
+  details: string,
+  fallbackStartYmd: string
+): { endYmd: string; reasonLine: string } {
+  const d = (details || "").trim();
+  const through = d.match(/Through\s+(\d{4}-\d{2}-\d{2})/);
+  const endYmd = through?.[1] ?? fallbackStartYmd.slice(0, 10);
+  const lines = d.split(/\n/).map((x) => x.trim()).filter(Boolean);
+  const reasonLine =
+    lines.find((line) => !/^through\s+/i.test(line)) ?? lines[0] ?? "Time off";
+  return { endYmd, reasonLine };
+}
+
+export function modelScheduleTimeOffItemToRequest(item: ModelScheduleItem): ModelTimeOffRequest | null {
+  if (item.item_type !== "time_off") return null;
+  const start = (item.date || "").slice(0, 10);
+  if (!start) return null;
+  const { endYmd, reasonLine } = parseTimeOffRangeFromScheduleDetails(item.details ?? "", start);
+  return {
+    id: item.id,
+    request_id: `schedule_${item.id}`,
+    model_id: item.model_id,
+    model_name: "",
+    start_date: start,
+    end_date: endYmd,
+    reason: reasonLine,
+    status: item.status?.trim() || "scheduled",
+    created_at: item.created_at ?? "",
+  };
+}
+
+export async function getModelScheduleItemById(recordId: string): Promise<ModelScheduleItem | null> {
+  const id = recordId?.trim();
+  if (!id) return null;
+  try {
+    const rec = await getRecord<Fields>(TABLE, id);
+    return mapRecord(rec as AirtableRecord<Fields>);
+  } catch {
+    return null;
+  }
+}
+
+/** Deletes a calendar time-off row if it belongs to the model and is still cancellable (`pending`/`scheduled`/empty status). */
+export async function deleteModelScheduleTimeOffForModel(recordId: string, modelRecordId: string): Promise<boolean> {
+  const item = await getModelScheduleItemById(recordId);
+  if (!item || item.model_id !== modelRecordId || item.item_type !== "time_off") return false;
+  const st = (item.status ?? "").trim().toLowerCase();
+  if (st && st !== "pending" && st !== "scheduled") return false;
+  await deleteRecord(TABLE, recordId);
+  return true;
 }

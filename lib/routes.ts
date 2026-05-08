@@ -12,7 +12,7 @@ import { getThisWeekMonday } from "@/lib/weekly-program";
  *                /my-whales, /my-whales/new, /log-transaction, /rewards, /spin-wheel, /challenges, /admin/spin-results
  *   VA:          /va-home, /va-tasks, /va/schedule-overview, /va/content-assignments, /va/custom-requests, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
  *   Admin:       /admin, /admin/va-tasks, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models,
- *                /admin/shift-activity, /admin/earnings, /admin/earnings-config, /admin/rewards, /admin/challenges, /admin/spin-results, /admin/whales, /admin/customs, /admin/custom-requests, /admin/accounts, /admin/rewards-config,
+ *                /admin/shift-activity, /admin/earnings, /admin/earnings-config, /admin/rewards, /admin/challenges, /admin/spin-results, /admin/whales, /admin/whales/[id], /admin/customs, /admin/custom-requests, /admin/accounts, /admin/accounts/[id], /admin/rewards-config,
  *                /admin/model-schedules/overview, /admin/va-content-assignments, /admin/test-notifications, /admin/notification-diagnostic
  *   Accounts:    /accounts, /accounts/new, /accounts/[id]/edit, /accounts/[id]/reset-password,
  *                /accounts/modelss/new, /accounts/modelss/[id]/edit
@@ -71,6 +71,10 @@ export const ROUTES = {
     earnings: "/admin/earnings",
     earningsConfig: "/admin/earnings-config",
     whales: "/admin/whales",
+    /** Admin whale profile (Airtable whales record id). */
+    whaleDetail: (id: string) => `/admin/whales/${encodeURIComponent(id)}`,
+    /** Deep link → redirects to account edit (Airtable users record id). */
+    accountDetail: (id: string) => `/admin/accounts/${encodeURIComponent(id)}`,
     customs: "/admin/customs",
     accounts: "/admin/accounts",
     /** Model operations (modelss) */

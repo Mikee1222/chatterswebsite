@@ -111,6 +111,7 @@ export function ModelScheduleClient({
   const [offEnd, setOffEnd] = React.useState(weekStart);
   const [offReason, setOffReason] = React.useState("");
   const [offSubmitting, setOffSubmitting] = React.useState(false);
+  const [cancellingOffId, setCancellingOffId] = React.useState<string | null>(null);
 
   const availabilityFormRef = React.useRef<HTMLDivElement>(null);
   const timeOffFormRef = React.useRef<HTMLDivElement>(null);
@@ -195,6 +196,34 @@ export function ModelScheduleClient({
       toast.error(t("common.networkError"));
     } finally {
       setAvailSubmitting(false);
+    }
+  };
+
+  const cancellableTimeOff = React.useMemo(() => {
+    return timeOff.filter((t) => {
+      const st = (t.status ?? "").trim().toLowerCase();
+      return st === "pending" || st === "scheduled" || st === "submitted";
+    });
+  }, [timeOff]);
+
+  const onCancelTimeOff = async (requestId: string) => {
+    setCancellingOffId(requestId);
+    try {
+      const res = await fetch(`/api/model/time-off/${encodeURIComponent(requestId)}`, {
+        method: "DELETE",
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+      if (!res.ok) {
+        toast.error(formatErrorPayload(data.error));
+        return;
+      }
+      toast.success(t("schedule.timeOffCancelled"));
+      setTimeOff((prev) => prev.filter((x) => x.id !== requestId));
+      router.refresh();
+    } catch {
+      toast.error(t("common.networkError"));
+    } finally {
+      setCancellingOffId(null);
     }
   };
 
@@ -383,6 +412,36 @@ export function ModelScheduleClient({
           </FormSubmitButton>
         </form>
       </div>
+
+      {cancellableTimeOff.length > 0 ? (
+        <div className="scroll-mt-24 space-y-4 rounded-2xl border border-amber-500/25 bg-amber-500/[0.07] p-6 backdrop-blur-xl">
+          <h2 className="text-lg font-semibold text-white">{t("schedule.pendingTimeOff")}</h2>
+          <ul className="space-y-3">
+            {cancellableTimeOff.map((req) => (
+              <li
+                key={req.id}
+                className="flex flex-col gap-3 rounded-xl border border-white/10 bg-black/30 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0 text-sm">
+                  <p className="font-medium text-white">
+                    {(req.start_date || "").slice(0, 10)} → {(req.end_date || "").slice(0, 10)}
+                  </p>
+                  <p className="mt-1 text-white/55">{req.reason?.trim() || "—"}</p>
+                  <p className="mt-1 text-xs capitalize text-white/40">{req.status}</p>
+                </div>
+                <button
+                  type="button"
+                  disabled={cancellingOffId === req.id}
+                  onClick={() => void onCancelTimeOff(req.id)}
+                  className="shrink-0 rounded-lg border border-red-500/35 bg-red-500/15 px-3 py-1.5 text-xs font-semibold text-red-300 transition hover:bg-red-500/25 disabled:opacity-45"
+                >
+                  {cancellingOffId === req.id ? t("common.saving") : t("schedule.cancelTimeOff")}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <div ref={timeOffFormRef} className="scroll-mt-24 space-y-4 rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl">
         <h2 className="text-lg font-semibold text-white">{t("schedule.requestTimeOff")}</h2>

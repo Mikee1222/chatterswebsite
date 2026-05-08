@@ -12,6 +12,8 @@ export type SpinPrizeRow = {
   probability: number;
   color: string;
   active: boolean;
+  /** Display order on wheel / admin list; lower comes first. */
+  sort_order: number;
 };
 
 type PrizeFields = {
@@ -21,6 +23,7 @@ type PrizeFields = {
   probability?: number;
   active?: boolean;
   color?: string;
+  sort_order?: number;
 };
 
 function mapPrize(rec: AirtableRecord<PrizeFields>): SpinPrizeRow {
@@ -33,16 +36,29 @@ function mapPrize(rec: AirtableRecord<PrizeFields>): SpinPrizeRow {
     probability: Math.max(0, Math.floor(Number(f.probability ?? 0))),
     color: String(f.color ?? "#8b5cf6").trim() || "#8b5cf6",
     active: Boolean(f.active),
+    sort_order: Math.max(0, Math.floor(Number(f.sort_order ?? 0))),
   };
 }
 
-/** Active prizes, stable order (label) so server and wheel UI stay aligned. */
+/** All prize rows for admin CRUD (active and inactive). */
+export async function getAllSpinPrizes(): Promise<SpinPrizeRow[]> {
+  const records = await listAllRecords<PrizeFields>(PRIZES, { _caller: "spin-wheel.getAllSpinPrizes" });
+  return records
+    .map((r) => mapPrize(r as AirtableRecord<PrizeFields>))
+    .sort((a, b) =>
+      a.sort_order !== b.sort_order ? a.sort_order - b.sort_order : a.label.localeCompare(b.label),
+    );
+}
+
+/** Active prizes, ordered by sort_order then label so server and wheel UI stay aligned. */
 export async function getActiveSpinPrizes(): Promise<SpinPrizeRow[]> {
   const records = await listAllRecords<PrizeFields>(PRIZES, { _caller: "spin-wheel.getActiveSpinPrizes" });
   return records
     .map((r) => mapPrize(r as AirtableRecord<PrizeFields>))
     .filter((p) => p.active)
-    .sort((a, b) => a.label.localeCompare(b.label));
+    .sort((a, b) =>
+      a.sort_order !== b.sort_order ? a.sort_order - b.sort_order : a.label.localeCompare(b.label),
+    );
 }
 
 export type SpinHistoryRow = {

@@ -23,8 +23,10 @@ import {
 } from "@/services/shifts";
 import { getUserByAirtableId } from "@/services/users";
 import { updateModel, getModelById } from "@/services/modelss";
-import { batchCreateRecords, batchUpdateRecords, listRecords } from "@/lib/airtable-server";
+import { batchCreateRecords, batchUpdateRecords, deleteRecord, listRecords } from "@/lib/airtable-server";
 import { ROUTES } from "@/lib/routes";
+import { getSessionFromCookies } from "@/lib/auth";
+import { createActivityLog } from "@/services/activity-logs";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { awardShiftEndPoints } from "@/services/points-engine";
 
@@ -316,6 +318,133 @@ export async function addModelToShift(params: {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[addModelToShift] error", err);
+    return { success: false, error: message };
+  }
+}
+
+export type BulkAddModelsToShiftResult =
+  | { success: true; added: number }
+  | { success: false; error: string };
+
+/**
+ * Attach multiple free models to an active chatter shift in one round-trip (batch Airtable writes + single revalidate).
+ * Fails atomically before any write if any model is missing, already on shift, or not free.
+ */
+export async function bulkAddModelsToShift(params: {
+  shiftRecordId: string;
+  items: { modelRecordId: string; modelName: string }[];
+  chatterRecordId: string;
+  chatterName: string;
+}): Promise<BulkAddModelsToShiftResult> {
+  try {
+    const { shiftRecordId, chatterRecordId, chatterName } = params;
+    const deduped: { modelRecordId: string; modelName: string }[] = [];
+    const seen = new Set<string>();
+    for (const it of params.items) {
+      const id = it.modelRecordId?.trim();
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      deduped.push({ modelRecordId: id, modelName: (it.modelName ?? "").trim() });
+    }
+    if (deduped.length === 0) {
+      return { success: false, error: "Select at least one model." };
+    }
+
+    const existing = await listShiftModels(shiftRecordId);
+    const attachedIds = new Set(existing.map((sm) => sm.model_id).filter(Boolean));
+
+    const eligible: { modelRecordId: string; modelName: string }[] = [];
+    for (const it of deduped) {
+      if (attachedIds.has(it.modelRecordId)) {
+        return {
+          success: false,
+          error: `${it.modelName || "A model"} is already on this shift.`,
+        };
+      }
+      const model = await getModelById(it.modelRecordId);
+      if (!model) {
+        return { success: false, error: "Model not found." };
+      }
+      if (model.current_status !== "free") {
+        const label = (it.modelName || model.model_name || "Model").trim();
+        return {
+          success: false,
+          error: `${label} is not available (occupied by another chatter).`,
+        };
+      }
+      eligible.push({
+        modelRecordId: it.modelRecordId,
+        modelName: ((it.modelName || model.model_name) ?? "").trim() || "Model",
+      });
+      attachedIds.add(it.modelRecordId);
+    }
+
+    const now = new Date().toISOString();
+    await batchCreateRecords(
+      SHIFT_MODELS_TABLE,
+      eligible.map((e) => ({
+        shift: [shiftRecordId],
+        model: [e.modelRecordId],
+        model_name: e.modelName,
+        chatter: [chatterRecordId],
+        chatter_name: chatterName,
+        entered_at: now,
+        status: "active",
+      }))
+    );
+    await batchUpdateRecords(
+      MODELSS_TABLE,
+      eligible.map((e) => ({
+        id: e.modelRecordId,
+        fields: {
+          current_status: "occupied",
+          current_chatter: [chatterRecordId],
+          current_chatter_name: chatterName,
+          current_shift_id: shiftRecordId,
+          entered_at: now,
+        },
+      }))
+    );
+    for (const e of eligible) {
+      await broadcastRealtimeToAll({
+        type: "model_status_changed",
+        model_id: e.modelRecordId,
+        status: "occupied",
+      }).catch(() => {});
+    }
+
+    devLog("[bulkAddModelsToShift] attached", { count: eligible.length, shiftRecordId });
+    revalidatePath(ROUTES.chatter.shift);
+
+    const names = eligible.map((e) => e.modelName).filter(Boolean);
+    const body =
+      eligible.length === 1
+        ? names[0]
+          ? `You're now chatting with ${names[0]}.`
+          : "A model was added to your shift."
+        : `${eligible.length} models were added to your shift.`;
+
+    try {
+      await notify({
+        user_id: chatterRecordId,
+        event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: eligible.length === 1 ? "Model added to shift" : "Models added to shift",
+        body,
+        entity_type: "model",
+        entity_id: eligible[0]?.modelRecordId ?? shiftRecordId,
+        actor_user_id: chatterRecordId,
+        actor_name: chatterName,
+        _triggerSource: "bulkAddModelsToShift",
+      });
+    } catch (e) {
+      console.error("[notify] bulkAddModelsToShift failed", e);
+    }
+
+    return { success: true, added: eligible.length };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[bulkAddModelsToShift] error", err);
     return { success: false, error: message };
   }
 }
@@ -676,6 +805,130 @@ export async function endShift(shiftRecordId: string) {
     }
   }
   devLog("[endShift] completed", { shiftRecordId, modelsReleased: pendingRelease.length });
+}
+
+export type AdminForceEndShiftResult = { success: true } | { success: false; error: string };
+
+/** Admin/manager ends an active shift: completes shift, frees models, deletes shift_models, notifies staff and admins. */
+export async function adminForceEndShift(shiftId: string, reason?: string): Promise<AdminForceEndShiftResult> {
+  try {
+    const session = await getSessionFromCookies();
+    if (!session || (session.role !== "admin" && session.role !== "manager")) {
+      return { success: false, error: "Unauthorized." };
+    }
+    const id = shiftId?.trim();
+    if (!id) return { success: false, error: "Invalid shift." };
+
+    const shiftBefore = await getShiftById(id);
+    if (!shiftBefore) return { success: false, error: "Shift not found." };
+    if (shiftBefore.status === "completed") {
+      return { success: false, error: "Shift is already completed." };
+    }
+
+    const now = new Date().toISOString();
+    const shiftModels = await listShiftModels(id);
+    const pendingRelease = shiftModels.filter((sm) => !sm.left_at);
+    const modelRowsToFree = pendingRelease.filter((sm) => sm.model_id);
+
+    if (pendingRelease.length > 0) {
+      await batchUpdateRecords(
+        SHIFT_MODELS_TABLE,
+        pendingRelease.map((sm) => ({ id: sm.id, fields: { left_at: now } }))
+      );
+    }
+    if (modelRowsToFree.length > 0) {
+      await batchUpdateRecords(
+        MODELSS_TABLE,
+        modelRowsToFree.map((sm) => ({
+          id: sm.model_id,
+          fields: {
+            current_status: "free",
+            current_chatter: [],
+            current_chatter_name: "",
+            current_shift_id: "",
+            last_chatter: sm.chatter_id ? [sm.chatter_id] : [],
+            last_chatter_name: sm.chatter_name ?? "",
+            last_exit_at: now,
+          },
+        }))
+      );
+      for (const sm of modelRowsToFree) {
+        await broadcastRealtimeToAll({ type: "model_status_changed", model_id: sm.model_id, status: "free" }).catch(() => {});
+      }
+    }
+
+    await updateShift(id, { end_time: now, status: "completed" });
+
+    for (const sm of shiftModels) {
+      try {
+        await deleteRecord(SHIFT_MODELS_TABLE, sm.id);
+      } catch (e) {
+        console.error("[adminForceEndShift] delete shift_model failed", sm.id, e);
+      }
+    }
+
+    const chatterIdFromModels = shiftModels.find((sx) => (sx.chatter_id ?? "").trim() !== "")?.chatter_id?.trim() ?? "";
+    const chatterIdForNotify =
+      (shiftBefore.chatter_id ?? "").trim() || chatterIdFromModels;
+    const chatterNameForNotify =
+      shiftModels.find((sx) => (sx.chatter_id ?? "").trim() === chatterIdForNotify)?.chatter_name?.trim() ||
+      shiftBefore.chatter_name?.trim() ||
+      "Staff";
+    const reasonLine = reason?.trim() ? ` ${reason.trim()}` : "";
+
+    if (chatterIdForNotify) {
+      await broadcastRealtimeToAll({ type: "shift_ended", chatter_id: chatterIdForNotify, shift_id: id }).catch(() => {});
+      try {
+        await notify({
+          user_id: chatterIdForNotify,
+          event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "Shift ended by admin",
+          body: `An administrator ended your shift.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
+          entity_type: NOTIFICATION_ENTITY.SHIFT,
+          entity_id: id,
+        });
+      } catch (e) {
+        console.error("[notify] adminForceEndShift chatter notify failed", e);
+      }
+      try {
+        await notifyAdmins({
+          event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
+          priority: NOTIFICATION_PRIORITY.HIGH,
+          title: `Shift force-ended: ${chatterNameForNotify}`,
+          body: `Admin ended shift ${id}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
+          entity_type: NOTIFICATION_ENTITY.SHIFT,
+          entity_id: id,
+          actor_user_id: session.airtableUserId ?? session.id,
+          actor_name: session.fullName ?? session.email ?? undefined,
+        });
+      } catch (e) {
+        console.error("[notify] adminForceEndShift notifyAdmins failed", e);
+      }
+    }
+
+    try {
+      await createActivityLog({
+        actor_user_id: session.airtableUserId ?? session.id,
+        actor_name: session.fullName ?? session.email ?? "Admin",
+        action_type: "shift_ended",
+        entity_type: "shift",
+        entity_id: id,
+        summary: `Admin force-ended shift for ${chatterNameForNotify}`,
+        details: reason?.trim() || "",
+      });
+    } catch (e) {
+      console.error("[activity] adminForceEndShift log failed", e);
+    }
+
+    revalidatePath(ROUTES.admin.liveShifts);
+    revalidatePath(ROUTES.chatter.shift);
+    revalidatePath(ROUTES.va.shift);
+    return { success: true };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return { success: false, error: msg };
+  }
 }
 
 // ——— Virtual assistant mistake shift (VA can enter model even if chatter is in it; no model occupancy updates) ———

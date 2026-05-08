@@ -15,6 +15,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { ModelWeeklyAvailabilityRequest, WeeklyProgramDay, ModelAvailabilityEntryType } from "@/types";
 
 const fieldMotion = {
@@ -69,6 +70,7 @@ export function ModelWeeklyAvailabilityClient({
   const [success, setSuccess] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = React.useState<string | null>(null);
 
   React.useEffect(() => setRequests(initialRequests), [weekStart, initialRequests]);
 
@@ -144,17 +146,24 @@ export function ModelWeeklyAvailabilityClient({
     }
   };
 
-  const handleDelete = async (recordId: string) => {
-    if (!confirm(t(language, "Delete this entry?", "¿Eliminar esta entrada?"))) return;
+  const runDeleteEntry = async (recordId: string) => {
     setDeletingId(recordId);
     setError(null);
     try {
       const res = await deleteModelAvailabilityAction(recordId);
-      if (res.success) router.refresh();
-      else setError(res.error);
+      if (res.success) {
+        setDeleteConfirmId(null);
+        router.refresh();
+      } else {
+        setError(res.error);
+      }
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const requestDeleteEntry = (recordId: string) => {
+    setDeleteConfirmId(recordId);
   };
 
   const byDay = React.useMemo(() => {
@@ -365,7 +374,7 @@ export function ModelWeeklyAvailabilityClient({
                           <button
                             type="button"
                             disabled={submitting || deletingId !== null}
-                            onClick={() => void handleDelete(r.id)}
+                            onClick={() => requestDeleteEntry(r.id)}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-45"
                           >
                             {deletingId === r.id ? <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden /> : null}
@@ -394,6 +403,23 @@ export function ModelWeeklyAvailabilityClient({
           cursor: pointer;
         }
       `}</style>
+    <ConfirmDialog
+      open={deleteConfirmId != null}
+      onClose={() => deletingId == null && setDeleteConfirmId(null)}
+      onConfirm={() => {
+        const id = deleteConfirmId;
+        if (id) return runDeleteEntry(id);
+      }}
+      title={t(language, "Delete this entry?", "¿Eliminar esta entrada?")}
+      description={t(
+        language,
+        "This removes your availability entry for this week. This cannot be undone.",
+        "Se eliminará tu entrada de disponibilidad para esta semana. No se puede deshacer."
+      )}
+      confirmLabel={t(language, "Delete", "Eliminar")}
+      confirmVariant="danger"
+      loading={deletingId != null}
+    />
     </>
   );
 }

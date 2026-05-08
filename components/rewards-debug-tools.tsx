@@ -15,6 +15,7 @@ import type { PointsAuditIssue } from "@/services/points-debug-audit";
 import type { AppNotification } from "@/types";
 import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -70,6 +71,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
   const [auditIssues, setAuditIssues] = React.useState<PointsAuditIssue[] | null>(null);
   const [auditing, setAuditing] = React.useState(false);
   const [fixing, setFixing] = React.useState(false);
+  const [fixConfirmOpen, setFixConfirmOpen] = React.useState(false);
   const [clearingCache, setClearingCache] = React.useState(false);
 
   const chatterOptions = React.useMemo<CustomSelectOption[]>(
@@ -134,10 +136,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
     }
   }
 
-  async function onFixAll() {
-    if (!window.confirm("This will delete duplicate ledger rows and realign totals/levels from the ledger. Continue?")) {
-      return;
-    }
+  async function executeFixAll() {
     setFixing(true);
     try {
       const res = await fixPointsAuditAction();
@@ -162,6 +161,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
       addToast(localToast(`rd-fix-err-${Date.now()}`, "Fix failed", msg, "high"));
     } finally {
       setFixing(false);
+      setFixConfirmOpen(false);
     }
   }
 
@@ -190,6 +190,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
   }
 
   return (
+    <>
     <div
       className="rounded-2xl border border-amber-500/25 bg-gradient-to-b from-amber-950/30 to-black/80 p-5 shadow-[0_0_0_1px_rgba(251,191,36,0.08)]"
       style={{ boxShadow: "0 0 0 1px rgba(251,191,36,0.12), 0 20px 50px rgba(0,0,0,0.5)" }}
@@ -286,7 +287,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
             </button>
             <button
               type="button"
-              onClick={onFixAll}
+              onClick={() => setFixConfirmOpen(true)}
               disabled={fixing}
               className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl border border-red-500/35 bg-red-600/20 px-4 text-sm font-semibold text-red-100 transition hover:bg-red-600/30 disabled:opacity-50"
             >
@@ -332,5 +333,16 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
         </section>
       </div>
     </div>
+    <ConfirmDialog
+      open={fixConfirmOpen}
+      onClose={() => !fixing && setFixConfirmOpen(false)}
+      onConfirm={() => executeFixAll()}
+      title="Apply audit fix?"
+      description="This will delete duplicate ledger rows and realign totals and levels from the ledger. Continue?"
+      confirmLabel="Continue"
+      confirmVariant="warning"
+      loading={fixing}
+    />
+    </>
   );
 }

@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   startShiftWithModels,
-  addModelToShift,
+  bulkAddModelsToShift,
   removeModelFromShift,
   startBreak,
   endBreak,
@@ -19,6 +19,7 @@ import { Coffee, Loader2, LogOut, RefreshCw, UserCircle2, UserPlus } from "lucid
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { LiveTimer } from "@/components/live-timer";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
 import { useToast } from "@/contexts/toast-context";
 import { useMobileFabVisibility } from "@/contexts/mobile-fab-visibility-context";
@@ -217,10 +218,18 @@ function AddModelToShiftModal({
         (m.current_chatter_name && m.current_chatter_name.toLowerCase().includes(q))
     );
   }, [modelss, search]);
-  const freeAndNotInShift = filtered.filter((m) => m.current_status === "free" && !alreadyInShiftModelIds.has(m.id));
-  const occupied = filtered.filter((m) => m.current_status === "occupied");
-  const inThisShift = filtered.filter((m) => alreadyInShiftModelIds.has(m.id));
-  const selectedModels = React.useMemo(() => Array.from(selectedModelIds), [selectedModelIds]);
+  const sortedModels = React.useMemo(() => {
+    const priority = (m: ModelRecord) => {
+      if (alreadyInShiftModelIds.has(m.id)) return 1;
+      if (m.current_status === "free") return 0;
+      return 2;
+    };
+    return [...filtered].sort(
+      (a, b) => priority(a) - priority(b) || a.model_name.localeCompare(b.model_name)
+    );
+  }, [filtered, alreadyInShiftModelIds]);
+
+  const selectedCount = selectedModelIds.size;
 
   const closeModal = onCancel;
   const handleAddModels = onConfirm;
@@ -229,10 +238,11 @@ function AddModelToShiftModal({
     <>
       <div className="shrink-0 border-b border-white/10 px-4 py-4 md:px-6 md:py-5">
         <h2 id="add-model-shift-title" className="text-lg font-semibold tracking-tight text-white md:text-xl">
-          Add model to shift
+          Add models to shift
         </h2>
         <p className="mt-1 text-sm text-white/55">
-          Tap free models to select, then confirm. Occupied models show who has them.
+          Select free models with checkboxes, then add them in one step. Models on this shift or taken elsewhere are
+          shown but can’t be selected.
         </p>
         <div className="mt-3 md:mt-4">
           <Input
@@ -256,62 +266,57 @@ function AddModelToShiftModal({
         )}
         {filtered.length === 0 ? (
           <p className="py-8 text-center text-sm text-white/50">No models match your search.</p>
-        ) : freeAndNotInShift.length === 0 && inThisShift.length === 0 && occupied.length === filtered.length ? (
-          <p className="py-8 text-center text-sm text-white/50">
-            No free models available. All are occupied or already in your shift.
-          </p>
         ) : (
           <ul className="space-y-2 pb-2">
-            {freeAndNotInShift.map((m) => {
+            {sortedModels.map((m) => {
+              const onThisShift = alreadyInShiftModelIds.has(m.id);
+              const isFree = m.current_status === "free";
+              const canSelect = !locked && !loading && !onThisShift && isFree;
               const isSelected = selectedModelIds.has(m.id);
+              const statusLabel = onThisShift
+                ? "On this shift"
+                : isFree
+                  ? "Free"
+                  : `Taken · ${(m.current_chatter_name ?? "").trim() || "—"}`;
+
               return (
                 <li key={m.id}>
-                  <button
-                    type="button"
-                    onClick={() => !locked && !loading && onToggle(m.id)}
-                    disabled={locked || loading}
-                    className={`flex w-full items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors hover:bg-white/[0.09] disabled:pointer-events-none disabled:opacity-40 ${
-                      isSelected
-                        ? "border-[hsl(330,80%,55%)]/50 bg-[hsl(330,80%,55%)]/10"
-                        : "border-white/10 bg-white/[0.06]"
-                    }`}
+                  <label
+                    className={cn(
+                      "flex cursor-default items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3 sm:px-4",
+                      canSelect && "cursor-pointer hover:bg-white/[0.08]",
+                      (!canSelect || onThisShift) && "opacity-60"
+                    )}
                   >
-                    <span className="min-w-0 flex-1 font-medium text-white/95">{m.model_name}</span>
-                    <span className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                      {isSelected ? (
-                        <span className="inline-flex items-center rounded-full bg-[hsl(330,80%,55%)]/25 px-2 py-0.5 text-xs font-medium text-[hsl(330,90%,80%)]">
-                          Selected
-                        </span>
-                      ) : null}
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs text-emerald-300">
-                        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-400 animate-pulse" aria-hidden />
-                        Free
-                      </span>
-                    </span>
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={isSelected && canSelect}
+                      disabled={!canSelect}
+                      onChange={() => canSelect && onToggle(m.id)}
+                      className={cn(
+                        "h-5 w-5 shrink-0 rounded border-white/25 bg-black/40",
+                        "accent-[hsl(330,80%,55%)] focus:outline-none focus:ring-2 focus:ring-pink-500/45 focus:ring-offset-2 focus:ring-offset-zinc-950",
+                        !canSelect && "cursor-not-allowed opacity-50"
+                      )}
+                    />
+                    <ModelAvatar name={m.model_name} className="h-10 w-10 text-xs sm:h-11 sm:w-11" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-white/95">{m.model_name}</p>
+                      <p
+                        className={cn(
+                          "mt-0.5 text-xs font-medium",
+                          onThisShift && "text-sky-300/90",
+                          !onThisShift && isFree && "text-emerald-300/85",
+                          !onThisShift && !isFree && "text-amber-200/80"
+                        )}
+                      >
+                        {statusLabel}
+                      </p>
+                    </div>
+                  </label>
                 </li>
               );
             })}
-            {inThisShift.map((m) => (
-              <li key={m.id}>
-                <div className="flex cursor-default items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 opacity-75">
-                  <span className="font-medium text-white/70">{m.model_name}</span>
-                  <span className="ml-auto rounded-full bg-sky-500/20 px-2 py-0.5 text-xs text-sky-300">
-                    In your shift
-                  </span>
-                </div>
-              </li>
-            ))}
-            {occupied.filter((m) => !alreadyInShiftModelIds.has(m.id)).map((m) => (
-              <li key={m.id}>
-                <div className="flex cursor-not-allowed items-center gap-4 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 opacity-75">
-                  <span className="font-medium text-white/70">{m.model_name}</span>
-                  <span className="ml-auto rounded-full bg-amber-500/20 px-2 py-0.5 text-xs text-amber-300">
-                    {m.current_chatter_name || "Occupied"}
-                  </span>
-                </div>
-              </li>
-            ))}
           </ul>
         )}
       </div>
@@ -374,19 +379,19 @@ function AddModelToShiftModal({
         <button
           type="button"
           onClick={handleAddModels}
-          disabled={selectedModels.length === 0 || loading || locked}
+          disabled={selectedCount === 0 || loading || locked}
           style={{
             flex: 2,
             height: "52px",
             borderRadius: "12px",
             background:
-              selectedModels.length > 0 && !loading && !locked ? "#ec4899" : "rgba(236,72,153,0.3)",
+              selectedCount > 0 && !loading && !locked ? "#ec4899" : "rgba(236,72,153,0.3)",
             border: "none",
             color: "white",
             fontSize: "15px",
             fontWeight: "600",
             cursor:
-              selectedModels.length > 0 && !loading && !locked ? "pointer" : "not-allowed",
+              selectedCount > 0 && !loading && !locked ? "pointer" : "not-allowed",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -395,9 +400,9 @@ function AddModelToShiftModal({
         >
           {loading ? <Loader2 className="h-5 w-5 shrink-0 animate-spin" aria-hidden /> : null}
           {loading
-            ? "Adding..."
-            : selectedModels.length > 0
-              ? `Add ${selectedModels.length} model${selectedModels.length > 1 ? "s" : ""}`
+            ? "Adding models…"
+            : selectedCount > 0
+              ? `Add selected models (${selectedCount})`
               : "Select models"}
         </button>
       </div>
@@ -626,7 +631,7 @@ export function ShiftClient({
   const mobileFabVisibility = useMobileFabVisibility();
   React.useEffect(() => {
     if (!mobileFabVisibility) return;
-    mobileFabVisibility.setMobileFabHidden(showAddModelModal || showBreakConfirmModal);
+    mobileFabVisibility.setMobileFabHidden(showAddModelModal || showBreakConfirmModal || removeConfirmModel != null);
     return () => {
       mobileFabVisibility.setMobileFabHidden(false);
     };
@@ -756,29 +761,36 @@ export function ShiftClient({
     setIsAddingModelsToShift(true);
     setError(null);
     const ids = Array.from(selectedAddModelIds);
-    try {
-      for (const id of ids) {
+    const items = ids
+      .map((id) => {
         const model = modelss.find((m) => m.id === id);
-        if (!model) continue;
-        const result = await addModelToShift({
-          shiftRecordId: activeShift.id,
-          modelRecordId: model.id,
-          modelName: model.model_name,
-          chatterRecordId: chatterId,
-          chatterName,
-        });
-        if (!result || !result.success) {
-          const msg = result?.error ?? "Failed to add model";
-          setError(msg);
-          addToast(
-            localToast(`add-models-err-${Date.now()}`, "Could not add models", msg, "high")
-          );
-          return;
-        }
+        return model ? { modelRecordId: model.id, modelName: model.model_name } : null;
+      })
+      .filter((x): x is { modelRecordId: string; modelName: string } => x != null);
+    try {
+      const result = await bulkAddModelsToShift({
+        shiftRecordId: activeShift.id,
+        items,
+        chatterRecordId: chatterId,
+        chatterName,
+      });
+      if (!result.success) {
+        setError(result.error);
+        addToast(localToast(`add-models-err-${Date.now()}`, "Could not add models", result.error, "high"));
+        return;
       }
       setShowAddModelModal(false);
       setSelectedAddModelIds(new Set());
-      setSuccessMessage(ids.length === 1 ? "Model added." : `${ids.length} models added.`);
+      const n = result.added;
+      setSuccessMessage(n === 1 ? "Model added." : `${n} models added.`);
+      addToast(
+        localToast(
+          `add-models-ok-${Date.now()}`,
+          "Shift updated",
+          `${n} model${n !== 1 ? "s" : ""} added to shift.`,
+          "normal"
+        )
+      );
       router.refresh();
       requestRouterRefresh();
     } catch (e) {
@@ -1572,49 +1584,18 @@ export function ShiftClient({
           )
         : null}
 
-      {removeConfirmModel && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              className="fixed inset-0 z-[10050] flex items-center justify-center p-4"
-              role="alertdialog"
-              aria-modal="true"
-              aria-labelledby="remove-model-confirm-title"
-            >
-              <button
-                type="button"
-                className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-                aria-label="Dismiss"
-                onClick={cancelRemoveModelConfirm}
-              />
-              <div className="relative z-10 w-full max-w-sm rounded-2xl border border-white/10 bg-[#111] p-5 shadow-2xl">
-                <h2 id="remove-model-confirm-title" className="text-lg font-semibold text-white">
-                  Remove model
-                </h2>
-                <p className="mt-2 text-sm text-white/70">
-                  Remove {removeConfirmModel.model_name} from shift?
-                </p>
-                <div className="mt-6 flex gap-3">
-                  <button
-                    type="button"
-                    onClick={cancelRemoveModelConfirm}
-                    className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl border border-white/20 bg-transparent text-sm font-semibold text-white/90 hover:bg-white/5"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void confirmRemoveModelFromShift()}
-                    disabled={removingId !== null}
-                    className="flex min-h-[48px] flex-1 items-center justify-center rounded-xl bg-red-500/90 text-sm font-semibold text-white hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Remove
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
+      <ConfirmDialog
+        open={removeConfirmModel != null}
+        onClose={() => removingId === null && cancelRemoveModelConfirm()}
+        onConfirm={() => void confirmRemoveModelFromShift()}
+        title="Remove model"
+        description={
+          removeConfirmModel ? `Remove ${removeConfirmModel.model_name} from this shift?` : ""
+        }
+        confirmLabel="Remove"
+        confirmVariant="danger"
+        loading={removingId !== null}
+      />
     </div>
     </>
   );

@@ -7,6 +7,8 @@ import { Send, RefreshCw, Calendar, Users } from "lucide-react";
 import { formatDateTimeEuropean } from "@/lib/format";
 import type { Shift } from "@/types";
 import { LiveTimer } from "@/components/live-timer";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { adminForceEndShift } from "@/app/actions/shift";
 
 export type LiveShiftWithModels = Shift & { modelNames: string[] };
 
@@ -102,7 +104,17 @@ function BreakSummaryBadge({ shift, isOnBreak }: { shift: LiveShiftWithModels; i
   return null;
 }
 
-function ShiftCard({ shift, subtitle, index = 0 }: { shift: LiveShiftWithModels; subtitle?: string; index?: number }) {
+function ShiftCard({
+  shift,
+  subtitle,
+  index = 0,
+  adminForceEnd,
+}: {
+  shift: LiveShiftWithModels;
+  subtitle?: string;
+  index?: number;
+  adminForceEnd?: { onRequest: () => void; busy: boolean };
+}) {
   const isOnBreak = shift.status === "on_break" || Boolean(shift.break_started_at);
   const hasBreakStart = Boolean(shift.break_started_at);
   const running = !isOnBreak;
@@ -229,6 +241,9 @@ type Props = {
 export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
   const router = useRouter();
   const [refreshing, setRefreshing] = React.useState(false);
+  const [forceEndFor, setForceEndFor] = React.useState<LiveShiftWithModels | null>(null);
+  const forceEndReasonRef = React.useRef("");
+  const [endingId, setEndingId] = React.useState<string | null>(null);
   const handleRefresh = React.useCallback(() => {
     setRefreshing(true);
     router.refresh();
@@ -242,6 +257,23 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
     () => new Set(shiftsWithModels.flatMap((s) => s.modelNames)).size,
     [shiftsWithModels]
   );
+
+  const confirmForceEnd = React.useCallback(async () => {
+    if (!forceEndFor) return;
+    setEndingId(forceEndFor.id);
+    try {
+      const res = await adminForceEndShift(forceEndFor.id, forceEndReasonRef.current.trim() || undefined);
+      if (!res.success) {
+        window.alert(res.error);
+        return;
+      }
+      setForceEndFor(null);
+      forceEndReasonRef.current = "";
+      router.refresh();
+    } finally {
+      setEndingId(null);
+    }
+  }, [forceEndFor, router]);
 
   return (
     <div className="space-y-8">
@@ -294,7 +326,18 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
                 icon={Users}
               />
             ) : (
-              vaShifts.map((s, i) => <ShiftCard key={s.id} shift={s} subtitle="Mistake check" index={i} />)
+              vaShifts.map((s, i) => (
+                <ShiftCard
+                  key={s.id}
+                  shift={s}
+                  subtitle="Mistake check"
+                  index={i}
+                  adminForceEnd={{
+                    onRequest: () => setForceEndFor(s),
+                    busy: endingId === s.id,
+                  }}
+                />
+              ))
             )}
           </div>
         </div>
@@ -306,6 +349,29 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
           <p className="mt-1 text-sm text-white/50">When chatters or VAs start a shift, they will appear here.</p>
         </div>
       )}
+
+      <ConfirmDialog
+        open={forceEndFor != null}
+        onClose={() => {
+          if (endingId) return;
+          setForceEndFor(null);
+          forceEndReasonRef.current = "";
+        }}
+        onConfirm={() => confirmForceEnd()}
+        title="Force end shift?"
+        description={
+          forceEndFor
+            ? `End ${forceEndFor.chatter_name || "this user"}’s shift now? Models will be freed, shift rows removed, and the staff member will be notified.`
+            : ""
+        }
+        confirmLabel="End shift"
+        confirmVariant="danger"
+        loading={endingId !== null}
+        reasonPlaceholder="Optional note (shown to chatter and admins)…"
+        onReasonChange={(r) => {
+          forceEndReasonRef.current = r;
+        }}
+      />
     </div>
   );
 }

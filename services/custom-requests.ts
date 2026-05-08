@@ -239,6 +239,40 @@ export async function listAllCustomRequests(): Promise<CustomRequest[]> {
   return records.map((r) => mapRecord(r as AirtableRecord<Fields>));
 }
 
+/** Filters for paginated reads (passed through to `listRecords`). */
+export type CustomRequestFilters = {
+  filterByFormula?: string;
+};
+
+/**
+ * Cursor-based pagination for admin UI. Prefer `cursor`/`nextOffset` over `page` (included for signature parity).
+ */
+export async function listCustomRequestsPaginated(
+  filters: CustomRequestFilters = {},
+  page = 1,
+  pageSize = 50,
+  cursor?: string | null
+): Promise<{ records: CustomRequest[]; hasMore: boolean; total: number; nextOffset: string | null }> {
+  void page;
+  const { records, offset } = await listRecords<Fields>(TABLE, {
+    sort: [{ field: "created_at", direction: "desc" }],
+    pageSize,
+    ...(cursor ? { offset: cursor } : {}),
+    ...(filters.filterByFormula?.trim()
+      ? { filterByFormula: filters.filterByFormula.trim() }
+      : {}),
+    _caller: "custom-requests.listCustomRequestsPaginated",
+  });
+  const mapped = records.map((r) => mapRecord(r as AirtableRecord<Fields>));
+  const nextOffset = offset ?? null;
+  return {
+    records: mapped,
+    hasMore: Boolean(nextOffset),
+    total: mapped.length,
+    nextOffset,
+  };
+}
+
 /** Admin queue: `admin_status` pending only (Airtable value is `pending`, not `declined`). */
 export async function listAdminPendingCustomRequests(): Promise<CustomRequest[]> {
   const records = await listAllRecords<Fields>(TABLE, {

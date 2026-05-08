@@ -31,6 +31,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { WeeklyAvailabilityRequest, WeeklyProgramDay, WeeklyProgramShiftType, WeeklyAvailabilityEntryType } from "@/types";
 
@@ -94,6 +95,7 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
   const [success, setSuccess] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteConfirmRow, setDeleteConfirmRow] = React.useState<WeeklyAvailabilityRequest | null>(null);
 
   React.useEffect(() => {
     setRequests(initialRequests);
@@ -135,21 +137,28 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
     setError(null);
   };
 
-  const handleDelete = async (r: WeeklyAvailabilityRequest) => {
+  const runDeleteSubmission = async (r: WeeklyAvailabilityRequest) => {
     if (r.status !== "submitted") return;
-    const ok = window.confirm(`Remove your ${r.day} submission? This cannot be undone.`);
-    if (!ok) return;
     setDeletingId(r.id);
     setError(null);
-    const res = await deleteAvailabilityAction(r.id);
-    setDeletingId(null);
-    if (!res.success) {
-      setError(res.error);
-      return;
+    try {
+      const res = await deleteAvailabilityAction(r.id);
+      if (!res.success) {
+        setError(res.error);
+        return;
+      }
+      if (editingRequest?.id === r.id) handleCancelEdit();
+      setSuccess("Submission removed.");
+      setDeleteConfirmRow(null);
+      router.refresh();
+    } finally {
+      setDeletingId(null);
     }
-    if (editingRequest?.id === r.id) handleCancelEdit();
-    setSuccess("Submission removed.");
-    router.refresh();
+  };
+
+  const requestDeleteSubmission = (r: WeeklyAvailabilityRequest) => {
+    if (r.status !== "submitted") return;
+    setDeleteConfirmRow(r);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -250,6 +259,7 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
   ];
 
   return (
+    <>
     <div className="weekly-availability-page space-y-8">
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -642,7 +652,7 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
                                 type="button"
                                 whileTap={{ scale: 0.97 }}
                                 disabled={deletingId === r.id}
-                                onClick={() => void handleDelete(r)}
+                                onClick={() => requestDeleteSubmission(r)}
                                 aria-label={
                                   deletingId === r.id ? "Removing submission" : `Delete ${d} submission`
                                 }
@@ -678,5 +688,23 @@ export function WeeklyAvailabilityClient({ weekStart: initialWeekStart, initialR
         }
       `}</style>
     </div>
+    <ConfirmDialog
+      open={deleteConfirmRow != null}
+      onClose={() => deletingId == null && setDeleteConfirmRow(null)}
+      onConfirm={() => {
+        const r = deleteConfirmRow;
+        if (r) return runDeleteSubmission(r);
+      }}
+      title="Remove submission?"
+      description={
+        deleteConfirmRow
+          ? `Remove your ${deleteConfirmRow.day} submission? This cannot be undone.`
+          : ""
+      }
+      confirmLabel="Remove"
+      confirmVariant="danger"
+      loading={deletingId != null}
+    />
+    </>
   );
 }

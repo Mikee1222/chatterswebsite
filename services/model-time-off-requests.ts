@@ -1,6 +1,6 @@
 "use server";
 
-import { listAllRecords, createRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { listAllRecords, createRecord, getRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { ModelTimeOffRequest } from "@/types";
 
@@ -90,4 +90,21 @@ export async function createModelTimeOffRequest(input: {
     status: "submitted",
   });
   return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+/** Delete a pending/submitted time-off request owned by this model. */
+export async function deleteModelTimeOffRequestForModel(recordId: string, modelRecordId: string): Promise<boolean> {
+  const id = recordId?.trim();
+  if (!id || !modelRecordId?.trim()) return false;
+  try {
+    const rec = await getRecord<Fields>(TABLE, id);
+    const row = mapRecord(rec as AirtableRecord<Fields>);
+    if (row.model_id !== modelRecordId) return false;
+    const st = (row.status ?? "").trim().toLowerCase();
+    if (st !== "pending" && st !== "submitted") return false;
+    await deleteRecord(TABLE, id);
+    return true;
+  } catch {
+    return false;
+  }
 }

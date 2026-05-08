@@ -150,10 +150,10 @@ function ConfettiBurst({ seed, fading }: { seed: number; fading: boolean }) {
 
 function prizeEmoji(prizeType: string): string {
   const t = prizeType.toLowerCase();
-  if (t === "cash") return "💰";
-  if (t === "extra_break") return "⏰";
+  if (t === "cash" || t === "bonus") return "💰";
+  if (t === "extra_break" || t === "break") return "⏰";
   if (t === "double_points") return "2️⃣";
-  if (t === "mystery") return "🎁";
+  if (t === "custom" || t === "mystery") return "🎁";
   if (t === "points") return "⭐";
   return "🎁";
 }
@@ -225,14 +225,6 @@ function wheelSlicePath(
     `A ${innerR} ${innerR} 0 ${largeArc} 0 ${eInner.x} ${eInner.y}`,
     "Z",
   ].join(" ");
-}
-
-function segmentGradientKey(prizeType: string): "points" | "bonus" | "break" | "double" {
-  const t = prizeType.toLowerCase();
-  if (t === "points") return "points";
-  if (t === "cash" || t === "mystery") return "bonus";
-  if (t === "extra_break") return "break";
-  return "double";
 }
 
 export function SpinWheel({
@@ -436,9 +428,14 @@ export function SpinWheel({
               <p className="mt-2 text-sm text-white/55">
                 {modalPrize.prize_type === "points"
                   ? "Points have been added to your balance."
-                  : modalPrize.prize_type === "cash" || modalPrize.prize_type === "extra_break"
+                  : modalPrize.prize_type === "cash" ||
+                      modalPrize.prize_type === "bonus" ||
+                      modalPrize.prize_type === "extra_break" ||
+                      modalPrize.prize_type === "break"
                     ? "Our team will confirm this reward. You can track it under recent wins."
-                    : "Enjoy your reward!"}
+                    : modalPrize.prize_type === "custom" || modalPrize.prize_type === "mystery"
+                      ? "Admin will be in touch to fulfill this special prize."
+                      : "Enjoy your reward!"}
               </p>
               <button
                 type="button"
@@ -543,13 +540,15 @@ export function SpinWheel({
                   const segmentStyle =
                     t === "points"
                       ? { fill: "#065f46", stroke: "#10b981" }
-                      : t === "extra_break"
-                        ? { fill: "#701a75", stroke: "#d946ef" }
-                        : t === "cash"
-                          ? { fill: "#1e3a8a", stroke: "#60a5fa" }
+                      : t === "extra_break" || t === "break"
+                        ? { fill: "#0c4a6e", stroke: "#38bdf8" }
+                        : t === "cash" || t === "bonus"
+                          ? { fill: "#713f12", stroke: "#f59e0b" }
                           : t === "double_points"
-                            ? { fill: "#78350f", stroke: "#f59e0b" }
-                            : { fill: "#064e3b", stroke: "#34d399" };
+                            ? { fill: "#4c1d95", stroke: "#a78bfa" }
+                            : t === "custom" || t === "mystery"
+                              ? { fill: "#831843", stroke: "#f472b6" }
+                              : { fill: "#064e3b", stroke: "#34d399" };
                   return (
                     <g key={p.id}>
                       <path
@@ -561,7 +560,7 @@ export function SpinWheel({
                       />
                       <text
                         x={textPos.x}
-                        y={textPos.y - 10}
+                        y={textPos.y}
                         fill="#fff"
                         fontSize="13"
                         fontWeight="600"
@@ -570,19 +569,7 @@ export function SpinWheel({
                         className="pointer-events-none"
                         style={{ textShadow: "0 1px 6px rgba(0,0,0,0.8)" }}
                       >
-                        {prizeEmoji(p.prize_type)} {shortLabel(p.label, 11)}
-                      </text>
-                      <text
-                        x={textPos.x}
-                        y={textPos.y + 10}
-                        fill="rgba(255,255,255,0.7)"
-                        fontSize="10"
-                        fontWeight="500"
-                        textAnchor="middle"
-                        dominantBaseline="middle"
-                        className="pointer-events-none"
-                      >
-                        {Math.max(0, Math.round(p.probability * 100))}% chance
+                        {prizeEmoji(p.prize_type)} {shortLabel(p.label, 14)}
                       </text>
                     </g>
                   );
@@ -645,6 +632,7 @@ export function SpinWheel({
               key={p.id}
               className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white/60"
             >
+              <span aria-hidden>{prizeEmoji(p.prize_type)} </span>
               {shortLabel(p.label, 16)}
             </div>
           ))}

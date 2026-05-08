@@ -110,6 +110,9 @@
     "schedule": {
       "availabilitySubmitted": "Disponibilidad enviada.",
       "timeOffSent": "Solicitud de tiempo libre enviada.",
+      "timeOffCancelled": "Solicitud de tiempo libre cancelada.",
+      "pendingTimeOff": "Tiempo libre pendiente",
+      "cancelTimeOff": "Cancelar solicitud",
       "periodDay": "Día de periodo",
       "predictedPeriod": "Período previsto",
       "timeOff": "Tiempo libre",

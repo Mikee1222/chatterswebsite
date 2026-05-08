@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Pencil, Search, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
 import { formatDateTimeEuropean, formatDateEuropean } from "@/lib/format";
@@ -99,6 +100,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
   const [logBusy, setLogBusy] = React.useState(false);
   const [logError, setLogError] = React.useState<string | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deletePeriodConfirmId, setDeletePeriodConfirmId] = React.useState<string | null>(null);
 
   React.useEffect(() => setLocalModelss(modelss), [modelss]);
 
@@ -130,8 +132,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
     router.refresh();
   };
 
-  const handleDeletePeriod = async (periodId: string) => {
-    if (!confirm("Delete this period record?")) return;
+  const runDeletePeriod = async (periodId: string) => {
     setDeletingId(periodId);
     const res = await deletePeriodAction(periodId);
     setDeletingId(null);
@@ -139,7 +140,12 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
       alert(res.error);
       return;
     }
+    setDeletePeriodConfirmId(null);
     router.refresh();
+  };
+
+  const requestDeletePeriod = (periodId: string) => {
+    setDeletePeriodConfirmId(periodId);
   };
 
   const filtered = React.useMemo(() => {
@@ -335,7 +341,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                         <button
                           type="button"
                           disabled={deletingId === p.id}
-                          onClick={() => handleDeletePeriod(p.id)}
+                          onClick={() => requestDeletePeriod(p.id)}
                           className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
                         >
                           {deletingId === p.id ? "…" : "Delete"}
@@ -448,7 +454,7 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                               <button
                                 type="button"
                                 disabled={deletingId === p.id}
-                                onClick={() => handleDeletePeriod(p.id)}
+                                onClick={() => requestDeletePeriod(p.id)}
                                 className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
                               >
                                 {deletingId === p.id ? "…" : "×"}
@@ -539,6 +545,20 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
         }}
         onConfirm={handleConfirmDeleteModel}
         confirming={confirmingModelDelete}
+      />
+
+      <ConfirmDialog
+        open={deletePeriodConfirmId != null}
+        onClose={() => deletingId == null && setDeletePeriodConfirmId(null)}
+        onConfirm={() => {
+          const id = deletePeriodConfirmId;
+          if (id) return runDeletePeriod(id);
+        }}
+        title="Delete period record?"
+        description="This removes the logged period from this model. This cannot be undone."
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={deletingId != null}
       />
 
       {logModel && (

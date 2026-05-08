@@ -1,11 +1,15 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { CalendarClock, Gauge, ListChecks, Search, Timer } from "lucide-react";
 import { VaContentAssignmentForm } from "@/components/va-content-assignment-form";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import { MobileCard } from "@/components/mobile-card";
 import { FormInput } from "@/components/ui/form-input";
+import { Label } from "@/components/ui/form";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { GlassModal } from "@/components/ui/glass-modal";
 import { gradientClassForContentType } from "@/lib/detail-modal-gradients";
 import { formatDateEuropean } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -35,12 +39,39 @@ export type VaContentAssignmentsClientProps = {
 };
 
 export function VaContentAssignmentsClient({ models, rows }: VaContentAssignmentsClientProps) {
+  const router = useRouter();
   const visible = rows.filter((r) => statusKey(r.status) !== "cancelled");
   const [filter, setFilter] = React.useState<StatusTab>("pending");
   const [selected, setSelected] = React.useState<VaAssignmentWithModel | null>(null);
   const [search, setSearch] = React.useState("");
   const [modelId, setModelId] = React.useState<string>("all");
   const [prioritySet, setPrioritySet] = React.useState<Set<string>>(() => new Set());
+
+  const [editFor, setEditFor] = React.useState<VaAssignmentWithModel | null>(null);
+  const [editTitle, setEditTitle] = React.useState("");
+  const [editDescription, setEditDescription] = React.useState("");
+  const [editDeadline, setEditDeadline] = React.useState("");
+  const [editPriority, setEditPriority] = React.useState<string>("normal");
+  const [editSaving, setEditSaving] = React.useState(false);
+  const [editErr, setEditErr] = React.useState<string | null>(null);
+
+  const [deleteFor, setDeleteFor] = React.useState<VaAssignmentWithModel | null>(null);
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
+  const [deleteErr, setDeleteErr] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (deleteFor) setDeleteErr(null);
+  }, [deleteFor]);
+
+  React.useEffect(() => {
+    if (!editFor) return;
+    setEditTitle(editFor.title || "");
+    setEditDescription(editFor.description || "");
+    const d = (editFor.deadline || "").trim();
+    setEditDeadline(d.length >= 10 ? d.slice(0, 10) : "");
+    setEditPriority((editFor.priority || "normal").trim().toLowerCase() || "normal");
+    setEditErr(null);
+  }, [editFor]);
 
   const modelOptions = React.useMemo(() => {
     return [...models].sort((a, b) => (a.model_name || "").localeCompare(b.model_name || ""));
@@ -90,6 +121,57 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
 
   const activeFilterCount =
     (search.trim() ? 1 : 0) + (modelId !== "all" ? 1 : 0) + (prioritySet.size > 0 ? 1 : 0);
+
+  async function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editFor || editSaving) return;
+    setEditSaving(true);
+    setEditErr(null);
+    try {
+      const res = await fetch(`/api/va/content-assignments/${editFor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editTitle.trim(),
+          description: editDescription.trim(),
+          deadline: editDeadline.trim() ? editDeadline.trim() : null,
+          priority: editPriority,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        throw new Error(typeof data.error === "string" ? data.error : "Could not save changes");
+      }
+      setEditFor(null);
+      router.refresh();
+    } catch (err) {
+      setEditErr(err instanceof Error ? err.message : "Update failed");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function confirmDeleteAssignment() {
+    if (!deleteFor || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteErr(null);
+    try {
+      const res = await fetch(`/api/va/content-assignments/${deleteFor.id}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setDeleteErr(typeof data.error === "string" ? data.error : "Could not delete.");
+        return;
+      }
+      const id = deleteFor.id;
+      setDeleteFor(null);
+      setSelected((s) => (s?.id === id ? null : s));
+      router.refresh();
+    } catch (e) {
+      setDeleteErr(e instanceof Error ? e.message : "Delete failed.");
+    } finally {
+      setDeleteBusy(false);
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -239,6 +321,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                       <th className="px-4 py-3 font-medium">Deadline</th>
                       <th className="px-4 py-3 font-medium">Status</th>
                       <th className="px-4 py-3 font-medium">Priority</th>
+                      <th className="px-4 py-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -267,6 +350,31 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                           >
                             {r.priority || "normal"}
                           </span>
+                        </td>
+                        <td
+                          className="px-4 py-3 text-right"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {statusKey(r.status) === "pending" ? (
+                            <div className="flex flex-wrap justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setEditFor(r)}
+                                className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteFor(r)}
+                                className="rounded-lg border border-red-500/35 bg-red-500/15 px-3 py-1 text-xs font-medium text-red-200 hover:bg-red-500/25"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : (
+                            <span className="text-white/30">—</span>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -306,6 +414,27 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                         </span>
                         <span className="text-[11px] text-white/45">Due {formatDateEuropean(r.deadline)}</span>
                       </div>
+                      {statusKey(r.status) === "pending" ? (
+                        <div
+                          className="flex gap-2 border-t border-white/10 p-3"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setEditFor(r)}
+                            className="flex-1 rounded-lg border border-sky-500/35 bg-sky-500/15 py-2 text-xs font-medium text-sky-200"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteFor(r)}
+                            className="flex-1 rounded-lg border border-red-500/35 bg-red-500/15 py-2 text-xs font-medium text-red-200"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   </MobileCard>
                 ))}
@@ -316,6 +445,103 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
 
         <VaContentAssignmentForm models={models} />
       </div>
+
+      {editFor ? (
+        <GlassModal
+          onClose={() => !editSaving && setEditFor(null)}
+          title="Edit assignment"
+          subtitle={editFor.model_name}
+          className="md:max-w-lg"
+        >
+          <form onSubmit={(e) => void submitEdit(e)} className="space-y-4 p-5">
+            {editErr ? (
+              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-200">{editErr}</p>
+            ) : null}
+            <div>
+              <Label htmlFor="va-edit-title">Title</Label>
+              <FormInput
+                id="va-edit-title"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+                required
+                className="mt-1 border-white/10 bg-zinc-950/80"
+              />
+            </div>
+            <div>
+              <Label htmlFor="va-edit-desc">Description</Label>
+              <textarea
+                id="va-edit-desc"
+                value={editDescription}
+                onChange={(e) => setEditDescription(e.target.value)}
+                rows={4}
+                className="mt-1 w-full resize-y rounded-xl border border-white/10 bg-zinc-950/80 px-3 py-2 text-sm text-white outline-none focus:border-sky-500/40"
+              />
+            </div>
+            <div>
+              <Label htmlFor="va-edit-deadline">Due date</Label>
+              <FormInput
+                id="va-edit-deadline"
+                type="date"
+                value={editDeadline}
+                onChange={(e) => setEditDeadline(e.target.value)}
+                className="mt-1 border-white/10 bg-zinc-950/80"
+              />
+            </div>
+            <div>
+              <Label htmlFor="va-edit-priority">Priority</Label>
+              <select
+                id="va-edit-priority"
+                value={editPriority}
+                onChange={(e) => setEditPriority(e.target.value)}
+                className="mt-1 w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
+              >
+                {PRIORITIES.map((p) => (
+                  <option key={p} value={p} className="capitalize">
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={editSaving}
+                onClick={() => setEditFor(null)}
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editSaving || !editTitle.trim()}
+                className="rounded-xl border border-sky-500/40 bg-sky-500/20 px-4 py-2 text-sm font-semibold text-sky-100 hover:bg-sky-500/30 disabled:opacity-45"
+              >
+                {editSaving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </form>
+        </GlassModal>
+      ) : null}
+
+      <ConfirmDialog
+        open={deleteFor != null}
+        onClose={() => {
+          if (!deleteBusy) {
+            setDeleteFor(null);
+            setDeleteErr(null);
+          }
+        }}
+        onConfirm={() => confirmDeleteAssignment()}
+        title="Delete assignment?"
+        description={
+          deleteFor
+            ? `${deleteErr ? `${deleteErr}\n\n` : ""}Remove “${(deleteFor.title || "Untitled").slice(0, 80)}” for ${deleteFor.model_name}? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={deleteBusy}
+      />
 
       <BeautifulDetailModal
         open={selected != null}

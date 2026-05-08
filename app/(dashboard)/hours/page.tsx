@@ -16,7 +16,7 @@ function getWeekStart(date: Date): string {
 export default async function HoursPage({
   searchParams,
 }: {
-  searchParams: Promise<{ period?: string; role?: string; user?: string }>;
+  searchParams: Promise<{ period?: string; role?: string; user?: string; userId?: string }>;
 }) {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
@@ -39,16 +39,27 @@ export default async function HoursPage({
     toDate = undefined;
   }
 
+  const managerOrAdmin = user.role === "admin" || user.role === "manager";
+  /** Non admin/manager users must never query other users' shifts (ignore URL spoofs). */
+  const ownUserId = (user.airtableUserId ?? user.id)?.trim();
+  const requestedUserId =
+    typeof params.user === "string" && params.user.trim()
+      ? params.user.trim()
+      : typeof params.userId === "string" && params.userId.trim()
+        ? params.userId.trim()
+        : undefined;
+  const summaryUserId = managerOrAdmin ? requestedUserId ?? undefined : ownUserId || undefined;
+
   const [summary, users] = await Promise.all([
     getHoursSummary({
-      userId: params.user || undefined,
+      userId: summaryUserId,
       role: params.role as "chatter" | "virtual_assistant" | undefined,
       weekStart: period === "week" ? weekStart : undefined,
       monthKey: period === "month" ? monthKey : undefined,
       fromDate,
       toDate,
     }).catch(() => ({ shifts: [], totalMinutes: 0, totalHoursDecimal: 0, shiftsCount: 0 })),
-    listAllUsers().catch(() => []),
+    managerOrAdmin ? listAllUsers().catch(() => []) : Promise.resolve([]),
   ]);
 
   const byUser = new Map<string, { minutes: number; hours: number; count: number }>();
@@ -61,15 +72,24 @@ export default async function HoursPage({
     byUser.set(key, cur);
   }
 
-  const userNames = new Map(users.map((u) => [u.id, u.full_name ?? u.email]));
+  const userNames = new Map(users.map((u) => [u.id, (u.full_name ?? u.email ?? u.id).trim() || u.id]));
+  const selfLookup = ownUserId?.trim();
+  if (selfLookup && !userNames.has(selfLookup)) {
+    userNames.set(selfLookup, user.fullName?.trim() || user.email || selfLookup);
+  }
 
   return (
     <div className="space-y-6">
       <HoursFiltersClient
         period={period}
         role={params.role ?? ""}
-        user={params.user ?? ""}
+        user={requestedUserId ?? ""}
         showAdminRoleFilter={user.role === "admin"}
+        showUserFilter={managerOrAdmin}
+        userOptions={users.map((u) => ({
+          id: u.id,
+          label: (u.full_name ?? "").trim() || u.email || u.id,
+        }))}
       />
 
       <div className="grid gap-4 sm:grid-cols-3">

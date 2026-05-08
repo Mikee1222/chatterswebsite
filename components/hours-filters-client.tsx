@@ -12,17 +12,25 @@ type Props = {
   role: string;
   user: string;
   showAdminRoleFilter: boolean;
+  showUserFilter?: boolean;
+  userOptions?: { id: string; label: string }[];
 };
 
 /**
  * Hours / report view filters (GET) — same shell controls as other dashboard forms.
  */
-export function HoursFiltersClient({ period, role, user, showAdminRoleFilter }: Props) {
+export function HoursFiltersClient({
+  period,
+  role,
+  user,
+  showAdminRoleFilter,
+  showUserFilter = false,
+  userOptions = [],
+}: Props) {
   return (
     <div className="flex flex-col gap-8 lg:flex-row lg:flex-wrap lg:items-end">
       <form method="get" className="flex w-full min-w-0 flex-1 flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-end">
         <input type="hidden" name="role" value={role} />
-        <input type="hidden" name="user" value={user} />
         <div className="min-w-[min(100%,220px)] flex-1 sm:max-w-xs">
           <FormField label="Period" icon={<Calendar />} htmlFor="hours-period-filter" staggerIndex={0}>
             <FormSelect name="period" id="hours-period-filter" defaultValue={period}>
@@ -38,12 +46,30 @@ export function HoursFiltersClient({ period, role, user, showAdminRoleFilter }: 
             </FormSelect>
           </FormField>
         </div>
+        {showUserFilter ? (
+          <div className="min-w-[min(100%,260px)] flex-1 sm:max-w-sm">
+            <FormField label="User" icon={<Users />} htmlFor="hours-user-filter" staggerIndex={1}>
+              <FormSelect name="user" id="hours-user-filter" defaultValue={user}>
+                <option value="" className={selectOptionClass}>
+                  All staff
+                </option>
+                {userOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id} className={selectOptionClass}>
+                    {opt.label}
+                  </option>
+                ))}
+              </FormSelect>
+            </FormField>
+          </div>
+        ) : null}
+        {!showUserFilter ? <input type="hidden" name="user" value={user} /> : null}
         <FormSubmitButton className="w-full shrink-0 sm:w-auto sm:min-w-[140px]">Apply</FormSubmitButton>
       </form>
 
       {showAdminRoleFilter ? (
         <form method="get" className="flex w-full min-w-0 flex-col gap-4 border-t border-white/10 pt-8 sm:flex-row sm:flex-wrap sm:items-end lg:border-t-0 lg:pt-0 lg:pl-8 lg:border-l">
           <input type="hidden" name="period" value={period} />
+          <input type="hidden" name="user" value={user} />
           <div className="min-w-[min(100%,220px)] flex-1 sm:max-w-xs">
             <FormField label="Role" icon={<Users />} htmlFor="hours-role-filter" staggerIndex={0}>
               <FormSelect name="role" id="hours-role-filter" defaultValue={role}>

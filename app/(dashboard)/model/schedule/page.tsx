@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelScheduleClient } from "@/components/model-schedule-client";
-import { listModelScheduleItems } from "@/services/model-schedule";
+import { listModelScheduleItems, modelScheduleTimeOffItemToRequest } from "@/services/model-schedule";
 import { listModelLiveStreams } from "@/services/model-live-streams";
 import { getCurrentPeriod, getPeriodDatesForWeek, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
 import { getModelAvailabilityRequestsForWeek } from "@/services/weekly-availability-requests-models";
@@ -11,7 +11,7 @@ import { getModelTimeOffRequestsForRange } from "@/services/model-time-off-reque
 import { getThisWeekMonday, addDays, normalizeWeekStart } from "@/lib/weekly-program";
 import { modelLiveStreamPlatformLabel } from "@/lib/airtable-options";
 import { modelScheduleUrl } from "@/lib/routes";
-import type { ModelScheduleItem } from "@/types";
+import type { ModelScheduleItem, ModelTimeOffRequest } from "@/types";
 import { Suspense } from "react";
 import { ModelRouteEmptyState } from "@/components/model-route-feedback";
 import { ModelPeriodTrackerWidget } from "@/components/model-period-tracker-widget";
@@ -150,6 +150,16 @@ export default async function ModelSchedulePage({
   ]);
   const initialItems = mergeScheduleWithLives(scheduleItems, liveStreams, fromDate, toDate);
 
+  const timeOffFromSchedule = scheduleItems
+    .filter((i) => i.item_type === "time_off")
+    .map(modelScheduleTimeOffItemToRequest)
+    .filter((x): x is ModelTimeOffRequest => x != null);
+  const scheduleTimeOffIds = new Set(timeOffFromSchedule.map((r) => r.id));
+  const mergedTimeOffRequests = [
+    ...timeOffFromSchedule,
+    ...timeOffRequests.filter((t) => !scheduleTimeOffIds.has(t.id)),
+  ];
+
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-white">Schedule</h1>
@@ -164,7 +174,7 @@ export default async function ModelSchedulePage({
           avgPeriodLength={modelRecord.avg_period_length ?? null}
         />
       ) : null}
-      {initialItems.length === 0 && availabilityRequests.length === 0 && timeOffRequests.length === 0 ? (
+      {initialItems.length === 0 && availabilityRequests.length === 0 && mergedTimeOffRequests.length === 0 ? (
         <ModelRouteEmptyState
           title="No schedule items yet"
           description="Your upcoming schedule is empty for now. You can still submit weekly availability or request time off."
@@ -179,7 +189,7 @@ export default async function ModelSchedulePage({
           predictedPeriodStart={predictedPeriodStart}
           currentPeriod={currentPeriod}
           initialAvailability={availabilityRequests}
-          initialTimeOff={timeOffRequests}
+          initialTimeOff={mergedTimeOffRequests}
           initialAction={initialAction}
         />
       </Suspense>

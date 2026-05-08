@@ -43,6 +43,7 @@ export const NOTIFICATION_EVENT = {
   PERIOD_PREDICTION_RESET: "period_prediction_reset" as const,
   WHALE_REGISTERED: "whale_registered" as const,
   WHALE_ASSIGNED: "whale_assigned" as const,
+  WHALE_SPENT: "whale_spent" as const,
   CUSTOM_REQUEST_CREATED: "custom_request_created" as const,
   CUSTOM_REQUEST_UPDATED: "custom_request_updated" as const,
   CUSTOM_REQUEST_SUBMITTED: "custom_request_submitted" as const,

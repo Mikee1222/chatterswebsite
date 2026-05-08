@@ -187,6 +187,18 @@ async function assertWhaleTransactionOwnedByChatter(
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
+/** Snapshot for chatter-owned row; null when missing or not owned. */
+export async function peekWhaleTransactionForChatter(
+  recordId: string,
+  chatterRecordId: string,
+): Promise<WhaleTransaction | null> {
+  try {
+    return await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
+  } catch {
+    return null;
+  }
+}
+
 export type UpdateWhaleTransactionFields = {
   model_name?: string;
   date?: string;

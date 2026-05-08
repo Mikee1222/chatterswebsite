@@ -28,6 +28,7 @@ import type { WeeklyAvailabilityRequest } from "@/types";
 import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/admin-list-primitives";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
@@ -221,6 +222,12 @@ export function AdminWeeklyProgramVaClient({
   const [duplicateOpenDay, setDuplicateOpenDay] = React.useState<WeeklyProgramDay | null>(null);
   const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
   const [duplicateBusy, setDuplicateBusy] = React.useState(false);
+  const [duplicateReplacePrompt, setDuplicateReplacePrompt] = React.useState<{
+    sourceDay: WeeklyProgramDay;
+    targetDay: WeeklyProgramDay;
+    replaceCount: number;
+  } | null>(null);
+  const [deleteProgramConfirmId, setDeleteProgramConfirmId] = React.useState<string | null>(null);
 
   React.useEffect(() => setPrograms(initialPrograms), [initialPrograms]);
 
@@ -413,7 +420,7 @@ export function AdminWeeklyProgramVaClient({
     router.refresh();
   };
 
-  const handleDelete = async (recordId: string) => {
+  const runProgramDelete = async (recordId: string) => {
     setError(null);
     setDeletingId(recordId);
     const res = await deleteProgramVaAction(recordId);
@@ -423,10 +430,15 @@ export function AdminWeeklyProgramVaClient({
       return;
     }
     setSuccess("Shift deleted.");
+    setDeleteProgramConfirmId(null);
     router.refresh();
   };
 
-  const handleDuplicateDay = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
+  const handleDelete = (recordId: string) => {
+    setDeleteProgramConfirmId(recordId);
+  };
+
+  const runDuplicateDayCopy = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
     const week = effectiveWeekStart;
     const sourceEntries = programs.filter(
       (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
@@ -437,12 +449,6 @@ export function AdminWeeklyProgramVaClient({
     if (sourceEntries.length === 0) {
       setError("No shifts to copy on that day.");
       return;
-    }
-    if (targetEntries.length > 0) {
-      const ok = window.confirm(
-        `${targetDay} already has ${targetEntries.length} shift(s). Replace them with copies from ${sourceDay}? Existing shifts on ${targetDay} will be removed.`
-      );
-      if (!ok) return;
     }
     setDuplicateBusy(true);
     setError(null);
@@ -481,13 +487,38 @@ export function AdminWeeklyProgramVaClient({
       }
       setSuccess(`Copied ${sourceEntries.length} shift(s) from ${sourceDay} to ${targetDay}.`);
       setDuplicateOpenDay(null);
+      setDuplicateReplacePrompt(null);
       router.refresh();
     } finally {
       setDuplicateBusy(false);
     }
   };
 
+  const handleDuplicateDay = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
+    const week = effectiveWeekStart;
+    const sourceEntries = programs.filter(
+      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
+    );
+    const targetEntries = programs.filter(
+      (p) => p.day === targetDay && normalizeWeekStart(p.week_start) === week
+    );
+    if (sourceEntries.length === 0) {
+      setError("No shifts to copy on that day.");
+      return;
+    }
+    if (targetEntries.length > 0) {
+      setDuplicateReplacePrompt({
+        sourceDay,
+        targetDay,
+        replaceCount: targetEntries.length,
+      });
+      return;
+    }
+    await runDuplicateDayCopy(sourceDay, targetDay);
+  };
+
   return (
+    <>
     <div className="flex flex-col xl:flex-row xl:gap-6 gap-6">
       <div className="min-w-0 flex-1 space-y-6">
       {/* Mobile: Chatters | VA tab bar */}
@@ -1182,7 +1213,39 @@ export function AdminWeeklyProgramVaClient({
         </motion.div>
       )}
       </AnimatePresence>
+    <ConfirmDialog
+      open={deleteProgramConfirmId != null}
+      onClose={() => deletingId == null && setDeleteProgramConfirmId(null)}
+      onConfirm={() => {
+        const id = deleteProgramConfirmId;
+        if (id) return runProgramDelete(id);
+      }}
+      title="Delete this shift?"
+      description="This removes the scheduled shift from the VA weekly program. This cannot be undone."
+      confirmLabel="Delete"
+      confirmVariant="danger"
+      loading={deletingId != null}
+    />
+    <ConfirmDialog
+      open={duplicateReplacePrompt != null}
+      onClose={() => !duplicateBusy && setDuplicateReplacePrompt(null)}
+      onConfirm={() => {
+        const p = duplicateReplacePrompt;
+        if (!p) return;
+        return runDuplicateDayCopy(p.sourceDay, p.targetDay);
+      }}
+      title="Replace existing shifts?"
+      description={
+        duplicateReplacePrompt
+          ? `${duplicateReplacePrompt.targetDay} already has ${duplicateReplacePrompt.replaceCount} shift(s). Replace them with copies from ${duplicateReplacePrompt.sourceDay}? Existing shifts on ${duplicateReplacePrompt.targetDay} will be removed.`
+          : ""
+      }
+      confirmLabel="Replace and copy"
+      confirmVariant="warning"
+      loading={duplicateBusy}
+    />
     </div>
+    </>
   );
 }
 

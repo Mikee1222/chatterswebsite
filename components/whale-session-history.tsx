@@ -27,6 +27,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FieldShell, sanitizeDecimalInput } from "@/components/log-transaction-form";
 import { cn } from "@/lib/utils";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 const selectTriggerLuxury =
   "border-white/12 bg-black/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] hover:border-pink-400/25 hover:bg-white/[0.06]";
@@ -253,10 +254,9 @@ export function WhaleSessionHistory({ transactions }: { transactions: WhaleTrans
   const router = useRouter();
   const [editing, setEditing] = React.useState<WhaleTransaction | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteTx, setDeleteTx] = React.useState<WhaleTransaction | null>(null);
 
-  async function handleDelete(tx: WhaleTransaction) {
-    const ok = window.confirm(`Delete this session for ${tx.whale_username || "this whale"}? This cannot be undone.`);
-    if (!ok) return;
+  async function runDeleteSession(tx: WhaleTransaction) {
     setDeletingId(tx.id);
     try {
       const res = await deleteWhaleTransactionAction(tx.id);
@@ -264,13 +264,19 @@ export function WhaleSessionHistory({ transactions }: { transactions: WhaleTrans
         window.alert(res.error);
         return;
       }
+      setDeleteTx(null);
       router.refresh();
     } finally {
       setDeletingId(null);
     }
   }
 
+  function requestDeleteSession(tx: WhaleTransaction) {
+    setDeleteTx(tx);
+  }
+
   return (
+    <>
     <div className="glass-card overflow-hidden border border-white/[0.08] shadow-[0_0_40px_-16px_hsl(330_80%_55%/0.12)]">
       <div className="border-b border-white/10 bg-white/[0.03] px-5 py-4">
         <h2 className="text-base font-semibold tracking-tight text-white">Previous sessions</h2>
@@ -341,7 +347,7 @@ export function WhaleSessionHistory({ transactions }: { transactions: WhaleTrans
                       </button>
                       <button
                         type="button"
-                        onClick={() => void handleDelete(tx)}
+                        onClick={() => requestDeleteSession(tx)}
                         disabled={deletingId === tx.id}
                         className="rounded-lg border border-white/10 p-2 text-white/55 transition hover:border-red-400/40 hover:bg-red-500/15 hover:text-red-200 disabled:opacity-40"
                         aria-label="Delete session"
@@ -360,5 +366,23 @@ export function WhaleSessionHistory({ transactions }: { transactions: WhaleTrans
         {editing ? <EditTransactionModal key={editing.id} tx={editing} onClose={() => setEditing(null)} /> : null}
       </AnimatePresence>
     </div>
+    <ConfirmDialog
+      open={deleteTx != null}
+      onClose={() => deletingId == null && setDeleteTx(null)}
+      onConfirm={() => {
+        const tx = deleteTx;
+        if (tx) return runDeleteSession(tx);
+      }}
+      title="Delete session?"
+      description={
+        deleteTx
+          ? `Delete this session for ${deleteTx.whale_username || "this whale"}? This cannot be undone.`
+          : ""
+      }
+      confirmLabel="Delete"
+      confirmVariant="danger"
+      loading={deletingId != null}
+    />
+    </>
   );
 }

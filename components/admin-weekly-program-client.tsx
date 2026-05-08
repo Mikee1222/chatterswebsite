@@ -28,6 +28,7 @@ import type { ModelRecord } from "@/types";
 import type { WeeklyAvailabilityRequest } from "@/types";
 import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/admin-list-primitives";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
@@ -638,6 +639,7 @@ export function AdminWeeklyProgramClient({
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editingEntry, setEditingEntry] = React.useState<WeeklyProgramRecord | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [deleteProgramConfirmId, setDeleteProgramConfirmId] = React.useState<string | null>(null);
   const [prefillFromAvailability, setPrefillFromAvailability] = React.useState<WeeklyAvailabilityRequest | null>(null);
   const [availFilterChatter, setAvailFilterChatter] = React.useState("");
   const [availFilterShiftType, setAvailFilterShiftType] = React.useState<WeeklyProgramShiftType | "">("");
@@ -878,7 +880,7 @@ export function AdminWeeklyProgramClient({
     router.refresh();
   };
 
-  const handleDelete = async (recordId: string) => {
+  const runProgramDelete = async (recordId: string) => {
     setError(null);
     setDeletingId(recordId);
     const res = await deleteProgramAction(recordId);
@@ -888,7 +890,12 @@ export function AdminWeeklyProgramClient({
       return;
     }
     setSuccess("Shift deleted.");
+    setDeleteProgramConfirmId(null);
     router.refresh();
+  };
+
+  const handleDelete = (recordId: string) => {
+    setDeleteProgramConfirmId(recordId);
   };
 
   const openDuplicateModal = (sourceDay: WeeklyProgramDay) => {
@@ -980,6 +987,7 @@ export function AdminWeeklyProgramClient({
   };
 
   return (
+    <>
     <div className="flex flex-col xl:flex-row xl:gap-6 gap-6">
       <div className="min-w-0 flex-1 space-y-6">
       {/* Mobile: Chatters | VA tab bar */}
@@ -1718,7 +1726,21 @@ export function AdminWeeklyProgramClient({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    <ConfirmDialog
+      open={deleteProgramConfirmId != null}
+      onClose={() => deletingId == null && setDeleteProgramConfirmId(null)}
+      onConfirm={() => {
+        const id = deleteProgramConfirmId;
+        if (id) return runProgramDelete(id);
+      }}
+      title="Delete this shift?"
+      description="This removes the scheduled shift from the weekly program. This cannot be undone."
+      confirmLabel="Delete"
+      confirmVariant="danger"
+      loading={deletingId != null}
+    />
     </div>
+    </>
   );
 }
 

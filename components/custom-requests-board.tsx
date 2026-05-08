@@ -9,6 +9,7 @@ import { Label, Textarea } from "@/components/ui/form";
 import { FormInput } from "@/components/ui/form-input";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { cn } from "@/lib/utils";
 import type { CustomRequest } from "@/types";
 
@@ -47,6 +48,12 @@ type Props = {
   onDecline: (input: { id: string; decline_reason: string }) => Promise<ActionResult>;
   onEdit: (input: { id: string } & EditInput) => Promise<ActionResult>;
   onToast: (kind: "success" | "error", title: string, body: string) => void;
+  pagination?: {
+    hasMore: boolean;
+    loadingMore: boolean;
+    loadedCount: number;
+    onLoadMore: () => void | Promise<void>;
+  };
 };
 
 function normalizeStatusValue(req: CustomRequest): StatusFilterValue {
@@ -247,6 +254,7 @@ export function CustomRequestsBoard({
   onDecline,
   onEdit,
   onToast,
+  pagination,
 }: Props) {
   const isVa = variant === "va";
   const router = useRouter();
@@ -265,7 +273,9 @@ export function CustomRequestsBoard({
   const [bulkBusy, setBulkBusy] = React.useState(false);
   const [detail, setDetail] = React.useState<CustomRequest | null>(null);
   const [declineFor, setDeclineFor] = React.useState<CustomRequest | null>(null);
-  const [declineReason, setDeclineReason] = React.useState("");
+  const declineReasonRef = React.useRef("");
+  const bulkDeclineReasonRef = React.useRef("");
+  const [bulkDeclineOpen, setBulkDeclineOpen] = React.useState(false);
   const [declineBusy, setDeclineBusy] = React.useState(false);
   const [editFor, setEditFor] = React.useState<CustomRequest | null>(null);
   const [editDesc, setEditDesc] = React.useState("");
@@ -434,16 +444,18 @@ export function CustomRequestsBoard({
 
   const submitDecline = async () => {
     if (!declineFor) return;
+    const reasonText = declineReasonRef.current.trim();
+    if (!reasonText) return;
     setDeclineBusy(true);
     try {
-      const res = await onDecline({ id: declineFor.id, decline_reason: declineReason });
+      const res = await onDecline({ id: declineFor.id, decline_reason: reasonText });
       if (!res.ok) {
         onToast("error", "Could not decline", res.error);
         return;
       }
-      patchRow(declineFor.id, { admin_status: "rejected", decline_reason: declineReason });
+      patchRow(declineFor.id, { admin_status: "rejected", decline_reason: reasonText });
       setDeclineFor(null);
-      setDeclineReason("");
+      declineReasonRef.current = "";
       onToast("success", "Declined", "Request was declined successfully.");
       router.refresh();
     } finally {
@@ -498,13 +510,17 @@ export function CustomRequestsBoard({
     router.refresh();
   };
 
-  const runBulkDecline = async () => {
+  const runBulkDeclineWithReason = async (declineReasonText: string) => {
+    const reason = declineReasonText.trim();
+    if (!reason) {
+      onToast("error", "Reason required", "Enter a decline reason for bulk decline.");
+      return;
+    }
     const ids = filteredRows.filter((r) => selectedIds.has(r.id) && r.admin_status === "pending").map((r) => r.id);
     if (ids.length === 0) {
       onToast("error", "No eligible requests", "Select pending requests to bulk decline.");
       return;
     }
-    const reason = "Bulk declined by agency review";
     setBulkBusy(true);
     let ok = 0;
     for (const id of ids) {
@@ -515,9 +531,15 @@ export function CustomRequestsBoard({
       }
     }
     setBulkBusy(false);
+    setBulkDeclineOpen(false);
+    bulkDeclineReasonRef.current = "";
     onToast("success", "Bulk decline finished", `${ok}/${ids.length} requests declined.`);
     router.refresh();
   };
+
+  const bulkPendingDeclineCount = filteredRows.filter(
+    (r) => selectedIds.has(r.id) && r.admin_status === "pending"
+  ).length;
 
   const runBulkAssign = () => {
     if (!canAssignModel) {
@@ -810,7 +832,13 @@ export function CustomRequestsBoard({
           <button
             type="button"
             disabled={bulkBusy}
-            onClick={() => void runBulkDecline()}
+            onClick={() => {
+              if (bulkPendingDeclineCount === 0) {
+                onToast("error", "No eligible requests", "Select pending requests to bulk decline.");
+                return;
+              }
+              setBulkDeclineOpen(true);
+            }}
             className="rounded-lg border border-red-500/30 bg-red-500/20 px-3 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/30 disabled:opacity-50"
           >
             Bulk decline
@@ -833,6 +861,12 @@ export function CustomRequestsBoard({
           </button>
           <p className="w-full text-sm text-white/50 sm:ml-auto sm:w-auto sm:text-right">
             {selectedIds.size} selected · {filteredRows.length} shown
+            {pagination ? (
+              <>
+                {" "}
+                · Showing {filteredRows.length} of {pagination.loadedCount} loaded
+              </>
+            ) : null}
           </p>
         </div>
 
@@ -944,7 +978,7 @@ export function CustomRequestsBoard({
                           type="button"
                           onClick={() => {
                             setDeclineFor(row);
-                            setDeclineReason("");
+                            declineReasonRef.current = "";
                           }}
                           className="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-100 hover:bg-rose-500/25"
                         >
@@ -990,6 +1024,22 @@ export function CustomRequestsBoard({
             })}
           </div>
         )}
+        {pagination ? (
+          <div className="mt-4 flex flex-col items-center gap-2 border-t border-white/[0.06] pt-4 sm:flex-row sm:justify-center sm:gap-4">
+            {pagination.hasMore ? (
+              <button
+                type="button"
+                disabled={pagination.loadingMore}
+                onClick={() => void pagination.onLoadMore()}
+                className="rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
+              >
+                {pagination.loadingMore ? "Loading…" : "Load more"}
+              </button>
+            ) : (
+              <p className="text-xs text-white/45">All requests loaded ({pagination.loadedCount} total from server).</p>
+            )}
+          </div>
+        ) : null}
       </section>
 
       <CustomRequestDetailModal
@@ -1009,38 +1059,49 @@ export function CustomRequestsBoard({
         ) : null}
       </CustomRequestDetailModal>
 
-      {declineFor ? (
-        <ModalFrame title="Decline custom request" onClose={() => !declineBusy && setDeclineFor(null)}>
-          <div>
-            <Label htmlFor="decline-reason">Decline reason</Label>
-            <Textarea
-              id="decline-reason"
-              value={declineReason}
-              onChange={(e) => setDeclineReason(e.target.value)}
-              className="mt-1 min-h-[120px] border-white/10 bg-black/30 text-white"
-              placeholder="Explain why this request cannot proceed..."
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              disabled={declineBusy}
-              onClick={() => setDeclineFor(null)}
-              className="rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={declineBusy || !declineReason.trim()}
-              onClick={() => void submitDecline()}
-              className="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-2 text-sm font-medium text-rose-100 hover:bg-rose-500/25 disabled:opacity-50"
-            >
-              {declineBusy ? "Saving..." : "Decline request"}
-            </button>
-          </div>
-        </ModalFrame>
-      ) : null}
+      <ConfirmDialog
+        open={declineFor != null}
+        onClose={() => {
+          if (declineBusy) return;
+          setDeclineFor(null);
+          declineReasonRef.current = "";
+        }}
+        onConfirm={() => submitDecline()}
+        title="Decline custom request"
+        description={
+          declineFor
+            ? `Reject this request from ${declineFor.fan_username || "the fan"}? A reason is required and will be stored with the record.`
+            : ""
+        }
+        confirmLabel="Decline request"
+        confirmVariant="danger"
+        loading={declineBusy}
+        requireReason
+        reasonPlaceholder="Explain why this request cannot proceed…"
+        onReasonChange={(reason) => {
+          declineReasonRef.current = reason;
+        }}
+      />
+
+      <ConfirmDialog
+        open={bulkDeclineOpen}
+        onClose={() => {
+          if (bulkBusy) return;
+          setBulkDeclineOpen(false);
+          bulkDeclineReasonRef.current = "";
+        }}
+        onConfirm={() => runBulkDeclineWithReason(bulkDeclineReasonRef.current)}
+        title="Bulk decline requests"
+        description={`Decline ${bulkPendingDeclineCount} pending request${bulkPendingDeclineCount === 1 ? "" : "s"}? One reason will be applied to all selected rows.`}
+        confirmLabel="Decline all selected"
+        confirmVariant="danger"
+        loading={bulkBusy}
+        requireReason
+        reasonPlaceholder="Enter the decline reason for all selected requests…"
+        onReasonChange={(reason) => {
+          bulkDeclineReasonRef.current = reason;
+        }}
+      />
 
       {editFor ? (
         <ModalFrame title="Edit custom request" onClose={() => !editBusy && setEditFor(null)}>

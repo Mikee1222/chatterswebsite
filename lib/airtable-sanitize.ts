@@ -201,7 +201,17 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     ]),
   },
   spin_wheel_prizes: {
-    prize_type: new Set(["cash", "extra_break", "double_points", "mystery", "points"]),
+    prize_type: new Set([
+      "cash",
+      "extra_break",
+      "double_points",
+      "mystery",
+      "points",
+      /** Newer bases / manual Airtable options */
+      "custom",
+      "bonus",
+      "break",
+    ]),
   },
   va_tasks: {
     status: new Set(["pending", "in_progress", "done", "skipped"]),

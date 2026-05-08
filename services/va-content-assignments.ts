@@ -1,6 +1,6 @@
 "use server";
 
-import { createRecord, listAllRecords, getRecord, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { createRecord, listAllRecords, getRecord, updateRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
 import {
@@ -444,6 +444,46 @@ export async function getVAContentAssignmentForVa(
   } catch {
     return null;
   }
+}
+
+export type VaUpdatePendingAssignmentInput = {
+  title?: string;
+  description?: string;
+  deadline?: string | null;
+  priority?: string;
+};
+
+/** VA may edit field copy on their own **pending** rows. */
+export async function updatePendingVAContentAssignmentByVa(
+  assignmentRecordId: string,
+  vaUserRecordId: string,
+  patch: VaUpdatePendingAssignmentInput
+): Promise<VaContentAssignmentRecord | null> {
+  const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
+  if (!current || String(current.status ?? "").trim().toLowerCase() !== "pending") return null;
+  const fields: Partial<Fields> = {};
+  if (patch.title !== undefined) fields.title = patch.title.trim();
+  if (patch.description !== undefined) fields.description = patch.description.trim();
+  if (patch.deadline !== undefined) {
+    fields.deadline = patch.deadline?.trim() ? patch.deadline.trim() : "";
+  }
+  if (patch.priority !== undefined) {
+    fields.priority = (patch.priority || "normal").trim().toLowerCase();
+  }
+  if (Object.keys(fields).length === 0) return current;
+  const rec = await updateRecord<Fields>(TABLE, assignmentRecordId, fields);
+  return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+/** Hard-delete a **pending** assignment owned by this VA. */
+export async function deletePendingVAContentAssignmentByVa(
+  assignmentRecordId: string,
+  vaUserRecordId: string
+): Promise<boolean> {
+  const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
+  if (!current || String(current.status ?? "").trim().toLowerCase() !== "pending") return false;
+  await deleteRecord(TABLE, assignmentRecordId);
+  return true;
 }
 
 function appendVaNoteBlock(existing: string, block: string): string {

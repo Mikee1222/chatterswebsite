@@ -8,6 +8,7 @@ import {
   agencyDeclineCustomRequest,
   agencyEditCustomRequest,
 } from "@/services/custom-request-agency-queue";
+import { listCustomRequestsPaginated } from "@/services/custom-requests";
 
 function assertAdminOrManager() {
   return getSessionFromCookies().then((u) => {
@@ -34,6 +35,29 @@ const editSchema = z.object({
 });
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+
+export type LoadMoreCustomRequestsResult =
+  | { ok: true; records: import("@/types").CustomRequest[]; nextOffset: string | null; hasMore: boolean }
+  | { ok: false; error: string };
+
+export async function adminLoadMoreCustomRequests(offset: string): Promise<LoadMoreCustomRequestsResult> {
+  try {
+    await assertAdminOrManager();
+    const o = offset?.trim();
+    if (!o) return { ok: false, error: "Invalid cursor." };
+    const batch = await listCustomRequestsPaginated({}, 1, 50, o);
+    return {
+      ok: true,
+      records: batch.records,
+      nextOffset: batch.nextOffset,
+      hasMore: batch.hasMore,
+    };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "Unauthorized") return { ok: false, error: msg };
+    return { ok: false, error: msg || "Load failed." };
+  }
+}
 
 /**
  * Approve: Airtable `admin_status` is **accepted** (not "approved"). Notifies the linked model user.

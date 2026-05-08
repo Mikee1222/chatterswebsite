@@ -184,11 +184,15 @@ function tablePlans(): TablePlan[] {
               { name: "double_points" },
               { name: "mystery" },
               { name: "points" },
+              { name: "custom" },
+              { name: "bonus" },
+              { name: "break" },
             ],
           },
         },
         { name: "prize_value", type: "singleLineText" },
         { name: "probability", type: "number", options: { precision: 0 } },
+        { name: "sort_order", type: "number", options: { precision: 0 } },
         { name: "active", type: "checkbox", options: { ...checkboxOptions } },
         { name: "color", type: "singleLineText" },
       ],
@@ -213,13 +217,14 @@ const DEFAULT_SPIN_PRIZES: Array<{
   prize_value: string;
   probability: number;
   color: string;
+  sort_order: number;
 }> = [
-  { label: "€10 Bonus", prize_type: "cash", prize_value: "10", probability: 10, color: "#ec4899" },
-  { label: "€5 Bonus", prize_type: "cash", prize_value: "5", probability: 20, color: "#f97316" },
-  { label: "+200 Points", prize_type: "points", prize_value: "200", probability: 25, color: "#8b5cf6" },
-  { label: "+100 Points", prize_type: "points", prize_value: "100", probability: 30, color: "#3b82f6" },
-  { label: "Double Points", prize_type: "double_points", prize_value: "next_shift", probability: 10, color: "#10b981" },
-  { label: "+15 min Break", prize_type: "extra_break", prize_value: "15", probability: 5, color: "#f59e0b" },
+  { label: "€10 Bonus", prize_type: "cash", prize_value: "10", probability: 10, color: "#ec4899", sort_order: 0 },
+  { label: "€5 Bonus", prize_type: "cash", prize_value: "5", probability: 20, color: "#f97316", sort_order: 1 },
+  { label: "+200 Points", prize_type: "points", prize_value: "200", probability: 25, color: "#8b5cf6", sort_order: 2 },
+  { label: "+100 Points", prize_type: "points", prize_value: "100", probability: 30, color: "#3b82f6", sort_order: 3 },
+  { label: "Double Points", prize_type: "double_points", prize_value: "next_shift", probability: 10, color: "#10b981", sort_order: 4 },
+  { label: "+15 min Break", prize_type: "extra_break", prize_value: "15", probability: 5, color: "#f59e0b", sort_order: 5 },
 ];
 
 async function seedSpinWheelPrizes(baseId: string, token: string): Promise<void> {
@@ -229,6 +234,7 @@ async function seedSpinWheelPrizes(baseId: string, token: string): Promise<void>
       prize_type: p.prize_type,
       prize_value: p.prize_value,
       probability: p.probability,
+      sort_order: p.sort_order,
       active: true,
       color: p.color,
     },

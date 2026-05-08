@@ -8,6 +8,8 @@ import type { PointsConfig } from "@/services/points-config";
 import type { AppNotification } from "@/types";
 import { cn } from "@/lib/utils";
 import { RewardsDebugTools } from "@/components/rewards-debug-tools";
+import { AdminSpinWheelPrizesSection } from "@/components/admin-spin-wheel-prizes";
+import type { SpinPrizeRow } from "@/services/spin-wheel";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -72,9 +74,11 @@ function SectionCard({ title, children }: { title: string; children: React.React
 export function RewardsConfigClient({
   initialConfig,
   chatters,
+  spinPrizes,
 }: {
   initialConfig: PointsConfig;
   chatters: { id: string; name: string }[];
+  spinPrizes: SpinPrizeRow[];
 }) {
   const { addToast } = useToast();
   const [config, setConfig] = React.useState<PointsConfig>(() => ({ ...initialConfig }));
@@ -132,6 +136,10 @@ export function RewardsConfigClient({
 
       <SectionCard title="🎰 Spin Wheel">
         <ConfigRow label="Points needed per spin" value={config.POINTS_PER_SPIN} onChange={set("POINTS_PER_SPIN")} />
+      </SectionCard>
+
+      <SectionCard title="🎯 Spin Wheel Prizes">
+        <AdminSpinWheelPrizesSection initialPrizes={spinPrizes} />
       </SectionCard>
 
       <SectionCard title="💎 Level thresholds">
