@@ -26,7 +26,7 @@ export default async function ModelContentCalendarPage({
     console.error("[model/content-calendar] getModelContext failed; rendering fallback", error);
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-white">Content calendar</h1>
+        <h1 className="text-xl font-semibold text-white">Calendar</h1>
         <p className="text-white/70">Unable to load account context right now. Please try again.</p>
       </div>
     );
@@ -35,7 +35,7 @@ export default async function ModelContentCalendarPage({
   if (!user) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-white">Content calendar</h1>
+        <h1 className="text-xl font-semibold text-white">Calendar</h1>
         <p className="text-white/70">Please log in to continue.</p>
       </div>
     );
@@ -44,7 +44,7 @@ export default async function ModelContentCalendarPage({
   if (!linkedModelId || !modelRecord) {
     return (
       <div className="space-y-4">
-        <h1 className="text-xl font-semibold text-white">Content calendar</h1>
+        <h1 className="text-xl font-semibold text-white">Calendar</h1>
         <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
           Your account is not linked to a model profile. Contact an admin to link your account.
         </p>

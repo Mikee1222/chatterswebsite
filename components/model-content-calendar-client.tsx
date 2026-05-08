@@ -569,7 +569,7 @@ export function ModelContentCalendarClient({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 gap-y-3">
-              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Content calendar</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-white md:text-3xl">Calendar</h1>
               <div className="flex rounded-xl border border-white/10 bg-white/[0.04] p-0.5">
                 <button
                   type="button"

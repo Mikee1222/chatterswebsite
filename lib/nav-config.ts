@@ -158,7 +158,7 @@ const adminNav: NavItem[] = [
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
-/** Model: home, earnings (placeholder), calendar, schedule, settings; customs / lives / availability on + menu. */
+/** Model: home, earnings (placeholder), calendar, availability (/schedule), settings; customs / lives on + menu. */
 const modelNav: NavItem[] = [
   { href: ROUTES.model.home, label: "Home", iconKey: "Home" },
   {
@@ -168,9 +168,9 @@ const modelNav: NavItem[] = [
     disabled: true,
     badge: "Coming soon",
   },
-  { href: ROUTES.model.contentCalendar, label: "Content calendar", iconKey: "CalendarDays" },
+  { href: ROUTES.model.contentCalendar, label: "Calendar", iconKey: "CalendarDays" },
   { href: ROUTES.model.contentAssignments, label: "VA content", iconKey: "FileText" },
-  { href: ROUTES.model.schedule, label: "My schedule", iconKey: "CalendarClock" },
+  { href: ROUTES.model.schedule, label: "Availability", iconKey: "CalendarClock" },
   { href: ROUTES.model.customs, label: "Custom requests", iconKey: "Package" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];

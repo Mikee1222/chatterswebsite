@@ -53,28 +53,32 @@ function formatErrorPayload(error: unknown): string {
 
 type Props = {
   modelId: string;
-  initialItems: ModelScheduleItem[];
   weekStart: string;
-  periodDates: string[];
-  predictedPeriodStart: string | null;
   currentPeriod: ModelPeriodRecord | null;
-  initialAvailability: ModelWeeklyAvailabilityRequest[];
   initialTimeOff: ModelTimeOffRequest[];
   initialAction?: string | null;
   resolveWeekHref?: (mondayYmd: string) => string;
+  /** When true, render Mon–Sun program grid + item modal (admin). Model availability page passes false. */
+  showProgramGrid?: boolean;
+  /** Below: used only when `showProgramGrid` is true */
+  initialItems?: ModelScheduleItem[];
+  periodDates?: string[];
+  predictedPeriodStart?: string | null;
+  initialAvailability?: ModelWeeklyAvailabilityRequest[];
 };
 
 export function ModelScheduleClient({
   modelId,
-  initialItems,
   weekStart: initialWeekStart,
-  periodDates,
-  predictedPeriodStart,
   currentPeriod,
-  initialAvailability,
   initialTimeOff,
   initialAction,
   resolveWeekHref,
+  showProgramGrid = true,
+  initialItems = [],
+  periodDates = [],
+  predictedPeriodStart = null,
+  initialAvailability = [],
 }: Props) {
   void modelId;
   const { t } = useTranslations();
@@ -120,14 +124,21 @@ export function ModelScheduleClient({
   const timeOffFormRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => setItems(initialItems), [initialItems]);
-  React.useEffect(() => setAvailability(initialAvailability), [initialAvailability, weekStart]);
+  React.useEffect(() => {
+    if (!showProgramGrid) return;
+    setAvailability(initialAvailability);
+  }, [initialAvailability, weekStart, showProgramGrid]);
   React.useEffect(() => setTimeOff(initialTimeOff), [initialTimeOff, weekStart]);
 
-  const periodDateSet = React.useMemo(() => new Set(periodDates), [periodDates]);
+  const periodDateSet = React.useMemo(() => (showProgramGrid ? new Set(periodDates) : new Set<string>()), [periodDates, showProgramGrid]);
 
-  const weekDates = React.useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
+  const weekDates = React.useMemo(
+    () => (showProgramGrid ? Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)) : []),
+    [weekStart, showProgramGrid]
+  );
 
   const itemsByDate = React.useMemo(() => {
+    if (!showProgramGrid) return new Map<string, ModelScheduleItem[]>();
     const map = new Map<string, ModelScheduleItem[]>();
     for (const item of items) {
       if (!item.date) continue;
@@ -139,9 +150,10 @@ export function ModelScheduleClient({
       list.sort((a, b) => (a.start_time || "").localeCompare(b.start_time || ""));
     }
     return map;
-  }, [items]);
+  }, [items, showProgramGrid]);
 
   const availabilityByDay = React.useMemo(() => {
+    if (!showProgramGrid) return new Map<WeeklyProgramDay, ModelWeeklyAvailabilityRequest[]>();
     const m = new Map<WeeklyProgramDay, ModelWeeklyAvailabilityRequest[]>();
     for (const d of WEEKLY_PROGRAM_DAY_OPTIONS) m.set(d, []);
     for (const r of availability) {
@@ -151,7 +163,7 @@ export function ModelScheduleClient({
       m.set(r.day, list);
     }
     return m;
-  }, [availability, weekStart]);
+  }, [availability, weekStart, showProgramGrid]);
 
   const scrollTarget = initialAction ?? actionFromUrl;
   React.useEffect(() => {
@@ -298,89 +310,89 @@ export function ModelScheduleClient({
         <span className="text-sm font-medium text-white/80">{formatWeekLabel(weekStart)}</span>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {weekDates.map((date, idx) => {
-          const dayItems = itemsByDate.get(date) ?? [];
-          const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
-          const availRows = availabilityByDay.get(weekday) ?? [];
-          const offRows = dateInTimeOff(date);
-          const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
-          return (
-            <div key={date} className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl">
-              {periodDateSet.has(date) && (
-                <div className="mb-2 flex items-center gap-1">
-                  <div className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
-                  <span className="text-xs text-red-400">{t("schedule.periodDay")}</span>
-                </div>
-              )}
-              {predictedDay && !periodDateSet.has(date) && (
-                <div className="mb-2 flex items-center gap-1">
-                  <div className="h-2 w-2 rounded-full bg-amber-400" />
-                  <span className="text-xs text-amber-300">{t("schedule.predictedPeriod")}</span>
-                </div>
-              )}
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">
-                {formatScheduleWeekdayDateLine(date, locale)}
-              </p>
-              {offRows.length > 0 && (
-                <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
-                  <span className="font-medium">{t("schedule.timeOff")}</span>
-                  {offRows.map((o) => (
-                    <p key={o.id} className="mt-1 text-white/70">
-                      {o.reason.slice(0, 80)}
-                      {o.reason.length > 80 ? "…" : ""}
-                    </p>
-                  ))}
-                </div>
-              )}
-              {availRows.length > 0 && (
-                <ul className="mb-3 space-y-1.5 border-b border-white/10 pb-3">
-                  {availRows.map((r) => (
-                    <li key={r.id} className="text-xs text-[hsl(330,90%,78%)]/90">
-                      <span className="font-medium text-white/80">{r.entry_type}</span>
-                      {r.time_windows.length > 0 ? (
-                        <span className="ml-1 text-white/60">{formatModelAvailabilityWindows(r.time_windows)}</span>
-                      ) : r.start_time && r.end_time ? (
-                        <span className="ml-1 text-white/60">{formatTimeRange(r.start_time, r.end_time)}</span>
-                      ) : null}
-                      {r.notes?.trim() ? <span className="mt-0.5 block text-white/45">{r.notes}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {dayItems.length === 0 ? (
-                <p className="py-4 text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
-              ) : (
-                <ul className="space-y-2">
-                  {dayItems.map((item) => (
-                    <li key={item.id}>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedItem(item)}
-                        className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.1]"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="min-w-0 flex-1 font-semibold capitalize text-white">
-                            {item.title?.trim() || itemTypeLabel(item.item_type)}
-                          </span>
-                          {(item.start_time || item.end_time) && (
-                            <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-white/50">
-                              {formatTimeRange(item.start_time, item.end_time)}
+      {showProgramGrid ? (
+        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {weekDates.map((date, idx) => {
+            const dayItems = itemsByDate.get(date) ?? [];
+            const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
+            const availRows = availabilityByDay.get(weekday) ?? [];
+            const offRows = dateInTimeOff(date);
+            const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
+            return (
+              <div key={date} className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl">
+                {periodDateSet.has(date) && (
+                  <div className="mb-2 flex items-center gap-1">
+                    <div className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
+                    <span className="text-xs text-red-400">{t("schedule.periodDay")}</span>
+                  </div>
+                )}
+                {predictedDay && !periodDateSet.has(date) && (
+                  <div className="mb-2 flex items-center gap-1">
+                    <div className="h-2 w-2 rounded-full bg-amber-400" />
+                    <span className="text-xs text-amber-300">{t("schedule.predictedPeriod")}</span>
+                  </div>
+                )}
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-white/50">{formatScheduleWeekdayDateLine(date, locale)}</p>
+                {offRows.length > 0 && (
+                  <div className="mb-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                    <span className="font-medium">{t("schedule.timeOff")}</span>
+                    {offRows.map((o) => (
+                      <p key={o.id} className="mt-1 text-white/70">
+                        {o.reason.slice(0, 80)}
+                        {o.reason.length > 80 ? "…" : ""}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {availRows.length > 0 && (
+                  <ul className="mb-3 space-y-1.5 border-b border-white/10 pb-3">
+                    {availRows.map((r) => (
+                      <li key={r.id} className="text-xs text-[hsl(330,90%,78%)]/90">
+                        <span className="font-medium text-white/80">{r.entry_type}</span>
+                        {r.time_windows.length > 0 ? (
+                          <span className="ml-1 text-white/60">{formatModelAvailabilityWindows(r.time_windows)}</span>
+                        ) : r.start_time && r.end_time ? (
+                          <span className="ml-1 text-white/60">{formatTimeRange(r.start_time, r.end_time)}</span>
+                        ) : null}
+                        {r.notes?.trim() ? <span className="mt-0.5 block text-white/45">{r.notes}</span> : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                {dayItems.length === 0 ? (
+                  <p className="py-4 text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
+                ) : (
+                  <ul className="space-y-2">
+                    {dayItems.map((item) => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedItem(item)}
+                          className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.1]"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <span className="min-w-0 flex-1 font-semibold capitalize text-white">
+                              {item.title?.trim() || itemTypeLabel(item.item_type)}
                             </span>
+                            {(item.start_time || item.end_time) && (
+                              <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-white/50">
+                                {formatTimeRange(item.start_time, item.end_time)}
+                              </span>
+                            )}
+                          </div>
+                          {item.duration_minutes != null && (
+                            <p className="mt-1 text-xs text-white/50">{item.duration_minutes} min</p>
                           )}
-                        </div>
-                        {item.duration_minutes != null && (
-                          <p className="mt-1 text-xs text-white/50">{item.duration_minutes} min</p>
-                        )}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
 
       <div ref={availabilityFormRef} className="scroll-mt-24 space-y-4 rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl">
         <h2 className="text-lg font-semibold text-white">{t("schedule.submitAvailability")}</h2>
@@ -529,6 +541,7 @@ export function ModelScheduleClient({
         </form>
       </div>
 
+      {showProgramGrid ? (
       <BeautifulDetailModal
         open={selectedItem != null}
         onOpenChange={(open) => {
@@ -609,6 +622,7 @@ export function ModelScheduleClient({
           </section>
         ) : null}
       </BeautifulDetailModal>
+      ) : null}
     </div>
   );
 }

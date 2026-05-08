@@ -145,10 +145,10 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.admin.home) return "Admin";
   if (pathname === ROUTES.model.home || pathname === ROUTES.model.dashboard || pathname.startsWith("/model")) {
     if (pathname === ROUTES.model.myEarnings) return "My earnings";
-    if (pathname === ROUTES.model.contentCalendar) return "Content calendar";
+    if (pathname === ROUTES.model.contentCalendar) return "Calendar";
     if (pathname === ROUTES.model.contentAssignments) return "VA content";
     if (pathname === ROUTES.model.weeklyAvailability) return "Weekly availability";
-    if (pathname === ROUTES.model.schedule) return "Schedule";
+    if (pathname === ROUTES.model.schedule) return "Availability";
     if (pathname === ROUTES.model.tasks) return "Tasks";
     if (pathname === ROUTES.model.liveStreams) return "Live streams";
     if (pathname === ROUTES.model.customs) return "Customs";
