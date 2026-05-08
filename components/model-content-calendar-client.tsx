@@ -17,6 +17,7 @@ import { addDays, addWeeks, getMondayOfWeek } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
 import type { CustomRequest, ModelPersonalEvent, ModelPersonalEventType, ModelTaskRecord, VaContentAssignmentRecord } from "@/types";
 import { personalEventEmoji, personalEventLabel } from "@/services/model-personal-events";
+import { PeriodStatusBanner, type PeriodStatusBannerProps } from "@/components/period-status-banner";
 
 export type ContentCalendarEvent = {
   id: string;
@@ -352,6 +353,11 @@ function CalendarEventPopover(props: {
   return createPortal(portal, document.body);
 }
 
+function ymdInLoggedPeriod(ymd: string, periods: { start_date: string; end_date: string }[]): boolean {
+  if (!periods.length || !ymd) return false;
+  return periods.some((p) => p.start_date <= ymd && ymd <= p.end_date);
+}
+
 function weekRangeLabel(mondayYmd: string): string {
   const sun = addDays(mondayYmd, 6);
   const a = parseLocalYmd(mondayYmd);
@@ -372,6 +378,11 @@ export type ModelContentCalendarClientProps = {
   personalEvents: ModelPersonalEvent[];
   modelName?: string;
   openAddEventInitially?: boolean;
+  /** When non-null (server only sends when tracking is enabled), renders the period strip below the calendar header. */
+  periodBannerProps?: PeriodStatusBannerProps | null;
+  /** Logged period windows for day-cell shading (tracking opted-in models only). */
+  loggedPeriodSpans?: { start_date: string; end_date: string }[];
+  predictedNextStart?: string | null;
 };
 
 export function ModelContentCalendarClient({
@@ -381,6 +392,9 @@ export function ModelContentCalendarClient({
   personalEvents: initialPersonalEvents,
   modelName,
   openAddEventInitially = false,
+  periodBannerProps = null,
+  loggedPeriodSpans = [],
+  predictedNextStart = null,
 }: ModelContentCalendarClientProps) {
   const reduceMotion = useReducedMotion();
   const [view, setView] = React.useState<"week" | "month">("week");
@@ -640,6 +654,8 @@ export function ModelContentCalendarClient({
           </div>
         </div>
 
+        {periodBannerProps ? <PeriodStatusBanner {...periodBannerProps} /> : null}
+
         <div className="flex flex-wrap items-center gap-2">
           {(["all", "va", "custom", "task"] as const).map((k) => (
             <button
@@ -688,20 +704,34 @@ export function ModelContentCalendarClient({
             const d = parseLocalYmd(ymd);
             const isTodayDay = todayLocalYmd() === ymd;
             const slots = slotsForDay(ymd);
+            const isPeriodDay = ymdInLoggedPeriod(ymd, loggedPeriodSpans);
+            const isPredictedDay = Boolean(predictedNextStart && ymd === predictedNextStart);
             return (
               <div key={ymd} className="flex min-w-0 flex-col gap-1">
                 <div className="text-center">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{WEEKDAYS_MON[i]}</div>
+                  <div className={cn("mt-0.5 flex min-h-[14px] items-center justify-center", isPeriodDay && "text-rose-400")}>
+                    {isPeriodDay ? <span className="text-xs leading-none">🩸</span> : null}
+                  </div>
                   <div
                     className={cn(
                       "mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold tabular-nums",
-                      isTodayDay ? "bg-pink-500 text-white" : "text-white"
+                      isTodayDay ? "bg-pink-500 text-white" : isPeriodDay ? "text-rose-400" : "text-white"
                     )}
                   >
                     {d.getDate()}
                   </div>
                 </div>
-                <div className="min-h-[8rem] flex-1 space-y-1 rounded-xl border border-white/[0.08] bg-white/[0.03] p-2">
+                <div
+                  className={cn(
+                    "min-h-[8rem] flex-1 space-y-1 rounded-xl border p-2",
+                    isPeriodDay && "border-rose-500/20 bg-rose-500/10",
+                    !isPeriodDay &&
+                      isPredictedDay &&
+                      "border-amber-500/20 bg-amber-500/10",
+                    !isPeriodDay && !isPredictedDay && "border-white/[0.08] bg-white/[0.03]"
+                  )}
+                >
                   {slots.length === 0 ? (
                     <p className="pt-4 text-center text-[10px] text-white/20">—</p>
                   ) : (
@@ -764,24 +794,33 @@ export function ModelContentCalendarClient({
               <div key={ri} className="grid grid-cols-7 divide-x divide-white/10">
                 {row.map((cell, ci) => {
                   const slots = cell.ymd ? slotsForDay(cell.ymd) : [];
+                  const isPeriodDay = cell.ymd ? ymdInLoggedPeriod(cell.ymd, loggedPeriodSpans) : false;
+                  const isPredictedDay = Boolean(cell.ymd && predictedNextStart && cell.ymd === predictedNextStart);
                   return (
                     <div
                       key={ci}
                       className={cn(
                         "min-h-[112px] p-1.5 sm:min-h-[132px] sm:p-2",
                         !cell.inMonth && "bg-black/25",
-                        cell.inMonth && "bg-transparent"
+                        cell.inMonth && !isPeriodDay && !isPredictedDay && "bg-transparent",
+                        cell.inMonth && isPeriodDay && "bg-rose-500/[0.10]",
+                        cell.inMonth && !isPeriodDay && isPredictedDay && "bg-amber-500/[0.10]"
                       )}
                     >
                       {cell.ymd ? (
                         <>
                           <div
                             className={cn(
-                              "mb-1 text-right text-xs font-medium tabular-nums",
+                              "mb-1 flex items-center justify-end gap-1 text-xs font-medium tabular-nums",
                               cell.inMonth ? "text-white/70" : "text-white/25",
-                              todayLocalYmd() === cell.ymd && "rounded-full bg-pink-500 px-2 py-0.5 font-bold text-white"
+                              todayLocalYmd() === cell.ymd && "rounded-full bg-pink-500 px-2 py-0.5 font-bold text-white",
+                              cell.inMonth && isPeriodDay && todayLocalYmd() !== cell.ymd && "text-rose-400"
                             )}
                           >
+                            {isPeriodDay ? <span className="mr-0.5 text-[10px] leading-none text-rose-400">🩸</span> : null}
+                            {isPredictedDay && !isPeriodDay ? (
+                              <span className="mr-0.5 text-[10px] leading-none text-amber-400">🗓</span>
+                            ) : null}
                             {Number(cell.ymd.slice(8, 10))}
                           </div>
                           <div className="flex max-h-[5.5rem] flex-col gap-1 overflow-y-auto">

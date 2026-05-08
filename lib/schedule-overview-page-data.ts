@@ -1,17 +1,85 @@
 import type { AdminScheduleOverviewRow } from "@/lib/admin-schedule-overview-rows";
 import { buildAdminScheduleOverviewRows } from "@/lib/admin-schedule-overview-rows";
-import { addDays, addWeeks, getThisWeekMonday, parseWeekStart } from "@/lib/weekly-program";
+import { addDays, addWeeks, getThisWeekMonday, getTodayYmd, parseWeekStart } from "@/lib/weekly-program";
 import { listAcceptedCustomRequestsInDateRange } from "@/services/custom-requests";
+import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
 import { listAllModelLiveStreamsInRange } from "@/services/model-live-streams";
 import { listAllModelScheduleItemsInRange } from "@/services/model-schedule";
 import { listAllModelss } from "@/services/modelss";
 import { listModelPersonalEventsInDateRange } from "@/services/model-personal-events";
 import { listAllUsers } from "@/services/users";
 import { listAllVAContentAssignmentsInRange } from "@/services/va-content-assignments";
+import type { ModelRecord } from "@/types";
 
 const WEEKS_PAD = 8;
 
 export type ScheduleOverviewPageModelOption = { id: string; name: string };
+
+/** Per-model period snapshot when `trackingEnabled` (otherwise hide period UI entirely). */
+export type ScheduleOverviewPeriodIndicator = {
+  trackingEnabled: boolean;
+  currentlyInPeriod: boolean;
+  lastPeriodDate: string | null;
+  nextExpectedDate: string | null;
+  daysUntilNext: number | null;
+};
+
+function ymdCalendarDayDiff(fromYmd: string, toYmd: string): number {
+  const a = Date.parse(`${fromYmd}T12:00:00.000Z`);
+  const b = Date.parse(`${toYmd}T12:00:00.000Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
+
+async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<Record<string, ScheduleOverviewPeriodIndicator>> {
+  const today = getTodayYmd();
+  const entries = await Promise.all(
+    models.map(async (m) => {
+      if (!m.period_tracking_enabled) {
+        const empty: ScheduleOverviewPeriodIndicator = {
+          trackingEnabled: false,
+          currentlyInPeriod: false,
+          lastPeriodDate: null,
+          nextExpectedDate: null,
+          daysUntilNext: null,
+        };
+        return [m.id, empty] as const;
+      }
+      try {
+        const [current, upcoming, periods] = await Promise.all([
+          getCurrentPeriod(m.id),
+          getUpcomingPeriod(m.id, m),
+          getPeriodsForModel(m.id),
+        ]);
+        const lastPeriodDate = periods[0]?.start_date ?? null;
+        const nextExpectedDate = upcoming?.predicted_start ?? null;
+        const daysUntilNext = nextExpectedDate != null ? ymdCalendarDayDiff(today, nextExpectedDate) : null;
+        return [
+          m.id,
+          {
+            trackingEnabled: true,
+            currentlyInPeriod: !!current,
+            lastPeriodDate,
+            nextExpectedDate,
+            daysUntilNext,
+          } satisfies ScheduleOverviewPeriodIndicator,
+        ] as const;
+      } catch {
+        return [
+          m.id,
+          {
+            trackingEnabled: true,
+            currentlyInPeriod: false,
+            lastPeriodDate: null,
+            nextExpectedDate: null,
+            daysUntilNext: null,
+          } satisfies ScheduleOverviewPeriodIndicator,
+        ] as const;
+      }
+    })
+  );
+  return Object.fromEntries(entries);
+}
 
 export type ScheduleOverviewPageData = {
   weekStart: string;
@@ -19,6 +87,7 @@ export type ScheduleOverviewPageData = {
   windowEnd: string;
   modelOptions: ScheduleOverviewPageModelOption[];
   rows: AdminScheduleOverviewRow[];
+  periodByModelId: Record<string, ScheduleOverviewPeriodIndicator>;
 };
 
 /**
@@ -103,11 +172,14 @@ export async function loadScheduleOverviewPageData(opts: {
     name: (m.model_name || m.model_id || m.id).trim() || m.id,
   }));
 
+  const periodByModelId = await computePeriodIndicatorsForModels(models);
+
   return {
     weekStart,
     windowStart,
     windowEnd,
     modelOptions,
     rows,
+    periodByModelId,
   };
 }

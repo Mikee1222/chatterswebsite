@@ -77,6 +77,7 @@ export default async function VaScheduleOverviewPage({
         windowEnd={data.windowEnd}
         models={data.modelOptions}
         rows={data.rows}
+        periodByModelId={data.periodByModelId}
       />
     </div>
   );

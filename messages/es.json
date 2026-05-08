@@ -282,7 +282,8 @@
       "statusPeriod": "Período",
       "statusPredictedSoon": "Llega pronto",
       "statusOverdue": "Retrasado",
-      "statusNormal": "Ciclo normal"
+      "statusNormal": "Ciclo normal",
+      "reportMissedNeedPeriod": "Registra un período primero (necesitas historial antes de reportar)"
     },
     "calendar": {
       "title": "Calendario",

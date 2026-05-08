@@ -67,8 +67,8 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
   const [notes, setNotes] = React.useState("");
 
   const sorted = React.useMemo(() => [...periods].sort((a, b) => b.start_date.localeCompare(a.start_date)), [periods]);
-  const recent = sorted.slice(0, 5);
   const latest = sorted[0] ?? null;
+  const canReportMissed = Boolean(latest);
   const currentlyInPeriod = inPeriod(today, sorted);
   const daysToPredicted = predictedNextStart ? dayDiff(today, predictedNextStart) : null;
 
@@ -260,8 +260,12 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
           </button>
           <button
             type="button"
-            disabled={busyAction !== null}
-            onClick={() => setOpenMissedModal(true)}
+            disabled={busyAction !== null || !canReportMissed}
+            title={!canReportMissed ? t("periodTracker.reportMissedNeedPeriod") : undefined}
+            onClick={() => {
+              if (!canReportMissed) return;
+              setOpenMissedModal(true);
+            }}
             className="inline-flex items-center gap-2 rounded-xl border border-amber-400/35 bg-amber-500/15 px-3.5 py-2.5 text-sm font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
           >
             <AlertCircle className="h-4 w-4" />
@@ -290,7 +294,7 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
         </div>
 
         {historyOpen ? (
-          <div className="overflow-hidden rounded-2xl border border-white/10">
+          <div className="max-h-[min(24rem,60vh)] overflow-auto rounded-2xl border border-white/10">
             <table className="w-full text-left text-sm">
               <thead className="bg-white/[0.04] text-white/60">
                 <tr>
@@ -301,7 +305,7 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
                 </tr>
               </thead>
               <tbody>
-                {recent.map((p) => (
+                {sorted.map((p) => (
                   <tr key={p.id} className="border-t border-white/10 text-white/85">
                     <td className="px-3 py-2">{p.start_date}</td>
                     <td className="px-3 py-2">{p.end_date}</td>

@@ -31,6 +31,11 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import type { AdminScheduleOverviewRow, OverviewNormStatus, OverviewRowKind } from "@/lib/admin-schedule-overview-rows";
+import type { ScheduleOverviewPeriodIndicator } from "@/lib/schedule-overview-page-data";
+import {
+  ScheduleOverviewPeriodBadges,
+  ScheduleOverviewPeriodMetaRow,
+} from "@/components/schedule-overview-period-badges";
 import { addDays, addWeeks, formatWeekLabel, getMondayOfWeek, getThisWeekMonday, parseWeekStart, getTodayYmd } from "@/lib/weekly-program";
 import { formatDateOnlyEuropean } from "@/lib/format";
 
@@ -46,6 +51,8 @@ type Props = {
   windowEnd: string;
   models: ModelOption[];
   rows: AdminScheduleOverviewRow[];
+  /** Period snapshots per model record id from schedule overview loader. */
+  periodByModelId?: Record<string, ScheduleOverviewPeriodIndicator>;
   audience?: "admin" | "va";
   /** Alias for `audience="va"`: read-only (no admin links), VA week nav, VA content actions in details. */
   readOnly?: boolean;
@@ -427,6 +434,7 @@ export function AdminModelSchedulesClient({
   windowEnd,
   models,
   rows,
+  periodByModelId = {},
   audience = "admin",
   readOnly = false,
   initialViewMode = "calendar",
@@ -936,7 +944,7 @@ export function AdminModelSchedulesClient({
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">
             <thead className="sticky top-0 z-20">
               <tr className="border-b border-white/10 bg-zinc-950/98 shadow-[0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-md">
-                <th className="sticky left-0 z-30 min-w-[140px] border-r border-white/10 bg-zinc-950/98 px-2 py-2 text-xs font-medium text-white/55 backdrop-blur-md">
+                <th className="sticky left-0 z-30 min-w-[220px] border-r border-white/10 bg-zinc-950/98 px-2 py-2 text-xs font-medium text-white/55 backdrop-blur-md">
                   Model
                 </th>
                 {weekDays.map((d) => {
@@ -966,7 +974,18 @@ export function AdminModelSchedulesClient({
                   transition={{ delay: ri * 0.03 }}
                   className="border-b border-white/5"
                 >
-                  <td className="sticky left-0 z-10 border-r border-white/10 bg-zinc-950/95 px-2 py-2 font-medium text-white/90">{m.name}</td>
+                  <td className="sticky left-0 z-10 max-w-[260px] border-r border-white/10 bg-zinc-950/95 px-2 py-2 align-top font-medium text-white/90">
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <span className="font-semibold text-white">{m.name}</span>
+                        <ScheduleOverviewPeriodBadges
+                          summary={periodByModelId[m.id]}
+                          audience={isVaMode ? "va" : "admin"}
+                        />
+                      </div>
+                      <ScheduleOverviewPeriodMetaRow summary={periodByModelId[m.id]} />
+                    </div>
+                  </td>
                   {weekDays.map((d) => {
                     const cell = filteredRows.filter((r) => r.modelId === m.id && r.date === d);
                     const isTodayCol = d === todayYmd;
@@ -1070,9 +1089,12 @@ export function AdminModelSchedulesClient({
                               <TypeGlyph row={r} />
                               <span className="truncate">{r.title}</span>
                             </span>
-                            <span className="shrink-0 text-xs text-white/65">
-                              {r.modelName}
-                              {r.timeLabel ? ` · ${r.timeLabel}` : ""} · {r.typeLabel}
+                            <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-1 text-xs text-white/65">
+                              <span>{r.modelName}</span>
+                              <ScheduleOverviewPeriodBadges summary={periodByModelId[r.modelId]} audience={isVaMode ? "va" : "admin"} />
+                              <span className="whitespace-nowrap">
+                                {r.timeLabel ? ` · ${r.timeLabel}` : ""} · {r.typeLabel}
+                              </span>
                             </span>
                           </motion.button>
                         </li>
@@ -1121,9 +1143,13 @@ export function AdminModelSchedulesClient({
                         <TypeGlyph row={r} />
                         <span className="truncate">{r.title}</span>
                       </span>
-                      <span className="text-xs text-white/70">
-                        {r.modelName} · {formatDateOnlyEuropean(r.date)}
-                        {r.timeLabel ? ` · ${r.timeLabel}` : ""} · {r.typeLabel} · {r.statusRaw}
+                      <span className="inline-flex flex-wrap items-center justify-end gap-1 text-xs text-white/70">
+                        <span>{r.modelName}</span>
+                        <ScheduleOverviewPeriodBadges summary={periodByModelId[r.modelId]} audience={isVaMode ? "va" : "admin"} />
+                        <span className="whitespace-nowrap">
+                          · {formatDateOnlyEuropean(r.date)}
+                          {r.timeLabel ? ` · ${r.timeLabel}` : ""} · {r.typeLabel} · {r.statusRaw}
+                        </span>
                       </span>
                     </motion.button>
                   </motion.li>

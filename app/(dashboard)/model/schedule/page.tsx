@@ -4,13 +4,21 @@ import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelScheduleClient } from "@/components/model-schedule-client";
 import { listModelScheduleItems, modelScheduleTimeOffItemToRequest } from "@/services/model-schedule";
-import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
+import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod, inclusiveDaySpan } from "@/services/model-periods";
 import { getModelTimeOffRequestsForRange } from "@/services/model-time-off-requests";
-import { getThisWeekMonday, addDays, normalizeWeekStart } from "@/lib/weekly-program";
+import { getThisWeekMonday, addDays, normalizeWeekStart, getTodayYmd } from "@/lib/weekly-program";
 import { modelScheduleUrl } from "@/lib/routes";
 import type { ModelTimeOffRequest } from "@/types";
 import { Suspense } from "react";
 import { ModelPeriodTrackerWidget } from "@/components/model-period-tracker-widget";
+import { PeriodStatusBanner } from "@/components/period-status-banner";
+
+function calendarDayDiffUtc(fromYmd: string, toYmd: string): number {
+  const a = Date.parse(`${fromYmd}T12:00:00.000Z`);
+  const b = Date.parse(`${toYmd}T12:00:00.000Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
 
 export default async function ModelSchedulePage({
   searchParams,
@@ -38,6 +46,11 @@ export default async function ModelSchedulePage({
         <p className="text-white/70">Your account must be linked to a model to manage availability.</p>
       </div>
     );
+  }
+
+  if (process.env.PERIOD_TRACKER_DEBUG === "true" || process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console -- gated schedule / period diagnostic
+    console.log("[schedule] period_tracking_enabled:", modelRecord.period_tracking_enabled);
   }
 
   const rawWeek =
@@ -93,6 +106,13 @@ export default async function ModelSchedulePage({
   const scheduleTimeOffIds = new Set(timeOffFromSchedule.map((r) => r.id));
   const mergedTimeOffRequests = [...timeOffFromSchedule, ...timeOffRequests.filter((t) => !scheduleTimeOffIds.has(t.id))];
 
+  const todayYmd = getTodayYmd();
+  const scheduleLastPeriod = periodHistory[0]?.start_date ?? null;
+  const scheduleDaysUntilNext =
+    predictedPeriodStart != null ? calendarDayDiffUtc(todayYmd, predictedPeriodStart) : null;
+  const scheduleCurrentDay =
+    currentPeriod != null ? inclusiveDaySpan(currentPeriod.start_date, todayYmd) : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -102,12 +122,22 @@ export default async function ModelSchedulePage({
         </p>
       </div>
       {modelRecord.period_tracking_enabled ? (
-        <ModelPeriodTrackerWidget
-          periods={periodHistory}
-          predictedNextStart={predictedPeriodStart}
-          avgCycleLength={modelRecord.avg_cycle_length ?? null}
-          avgPeriodLength={modelRecord.avg_period_length ?? null}
-        />
+        <>
+          <PeriodStatusBanner
+            periodTrackingEnabled
+            currentlyInPeriod={currentPeriod != null}
+            currentPeriodDay={scheduleCurrentDay}
+            lastPeriodDate={scheduleLastPeriod}
+            nextExpectedDate={predictedPeriodStart}
+            daysUntilNext={scheduleDaysUntilNext}
+          />
+          <ModelPeriodTrackerWidget
+            periods={periodHistory}
+            predictedNextStart={predictedPeriodStart}
+            avgCycleLength={modelRecord.avg_cycle_length ?? null}
+            avgPeriodLength={modelRecord.avg_period_length ?? null}
+          />
+        </>
       ) : null}
       <Suspense fallback={<div className="h-48 animate-pulse rounded-2xl bg-white/[0.04]" />}>
         <ModelScheduleClient

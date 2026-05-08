@@ -7,6 +7,16 @@ import { listVAContentAssignmentsForModel } from "@/services/va-content-assignme
 import { ModelContentCalendarClient } from "@/components/model-content-calendar-client";
 import { Suspense } from "react";
 import { listModelPersonalEventsForModel } from "@/services/model-personal-events";
+import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod, inclusiveDaySpan } from "@/services/model-periods";
+import { getTodayYmd } from "@/lib/weekly-program";
+import type { PeriodStatusBannerProps } from "@/components/period-status-banner";
+
+function calendarDayDiffUtc(fromYmd: string, toYmd: string): number {
+  const a = Date.parse(`${fromYmd}T12:00:00.000Z`);
+  const b = Date.parse(`${toYmd}T12:00:00.000Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
 
 /**
  * Airtable `custom_requests.admin_status` uses **accepted** (not "approved") for admin-approved rows.
@@ -56,7 +66,12 @@ export default async function ModelContentCalendarPage({
   let allCustoms: Awaited<ReturnType<typeof listCustomRequestsByModel>> = [];
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
   let personalEvents: Awaited<ReturnType<typeof listModelPersonalEventsForModel>> = [];
-  [assignments, allCustoms, tasks, personalEvents] = await Promise.all([
+  [
+    assignments,
+    allCustoms,
+    tasks,
+    personalEvents,
+  ] = await Promise.all([
     listVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id).catch((error) => {
       console.error("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", error);
       return [];
@@ -79,6 +94,39 @@ export default async function ModelContentCalendarPage({
 
   const modelName = modelRecord.model_name?.trim() || undefined;
 
+  let periodBannerProps: PeriodStatusBannerProps | null = null;
+  let loggedPeriodSpans: { start_date: string; end_date: string }[] = [];
+  let predictedNextStart: string | null = null;
+
+  if (modelRecord.period_tracking_enabled === true) {
+    const [periodHistory, calendarCurrent, calendarUpcoming] = await Promise.all([
+      getPeriodsForModel(linkedModelId).catch((error) => {
+        console.error("[model/content-calendar] getPeriodsForModel failed; using [] fallback", error);
+        return [];
+      }),
+      getCurrentPeriod(linkedModelId).catch((error) => {
+        console.error("[model/content-calendar] getCurrentPeriod failed; using null fallback", error);
+        return null;
+      }),
+      getUpcomingPeriod(linkedModelId, modelRecord).catch((error) => {
+        console.error("[model/content-calendar] getUpcomingPeriod failed; using null fallback", error);
+        return null;
+      }),
+    ]);
+    loggedPeriodSpans = periodHistory.map((p) => ({ start_date: p.start_date, end_date: p.end_date }));
+    predictedNextStart = calendarUpcoming?.predicted_start ?? null;
+    const today = getTodayYmd();
+    periodBannerProps = {
+      periodTrackingEnabled: true,
+      currentlyInPeriod: calendarCurrent != null,
+      currentPeriodDay:
+        calendarCurrent != null ? inclusiveDaySpan(calendarCurrent.start_date, today) : null,
+      lastPeriodDate: periodHistory[0]?.start_date ?? null,
+      nextExpectedDate: predictedNextStart,
+      daysUntilNext: predictedNextStart != null ? calendarDayDiffUtc(today, predictedNextStart) : null,
+    };
+  }
+
   return (
     <div className="space-y-6">
       <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-white/[0.04]" />}>
@@ -89,6 +137,9 @@ export default async function ModelContentCalendarPage({
           personalEvents={personalEvents}
           modelName={modelName}
           openAddEventInitially={searchParams?.action === "add-personal-event"}
+          periodBannerProps={periodBannerProps}
+          loggedPeriodSpans={loggedPeriodSpans}
+          predictedNextStart={predictedNextStart}
         />
       </Suspense>
     </div>

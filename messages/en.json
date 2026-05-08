@@ -282,7 +282,8 @@
       "statusPeriod": "Period",
       "statusPredictedSoon": "Predicted soon",
       "statusOverdue": "Overdue",
-      "statusNormal": "Normal cycle"
+      "statusNormal": "Normal cycle",
+      "reportMissedNeedPeriod": "Log a period first (you need history before reporting missed)"
     },
     "calendar": {
       "title": "Calendar",

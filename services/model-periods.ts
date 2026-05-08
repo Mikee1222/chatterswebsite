@@ -14,6 +14,14 @@ import { devLog } from "@/lib/dev-log";
 
 const TABLE = "model_periods";
 
+/** Set PERIOD_TRACKER_DEBUG=true on Vercel (or run dev) to trace period fetches in logs. */
+function periodTrace(...args: unknown[]): void {
+  if (process.env.PERIOD_TRACKER_DEBUG === "true" || process.env.NODE_ENV === "development") {
+    // eslint-disable-next-line no-console -- gated diagnostic for period tracker
+    console.log(...args);
+  }
+}
+
 type Fields = {
   start_date?: string;
   end_date?: string;
@@ -109,12 +117,15 @@ const MODEL_LINK_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const
 
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
   if (!modelId) return [];
+  periodTrace("[periods] fetching for modelId:", modelId);
   let records: AirtableRecord<Fields>[] | null = null;
+  let formulaFieldUsed: string | null = null;
   for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
       records = await listAllRecords<Fields>(TABLE, {
         filterByFormula: formulaLinkedContains(fieldName, modelId),
       });
+      formulaFieldUsed = fieldName;
       break;
     } catch (err) {
       if (process.env.NODE_ENV !== "production") {
@@ -128,9 +139,13 @@ export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRe
   if (records == null) {
     const all = await listAllRecords<Fields>(TABLE, {});
     records = all.filter((rec) => linkedModelIdFromPeriodFields(rec.fields as Fields) === modelId);
+    periodTrace("[periods] fallback full-table filter (no formula field worked), matched:", records.length);
+  } else {
+    periodTrace("[periods] formula field:", formulaFieldUsed, "raw records:", records.length);
   }
   const mapped = records.map(mapRecord).filter((p) => p.start_date && p.end_date);
   mapped.sort((a, b) => b.start_date.localeCompare(a.start_date));
+  periodTrace("[periods] after filter (start+end):", mapped.length, "sample:", mapped[0] ?? null);
   return mapped;
 }
 
@@ -175,8 +190,12 @@ export async function getUpcomingPeriod(
   modelId: string,
   model?: ModelRecord | null
 ): Promise<{ predicted_start: string } | null> {
+  periodTrace("[upcoming] modelId:", modelId);
   const periods = await getPeriodsForModel(modelId);
   const latest = periods[0];
+  periodTrace("[upcoming] periods found:", periods.length, "latest:", latest ?? null);
+  periodTrace("[upcoming] missed_period flag:", latest?.missed_period);
+  periodTrace("[upcoming] avg_cycle_length:", model?.avg_cycle_length ?? "(default 28)");
   const lastStart = latest?.start_date;
   if (!lastStart) return null;
   /** Service rule: do not surface a prediction while the latest logged period is marked missed. */
@@ -402,7 +421,15 @@ export async function markCurrentPeriodCameEarly(modelId: string): Promise<void>
 export async function markCurrentPeriodMissed(modelId: string): Promise<void> {
   const row = await getPeriodRecordForFlags(modelId);
   if (!row) throw new Error("NO_PERIOD_ROW");
-  await updatePeriod(row.id, { missed_period: true, predicted_next_date: null });
+  /** Align with `/api/model/period/flags` missed_period branch: clear related flags + sync averages + prediction column. */
+  await updatePeriod(row.id, {
+    missed_period: true,
+    predicted_next_date: null,
+    came_early: false,
+  });
+  await syncModelPeriodAveragesToModelss(modelId);
+  const fresh = await getModelById(modelId);
+  await syncLatestPeriodPredictedNext(modelId, fresh);
 }
 
 /** JSON shape for model period UI / API: current bleed row, computed next start, rolling averages on modelss. */

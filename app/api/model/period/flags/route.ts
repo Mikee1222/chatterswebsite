@@ -62,6 +62,8 @@ export async function PATCH(request: Request) {
         predicted_next_date: null,
       });
       await syncModelPeriodAveragesToModelss(modelId);
+      const freshMissed = await getModelById(modelId);
+      await syncLatestPeriodPredictedNext(modelId, freshMissed);
       if (previousUpcoming?.predicted_start) {
         await sendPeriodPredictionResetNotification({
           modelId,

@@ -69,6 +69,7 @@ export default async function AdminModelSchedulesOverviewPage({
         windowEnd={data.windowEnd}
         models={data.modelOptions}
         rows={data.rows}
+        periodByModelId={data.periodByModelId}
       />
     </div>
   );
