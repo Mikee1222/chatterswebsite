@@ -213,6 +213,11 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
       "break",
     ]),
   },
+  feedback: {
+    user_role: new Set(["chatter", "virtual_assistant", "model", "admin"]),
+    type: new Set(["bug", "suggestion", "other"]),
+    status: new Set(["new", "in_review", "resolved", "wont_fix"]),
+  },
   va_tasks: {
     status: new Set(["pending", "in_progress", "done", "skipped"]),
     priority: new Set(["low", "normal", "high", "urgent"]),
@@ -288,6 +293,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   challenges: new Set(["created_by"]),
   points_transactions: new Set(["created_at"]),
   spin_wheel_spins: new Set(["created_at"]),
+  feedback: new Set(["created_at"]),
   /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
   challenge_progress: new Set(["updated_at"]),
   /** Break reminder ISO datetime; explicit so payloads are never treated as non-writable elsewhere. */

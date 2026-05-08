@@ -90,6 +90,7 @@ export const ROUTES = {
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",
+    feedback: "/admin/feedback",
     spinResults: "/admin/spin-results",
     /** Admin-only notification lab (`ENABLE_NOTIFICATION_TESTING` in production). */
     testNotifications: "/admin/test-notifications",

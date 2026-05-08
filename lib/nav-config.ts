@@ -64,7 +64,8 @@ export type NavIconKey =
   | "Target"
   | "LineChart"
   | "CalendarDays"
-  | "CalendarClock";
+  | "CalendarClock"
+  | "MessageSquarePlus";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -143,6 +144,7 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
   { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
+  { href: ROUTES.admin.feedback, label: "Feedback", iconKey: "MessageSquarePlus" },
   { href: ROUTES.activityLogs, label: "Activity logs", iconKey: "Activity" },
   {
     href: ROUTES.admin.notificationDiagnostic,

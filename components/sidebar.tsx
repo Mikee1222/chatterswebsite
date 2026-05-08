@@ -27,6 +27,7 @@ import {
   LineChart,
   CalendarDays,
   CalendarClock,
+  MessageSquarePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -66,6 +67,7 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   LineChart,
   CalendarDays,
   CalendarClock,
+  MessageSquarePlus,
 };
 
 const BETA_BADGE_CLASS =

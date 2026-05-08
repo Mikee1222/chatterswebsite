@@ -31,6 +31,7 @@ import {
   LineChart,
   CalendarDays,
   CalendarClock,
+  MessageSquarePlus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -98,6 +99,7 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   LineChart,
   CalendarDays,
   CalendarClock,
+  MessageSquarePlus,
 };
 
 function getMobileTitle(pathname: string): string {
@@ -125,6 +127,7 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.admin.customs) return "Customs";
   if (pathname === ROUTES.accounts || pathname.startsWith("/accounts")) return "Accounts";
   if (pathname === ROUTES.admin.accounts) return "Accounts";
+  if (pathname === ROUTES.admin.feedback) return "Feedback";
   if (pathname === ROUTES.admin.shiftActivity) return "Shift activity";
   if (pathname === ROUTES.admin.earnings || pathname.startsWith(`${ROUTES.admin.earnings}/`)) return "Earnings";
   if (pathname === ROUTES.admin.rewardsConfig) return "Rewards config";
