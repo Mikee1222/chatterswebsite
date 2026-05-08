@@ -3,8 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Gauge, Info, Layers, Sparkles, StickyNote, User } from "lucide-react";
+import { Activity, Gauge, Info, Layers, Link2, Sparkles, StickyNote, User } from "lucide-react";
 import { updateModel } from "@/services/modelss";
+import { relinkModelUserForModelProfile } from "@/services/users";
 import type { ModelRecord } from "@/types";
 import { ROUTES } from "@/lib/routes";
 import { btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
@@ -18,13 +19,30 @@ const PLATFORMS = ["onlyfans", "fanvue", "other"] as const;
 const STATUS_OPTIONS = ["active", "inactive"] as const;
 const PRIORITY_OPTIONS = ["low", "medium", "high"] as const;
 
-export function EditModelForm({ model }: { model: ModelRecord }) {
+type LinkedUserOption = {
+  id: string;
+  name: string;
+  email: string;
+  alreadyLinked: boolean;
+  linkedToThisModel: boolean;
+};
+
+export function EditModelForm({
+  model,
+  userOptions = [],
+  currentLinkedUserId = "",
+}: {
+  model: ModelRecord;
+  userOptions?: LinkedUserOption[];
+  currentLinkedUserId?: string;
+}) {
   const router = useRouter();
   const [modelName, setModelName] = React.useState(model.model_name);
   const [platform, setPlatform] = React.useState(model.platform);
   const [status, setStatus] = React.useState(model.status);
   const [priority, setPriority] = React.useState(model.priority || "medium");
   const [notes, setNotes] = React.useState(model.notes || "");
+  const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [pending, setPending] = React.useState(false);
 
   async function submit(e: React.FormEvent<HTMLFormElement>) {
@@ -38,6 +56,7 @@ export function EditModelForm({ model }: { model: ModelRecord }) {
         priority,
         notes: notes.trim(),
       });
+      await relinkModelUserForModelProfile(model.id, linkedUserId || null);
       router.push(`${ROUTES.accounts}?section=modelss&success=model_updated`);
       router.refresh();
     } finally {
@@ -82,6 +101,34 @@ export function EditModelForm({ model }: { model: ModelRecord }) {
           {PRIORITY_OPTIONS.map((p) => (
             <option key={p} value={p} className={selectOptionClass}>
               {p}
+            </option>
+          ))}
+        </FormSelect>
+      </FormField>
+      <FormField
+        label="Linked user account"
+        icon={<Link2 />}
+        htmlFor="linked_user_id"
+        description="The login account that belongs to this model."
+      >
+        <FormSelect
+          id="linked_user_id"
+          name="linked_user_id"
+          value={linkedUserId}
+          onChange={(e) => setLinkedUserId(e.target.value)}
+        >
+          <option value="" className={selectOptionClass}>
+            — No account linked —
+          </option>
+          {userOptions.map((u) => (
+            <option
+              key={u.id}
+              value={u.id}
+              disabled={u.alreadyLinked && !u.linkedToThisModel}
+              className={selectOptionClass}
+            >
+              {u.name} ({u.email})
+              {u.alreadyLinked && !u.linkedToThisModel ? " (linked to other model)" : ""}
             </option>
           ))}
         </FormSelect>

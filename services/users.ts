@@ -178,3 +178,32 @@ export async function setPasswordHash(recordId: string, passwordHash: string): P
     password_hash: passwordHash,
   });
 }
+
+/**
+ * Re-link which model user account owns a specific modelss profile.
+ * - Clears previous user linked to this model (if different)
+ * - Sets selected model user's linked_model_id to this model
+ * - If selectedUserId is null, only clears the existing link
+ */
+export async function relinkModelUserForModelProfile(
+  modelRecordId: string,
+  selectedUserId: string | null
+): Promise<void> {
+  const modelId = modelRecordId?.trim();
+  if (!modelId) return;
+  const selectedId = selectedUserId?.trim() || null;
+
+  const users = await listAllUsers();
+  const modelUsers = users.filter((u) => u.role === "model");
+  const currentlyLinked = modelUsers.find((u) => u.linked_model_id === modelId) ?? null;
+
+  if (currentlyLinked && currentlyLinked.id !== selectedId) {
+    await updateUser(currentlyLinked.id, { linked_model_id: null });
+  }
+
+  if (!selectedId) return;
+
+  const selected = modelUsers.find((u) => u.id === selectedId);
+  if (!selected) throw new Error("Selected model user account not found.");
+  await updateUser(selectedId, { linked_model_id: modelId });
+}

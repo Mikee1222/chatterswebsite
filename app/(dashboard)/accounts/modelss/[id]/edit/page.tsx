@@ -2,6 +2,7 @@ import Link from "next/link";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getModelById } from "@/services/modelss";
+import { listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditModelForm } from "@/components/edit-model-form";
 
@@ -16,6 +17,18 @@ export default async function EditModelPage({
   const { id } = await params;
   const model = await getModelById(id);
   if (!model) notFound();
+  const allUsers = await listAllUsers();
+  const modelUsers = allUsers.filter((u) => u.role === "model");
+  const currentLinkedUser = modelUsers.find((u) => u.linked_model_id === model.id) ?? null;
+  const userOptions = modelUsers
+    .map((u) => ({
+      id: u.id,
+      name: u.full_name?.trim() || u.email,
+      email: u.email,
+      alreadyLinked: Boolean(u.linked_model_id?.trim()),
+      linkedToThisModel: u.linked_model_id === model.id,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="max-w-md space-y-6">
@@ -29,7 +42,11 @@ export default async function EditModelPage({
       </div>
       <h1 className="text-xl font-semibold text-white">Edit model</h1>
       <div className="glass-card p-6">
-        <EditModelForm model={model} />
+        <EditModelForm
+          model={model}
+          userOptions={userOptions}
+          currentLinkedUserId={currentLinkedUser?.id ?? ""}
+        />
       </div>
     </div>
   );
