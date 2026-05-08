@@ -1,5 +1,3 @@
-"use server";
-
 import { listRecords, createRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import type { ActivityLog } from "@/types";
 

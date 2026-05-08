@@ -1,5 +1,3 @@
-"use server";
-
 import { listAllRecords, createRecord, getRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { ModelScheduleItem, ModelScheduleItemType, ModelTimeOffRequest } from "@/types";
