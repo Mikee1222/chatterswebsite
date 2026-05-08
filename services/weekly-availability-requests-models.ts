@@ -51,7 +51,10 @@ function parseEntryType(raw: unknown): ModelAvailabilityEntryType {
 }
 
 function parseStatus(raw: unknown): WeeklyAvailabilityRequestStatus {
-  const s = typeof raw === "string" ? raw : "";
+  const sRaw = typeof raw === "string" ? raw.trim() : "";
+  if (sRaw === "used_in_schedule") return "used";
+  if (sRaw === "approved") return "reviewed";
+  const s = sRaw;
   const allowed: WeeklyAvailabilityRequestStatus[] = ["submitted", "reviewed", "used", "rejected"];
   return allowed.includes(s as WeeklyAvailabilityRequestStatus) ? (s as WeeklyAvailabilityRequestStatus) : "submitted";
 }

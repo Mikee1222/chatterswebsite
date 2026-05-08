@@ -268,7 +268,6 @@ function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: stri
 const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   shifts: new Set(["total_minutes", "total_hours_decimal", "worked_minutes", "updated_at", "created_at"]),
   shift_models: new Set(["session_minutes", "created_at", "updated_at"]),
-  custom_requests: new Set(["created_at", "updated_at"]),
   modelss: new Set(["created_at", "updated_at"]),
   model_schedule: new Set(["created_at", "updated_at"]),
   model_tasks: new Set(["created_at", "updated_at"]),
@@ -306,6 +305,8 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   points_transactions: new Set(["created_at"]),
   spin_wheel_spins: new Set(["created_at"]),
   feedback: new Set(["created_at"]),
+  /** Allow client-bumped `updated_at` (blocked globally); keep `created_at` non-writable. */
+  custom_requests: new Set(["updated_at"]),
   model_content_requests: new Set(["created_at", "updated_at"]),
   model_expense_requests: new Set(["created_at", "updated_at"]),
   model_personal_events: new Set(["created_at"]),

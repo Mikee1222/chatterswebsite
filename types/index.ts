@@ -225,7 +225,7 @@ export interface CustomRequest {
   /** requested_by_chatter link → users */
   requested_by_chatter_id: string;
   requested_by_chatter_name?: string;
-  /** Optional `custom_requests.assigned_va` link → users (VA handling this request). */
+  /** Optional `custom_requests.assigned_va` — singleLineText or legacy link → users (VA airtable record id). */
   assigned_va_id?: string;
   /** assigned_model link → modelss */
   assigned_model_id: string;

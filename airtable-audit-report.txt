@@ -1,0 +1,1428 @@
+
+> chatter-dashboard@1.0.0 audit:airtable
+> tsx scripts/audit-airtable-schema.ts
+
+
+========== AIRTABLE SCHEMA DUMP ==========
+
+
+TABLE: activity_logs
+────────────────────────────────────────────────────
+  - log_id (singleLineText)
+  - actor_user_id (singleLineText)
+  - actor_name (singleLineText)
+  - action_type (singleSelect)
+     Options [12]: login, logout, shift_started, shift_ended, model_entered, model_left, whale_updated, whale_created, account_created, account_updated, password_reset, model_status_changed
+  - entity_type (singleSelect)
+     Options [6]: whale, shift, model, user, weekly_program, system
+  - entity_id (singleLineText)
+  - summary (singleLineText)
+  - details (multilineText)
+  - created_at (dateTime)
+
+TABLE: billing_cycle_revenues
+────────────────────────────────────────────────────
+  - Number (autoNumber)
+  - billing_cycle (multipleRecordLinks) → linkedTableId: tbl98IpgKQ1PoJPcl
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - model (multipleRecordLinks) → linkedTableId: tbllapr3hraj7KTJE
+  - turnover_usd (number)
+  - fee_percent (number)
+  - fee_usd (formula)
+  - created_at (createdTime)
+  - cycle_period_start (multipleLookupValues)
+  - cycle_period_end (multipleLookupValues)
+  - fee_usd_safe (formula)
+  - cycle_month_key (formula)
+  - cycle_kind (multipleLookupValues)
+  - status (singleSelect)
+     Options [5]: draft, announced, confirmed_paid, pending_review, overdue
+
+TABLE: billing_cycles
+────────────────────────────────────────────────────
+  - Number (autoNumber)
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - kind (singleSelect)
+     Options [2]: chatting_weekly, crm_monthly
+  - period_start (date)
+  - period_end (date)
+  - due_date (date)
+  - amount (number)
+  - currency (singleLineText)
+  - status (singleSelect)
+     Options [5]: draft, announced, pending_review, confirmed_paid, overdue
+  - proof_attachment (multipleAttachments)
+  - payment_submissions (multipleRecordLinks) → linkedTableId: tblIk74ettAGHGvF7
+  - invoices (multipleRecordLinks) → linkedTableId: tblJSVVKaFHatpDoq
+  - client_notified_at (dateTime)
+  - model (multipleRecordLinks) → linkedTableId: tbllapr3hraj7KTJE
+  - model_turnover (number)
+  - client_percentage (number)
+  - amount_due (formula)
+  - total_turnover_usd (rollup)
+  - total_fee_usd (rollup)
+  - amount_crm (number)
+  - model_earnings (singleLineText)
+  - client_percentage_snapshot (number)
+  - field_currency (singleSelect)
+     Options [2]: USD, EUR
+  - submitted_at (dateTime)
+  - submission (multipleRecordLinks) → linkedTableId: tblIk74ettAGHGvF7
+  - billing_cycle_revenues (multipleRecordLinks) → linkedTableId: tblpl7xcRsOGDp0Xq
+
+TABLE: calendar_events
+────────────────────────────────────────────────────
+  - title (singleLineText)
+  - start_datetime (dateTime)
+  - end_datetime (dateTime)
+  - scope (singleSelect)
+     Options [2]: global, client
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - notes (multilineText)
+
+TABLE: challenge_progress
+────────────────────────────────────────────────────
+  - challenge_id (singleLineText)
+  - user_id (singleLineText)
+  - current_value (number)
+  - completed (checkbox)
+  - completed_at (dateTime)
+  - updated_at (dateTime)
+
+TABLE: challenges
+────────────────────────────────────────────────────
+  - title (singleLineText)
+  - description (multilineText)
+  - target_metric (singleSelect)
+     Options [5]: transactions, whales_added, shift_hours, customs_completed, whale_status_upgrades
+  - target_value (number)
+  - reward_points (number)
+  - start_date (date)
+  - end_date (date)
+  - active (checkbox)
+  - created_by (singleLineText)
+  - assigned_users (multilineText)
+
+TABLE: Chatter Complaints
+────────────────────────────────────────────────────
+  - ID (autoNumber)
+  - status (singleSelect)
+     Options [4]: Not Started, Working on it, Done, cant be done
+  - start date (date)
+  - deadline (formula)
+  - type (singleSelect)
+     Options [2]: Πρόταση βελτίωσης, Παράπονο
+  - Creator (multipleRecordLinks) → linkedTableId: tblCSatmon915wSUQ
+  - submitted by (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Attachments (multipleAttachments)
+  - Παράπονο-Βελτίωση (multilineText)
+
+TABLE: Chatter Performance
+────────────────────────────────────────────────────
+  - week Start (formula)
+  - employeess (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - sales (currency)
+  - previous sales (multipleLookupValues)
+  - sales delta (formula)
+  - sales delta % (formula)
+  - messages sent (number)
+  - ppvs sent (number)
+  - ppvs unlocked (number)
+  - fans chatted (singleLineText)
+  - unlock ratio (formula)
+  - golden ratio (formula)
+  - ppv spam ratio (formula)
+  - previous unlock ratio (multipleLookupValues)
+  - unlock change % (formula)
+  - unlock delta % (formula)
+  - performance score (formula)
+  - verdict (formula)
+  - system comment (formula)
+  - locked (formula)
+  - previous week (multipleRecordLinks) → linkedTableId: tblNcKlUjureMsnxv
+  - lock reason  (formula)
+  - report long (formula)
+  - report long text (richText)
+  - Performance Tier (formula)
+  - target met ? (formula)
+  - weekly target (formula)
+  - employee_key (formula)
+  - Week Start (raw) (formula)
+  - infloww username (singleLineText)
+  - unlock delta (formula)
+  - From field: previous week (multipleRecordLinks) → linkedTableId: tblNcKlUjureMsnxv
+  - Date/Time Europe/Athens (singleLineText)
+  - raw data (formula)
+  - week_index (formula)
+  - week label (formula)
+  - weekly target-formula (formula)
+  - target met? (formula)
+
+TABLE: chatter_points
+────────────────────────────────────────────────────
+  - user_id (singleLineText)
+  - total_points (number)
+  - level (singleSelect)
+     Options [4]: Bronze, Silver, Gold, Diamond
+  - streak_days (number)
+  - last_active (date)
+  - spins_available (number)
+
+TABLE: Chatters
+────────────────────────────────────────────────────
+  - Full Name (singleLineText)
+  - Active Chatter (checkbox)
+  - infloww username (singleLineText)
+  - Date of Birth (date)
+  - age (formula)
+  - Phone number (phoneNumber)
+  - Email (singleLineText)
+  - telegram username (singleLineText)
+  - discord username (singleLineText)
+  - English Level (singleSelect)
+     Options [5]: Κακοπαίχτης , rookie , Intermediate, competent , Advanced
+  - contract signed (multipleAttachments)
+  - daily working hours (number)
+  - MSS 2 (multipleRecordLinks) → linkedTableId: tblu1mldVYtBp1my4
+  - Παραπονα-Πρόταση Βελτίωσης για μοντελς (multipleRecordLinks) → linkedTableId: tblGnteKZr5e2ypww
+  - Paypal Money Received (multipleRecordLinks) → linkedTableId: tbldaHCdmb70fiLu5
+  - rebills (multipleRecordLinks) → linkedTableId: tblKv2eZktPVbLRz4
+  - Select (singleSelect)
+     Options [0]: 
+  - Fines & Bonuses (multipleRecordLinks) → linkedTableId: tblV4WcS1GBy5MKqu
+  - Chatting Weekly Progress (singleLineText)
+  - Employee Reports (singleLineText)
+  - Αυτοαξιολογηση (multipleRecordLinks) → linkedTableId: tblVY72CmjGFkdoum
+  - Whale Tracker (multipleRecordLinks) → linkedTableId: tblGPoc1db1hJDBcs
+  - Contract (multipleAttachments)
+  - Chatter Performance (multipleRecordLinks) → linkedTableId: tblNcKlUjureMsnxv
+
+TABLE: Chatters Apply Form
+────────────────────────────────────────────────────
+  - Full Name (singleLineText)
+  - Telegram /Discord username ( e.g. @jahd) (singleLineText)
+  - Phone Number (phoneNumber)
+  - Country / City (singleLineText)
+  - Date of birth  (date)
+  - Instagram (singleLineText)
+  - English Knowlegde (singleSelect)
+     Options [3]: Basic – Can understand simple messages and respond with short phrases. Needs help for slang or dirty talk., Intermediate – Can chat fluently, handle roleplay and upsells, but sometimes struggles with slang or complex sentences, Advanced – Fully fluent, natural with dirty talk, slang, emotional connection, and can write like a native speaker.
+  - You can work : (singleSelect)
+     Options [2]: Full-time, Part-time
+  - How many hours you can work per day (singleSelect)
+     Options [5]: 6, 7, 8, 9, 10+
+  - You are able to work (singleSelect)
+     Options [3]: 5 times a week, 6 times a week, 7 times a week
+  - Do you have experience with OnlyFans or chatting? If yes for how long? (singleLineText)
+  - What do you think a fan is really looking for on OnlyFans? (multilineText)
+  - Why do you want to work as a chatter? (singleLineText)
+  - What are your monthly income goals? (singleSelect)
+     Options [6]: $500, $1000, $1500, $2000, $2500, $3000+
+  - Do you have a stable internet connection and a computer? (singleLineText)
+  - Typing speed (WPM) – upload screenshot (multipleAttachments)
+
+TABLE: client_models
+────────────────────────────────────────────────────
+  - Name (singleLineText)
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - model (multipleRecordLinks) → linkedTableId: tbllapr3hraj7KTJE
+
+TABLE: clients
+────────────────────────────────────────────────────
+  - company_name (singleLineText)
+  - display_name (singleLineText)
+  - email (email)
+  - password (singleLineText)
+  - status (singleSelect)
+     Options [3]: active, inactive, suspended
+  - client models (multipleRecordLinks) → linkedTableId: tblE0XaQPW2ZDrURg
+  - calendar_events (multipleRecordLinks) → linkedTableId: tblkKdMUIyZIgNjJz
+  - payment_methods (multipleRecordLinks) → linkedTableId: tblelOgtZEirJe1U8
+  - billing_cycles (multipleRecordLinks) → linkedTableId: tbl98IpgKQ1PoJPcl
+  - user_type (singleSelect)
+     Options [2]: client, team_member
+  - payment_submissions (multipleRecordLinks) → linkedTableId: tblIk74ettAGHGvF7
+  - invoices (multipleRecordLinks) → linkedTableId: tblJSVVKaFHatpDoq
+  - push_subscriptions (singleLineText)
+  - affiliate_code (singleLineText)
+  - referred_by (singleLineText)
+  - affiliate_active (checkbox)
+  - affiliates_earnings (singleLineText)
+  - affiliates_earnings 2 (singleLineText)
+  - model_earnings (singleLineText)
+  - is_admin (checkbox)
+  - client_percentage (number)
+  - billing_cycles 2 (singleLineText)
+  - net_profit_goal (number)
+  - role (singleSelect)
+     Options [4]: admin, manager, chatter, mistaker
+  - portal_access (checkbox)
+  - billing_cycle_revenues (multipleRecordLinks) → linkedTableId: tblpl7xcRsOGDp0Xq
+
+TABLE: Creators
+────────────────────────────────────────────────────
+  - Creator Name (singleLineText)
+  - Creator Of (singleSelect)
+     Options [2]: Gunzo, Chatting Service
+  - Team (singleSelect)
+     Options [3]: A, B, C
+  - Subscription Status (singleSelect)
+     Options [2]: Free, Paid
+  - Παραπονα για μοντελς (multipleRecordLinks) → linkedTableId: tblGnteKZr5e2ypww
+  - MSS (multipleRecordLinks) → linkedTableId: tblu1mldVYtBp1my4
+  - creator info (multilineText)
+  - Customs (singleLineText)
+  - Paypal Money Received (multipleRecordLinks) → linkedTableId: tbldaHCdmb70fiLu5
+  - rebills (multipleRecordLinks) → linkedTableId: tblKv2eZktPVbLRz4
+  - Whale Tracker (multipleRecordLinks) → linkedTableId: tblGPoc1db1hJDBcs
+  - Content (multipleRecordLinks) → linkedTableId: tbllSrBluMw81VFmK
+
+TABLE: custom_requests
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - chatter_id (singleLineText)
+  - model_name (singleLineText)
+  - description (multilineText)
+  - fan_username (singleLineText)
+  - custom_type (singleSelect)
+     Options [6]: video, photo_set, voice_note, rating, special_request, other
+  - price (singleLineText)
+  - priority (singleSelect)
+     Options [4]: low, normal, urgent, high
+  - status (singleSelect)
+     Options [6]: pending, accepted, recording, completed, delivered, cancelled
+  - created_at (createdTime)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - chatter_name (singleLineText)
+  - model_schedule (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - requested_by_chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - assigned_model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - 	request_title (singleLineText)
+  - request_details (singleLineText)
+  - deadline_requested (singleLineText)
+  - admin_status (singleSelect)
+     Options [3]: pending, accepted, rejected
+  - model_status (singleSelect)
+     Options [6]: waiting_schedule, scheduled, completed, in_progress, declined, uploaded
+  - model_scheduled_date (dateTime)
+  - model_scheduled_start (dateTime)
+  - model_scheduled_end (dateTime)
+  - admin_notes (multilineText)
+  - model_notes (multilineText)
+  - linked_schedule_item (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - whale_username (singleLineText)
+  - request_title (singleLineText)
+  - decline_reason (multilineText)
+  - uploaded_at (dateTime)
+  - uploaded_by_model (checkbox)
+  - model_id (singleLineText)
+
+TABLE: earnings_config
+────────────────────────────────────────────────────
+  - model_id (singleLineText)
+  - agency_cut_percent (singleLineText)
+
+TABLE: feedback
+────────────────────────────────────────────────────
+  - feedback_id (singleLineText)
+  - user_id (singleLineText)
+  - user_name (singleLineText)
+  - user_role (singleSelect)
+     Options [4]: chatter, virtual_assistant, model, admin
+  - type (singleSelect)
+     Options [3]: bug, suggestion, other
+  - page (singleLineText)
+  - title (singleLineText)
+  - description (multilineText)
+  - screenshots (multipleAttachments)
+  - status (singleSelect)
+     Options [4]: new, in_review, resolved, wont_fix
+  - admin_notes (multilineText)
+  - created_at (dateTime)
+
+TABLE: FeedBack
+────────────────────────────────────────────────────
+  - Client Name  (Telegram) (singleLineText)
+  - 1) Πως θα περιέγραφες την συνολική εμπειρία σου μέχρι τώρα; (singleSelect)
+     Options [5]: 🔴 Κακή, 🟠 Μέτρια, 🟡 ΟΚ, 🟢 Πολύ καλή, 🟣 Άριστη
+  - σε σχέση με αυτά που περίμενες από το chatting agency, νιώθεις ότι τα πραγματοποιούμε; (singleSelect)
+     Options [3]: Ναι, Εν μέρει, Όχι
+  - Πως αξιολογείς την ποιότητα του chatting στο/στα μοντέλα σου; (singleSelect)
+     Options [5]: 1, 2, 3, 4, 5
+  - Πως νιώθεις σχετικά με την επικοινωνία/συνεργασία με το agency; (singleSelect)
+     Options [5]: Πολύ δύσκολη, Μερικές φορές χαοτική, ΟΚ, Καλή, Άριστη
+  - Πόσο ξεκάθαρη είναι για εσένα η στρατηγική που ακολουθούμε για το προφιλ σου; (singleSelect)
+     Options [4]: Δεν έχω καταλάβει τι κάνουμε, Έχω καταλάβει στο περίπου, Είναι ξεκάθαρη, Είναι πολύ ξεκάθαρη
+  - Θα ήθελες κάτι παραπάνω από εμάς;  (multipleSelects)
+     Options [5]: Πιο aggressive chatting, Πιο soft chatting, Περισσότερες ιδέες / concept, Περισσότερη επικοινωνία & feedback, Όχι, είμαι οκ
+  - Από 1–10, πόσο πιθανό είναι να μας προτείνεις σε άλλη/άλλον creator; (singleSelect)
+     Options [10]: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10
+  - Τι στόχο έχεις για τον επόμενο μήνα; (gross) (singleSelect)
+     Options [4]: +€1000, +€2000, +€4000, +€6500
+  - Υπάρχει κάτι που θέλεις να μας πεις / κάποια παρατήρηση; (multilineText)
+
+TABLE: Fines & Bonuses
+────────────────────────────────────────────────────
+  - Name (autoNumber)
+  - Chatters (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Fine or Bonus (singleSelect)
+     Options [2]: Fine, Bonus
+  - Amount (currency)
+  - reason (multilineText)
+  - Date (date)
+
+TABLE: invoices
+────────────────────────────────────────────────────
+  - Name (singleLineText)
+  - billing_cycle (multipleRecordLinks) → linkedTableId: tbl98IpgKQ1PoJPcl
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - invoice_number (singleLineText)
+  - sent_to_email (email)
+  - sent_at (dateTime)
+  - attachment (multipleAttachments)
+  - viewed_at (dateTime)
+
+TABLE: Mistakes
+────────────────────────────────────────────────────
+  - Mistake Name (singleLineText)
+  - Points (number)
+  - Πρόστιμο € (formula)
+  - MSS (multipleRecordLinks) → linkedTableId: tblu1mldVYtBp1my4
+
+TABLE: Model Content
+────────────────────────────────────────────────────
+  - . (singleLineText)
+  - Creator (multipleRecordLinks) → linkedTableId: tblCSatmon915wSUQ
+  - Sextapes (singleSelect)
+     Options [3]: Yes, No, Model said No
+  - 3+ Scripts with 6 photos (singleSelect)
+     Options [3]: Yes, No, Night Scripts 3 NEEDED
+  - 20 Pussy Photos (singleSelect)
+     Options [2]: Yes, No
+  - 20 Asshole Photos (singleSelect)
+     Options [2]: Yes, No
+  - 20 Outdoor Photos (singleSelect)
+     Options [3]: Yes, No, Not Possible
+  - 20 Bathroom Photos ( 10 towel - 10 nude) (singleSelect)
+     Options [2]: Yes, No
+  - 20 Feet Pictures (singleSelect)
+     Options [2]: Yes, No
+  - 10 Photos/Videos For Posting (singleSelect)
+     Options [2]: Yes, No
+  - Night Script (singleSelect)
+     Options [2]: Yes, No
+  - Morning Script (singleSelect)
+     Options [2]: Yes, No
+  - Mistress Content - Humiliaton and Roasting Videos (singleSelect)
+     Options [3]: Yes, No, Not Possible
+
+TABLE: model_content_requests
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - model_id (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_user_id (singleLineText)
+  - type (singleSelect)
+     Options [5]: script, mass, photo_set, video, other
+  - title (singleLineText)
+  - description (multilineText)
+  - status (singleSelect)
+     Options [5]: pending, approved, rejected, in_progress, completed
+  - admin_notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+
+TABLE: model_expense_requests
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - model_id (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_user_id (singleLineText)
+  - va_content_assignment_id (singleLineText)
+  - assignment_title (singleLineText)
+  - type (singleSelect)
+     Options [2]: airbnb, other
+  - airbnb_link (url)
+  - notes (multilineText)
+  - status (singleSelect)
+     Options [3]: pending, approved, rejected
+  - admin_notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+
+TABLE: model_live_streams
+────────────────────────────────────────────────────
+  - live_id (singleLineText)
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - date (dateTime)
+  - week_start (dateTime)
+  - title (singleLineText)
+  - planned_start (dateTime)
+  - planned_end (dateTime)
+  - actual_start (dateTime)
+  - actual_end (dateTime)
+  - status (singleSelect)
+     Options [7]: scheduled, completed, cancelled, missed, in_progress, live, ended
+  - platform (singleSelect)
+     Options [4]: onlyfans, instagram, tiktok, other
+  - details_en (singleLineText)
+  - details_es (singleLineText)
+  - notes (multilineText)
+  - linked_schedule_item (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - created_at (createdTime)
+  - updated_at (lastModifiedTime)
+  - details (multilineText)
+
+TABLE: model_periods
+────────────────────────────────────────────────────
+  - start_date (date)
+  - model_id (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - end_date (date)
+  - cycle_length_days (number)
+  - period_length_days (number)
+  - notes (multilineText)
+  - logged_by (singleSelect)
+     Options [3]: model, admin, va
+  - created_at (dateTime)
+  - predicted_next_date (date)
+  - came_early (checkbox)
+  - tracking_enabled (checkbox)
+  - missed_period (checkbox)
+
+TABLE: model_personal_events
+────────────────────────────────────────────────────
+  - event_id (singleLineText)
+  - model_id (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_user_id (singleLineText)
+  - event_type (singleSelect)
+     Options [6]: nails, lashes, hairdresser, surgery, fillers, custom
+  - custom_label (singleLineText)
+  - event_date (date)
+  - event_time (singleLineText)
+  - notes (multilineText)
+  - reminder_sent (checkbox)
+  - created_at (dateTime)
+
+TABLE: model_schedule
+────────────────────────────────────────────────────
+  - schedule_id (singleLineText)
+  - week_start (date)
+  - title (singleLineText)
+  - priority (singleSelect)
+     Options [5]: low, medium, high, urgent, normal
+  - status (singleSelect)
+     Options [5]: scheduled, in_progress, completed, missed, cancelled
+  - details (multilineText)
+  - instructions_en (multilineText)
+  - instructions (multilineText)
+  - instructions_es (multilineText)
+  - linked_task_group (multipleRecordLinks) → linkedTableId: tblWxHzLGvXy91Ryl
+  - linked_custom_request (multipleRecordLinks) → linkedTableId: tbl0IdhdPF5n51HVR
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - models (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_name (singleLineText)
+  - day (singleSelect)
+     Options [7]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  - start_time (dateTime)
+  - end_time (dateTime)
+  - notes (multilineText)
+  - item_type (singleSelect)
+     Options [13]: script, mass_message, live_stream, custom, content_shoot, promo, meeting, rest, other, custom_request, va_content, live_stream, time_off
+  - date (dateTime)
+  - duration_minutes (number)
+  - created_by (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - model_tasks (multipleRecordLinks) → linkedTableId: tblWxHzLGvXy91Ryl
+  - model_live_streams (multipleRecordLinks) → linkedTableId: tbllNt5zYT9GwmW9L
+  - custom_requests (multipleRecordLinks) → linkedTableId: tbl0IdhdPF5n51HVR
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_id (singleLineText)
+
+TABLE: model_tasks
+────────────────────────────────────────────────────
+  - task_id (singleLineText)
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - schedule_item (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - date (date)
+  - task_type (singleSelect)
+     Options [8]: script, mass, live_prep, live_stream, custom, content, admin_note, other
+  - title (singleLineText)
+  - description_en (singleLineText)
+  - description_es (singleLineText)
+  - is_required (checkbox)
+  - task_status (singleSelect)
+     Options [4]: pending, done, skipped, blocked
+  - completed_at (dateTime)
+  - completion_notes (multilineText)
+  - sort_order (number)
+  - created_at (createdTime)
+  - updated_at (lastModifiedTime)
+  - model_schedule (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+
+TABLE: model_time_off_requests
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - model (multipleRecordLinks) → linkedTableId: tbllapr3hraj7KTJE
+  - model_name (singleLineText)
+  - start_date (date)
+  - end_date (date)
+  - reason (multilineText)
+  - status (singleSelect)
+     Options [3]: submitted, approved, rejected
+  - created_at (createdTime)
+
+TABLE: models
+────────────────────────────────────────────────────
+  - model_name (singleLineText)
+  - status (singleSelect)
+     Options [2]: active, inactive
+  - client models (multipleRecordLinks) → linkedTableId: tblE0XaQPW2ZDrURg
+  - model_earnings (singleLineText)
+  - billing_cycles (multipleRecordLinks) → linkedTableId: tbl98IpgKQ1PoJPcl
+  - billing_cycle_revenues (multipleRecordLinks) → linkedTableId: tblpl7xcRsOGDp0Xq
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - model_id (singleLineText)
+  - platform (singleSelect)
+     Options [3]: onlyfans, fanvue, other
+  - current_status (singleSelect)
+     Options [2]: free, occupied
+  - current_chatter_id (singleLineText)
+  - current_chatter_name (singleLineText)
+  - current_shift_id (singleLineText)
+  - entered_at (dateTime)
+  - last_chatter_id (singleLineText)
+  - last_chatter_name (singleLineText)
+  - last_exit_at (dateTime)
+  - priority (singleSelect)
+     Options [3]: low, medium, high
+  - notes (multilineText)
+  - va_content_assignments (singleLineText)
+  - model_schedule (singleLineText)
+  - model_time_off_requests (multipleRecordLinks) → linkedTableId: tblHkNpNdpImBEAJd
+
+TABLE: modelss
+────────────────────────────────────────────────────
+  - model_id (singleLineText)
+  - model_name (singleLineText)
+  - platform (singleSelect)
+     Options [3]: onlyfans, fanvue, other
+  - status (singleSelect)
+     Options [2]: active, inactive
+  - current_status (singleSelect)
+     Options [2]: free, occupied
+  - current_chatter_id (singleLineText)
+  - current_chatter_name (singleLineText)
+  - current_shift_id (singleLineText)
+  - entered_at (dateTime)
+  - last_chatter_id (singleLineText)
+  - last_chatter_name (singleLineText)
+  - last_exit_at (dateTime)
+  - priority (singleSelect)
+     Options [3]: low, medium, high
+  - notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - current_chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - last_chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - whales (multipleRecordLinks) → linkedTableId: tblMtye52iPMLsQa5
+  - whale_transactions (multipleRecordLinks) → linkedTableId: tbl5wI9QGTkNYaLkK
+  - shift_models (multipleRecordLinks) → linkedTableId: tblVsf0val8pVtw8b
+  - custom_requests (multipleRecordLinks) → linkedTableId: tbl0IdhdPF5n51HVR
+  - weekly_program_mistake (singleLineText)
+  - weekly_program (singleLineText)
+  - weekly_program_mistake copy (multipleRecordLinks) → linkedTableId: tbl6oe86r99tJDg1V
+  - weekly_program copy (multipleRecordLinks) → linkedTableId: tblM3NZiH9TfNthVN
+  - current_chatter copy (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - language_default (singleSelect)
+     Options [2]: english, espanol
+  - timezone (singleLineText)
+  - weekly_program_va copy (multipleRecordLinks) → linkedTableId: tblCofIJ5B92hVVxD
+  - weekly_program_va copy (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - model_tasks (multipleRecordLinks) → linkedTableId: tblWxHzLGvXy91Ryl
+  - model_live_streams (multipleRecordLinks) → linkedTableId: tbllNt5zYT9GwmW9L
+  - custom_requests 2 (multipleRecordLinks) → linkedTableId: tbl0IdhdPF5n51HVR
+  - model_schedule (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - model_periods (multipleRecordLinks) → linkedTableId: tblsThmVHwYAa4mxV
+  - last_period_start (date)
+  - avg_cycle_length (number)
+  - avg_period_length (number)
+  - period_notes (multilineText)
+  - va_content_assignments (multipleRecordLinks) → linkedTableId: tbllyG1vAesYuacnr
+  - period_tracking_enabled (checkbox)
+  - model_content_requests (multipleRecordLinks) → linkedTableId: tblN1fROxwWJ5eTII
+  - model_expense_requests (multipleRecordLinks) → linkedTableId: tbltVfVfIfs0076U8
+  - model_personal_events (multipleRecordLinks) → linkedTableId: tblvPLFiLzKLtqKU3
+
+TABLE: monthly_targets
+────────────────────────────────────────────────────
+  - target_id (singleLineText)
+  - month_key (singleLineText)
+  - team_member (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - team_member_name (singleLineText)
+  - role (singleSelect)
+     Options [3]: chatter, virtual_assistant, admin
+  - target_amount_usd (currency)
+  - is_active (checkbox)
+  - notes (multilineText)
+  -  created_at (createdTime)
+  - updated_at (lastModifiedTime)
+
+TABLE: MSS
+────────────────────────────────────────────────────
+  - Mistake ID (autoNumber)
+  - Screenshot (multipleAttachments)
+  - creator (multipleRecordLinks) → linkedTableId: tblCSatmon915wSUQ
+  - Subscriber name (singleLineText)
+  - Chatter (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Full Name (multipleLookupValues)
+  - infloww username (multipleLookupValues)
+  - Mistakes (multipleRecordLinks) → linkedTableId: tblLkdOOfeElTDUqr
+  - Points (multipleLookupValues)
+  - Πρόστιμο € (multipleLookupValues)
+  - Mistake Date and time (dateTime)
+  - Αιτιολογία (multilineText)
+  - Checked (checkbox)
+  - Sent to Chatters (checkbox)
+  - Evi's Mistake (checkbox)
+
+TABLE: notification_preferences
+────────────────────────────────────────────────────
+  - preference_id (singleLineText)
+  - user_id (singleLineText)
+  - push_enabled (checkbox)
+  - in_app_enabled (checkbox)
+  - critical_only (checkbox)
+  - whale_alerts (checkbox)
+  - shift_alerts (checkbox)
+  - model_alerts (checkbox)
+  - system_alerts (checkbox)
+  - task_alerts (checkbox)
+  - quiet_hours_start (singleLineText)
+  - quiet_hours_end (singleLineText)
+  - mute_all (checkbox)
+  - updated_at (lastModifiedTime)
+
+TABLE: notifications
+────────────────────────────────────────────────────
+  - notification_id (singleLineText)
+  - user_id (singleLineText)
+  - title (singleLineText)
+  - body (multilineText)
+  - type (singleSelect)
+     Options [6]: shift, task_shift, model, whale, system, account
+  - category (singleSelect)
+     Options [5]: shift, model, whale, system, task
+  - priority (singleSelect)
+     Options [5]: low, normal, high, critical, urgent
+  - Attachments (multipleAttachments)
+  - entity_type (singleLineText)
+  - entity_id (singleLineText)
+  - is_read (checkbox)
+  - read_at (date)
+  - delivery_status (singleSelect)
+     Options [4]: pending, sent, failed, read
+  - created_at (createdTime)
+  - event_type (singleSelect)
+     Options [20]: shift_started, shift_ended, shift_late, shift_no_show, model_became_free, model_taken, whale_registered, whale_assigned, custom_request_created, model_live_started, model_live_ended, system_alert, custom_request_updated, task_shift_started, task_shift_ended, period_3_day_reminder, period_predicted_day, period_confirmed_early, period_overdue, period_prediction_reset
+  - metadata (singleLineText)
+
+TABLE: payment_methods
+────────────────────────────────────────────────────
+  - label (singleLineText)
+  - details (multilineText)
+  - type (singleSelect)
+     Options [2]: Bank, Crypto
+  - scope (singleLineText)
+  - network (singleLineText)
+  - is_available (checkbox)
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - payment_submissions (multipleRecordLinks) → linkedTableId: tblIk74ettAGHGvF7
+  - invoices (singleLineText)
+  - open_url (singleLineText)
+  - fallback_url (singleLineText)
+  - beneficiary (singleLineText)
+  - iban (singleLineText)
+  - bic (singleLineText)
+  - wallet_address (singleLineText)
+
+TABLE: payment_submissions
+────────────────────────────────────────────────────
+  - Name (singleLineText)
+  - billing_cycle (multipleRecordLinks) → linkedTableId: tbl98IpgKQ1PoJPcl
+  - client (multipleRecordLinks) → linkedTableId: tblnCh96pH5wgFAd9
+  - selected_payment_method (multipleRecordLinks) → linkedTableId: tblelOgtZEirJe1U8
+  - submitted_amount (number)
+  - submitted_currency (singleSelect)
+     Options [5]: EUR, USD, USDT, USDC, SOL
+  - submitted_datetime (dateTime)
+  - reference_id (singleLineText)
+  - note (multilineText)
+  - proof_url (url)
+  - proof_attachment (multipleAttachments)
+  - status (singleSelect)
+     Options [3]: pending_review, approved, rejected
+  - kind (from billing_cycles) (multipleLookupValues)
+  - admin_note (multilineText)
+  - client_seen_at (dateTime)
+  - kind (singleLineText)
+  - submitted_at (date)
+  - billing_cycles (multipleRecordLinks) → linkedTableId: tbl98IpgKQ1PoJPcl
+
+TABLE: Paypal Money Received
+────────────────────────────────────────────────────
+  - Anount (currency)
+  - Creator (multipleRecordLinks) → linkedTableId: tblCSatmon915wSUQ
+  - Chatters (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Date (dateTime)
+  - Bank (singleSelect)
+     Options [2]: Revolut, Paypal
+  - Email / Revtag (singleLineText)
+  - Print Screen (multipleAttachments)
+  - Field 6 (singleLineText)
+  - Created By (createdBy)
+
+TABLE: points_transactions
+────────────────────────────────────────────────────
+  - user_id (singleLineText)
+  - points (number)
+  - reason (singleLineText)
+  - category (singleSelect)
+     Options [8]: shift, whale, custom, streak, challenge, manual, penalty, spin
+  - reference_id (singleLineText)
+  - created_at (dateTime)
+
+TABLE: push_subscriptions
+────────────────────────────────────────────────────
+  - subscription_id (singleLineText)
+  - user_id (multilineText)
+  - device_label (multilineText)
+  - endpoint (multilineText)
+  - p256dh (multilineText)
+  - auth (multilineText)
+  - platform (singleSelect)
+     Options [6]: ios, android, macos, windows, linux, unknown
+  - browser (singleSelect)
+     Options [6]: chrome, safari, firefox, edge, opera, unknown
+  - is_active (checkbox)
+  - last_seen_at (date)
+  - created_at (createdTime)
+  - updated_at (lastModifiedTime)
+  - user_agent (singleLineText)
+  - role (singleLineText)
+  - actor_user_id (singleLineText)
+  - actor_name (singleLineText)
+  - event_type (singleSelect)
+     Options [10]: shift_started, shift_ended, shift_late, shift_no_show, model_became_free, model_taken, whale_registered, whale_assigned, custom_request_created, system_alert
+  - category (singleSelect)
+     Options [6]: shift, model, whale, custom_request, system, task
+  - metadata (singleLineText)
+
+TABLE: Rebills
+────────────────────────────────────────────────────
+  - ID (autoNumber)
+  - Chatter (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Creator (multipleRecordLinks) → linkedTableId: tblCSatmon915wSUQ
+  - Sub name (singleLineText)
+  - Date & Time (dateTime)
+  - Screenshot (multipleAttachments)
+  - Price (currency)
+  - checked (checkbox)
+
+TABLE: shift_models
+────────────────────────────────────────────────────
+  - shift_model_id (singleLineText)
+  - shift_id (singleLineText)
+  - chatter_id (singleLineText)
+  - chatter_name (singleLineText)
+  - model_id (singleLineText)
+  - model_name (singleLineText)
+  - entered_at (dateTime)
+  - left_at (dateTime)
+  - status (singleSelect)
+     Options [3]: active, left, on_break
+  - session_minutes (number)
+  - notes (multilineText)
+  - created_at (dateTime)
+  - break_minutes (number)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - shift (multipleRecordLinks) → linkedTableId: tblDPIrjV0yf0EFb9
+
+TABLE: shifts
+────────────────────────────────────────────────────
+  - shift_id (singleLineText)
+  - chatter_id (singleLineText)
+  - chatter_name (singleLineText)
+  - week_start (date)
+  - date (date)
+  - scheduled_shift (singleLineText)
+  - start_time (dateTime)
+  - end_time (dateTime)
+  - status (singleSelect)
+     Options [4]: active, completed, cancelled, on_break
+  - models_count (number)
+  - total_minutes (number)
+  - notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - staff_role (singleSelect)
+     Options [2]: chatter, virtual_assistant
+  - shift_type (singleSelect)
+     Options [4]: chatting, mistakes, vault_cleaning, other
+  - task_label (singleLineText)
+  - total_hours_decimal (number)
+  - break_minutes (number)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - shift_models (multipleRecordLinks) → linkedTableId: tblVsf0val8pVtw8b
+  - break_started_at (singleLineText)
+  - break_reminder_at (multilineText)
+
+TABLE: spin_wheel_prizes
+────────────────────────────────────────────────────
+  - label (singleLineText)
+  - prize_type (singleSelect)
+     Options [8]: cash, extra_break, double_points, mystery, points, custom, bonus, break
+  - prize_value (singleLineText)
+  - probability (number)
+  - active (checkbox)
+  - color (singleLineText)
+
+TABLE: spin_wheel_spins
+────────────────────────────────────────────────────
+  - user_id (singleLineText)
+  - prize_id (singleLineText)
+  - prize_label (singleLineText)
+  - created_at (dateTime)
+  - claimed (checkbox)
+  - claim_note (singleLineText)
+
+TABLE: staff_hours_summary
+────────────────────────────────────────────────────
+  - summary_id (singleLineText)
+  - user_id (singleLineText)
+  - full_name (singleLineText)
+  - role (singleSelect)
+     Options [2]: chatter, virtual_assistant
+  - week_start (date)
+  - month_key (singleLineText)
+  - total_minutes (number)
+  - total_hours_decimal (number)
+  - shifts_count (number)
+  - last_calculated_at (dateTime)
+
+TABLE: staff_task_types
+────────────────────────────────────────────────────
+  - task_type_id (singleLineText)
+  - task_key (singleLineText)
+  - task_label (singleLineText)
+  - applies_to_role (singleSelect)
+     Options [3]: chatter, virtual_assistant, all
+  - is_active (checkbox)
+  - sort_order (number)
+  - description (multilineText)
+  - created_at (dateTime)
+
+TABLE: system_settings
+────────────────────────────────────────────────────
+  - setting_key (singleLineText)
+  - setting_value (multilineText)
+  - description (multilineText)
+
+TABLE: users
+────────────────────────────────────────────────────
+  - user_id (singleLineText)
+  - full_name (singleLineText)
+  - email (email)
+  - role (singleSelect)
+     Options [5]: admin, chatter, virtual_assistant, manager, model
+  - status (singleSelect)
+     Options [2]: active, inactive
+  - can_login (checkbox)
+  - weekly_target_hours (number)
+  - notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - password_hash (multilineText)
+  - modelss (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - modelss 2 (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - linked_model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - whales (multipleRecordLinks) → linkedTableId: tblMtye52iPMLsQa5
+  - whale_transactions (multipleRecordLinks) → linkedTableId: tbl5wI9QGTkNYaLkK
+  - whale_activity (multipleRecordLinks) → linkedTableId: tblteNyg03UaCGkjo
+  - shifts (multipleRecordLinks) → linkedTableId: tblDPIrjV0yf0EFb9
+  - shift_models (multipleRecordLinks) → linkedTableId: tblVsf0val8pVtw8b
+  - custom_requests (multipleRecordLinks) → linkedTableId: tbl0IdhdPF5n51HVR
+  - weekly_program (singleLineText)
+  - weekly_program copy (singleLineText)
+  - weekly_program_mistake copy (multipleRecordLinks) → linkedTableId: tbl6oe86r99tJDg1V
+  - weekly_availability_requests (multipleRecordLinks) → linkedTableId: tbl2GYAeL04TnSZfg
+  - monthly_targets (multipleRecordLinks) → linkedTableId: tblS0zfpPNxqQHAbd
+  - weekly_program copy (multipleRecordLinks) → linkedTableId: tblM3NZiH9TfNthVN
+  - weekly_availability_requests copy (multipleRecordLinks) → linkedTableId: tblO9HNabWLGbxH8W
+  - language_preference (singleSelect)
+     Options [2]: en, es
+  - timezone (singleLineText)
+  - weekly_program_va copy (singleLineText)
+  - weekly_program_va copy (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - model_schedule (multipleRecordLinks) → linkedTableId: tblSoPUR2txXT5vhH
+  - custom_requests 2 (multipleRecordLinks) → linkedTableId: tbl0IdhdPF5n51HVR
+  - va_tasks (multipleRecordLinks) → linkedTableId: tblKfeKunLvqesH8j
+  - va_tasks (multipleRecordLinks) → linkedTableId: tblKfeKunLvqesH8j
+  - whales 2 (multipleRecordLinks) → linkedTableId: tblMtye52iPMLsQa5
+  - va_content_assignments (multipleRecordLinks) → linkedTableId: tbllyG1vAesYuacnr
+  - language_default (singleSelect)
+     Options [2]: en, es
+
+TABLE: va_content_assignments
+────────────────────────────────────────────────────
+  - assignment_id (singleLineText)
+  - va (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - title (singleLineText)
+  - description (multilineText)
+  - content_type (singleSelect)
+     Options [4]: PDF, Video Script, Photo Guide, Other
+  - file_url (url)
+  - file_attachment (multipleAttachments)
+  - deadline (dateTime)
+  - scheduled_date (dateTime)
+  - status (singleSelect)
+     Options [4]: pending, scheduled, completed, cancelled
+  - priority (singleSelect)
+     Options [4]: low, normal, high, urgent
+  - model_notes (multilineText)
+  - va_notes (multilineText)
+  - completed_at (dateTime)
+
+TABLE: va_tasks
+────────────────────────────────────────────────────
+  - title (singleLineText)
+  - description (multilineText)
+  - assigned_to (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - assigned_by (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - status (singleSelect)
+     Options [4]: pending, in_progress, done, skipped
+  - priority (singleSelect)
+     Options [4]: low, normal, high, urgent
+  - due_date (dateTime)
+  - is_recurring (checkbox)
+  - recurrence_type (singleSelect)
+     Options [4]: daily, weekly, monthly, custom
+  - recurrence_days (multipleSelects)
+     Options [7]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  - recurrence_interval (number)
+  - recurrence_end_date (date)
+  - reminder_minutes_before (number)
+  - completed_at (dateTime)
+  - completed_notes (multilineText)
+  - created_at (dateTime)
+
+TABLE: weekly_availability_requests
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - week_start (dateTime)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - status (singleSelect)
+     Options [4]: submitted, reviewed, used, rejected
+  - chatter_name (singleLineText)
+  - day (singleSelect)
+     Options [8]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday, test
+  - shift_type (singleSelect)
+     Options [4]: Morning, Night, Custom, test
+  - custom_start_time (dateTime)
+  - custom_end_time (dateTime)
+  - notes (multilineText)
+  - created_at (createdTime)
+  - entry_type (singleSelect)
+     Options [2]: availability, day_off
+
+TABLE: weekly_availability_requests_models
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - week_start (date)
+  - weekly_notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - status (singleSelect)
+     Options [6]: submitted, reviewed, approved, rejected, used_in_schedule, used
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_name (singleLineText)
+  - day (singleSelect)
+     Options [7]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  - start_time (dateTime)
+  - end_time (dateTime)
+  - notes (multilineText)
+  - entry_type (singleSelect)
+     Options [4]: availability, day_off, live_window, custom_window
+  - availability_windows (multilineText)
+
+TABLE: weekly_availability_requests_va
+────────────────────────────────────────────────────
+  - request_id (singleLineText)
+  - week_start (date)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - status (singleSelect)
+     Options [4]: submitted, reviewed, used, rejected
+  - chatter_name (singleLineText)
+  - day (singleSelect)
+     Options [8]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday, test
+  - shift_type (singleSelect)
+     Options [4]: Morning, Night, Custom, test
+  - custom_start_time (dateTime)
+  - custom_end_time (dateTime)
+  - notes (multilineText)
+  - created_at (createdTime)
+  - entry_type (singleSelect)
+     Options [2]: availability, day_off
+
+TABLE: weekly_program
+────────────────────────────────────────────────────
+  - program_id (singleLineText)
+  - week_start (dateTime)
+  - chatter_id (singleLineText)
+  - chatter_name (singleLineText)
+  - monday_shift (singleLineText)
+  - tuesday_shift (singleLineText)
+  - wednesday_shift (singleLineText)
+  - thursday_shift (singleLineText)
+  - friday_shift (singleLineText)
+  - saturday_shift (singleLineText)
+  - sunday_shift (singleLineText)
+  - weekly_notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - models (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_name (singleLineText)
+  - day (singleSelect)
+     Options [7]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  - start_time (dateTime)
+  - end_time (dateTime)
+  - notes (multilineText)
+  - shift_type (singleSelect)
+     Options [3]: Morning, Night, Custom
+
+TABLE: weekly_program_va
+────────────────────────────────────────────────────
+  - program_id (singleLineText)
+  - week_start (date)
+  - chatter_id (singleLineText)
+  - chatter_name (singleLineText)
+  - monday_shift (singleLineText)
+  - tuesday_shift (singleLineText)
+  - wednesday_shift (singleLineText)
+  - thursday_shift (singleLineText)
+  - friday_shift (singleLineText)
+  - saturday_shift (singleLineText)
+  - sunday_shift (singleLineText)
+  - weekly_notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - models (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - model_name (singleLineText)
+  - day (singleSelect)
+     Options [7]: Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+  - start_time (dateTime)
+  - end_time (dateTime)
+  - notes (multilineText)
+  - shift_type (singleSelect)
+     Options [3]: Morning, Night, Custom
+
+TABLE: Whale Tracker
+────────────────────────────────────────────────────
+  - Whale Username (singleLineText)
+  - Chatter Submited (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Creator (multipleRecordLinks) → linkedTableId: tblCSatmon915wSUQ
+  - Date Added (date)
+  - Status (multipleSelects)
+     Options [6]: Inactive, Active, Dead, Bastard, Deleted Account, -
+  - Attachments (multipleAttachments)
+  - Last Checked (date)
+  - Relationship Status (multipleSelects)
+     Options [5]: Angry , In Love, Intrestead , Simp, Bastard
+  - Hours Usually Active (multipleSelects)
+     Options [5]: 7am - 10am , 10am-4pm, 4pm - 8pm, 8pm - 12am, 12am+
+
+TABLE: whale_activity
+────────────────────────────────────────────────────
+  - activity_id (singleLineText)
+  - whale_id (singleLineText)
+  - whale_username (singleLineText)
+  - chatter_id (singleLineText)
+  - chatter_name (singleLineText)
+  - action_type (singleSelect)
+     Options [7]: created, updated, note_added, followup_changed, status_changed, reassigned, spend_logged
+  - summary (singleLineText)
+  - details (multilineText)
+  - created_at (dateTime)
+  - whale (multipleRecordLinks) → linkedTableId: tblMtye52iPMLsQa5
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+
+TABLE: whale_tags
+────────────────────────────────────────────────────
+  - tag_id (singleLineText)
+  - tag_name (singleLineText)
+  - tag_color (singleLineText)
+  - description (multilineText)
+
+TABLE: whale_transactions
+────────────────────────────────────────────────────
+  - transaction_id (singleLineText)
+  - whale_id (singleLineText)
+  - whale_username (singleLineText)
+  - date (dateTime)
+  - amount (currency)
+  - currency (singleSelect)
+     Options [3]: usd, eur, gbp
+  - type (singleSelect)
+     Options [5]: sexting + videos, sexting + videos + custom, sexting + videos + vip, sexting, other
+  - note (multilineText)
+  - created_at (dateTime)
+  - chatter_id (singleLineText)
+  - chatter_name (singleLineText)
+  - model_name (singleLineText)
+  - time (singleLineText)
+  - session_length_minutes (number)
+  - whale (multipleRecordLinks) → linkedTableId: tblMtye52iPMLsQa5
+  - chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+
+TABLE: whales
+────────────────────────────────────────────────────
+  - whale_id (singleLineText)
+  - username (singleLineText)
+  - assigned_chatter_name (singleLineText)
+  - assigned_model_name (singleLineText)
+  - hours_active (multipleSelects)
+     Options [5]: 7am - 10am, 10am-4pm, 4pm - 8pm, 8pm - 12am, 12am+
+  - platform (singleSelect)
+     Options [3]: onlyfans, fanvue, other
+  - assigned_chatter_id (singleLineText)
+  - relationship_status (singleSelect)
+     Options [5]: New, Interested, Angry, Simp, In Love
+  - active_hours_start (singleLineText)
+  - active_hours_end (singleLineText)
+  - timezone (singleLineText)
+  - country (singleLineText)
+  - language (singleLineText)
+  - spend_level (singleSelect)
+     Options [5]: low, medium, high, vip, whale
+  - total_spent (currency)
+  - last_spent_amount (currency)
+  - last_spent_date (dateTime)
+  - last_contact_date (dateTime)
+  - next_followup (dateTime)
+  - response_speed (singleSelect)
+     Options [4]: fast, medium, slow, ghosting
+  - personality_type (singleLineText)
+  - preferences (multilineText)
+  - red_flags (multilineText)
+  - retention_risk (singleSelect)
+     Options [3]: low, medium, high
+  - status (singleSelect)
+     Options [4]: Active, Inactive, Dead, Deleted Account
+  - notes (multilineText)
+  - created_at (dateTime)
+  - updated_at (dateTime)
+  - last_updated_by (singleLineText)
+  - assigned_chatter (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+  - assigned_model (multipleRecordLinks) → linkedTableId: tblXckkhp23s267ea
+  - whale_transactions (multipleRecordLinks) → linkedTableId: tbl5wI9QGTkNYaLkK
+  - whale_activity (multipleRecordLinks) → linkedTableId: tblteNyg03UaCGkjo
+  - added_by (multipleRecordLinks) → linkedTableId: tblm9n6NKVWPWNAxT
+
+TABLE: Αυτοαξιολογηση
+────────────────────────────────────────────────────
+  - Week (date)
+  - End of week (formula)
+  - Chatter (multipleRecordLinks) → linkedTableId: tbl5x3nbMGDEexCek
+  - Πώς πήγε η εβδομάδα σου; (1–5) (singleSelect)
+     Options [5]: 1, 2, 3, 4, 5
+  - Ποιο ήταν το δυνατό σου σημείο αυτή την εβδομάδα; (multilineText)
+  - Πού ένιωσες ότι έχασες δυναμική ή θα μπορούσες να το πας καλύτερα; (multilineText)
+  - Τι σε δυσκόλεψε; (multilineText)
+  -  Τι θέλεις να βελτιώσεις την επόμενη εβδομάδα; (multilineText)
+  - Βαθμολόγησε τον εαυτό σου σε Πωλήσεις / conversion (singleSelect)
+     Options [5]: 1, 2, 3, 4, 5
+  - Βαθμολόγησε τον εαυτό σου σε Ενέργεια / συνέπεια (singleSelect)
+     Options [5]: 1, 2, 3, 4, 5
+  - Βαθμολόγησε τον εαυτό σου σε Δημιουργικότητα / φαντασία (singleSelect)
+     Options [5]: 1, 2, 3, 4, 5
+
+========== END SCHEMA DUMP ==========
+
+
+========== TABLE PRESENCE (code expects) ==========
+
+✅ activity_logs
+✅ challenge_progress
+✅ challenges
+✅ chatter_points
+✅ custom_requests
+✅ feedback
+✅ model_content_requests
+✅ model_expense_requests
+❌ model_groups
+✅ model_live_streams
+✅ model_periods
+✅ model_personal_events
+✅ model_schedule
+✅ model_tasks
+✅ model_time_off_requests
+✅ modelss
+✅ monthly_targets
+✅ notification_preferences
+✅ notifications
+✅ points_transactions
+✅ push_subscriptions
+✅ shift_models
+✅ shifts
+✅ spin_wheel_prizes
+✅ spin_wheel_spins
+✅ staff_task_types
+✅ system_settings
+✅ users
+✅ va_content_assignments
+✅ va_tasks
+✅ weekly_availability_requests
+✅ weekly_availability_requests_models
+✅ weekly_availability_requests_va
+✅ weekly_program
+✅ weekly_program_va
+✅ whale_transactions
+✅ whales
+
+========== TABLES IN BASE NOT IN REQUIRED LIST ==========
+
+ℹ️  Chatter Complaints — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Chatter Performance — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Chatters — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Chatters Apply Form — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Creators — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  FeedBack — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Fines & Bonuses — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  MSS — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Mistakes — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Model Content — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Paypal Money Received — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Rebills — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Whale Tracker — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  billing_cycle_revenues — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  billing_cycles — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  calendar_events — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  client_models — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  clients — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  earnings_config — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  invoices — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  models — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  payment_methods — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  payment_submissions — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  staff_hours_summary — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  whale_activity — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  whale_tags — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+ℹ️  Αυτοαξιολογηση — not referenced in REQUIRED_TABLES; may be formulas/legacy/UI-only.
+
+========== SINGLE-SELECT OPTIONS (code ⊂ Airtable) ==========
+
+✅ notifications.event_type: all codebase options present in Airtable
+⚠️  notifications.category: Airtable missing choices used/named in code: custom_request
+✅ custom_requests.admin_status: all codebase options present in Airtable
+✅ custom_requests.model_status: all codebase options present in Airtable
+✅ custom_requests.custom_type: all codebase options present in Airtable
+✅ custom_requests.priority: all codebase options present in Airtable
+✅ whales.status: all codebase options present in Airtable
+✅ modelss.platform: all codebase options present in Airtable
+✅ modelss.current_status: all codebase options present in Airtable
+✅ modelss.priority: all codebase options present in Airtable
+✅ users.role: all codebase options present in Airtable
+✅ feedback.type: all codebase options present in Airtable
+✅ feedback.status: all codebase options present in Airtable
+✅ feedback.user_role: all codebase options present in Airtable
+✅ model_content_requests.type: all codebase options present in Airtable
+✅ model_content_requests.status: all codebase options present in Airtable
+✅ model_expense_requests.type: all codebase options present in Airtable
+✅ model_expense_requests.status: all codebase options present in Airtable
+✅ model_personal_events.event_type: all codebase options present in Airtable
+✅ model_live_streams.platform: all codebase options present in Airtable
+✅ model_live_streams.status: all codebase options present in Airtable
+ℹ️  model_live_streams.status: Airtable has extra choices (not in audit list): missed
+✅ model_tasks.task_type: all codebase options present in Airtable
+✅ shifts.status: all codebase options present in Airtable
+✅ shifts.staff_role: all codebase options present in Airtable
+✅ shifts.shift_type: all codebase options present in Airtable
+✅ weekly_program.day: all codebase options present in Airtable
+✅ weekly_program.shift_type: all codebase options present in Airtable
+✅ weekly_program_va.day: all codebase options present in Airtable
+✅ weekly_program_va.shift_type: all codebase options present in Airtable
+✅ weekly_availability_requests.day: all codebase options present in Airtable
+ℹ️  weekly_availability_requests.day: Airtable has extra choices (not in audit list): test
+✅ weekly_availability_requests.shift_type: all codebase options present in Airtable
+ℹ️  weekly_availability_requests.shift_type: Airtable has extra choices (not in audit list): test
+✅ weekly_availability_requests.entry_type: all codebase options present in Airtable
+✅ weekly_availability_requests.status: all codebase options present in Airtable
+✅ weekly_availability_requests_va.day: all codebase options present in Airtable
+ℹ️  weekly_availability_requests_va.day: Airtable has extra choices (not in audit list): test
+✅ weekly_availability_requests_va.shift_type: all codebase options present in Airtable
+ℹ️  weekly_availability_requests_va.shift_type: Airtable has extra choices (not in audit list): test
+✅ weekly_availability_requests_va.entry_type: all codebase options present in Airtable
+✅ weekly_availability_requests_va.status: all codebase options present in Airtable
+✅ weekly_availability_requests_models.day: all codebase options present in Airtable
+✅ weekly_availability_requests_models.entry_type: all codebase options present in Airtable
+✅ weekly_availability_requests_models.status: all codebase options present in Airtable
+✅ va_tasks.status: all codebase options present in Airtable
+✅ va_tasks.priority: all codebase options present in Airtable
+✅ va_tasks.recurrence_type: all codebase options present in Airtable
+✅ va_tasks.recurrence_days: all codebase options present in Airtable
+✅ va_content_assignments.status: all codebase options present in Airtable
+✅ va_content_assignments.priority: all codebase options present in Airtable
+✅ va_content_assignments.content_type: all codebase options present in Airtable
+✅ whale_transactions.type: all codebase options present in Airtable
+✅ whale_transactions.currency: all codebase options present in Airtable
+ℹ️  whale_transactions.currency: Airtable has extra choices (not in audit list): gbp
+✅ model_periods.logged_by: all codebase options present in Airtable
+✅ chatter_points.level: all codebase options present in Airtable
+✅ points_transactions.category: all codebase options present in Airtable
+✅ challenges.target_metric: all codebase options present in Airtable
+✅ spin_wheel_prizes.prize_type: all codebase options present in Airtable
+✅ model_schedule.item_type: all codebase options present in Airtable
+ℹ️  model_schedule.item_type: Airtable has extra choices (not in audit list): custom_request, va_content
+
+========== MISSING FIELDS (high-signal checklist) ==========
+
+✅ notifications: expected fields present (incl. known aliases)
+✅ users: expected fields present (incl. known aliases)
+✅ modelss: expected fields present (incl. known aliases)
+✅ shifts: expected fields present (incl. known aliases)
+✅ shift_models: expected fields present (incl. known aliases)
+✅ weekly_availability_requests_models: expected fields present (incl. known aliases)
+❌ custom_requests: missing fields → assigned_va, updated_at
+✅ feedback: expected fields present (incl. known aliases)
+✅ model_tasks: expected fields present (incl. known aliases)
+
+NOTE: Code links models via users.linked_model → modelss, not users.linked_model_id (text).
+
+
+========== ACTION REQUIRED ==========
+
+
+MISSING TABLES:
+
+  ❌ model_groups → try: npm run create:model-groups-table
+
+MISSING / MISMATCH SELECT OPTIONS (add choices in Airtable to match codebase):
+
+  ⚠️  notifications.category: Airtable missing choices used/named in code: custom_request
+
+MISSING FIELDS:
+
+  ❌ custom_requests: missing fields → assigned_va, updated_at
+
+-------------------------------------
+SUMMARY (strict counts above):
+  Tables missing: 1
+  Select-option mismatches flagged: 1
+  Field mismatches flagged: 1
+  Loose total issues: ~3
+=====================================

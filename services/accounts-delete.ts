@@ -154,7 +154,10 @@ export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: stri
     const customs = await listAllFromAirtable<{ id: string }>("custom_requests", { filterByFormula: customRequestChatterFormula });
     for (const r of customs) {
       try {
-        await updateRecord("custom_requests", r.id, { requested_by_chatter: [] } as Record<string, unknown>);
+        await updateRecord("custom_requests", r.id, {
+          requested_by_chatter: [] as unknown as string[],
+          updated_at: new Date().toISOString(),
+        } as Record<string, unknown>);
       } catch (err) {
         console.error("[delete-user]", {
           userId,

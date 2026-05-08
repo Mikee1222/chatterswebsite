@@ -6,18 +6,25 @@ const TABLE = "model_groups";
 
 type ModelGroupFields = {
   name?: string;
-  model_ids?: string;
+  /** Links to modelss (canonical) — legacy CSV string still read if present. */
+  model_ids?: string | string[];
+  description?: string;
   created_at?: string;
-  created_by?: string | string[];
 };
+
+function flattenModelIds(fields: ModelGroupFields): string {
+  const raw = fields.model_ids;
+  if (Array.isArray(raw)) return raw.map((id) => String(id).trim()).filter(Boolean).join(",");
+  return String(raw ?? "").trim();
+}
 
 function mapGroup(r: { id: string; fields: ModelGroupFields }) {
   return {
     id: r.id,
     name: String(r.fields.name ?? "").trim(),
-    model_ids: String(r.fields.model_ids ?? "").trim(),
+    model_ids: flattenModelIds(r.fields),
+    description: String(r.fields.description ?? "").trim(),
     created_at: String(r.fields.created_at ?? "").trim(),
-    created_by: Array.isArray(r.fields.created_by) ? r.fields.created_by[0] ?? "" : String(r.fields.created_by ?? ""),
   };
 }
 
@@ -52,9 +59,8 @@ export async function POST(req: Request) {
     if (!name) return NextResponse.json({ error: "Group name is required" }, { status: 400 });
     const rec = await createRecord<ModelGroupFields>(TABLE, {
       name,
-      model_ids: modelIds.join(","),
+      model_ids: modelIds,
       created_at: new Date().toISOString(),
-      created_by: [user.airtableUserId ?? user.id],
     });
     return NextResponse.json(mapGroup(rec), { status: 201 });
   } catch (err) {

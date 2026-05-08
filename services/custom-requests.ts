@@ -53,9 +53,20 @@ type Fields = {
   stuck_alert_sent?: boolean;
   created_at?: string;
   updated_at?: string;
-  /** Optional multipleRecordLinks → users (VA assigned to handle this custom). */
+  /** VA assignee — singleLineText (user record id) or legacy link → users */
   assigned_va?: string | string[];
 };
+
+/** Every write bumps `updated_at` for stale-tracking / overdue crons when the column exists. */
+function bumpCustomRequestWrite(patch: Partial<Fields>): Partial<Fields> {
+  return { ...patch, updated_at: new Date().toISOString() };
+}
+
+function resolveAssignedVaId(raw: string | string[] | undefined): string {
+  if (typeof raw === "string" && raw.trim()) return raw.trim();
+  if (Array.isArray(raw) && raw.length > 0) return String(raw[0]).trim();
+  return firstLinkedId(raw) ?? "";
+}
 
 function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
   const f = rec.fields;
@@ -73,7 +84,7 @@ function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
     fan_username: f.fan_username ?? "",
     requested_by_chatter_id: firstLinkedId(f.requested_by_chatter) ?? "",
     requested_by_chatter_name: snapshotText(f.requested_by_chatter),
-    assigned_va_id: firstLinkedId(f.assigned_va) ?? "",
+    assigned_va_id: resolveAssignedVaId(f.assigned_va),
     assigned_model_id: firstLinkedId(f.assigned_model) ?? "",
     assigned_model_name: snapshotText(f.assigned_model),
     request_title: f.request_title ?? "",
@@ -197,7 +208,7 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
     admin_notes: "",
     model_notes: "",
   };
-  const rec = await createRecord<Fields>(TABLE, payload as Fields);
+  const rec = await createRecord<Fields>(TABLE, bumpCustomRequestWrite(payload as Partial<Fields>) as Fields);
   const request = mapRecord(rec as AirtableRecord<Fields>);
 
   const { notifyAdmins } = await import("./notification-service");
@@ -294,7 +305,7 @@ export async function patchCustomRequestRecord(
     // Any status transition should allow future stuck alerts if the request stalls again.
     nextFields.stuck_alert_sent = false;
   }
-  const rec = await updateRecord<Fields>(TABLE, recordId, nextFields);
+  const rec = await updateRecord<Fields>(TABLE, recordId, bumpCustomRequestWrite(nextFields));
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
@@ -303,7 +314,11 @@ export async function updateCustomRequestAdminStatus(
   recordId: string,
   admin_status: CustomRequestAdminStatus
 ): Promise<CustomRequest> {
-  const rec = await updateRecord<Fields>(TABLE, recordId, { admin_status, stuck_alert_sent: false });
+  const rec = await updateRecord<Fields>(
+    TABLE,
+    recordId,
+    bumpCustomRequestWrite({ admin_status, stuck_alert_sent: false })
+  );
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
@@ -347,7 +362,7 @@ export async function updateCustomRequestModelSchedule(
   if (input.uploaded_by_model !== undefined) {
     fields.uploaded_by_model = input.uploaded_by_model;
   }
-  const rec = await updateRecord<Fields>(TABLE, recordId, fields);
+  const rec = await updateRecord<Fields>(TABLE, recordId, bumpCustomRequestWrite(fields));
   const updated = mapRecord(rec as AirtableRecord<Fields>);
   const becameDelivered =
     (input.model_status === "completed" || input.model_status === "uploaded") &&
@@ -492,7 +507,7 @@ export async function listStuckCustomRequestsSince(olderThanIso: string): Promis
 }
 
 export async function markCustomRequestStuckAlertSent(recordId: string, sent: boolean): Promise<void> {
-  await updateRecord<Fields>(TABLE, recordId, { stuck_alert_sent: sent });
+  await updateRecord<Fields>(TABLE, recordId, bumpCustomRequestWrite({ stuck_alert_sent: sent }));
 }
 
 /** Open customs with admin pending or model in_progress (raw fields; excludes terminal statuses). */

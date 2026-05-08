@@ -16,11 +16,15 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   try {
     const body = await req.json();
     const name = body?.name != null ? String(body.name).trim() : undefined;
-    const model_ids = Array.isArray(body?.model_ids)
-      ? body.model_ids.map((v: unknown) => String(v).trim()).filter(Boolean).join(",")
-      : body?.model_ids != null
-        ? String(body.model_ids)
-        : undefined;
+    const model_ids =
+      Array.isArray(body?.model_ids) && body.model_ids.length >= 0
+        ? body.model_ids.map((v: unknown) => String(v).trim()).filter(Boolean)
+        : body?.model_ids != null && typeof body.model_ids === "string"
+          ? String(body.model_ids)
+              .split(",")
+              .map((v) => v.trim())
+              .filter(Boolean)
+          : undefined;
     const fields: Record<string, unknown> = {};
     if (name != null) fields.name = name;
     if (model_ids != null) fields.model_ids = model_ids;

@@ -187,7 +187,14 @@ function mapShift(rec: AirtableRecord<ShiftFields>): Shift {
     break_started_at,
     break_reminder_at,
     break_minutes: getBreakMinutes(f),
-    worked_minutes: (f.worked_minutes as number | null) ?? null,
+    /** Base may omit worked_minutes; derive from total_minutes when absent. */
+    worked_minutes: ((): number | null => {
+      const w = f.worked_minutes;
+      if (typeof w === "number" && !Number.isNaN(w)) return w;
+      const t = f.total_minutes;
+      if (typeof t === "number" && !Number.isNaN(t)) return t;
+      return null;
+    })(),
     status,
     models_count: (f.models_count as number) ?? 0,
     total_minutes: (f.total_minutes as number | null) ?? null,
