@@ -25,6 +25,7 @@
     "complete:model-fields": "tsx scripts/complete-model-fields.ts",
     "complete:period-fields": "tsx scripts/complete-period-fields.ts",
     "add:language-field": "tsx scripts/add-language-field.ts",
+    "add:model-availability-windows-field": "tsx scripts/add-model-availability-windows-field.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 execute chatter-d1 --remote --file=./drizzle/migrations/0000_initial.sql",
     "db:studio": "drizzle-kit studio",

@@ -65,6 +65,8 @@
       "optionalNotes": "Notas opcionales…",
       "startTime": "Hora inicio",
       "endTime": "Hora fin",
+      "to": "a",
+      "remove": "Quitar",
       "custom": "Personalizado",
       "yes": "Sí",
       "no": "No"
@@ -125,7 +127,9 @@
       "scheduleItem": "Elemento del horario",
       "liveStreamDetails": "Detalle de live",
       "scheduleDetail": "Detalle de horario",
-      "availFormHint": "Añade una ventana de disponibilidad para esta semana. Puedes enviar más tipos de entradas en la página de disponibilidad semanal.",
+      "availWindow": "Ventana {{n}}",
+      "addAnotherWindow": "Añadir otra ventana",
+      "availFormHint": "Añade disponibilidad para esta semana: puedes incluir varias franjas horarias en un solo envío. Usa la página de disponibilidad semanal para día libre, ventana en vivo y ventana personalizada.",
       "timeOffFormHint": "Solicita fechas de ausencia. Tu equipo lo revisará.",
       "inPeriodBanner": "🔴 Estás en tu periodo (termina {end})",
       "itemTypes": {

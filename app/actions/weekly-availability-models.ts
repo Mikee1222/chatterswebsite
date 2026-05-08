@@ -10,7 +10,8 @@ import {
   getModelAvailabilityRequestById,
   getModelAvailabilityRequestsForWeek,
 } from "@/services/weekly-availability-requests-models";
-import type { ModelAvailabilityEntryType, WeeklyProgramDay } from "@/types";
+import type { ModelAvailabilityEntryType, ModelAvailabilityTimeWindow, WeeklyProgramDay } from "@/types";
+import { validateTimeWindows } from "@/lib/model-availability-windows";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -18,6 +19,8 @@ type SubmitInput = {
   week_start: string;
   day: WeeklyProgramDay;
   entry_type: ModelAvailabilityEntryType;
+  /** When omitted, falls back to start_time/end_time if both set (legacy single window). */
+  time_windows?: ModelAvailabilityTimeWindow[] | null;
   start_time?: string | null;
   end_time?: string | null;
   notes?: string;
@@ -42,8 +45,17 @@ export async function submitModelAvailabilityAction(input: SubmitInput): Promise
   const ctx = await modelGuard();
   if (!ctx) return { success: false, error: "Unauthorized." };
   if (!input.week_start?.trim()) return { success: false, error: "Week is required." };
-  if (needsTime(input.entry_type) && (!input.start_time || !input.end_time)) {
-    return { success: false, error: "Start and end time are required for this entry type." };
+  let resolvedWindows: ModelAvailabilityTimeWindow[] | undefined;
+  if (needsTime(input.entry_type)) {
+    const hasExplicitWindows = (input.time_windows?.length ?? 0) > 0;
+    const raw = hasExplicitWindows
+      ? input.time_windows!
+      : input.start_time && input.end_time
+        ? [{ start: input.start_time, end: input.end_time }]
+        : [];
+    const v = validateTimeWindows(raw);
+    if (!v.ok) return { success: false, error: v.error };
+    resolvedWindows = v.normalized;
   }
   try {
     await createModelAvailabilityRequest({
@@ -52,8 +64,9 @@ export async function submitModelAvailabilityAction(input: SubmitInput): Promise
       model_name: ctx.modelRecord.model_name || ctx.user.fullName || "Model",
       day: input.day,
       entry_type: input.entry_type,
-      start_time: needsTime(input.entry_type) ? input.start_time ?? null : null,
-      end_time: needsTime(input.entry_type) ? input.end_time ?? null : null,
+      start_time: resolvedWindows?.[0]?.start ?? null,
+      end_time: resolvedWindows?.[0]?.end ?? null,
+      time_windows: resolvedWindows,
       notes: input.notes?.trim() || "",
     });
     revalidatePath(ROUTES.model.weeklyAvailability);
@@ -68,6 +81,7 @@ export async function updateModelAvailabilityAction(
   recordId: string,
   patch: {
     entry_type: ModelAvailabilityEntryType;
+    time_windows?: ModelAvailabilityTimeWindow[] | null;
     start_time?: string | null;
     end_time?: string | null;
     notes?: string;
@@ -77,11 +91,22 @@ export async function updateModelAvailabilityAction(
   if (!ctx) return { success: false, error: "Unauthorized." };
   const existing = await getModelAvailabilityRequestById(recordId);
   if (!existing || existing.model_id !== ctx.linkedModelId) return { success: false, error: "Entry not found." };
+  let time_windows: ModelAvailabilityTimeWindow[] | undefined;
+  if (needsTime(patch.entry_type)) {
+    const hasExplicitWindows = (patch.time_windows?.length ?? 0) > 0;
+    const raw = hasExplicitWindows
+      ? patch.time_windows!
+      : patch.start_time && patch.end_time
+        ? [{ start: patch.start_time, end: patch.end_time }]
+        : [];
+    const v = validateTimeWindows(raw);
+    if (!v.ok) return { success: false, error: v.error };
+    time_windows = v.normalized;
+  }
   try {
     await updateModelAvailabilityRequest(recordId, {
       entry_type: patch.entry_type,
-      start_time: needsTime(patch.entry_type) ? patch.start_time ?? null : null,
-      end_time: needsTime(patch.entry_type) ? patch.end_time ?? null : null,
+      ...(time_windows !== undefined ? { time_windows } : {}),
       notes: patch.notes?.trim() ?? "",
     });
     revalidatePath(ROUTES.model.weeklyAvailability);

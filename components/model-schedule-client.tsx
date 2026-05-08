@@ -4,17 +4,19 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Calendar, Clock, Gauge, Layers, ListChecks, Palmtree, StickyNote, Timer } from "lucide-react";
+import { Calendar, Clock, Gauge, Layers, ListChecks, Palmtree, Plus, StickyNote, Timer, X } from "lucide-react";
 import { addDays, getThisWeekMonday, formatWeekLabel, WEEKLY_PROGRAM_DAY_OPTIONS, normalizeWeekStart } from "@/lib/weekly-program";
 import { formatTimeRange, formatDateLong, formatScheduleWeekdayDateLine, formatScheduleItemTypeForDisplay } from "@/lib/format";
 import { modelScheduleUrl } from "@/lib/routes";
 import type {
+  ModelAvailabilityTimeWindow,
   ModelScheduleItem,
   ModelPeriodRecord,
   ModelWeeklyAvailabilityRequest,
   ModelTimeOffRequest,
   WeeklyProgramDay,
 } from "@/types";
+import { formatModelAvailabilityWindows, validateTimeWindows } from "@/lib/model-availability-windows";
 import {
   FormField,
   FormInput,
@@ -102,8 +104,9 @@ export function ModelScheduleClient({
   const [selectedItem, setSelectedItem] = React.useState<ModelScheduleItem | null>(null);
 
   const [availDay, setAvailDay] = React.useState<WeeklyProgramDay>("Monday");
-  const [availStart, setAvailStart] = React.useState("09:00");
-  const [availEnd, setAvailEnd] = React.useState("17:00");
+  const [availWindows, setAvailWindows] = React.useState<ModelAvailabilityTimeWindow[]>([
+    { start: "09:00", end: "17:00" },
+  ]);
   const [availNotes, setAvailNotes] = React.useState("");
   const [availSubmitting, setAvailSubmitting] = React.useState(false);
 
@@ -170,6 +173,11 @@ export function ModelScheduleClient({
 
   const onSubmitAvailability = async (e: React.FormEvent) => {
     e.preventDefault();
+    const v = validateTimeWindows(availWindows);
+    if (!v.ok) {
+      toast.error(v.error);
+      return;
+    }
     setAvailSubmitting(true);
     try {
       const res = await fetch("/api/model/availability", {
@@ -178,10 +186,8 @@ export function ModelScheduleClient({
         body: JSON.stringify({
           week_start: weekStart,
           day: availDay,
-          start_time: availStart,
-          end_time: availEnd,
+          windows: v.normalized,
           notes: availNotes.trim() || undefined,
-          entry_type: "availability",
         }),
       });
       const data = (await res.json()) as { success?: boolean; error?: unknown };
@@ -191,6 +197,7 @@ export function ModelScheduleClient({
       }
       toast.success(t("schedule.availabilitySubmitted"));
       setAvailNotes("");
+      setAvailWindows([{ start: "09:00", end: "17:00" }]);
       router.refresh();
     } catch {
       toast.error(t("common.networkError"));
@@ -331,7 +338,9 @@ export function ModelScheduleClient({
                   {availRows.map((r) => (
                     <li key={r.id} className="text-xs text-[hsl(330,90%,78%)]/90">
                       <span className="font-medium text-white/80">{r.entry_type}</span>
-                      {r.start_time && r.end_time ? (
+                      {r.time_windows.length > 0 ? (
+                        <span className="ml-1 text-white/60">{formatModelAvailabilityWindows(r.time_windows)}</span>
+                      ) : r.start_time && r.end_time ? (
                         <span className="ml-1 text-white/60">{formatTimeRange(r.start_time, r.end_time)}</span>
                       ) : null}
                       {r.notes?.trim() ? <span className="mt-0.5 block text-white/45">{r.notes}</span> : null}
@@ -396,13 +405,69 @@ export function ModelScheduleClient({
               ))}
             </FormSelect>
           </FormField>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <FormField label={t("common.startTime")} icon={<Clock />} htmlFor="sched-avail-start" required>
-              <FormInput id="sched-avail-start" type="time" value={availStart} onChange={(e) => setAvailStart(e.target.value)} required />
-            </FormField>
-            <FormField label={t("common.endTime")} icon={<Clock />} htmlFor="sched-avail-end" required>
-              <FormInput id="sched-avail-end" type="time" value={availEnd} onChange={(e) => setAvailEnd(e.target.value)} required />
-            </FormField>
+          <div className="space-y-4">
+            {availWindows.map((w, idx) => (
+              <div key={idx}>
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                  {t("schedule.availWindow", { n: idx + 1 })}
+                </p>
+                <div className="flex flex-wrap items-end gap-2">
+                  <div className="min-w-[100px] flex-1">
+                    <FormField label={t("common.startTime")} icon={<Clock />} htmlFor={`sched-avail-start-${idx}`} required>
+                      <FormInput
+                        id={`sched-avail-start-${idx}`}
+                        type="time"
+                        value={w.start}
+                        onChange={(e) =>
+                          setAvailWindows((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx]!, start: e.target.value };
+                            return next;
+                          })
+                        }
+                        required
+                      />
+                    </FormField>
+                  </div>
+                  <span className="hidden self-center text-sm text-white/40 sm:inline md:pb-2">{t("common.to")}</span>
+                  <div className="min-w-[100px] flex-1">
+                    <FormField label={t("common.endTime")} icon={<Clock />} htmlFor={`sched-avail-end-${idx}`} required>
+                      <FormInput
+                        id={`sched-avail-end-${idx}`}
+                        type="time"
+                        value={w.end}
+                        onChange={(e) =>
+                          setAvailWindows((prev) => {
+                            const next = [...prev];
+                            next[idx] = { ...next[idx]!, end: e.target.value };
+                            return next;
+                          })
+                        }
+                        required
+                      />
+                    </FormField>
+                  </div>
+                  {idx > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAvailWindows((prev) => prev.filter((_, i) => i !== idx))}
+                      className="mb-3 shrink-0 rounded-lg p-2 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                      aria-label={t("common.remove")}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setAvailWindows((prev) => [...prev, { start: "", end: "" }])}
+              className="inline-flex items-center gap-1 text-xs font-medium text-[hsl(330,90%,72%)] hover:text-[hsl(330,90%,82%)]"
+            >
+              <Plus className="h-3 w-3 shrink-0" />
+              {t("schedule.addAnotherWindow")}
+            </button>
           </div>
           <FormField label={t("common.notes")} icon={<StickyNote />} htmlFor="sched-avail-notes">
             <FormTextarea id="sched-avail-notes" value={availNotes} onChange={(e) => setAvailNotes(e.target.value)} rows={3} />

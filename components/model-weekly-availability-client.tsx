@@ -3,9 +3,10 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Calendar, Clock, ListChecks, Loader2, StickyNote } from "lucide-react";
+import { Calendar, Clock, ListChecks, Loader2, Plus, StickyNote, X } from "lucide-react";
 import { submitModelAvailabilityAction, updateModelAvailabilityAction, deleteModelAvailabilityAction } from "@/app/actions/weekly-availability-models";
 import { formatTimeRange } from "@/lib/format";
+import { formatModelAvailabilityWindows, validateTimeWindows } from "@/lib/model-availability-windows";
 import { modelWeeklyAvailabilityUrl } from "@/lib/routes";
 import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
 import { PeriodDayIndicator } from "@/components/period-day-indicator";
@@ -16,7 +17,12 @@ import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import type { ModelWeeklyAvailabilityRequest, WeeklyProgramDay, ModelAvailabilityEntryType } from "@/types";
+import type {
+  ModelAvailabilityTimeWindow,
+  ModelAvailabilityEntryType,
+  ModelWeeklyAvailabilityRequest,
+  WeeklyProgramDay,
+} from "@/types";
 
 const fieldMotion = {
   initial: { opacity: 0, y: 8 },
@@ -47,6 +53,35 @@ function t(lang: "en" | "es", en: string, es: string) {
   return lang === "es" ? es : en;
 }
 
+const DEFAULT_TIME_WINDOWS: ModelAvailabilityTimeWindow[] = [{ start: "09:00", end: "17:00" }];
+
+function availValidationMessage(lang: "en" | "es", raw: string): string {
+  const table: Record<string, [string, string]> = {
+    "At least one time window is required.": [
+      "At least one time window is required.",
+      "Se requiere al menos una ventana horaria.",
+    ],
+    "Each window needs a start and end time.": [
+      "Each window needs a start and end time.",
+      "Cada ventana necesita hora de inicio y fin.",
+    ],
+    "Invalid time format.": ["Invalid time format.", "Formato de hora no válido."],
+    "End time must be after start time.": [
+      "End time must be after start time.",
+      "La hora de fin debe ser posterior a la de inicio.",
+    ],
+    "Windows cannot overlap.": ["Windows cannot overlap.", "Las ventanas no pueden superponerse."],
+  };
+  const pair = table[raw];
+  return pair ? t(lang, pair[0], pair[1]) : raw;
+}
+
+function submissionTimeLabel(r: ModelWeeklyAvailabilityRequest): string | null {
+  if (r.time_windows.length > 0) return formatModelAvailabilityWindows(r.time_windows);
+  if (r.start_time && r.end_time) return formatTimeRange(r.start_time, r.end_time);
+  return null;
+}
+
 export function ModelWeeklyAvailabilityClient({
   modelId,
   language,
@@ -63,8 +98,7 @@ export function ModelWeeklyAvailabilityClient({
   const [editingRequest, setEditingRequest] = React.useState<ModelWeeklyAvailabilityRequest | null>(null);
   const [entryType, setEntryType] = React.useState<ModelAvailabilityEntryType>("availability");
   const [day, setDay] = React.useState<WeeklyProgramDay>("Monday");
-  const [startTime, setStartTime] = React.useState("09:00");
-  const [endTime, setEndTime] = React.useState("17:00");
+  const [timeWindows, setTimeWindows] = React.useState<ModelAvailabilityTimeWindow[]>(() => [...DEFAULT_TIME_WINDOWS]);
   const [notes, setNotes] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
   const [success, setSuccess] = React.useState<string | null>(null);
@@ -84,8 +118,13 @@ export function ModelWeeklyAvailabilityClient({
     setEditingRequest(r);
     setEntryType(r.entry_type);
     setDay(r.day);
-    setStartTime(r.start_time?.slice(0, 5) || "09:00");
-    setEndTime(r.end_time?.slice(0, 5) || "17:00");
+    if (r.time_windows.length > 0) {
+      setTimeWindows(r.time_windows.map((w) => ({ start: w.start.slice(0, 5), end: w.end.slice(0, 5) })));
+    } else if (r.start_time && r.end_time) {
+      setTimeWindows([{ start: r.start_time.slice(0, 5), end: r.end_time.slice(0, 5) }]);
+    } else {
+      setTimeWindows([...DEFAULT_TIME_WINDOWS]);
+    }
     setNotes(r.notes ?? "");
     setError(null);
     setSuccess(null);
@@ -93,6 +132,7 @@ export function ModelWeeklyAvailabilityClient({
 
   const handleCancelEdit = () => {
     setEditingRequest(null);
+    setTimeWindows([...DEFAULT_TIME_WINDOWS]);
     setError(null);
   };
 
@@ -100,21 +140,21 @@ export function ModelWeeklyAvailabilityClient({
     e.preventDefault();
     setError(null);
     setSuccess(null);
-    if (needsTime && (!startTime.trim() || !endTime.trim())) {
-      setError(t(language, "Start and end time are required.", "Se requieren hora de inicio y fin."));
-      return;
-    }
-    if (needsTime && startTime === endTime) {
-      setError(t(language, "Start and end time cannot be the same.", "La hora de inicio y fin no pueden ser iguales."));
-      return;
+    let normalizedWindows: ModelAvailabilityTimeWindow[] | undefined;
+    if (needsTime) {
+      const v = validateTimeWindows(timeWindows);
+      if (!v.ok) {
+        setError(availValidationMessage(language, v.error));
+        return;
+      }
+      normalizedWindows = v.normalized;
     }
     setSubmitting(true);
     try {
       if (editingRequest) {
         const res = await updateModelAvailabilityAction(editingRequest.id, {
           entry_type: entryType,
-          start_time: needsTime ? startTime : null,
-          end_time: needsTime ? endTime : null,
+          ...(needsTime && normalizedWindows ? { time_windows: normalizedWindows } : {}),
           notes: notes.trim() || undefined,
         });
         if (!res.success) {
@@ -123,6 +163,7 @@ export function ModelWeeklyAvailabilityClient({
         }
         setSuccess(t(language, "Availability updated.", "Disponibilidad actualizada."));
         setEditingRequest(null);
+        setTimeWindows([...DEFAULT_TIME_WINDOWS]);
         router.refresh();
         return;
       }
@@ -130,8 +171,7 @@ export function ModelWeeklyAvailabilityClient({
         week_start: weekStart,
         day,
         entry_type: entryType,
-        start_time: needsTime ? startTime : null,
-        end_time: needsTime ? endTime : null,
+        ...(needsTime && normalizedWindows ? { time_windows: normalizedWindows } : {}),
         notes: notes.trim() || undefined,
       });
       if (!res.success) {
@@ -140,6 +180,7 @@ export function ModelWeeklyAvailabilityClient({
       }
       setSuccess(t(language, "Availability submitted.", "Disponibilidad enviada."));
       setNotes("");
+      setTimeWindows([...DEFAULT_TIME_WINDOWS]);
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -276,25 +317,79 @@ export function ModelWeeklyAvailabilityClient({
               </FormField>
             </motion.div>
             {needsTime && (
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <FormField label={t(language, "Start time", "Hora inicio")} icon={<Clock />} htmlFor="model-avail-start" required>
-                  <FormInput
-                    id="model-avail-start"
-                    type="time"
-                    value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
-                    className="weekly-avail-time-input"
-                  />
-                </FormField>
-                <FormField label={t(language, "End time", "Hora fin")} icon={<Clock />} htmlFor="model-avail-end" required>
-                  <FormInput
-                    id="model-avail-end"
-                    type="time"
-                    value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
-                    className="weekly-avail-time-input"
-                  />
-                </FormField>
+              <div className="space-y-4">
+                {timeWindows.map((windowRow, idx) => (
+                  <div key={idx}>
+                    <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                      {t(language, `Window ${idx + 1}`, `Ventana ${idx + 1}`)}
+                    </p>
+                    <div className="mb-2 flex flex-wrap items-end gap-2">
+                      <div className="min-w-[120px] flex-1">
+                        <FormField
+                          label={t(language, "Start time", "Hora inicio")}
+                          icon={<Clock />}
+                          htmlFor={`model-avail-start-${idx}`}
+                          required
+                          className="mb-0"
+                        >
+                          <FormInput
+                            id={`model-avail-start-${idx}`}
+                            type="time"
+                            value={windowRow.start}
+                            onChange={(e) => {
+                              const next = [...timeWindows];
+                              next[idx] = { ...next[idx]!, start: e.target.value };
+                              setTimeWindows(next);
+                            }}
+                            className="weekly-avail-time-input"
+                          />
+                        </FormField>
+                      </div>
+                      <span className="hidden self-center pb-2 text-sm text-white/40 sm:inline md:pb-6">
+                        {t(language, "to", "a")}
+                      </span>
+                      <div className="min-w-[120px] flex-1">
+                        <FormField
+                          label={t(language, "End time", "Hora fin")}
+                          icon={<Clock />}
+                          htmlFor={`model-avail-end-${idx}`}
+                          required
+                          className="mb-0"
+                        >
+                          <FormInput
+                            id={`model-avail-end-${idx}`}
+                            type="time"
+                            value={windowRow.end}
+                            onChange={(e) => {
+                              const next = [...timeWindows];
+                              next[idx] = { ...next[idx]!, end: e.target.value };
+                              setTimeWindows(next);
+                            }}
+                            className="weekly-avail-time-input"
+                          />
+                        </FormField>
+                      </div>
+                      {idx > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setTimeWindows((prev) => prev.filter((_, i) => i !== idx))}
+                          className="mb-2 shrink-0 rounded-lg p-2 text-red-400 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                          aria-label={t(language, "Remove window", "Quitar ventana")}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={() => setTimeWindows((prev) => [...prev, { start: "", end: "" }])}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-[hsl(330,90%,72%)] transition-colors hover:text-[hsl(330,90%,82%)]"
+                >
+                  <Plus className="h-3 w-3 shrink-0" />
+                  {t(language, "Add another window", "Añadir otra ventana")}
+                </button>
               </div>
             )}
             <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.1 }}>
@@ -355,7 +450,7 @@ export function ModelWeeklyAvailabilityClient({
                         <div className="flex items-center justify-between gap-2">
                           <span className="font-medium text-[hsl(330,90%,75%)]">
                             {d} — {ENTRY_TYPES.find((e) => e.value === r.entry_type) ? t(language, ENTRY_TYPES.find((e) => e.value === r.entry_type)!.labelEn, ENTRY_TYPES.find((e) => e.value === r.entry_type)!.labelEs) : r.entry_type}
-                            {(r.start_time || r.end_time) && ` · ${formatTimeRange(r.start_time, r.end_time)}`}
+                            {submissionTimeLabel(r) ? ` · ${submissionTimeLabel(r)}` : ""}
                           </span>
                           <span className={`rounded-lg px-2 py-0.5 text-xs font-medium ${r.status === "submitted" ? "bg-amber-500/20 text-amber-300" : r.status === "used" ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-white/70"}`}>
                             {r.status}

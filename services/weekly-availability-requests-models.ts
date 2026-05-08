@@ -13,9 +13,11 @@ import { ensureMondayForQuery, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-p
 import type {
   ModelWeeklyAvailabilityRequest,
   ModelAvailabilityEntryType,
+  ModelAvailabilityTimeWindow,
   WeeklyProgramDay,
   WeeklyAvailabilityRequestStatus,
 } from "@/types";
+import { airtablePayloadFromWindows, emptyTimeFieldsPayload, windowsFromRecord } from "@/lib/model-availability-windows";
 
 const TABLE = "weekly_availability_requests_models";
 
@@ -28,8 +30,10 @@ type Fields = {
   model_name?: string;
   day?: string;
   entry_type?: string;
-  start_time?: string;
-  end_time?: string;
+  start_time?: string | null;
+  end_time?: string | null;
+  /** JSON array: [{ start, end }] — multiline text in Airtable */
+  availability_windows?: string;
   notes?: string;
   status?: string;
   created_at?: string;
@@ -54,6 +58,7 @@ function parseStatus(raw: unknown): WeeklyAvailabilityRequestStatus {
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelWeeklyAvailabilityRequest {
   const f = rec.fields;
+  const time_windows = windowsFromRecord(f.start_time, f.end_time, f.availability_windows);
   return {
     id: rec.id,
     request_id: f.request_id ?? "",
@@ -64,6 +69,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelWeeklyAvailabilityRequest 
     entry_type: parseEntryType(f.entry_type),
     start_time: f.start_time ?? null,
     end_time: f.end_time ?? null,
+    time_windows,
     notes: f.notes ?? "",
     status: parseStatus(f.status),
     created_at: f.created_at ?? "",
@@ -80,7 +86,11 @@ export async function getModelAvailabilityRequestsForWeek(
   return records
     .map(mapRecord)
     .filter((r) => r.week_start === monday && r.model_id === modelId)
-    .sort((a, b) => a.day.localeCompare(b.day) || (a.start_time ?? "").localeCompare(b.start_time ?? ""));
+    .sort(
+      (a, b) =>
+        a.day.localeCompare(b.day) ||
+        (a.time_windows[0]?.start ?? a.start_time ?? "").localeCompare(b.time_windows[0]?.start ?? b.start_time ?? "")
+    );
 }
 
 export async function getModelAvailabilityRequestById(recordId: string): Promise<ModelWeeklyAvailabilityRequest | null> {
@@ -100,8 +110,23 @@ export async function createModelAvailabilityRequest(input: {
   entry_type: ModelAvailabilityEntryType;
   start_time?: string | null;
   end_time?: string | null;
+  time_windows?: ModelAvailabilityTimeWindow[] | null;
   notes?: string;
 }): Promise<ModelWeeklyAvailabilityRequest> {
+  const noTime =
+    input.entry_type !== "availability" &&
+    input.entry_type !== "live_window" &&
+    input.entry_type !== "custom_window";
+
+  const timeFields =
+    noTime
+      ? emptyTimeFieldsPayload()
+      : input.time_windows && input.time_windows.length > 0
+        ? airtablePayloadFromWindows(input.time_windows)
+        : input.start_time && input.end_time
+          ? airtablePayloadFromWindows([{ start: input.start_time, end: input.end_time }])
+          : emptyTimeFieldsPayload();
+
   const rec = await createRecord<Fields>(TABLE, {
     request_id: `avail_model_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     week_start: ensureMondayForQuery(input.week_start),
@@ -109,8 +134,7 @@ export async function createModelAvailabilityRequest(input: {
     model_name: input.model_name,
     day: input.day,
     entry_type: input.entry_type,
-    start_time: input.start_time ?? undefined,
-    end_time: input.end_time ?? undefined,
+    ...timeFields,
     notes: input.notes ?? "",
     status: "submitted",
   });
@@ -119,15 +143,28 @@ export async function createModelAvailabilityRequest(input: {
 
 export async function updateModelAvailabilityRequest(
   recordId: string,
-  patch: Partial<{
+  patch: {
     entry_type: ModelAvailabilityEntryType;
-    start_time: string | null;
-    end_time: string | null;
-    notes: string;
-    status: WeeklyAvailabilityRequestStatus;
-  }>
+    time_windows?: ModelAvailabilityTimeWindow[];
+    notes?: string;
+    status?: WeeklyAvailabilityRequestStatus;
+  }
 ): Promise<ModelWeeklyAvailabilityRequest> {
-  const rec = await updateRecord<Fields>(TABLE, recordId, patch as Partial<Fields>);
+  const fields: Partial<Fields> = {
+    entry_type: patch.entry_type,
+    ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+    ...(patch.status !== undefined ? { status: patch.status } : {}),
+  };
+  const wantTime =
+    patch.entry_type === "availability" ||
+    patch.entry_type === "live_window" ||
+    patch.entry_type === "custom_window";
+  if (!wantTime) {
+    Object.assign(fields, emptyTimeFieldsPayload());
+  } else if (patch.time_windows && patch.time_windows.length > 0) {
+    Object.assign(fields, airtablePayloadFromWindows(patch.time_windows));
+  }
+  const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 

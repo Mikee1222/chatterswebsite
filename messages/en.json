@@ -65,6 +65,8 @@
       "optionalNotes": "Optional notes…",
       "startTime": "Start time",
       "endTime": "End time",
+      "to": "to",
+      "remove": "Remove",
       "custom": "Custom",
       "yes": "Yes",
       "no": "No"
@@ -125,7 +127,9 @@
       "scheduleItem": "Schedule item",
       "liveStreamDetails": "Live stream details",
       "scheduleDetail": "Schedule detail",
-      "availFormHint": "Add an availability window for this week (Mon–Sun). You can submit multiple entries from the weekly availability page for other entry types.",
+      "availWindow": "Window {{n}}",
+      "addAnotherWindow": "Add another window",
+      "availFormHint": "Add availability for this week (Mon–Sun): you can add multiple time windows in one submission. Use the weekly availability page for day off, live window, and custom window.",
       "timeOffFormHint": "Request blackout dates. Your team will review this in Airtable.",
       "inPeriodBanner": "🔴 You are currently in your period (ends {end})",
       "itemTypes": {

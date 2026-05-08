@@ -383,6 +383,9 @@ export interface ModelLiveStreamRecord {
 /** weekly_availability_requests_models entry_type. */
 export type ModelAvailabilityEntryType = "availability" | "day_off" | "live_window" | "custom_window";
 
+/** Parsed from `availability_windows` JSON (+ legacy start/end). HH:mm strings. */
+export type ModelAvailabilityTimeWindow = { start: string; end: string };
+
 export interface ModelWeeklyAvailabilityRequest {
   id: string;
   request_id: string;
@@ -394,6 +397,8 @@ export interface ModelWeeklyAvailabilityRequest {
   entry_type: ModelAvailabilityEntryType;
   start_time: string | null;
   end_time: string | null;
+  /** Resolved time windows for this row (same day). */
+  time_windows: ModelAvailabilityTimeWindow[];
   notes: string;
   status: WeeklyAvailabilityRequestStatus;
   created_at: string;
