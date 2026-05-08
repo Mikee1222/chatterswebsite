@@ -44,7 +44,7 @@ export type ModelPeriodSummary = {
 };
 
 type Props = {
-  modelss: ModelRecord[];
+  modelss: (ModelRecord & { hasLinkedAccount?: boolean })[];
   modelIdToVaNames: Record<string, string[]>;
   periodSummaryByModelId: Record<string, ModelPeriodSummary>;
 };
@@ -299,6 +299,11 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                         </span>
                       ) : null}
                       <RecordStatusBadge status={m.status} />
+                      {m.hasLinkedAccount === false ? (
+                        <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                          No account linked
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                 </div>
@@ -438,6 +443,11 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
                               </span>
                             ) : null}
                             <RecordStatusBadge status={m.status} />
+                            {m.hasLinkedAccount === false ? (
+                              <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                                No account linked
+                              </span>
+                            ) : null}
                           </div>
                         </div>
                       </div>

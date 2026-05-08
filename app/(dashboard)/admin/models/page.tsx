@@ -7,16 +7,28 @@ import { listAllModelPeriods } from "@/services/model-periods";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { AdminModelsClient } from "@/components/admin-models-client";
 import type { ModelRecord, ModelPeriodRecord } from "@/types";
+import { listAllUsers } from "@/services/users";
 
 export default async function AdminModelsPage() {
   const user = await getSessionFromCookies();
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
-  const [modelss, vaShifts, allPeriods] = await Promise.all([
+  const [modelss, vaShifts, allPeriods, allUsers] = await Promise.all([
     listAllModelss(),
     getActiveShifts("virtual_assistant").catch(() => []),
     listAllModelPeriods().catch(() => [] as ModelPeriodRecord[]),
+    listAllUsers().catch(() => []),
   ]);
+  const linkedModelIds = new Set(
+    allUsers
+      .filter((u) => u.role === "model")
+      .map((u) => u.linked_model_id)
+      .filter((id): id is string => Boolean(id?.trim()))
+  );
+  const modelsWithAccountStatus = modelss.map((m) => ({
+    ...m,
+    hasLinkedAccount: linkedModelIds.has(m.id),
+  }));
 
   const todayYmd = getTodayYmd();
   const periodsByModel = new Map<string, ModelPeriodRecord[]>();
@@ -61,7 +73,7 @@ export default async function AdminModelsPage() {
 
   return (
     <AdminModelsClient
-      modelss={modelss as ModelRecord[]}
+      modelss={modelsWithAccountStatus as (ModelRecord & { hasLinkedAccount: boolean })[]}
       modelIdToVaNames={modelIdToVaNames}
       periodSummaryByModelId={periodSummaryByModelId}
     />

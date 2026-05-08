@@ -35,7 +35,7 @@ function EditAccountSubmit() {
   );
 }
 
-type Props = { user: UserRecord; modelOptions?: { id: string; model_name: string }[] };
+type Props = { user: UserRecord; modelOptions?: { id: string; model_name: string; alreadyLinked?: boolean }[] };
 
 export function EditAccountForm({ user, modelOptions = [] }: Props) {
   const [role, setRole] = React.useState<UserRole>(user.role);
@@ -69,20 +69,30 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
       </FormField>
       {role === "model" && (
         <>
-          <FormField label="Linked model" icon={<Link2 />} htmlFor="linked_model_id" required>
+          <FormField
+            label="Link to model profile"
+            icon={<Link2 />}
+            htmlFor="linked_model_id"
+            description="Links this login account to a model profile so they can access their dashboard."
+          >
             <FormSelect
               id="linked_model_id"
               name="linked_model_id"
               value={linkedModelId}
               onChange={(e) => setLinkedModelId(e.target.value)}
-              required
             >
-              <option value="" disabled className={selectOptionClass}>
-                Select model
+              <option value="" className={selectOptionClass}>
+                — No model profile linked —
               </option>
               {modelOptions.map((m) => (
-                <option key={m.id} value={m.id} className={selectOptionClass}>
+                <option
+                  key={m.id}
+                  value={m.id}
+                  disabled={Boolean(m.alreadyLinked && m.id !== linkedModelId)}
+                  className={selectOptionClass}
+                >
                   {m.model_name}
+                  {m.alreadyLinked && m.id !== linkedModelId ? " (already linked)" : ""}
                 </option>
               ))}
             </FormSelect>

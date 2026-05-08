@@ -37,7 +37,7 @@ function CreateAccountSubmit() {
 }
 
 type Props = {
-  modelOptions?: { id: string; model_name: string }[];
+  modelOptions?: { id: string; model_name: string; alreadyLinked?: boolean }[];
   /** Pre-select role (e.g. from `/accounts/new?role=chatter`). */
   defaultRole?: UserRole;
 };
@@ -78,20 +78,31 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
       </FormField>
       {role === "model" && (
         <>
-          <FormField label="Linked model" icon={<Link2 />} htmlFor="linked_model_id" required staggerIndex={3}>
+          <FormField
+            label="Link to model profile"
+            icon={<Link2 />}
+            htmlFor="linked_model_id"
+            description="Links this login account to a model profile so they can access their dashboard."
+            staggerIndex={3}
+          >
             <FormSelect
               id="linked_model_id"
               name="linked_model_id"
               value={linkedModelId}
               onChange={(e) => setLinkedModelId(e.target.value)}
-              required
             >
-              <option value="" disabled className={selectOptionClass}>
-                Select model
+              <option value="" className={selectOptionClass}>
+                — No model profile linked —
               </option>
               {modelOptions.map((m) => (
-                <option key={m.id} value={m.id} className={selectOptionClass}>
+                <option
+                  key={m.id}
+                  value={m.id}
+                  disabled={Boolean(m.alreadyLinked)}
+                  className={selectOptionClass}
+                >
                   {m.model_name}
+                  {m.alreadyLinked ? " (already linked)" : ""}
                 </option>
               ))}
             </FormSelect>
