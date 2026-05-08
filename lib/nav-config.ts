@@ -143,6 +143,13 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
   { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
+  {
+    href: ROUTES.admin.notificationDiagnostic,
+    label: "Notification diagnostic",
+    iconKey: "Activity",
+    adminOnly: true,
+    excludeFromMobileMainTabs: true,
+  },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
