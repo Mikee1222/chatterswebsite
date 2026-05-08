@@ -9,10 +9,9 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { CalendarClock, ChevronLeft, ChevronRight, Plus, X } from "lucide-react";
+import { Calendar, CalendarClock, ChevronLeft, ChevronRight, Clock, Plus, X } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { formatDateEuropean } from "@/lib/format";
-import { formatDateYmd } from "@/lib/format-date";
 import { addDays, addWeeks, getMondayOfWeek } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
 import type { CustomRequest, ModelPersonalEvent, ModelPersonalEventType, ModelTaskRecord, VaContentAssignmentRecord } from "@/types";
@@ -50,6 +49,109 @@ function toYmd(raw: string | null | undefined): string | null {
   const d = new Date(t);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString().slice(0, 10);
+}
+
+function normalizeCalendarStatus(raw: string | undefined | null): string {
+  return (raw ?? "—").trim().toLowerCase().replace(/\s+/g, "_");
+}
+
+function formatCalendarDisplayDate(value: string): string {
+  const t = value.trim();
+  const d =
+    /^\d{4}-\d{2}-\d{2}$/.test(t) ? new Date(`${t}T12:00:00.000Z`) : new Date(value);
+  if (Number.isNaN(d.getTime())) return value;
+  return new Intl.DateTimeFormat("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "Europe/Athens",
+  }).format(d);
+}
+
+function calendarYmdDaysFromToday(deadlineYmd: string, todayYmdStr: string): number {
+  const a = Date.parse(`${todayYmdStr}T12:00:00.000Z`);
+  const b = Date.parse(`${deadlineYmd}T12:00:00.000Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return NaN;
+  return Math.ceil((b - a) / 86400000);
+}
+
+function isCalendarPastDeadline(deadline: string, todayYmdStr: string): boolean {
+  const y = toYmd(deadline);
+  if (y) return y < todayYmdStr;
+  const t = new Date(deadline).getTime();
+  return Number.isFinite(t) && t < Date.now();
+}
+
+function isCalendarDueSoon(deadline: string, todayYmdStr: string): boolean {
+  const y = toYmd(deadline);
+  if (y) {
+    const days = calendarYmdDaysFromToday(y, todayYmdStr);
+    if (Number.isNaN(days)) return false;
+    return days >= 0 && days <= 3;
+  }
+  const d = new Date(deadline);
+  if (Number.isNaN(d.getTime())) return false;
+  const ms = d.getTime() - Date.now();
+  const days = Math.ceil(ms / 86400000);
+  return days >= 0 && days <= 3;
+}
+
+/** Tailwind pill + badge classes by event kind / status */
+function getContentEventStyle(ev: ContentCalendarEvent, todayYmdStr: string): string {
+  const st = normalizeCalendarStatus(ev.status);
+  if (ev.kind === "va") {
+    if (st === "completed") return "bg-green-500/20 border-green-500/30 text-green-400";
+    if (st === "scheduled") return "bg-blue-500/20 border-blue-500/30 text-blue-400";
+    if (st === "cancelled" || st === "canceled") return "bg-red-500/20 border-red-500/30 text-red-400";
+    if (st === "pending") return "bg-indigo-500/20 border-indigo-500/30 text-indigo-400";
+    return "bg-indigo-500/20 border-indigo-500/30 text-indigo-400";
+  }
+  if (ev.kind === "custom") {
+    if (st === "completed" || st === "uploaded") return "bg-green-500/20 border-green-500/30 text-green-400";
+    if (
+      st === "scheduled" ||
+      st === "in_progress" ||
+      st === "recording" ||
+      st === "accepted" ||
+      st === "delivered"
+    ) {
+      return "bg-blue-500/20 border-blue-500/30 text-blue-400";
+    }
+    if (st === "declined" || st === "rejected") return "bg-red-500/20 border-red-500/30 text-red-400";
+    return "bg-orange-500/20 border-orange-500/30 text-orange-400";
+  }
+  const dueYmd = ev.task?.due_date ? toYmd(ev.task.due_date) : null;
+  const open = st !== "done" && st !== "skipped" && st !== "completed";
+  const overdueByDue = Boolean(dueYmd && dueYmd < todayYmdStr && open);
+  if (st === "done" || st === "completed") return "bg-green-500/20 border-green-500/30 text-green-400";
+  if (overdueByDue || st === "overdue" || st === "blocked") return "bg-red-500/20 border-red-500/30 text-red-400";
+  return "bg-teal-500/20 border-teal-500/30 text-teal-400";
+}
+
+function getStatusDot(statusRaw: string | undefined | null): string {
+  const s = normalizeCalendarStatus(statusRaw);
+  switch (s) {
+    case "completed":
+    case "done":
+    case "uploaded":
+    case "delivered":
+      return "🟢";
+    case "scheduled":
+    case "in_progress":
+    case "recording":
+      return "🔵";
+    case "pending":
+    case "waiting_schedule":
+      return "🟡";
+    case "cancelled":
+    case "canceled":
+    case "declined":
+    case "rejected":
+    case "blocked":
+      return "🔴";
+    default:
+      return "⚪";
+  }
 }
 
 function buildEvents(
@@ -148,15 +250,8 @@ const personalStyles: Record<ModelPersonalEventType, string> = {
   custom: "bg-white/10 border-white/20 text-white/70",
 };
 
-function contentEmojiAndColors(ev: ContentCalendarEvent): { emoji: string; bar: string } {
-  switch (ev.kind) {
-    case "va":
-      return { emoji: "📋", bar: "bg-indigo-500/20 border-indigo-500/30 text-indigo-400" };
-    case "custom":
-      return { emoji: "🎬", bar: "bg-orange-500/20 border-orange-500/30 text-orange-400" };
-    default:
-      return { emoji: "✅", bar: "bg-green-500/20 border-green-500/30 text-green-400" };
-  }
+function personalPillFallbackClasses(): string {
+  return "bg-pink-500/20 border-pink-500/30 text-pink-400";
 }
 
 function contentTimeSnippet(ev: ContentCalendarEvent): string | null {
@@ -176,44 +271,45 @@ function EventPill({
 }) {
   if (slot.kind === "personal") {
     const { pe } = slot;
-    const sty = personalStyles[pe.event_type];
+    const sty =
+      typeof pe.event_type === "string" && pe.event_type in personalStyles
+        ? personalStyles[pe.event_type as ModelPersonalEventType]
+        : personalPillFallbackClasses();
     return (
       <button
         type="button"
         onClick={onClick}
         title={personalEventLabel(pe)}
         className={cn(
-          "w-full truncate rounded-lg border px-2 py-1 text-left text-[11px] font-medium transition hover:opacity-90",
+          "w-full cursor-pointer truncate rounded-lg border px-2 py-1 text-left text-[11px] font-medium transition-all hover:opacity-80",
           sty
         )}
       >
-        <span>{personalEventEmoji(pe.event_type)}</span> <span>{personalEventLabel(pe)}</span>
+        <span>{personalEventEmoji(pe.event_type)}</span> <span className="font-medium">{personalEventLabel(pe)}</span>
         {pe.event_time ? <span className="ml-1 opacity-70">{pe.event_time}</span> : null}
       </button>
     );
   }
 
   const { ev } = slot;
-  const { emoji, bar } = contentEmojiAndColors(ev);
+  const todayStr = todayLocalYmd();
+  const pillClass = getContentEventStyle(ev, todayStr);
+  const dot = getStatusDot(ev.status);
   const timeBit = contentTimeSnippet(ev);
   return (
     <button
       type="button"
       onClick={onClick}
       title={ev.title}
-      className={cn("w-full truncate rounded-lg border px-2 py-1 text-left text-[11px] font-medium transition hover:opacity-90", bar)}
+      className={cn(
+        "w-full cursor-pointer truncate rounded-lg border px-2 py-1 text-left text-[11px] font-medium transition-all hover:opacity-80",
+        pillClass
+      )}
     >
-      <span>{emoji}</span> <span>{ev.title}</span>
+      <span className="mr-0.5">{dot}</span>
+      <span className="font-medium">{ev.title}</span>
       {timeBit ? <span className="ml-1 opacity-60">{timeBit}</span> : null}
     </button>
-  );
-}
-
-function StatusBadge({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] font-medium text-white/85">
-      {children}
-    </span>
   );
 }
 
@@ -228,14 +324,15 @@ function CalendarEventPopover(props: {
   const { open, anchorEl, slot, onClose, onDeletePersonal, deletingPersonalId } = props;
   const ref = React.useRef<HTMLDivElement>(null);
   const [pos, setPos] = React.useState({ top: 0, left: 0 });
+  const todayStr = todayLocalYmd();
 
   React.useEffect(() => {
     if (!open || !anchorEl) return;
     const rect = anchorEl.getBoundingClientRect();
-    const w = Math.min(320, window.innerWidth - 24);
+    const w = 288;
     const left = Math.max(12, Math.min(rect.left, window.innerWidth - w - 12));
     const spaceBelow = window.innerHeight - rect.bottom;
-    const estimated = 280;
+    const estimated = 400;
     const top = spaceBelow >= estimated ? rect.bottom + 8 : Math.max(12, rect.top - estimated - 8);
     setPos({ top, left });
   }, [open, anchorEl]);
@@ -253,102 +350,240 @@ function CalendarEventPopover(props: {
 
   if (!open || !slot || typeof document === "undefined") return null;
 
-  const portal = (
-    <div
-      ref={ref}
-      className="fixed z-[200] w-[min(100vw-1.5rem,20rem)] max-h-[min(420px,70vh)] overflow-y-auto rounded-2xl border border-white/10 bg-[#111118]/95 p-4 shadow-2xl backdrop-blur-xl"
-      style={{
-        top: pos.top,
-        left: pos.left,
-        boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 12px 32px rgba(0,0,0,0.55)",
-      }}
-    >
-      {slot.kind === "personal" ? (
-        <>
-          <div className="flex items-start justify-between gap-2">
-            <h3 className="text-sm font-semibold leading-snug text-white">
-              <span>{personalEventEmoji(slot.pe.event_type)}</span> {personalEventLabel(slot.pe)}
-            </h3>
-            <button
-              type="button"
-              className="shrink-0 rounded-lg border border-white/15 p-1 text-white/65 hover:bg-red-500/20 hover:text-red-300"
-              aria-label="Delete event"
-              disabled={deletingPersonalId === slot.pe.id}
-              onClick={() => onDeletePersonal(slot.pe.id)}
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
-            <CalendarClock className="h-3.5 w-3.5" />
-            <span>{formatDateYmd(slot.pe.event_date)}</span>
-            {slot.pe.event_time ? <span>{slot.pe.event_time}</span> : null}
-          </p>
-          <div className="mt-2">
-            <StatusBadge>Personal event</StatusBadge>
-          </div>
-          {slot.pe.notes ? <p className="mt-3 text-xs leading-relaxed text-white/70">{slot.pe.notes}</p> : null}
-        </>
-      ) : (
-        <>
-          <h3 className="text-sm font-semibold leading-snug text-white">{slot.ev.title}</h3>
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-white/60">
-            <CalendarClock className="h-3.5 w-3.5" />
-            <span>{formatDateYmd(slot.ev.dateYmd)}</span>
-            {slot.ev.kind === "va" && slot.ev.va?.scheduled_date ? (
-              <span className="text-white/50">{formatDateEuropean(slot.ev.va.scheduled_date)}</span>
-            ) : null}
-          </p>
-          <div className="mt-2">
-            <StatusBadge>{slot.ev.status}</StatusBadge>
-            <span className="ml-2 text-[10px] uppercase tracking-wide text-white/35">
-              {slot.ev.kind === "va" ? "VA assignment" : slot.ev.kind === "custom" ? "Custom" : "Task"}
-            </span>
-          </div>
-          <p className="mt-1 text-[11px] text-white/45">{slot.ev.sublabel}</p>
-          {slot.ev.kind === "va" && slot.ev.va?.description ? (
-            <p className="mt-3 text-xs leading-relaxed text-white/70">{slot.ev.va.description}</p>
-          ) : null}
-          {slot.ev.kind === "custom" && slot.ev.custom?.request_details ? (
-            <p className="mt-3 text-xs leading-relaxed text-white/70">{slot.ev.custom.request_details}</p>
-          ) : null}
-          {slot.ev.kind === "task" && slot.ev.task?.description ? (
-            <p className="mt-3 text-xs leading-relaxed text-white/70">{slot.ev.task.description}</p>
-          ) : null}
+  let scheduledRaw: string | null = null;
+  let deadlineRaw: string | null = null;
+  let descriptionText: string | null = null;
+  let contentTypeChip: string | null = null;
+  let pillStyle = "";
+  let typeBadge = "";
 
-          <div className="mt-4 flex flex-col gap-2">
-            {slot.ev.kind === "va" ? (
-              <Link
-                href={ROUTES.model.contentAssignments}
-                className="inline-flex items-center justify-center rounded-xl border border-indigo-500/35 bg-indigo-500/15 px-3 py-2 text-xs font-medium text-indigo-200 transition hover:bg-indigo-500/25"
-                onClick={onClose}
-              >
-                Open VA content
-              </Link>
-            ) : null}
-            {slot.ev.kind === "custom" ? (
-              <Link
-                href={ROUTES.model.customs}
-                className="inline-flex items-center justify-center rounded-xl border border-orange-500/35 bg-orange-500/15 px-3 py-2 text-xs font-medium text-orange-200 transition hover:bg-orange-500/25"
-                onClick={onClose}
-              >
-                Open custom requests
-              </Link>
-            ) : null}
-            {slot.ev.kind === "task" ? (
-              <Link
-                href={ROUTES.model.tasks}
-                className="inline-flex items-center justify-center rounded-xl border border-emerald-500/35 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-200 transition hover:bg-emerald-500/25"
-                onClick={onClose}
-              >
-                Open tasks
-              </Link>
-            ) : null}
-          </div>
-        </>
-      )}
-    </div>
-  );
+  if (slot.kind === "personal") {
+    pillStyle =
+      typeof slot.pe.event_type === "string" && slot.pe.event_type in personalStyles
+        ? personalStyles[slot.pe.event_type as ModelPersonalEventType]
+        : personalPillFallbackClasses();
+    typeBadge = "PERSONAL";
+  } else {
+    const ev = slot.ev;
+    pillStyle = getContentEventStyle(ev, todayStr);
+    if (ev.kind === "va") {
+      typeBadge = "VA ASSIGNMENT";
+      scheduledRaw = ev.va?.scheduled_date ?? null;
+      deadlineRaw = ev.va?.deadline ?? null;
+      descriptionText = ev.va?.description?.trim() || null;
+      contentTypeChip = ev.va?.content_type?.trim() || null;
+    } else if (ev.kind === "custom") {
+      typeBadge = "CUSTOM";
+      scheduledRaw =
+        ev.custom?.model_scheduled_date ??
+        ev.custom?.model_scheduled_start ??
+        null;
+      deadlineRaw = ev.custom?.deadline_requested ?? null;
+      descriptionText = ev.custom?.request_details?.trim() || null;
+    } else {
+      typeBadge = "TASK";
+      scheduledRaw = null;
+      deadlineRaw = ev.task?.due_date ?? null;
+      descriptionText = ev.task?.description?.trim() || null;
+    }
+  }
+
+  const portal =
+    slot.kind === "personal" ? (
+      <div
+        ref={ref}
+        style={{
+          top: pos.top,
+          left: pos.left,
+          boxShadow: "0 0 0 1px rgba(255,255,255,0.08), 0 20px 50px rgba(0,0,0,0.55)",
+        }}
+        className="fixed z-[200] w-72 overflow-y-auto rounded-2xl border border-white/15 bg-[#0f0f1a] p-4 shadow-2xl"
+      >
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <span
+            className={cn(
+              "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
+              pillStyle
+            )}
+          >
+            {typeBadge}
+          </span>
+          <button type="button" onClick={() => onClose()} className="text-white/30 transition hover:text-white" aria-label="Close">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <h3 className="mb-3 text-base font-bold leading-tight text-white">
+          <span className="mr-1">{personalEventEmoji(slot.pe.event_type)}</span>
+          {personalEventLabel(slot.pe)}
+        </h3>
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          <CalendarClock className="h-3.5 w-3.5 text-white/35" />
+          <span className="text-xs text-white/70">
+            {formatCalendarDisplayDate(slot.pe.event_date)}
+            {slot.pe.event_time ? ` · ${slot.pe.event_time}` : ""}
+          </span>
+        </div>
+        {slot.pe.notes ? (
+          <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-white/50">{slot.pe.notes}</p>
+        ) : null}
+        <button
+          type="button"
+          disabled={deletingPersonalId === slot.pe.id}
+          onClick={() => onDeletePersonal(slot.pe.id)}
+          className="w-full rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 transition hover:bg-red-500/30 disabled:opacity-45"
+        >
+          Delete event
+        </button>
+      </div>
+    ) : (
+      <div
+        ref={ref}
+        style={{
+          top: pos.top,
+          left: pos.left,
+          boxShadow: "0 0 0 1px rgba(255,255,255,0.08), 0 20px 50px rgba(0,0,0,0.55)",
+        }}
+        className="fixed z-[200] max-h-[min(72vh,28rem)] w-72 overflow-y-auto rounded-2xl border border-white/15 bg-[#0f0f1a] p-4 shadow-2xl"
+      >
+        {(() => {
+          const ev = slot.ev;
+          const sched = scheduledRaw?.trim();
+          const ded = deadlineRaw?.trim();
+
+          let deadlinePast = false;
+          let deadlineSoon = false;
+          if (ded) {
+            deadlinePast = isCalendarPastDeadline(ded, todayStr);
+            deadlineSoon = isCalendarDueSoon(ded, todayStr) && !deadlinePast;
+          }
+
+          return (
+            <>
+              <div className="mb-3 flex items-start justify-between gap-2">
+                <span
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-wide",
+                    pillStyle
+                  )}
+                >
+                  {typeBadge}
+                </span>
+                <button type="button" onClick={() => onClose()} className="text-white/30 transition hover:text-white" aria-label="Close">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <h3 className="mb-2 text-base font-bold leading-tight text-white">{ev.title}</h3>
+
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold uppercase", pillStyle)}>
+                  {(ev.status ?? "pending").replace(/-/g, " ").toUpperCase()}
+                </span>
+                {contentTypeChip ? (
+                  <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/50">
+                    {contentTypeChip}
+                  </span>
+                ) : null}
+              </div>
+
+              <div className="mb-3 space-y-1.5">
+                {sched ? (
+                  <div className="flex items-center gap-2 text-xs">
+                    <Calendar className="h-3.5 w-3.5 shrink-0 text-blue-400" />
+                    <span className="text-white/40">{ev.kind === "task" ? "Due / calendar" : "Scheduled"}</span>
+                    <span className="font-medium text-white/70">{formatCalendarDisplayDate(sched)}</span>
+                    {/\d{1,2}:\d{2}/.test(sched) ? (
+                      <span className="text-white/35">{formatDateEuropean(sched)}</span>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {ded ? (
+                  <div
+                    className={cn(
+                      "flex flex-wrap items-center gap-2 rounded-lg border px-2 py-1 text-xs",
+                      deadlinePast && "border-red-500/20 bg-red-500/10",
+                      deadlineSoon && !deadlinePast && "border-amber-500/20 bg-amber-500/10",
+                      !deadlinePast && !deadlineSoon && "border-white/10 bg-white/5"
+                    )}
+                  >
+                    <Clock
+                      className={cn(
+                        "h-3.5 w-3.5 shrink-0",
+                        deadlinePast && "text-red-400",
+                        deadlineSoon && !deadlinePast && "text-amber-400",
+                        !deadlinePast && !deadlineSoon && "text-white/40"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        deadlinePast && "text-red-400",
+                        deadlineSoon && !deadlinePast && "text-amber-400",
+                        !deadlinePast && !deadlineSoon && "text-white/40"
+                      )}
+                    >
+                      Deadline
+                    </span>
+                    <span
+                      className={cn(
+                        "font-semibold",
+                        deadlinePast && "text-red-300",
+                        deadlineSoon && !deadlinePast && "text-amber-300",
+                        !deadlinePast && !deadlineSoon && "text-white/70"
+                      )}
+                    >
+                      {formatCalendarDisplayDate(ded)}
+                    </span>
+                    {deadlinePast ? <span className="ml-auto text-red-400">⚠️ Overdue</span> : null}
+                    {deadlineSoon && !deadlinePast ? <span className="ml-auto text-amber-400">⏰ Soon</span> : null}
+                  </div>
+                ) : null}
+
+                <div className="flex items-center gap-2 border-t border-white/5 pt-1.5 text-[11px] text-white/40">
+                  <span>Listed day</span>
+                  <span className="font-medium text-white/60">{formatCalendarDisplayDate(ev.dateYmd)}</span>
+                  <span className="truncate text-white/30">({ev.sublabel})</span>
+                </div>
+              </div>
+
+              {descriptionText ? (
+                <p className="mb-3 line-clamp-3 text-xs leading-relaxed text-white/50">{descriptionText}</p>
+              ) : null}
+
+              <div className="flex flex-col gap-2">
+                {ev.kind === "va" ? (
+                  <Link
+                    href={ROUTES.model.contentAssignments}
+                    className="inline-flex w-full items-center justify-center rounded-xl border border-indigo-500/30 bg-indigo-500/20 py-2 text-sm font-medium text-indigo-400 transition-all hover:bg-indigo-500/30"
+                    onClick={onClose}
+                  >
+                    Open VA content →
+                  </Link>
+                ) : null}
+                {ev.kind === "custom" ? (
+                  <Link
+                    href={ROUTES.model.customs}
+                    className="inline-flex w-full items-center justify-center rounded-xl border border-orange-500/30 bg-orange-500/20 py-2 text-sm font-medium text-orange-400 transition-all hover:bg-orange-500/30"
+                    onClick={onClose}
+                  >
+                    Open custom request →
+                  </Link>
+                ) : null}
+                {ev.kind === "task" ? (
+                  <Link
+                    href={ROUTES.model.tasks}
+                    className="inline-flex w-full items-center justify-center rounded-xl border border-teal-500/30 bg-teal-500/20 py-2 text-sm font-medium text-teal-300 transition hover:bg-teal-500/30"
+                    onClick={onClose}
+                  >
+                    Open tasks →
+                  </Link>
+                ) : null}
+              </div>
+            </>
+          );
+        })()}
+      </div>
+    );
 
   return createPortal(portal, document.body);
 }
