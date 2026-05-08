@@ -218,6 +218,17 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     type: new Set(["bug", "suggestion", "other"]),
     status: new Set(["new", "in_review", "resolved", "wont_fix"]),
   },
+  model_content_requests: {
+    type: new Set(["script", "mass", "photo_set", "video", "other"]),
+    status: new Set(["pending", "approved", "rejected", "in_progress", "completed"]),
+  },
+  model_expense_requests: {
+    type: new Set(["airbnb", "other"]),
+    status: new Set(["pending", "approved", "rejected"]),
+  },
+  model_personal_events: {
+    event_type: new Set(["nails", "lashes", "hairdresser", "surgery", "fillers", "custom"]),
+  },
   va_tasks: {
     status: new Set(["pending", "in_progress", "done", "skipped"]),
     priority: new Set(["low", "normal", "high", "urgent"]),
@@ -286,6 +297,7 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   challenge_progress: new Set(["created_at"]),
   spin_wheel_prizes: new Set(["created_at", "updated_at"]),
   spin_wheel_spins: new Set(["updated_at"]),
+  model_personal_events: new Set(["created_at"]),
 };
 
 /** Tables where a normally global-stripped field is a normal writable column. */
@@ -294,6 +306,9 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   points_transactions: new Set(["created_at"]),
   spin_wheel_spins: new Set(["created_at"]),
   feedback: new Set(["created_at"]),
+  model_content_requests: new Set(["created_at", "updated_at"]),
+  model_expense_requests: new Set(["created_at", "updated_at"]),
+  model_personal_events: new Set(["created_at"]),
   /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
   challenge_progress: new Set(["updated_at"]),
   /** Break reminder ISO datetime; explicit so payloads are never treated as non-writable elsewhere. */

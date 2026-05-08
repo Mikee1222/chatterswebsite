@@ -86,6 +86,8 @@ export const ROUTES = {
     modelTasks: "/admin/model-tasks",
     modelLiveStreams: "/admin/model-live-streams",
     modelCustoms: "/admin/model-customs",
+    modelContentRequests: "/admin/model-content-requests",
+    expenseRequests: "/admin/expense-requests",
     vaTasks: "/admin/va-tasks",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",

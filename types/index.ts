@@ -412,6 +412,58 @@ export interface ModelTimeOffRequest {
   created_at: string;
 }
 
+export type ModelContentRequestType = "script" | "mass" | "photo_set" | "video" | "other";
+export type ModelContentRequestStatus = "pending" | "approved" | "rejected" | "in_progress" | "completed";
+
+export interface ModelContentRequest {
+  id: string;
+  request_id: string;
+  model_id: string;
+  model_user_id: string;
+  type: ModelContentRequestType;
+  title: string;
+  description: string;
+  status: ModelContentRequestStatus;
+  admin_notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ModelExpenseRequestType = "airbnb" | "other";
+export type ModelExpenseRequestStatus = "pending" | "approved" | "rejected";
+
+export interface ModelExpenseRequest {
+  id: string;
+  request_id: string;
+  model_id: string;
+  model_user_id: string;
+  va_content_assignment_id: string;
+  assignment_title: string;
+  type: ModelExpenseRequestType;
+  airbnb_link: string;
+  notes: string;
+  status: ModelExpenseRequestStatus;
+  admin_notes: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type ModelPersonalEventType = "nails" | "lashes" | "hairdresser" | "surgery" | "fillers" | "custom";
+
+export interface ModelPersonalEvent {
+  id: string;
+  event_id: string;
+  model_id: string;
+  model_user_id: string;
+  event_type: ModelPersonalEventType;
+  custom_label: string;
+  event_date: string;
+  event_time: string | null;
+  notes: string;
+  created_at: string;
+  reminder_sent: boolean;
+}
+
 export type TransactionCurrency = "usd" | "eur";
 /** whale_transactions.type – keep in sync with lib/airtable-options.ts TRANSACTION_TYPES */
 export type TransactionType = TransactionTypeOption;

@@ -162,6 +162,8 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.admin.modelTasks) return "Model tasks";
   if (pathname === ROUTES.admin.modelLiveStreams) return "Model live streams";
   if (pathname === ROUTES.admin.modelCustoms) return "Model customs";
+  if (pathname === ROUTES.admin.modelContentRequests) return "Model content requests";
+  if (pathname === ROUTES.admin.expenseRequests) return "Expense requests";
   return "App";
 }
 

@@ -15,6 +15,10 @@ import { notify, notifyAdmins } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { getAllVaTasks, updateVaTask } from "@/services/va-tasks";
+import { listModelPersonalEventsInDateRange, personalEventEmoji, personalEventLabel } from "@/services/model-personal-events";
+import { listAllModelss } from "@/services/modelss";
+import { listAllVAContentAssignments } from "@/services/va-content-assignments";
+import { updateRecord } from "@/lib/airtable-server";
 
 /** Stored Airtable event_type for va_task_reminder (see EVENT_TYPE_TO_AIRTABLE). */
 const AIRTABLE_EVENT_TASK_SHIFT_STARTED = "task_shift_started";
@@ -376,4 +380,51 @@ export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestA
   }
 
   return { ok: true, requests_scanned: stuckRequests.length, alerts_sent };
+}
+
+export type PersonalEventReminderResult = {
+  ok: true;
+  events_scanned: number;
+  reminders_sent: number;
+};
+
+export async function runPersonalEventReminders(): Promise<PersonalEventReminderResult> {
+  const target = new Date();
+  target.setDate(target.getDate() + 2);
+  const ymd = target.toISOString().slice(0, 10);
+  const [events, models, assignments] = await Promise.all([
+    listModelPersonalEventsInDateRange(ymd, ymd),
+    listAllModelss().catch(() => []),
+    listAllVAContentAssignments().catch(() => []),
+  ]);
+  const modelNameById = new Map(models.map((m) => [m.id, m.model_name || m.model_id || m.id]));
+  let reminders_sent = 0;
+
+  for (const ev of events) {
+    if (ev.reminder_sent) continue;
+    const vaIds = [
+      ...new Set(assignments.filter((a) => a.model_id === ev.model_id).map((a) => a.va_id?.trim()).filter((v): v is string => Boolean(v))),
+    ];
+    if (vaIds.length === 0) continue;
+    const modelName = modelNameById.get(ev.model_id) ?? "Model";
+    const label = personalEventLabel(ev);
+    const emoji = personalEventEmoji(ev.event_type);
+    await Promise.all(
+      vaIds.map((vaId) =>
+        notify({
+          user_id: vaId,
+          event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: `⏰ Reminder: ${modelName} has ${label} in 2 days`,
+          body: `${emoji} ${label} on ${ev.event_date}. Plan content scheduling around this.`,
+          entity_type: "system",
+          entity_id: ev.id,
+        }).catch(() => {})
+      )
+    );
+    reminders_sent += vaIds.length;
+    await updateRecord("model_personal_events", ev.id, { reminder_sent: true }).catch(() => {});
+  }
+
+  return { ok: true, events_scanned: events.length, reminders_sent };
 }

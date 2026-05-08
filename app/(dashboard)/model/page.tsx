@@ -4,9 +4,12 @@ import { getModelContext } from "@/lib/model-context-server";
 import { MobileDashboardLayout } from "@/components/mobile-dashboard-layout";
 import { ModelPeriodHomeSection } from "@/components/model-period-home-section";
 import { ModelHomeClient } from "@/components/model-home-client";
+import { ModelContentRequestsSection } from "@/components/model-content-requests-section";
+import { ModelExpenseRequestsSection } from "@/components/model-expense-requests-section";
 import { countApprovedCustomRequestsWaitingSchedule } from "@/services/custom-requests";
 import { getActiveLiveStreamForModel } from "@/services/model-live-streams";
 import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
+import { listModelContentRequestsForModel } from "@/services/model-content-requests";
 import { countPendingVAContentAssignmentsForModel } from "@/services/va-content-assignments";
 import { Suspense } from "react";
 
@@ -56,6 +59,7 @@ export default async function ModelHomePage() {
   let activeLiveRecord = null;
   let pendingCustomRequestsCount = 0;
   let pendingVaAssignmentsCount = 0;
+  let contentRequests = [] as Awaited<ReturnType<typeof listModelContentRequestsForModel>>;
   [
     currentPeriod,
     periods,
@@ -63,6 +67,7 @@ export default async function ModelHomePage() {
     activeLiveRecord,
     pendingCustomRequestsCount,
     pendingVaAssignmentsCount,
+    contentRequests,
   ] = await Promise.all([
     getCurrentPeriod(linkedModelId).catch((error) => {
       console.error("[model/home] getCurrentPeriod failed; using null fallback", error);
@@ -87,6 +92,10 @@ export default async function ModelHomePage() {
     countPendingVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id).catch((error) => {
       console.error("[model/home] countPendingVAContentAssignmentsForModel failed; using 0 fallback", error);
       return 0;
+    }),
+    listModelContentRequestsForModel(linkedModelId).catch((error) => {
+      console.error("[model/home] listModelContentRequestsForModel failed; using [] fallback", error);
+      return [];
     }),
   ]);
 
@@ -127,6 +136,8 @@ export default async function ModelHomePage() {
             defaultPeriodLengthDays={defaultLen}
           />
         </Suspense>
+        <ModelContentRequestsSection initialRequests={contentRequests} />
+        <ModelExpenseRequestsSection />
       </div>
     </MobileDashboardLayout>
   );

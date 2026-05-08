@@ -50,6 +50,10 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
   const [completeNotes, setCompleteNotes] = React.useState("");
   const [isScheduling, setIsScheduling] = React.useState(false);
   const [isCompleting, setIsCompleting] = React.useState(false);
+  const [expenseFor, setExpenseFor] = React.useState<ModelContentAssignmentCardDTO | null>(null);
+  const [airbnbLink, setAirbnbLink] = React.useState("");
+  const [expenseNotes, setExpenseNotes] = React.useState("");
+  const [isRequestingExpense, setIsRequestingExpense] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const filtered = React.useMemo(() => {
@@ -79,6 +83,14 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
       setError(null);
     }
   }, [completeFor]);
+
+  React.useEffect(() => {
+    if (expenseFor) {
+      setAirbnbLink("");
+      setExpenseNotes("");
+      setError(null);
+    }
+  }, [expenseFor]);
 
   async function submitSchedule() {
     if (!scheduleFor || !scheduleDate) return;
@@ -137,7 +149,37 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
     }
   }
 
-  const saving = isScheduling || isCompleting;
+  async function submitExpenseRequest() {
+    if (!expenseFor || !airbnbLink.trim()) return;
+    setIsRequestingExpense(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/model/expense-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          va_content_assignment_id: expenseFor.id,
+          assignment_title: expenseFor.title || "Assignment",
+          type: "airbnb",
+          airbnb_link: airbnbLink.trim(),
+          notes: expenseNotes.trim() || undefined,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : t("common.couldNotSave"));
+        return;
+      }
+      setExpenseFor(null);
+      await mutate(dashboardSwrKeys.notificationsUnreadCount);
+    } catch {
+      setError(t("common.networkError"));
+    } finally {
+      setIsRequestingExpense(false);
+    }
+  }
+
+  const saving = isScheduling || isCompleting || isRequestingExpense;
 
   const downloadTarget = (a: ModelContentAssignmentCardDTO) => {
     const att = a.file_attachment.find((x) => x.url);
@@ -292,6 +334,17 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                     </button>
                   ) : null}
 
+                  {(st === "pending" || st === "scheduled") ? (
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setExpenseFor(a)}
+                      className="inline-flex min-h-[44px] items-center rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      🏠 Request Airbnb
+                    </button>
+                  ) : null}
+
                   {st === "scheduled" ? (
                     <button
                       type="button"
@@ -428,6 +481,66 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                   </>
                 ) : (
                   t("assignments.completeNotifyVa")
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {expenseFor ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="expense-modal-title"
+          onClick={() => !isRequestingExpense && setExpenseFor(null)}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 id="expense-modal-title" className="text-lg font-semibold text-white">🏠 Airbnb request</h3>
+            <p className="mt-1 text-sm text-white/55">For: {expenseFor.title}</p>
+            <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-white/45">
+              Airbnb listing link
+              <input
+                type="url"
+                value={airbnbLink}
+                onChange={(e) => setAirbnbLink(e.target.value)}
+                placeholder="https://airbnb.com/rooms/..."
+                className="mt-1.5 w-full rounded-xl border border-white/15 bg-black/50 px-3 py-2.5 text-sm text-white"
+              />
+            </label>
+            <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-white/45">
+              Notes (optional)
+              <textarea
+                value={expenseNotes}
+                onChange={(e) => setExpenseNotes(e.target.value)}
+                rows={3}
+                className="mt-1.5 w-full resize-none rounded-xl border border-white/15 bg-black/50 px-3 py-2.5 text-sm text-white"
+              />
+            </label>
+            {error ? <p className="mt-3 text-sm text-rose-300">{error}</p> : null}
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={isRequestingExpense}
+                onClick={() => setExpenseFor(null)}
+                className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/80 hover:bg-white/5"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="button"
+                disabled={isRequestingExpense || !airbnbLink.trim()}
+                onClick={() => void submitExpenseRequest()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-sky-600 to-cyan-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+              >
+                {isRequestingExpense ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    Sending...
+                  </>
+                ) : (
+                  "Send request"
                 )}
               </button>
             </div>

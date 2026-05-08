@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
-import { Calendar, Clock, Download, Plus, X } from "lucide-react";
+import { Calendar, CalendarClock, Clock, Download, Plus, X } from "lucide-react";
 import { ROUTES, modelScheduleUrl } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/auth-config";
@@ -20,6 +20,7 @@ function useModelQuickActionLinks() {
     () =>
       [
         { href: ROUTES.model.contentAssignments, label: t("quickActions.vaDeliveries"), Icon: Download },
+        { href: `${ROUTES.model.contentCalendar}?action=add-personal-event`, label: "Add personal event", Icon: CalendarClock },
         { href: modelScheduleUrl({ action: "submit" }), label: t("quickActions.submitAvailability"), Icon: Calendar },
         { href: modelScheduleUrl({ action: "request-off" }), label: t("quickActions.requestTimeOff"), Icon: Clock },
       ] as const,

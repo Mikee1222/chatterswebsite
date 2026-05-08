@@ -63,6 +63,7 @@ const ROW_HEX = {
   va: "#3b82f6",
   live: "#ef4444",
   availability: "#10b981",
+  personal: "#f59e0b",
 } as const;
 
 function isRestAvailability(row: AdminScheduleOverviewRow): boolean {
@@ -95,6 +96,12 @@ function rowHexAndStyle(row: AdminScheduleOverviewRow): { hex: string; className
       className: "border-[#ef4444]/45 bg-[#ef4444]/12 text-red-50 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.2)]",
     };
   }
+  if (row.kind === "personal_event") {
+    return {
+      hex: ROW_HEX.personal,
+      className: "border-amber-400/45 bg-amber-500/12 text-amber-100 shadow-[inset_0_0_0_1px_rgba(245,158,11,0.2)]",
+    };
+  }
   if (isRestAvailability(row)) {
     return {
       hex: ROW_HEX.availability,
@@ -112,6 +119,8 @@ function TypeGlyph({ row, className }: { row: AdminScheduleOverviewRow; classNam
         ? Palette
         : row.kind === "live_stream"
           ? Radio
+          : row.kind === "personal_event"
+            ? CalendarDays
           : isRestAvailability(row)
             ? Coffee
             : CalendarDays;
@@ -164,6 +173,7 @@ function headerGradientForRow(row: AdminScheduleOverviewRow): string {
   if (row.kind === "custom_request") return "from-pink-600/45 via-fuchsia-950/55 to-zinc-950";
   if (row.kind === "va_content") return "from-blue-600/45 via-slate-950/55 to-zinc-950";
   if (row.kind === "live_stream") return "from-red-600/45 via-zinc-950/55 to-zinc-950";
+  if (row.kind === "personal_event") return "from-amber-600/45 via-zinc-950/55 to-zinc-950";
   if (isRestAvailability(row)) return "from-emerald-600/40 via-zinc-950/55 to-zinc-950";
   return "from-zinc-600/45 via-zinc-950/55 to-zinc-950";
 }
@@ -232,6 +242,16 @@ function DetailBody({ row }: { row: AdminScheduleOverviewRow }) {
         <DetailRow label="Planned" value={[d.plannedStart, d.plannedEnd].filter(Boolean).join(" → ") || "—"} />
         <DetailRow label="Actual" value={[d.actualStart, d.actualEnd].filter(Boolean).join(" → ") || "—"} />
         {d.details ? <DetailRow label="Details" value={d.details} /> : null}
+      </div>
+    );
+  }
+  if (d.kind === "personal_event") {
+    return (
+      <div className="space-y-3 text-sm text-white/80">
+        <DetailRow label="Event type" value={d.eventType} />
+        <DetailRow label="Label" value={d.eventLabel} />
+        <DetailRow label="Time" value={d.eventTime || "—"} />
+        <DetailRow label="Notes" value={d.notes || "—"} />
       </div>
     );
   }
@@ -386,6 +406,7 @@ function RelatedContactCard({ row, className }: { row: AdminScheduleOverviewRow;
 
 const TYPE_CHIP_OPTIONS: { id: TypeFilter; label: string }[] = [
   { id: "all", label: "All types" },
+  { id: "personal_event", label: "Personal" },
   { id: "custom_request", label: "Custom" },
   { id: "va_content", label: "VA" },
   { id: "live_stream", label: "Live" },
@@ -426,7 +447,7 @@ export function AdminModelSchedulesClient({
   const [exportTo, setExportTo] = React.useState(windowEnd);
   const [exportModelIds, setExportModelIds] = React.useState<Set<string>>(() => new Set(models.map((m) => m.id)));
   const [exportTypeSet, setExportTypeSet] = React.useState<Set<TypeFilter>>(
-    () => new Set(["custom_request", "va_content", "live_stream", "availability", "schedule_other", "schedule"] as TypeFilter[])
+    () => new Set(["personal_event", "custom_request", "va_content", "live_stream", "availability", "schedule_other", "schedule"] as TypeFilter[])
   );
   const [exporting, setExporting] = React.useState(false);
 
@@ -550,8 +571,9 @@ export function AdminModelSchedulesClient({
 
   const rowMatchesExportType = (r: AdminScheduleOverviewRow, set: Set<TypeFilter>): boolean => {
     if (set.size === 0) return false;
-    const keys: TypeFilter[] = ["custom_request", "va_content", "live_stream", "availability", "schedule_other", "schedule"];
+    const keys: TypeFilter[] = ["personal_event", "custom_request", "va_content", "live_stream", "availability", "schedule_other", "schedule"];
     if (keys.every((k) => set.has(k))) return true;
+    if (set.has("personal_event") && r.kind === "personal_event") return true;
     if (set.has("custom_request") && r.kind === "custom_request") return true;
     if (set.has("va_content") && r.kind === "va_content") return true;
     if (set.has("live_stream") && r.kind === "live_stream") return true;
@@ -637,7 +659,7 @@ export function AdminModelSchedulesClient({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       if (next.size === 0)
-        return new Set(["custom_request", "va_content", "live_stream", "availability", "schedule_other", "schedule"]);
+        return new Set(["personal_event", "custom_request", "va_content", "live_stream", "availability", "schedule_other", "schedule"]);
       return next;
     });
   };
@@ -1201,6 +1223,7 @@ export function AdminModelSchedulesClient({
                 <div className="mt-2 flex flex-wrap gap-2">
                   {(
                     [
+                      ["personal_event", "Personal"],
                       ["custom_request", "Custom"],
                       ["va_content", "VA"],
                       ["live_stream", "Live"],

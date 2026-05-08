@@ -2,12 +2,13 @@ import { modelLiveStreamPlatformLabel } from "@/lib/airtable-options";
 import type {
   CustomRequest,
   ModelLiveStreamRecord,
+  ModelPersonalEvent,
   ModelRecord,
   ModelScheduleItem,
   VaContentAssignmentRecord,
 } from "@/types";
 
-export type OverviewRowKind = "schedule" | "custom_request" | "va_content" | "live_stream";
+export type OverviewRowKind = "schedule" | "custom_request" | "va_content" | "live_stream" | "personal_event";
 
 export type OverviewNormStatus = "pending" | "scheduled" | "completed";
 
@@ -75,6 +76,13 @@ export type AdminScheduleOverviewDetail =
       durationMinutes: number | null;
       status: string;
       details: string;
+    }
+  | {
+      kind: "personal_event";
+      eventType: string;
+      eventLabel: string;
+      eventTime: string | null;
+      notes: string;
     };
 
 function normCustom(req: CustomRequest): OverviewNormStatus {
@@ -150,9 +158,10 @@ export function buildAdminScheduleOverviewRows(input: {
   customs: CustomRequest[];
   vaAssignments: VaContentAssignmentRecord[];
   liveStreams: ModelLiveStreamRecord[];
+  personalEvents: ModelPersonalEvent[];
   userNamesById: Record<string, string>;
 }): AdminScheduleOverviewRow[] {
-  const { models, scheduleItems, customs, vaAssignments, liveStreams, userNamesById } = input;
+  const { models, scheduleItems, customs, vaAssignments, liveStreams, personalEvents, userNamesById } = input;
   const modelName = (id: string) => models.find((m) => m.id === id)?.model_name || models.find((m) => m.id === id)?.model_id || id;
 
   const linkedCustomIds = new Set(customs.map((c) => c.id));
@@ -293,6 +302,33 @@ export function buildAdminScheduleOverviewRows(input: {
       normStatus: normLive(l.status),
       scheduleItemType: null,
       csvDetails: [platformLabel || l.platform, l.details].filter(Boolean).join(" · "),
+      detail,
+    });
+  }
+
+  for (const ev of personalEvents) {
+    if (!ev.event_date) continue;
+    const label = ev.event_type === "custom" ? ev.custom_label || "Custom event" : ev.event_type;
+    const detail: AdminScheduleOverviewDetail = {
+      kind: "personal_event",
+      eventType: ev.event_type,
+      eventLabel: label,
+      eventTime: ev.event_time ?? null,
+      notes: ev.notes,
+    };
+    rows.push({
+      kind: "personal_event",
+      id: `personal_event:${ev.id}`,
+      modelId: ev.model_id,
+      modelName: modelName(ev.model_id),
+      date: ev.event_date,
+      timeLabel: ev.event_time ?? null,
+      title: label,
+      typeLabel: "Personal event",
+      statusRaw: "scheduled",
+      normStatus: "scheduled",
+      scheduleItemType: null,
+      csvDetails: [ev.event_type, ev.custom_label, ev.notes].filter(Boolean).join(" · "),
       detail,
     });
   }

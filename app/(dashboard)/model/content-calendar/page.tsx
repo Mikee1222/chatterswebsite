@@ -7,12 +7,17 @@ import { listVAContentAssignmentsForModel } from "@/services/va-content-assignme
 import { ModelContentCalendarClient } from "@/components/model-content-calendar-client";
 import { ModelRouteEmptyState } from "@/components/model-route-feedback";
 import { Suspense } from "react";
+import { listModelPersonalEventsForModel } from "@/services/model-personal-events";
 
 /**
  * Airtable `custom_requests.admin_status` uses **accepted** (not "approved") for admin-approved rows.
  * This page only includes customs with `admin_status === "accepted"`.
  */
-export default async function ModelContentCalendarPage() {
+export default async function ModelContentCalendarPage({
+  searchParams,
+}: {
+  searchParams?: { action?: string };
+}) {
   let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
   let linkedModelId: Awaited<ReturnType<typeof getModelContext>>["linkedModelId"] = null;
   let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
@@ -51,7 +56,8 @@ export default async function ModelContentCalendarPage() {
   let assignments: Awaited<ReturnType<typeof listVAContentAssignmentsForModel>> = [];
   let allCustoms: Awaited<ReturnType<typeof listCustomRequestsByModel>> = [];
   let tasks: Awaited<ReturnType<typeof listModelTasks>> = [];
-  [assignments, allCustoms, tasks] = await Promise.all([
+  let personalEvents: Awaited<ReturnType<typeof listModelPersonalEventsForModel>> = [];
+  [assignments, allCustoms, tasks, personalEvents] = await Promise.all([
     listVAContentAssignmentsForModel(linkedModelId, modelRecord.model_id).catch((error) => {
       console.error("[model/content-calendar] listVAContentAssignmentsForModel failed; using [] fallback", error);
       return [];
@@ -64,6 +70,10 @@ export default async function ModelContentCalendarPage() {
       console.error("[model/content-calendar] listModelTasks failed; using [] fallback", error);
       return [];
     }),
+    listModelPersonalEventsForModel(linkedModelId).catch((error) => {
+      console.error("[model/content-calendar] listModelPersonalEventsForModel failed; using [] fallback", error);
+      return [];
+    }),
   ]);
 
   const customs = allCustoms.filter((c) => c.admin_status === "accepted");
@@ -72,14 +82,21 @@ export default async function ModelContentCalendarPage() {
 
   return (
     <div className="space-y-6">
-      {assignments.length === 0 && customs.length === 0 && tasks.length === 0 ? (
+      {assignments.length === 0 && customs.length === 0 && tasks.length === 0 && personalEvents.length === 0 ? (
         <ModelRouteEmptyState
           title="No content planned yet"
           description="No VA assignments, accepted customs, or tasks are currently scheduled. New work will appear here automatically."
         />
       ) : null}
       <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-white/[0.04]" />}>
-        <ModelContentCalendarClient assignments={assignments} customs={customs} tasks={tasks} modelName={modelName} />
+        <ModelContentCalendarClient
+          assignments={assignments}
+          customs={customs}
+          tasks={tasks}
+          personalEvents={personalEvents}
+          modelName={modelName}
+          openAddEventInitially={searchParams?.action === "add-personal-event"}
+        />
       </Suspense>
     </div>
   );

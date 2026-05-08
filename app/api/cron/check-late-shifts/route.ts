@@ -9,6 +9,7 @@ import {
   runVaTaskReminders,
   runVaTaskOverdueEscalation,
   runStuckCustomRequestAlerts,
+  runPersonalEventReminders,
 } from "@/services/cron-notification-jobs";
 
 /**
@@ -48,6 +49,7 @@ export async function GET(request: Request) {
       vaTaskReminders,
       vaTaskOverdueEscalation,
       stuckCustomRequestAlerts,
+      personalEventReminders,
       modelLiveScheduledReminders,
     ] = await Promise.all([
       runCheckLateShifts(),
@@ -58,6 +60,7 @@ export async function GET(request: Request) {
       runVaTaskReminders(),
       runVaTaskOverdueEscalation(),
       runStuckCustomRequestAlerts(),
+      runPersonalEventReminders(),
       runModelLiveScheduledReminders(),
     ]);
     return NextResponse.json({
@@ -69,6 +72,7 @@ export async function GET(request: Request) {
       va_task_reminders: vaTaskReminders,
       va_task_overdue_escalation: vaTaskOverdueEscalation,
       stuck_custom_request_alerts: stuckCustomRequestAlerts,
+      personal_event_reminders: personalEventReminders,
       model_live_scheduled_reminders: modelLiveScheduledReminders,
     });
   } catch (err) {

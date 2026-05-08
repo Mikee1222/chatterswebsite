@@ -135,6 +135,8 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.modelTasks, label: "Model tasks", iconKey: "FileText" },
   { href: ROUTES.admin.modelLiveStreams, label: "Model live streams", iconKey: "Radio", beta: true },
   { href: ROUTES.admin.modelCustoms, label: "Model customs", iconKey: "Package" },
+  { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
+  { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
   { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
   { href: ROUTES.admin.earnings, label: "Earnings", iconKey: "LineChart", adminOnly: true },
   // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.

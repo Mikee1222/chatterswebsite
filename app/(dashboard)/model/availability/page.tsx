@@ -52,10 +52,37 @@ export default async function ModelAvailabilityPage({
       return [] as string[];
     }),
   ]);
+  const submittedThisWeek = requests.length > 0;
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-white">Weekly availability</h1>
+      <div className="mb-6 flex gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
+        <span className="text-2xl">📅</span>
+        <div>
+          <p className="text-sm font-semibold text-white">What is this?</p>
+          <p className="mt-1 text-sm text-white/60">
+            Every week, tell us which days and times you are available to record content.
+            Your VA will use this to schedule your scripts and photo sets.
+            Please submit before Friday so we can plan next week&apos;s content.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+        ⏰ Submit by Friday to be included in next week&apos;s schedule
+      </div>
+
+      {submittedThisWeek ? (
+        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+          ✅ Availability submitted for this week
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
+          ⚠️ You haven&apos;t submitted your availability yet this week
+        </div>
+      )}
+
       <ModelWeeklyAvailabilityClient
         modelId={linkedModelId}
         language={language}

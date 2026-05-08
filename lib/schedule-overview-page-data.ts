@@ -5,6 +5,7 @@ import { listAcceptedCustomRequestsInDateRange } from "@/services/custom-request
 import { listAllModelLiveStreamsInRange } from "@/services/model-live-streams";
 import { listAllModelScheduleItemsInRange } from "@/services/model-schedule";
 import { listAllModelss } from "@/services/modelss";
+import { listModelPersonalEventsInDateRange } from "@/services/model-personal-events";
 import { listAllUsers } from "@/services/users";
 import { listAllVAContentAssignmentsInRange } from "@/services/va-content-assignments";
 
@@ -37,12 +38,13 @@ export async function loadScheduleOverviewPageData(opts: {
 
   const allowed: Set<string> | null = opts.allowedModelIds == null ? null : new Set(opts.allowedModelIds);
 
-  const [allModels, scheduleItemsRaw, liveStreamsRaw, customsRaw, vaRaw, users] = await Promise.all([
+  const [allModels, scheduleItemsRaw, liveStreamsRaw, customsRaw, vaRaw, personalEventsRaw, users] = await Promise.all([
     listAllModelss().catch(() => []),
     listAllModelScheduleItemsInRange({ fromDate: windowStart, toDate: windowEnd }).catch(() => []),
     listAllModelLiveStreamsInRange({ fromDate: windowStart, toDate: windowEnd }).catch(() => []),
     listAcceptedCustomRequestsInDateRange(windowStart, windowEnd).catch(() => []),
     listAllVAContentAssignmentsInRange(windowStart, windowEnd).catch(() => []),
+    listModelPersonalEventsInDateRange(windowStart, windowEnd).catch(() => []),
     listAllUsers().catch(() => []),
   ]);
 
@@ -77,6 +79,12 @@ export async function loadScheduleOverviewPageData(opts: {
             if (!sid) return false;
             return models.some((m) => allowed.has(m.id) && (m.model_id ?? "").trim() === sid);
           });
+  const personalEvents =
+    allowed === null
+      ? personalEventsRaw
+      : allowed.size === 0
+        ? []
+        : personalEventsRaw.filter((e) => allowed.has(e.model_id));
 
   const userNamesById = Object.fromEntries(users.map((u) => [u.id, u.full_name?.trim() || u.email || u.id]));
 
@@ -86,6 +94,7 @@ export async function loadScheduleOverviewPageData(opts: {
     customs,
     vaAssignments,
     liveStreams,
+    personalEvents,
     userNamesById,
   });
 
