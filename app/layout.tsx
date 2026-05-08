@@ -3,7 +3,8 @@ import { ToasterProvider } from "@/components/toaster-provider";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Chatter Dashboard",
+  title: "Gunzo Partner",
+  applicationName: "Gunzo Partner",
   description: "Internal team dashboard – shifts, whales, customs",
   icons: {
     icon: "/icons/icon.svg",
@@ -11,7 +12,7 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     statusBarStyle: "black-translucent",
-    title: "Chatter",
+    title: "Gunzo Partner",
   },
   manifest: "/manifest.webmanifest",
   other: {

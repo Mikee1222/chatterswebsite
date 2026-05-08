@@ -4,8 +4,8 @@ const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Chatter Dashboard",
-    short_name: "Chatter",
+    name: "Gunzo Partner",
+    short_name: "Gunzo Partner",
     description: "Internal team dashboard – shifts, whales, customs",
     start_url: baseUrl || "/",
     scope: "/",
