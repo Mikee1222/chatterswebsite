@@ -65,7 +65,8 @@ export type NavIconKey =
   | "LineChart"
   | "CalendarDays"
   | "CalendarClock"
-  | "MessageSquarePlus";
+  | "MessageSquarePlus"
+  | "ImageOff";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -118,6 +119,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
+  { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
@@ -156,6 +158,7 @@ const adminNav: NavItem[] = [
     adminOnly: true,
     excludeFromMobileMainTabs: true,
   },
+  { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 

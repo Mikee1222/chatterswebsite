@@ -32,6 +32,7 @@ import {
   CalendarDays,
   CalendarClock,
   MessageSquarePlus,
+  ImageOff,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -101,6 +102,7 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   CalendarDays,
   CalendarClock,
   MessageSquarePlus,
+  ImageOff,
 };
 
 function getMobileTitle(pathname: string): string {
@@ -121,6 +123,7 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.va.scheduleOverview) return "Schedule overview";
   if (pathname === "/admin/schedule-overview" || pathname.startsWith("/admin/schedule-overview/")) return "Schedule overview";
   if (pathname === ROUTES.va.customRequests) return "Custom requests";
+  if (pathname === ROUTES.va.blurTool) return "Blur tool";
   if (pathname === ROUTES.chatter.myWhales || pathname.startsWith(ROUTES.chatter.myWhales)) return "My whales";
   if (pathname === ROUTES.admin.whales || pathname.startsWith(ROUTES.admin.whales)) return "Whales";
   if (pathname === ROUTES.chatter.logTransaction) return "Whale session";
