@@ -19,10 +19,12 @@ type DiagnosticUser = {
 };
 
 type DiagnosticPayload = {
-  env: Record<string, boolean>;
-  airtable_tables: Record<string, { exists: boolean }>;
-  summary: { fully_working: number; has_issues: number; total_users: number };
-  users: DiagnosticUser[];
+  status?: string;
+  message?: string;
+  env?: Record<string, boolean>;
+  airtable_tables?: Record<string, { exists: boolean }>;
+  summary?: { fully_working: number; has_issues: number; total_users: number };
+  users?: DiagnosticUser[];
 };
 
 function checkRowPassed(val: CheckValue | CheckValue[] | undefined): boolean {
@@ -105,7 +107,8 @@ export default function NotificationDiagnosticPage() {
       <div>
         <h1 className="text-3xl font-bold text-white">🧪 Notification diagnostic</h1>
         <p className="mt-1 text-sm text-white/50">
-          Check pipeline and send real push notifications to every user (admin session + testing gate on API).
+          Check pipeline and send real push notifications (admin session; test-notifications API may still require
+          ENABLE_NOTIFICATION_TESTING in production).
         </p>
       </div>
 
@@ -135,7 +138,13 @@ export default function NotificationDiagnosticPage() {
         <div className="rounded-2xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">{fetchError}</div>
       )}
 
-      {results && (
+      {results && results.status === "ok" && results.env === undefined && (
+        <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          {results.message ?? "Diagnostic API reachable (smoke test). Restore full GET in route for pipeline data."}
+        </div>
+      )}
+
+      {results && results.env != null && (
         <>
           <div className="rounded-2xl border border-white/10 bg-white/5 p-5">
             <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-white/40">ENV variables</h2>
@@ -182,7 +191,7 @@ export default function NotificationDiagnosticPage() {
 
           <div className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-white/40">Per user</h2>
-            {results.users.map((user) => {
+            {(results.users ?? []).map((user) => {
               const allPassed = String(user.overall).startsWith("✅");
               return (
                 <div
