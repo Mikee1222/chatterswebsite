@@ -7,12 +7,17 @@ import { updateModelExpenseRequest } from "@/services/model-expense-requests";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import type { ModelExpenseRequest } from "@/types";
 
-const bodySchema = z.object({
-  status: z.enum(["approved", "rejected"]),
-  admin_notes: z.string().trim().max(4000).optional(),
-  model_id: z.string().trim().optional(),
-});
+const bodySchema = z
+  .object({
+    status: z.enum(["approved", "rejected"]).optional(),
+    admin_notes: z.string().max(4000).optional(),
+    model_id: z.string().trim().optional(),
+  })
+  .refine((d) => d.status !== undefined || d.admin_notes !== undefined, {
+    message: "Provide status and/or admin_notes",
+  });
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -31,16 +36,18 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: parsed.error.issues.map((i) => i.message).join(" ") }, { status: 400 });
   }
 
-  const updated = await updateModelExpenseRequest(id, {
-    status: parsed.data.status,
-    admin_notes: parsed.data.admin_notes ?? "",
-  });
+  const updatePayload: Partial<Pick<ModelExpenseRequest, "status" | "admin_notes">> = {};
+  if (parsed.data.status !== undefined) updatePayload.status = parsed.data.status;
+  if (parsed.data.admin_notes !== undefined) updatePayload.admin_notes = parsed.data.admin_notes;
 
-  if (parsed.data.model_id) {
+  const updated = await updateModelExpenseRequest(id, updatePayload);
+
+  const st = parsed.data.status;
+  if (parsed.data.model_id && (st === "approved" || st === "rejected")) {
     const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(parsed.data.model_id);
     if (modelUserId) {
-      const note = parsed.data.admin_notes?.trim();
-      if (parsed.data.status === "approved") {
+      const note = (parsed.data.admin_notes ?? updated.admin_notes ?? "").trim();
+      if (st === "approved") {
         await notify({
           user_id: modelUserId,
           event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
