@@ -7,6 +7,7 @@ import { CalendarCheck, DollarSign, FileText, Play, UserPlus, X } from "lucide-r
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
+import { ChatterRebillTipFabMenuItems } from "@/components/chatter-rebill-tip-fab-menu-items";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 
@@ -137,6 +138,7 @@ export function QuickActionsModal({ open, onClose }: QuickActionsModalProps) {
                     </Link>
                   </li>
                 ))}
+                <ChatterRebillTipFabMenuItems onClose={onClose} variant="sheet" />
                 <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
