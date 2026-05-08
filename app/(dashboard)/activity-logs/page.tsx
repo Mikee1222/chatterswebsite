@@ -1,47 +1,43 @@
-import { listActivityLogs } from "@/services/activity-logs";
-import { ActivityLogsTable } from "@/components/activity-logs-table";
-import { Input, btnSecondaryClass } from "@/components/ui/form";
+import { redirect } from "next/navigation";
+import { getSessionFromCookies } from "@/lib/auth";
+import { ActivityLogsAdminClient } from "@/components/activity-logs-admin-client";
+import { buildActivityLogsFilterByFormula, listActivityLogs } from "@/services/activity-logs";
+import { listAllUsers } from "@/services/users";
+import type { UserRole } from "@/types";
 
 export default async function ActivityLogsPage({
   searchParams,
 }: {
   searchParams: Promise<{ action?: string; actor?: string }>;
 }) {
+  const session = await getSessionFromCookies();
+  if (!session || (session.role !== "admin" && session.role !== "manager")) {
+    redirect("/home");
+  }
+
   const params = await searchParams;
-  const filterParts: string[] = [];
-  if (params.action) filterParts.push(`{action_type} = '${params.action.replace(/'/g, "\\'")}'`);
-  if (params.actor) filterParts.push(`FIND('${params.actor.replace(/'/g, "\\'")}', {actor_name})`);
-  const filterByFormula = filterParts.length ? `AND(${filterParts.join(", ")})` : undefined;
+  const filterByFormula = buildActivityLogsFilterByFormula({
+    action: params.action?.trim().toLowerCase(),
+    actor: params.actor?.trim().toLowerCase(),
+  });
 
-  const { logs } = await listActivityLogs({
-    pageSize: 50,
-    filterByFormula,
-  }).catch(() => ({ logs: [] }));
+  const [logRes, users] = await Promise.all([
+    listActivityLogs({
+      pageSize: 50,
+      filterByFormula,
+    }).catch(() => ({ logs: [] })),
+    listAllUsers().catch(() => []),
+  ]);
+  const roleByUserId = new Map<string, UserRole>();
+  for (const u of users) {
+    if (!u?.id) continue;
+    roleByUserId.set(u.id, u.role);
+  }
 
-  return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
-        <form method="get" className="flex flex-wrap items-center gap-2">
-          <Input
-            type="text"
-            name="actor"
-            defaultValue={params.actor}
-            placeholder="Actor name"
-            className="min-w-[140px]"
-          />
-          <Input
-            type="text"
-            name="action"
-            defaultValue={params.action}
-            placeholder="Action type"
-            className="min-w-[140px]"
-          />
-          <button type="submit" className={btnSecondaryClass}>Filter</button>
-        </form>
-      </div>
-      <div className="glass-card overflow-hidden">
-        <ActivityLogsTable logs={logs} />
-      </div>
-    </div>
-  );
+  const entries = logRes.logs.map((log) => ({
+    ...log,
+    actor_role: roleByUserId.get(log.actor_user_id) ?? ("unknown" as const),
+  }));
+
+  return <ActivityLogsAdminClient entries={entries} />;
 }

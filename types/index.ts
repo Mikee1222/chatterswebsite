@@ -52,6 +52,7 @@ export type VaTaskRecord = {
   reminder_minutes_before: number | null;
   completed_at: string | null;
   completed_notes: string;
+  overdue_notified_at: string | null;
   created_at: string | null;
 };
 

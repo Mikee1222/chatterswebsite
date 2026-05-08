@@ -15,6 +15,8 @@ import type { LastAssignmentInfo } from "@/services/shifts";
 import { getTimesForShiftType, buildCustomShiftTimes, addDays, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import { notifyActiveChattersWeeklyProgramPublished } from "@/services/weekly-program-publish-notify";
+import { notify } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 export async function getLastAssignmentsForChatterAction(
   chatterId: string,
@@ -120,6 +122,7 @@ export async function updateProgramAction(
   try {
     const existing = await getWeeklyProgramById(recordId);
     if (!existing) return { success: false, error: "Entry not found." };
+    const { hasChatterWeeklyProgramPublishedNotification } = await import("@/services/weekly-program-publish-notify");
 
     const chatterId = fields.chatter?.[0] ?? existing.chatter_id;
     const models = fields.models ?? existing.model_ids;
@@ -177,7 +180,22 @@ export async function updateProgramAction(
     });
     revalidatePath(ROUTES.admin.weeklyProgram);
     revalidatePath(ROUTES.chatter.weeklyProgram);
-    await notifyActiveChattersWeeklyProgramPublished(weekStart);
+    const affectedChatterId = chatterId;
+    const weekLabel = weekStart;
+    const alreadyPublished = await hasChatterWeeklyProgramPublishedNotification(weekStart, existing.chatter_id);
+    if (alreadyPublished && affectedChatterId) {
+      await notify({
+        user_id: affectedChatterId,
+        event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "📅 Schedule updated",
+        body: `Your weekly program for ${weekLabel} has been updated. Please check your new schedule.`,
+        entity_type: "system",
+        entity_id: `weekly_program_corrected:${weekStart}:${recordId}`,
+      }).catch(() => {});
+    } else {
+      await notifyActiveChattersWeeklyProgramPublished(weekStart);
+    }
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

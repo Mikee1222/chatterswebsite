@@ -250,6 +250,7 @@ async function updateCustomRequests(
     { name: "decline_reason", def: { type: "multilineText" } },
     { name: "uploaded_at", def: { type: "dateTime" } },
     { name: "uploaded_by_model", def: { type: "checkbox" } },
+    { name: "stuck_alert_sent", def: { type: "checkbox" } },
   ];
   const r = await ensureFields(baseId, token, "custom_requests", schema, fields, dryRun);
   r.created.forEach((x) => console.log(`  Created field: ${x}`));

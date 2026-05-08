@@ -109,6 +109,7 @@ type Fields = {
   reminder_minutes_before?: number;
   completed_at?: string;
   completed_notes?: string;
+  overdue_notified_at?: string;
   created_at?: string;
 };
 
@@ -169,6 +170,7 @@ function mapRecord(rec: AirtableRecord<Fields>): VaTaskRecord {
         : null,
     completed_at: f.completed_at?.trim() ? f.completed_at.trim() : null,
     completed_notes: snapshotText(f.completed_notes, ""),
+    overdue_notified_at: f.overdue_notified_at?.trim() ? f.overdue_notified_at.trim() : null,
     created_at: f.created_at?.trim() ? f.created_at.trim() : null,
   };
 }
@@ -215,7 +217,12 @@ export type VaTaskCreateInput = {
 };
 
 export type VaTaskUpdateInput = Partial<
-  Omit<VaTaskCreateInput, "title"> & { title?: string; completed_at?: string | null; completed_notes?: string }
+  Omit<VaTaskCreateInput, "title"> & {
+    title?: string;
+    completed_at?: string | null;
+    completed_notes?: string;
+    overdue_notified_at?: string | null;
+  }
 >;
 
 export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecord> {
@@ -271,6 +278,12 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
     if (doneAt) payload.completed_at = doneAt;
   }
   if (data.completed_notes !== undefined) payload.completed_notes = data.completed_notes.trim();
+  if (data.overdue_notified_at !== undefined) {
+    const notifiedAt = toIsoDateTimeOrOmit(
+      data.overdue_notified_at === null ? undefined : data.overdue_notified_at
+    );
+    if (notifiedAt) payload.overdue_notified_at = notifiedAt;
+  }
 
   if (Object.keys(payload).length > 0) {
     logOutgoingPayload("update", id, payload);

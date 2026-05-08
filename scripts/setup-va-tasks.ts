@@ -166,6 +166,11 @@ function buildFieldsPayload(usersTableId: string): Array<Record<string, unknown>
       type: "dateTime",
       options: { ...datetimeOptionsGmtPlus3 },
     },
+    {
+      name: "overdue_notified_at",
+      type: "dateTime",
+      options: { ...datetimeOptionsGmtPlus3 },
+    },
     { name: "completed_notes", type: "multilineText" },
     {
       name: "created_at",

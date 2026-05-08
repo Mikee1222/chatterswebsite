@@ -50,6 +50,7 @@ type Fields = {
   uploaded_at?: string;
   uploaded_by_model?: boolean;
   decline_reason?: string;
+  stuck_alert_sent?: boolean;
   created_at?: string;
   updated_at?: string;
   /** Optional multipleRecordLinks → users (VA assigned to handle this custom). */
@@ -192,6 +193,7 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
     deadline_requested: fields.deadline_requested ?? "",
     admin_status: "pending",
     model_status: "waiting_schedule",
+    stuck_alert_sent: false,
     admin_notes: "",
     model_notes: "",
   };
@@ -287,7 +289,12 @@ export async function patchCustomRequestRecord(
   recordId: string,
   fields: Partial<Pick<Fields, "request_details" | "price" | "deadline_requested" | "admin_status" | "decline_reason">>
 ): Promise<CustomRequest> {
-  const rec = await updateRecord<Fields>(TABLE, recordId, fields);
+  const nextFields: Partial<Fields> = { ...fields };
+  if (fields.admin_status !== undefined) {
+    // Any status transition should allow future stuck alerts if the request stalls again.
+    nextFields.stuck_alert_sent = false;
+  }
+  const rec = await updateRecord<Fields>(TABLE, recordId, nextFields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
@@ -296,7 +303,7 @@ export async function updateCustomRequestAdminStatus(
   recordId: string,
   admin_status: CustomRequestAdminStatus
 ): Promise<CustomRequest> {
-  const rec = await updateRecord<Fields>(TABLE, recordId, { admin_status });
+  const rec = await updateRecord<Fields>(TABLE, recordId, { admin_status, stuck_alert_sent: false });
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
@@ -317,6 +324,10 @@ export async function updateCustomRequestModelSchedule(
   const prev = await getCustomRequestById(recordId);
   const fields: Partial<Fields> = {};
   if (input.model_status !== undefined) fields.model_status = input.model_status;
+  if (input.model_status !== undefined) {
+    // Reset so future stalls can alert again after status moves.
+    fields.stuck_alert_sent = false;
+  }
   if (input.model_scheduled_date !== undefined && input.model_scheduled_date?.trim()) {
     fields.model_scheduled_date = input.model_scheduled_date.trim().slice(0, 10);
   }
@@ -455,6 +466,33 @@ export async function runCustomRequestOverdue48hAdminAlerts(): Promise<{ ok: tru
   }
 
   return { ok: true, alerts_sent };
+}
+
+/** Cron helper: requests stuck for 2+ days without updates and not yet alerted. */
+export async function listStuckCustomRequestsSince(olderThanIso: string): Promise<CustomRequest[]> {
+  const thresholdMs = new Date(olderThanIso).getTime();
+  if (!Number.isFinite(thresholdMs)) return [];
+  const all = await listAllRecords<Fields>(TABLE, {});
+  return all
+    .filter((rec) => {
+      const f = rec.fields;
+      if (Boolean(f.stuck_alert_sent)) return false;
+      const admin = String(f.admin_status ?? "").toLowerCase().trim();
+      const model = String(f.model_status ?? "").toLowerCase().trim();
+      const inTargetStatus =
+        admin === "pending" || admin === "accepted" || admin === "approved" || model === "waiting_schedule";
+      if (!inTargetStatus) return false;
+      if (model === "completed" || model === "uploaded" || model === "declined") return false;
+      const updatedRaw = (f.updated_at ?? f.created_at ?? "").trim();
+      const updatedMs = new Date(updatedRaw).getTime();
+      if (!Number.isFinite(updatedMs)) return false;
+      return updatedMs <= thresholdMs;
+    })
+    .map((r) => mapRecord(r as AirtableRecord<Fields>));
+}
+
+export async function markCustomRequestStuckAlertSent(recordId: string, sent: boolean): Promise<void> {
+  await updateRecord<Fields>(TABLE, recordId, { stuck_alert_sent: sent });
 }
 
 /** Open customs with admin pending or model in_progress (raw fields; excludes terminal statuses). */

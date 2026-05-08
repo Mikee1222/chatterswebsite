@@ -365,6 +365,7 @@ export async function clearWhaleChatter(whaleRecordId: string): Promise<AssignWh
     const before = await getWhaleById(whaleRecordId);
     const previousChatterId = before?.assigned_chatter_id?.trim() ?? "";
     const whaleName = (before?.username ?? before?.whale_id ?? "Whale").trim() || "Whale";
+    const whaleUsername = (before?.username ?? before?.whale_id ?? "whale").trim() || "whale";
 
     await updateWhale(whaleRecordId, {
       assigned_chatter: [],
@@ -379,8 +380,8 @@ export async function clearWhaleChatter(whaleRecordId: string): Promise<AssignWh
           user_id: previousChatterId,
           event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
           priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: "🐋 Whale unassigned",
-          body: `${whaleName} has been removed from your list.`,
+          title: "🐋 Whale returned to pool",
+          body: `${whaleName} (@${whaleUsername}) has been removed from your list and returned to the unassigned pool.`,
           entity_type: NOTIFICATION_ENTITY.WHALE,
           entity_id: whaleRecordId,
           _triggerSource: "clearWhaleChatter",

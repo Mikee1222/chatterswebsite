@@ -5,11 +5,16 @@ import { getMondayOfWeekFromYmdAthens, getTodayWeekdayAthens, getWeekStartYmdInA
 import { listAllUsers } from "@/services/users";
 import { getRequestsForWeek } from "@/services/weekly-availability-requests";
 import { getRequestsForWeekVa } from "@/services/weekly-availability-requests-va";
-import { listAllCustomRequests } from "@/services/custom-requests";
+import {
+  listAllCustomRequests,
+  listStuckCustomRequestsSince,
+  markCustomRequestStuckAlertSent,
+} from "@/services/custom-requests";
 import { getAdminNotificationIds } from "@/services/admin-notification-settings";
-import { notify } from "@/services/notification-service";
+import { notify, notifyAdmins } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { getAllVaTasks, updateVaTask } from "@/services/va-tasks";
 
 /** Stored Airtable event_type for va_task_reminder (see EVENT_TYPE_TO_AIRTABLE). */
 const AIRTABLE_EVENT_TASK_SHIFT_STARTED = "task_shift_started";
@@ -267,4 +272,108 @@ export async function runVaTaskReminders(): Promise<VaTaskReminderCronResult> {
   }
 
   return { ok: true, reminders_scanned: upcoming.length, notifications_sent };
+}
+
+export type VaTaskOverdueEscalationResult = {
+  ok: true;
+  overdue_scanned: number;
+  notifications_sent: number;
+};
+
+export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalationResult> {
+  const now = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const tasks = await getAllVaTasks();
+  const users = await listAllUsers();
+  const nameById = new Map(users.map((u) => [u.id, u.full_name?.trim() || u.email || u.id]));
+  let notifications_sent = 0;
+
+  for (const task of tasks) {
+    if (task.status === "done" || task.status === "skipped") continue;
+    if (!task.due_date?.trim()) continue;
+    const dueMs = new Date(task.due_date).getTime();
+    if (!Number.isFinite(dueMs) || dueMs >= now) continue;
+    const daysOverdue = Math.max(1, Math.floor((now - dueMs) / dayMs));
+    const lastNotifiedMs = task.overdue_notified_at ? new Date(task.overdue_notified_at).getTime() : NaN;
+    if (Number.isFinite(lastNotifiedMs) && now - lastNotifiedMs < dayMs) continue;
+
+    const recipientIds = task.assigned_to_ids.length
+      ? task.assigned_to_ids
+      : users
+          .filter((u) => u.role === "virtual_assistant" && (u.status ?? "").toLowerCase() === "active")
+          .map((u) => u.id)
+          .filter(Boolean);
+
+    for (const userId of recipientIds) {
+      await notify({
+        user_id: userId,
+        event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: "⚠️ Task overdue",
+        body: `Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
+        entity_type: NOTIFICATION_ENTITY.VA_TASK,
+        entity_id: `va_task_overdue:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
+      }).catch(() => {});
+      notifications_sent++;
+    }
+
+    if (daysOverdue > 1) {
+      const vaName = recipientIds[0] ? (nameById.get(recipientIds[0]) ?? "VA") : "Unassigned VA";
+      await notifyAdmins({
+        event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: `⚠️ VA task overdue: ${task.title}`,
+        body: `${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
+        entity_type: NOTIFICATION_ENTITY.VA_TASK,
+        entity_id: `va_task_overdue_admin:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
+      }).catch(() => {});
+      notifications_sent++;
+    }
+
+    await updateVaTask(task.id, { overdue_notified_at: new Date(now).toISOString() }).catch(() => {});
+  }
+
+  return { ok: true, overdue_scanned: tasks.length, notifications_sent };
+}
+
+export type StuckCustomRequestAlertResult = {
+  ok: true;
+  requests_scanned: number;
+  alerts_sent: number;
+};
+
+export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestAlertResult> {
+  const twoDaysAgo = new Date();
+  twoDaysAgo.setDate(twoDaysAgo.getDate() - 2);
+  const stuckRequests = await listStuckCustomRequestsSince(twoDaysAgo.toISOString());
+  let alerts_sent = 0;
+
+  for (const request of stuckRequests) {
+    if (request.assigned_va_id) {
+      await notify({
+        user_id: request.assigned_va_id,
+        event_type: NOTIFICATION_EVENT.CUSTOM_DEADLINE_APPROACHING,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: "⏰ Custom request needs attention",
+        body: `Custom request "${request.request_title}" has been ${request.model_status} for over 2 days with no update.`,
+        entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+        entity_id: `custom_stuck_va:${request.id}`,
+      }).catch(() => {});
+      alerts_sent++;
+    }
+
+    await notifyAdmins({
+      event_type: NOTIFICATION_EVENT.CUSTOM_OVERDUE,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: `⚠️ Custom request stuck: ${request.request_title}`,
+      body: `Request from ${request.chatter_name || "Unknown chatter"} has been in "${request.model_status}" status for 2+ days. Fan: ${request.fan_username || "Unknown fan"}.`,
+      entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+      entity_id: `custom_stuck_admin:${request.id}`,
+    }).catch(() => {});
+    alerts_sent++;
+
+    await markCustomRequestStuckAlertSent(request.id, true).catch(() => {});
+  }
+
+  return { ok: true, requests_scanned: stuckRequests.length, alerts_sent };
 }

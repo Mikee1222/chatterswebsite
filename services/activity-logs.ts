@@ -1,6 +1,6 @@
 "use server";
 
-import { listRecords, listAllRecords, createRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
+import { listRecords, createRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import type { ActivityLog } from "@/types";
 
 const TABLE = "activity_logs";
@@ -34,16 +34,59 @@ function mapRecord(rec: AirtableRecord<Fields>): ActivityLog {
 }
 
 export async function listActivityLogs(params: ListParams & { filterByFormula?: string } = {}) {
-  const { records, offset } = await listRecords<Fields>(TABLE, {
-    ...params,
-    sort: params.sort ?? [{ field: "created_at", direction: "desc" }],
-  });
-  return { logs: records.map(mapRecord), offset };
+  const sort = params.sort ?? [{ field: "created_at", direction: "desc" as const }];
+  const pageSize = Math.min(50, Math.max(1, params.pageSize ?? 50));
+  const hasFilter = typeof params.filterByFormula === "string" && params.filterByFormula.trim().length > 0;
+  if (hasFilter) {
+    const { records, offset } = await listRecords<Fields>(TABLE, {
+      ...params,
+      pageSize,
+      sort,
+    });
+    return { logs: records.map(mapRecord), offset };
+  }
+
+  // Safety cap: never stream unlimited activity logs when no filter is provided.
+  const MAX_RECORDS = 200;
+  const all: AirtableRecord<Fields>[] = [];
+  let offset: string | undefined;
+  do {
+    const page = await listRecords<Fields>(TABLE, {
+      ...params,
+      pageSize,
+      offset,
+      sort,
+    });
+    all.push(...page.records);
+    offset = page.offset;
+  } while (offset && all.length < MAX_RECORDS);
+
+  return { logs: all.slice(0, MAX_RECORDS).map(mapRecord), offset };
 }
 
 export async function listRecentActivityLogs(limit = 20) {
   const { logs } = await listActivityLogs({ pageSize: limit });
   return logs;
+}
+
+export type ActivityLogQueryFilters = {
+  action?: string;
+  actor?: string;
+};
+
+/** Escape single quotes before interpolating user input in Airtable formulas. */
+export const safeFormulaValue = (s: string): string => s.replace(/'/g, "\\'");
+
+export function buildActivityLogsFilterByFormula(filters: ActivityLogQueryFilters): string | undefined {
+  const filterParts: string[] = [];
+  if (filters.action?.trim()) {
+    filterParts.push(`FIND('${safeFormulaValue(filters.action.trim())}', LOWER({action_type}))`);
+  }
+  if (filters.actor?.trim()) {
+    filterParts.push(`FIND('${safeFormulaValue(filters.actor.trim())}', LOWER({actor_name}))`);
+  }
+  if (filterParts.length === 0) return undefined;
+  return filterParts.length === 1 ? filterParts[0] : `AND(${filterParts.join(", ")})`;
 }
 
 export async function createActivityLog(fields: Partial<Fields>) {

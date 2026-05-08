@@ -35,6 +35,16 @@ export async function notifyActiveChattersWeeklyProgramPublished(weekStart: stri
   }
 }
 
+/** True when a chatter already received the "weekly program is ready" publish notification for this week. */
+export async function hasChatterWeeklyProgramPublishedNotification(
+  weekStart: string,
+  chatterUserId: string
+): Promise<boolean> {
+  const weekMonday = normalizeWeekMonday(weekStart);
+  const entityId = `weekly_program_ready:${weekMonday}:${chatterUserId}`;
+  return findExistingNotification(chatterUserId, "system", entityId, AIRTABLE_EVENT_SYSTEM).catch(() => false);
+}
+
 /** One in-app/push per active VA per program week when admin saves VA weekly program. */
 export async function notifyActiveVAsWeeklyProgramVaPublished(weekStart: string): Promise<void> {
   const weekMonday = normalizeWeekMonday(weekStart);

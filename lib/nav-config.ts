@@ -143,6 +143,7 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
   { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
+  { href: ROUTES.activityLogs, label: "Activity logs", iconKey: "Activity" },
   {
     href: ROUTES.admin.notificationDiagnostic,
     label: "Notification diagnostic",
