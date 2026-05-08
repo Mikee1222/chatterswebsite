@@ -460,7 +460,7 @@ export function SpinWheel({
 
   return (
     <section
-      className="overflow-hidden rounded-2xl border p-6 sm:p-8"
+      className="spin-wheel overflow-hidden rounded-2xl border p-6 sm:p-8"
       style={{
         background:
           "radial-gradient(1200px 450px at 5% -10%, rgba(236,72,153,0.28), transparent 55%), radial-gradient(900px 380px at 100% 0%, rgba(147,51,234,0.22), transparent 50%), linear-gradient(180deg, #110f14 0%, #0d0d0d 100%)",

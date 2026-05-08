@@ -36,7 +36,7 @@ export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName, periodDates
   return (
     <div className="space-y-4 md:hidden">
       <p className="text-base font-semibold text-white/90">Week</p>
-      <div className="flex gap-1 overflow-x-auto pb-2 scrollbar-none">
+      <div className="horizontal-scroll flex gap-1 overflow-x-auto pb-2 scrollbar-none">
         {DAYS.map((d, idx) => {
           const isToday = d === todayWeekday;
           return (
@@ -60,7 +60,7 @@ export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName, periodDates
       </div>
       <div
         ref={scrollRef}
-        className="flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 scrollbar-none"
+        className="horizontal-scroll flex gap-4 overflow-x-auto snap-x snap-mandatory pb-4 scrollbar-none"
         style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
       >
         {byDay.map(({ day, entries }, dayIndex) => {

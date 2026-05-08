@@ -62,6 +62,10 @@ const config: Config = {
       animation: {
         "form-shake": "form-shake 0.42s ease-in-out both",
       },
+      touchAction: {
+        manipulation: "manipulation",
+        "pan-x-pan-y": "pan-x pan-y pinch-zoom",
+      },
     },
   },
   plugins: [require("tailwindcss-animate")],
