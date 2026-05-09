@@ -57,13 +57,13 @@ export function RoleSwitcher({ currentRole, secondaryRole, hasActiveShift }: Pro
         type="button"
         onClick={handleSwitch}
         disabled={switching}
-        className="flex w-full min-h-[52px] items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 transition-all hover:bg-white/10 disabled:opacity-50"
+        className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-3 transition-all hover:bg-white/[0.08] disabled:opacity-50"
       >
         <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-pink-500/20">
-          <ArrowLeftRight className="h-4 w-4 text-pink-400" />
+          <ArrowLeftRight className="h-4 w-4 shrink-0 text-pink-400" />
         </div>
-        <div className="text-left">
-          <p className="text-sm font-medium text-white">
+        <div className="min-w-0 text-left">
+          <p className="text-sm font-semibold text-white">
             {switching ? "Switching…" : `Switch to ${targetLabel}`}
           </p>
           <p className="text-xs text-white/40">Currently: {currentLabel}</p>

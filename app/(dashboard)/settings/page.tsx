@@ -156,14 +156,14 @@ export default async function SettingsPage() {
 
       {hasDualStaffRole(user) && getEffectiveStaffRole(user) && getOtherStaffPairRole(user) ? (
         <>
-          <section className="space-y-3">
-            <p className="text-xs uppercase tracking-widest text-white/40">Role</p>
+          <div className="mb-4">
+            <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Role</p>
             <RoleSwitcher
               currentRole={getEffectiveStaffRole(user)!}
               secondaryRole={getOtherStaffPairRole(user)!}
               hasActiveShift={hasActiveShiftForPair}
             />
-          </section>
+          </div>
           <div className="h-px w-full bg-gradient-to-r from-transparent via-white/12 to-transparent" aria-hidden />
         </>
       ) : null}
