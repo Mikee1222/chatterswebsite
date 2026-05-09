@@ -21,11 +21,6 @@ export type ShiftQueuePollResponse = {
   queue_type: "full_start" | "add_models";
 };
 
-function estimateWait(activeMinutes: number): string {
-  const rough = Math.max(5, Math.min(180, 120 - Math.min(activeMinutes, 115)));
-  return `~${rough} min`;
-}
-
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session || session.role !== "chatter") {
@@ -86,7 +81,7 @@ export async function GET() {
       waitingForChatter: entry.waiting_for_chatter_name || "Chatter",
       waitingForShiftId: entry.waiting_for_shift_id,
       activeShiftDuration,
-      estimatedWait: shiftLive ? estimateWait(activeShiftDuration) : "~soon",
+      estimatedWait: "~15 min",
       queuePosition,
       totalInQueue,
       selectedModelNames: entry.selected_model_names.filter(Boolean),
