@@ -131,9 +131,9 @@ summary,
   pointer-events: none;
 }
 
-/* Pink ambient glow — top left (behind content) */
+/* Pink ambient glow — top left (behind content; fixed so mobile scroll doesn’t leave glow behind) */
 .dashboard-glow-tl {
-  position: absolute;
+  position: fixed;
   z-index: 1;
   top: 0;
   left: 0;
@@ -148,9 +148,9 @@ summary,
   pointer-events: none;
 }
 
-/* Pink ambient glow — bottom right (behind content) */
+/* Pink ambient glow — bottom right (behind content; fixed with TL for same reason) */
 .dashboard-glow-br {
-  position: absolute;
+  position: fixed;
   z-index: 1;
   bottom: 0;
   right: 0;
