@@ -158,10 +158,10 @@ async function vaIdentityLookupKeys(vaUserRecordId: string): Promise<string[]> {
 const MODEL_LINK_FIELD_NAMES = ["model", "assigned_model"] as const;
 
 /**
- * Fields that may store stable model id text (e.g. `model_1772908052608_mk2psv`) vs linked `rec…` ids.
- * Airtable rejects `{field}=…` formulas on wrong column types → try names and swallow errors.
+ * Single-line text fields that may store stable `model_…` ids (not linked `model` / `assigned_model`).
+ * Try these only after linked-record filters with `modelRecordId` (`rec…`).
  */
-const MODEL_STABLE_TEXT_FIELD_NAMES = ["model", "model_id"] as const;
+const MODEL_STABLE_TEXT_FIELD_NAMES = ["model_id", "model"] as const;
 
 function trimmedStr(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
@@ -207,27 +207,34 @@ async function listAssignmentRecordsByModelLink(
     candidateLinkFields: [...MODEL_LINK_FIELD_NAMES],
   });
 
-  if (sid) {
-    // Primary: `model` holds stable text id (e.g. model_1772908052608_mk2psv); use equality, not FIND on linked ids.
+  // 1) Linked record fields — use Airtable modelss record id (`rec…`), not stable `model_…` text.
+  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
-      const filterByFormula = formulaTextEquals("model", sid);
-      const records = await listAllRecords<Fields>(TABLE, { filterByFormula });
-      console.log(`${DEBUG_PREFIX} model query (model text id)`, {
+      const filterByFormula = formulaLinkedContains(fieldName, modelRecordId);
+      const records = await listAllRecords<Fields>(TABLE, {
+        filterByFormula,
+      });
+      console.log(`${DEBUG_PREFIX} model query (linked)`, {
         table: TABLE,
+        fieldName,
         filterByFormula,
         recordsReturned: records.length,
       });
-      // Authoritative when `model` is a plain-text id field — do not merge with FIND(linked) hits.
-      return records;
+      if (records.length > 0) return records;
     } catch (error) {
-      console.error(`${DEBUG_PREFIX} model query failed on {model}=stableId`, {
+      console.error(`${DEBUG_PREFIX} model query failed on linked field`, {
         table: TABLE,
-        filterByFormula: formulaTextEquals("model", sid),
+        fieldName,
+        filterByFormula: formulaLinkedContains(fieldName, modelRecordId),
         error: error instanceof Error ? error.message : String(error),
       });
+      /* next field name */
     }
+  }
+
+  // 2) Fallback: plain-text columns holding stable model id (bases that store `model_…` on `model_id`, etc.).
+  if (sid) {
     for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
-      if (fieldName === "model") continue;
       try {
         const filterByFormula = formulaTextEquals(fieldName, sid);
         const records = await listAllRecords<Fields>(TABLE, {
@@ -248,30 +255,6 @@ async function listAssignmentRecordsByModelLink(
           error: error instanceof Error ? error.message : String(error),
         });
       }
-    }
-  }
-
-  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
-    try {
-      const filterByFormula = formulaLinkedContains(fieldName, modelRecordId);
-      const records = await listAllRecords<Fields>(TABLE, {
-        filterByFormula,
-      });
-      console.log(`${DEBUG_PREFIX} model query success`, {
-        table: TABLE,
-        fieldName,
-        filterByFormula,
-        recordsReturned: records.length,
-      });
-      return records;
-    } catch (error) {
-      console.error(`${DEBUG_PREFIX} model query failed on field`, {
-        table: TABLE,
-        fieldName,
-        filterByFormula: formulaLinkedContains(fieldName, modelRecordId),
-        error: error instanceof Error ? error.message : String(error),
-      });
-      /* next field name */
     }
   }
   const all = await listAllRecords<Fields>(TABLE);
@@ -658,32 +641,6 @@ export async function countPendingVAContentAssignmentsForModel(
   const isPending = (r: AirtableRecord<Fields>) =>
     String(r.fields.status ?? "").trim().toLowerCase() === "pending";
 
-  if (sid) {
-    try {
-      const formula = `AND(${formulaTextEquals("model", sid)}, {status}="pending")`;
-      const records = await listAllRecords<Fields>(TABLE, {
-        filterByFormula: formula,
-        fields: ["status"],
-      });
-      return records.length;
-    } catch {
-      /* wrong field type or unknown field */
-    }
-    for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
-      if (fieldName === "model") continue;
-      try {
-        const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
-        const records = await listAllRecords<Fields>(TABLE, {
-          filterByFormula: formula,
-          fields: ["status"],
-        });
-        return records.length;
-      } catch {
-        /* field type mismatch or unknown field */
-      }
-    }
-  }
-
   for (const fieldName of MODEL_LINK_FIELD_NAMES) {
     try {
       const formula = `AND(${formulaLinkedContains(fieldName, modelRecordId)}, {status}="pending")`;
@@ -691,9 +648,24 @@ export async function countPendingVAContentAssignmentsForModel(
         filterByFormula: formula,
         fields: ["status"],
       });
-      return records.length;
+      if (records.length > 0) return records.length;
     } catch {
       /* try next link field name */
+    }
+  }
+
+  if (sid) {
+    for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
+      try {
+        const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
+        const records = await listAllRecords<Fields>(TABLE, {
+          filterByFormula: formula,
+          fields: ["status"],
+        });
+        if (records.length > 0) return records.length;
+      } catch {
+        /* field type mismatch or unknown field */
+      }
     }
   }
   try {
