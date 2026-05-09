@@ -1896,7 +1896,7 @@ export function ShiftClient({
       <div
         className="fixed left-0 right-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-black/95 py-3 pl-4 pr-[5.25rem] backdrop-blur-md md:hidden"
         style={{
-          bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
+          bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))",
           boxShadow: "0 -4px 20px rgba(0,0,0,0.4)",
         }}
       >

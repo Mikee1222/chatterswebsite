@@ -402,7 +402,7 @@ function PromptCard({
     return (
       <div
         className="fixed left-0 right-0 z-[90] px-3 md:hidden"
-        style={{ bottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}
+        style={{ bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))" }}
       >
         {card}
       </div>

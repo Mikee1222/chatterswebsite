@@ -818,7 +818,7 @@ export function VaShiftClient({
       <div
         className="fixed left-0 right-0 z-30 flex flex-col gap-2 border-t border-white/10 bg-black/95 px-4 py-3 backdrop-blur-xl md:hidden"
         style={{
-          bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
+          bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))",
           boxShadow: "0 -4px 20px rgba(0,0,0,0.4)",
         }}
       >

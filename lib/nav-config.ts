@@ -90,6 +90,11 @@ export type NavItem = {
   adminOnly?: boolean;
   /** When true, item never fills a mobile bottom-bar slot (stays in the More sheet only). */
   excludeFromMobileMainTabs?: boolean;
+  /**
+   * Chatter mobile bottom bar: center tab uses FAB-style pink gradient + custom icon (see `MobileAppShell`).
+   * `iconKey` is still used for sidebar / More menu.
+   */
+  isShiftButton?: boolean;
 };
 
 export type NavRole = "chatter" | "virtual_assistant" | "admin" | "manager" | "model";
@@ -102,14 +107,20 @@ export function navStorageProfileForRole(role: NavRole): NavStorageProfile {
   return "chatter";
 }
 
-/** Core destinations only — shift, availability, customs, etc. live under the + quick actions menu. */
+/** Core destinations — settings stays in More menu on mobile (not bottom tabs). */
 const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.home, label: "Home", iconKey: "Home" },
   { href: ROUTES.chatter.weeklyProgram, label: "Weekly program", iconKey: "Calendar" },
+  {
+    href: ROUTES.chatter.shift,
+    label: "Shift",
+    iconKey: "PlayCircle",
+    isShiftButton: true,
+  },
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
-  { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
+  { href: ROUTES.settings, label: "Settings", iconKey: "Settings", excludeFromMobileMainTabs: true },
 ];
 
 const vaNav: NavItem[] = [
@@ -205,13 +216,13 @@ export function getNavItemsForRole(role: NavRole, hiddenItems?: string[]): NavIt
 }
 
 /**
- * The 4 hrefs used for the mobile bottom bar tabs (home, program, shift, models).
- * All other nav items go in the "More" sheet in the same order as getNavItemsForRole.
+ * The 4 hrefs used for the mobile bottom bar tabs (before the fixed "More" button).
+ * Chatter: Home, Calendar (weekly program), Shift (center CTA), Whales — Settings is More-only.
  */
 export function getMainTabHrefs(role: NavRole): [string, string, string, string] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   if (r === "chatter") {
-    return [ROUTES.chatter.home, ROUTES.chatter.weeklyProgram, ROUTES.chatter.myWhales, ROUTES.settings];
+    return [ROUTES.chatter.home, ROUTES.chatter.weeklyProgram, ROUTES.chatter.shift, ROUTES.chatter.myWhales];
   }
   if (r === "virtual_assistant") {
     return [ROUTES.va.home, ROUTES.va.tasks, ROUTES.va.weeklyAvailability, ROUTES.settings];
@@ -230,10 +241,10 @@ export function getMainTabHrefs(role: NavRole): [string, string, string, string]
   return [ROUTES.dashboard, ROUTES.dashboard, ROUTES.dashboard, ROUTES.dashboard];
 }
 
-/** Labels for the 4 main mobile tabs (HOME, PROGRAM, SHIFT/LIVE, WHALES/MODELS). */
+/** Labels for the 4 main mobile tabs (short uppercase; chatter uses captions in shell). */
 export function getMainTabLabels(role: NavRole): [string, string, string, string] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
-  if (r === "chatter") return ["HOME", "PROGRAM", "WHALES", "SETTINGS"];
+  if (r === "chatter") return ["HOME", "CALENDAR", "SHIFT", "WHALES"];
   if (r === "virtual_assistant") return ["HOME", "TASKS", "AVAIL.", "SETTINGS"];
   if (r === "admin" || r === "manager") return ["HOME", "PROGRAM", "LIVE", "MODELS"];
   if (r === "model") return ["HOME", "EARNINGS", "CALENDAR", "SCHEDULE"];
@@ -262,10 +273,13 @@ export function getMobileMainTabs(role: NavRole, hiddenItems?: string[]): NavIte
   return picked.slice(0, 4);
 }
 
+const CHATTER_MOBILE_TAB_CAPTIONS: [string, string, string, string] = ["Home", "Calendar", "Shift", "Whales"];
+
 export function getMobileMainTabDisplays(
   role: NavRole,
   hiddenItems?: string[]
-): { item: NavItem; shortLabel: string }[] {
+): { item: NavItem; shortLabel: string; mobileCaption?: string }[] {
+  const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   const tabs = getMobileMainTabs(role, hiddenItems);
   const canonicalHrefs = [...getMainTabHrefs(role)];
   const canonicalLabels = [...getMainTabLabels(role)];
@@ -277,6 +291,8 @@ export function getMobileMainTabDisplays(
         : item.label.length > 14
           ? `${item.label.slice(0, 12).toUpperCase()}…`
           : item.label.toUpperCase();
-    return { item, shortLabel };
+    const mobileCaption =
+      r === "chatter" && ci >= 0 && ci < CHATTER_MOBILE_TAB_CAPTIONS.length ? CHATTER_MOBILE_TAB_CAPTIONS[ci] : undefined;
+    return { item, shortLabel, mobileCaption };
   });
 }

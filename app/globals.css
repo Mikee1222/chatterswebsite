@@ -228,7 +228,8 @@ summary,
   --mobile-section-gap: 16px;
   --mobile-item-gap: 12px;
   --mobile-tap-min-height: 48px;
-  --mobile-bottom-nav-height: 64px;
+  /* Mobile tab bar (taller to fit chatter center Shift CTA + captions). */
+  --mobile-bottom-nav-height: 76px;
 }
 
 /* Mobile: bottom tab bar must stay visible — .dashboard-bg overflow:hidden can clip fixed descendants; keep nav above scrolling content */

@@ -21,7 +21,7 @@ export function LiveShiftMiniBar({ activeShift, shiftHref, modelsCount: modelsCo
       href={shiftHref}
       className="fixed left-0 right-0 z-[35] flex items-center justify-between gap-3 border-t border-white/10 bg-black/90 px-4 py-2.5 backdrop-blur-xl md:hidden"
       style={{
-        bottom: "calc(64px + env(safe-area-inset-bottom, 0px))",
+        bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px))",
         boxShadow: "0 -2px 16px rgba(0,0,0,0.35)",
       }}
     >

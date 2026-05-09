@@ -78,6 +78,15 @@ function NavBetaBadge() {
   return <span className={BETA_BADGE_CLASS}>BETA</span>;
 }
 
+function ChatterShiftNavGlyph({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+      <circle cx="12" cy="12" r="3" strokeWidth={2} />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 2v3m0 14v3M2 12h3m14 0h3" />
+    </svg>
+  );
+}
+
 const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: string }>>> = {
   Home,
   LayoutDashboard,
@@ -236,12 +245,12 @@ export function MobileAppShell({
 
   const mainTabRows = React.useMemo(() => {
     const displays = getMobileMainTabDisplays(role, hiddenForRole);
-    if (role !== "model" || !modelUiLanguage) return displays.map(({ item }) => ({ item }));
+    if (role !== "model" || !modelUiLanguage) return displays.map((d) => ({ ...d }));
     const t = getModelT(modelUiLanguage);
-    return displays.map(({ item }) => {
+    return displays.map(({ item, shortLabel, mobileCaption }) => {
       const key = MODEL_NAV_HREF_TO_LABEL_KEY[item.href];
       const label = key ? t(key) : item.label;
-      return { item: { ...item, label } };
+      return { item: { ...item, label }, shortLabel, mobileCaption };
     });
   }, [role, hiddenForRole, modelUiLanguage]);
 
@@ -305,19 +314,69 @@ export function MobileAppShell({
         )}
 
         <nav
-          className="fixed bottom-0 left-0 right-0 z-40 flex h-[64px] items-stretch justify-around gap-0.5 border-t border-white/[0.09] bg-zinc-950/92 px-1 pt-1 backdrop-blur-xl md:hidden"
+          className="fixed bottom-0 left-0 right-0 z-40 flex h-[var(--mobile-bottom-nav-height,76px)] items-stretch justify-around gap-0.5 border-t border-white/[0.09] bg-zinc-950/92 px-1 pt-1 backdrop-blur-xl md:hidden"
           style={{
             paddingBottom: "max(0.35rem, env(safe-area-inset-bottom))",
             boxShadow: "0 -8px 32px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06)",
           }}
         >
-          {mainTabRows.map(({ item }) => {
+          {mainTabRows.map(({ item, mobileCaption }) => {
             const href = item.href;
-            const Icon = ICON_MAP[item.iconKey] ?? Home;
             const active = !item.disabled && navActive(href);
+            const isChatterShiftCta = role === "chatter" && item.isShiftButton;
+
+            if (isChatterShiftCta) {
+              if (item.disabled) {
+                return (
+                  <div
+                    key={href}
+                    className="relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-end pb-1 text-white/35"
+                    role="group"
+                    aria-label={`${item.label} (${item.badge ?? "unavailable"})`}
+                  >
+                    <div className="flex flex-col items-center -mt-4 opacity-50">
+                      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gradient-to-r from-pink-500/40 to-rose-500/40 shadow-lg">
+                        <ChatterShiftNavGlyph className="h-6 w-6 text-white" />
+                      </div>
+                      <span className="mt-1 text-[10px] text-white/40">Shift</span>
+                    </div>
+                  </div>
+                );
+              }
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  prefetch
+                  aria-label={item.label}
+                  className={cn(
+                    "relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-end pb-0.5",
+                    "rounded-2xl border-0 bg-transparent shadow-none outline-none ring-0",
+                    "text-white active:scale-[0.98]"
+                  )}
+                >
+                  <div className="flex flex-col items-center -mt-4">
+                    <div
+                      className={cn(
+                        "flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-200",
+                        active
+                          ? "bg-gradient-to-r from-pink-500 to-rose-500 shadow-[0_0_22px_rgba(244,63,94,0.45)]"
+                          : "bg-gradient-to-r from-pink-500/80 to-rose-500/80 shadow-[0_8px_28px_-6px_rgba(244,63,94,0.4)]"
+                      )}
+                    >
+                      <ChatterShiftNavGlyph className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="mt-1 text-[10px] text-white/60">Shift</span>
+                  </div>
+                </Link>
+              );
+            }
+
+            const Icon = ICON_MAP[item.iconKey] ?? Home;
             const tabClass = cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-0.5 py-1.5 transition-all duration-200 ease-out",
               "border-0 bg-transparent shadow-none outline-none ring-0",
+              role === "chatter" && mobileCaption && "justify-end pb-1 pt-0.5",
               item.disabled
                 ? "cursor-not-allowed text-white/35"
                 : active
@@ -340,10 +399,14 @@ export function MobileAppShell({
                   )}
                   aria-hidden
                 />
-                <span className="sr-only">
-                  {item.label}
-                  {item.beta ? " (beta)" : ""}
-                </span>
+                {role === "chatter" && mobileCaption ? (
+                  <span className="relative z-10 mt-0.5 text-[10px] leading-tight text-white/55">{mobileCaption}</span>
+                ) : (
+                  <span className="sr-only">
+                    {item.label}
+                    {item.beta ? " (beta)" : ""}
+                  </span>
+                )}
               </>
             );
             if (item.disabled) {
@@ -370,6 +433,7 @@ export function MobileAppShell({
             className={cn(
               "relative flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center rounded-2xl px-1 py-2 transition-all duration-200 ease-out",
               "border-0 bg-transparent shadow-none outline-none ring-0",
+              role === "chatter" && "justify-end pb-1",
               moreOpen
                 ? "bg-white/10 text-white"
                 : moreTabActive
@@ -387,7 +451,11 @@ export function MobileAppShell({
               />
             ) : null}
             <Menu className="relative z-10 h-7 w-7 shrink-0" aria-hidden />
-            <span className="sr-only">More menu</span>
+            {role === "chatter" ? (
+              <span className="relative z-10 mt-0.5 text-[10px] leading-tight text-white/55">Menu</span>
+            ) : (
+              <span className="sr-only">More menu</span>
+            )}
           </button>
         </nav>
       </div>
