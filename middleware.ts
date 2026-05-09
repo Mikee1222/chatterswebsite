@@ -27,6 +27,7 @@ function isPublicAssetPath(pathname: string): boolean {
   const p = pathname.startsWith("/") ? pathname : `/${pathname}`;
   if (p === "/favicon.ico" || p === "/icon.svg" || p === "/sw.js") return true;
   if (p === "/manifest.webmanifest" || p.startsWith("/manifest.")) return true;
+  if (/^\/icon-\d/.test(p)) return true;
   return PUBLIC_ASSET_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
@@ -74,6 +75,6 @@ export async function middleware(request: NextRequest) {
 // Run middleware for app routes only; do NOT run for static/PWA assets (they bypass auth via isPublicAssetPath if they ever hit middleware)
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|api|apple-touch-icon|icon\\.svg|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api|apple-touch-icon|icon\\.svg|icon-\\d|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
   ],
 };

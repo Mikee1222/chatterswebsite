@@ -24,8 +24,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Chatter";
   const options = {
     body: payload.body || "",
-    icon: payload.icon || "/icons/icon.svg",
-    badge: "/icons/icon.svg",
+    icon: payload.icon || "/icon-192-v2.png",
+    badge: "/icon-192-v2.png",
     tag: payload.tag || "chatter-notification",
     renotify: true,
     requireInteraction: false,
@@ -74,7 +74,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (u.pathname.startsWith("/_next/static/") || u.pathname.startsWith("/icons/")) {
+  if (u.pathname.startsWith("/_next/static/") || u.pathname.startsWith("/icons/") || /^\/icon-\d/.test(u.pathname)) {
     event.respondWith(
       caches.open(CACHE_NAME).then((cache) =>
         cache.match(event.request).then((cached) => {

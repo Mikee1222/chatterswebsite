@@ -35,11 +35,11 @@ export default async function LoginPage({
             <div className="relative flex justify-center pb-8 pt-2">
               <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-pink-500 to-pink-600 shadow-lg shadow-pink-500/30">
                 <Image
-                  src="/apple-touch-icon.svg"
+                  src="/apple-touch-icon-v2.png"
                   alt="Gunzo"
                   width={40}
                   height={40}
-                  className="h-10 w-10 rounded-full"
+                  className="h-10 w-10 rounded-full object-cover"
                   priority
                 />
               </div>

@@ -7,12 +7,14 @@ export const metadata: Metadata = {
   applicationName: "Gunzo Partner",
   description: "Internal team dashboard – shifts, whales, customs",
   icons: {
-    icon: "/icons/icon.svg",
-    apple: "/icons/icon.svg",
+    icon: "/icon-192-v2.png",
+    apple: "/apple-touch-icon-v2.png",
+    shortcut: "/icon-192-v2.png",
   },
   appleWebApp: {
-    statusBarStyle: "black-translucent",
     title: "Gunzo Partner",
+    statusBarStyle: "black-translucent",
+    startupImage: "/apple-touch-icon-v2.png",
   },
   manifest: "/manifest.webmanifest",
   other: {
@@ -22,7 +24,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1a0a12",
+  themeColor: "#ec4899",
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,

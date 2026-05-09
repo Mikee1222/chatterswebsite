@@ -11,8 +11,8 @@ const nextConfig = {
   async redirects() {
     return [
       { source: "/manifest", destination: "/manifest.webmanifest", permanent: false },
-      { source: "/apple-touch-icon.png", destination: "/icons/icon.svg", permanent: false },
-      { source: "/apple-touch-icon-precomposed.png", destination: "/icons/icon.svg", permanent: false },
+      { source: "/apple-touch-icon.png", destination: "/apple-touch-icon-v2.png", permanent: false },
+      { source: "/apple-touch-icon-precomposed.png", destination: "/apple-touch-icon-precomposed-v2.png", permanent: false },
     ];
   },
 };
