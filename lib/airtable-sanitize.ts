@@ -236,6 +236,9 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   model_personal_events: {
     event_type: new Set(["nails", "lashes", "hairdresser", "surgery", "fillers", "custom"]),
   },
+  shift_queue: {
+    status: new Set(["waiting", "started", "cancelled", "expired"]),
+  },
   va_tasks: {
     status: new Set(["pending", "in_progress", "done", "skipped"]),
     priority: new Set(["low", "normal", "high", "urgent"]),
@@ -319,6 +322,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   model_content_requests: new Set(["created_at", "updated_at"]),
   model_expense_requests: new Set(["created_at", "updated_at"]),
   model_personal_events: new Set(["created_at"]),
+  shift_queue: new Set(["created_at", "started_at", "cancelled_at"]),
   /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
   challenge_progress: new Set(["updated_at"]),
   /** Break reminder ISO datetime; explicit so payloads are never treated as non-writable elsewhere. */

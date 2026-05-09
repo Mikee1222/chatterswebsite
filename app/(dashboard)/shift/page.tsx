@@ -101,6 +101,7 @@ export default async function ShiftPage() {
     items: [],
   };
   let modelIdsInActivePeriodToday: string[] = [];
+  let weeklyProgramModels: { id: string; name: string }[] = [];
 
   try {
     activeShift = await getActiveShiftByChatter(chatterId);
@@ -138,6 +139,15 @@ export default async function ShiftPage() {
 
     const programs = programsResult.filter((p) => p.chatter_id === chatterId && p.day === todayWeekday);
     const modelNameById = new Map(modelss.map((m) => [m.id, m.model_name]));
+    const seenProgramModel = new Set<string>();
+    weeklyProgramModels = [];
+    for (const p of programs) {
+      for (const mid of p.model_ids) {
+        if (!mid || seenProgramModel.has(mid)) continue;
+        seenProgramModel.add(mid);
+        weeklyProgramModels.push({ id: mid, name: modelNameById.get(mid) ?? mid });
+      }
+    }
     todaySchedule = {
       todayYmd,
       todayWeekday,
@@ -184,6 +194,7 @@ export default async function ShiftPage() {
           maxBreakMinutes={MAX_BREAK_MINUTES}
           todaySchedule={todaySchedule}
           modelIdsInActivePeriodToday={modelIdsInActivePeriodToday}
+          weeklyProgramModels={weeklyProgramModels}
         />
       </div>
     </RouterRefreshInterval>

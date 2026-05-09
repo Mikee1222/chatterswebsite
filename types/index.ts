@@ -22,6 +22,40 @@ export type ShiftStatus = "active" | "on_break" | "completed" | "cancelled";
 export type StaffRole = "chatter" | "virtual_assistant";
 export type ShiftType = "chatting" | "mistakes" | "vault_cleaning" | "other";
 
+/** Airtable `shift_queue` — chatter waits for an active shift to end, then auto-starts. */
+export type ShiftQueueStatus = "waiting" | "started" | "cancelled" | "expired";
+
+export type ShiftQueueEntryApi = {
+  id: string;
+  queue_id: string;
+  chatter_id: string;
+  chatter_name: string;
+  selected_model_ids: string[];
+  selected_model_names: string[];
+  status: ShiftQueueStatus;
+  waiting_for_shift_id: string;
+  waiting_for_chatter_name: string;
+  created_at: string | null;
+  started_at: string | null;
+  cancelled_at: string | null;
+};
+
+/** Active chatter shift summary for queue UI / APIs. */
+export type ActiveShiftBrief = {
+  id: string;
+  chatter_name: string;
+  duration_minutes: number;
+};
+
+/** Admin live-shifts: waiting queue row. */
+export type AdminShiftQueueRow = {
+  id: string;
+  chatter_name: string;
+  waitingForChatterName: string;
+  waiting_for_shift_id: string;
+  selectedModelNames: string[];
+};
+
 /** Airtable `va_tasks` — VA operational tasks. */
 export type VaTaskStatus = "pending" | "in_progress" | "done" | "skipped";
 export type VaTaskPriority = "low" | "normal" | "high" | "urgent";

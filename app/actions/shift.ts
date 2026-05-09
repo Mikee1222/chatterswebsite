@@ -75,6 +75,7 @@ import {
   taskShiftEndedAdmin,
 } from "@/lib/notification-copy";
 import { devLog } from "@/lib/dev-log";
+import { listShiftQueueWaitingForShift, updateShiftQueueRecord } from "@/services/shift-queue";
 
 export type StartShiftResult = { success: true; shiftId: string } | { success: false; error: string };
 
@@ -82,7 +83,8 @@ export type StartShiftResult = { success: true; shiftId: string } | { success: f
 export async function startShiftWithModels(
   chatterRecordId: string,
   chatterName: string,
-  modelRecordIds: string[]
+  modelRecordIds: string[],
+  options?: { suppressNotifications?: boolean }
 ): Promise<StartShiftResult> {
   try {
     if (!chatterRecordId?.trim()) {
@@ -196,53 +198,54 @@ export async function startShiftWithModels(
       start_time: startTime,
       modelsAttached: modelNames.length,
     });
-    const selfCopy = shiftStartedSelf(startTime, modelNames);
-    const adminCopy = shiftStartedAdmin(chatterName, startTime, modelNames);
-
     await broadcastRealtimeToAll({ type: "shift_started", chatter_id: chatterRecordId, shift_id: created.id }).catch(() => {});
     revalidatePath(ROUTES.chatter.shift);
 
-    try {
-      await notify({
-        user_id: chatterRecordId,
-        event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: selfCopy.title,
-        body: selfCopy.body,
-        entity_type: NOTIFICATION_ENTITY.SHIFT,
-        entity_id: created.id,
-        actor_user_id: chatterRecordId,
-        actor_name: chatterName,
-        _triggerSource: "startShiftWithModels",
-      });
-    } catch (e) {
-      console.error("[notify] shift_started chatter failed", e);
-    }
-    try {
-      devLog("[shift_started_debug]", {
-        chatterRecordId,
-        chatterName,
-        modelNames,
-        event: NOTIFICATION_EVENT.SHIFT_STARTED,
-      });
-      const notifyAdminsReturn = await notifyAdmins({
-        event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: adminCopy.title,
-        body: adminCopy.body,
-        entity_type: NOTIFICATION_ENTITY.SHIFT,
-        entity_id: created.id,
-        actor_user_id: chatterRecordId,
-        actor_name: chatterName,
-      });
-      devLog(
-        "[startShiftWithModels] notifyAdmins finished",
-        JSON.stringify({
-          returnValue: notifyAdminsReturn === undefined ? "undefined (notifyAdmins returns void)" : notifyAdminsReturn,
-        })
-      );
-    } catch (e) {
-      console.error("[notify] shift_started admin failed", e);
+    if (!options?.suppressNotifications) {
+      const selfCopy = shiftStartedSelf(startTime, modelNames);
+      const adminCopy = shiftStartedAdmin(chatterName, startTime, modelNames);
+      try {
+        await notify({
+          user_id: chatterRecordId,
+          event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: selfCopy.title,
+          body: selfCopy.body,
+          entity_type: NOTIFICATION_ENTITY.SHIFT,
+          entity_id: created.id,
+          actor_user_id: chatterRecordId,
+          actor_name: chatterName,
+          _triggerSource: "startShiftWithModels",
+        });
+      } catch (e) {
+        console.error("[notify] shift_started chatter failed", e);
+      }
+      try {
+        devLog("[shift_started_debug]", {
+          chatterRecordId,
+          chatterName,
+          modelNames,
+          event: NOTIFICATION_EVENT.SHIFT_STARTED,
+        });
+        const notifyAdminsReturn = await notifyAdmins({
+          event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: adminCopy.title,
+          body: adminCopy.body,
+          entity_type: NOTIFICATION_ENTITY.SHIFT,
+          entity_id: created.id,
+          actor_user_id: chatterRecordId,
+          actor_name: chatterName,
+        });
+        devLog(
+          "[startShiftWithModels] notifyAdmins finished",
+          JSON.stringify({
+            returnValue: notifyAdminsReturn === undefined ? "undefined (notifyAdmins returns void)" : notifyAdminsReturn,
+          })
+        );
+      } catch (e) {
+        console.error("[notify] shift_started admin failed", e);
+      }
     }
 
     return { success: true, shiftId: created.id };
@@ -697,6 +700,101 @@ export async function endBreak(shiftRecordId: string, additionalBreakMinutes: nu
   }
 }
 
+/**
+ * After a chatter shift ends, try queued chatters (FIFO) for that shift id: first successful
+ * `startShiftWithModels` wins; remaining rows for this shift are marked expired.
+ */
+async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<void> {
+  try {
+    const shiftMeta = await getShiftById(endedShiftId);
+    if (!shiftMeta || shiftMeta.staff_role !== "chatter") return;
+
+    const queue = await listShiftQueueWaitingForShift(endedShiftId);
+    if (queue.length === 0) return;
+
+    let startedOne = false;
+    const nowIso = new Date().toISOString();
+
+    for (const entry of queue) {
+      if (startedOne) {
+        await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+        continue;
+      }
+
+      const modelIds = entry.selected_model_ids.filter(Boolean);
+      if (modelIds.length === 0) {
+        await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+        continue;
+      }
+
+      const modelNames = entry.selected_model_names.filter(Boolean);
+      const result = await startShiftWithModels(
+        entry.chatter_id,
+        (entry.chatter_name || "Chatter").trim() || "Chatter",
+        modelIds,
+        { suppressNotifications: true }
+      );
+
+      if (result.success) {
+        startedOne = true;
+        await updateShiftQueueRecord(entry.id, { status: "started", started_at: nowIso }).catch(() => {});
+        const namesLabel = modelNames.length ? modelNames.join(", ") : `${modelIds.length} model(s)`;
+        try {
+          await notify({
+            user_id: entry.chatter_id,
+            event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
+            priority: NOTIFICATION_PRIORITY.NORMAL,
+            title: "🚀 Shift started!",
+            body: `Your shift has started automatically with ${namesLabel}. You're live!`,
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: result.shiftId,
+            actor_user_id: entry.chatter_id,
+            actor_name: entry.chatter_name,
+            _triggerSource: "shiftQueueAutoStart",
+          });
+        } catch (e) {
+          console.error("[notify] shift queue auto-start chatter failed", e);
+        }
+        try {
+          await notifyAdmins({
+            event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
+            priority: NOTIFICATION_PRIORITY.NORMAL,
+            title: `🔄 Auto-shift: ${entry.chatter_name || "Chatter"}`,
+            body: `${(entry.chatter_name || "A chatter").trim()}'s shift started automatically from queue. Models: ${namesLabel}`,
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: result.shiftId,
+            actor_user_id: entry.chatter_id,
+            actor_name: entry.chatter_name,
+          });
+        } catch (e) {
+          console.error("[notify] shift queue auto-start admins failed", e);
+        }
+        revalidatePath(ROUTES.chatter.shift);
+        revalidatePath(ROUTES.admin.liveShifts);
+      } else {
+        await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+        try {
+          await notify({
+            user_id: entry.chatter_id,
+            event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+            priority: NOTIFICATION_PRIORITY.NORMAL,
+            title: "Shift queue: could not start",
+            body: result.error ?? "Auto-start failed. Start manually or join the queue again.",
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: endedShiftId,
+            actor_user_id: entry.chatter_id,
+            actor_name: entry.chatter_name,
+          });
+        } catch (_) {
+          /* ignore */
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[processShiftQueueAfterShiftEnd]", e);
+  }
+}
+
 export async function endShift(shiftRecordId: string) {
   const now = new Date().toISOString();
   const shiftModels = await listShiftModels(shiftRecordId);
@@ -805,6 +903,7 @@ export async function endShift(shiftRecordId: string) {
     }
   }
   devLog("[endShift] completed", { shiftRecordId, modelsReleased: pendingRelease.length });
+  await processShiftQueueAfterShiftEnd(shiftRecordId);
 }
 
 export type AdminForceEndShiftResult = { success: true } | { success: false; error: string };
@@ -924,6 +1023,9 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
     revalidatePath(ROUTES.admin.liveShifts);
     revalidatePath(ROUTES.chatter.shift);
     revalidatePath(ROUTES.va.shift);
+    if (shiftBefore.staff_role === "chatter") {
+      await processShiftQueueAfterShiftEnd(id);
+    }
     return { success: true };
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

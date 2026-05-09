@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Send, RefreshCw, Calendar, Users } from "lucide-react";
 import { formatDateTimeEuropean } from "@/lib/format";
-import type { Shift } from "@/types";
+import type { AdminShiftQueueRow, Shift } from "@/types";
 import { LiveTimer } from "@/components/live-timer";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { adminForceEndShift } from "@/app/actions/shift";
@@ -236,9 +236,10 @@ function EmptyState({ message, sub, icon: Icon }: { message: string; sub?: strin
 
 type Props = {
   shiftsWithModels: LiveShiftWithModels[];
+  shiftQueue?: AdminShiftQueueRow[];
 };
 
-export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
+export function AdminLiveShiftsClient({ shiftsWithModels, shiftQueue = [] }: Props) {
   const router = useRouter();
   const [refreshing, setRefreshing] = React.useState(false);
   const [forceEndFor, setForceEndFor] = React.useState<LiveShiftWithModels | null>(null);
@@ -312,6 +313,34 @@ export function AdminLiveShiftsClient({ shiftsWithModels }: Props) {
               />
             ) : (
               chatterShifts.map((s, i) => <ShiftCard key={s.id} shift={s} index={i} />)
+            )}
+            {shiftQueue.length > 0 && (
+              <div className="mt-4">
+                <h3 className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/40">Waiting in queue</h3>
+                {shiftQueue.map((entry) => (
+                  <div
+                    key={entry.id}
+                    className="mb-2 rounded-xl border border-sky-500/25 bg-sky-500/10 p-3 last:mb-0"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="text-sm font-medium text-white">{entry.chatter_name}</span>
+                      <span className="text-xs text-sky-300">
+                        Waiting for {entry.waitingForChatterName || "chatter"}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-1">
+                      {entry.selectedModelNames.map((name, idx) => (
+                        <span
+                          key={`${entry.id}-${name}-${idx}`}
+                          className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/50"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </div>
