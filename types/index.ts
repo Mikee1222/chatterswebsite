@@ -47,9 +47,11 @@ export type ShiftQueueEntryApi = {
   cancelled_at: string | null;
 };
 
-/** Occupied model row for shift page — which shift holds the model. */
+/** Occupied model row for shift page — which shift holds the model (queue picker + add-models flow). */
 export type OccupiedModelDetail = {
+  /** `modelss` record id (same as `ModelRecord.id`). */
   model_id: string;
+  model_name: string;
   chatter_name: string;
   shift_id: string;
 };

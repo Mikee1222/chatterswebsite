@@ -12,7 +12,7 @@ import { RouterRefreshInterval } from "@/components/router-refresh-interval";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import { getTodayYmd } from "@/lib/weekly-program";
-import type { ModelRecord } from "@/types";
+import type { ModelRecord, OccupiedModelDetail } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
 const MAX_BREAK_MINUTES = 45;
@@ -113,6 +113,7 @@ export default async function ShiftPage() {
   };
   let modelIdsInActivePeriodToday: string[] = [];
   let weeklyProgramModels: { id: string; name: string }[] = [];
+  let occupiedModels: OccupiedModelDetail[] = [];
 
   try {
     activeShift = await getActiveShiftByChatter(chatterId);
@@ -167,6 +168,17 @@ export default async function ShiftPage() {
         modelNames: p.model_ids.map((id) => modelNameById.get(id) ?? id).filter(Boolean),
       })),
     };
+
+    occupiedModels = modelss
+      .filter((m) => m.current_status === "occupied")
+      .map((m) => ({
+        model_id: m.id,
+        model_name: (m.model_name ?? "").trim() || "Model",
+        chatter_name: (m.current_chatter_name ?? "").trim() || "Chatter",
+        shift_id: (m.current_shift_id ?? "").trim(),
+      }))
+      .filter((o) => o.model_id && o.shift_id);
+
     devLog("[shift page] load", {
       currentUserAirtableRecordId: airtableUserId,
       currentUserInternalId: user.id,
@@ -207,6 +219,7 @@ export default async function ShiftPage() {
           modelIdsInActivePeriodToday={modelIdsInActivePeriodToday}
           weeklyProgramModels={weeklyProgramModels}
           freeModelsForQueue={modelss.filter((m) => m.current_status === "free")}
+          occupiedModels={occupiedModels}
         />
       </div>
     </RouterRefreshInterval>
