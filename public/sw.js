@@ -1,4 +1,4 @@
-/* Chatter Dashboard – Service Worker: push, notificationclick, optional cache */
+/* Gunzo Partner – Service Worker: push, notificationclick, optional cache */
 
 const CACHE_NAME = "chatter-v1";
 

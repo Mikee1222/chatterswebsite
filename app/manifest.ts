@@ -6,7 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Gunzo Partner",
     short_name: "Gunzo Partner",
-    description: "Internal team dashboard – shifts, whales, customs",
+    description: "Gunzo Agency — Εσωτερική πλατφόρμα για chatters, VAs, models και admins.",
     start_url: baseUrl || "/",
     scope: "/",
     display: "standalone",

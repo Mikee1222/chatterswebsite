@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Gunzo Partner",
   applicationName: "Gunzo Partner",
-  description: "Internal team dashboard – shifts, whales, customs",
+  description: "Gunzo Agency — Διαχείριση βαρδιών, models, whales και περιεχομένου.",
   icons: {
     icon: "/icon-192-v2.png",
     apple: "/apple-touch-icon-v2.png",
@@ -17,6 +17,16 @@ export const metadata: Metadata = {
     startupImage: "/apple-touch-icon-v2.png",
   },
   manifest: "/manifest.webmanifest",
+  openGraph: {
+    title: "Gunzo Partner",
+    description: "Gunzo Agency — Εσωτερική πλατφόρμα διαχείρισης.",
+    siteName: "Gunzo Partner",
+    type: "website",
+  },
+  twitter: {
+    title: "Gunzo Partner",
+    description: "Gunzo Agency — Εσωτερική πλατφόρμα διαχείρισης.",
+  },
   other: {
     "mobile-web-app-capable": "yes",
     "apple-mobile-web-app-capable": "yes",

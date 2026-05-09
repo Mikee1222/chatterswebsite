@@ -224,7 +224,8 @@ function RewardsOnboardingModal({ onDismiss }: { onDismiss: () => void }) {
           Welcome to Gunzo Rewards! 🎉
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-white/70">
-          You earn points for shifts, whales, customs, and more. Points unlock tiers and spin wheel credits—check your
+          You earn points from your shifts, whale work, custom requests, and more. Points unlock tiers and spin wheel
+          credits—check your
           balance anytime on this page.
         </p>
         <p className="mt-4 text-xs font-semibold uppercase tracking-wider text-white/45">Top ways to earn</p>
