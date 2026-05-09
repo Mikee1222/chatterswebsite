@@ -69,7 +69,7 @@ export default async function ModelHomePage() {
     pendingVaAssignmentsCount,
     contentRequests,
   ] = await Promise.all([
-    getCurrentPeriod(linkedModelId).catch((error) => {
+    getCurrentPeriod(linkedModelId, modelRecord).catch((error) => {
       console.error("[model/home] getCurrentPeriod failed; using null fallback", error);
       return null;
     }),

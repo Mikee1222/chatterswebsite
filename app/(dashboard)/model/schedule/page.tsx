@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelScheduleClient } from "@/components/model-schedule-client";
 import { listModelScheduleItems, modelScheduleTimeOffItemToRequest } from "@/services/model-schedule";
-import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod, inclusiveDaySpan } from "@/services/model-periods";
+import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
 import { getModelTimeOffRequestsForRange } from "@/services/model-time-off-requests";
 import { getThisWeekMonday, addDays, normalizeWeekStart, getTodayYmd } from "@/lib/weekly-program";
 import { modelScheduleUrl } from "@/lib/routes";
@@ -87,7 +87,7 @@ export default async function ModelSchedulePage({
       console.error("[model/schedule] getModelTimeOffRequestsForRange failed; using [] fallback", error);
       return [];
     }),
-    getCurrentPeriod(linkedModelId).catch((error) => {
+    getCurrentPeriod(linkedModelId, modelRecord).catch((error) => {
       console.error("[model/schedule] getCurrentPeriod failed; using null fallback", error);
       return null;
     }),
@@ -110,8 +110,7 @@ export default async function ModelSchedulePage({
   const scheduleLastPeriod = periodHistory[0]?.start_date ?? null;
   const scheduleDaysUntilNext =
     predictedPeriodStart != null ? calendarDayDiffUtc(todayYmd, predictedPeriodStart) : null;
-  const scheduleCurrentDay =
-    currentPeriod != null ? inclusiveDaySpan(currentPeriod.start_date, todayYmd) : null;
+  const scheduleCurrentDay = currentPeriod?.day_number ?? null;
 
   return (
     <div className="space-y-6">
@@ -132,6 +131,8 @@ export default async function ModelSchedulePage({
             daysUntilNext={scheduleDaysUntilNext}
           />
           <ModelPeriodTrackerWidget
+            modelRecordId={linkedModelId}
+            stableModelId={modelRecord.model_id}
             periods={periodHistory}
             predictedNextStart={predictedPeriodStart}
             avgCycleLength={modelRecord.avg_cycle_length ?? null}

@@ -283,7 +283,15 @@
       "statusPredictedSoon": "Predicted soon",
       "statusOverdue": "Overdue",
       "statusNormal": "Normal cycle",
-      "reportMissedNeedPeriod": "Log a period first (you need history before reporting missed)"
+      "reportMissedNeedPeriod": "Log a period first (you need history before reporting missed)",
+      "myPeriodStartedToday": "My period started today",
+      "history": "History",
+      "differentDate": "Different date",
+      "cycleLengthDays": "Cycle length (days)",
+      "periodLengthDays": "Period length (days)",
+      "historyLatest": "Latest",
+      "historyMissed": "Missed",
+      "historyEarly": "Early"
     },
     "calendar": {
       "title": "Calendar",

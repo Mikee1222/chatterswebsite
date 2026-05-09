@@ -571,6 +571,20 @@ export async function listVAContentAssignmentsForModel(
   }
 }
 
+/** Distinct `va_id` values from content assignments linked to this model (Airtable user id or stable `user_…` id). */
+export async function listDistinctVaUserIdsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null,
+): Promise<string[]> {
+  const rows = await listVAContentAssignmentsForModel(modelRecordId, stableModelId);
+  const ids = new Set<string>();
+  for (const r of rows) {
+    const v = r.va_id?.trim();
+    if (v) ids.add(v);
+  }
+  return [...ids];
+}
+
 /** Admin/staff list: all VA content assignments across all models. */
 export async function listAllVAContentAssignments(): Promise<VaContentAssignmentRecord[]> {
   try {

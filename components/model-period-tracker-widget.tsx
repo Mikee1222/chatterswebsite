@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { AlertCircle, CalendarDays, Clock3, Droplets, History, Loader2, Plus } from "lucide-react";
+import { CalendarDays, Clock3, Droplets, Loader2 } from "lucide-react";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { formatDateLong } from "@/lib/format";
 import type { ModelPeriodRecord } from "@/types";
@@ -14,6 +14,8 @@ import { useTranslations } from "@/lib/use-translations";
 type CycleStatus = "period" | "predicted_soon" | "normal" | "overdue";
 
 type Props = {
+  modelRecordId: string;
+  stableModelId?: string | null;
   periods: ModelPeriodRecord[];
   predictedNextStart: string | null;
   avgCycleLength: number | null;
@@ -52,22 +54,41 @@ function ymdInputFromLocalNow(): string {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycleLength, avgPeriodLength }: Props) {
+export function ModelPeriodTrackerWidget({
+  modelRecordId: _modelRecordId,
+  stableModelId: _stableModelId,
+  periods,
+  predictedNextStart,
+  avgCycleLength,
+  avgPeriodLength,
+}: Props) {
   const { t } = useTranslations();
   const { language } = useLanguage();
   const locale = language === "es" ? "es" : "en-GB";
   const router = useRouter();
   const today = getTodayYmd();
-  const [openLogModal, setOpenLogModal] = React.useState(false);
-  const [openMissedModal, setOpenMissedModal] = React.useState(false);
   const [historyOpen, setHistoryOpen] = React.useState(false);
+  const [customDateOpen, setCustomDateOpen] = React.useState(false);
+  const [missedOpen, setMissedOpen] = React.useState(false);
   const [busyAction, setBusyAction] = React.useState<null | "confirm" | "missed" | "log">(null);
   const [error, setError] = React.useState<string | null>(null);
   const [startDate, setStartDate] = React.useState(ymdInputFromLocalNow());
   const [notes, setNotes] = React.useState("");
+  const [cycleLength, setCycleLength] = React.useState(
+    typeof avgCycleLength === "number" && avgCycleLength > 0 ? avgCycleLength : 28
+  );
+  const [periodLength, setPeriodLength] = React.useState(
+    typeof avgPeriodLength === "number" && avgPeriodLength > 0 ? avgPeriodLength : 5
+  );
+
+  React.useEffect(() => {
+    setCycleLength(typeof avgCycleLength === "number" && avgCycleLength > 0 ? avgCycleLength : 28);
+    setPeriodLength(typeof avgPeriodLength === "number" && avgPeriodLength > 0 ? avgPeriodLength : 5);
+  }, [avgCycleLength, avgPeriodLength]);
 
   const sorted = React.useMemo(() => [...periods].sort((a, b) => b.start_date.localeCompare(a.start_date)), [periods]);
   const latest = sorted[0] ?? null;
+  const hasLoggedPeriod = sorted.length > 0;
   const canReportMissed = Boolean(latest);
   const currentlyInPeriod = inPeriod(today, sorted);
   const daysToPredicted = predictedNextStart ? dayDiff(today, predictedNextStart) : null;
@@ -93,7 +114,23 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
 
   const refreshData = () => router.refresh();
 
-  const confirmStartedToday = async () => {
+  const saveCycleSettings = React.useCallback(async () => {
+    const c = Math.min(45, Math.max(21, Math.round(cycleLength)));
+    const p = Math.min(10, Math.max(2, Math.round(periodLength)));
+    try {
+      await fetch("/api/model/period/settings", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cycle_length: c, period_length: p }),
+      }).catch(() => {});
+      refreshData();
+    } catch {
+      /* ignore */
+    }
+  }, [cycleLength, periodLength, router]);
+
+  const handleConfirmToday = async () => {
     setBusyAction("confirm");
     setError(null);
     try {
@@ -103,8 +140,8 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
         credentials: "include",
         body: JSON.stringify({ start_date: today, notes: t("periodTracker.confirmedFromWidget") }),
       });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
+      if (!res.ok || data.success === false) {
         throw new Error(data.error || "Failed");
       }
       refreshData();
@@ -124,7 +161,7 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
         const data = (await res.json().catch(() => ({}))) as { error?: string };
         throw new Error(data.error || "Failed");
       }
-      setOpenMissedModal(false);
+      setMissedOpen(false);
       refreshData();
     } catch (e) {
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotUpdateCycle"));
@@ -144,11 +181,11 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
         credentials: "include",
         body: JSON.stringify({ start_date: startDate, notes: notes.trim() || undefined }),
       });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
+      const data = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
+      if (!res.ok || data.success === false) {
         throw new Error(data.error || "Failed");
       }
-      setOpenLogModal(false);
+      setCustomDateOpen(false);
       setNotes("");
       refreshData();
     } catch (e2) {
@@ -191,7 +228,9 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs uppercase tracking-wide text-white/45">{t("periodTracker.nextExpected")}</p>
-            <p className="mt-1 text-sm font-semibold text-white">{predictedNextStart ? formatDateLong(predictedNextStart, locale) : "—"}</p>
+            <p className="mt-1 text-sm font-semibold text-white">
+              {predictedNextStart ? formatDateLong(predictedNextStart, locale) : "—"}
+            </p>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs uppercase tracking-wide text-white/45">{t("periodTracker.cycleDelta")}</p>
@@ -205,10 +244,35 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
           </div>
         </div>
 
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-widest text-white/40">{t("periodTracker.cycleLengthDays")}</label>
+            <input
+              type="number"
+              min={21}
+              max={45}
+              value={cycleLength}
+              onChange={(e) => setCycleLength(Number(e.target.value))}
+              onBlur={() => void saveCycleSettings()}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs uppercase tracking-widest text-white/40">{t("periodTracker.periodLengthDays")}</label>
+            <input
+              type="number"
+              min={2}
+              max={10}
+              value={periodLength}
+              onChange={(e) => setPeriodLength(Number(e.target.value))}
+              onBlur={() => void saveCycleSettings()}
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+            />
+          </div>
+        </div>
+
         <div>
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/45">
-            {t("periodTracker.cycleTimeline")}
-          </p>
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-white/45">{t("periodTracker.cycleTimeline")}</p>
           <div className="flex gap-1 overflow-x-auto rounded-xl border border-white/10 bg-black/25 p-2">
             {timelineDays.map((d) => {
               const isToday = d === today;
@@ -234,94 +298,51 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
               );
             })}
           </div>
-          <p className="mt-2 text-xs text-white/45">
-            {t("periodTracker.timelineLegend")}
-          </p>
+          <p className="mt-2 text-xs text-white/45">{t("periodTracker.timelineLegend")}</p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            disabled={busyAction !== null}
-            onClick={() => void confirmStartedToday()}
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-3.5 py-2.5 text-sm font-medium text-emerald-100 hover:bg-emerald-500/25 disabled:opacity-50"
-          >
-            {busyAction === "confirm" ? (
-              <>
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-                {t("common.saving")}
-              </>
-            ) : (
-              <>
-                <CalendarDays className="h-4 w-4 shrink-0" aria-hidden />
-                {t("periodTracker.confirmToday")}
-              </>
-            )}
-          </button>
-          <button
-            type="button"
-            disabled={busyAction !== null || !canReportMissed}
-            title={!canReportMissed ? t("periodTracker.reportMissedNeedPeriod") : undefined}
-            onClick={() => {
-              if (!canReportMissed) return;
-              setOpenMissedModal(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-amber-400/35 bg-amber-500/15 px-3.5 py-2.5 text-sm font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
-          >
-            <AlertCircle className="h-4 w-4" />
-            {t("periodTracker.reportDidNotArrive")}
-          </button>
-          <button
-            type="button"
-            disabled={busyAction !== null}
-            onClick={() => {
-              setStartDate(ymdInputFromLocalNow());
-              setOpenLogModal(true);
-            }}
-            className="inline-flex items-center gap-2 rounded-xl border border-pink-400/35 bg-pink-500/20 px-3.5 py-2.5 text-sm font-medium text-pink-100 hover:bg-pink-500/30 disabled:opacity-50"
-          >
-            <Plus className="h-4 w-4" />
-            {t("periodTracker.logNewLong")}
-          </button>
-          <button
-            type="button"
-            onClick={() => setHistoryOpen((v) => !v)}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/[0.06] px-3.5 py-2.5 text-sm font-medium text-white/80 hover:bg-white/[0.1]"
-          >
-            <History className="h-4 w-4" />
-            {historyOpen ? t("periodTracker.hideHistory") : t("periodTracker.viewHistory")}
-          </button>
-        </div>
+        <button
+          type="button"
+          disabled={busyAction !== null}
+          onClick={() => void handleConfirmToday()}
+          className="w-full rounded-xl border border-rose-500/30 bg-rose-500/20 py-3 font-semibold text-rose-400 disabled:opacity-50"
+        >
+          {busyAction === "confirm" ? (
+            <span className="inline-flex items-center justify-center gap-2">
+              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+              {t("common.saving")}
+            </span>
+          ) : (
+            <>🩸 {t("periodTracker.myPeriodStartedToday")}</>
+          )}
+        </button>
 
-        {historyOpen ? (
-          <div className="max-h-[min(24rem,60vh)] overflow-auto rounded-2xl border border-white/10">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-white/[0.04] text-white/60">
-                <tr>
-                  <th className="px-3 py-2">{t("common.start")}</th>
-                  <th className="px-3 py-2">{t("common.end")}</th>
-                  <th className="px-3 py-2">{t("periodTracker.length")}</th>
-                  <th className="px-3 py-2">{t("common.notes")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map((p) => (
-                  <tr key={p.id} className="border-t border-white/10 text-white/85">
-                    <td className="px-3 py-2">{p.start_date}</td>
-                    <td className="px-3 py-2">{p.end_date}</td>
-                    <td className="px-3 py-2">{p.period_length_days ?? avgPeriodLength ?? "—"}d</td>
-                    <td className="max-w-[260px] truncate px-3 py-2 text-white/60">{p.notes || "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        {hasLoggedPeriod ? (
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setHistoryOpen(true)}
+              className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-medium text-white/85 hover:bg-white/[0.1]"
+            >
+              📋 {t("periodTracker.history")}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setStartDate(ymdInputFromLocalNow());
+                setCustomDateOpen(true);
+              }}
+              className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-medium text-white/85 hover:bg-white/[0.1]"
+            >
+              📅 {t("periodTracker.differentDate")}
+            </button>
           </div>
         ) : null}
 
         {error ? <p className="text-sm text-rose-300">{error}</p> : null}
       </div>
 
-      {openLogModal ? (
+      {customDateOpen ? (
         <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
             <h3 className="text-lg font-semibold text-white">{t("periodTracker.logNewShort")}</h3>
@@ -350,7 +371,7 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
                   type="button"
                   disabled={busyAction === "log"}
                   className="rounded-xl border border-white/15 px-4 py-2 text-white/80 disabled:opacity-45"
-                  onClick={() => setOpenLogModal(false)}
+                  onClick={() => setCustomDateOpen(false)}
                 >
                   {t("common.cancel")}
                 </button>
@@ -374,8 +395,72 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
         </div>
       ) : null}
 
-      {openMissedModal ? (
+      {historyOpen ? (
         <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/75 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-lg font-semibold text-white">📋 {t("periodTracker.history")}</h3>
+              <button
+                type="button"
+                className="rounded-lg border border-white/15 px-3 py-1 text-sm text-white/70 hover:bg-white/5"
+                onClick={() => setHistoryOpen(false)}
+              >
+                {t("common.close")}
+              </button>
+            </div>
+            <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
+              {sorted.map((p, i) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-white">
+                      {formatDateLong(p.start_date, locale)}
+                      {i === 0 ? (
+                        <span className="ml-2 text-xs text-rose-400">{t("periodTracker.historyLatest")}</span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs text-white/40">
+                      {p.end_date ? `${p.start_date} → ${p.end_date}` : p.start_date}
+                      {p.cycle_length_days != null ? ` · ${p.cycle_length_days}d cycle` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    {p.missed_period ? (
+                      <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs text-amber-400">
+                        {t("periodTracker.historyMissed")}
+                      </span>
+                    ) : null}
+                    {p.came_early ? (
+                      <span className="rounded-full border border-blue-500/25 bg-blue-500/15 px-2 py-0.5 text-xs text-blue-400">
+                        {t("periodTracker.historyEarly")}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 border-t border-white/10 pt-4">
+              <button
+                type="button"
+                disabled={busyAction !== null || !canReportMissed}
+                title={!canReportMissed ? t("periodTracker.reportMissedNeedPeriod") : undefined}
+                onClick={() => {
+                  setHistoryOpen(false);
+                  setMissedOpen(true);
+                }}
+                className="w-full rounded-xl border border-amber-400/35 bg-amber-500/15 py-2.5 text-sm font-medium text-amber-100 hover:bg-amber-500/25 disabled:opacity-50"
+              >
+                {t("periodTracker.reportDidNotArrive")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {missedOpen ? (
+        <div className="fixed inset-0 z-[191] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
             <h3 className="text-lg font-semibold text-white">{t("periodTracker.reportMissedTitle")}</h3>
             <p className="mt-2 text-sm text-white/70">{t("periodTracker.reportMissedDescription")}</p>
@@ -384,7 +469,7 @@ export function ModelPeriodTrackerWidget({ periods, predictedNextStart, avgCycle
                 type="button"
                 disabled={busyAction === "missed"}
                 className="rounded-xl border border-white/15 px-4 py-2 text-white/80 disabled:opacity-45"
-                onClick={() => setOpenMissedModal(false)}
+                onClick={() => setMissedOpen(false)}
               >
                 {t("common.cancel")}
               </button>

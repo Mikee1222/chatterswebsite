@@ -48,7 +48,8 @@ export default async function VaShiftPage() {
     modelIdsInActivePeriodToday = [];
     for (const sm of shiftModels) {
       if (!sm.model_id) continue;
-      const cur = await getCurrentPeriod(sm.model_id).catch(() => null);
+      const modelRow = modelss.find((m) => m.id === sm.model_id) ?? null;
+      const cur = await getCurrentPeriod(sm.model_id, modelRow).catch(() => null);
       if (cur) modelIdsInActivePeriodToday.push(sm.model_id);
     }
     const programs = programsResult.filter((p) => p.chatter_id === vaId && p.day === todayWeekday);

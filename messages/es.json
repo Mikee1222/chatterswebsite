@@ -283,7 +283,15 @@
       "statusPredictedSoon": "Llega pronto",
       "statusOverdue": "Retrasado",
       "statusNormal": "Ciclo normal",
-      "reportMissedNeedPeriod": "Registra un período primero (necesitas historial antes de reportar)"
+      "reportMissedNeedPeriod": "Registra un período primero (necesitas historial antes de reportar)",
+      "myPeriodStartedToday": "Mi período empezó hoy",
+      "history": "Historial",
+      "differentDate": "Otra fecha",
+      "cycleLengthDays": "Duración del ciclo (días)",
+      "periodLengthDays": "Duración del período (días)",
+      "historyLatest": "Último",
+      "historyMissed": "Perdido",
+      "historyEarly": "Temprano"
     },
     "calendar": {
       "title": "Calendario",

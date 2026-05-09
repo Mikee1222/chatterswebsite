@@ -8,6 +8,9 @@ import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { listAllModelss } from "@/services/modelss";
 import { getUpcomingPeriod } from "@/services/model-periods";
+import type { ModelRecord } from "@/types";
+import { listDistinctVaUserIdsForModel } from "@/services/va-content-assignments";
+import { getAdminNotificationIds } from "@/services/admin-notification-settings";
 
 type NotifyArgs = {
   modelId: string;
@@ -130,6 +133,56 @@ export type PeriodReminderCronResult = {
   sent_overdue: number;
 };
 
+async function notifyPeriodCronStakeholders(model: ModelRecord, predicted: string, variant: "3d" | "day0"): Promise<void> {
+  const modelName = (model.model_name ?? "").trim() || "Model";
+  const eventAirtable = EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.SYSTEM_ALERT] ?? "system_alert";
+  const baseEntity = `pcron:${variant}:${model.id}:${predicted}`;
+  const title =
+    variant === "3d" ? `⏰ ${modelName} — Period in 3 days` : `🩸 ${modelName} — Period expected today`;
+  const body =
+    variant === "3d"
+      ? `Next expected start: ${predicted}.`
+      : `Predicted period start: ${predicted}.`;
+
+  const vaIds = await listDistinctVaUserIdsForModel(model.id, model.model_id);
+  for (const vaUserId of vaIds) {
+    const entityId = `${baseEntity}:va:${vaUserId}`;
+    const exists = await findExistingNotification(vaUserId, NOTIFICATION_ENTITY.PERIOD, entityId, eventAirtable).catch(
+      () => false
+    );
+    if (exists) continue;
+    await notify({
+      user_id: vaUserId,
+      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
+      entity_type: NOTIFICATION_ENTITY.PERIOD,
+      entity_id: entityId,
+      _triggerSource: "periodReminderCron_stakeholder",
+    }).catch(() => {});
+  }
+
+  const adminIds = await getAdminNotificationIds();
+  for (const adminId of adminIds) {
+    const entityId = `${baseEntity}:admin:${adminId}`;
+    const exists = await findExistingNotification(adminId, NOTIFICATION_ENTITY.PERIOD, entityId, eventAirtable).catch(
+      () => false
+    );
+    if (exists) continue;
+    await notify({
+      user_id: adminId,
+      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
+      entity_type: NOTIFICATION_ENTITY.PERIOD,
+      entity_id: entityId,
+      _triggerSource: "periodReminderCron_stakeholder",
+    }).catch(() => {});
+  }
+}
+
 export async function runPeriodReminderCron(): Promise<PeriodReminderCronResult> {
   const today = getTodayYmd();
   const models = await listAllModelss();
@@ -145,13 +198,13 @@ export async function runPeriodReminderCron(): Promise<PeriodReminderCronResult>
     const delta = dayDiff(today, predicted);
     if (delta === 3) {
       if (await sendPeriodThreeDayReminder({ modelId: model.id, predictedDate: predicted })) sent_three_day += 1;
+      await notifyPeriodCronStakeholders(model, predicted, "3d");
     } else if (delta === 0) {
       if (await sendPeriodPredictedDayNotification({ modelId: model.id, predictedDate: predicted })) sent_day_of += 1;
+      await notifyPeriodCronStakeholders(model, predicted, "day0");
     } else if (delta < 0) {
       const overdueDays = Math.abs(delta);
-      if (overdueDays === 1 || overdueDays === 3 || overdueDays === 7) {
-        if (await sendPeriodOverdueNotification({ modelId: model.id, predictedDate: predicted, overdueDays })) sent_overdue += 1;
-      }
+      if (await sendPeriodOverdueNotification({ modelId: model.id, predictedDate: predicted, overdueDays })) sent_overdue += 1;
     }
   }
 

@@ -19,7 +19,11 @@ export type ScheduleOverviewPageModelOption = { id: string; name: string };
 export type ScheduleOverviewPeriodIndicator = {
   trackingEnabled: boolean;
   currentlyInPeriod: boolean;
+  /** Day within active bleed window when `currentlyInPeriod`. */
+  dayNumber: number | null;
   lastPeriodDate: string | null;
+  /** Latest logged start used for prediction (same source as schedule “last”). */
+  lastStart: string | null;
   nextExpectedDate: string | null;
   daysUntilNext: number | null;
 };
@@ -39,7 +43,9 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
         const empty: ScheduleOverviewPeriodIndicator = {
           trackingEnabled: false,
           currentlyInPeriod: false,
+          dayNumber: null,
           lastPeriodDate: null,
+          lastStart: null,
           nextExpectedDate: null,
           daysUntilNext: null,
         };
@@ -47,11 +53,12 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
       }
       try {
         const [current, upcoming, periods] = await Promise.all([
-          getCurrentPeriod(m.id),
+          getCurrentPeriod(m.id, m),
           getUpcomingPeriod(m.id, m),
           getPeriodsForModel(m.id),
         ]);
         const lastPeriodDate = periods[0]?.start_date ?? null;
+        const lastStart = upcoming?.last_start ?? lastPeriodDate;
         const nextExpectedDate = upcoming?.predicted_start ?? null;
         const daysUntilNext = nextExpectedDate != null ? ymdCalendarDayDiff(today, nextExpectedDate) : null;
         return [
@@ -59,7 +66,9 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
           {
             trackingEnabled: true,
             currentlyInPeriod: !!current,
+            dayNumber: current?.day_number ?? null,
             lastPeriodDate,
+            lastStart,
             nextExpectedDate,
             daysUntilNext,
           } satisfies ScheduleOverviewPeriodIndicator,
@@ -70,7 +79,9 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
           {
             trackingEnabled: true,
             currentlyInPeriod: false,
+            dayNumber: null,
             lastPeriodDate: null,
+            lastStart: null,
             nextExpectedDate: null,
             daysUntilNext: null,
           } satisfies ScheduleOverviewPeriodIndicator,

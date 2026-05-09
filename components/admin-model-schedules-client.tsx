@@ -32,10 +32,7 @@ import { ROUTES } from "@/lib/routes";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import type { AdminScheduleOverviewRow, OverviewNormStatus, OverviewRowKind } from "@/lib/admin-schedule-overview-rows";
 import type { ScheduleOverviewPeriodIndicator } from "@/lib/schedule-overview-page-data";
-import {
-  ScheduleOverviewPeriodBadges,
-  ScheduleOverviewPeriodMetaRow,
-} from "@/components/schedule-overview-period-badges";
+import { ScheduleOverviewPeriodBadges } from "@/components/schedule-overview-period-badges";
 import { addDays, addWeeks, formatWeekLabel, getMondayOfWeek, getThisWeekMonday, parseWeekStart, getTodayYmd } from "@/lib/weekly-program";
 import { formatDateOnlyEuropean } from "@/lib/format";
 
@@ -976,14 +973,11 @@ export function AdminModelSchedulesClient({
                 >
                   <td className="sticky left-0 z-10 max-w-[260px] border-r border-white/10 bg-zinc-950/95 px-2 py-2 align-top font-medium text-white/90">
                     <div className="flex min-w-0 flex-col gap-1">
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <span className="font-semibold text-white">{m.name}</span>
-                        <ScheduleOverviewPeriodBadges
-                          summary={periodByModelId[m.id]}
-                          audience={isVaMode ? "va" : "admin"}
-                        />
-                      </div>
-                      <ScheduleOverviewPeriodMetaRow summary={periodByModelId[m.id]} />
+                      <span className="font-semibold text-white">{m.name}</span>
+                      <ScheduleOverviewPeriodBadges
+                        summary={periodByModelId[m.id]}
+                        audience={isVaMode ? "va" : "admin"}
+                      />
                     </div>
                   </td>
                   {weekDays.map((d) => {

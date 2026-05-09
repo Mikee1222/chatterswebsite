@@ -7,7 +7,7 @@ import { listVAContentAssignmentsForModel } from "@/services/va-content-assignme
 import { ModelContentCalendarClient } from "@/components/model-content-calendar-client";
 import { Suspense } from "react";
 import { listModelPersonalEventsForModel } from "@/services/model-personal-events";
-import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod, inclusiveDaySpan } from "@/services/model-periods";
+import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
 import { getTodayYmd } from "@/lib/weekly-program";
 import type { PeriodStatusBannerProps } from "@/components/period-status-banner";
 
@@ -104,7 +104,7 @@ export default async function ModelContentCalendarPage({
         console.error("[model/content-calendar] getPeriodsForModel failed; using [] fallback", error);
         return [];
       }),
-      getCurrentPeriod(linkedModelId).catch((error) => {
+      getCurrentPeriod(linkedModelId, modelRecord).catch((error) => {
         console.error("[model/content-calendar] getCurrentPeriod failed; using null fallback", error);
         return null;
       }),
@@ -119,8 +119,7 @@ export default async function ModelContentCalendarPage({
     periodBannerProps = {
       periodTrackingEnabled: true,
       currentlyInPeriod: calendarCurrent != null,
-      currentPeriodDay:
-        calendarCurrent != null ? inclusiveDaySpan(calendarCurrent.start_date, today) : null,
+      currentPeriodDay: calendarCurrent?.day_number ?? null,
       lastPeriodDate: periodHistory[0]?.start_date ?? null,
       nextExpectedDate: predictedNextStart,
       daysUntilNext: predictedNextStart != null ? calendarDayDiffUtc(today, predictedNextStart) : null,

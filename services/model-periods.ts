@@ -149,12 +149,43 @@ export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRe
   return mapped;
 }
 
-export async function getCurrentPeriod(modelId: string): Promise<ModelPeriodRecord | null> {
-  const today = getTodayYmd();
+export type ModelUpcomingPeriod = {
+  predicted_start: string;
+  predicted_end: string;
+  last_start: string;
+  cycle_length: number;
+  period_length: number;
+};
+
+/**
+ * Active bleed window: latest logged start through `start + avg_period_length - 1` (defaults from modelss).
+ */
+export async function getCurrentPeriod(
+  modelId: string,
+  model?: ModelRecord | null
+): Promise<ModelPeriodRecord | null> {
   const periods = await getPeriodsForModel(modelId);
-  return (
-    periods.find((p) => p.start_date <= today && p.end_date >= today) ?? null
-  );
+  if (periods.length === 0) return null;
+
+  const m =
+    model === undefined || model === null ? await getModelById(modelId).catch(() => null) : model;
+  const periodLength =
+    typeof m?.avg_period_length === "number" && m.avg_period_length > 0 ? m.avg_period_length : 5;
+
+  const sorted = [...periods].sort((a, b) => b.start_date.localeCompare(a.start_date));
+  const latest = sorted[0];
+  const today = getTodayYmd();
+  const endDate = addDays(latest.start_date, periodLength - 1);
+
+  if (today >= latest.start_date && today <= endDate) {
+    const t0 = Date.parse(`${today}T12:00:00.000Z`);
+    const s0 = Date.parse(`${latest.start_date}T12:00:00.000Z`);
+    const dayNumber =
+      Number.isFinite(t0) && Number.isFinite(s0) ? Math.floor((t0 - s0) / 86400000) + 1 : 1;
+    return { ...latest, end_date: endDate, day_number: dayNumber };
+  }
+
+  return null;
 }
 
 /**
@@ -162,7 +193,8 @@ export async function getCurrentPeriod(modelId: string): Promise<ModelPeriodReco
  * recently started logged period (same ordering as {@link getPeriodsForModel}).
  */
 export async function getPeriodRecordForFlags(modelId: string): Promise<ModelPeriodRecord | null> {
-  const current = await getCurrentPeriod(modelId);
+  const model = await getModelById(modelId).catch(() => null);
+  const current = await getCurrentPeriod(modelId, model);
   if (current) return current;
   const periods = await getPeriodsForModel(modelId);
   return periods[0] ?? null;
@@ -184,27 +216,40 @@ export async function syncLatestPeriodPredictedNext(
 }
 
 /**
- * Predict next period start: last logged start + avg_cycle_length from modelss (default 28 if unset).
+ * Predict next period window: newest `start_date` + avg cycle/period from modelss (defaults 28 / 5).
  */
 export async function getUpcomingPeriod(
   modelId: string,
-  model?: ModelRecord | null
-): Promise<{ predicted_start: string } | null> {
+  model: ModelRecord | null | undefined
+): Promise<ModelUpcomingPeriod | null> {
   periodTrace("[upcoming] modelId:", modelId);
   const periods = await getPeriodsForModel(modelId);
-  const latest = periods[0];
+  if (periods.length === 0) return null;
+
+  const sorted = [...periods].sort((a, b) => b.start_date.localeCompare(a.start_date));
+  const latest = sorted[0];
   periodTrace("[upcoming] periods found:", periods.length, "latest:", latest ?? null);
-  periodTrace("[upcoming] missed_period flag:", latest?.missed_period);
-  periodTrace("[upcoming] avg_cycle_length:", model?.avg_cycle_length ?? "(default 28)");
-  const lastStart = latest?.start_date;
+
+  const m =
+    model === undefined || model === null ? await getModelById(modelId).catch(() => null) : model;
+  const cycleLength =
+    typeof m?.avg_cycle_length === "number" && m.avg_cycle_length > 0 ? m.avg_cycle_length : 28;
+  const periodLength =
+    typeof m?.avg_period_length === "number" && m.avg_period_length > 0 ? m.avg_period_length : 5;
+
+  const lastStart = latest.start_date;
   if (!lastStart) return null;
-  /** Service rule: do not surface a prediction while the latest logged period is marked missed. */
-  if (latest?.missed_period) return null;
-  const cycle =
-    typeof model?.avg_cycle_length === "number" && model.avg_cycle_length > 0
-      ? model.avg_cycle_length
-      : 28;
-  return { predicted_start: addDays(lastStart, cycle) };
+
+  const nextStart = addDays(lastStart, cycleLength);
+  const nextEnd = addDays(nextStart, periodLength - 1);
+
+  return {
+    predicted_start: nextStart,
+    predicted_end: nextEnd,
+    last_start: lastStart,
+    cycle_length: cycleLength,
+    period_length: periodLength,
+  };
 }
 
 export type CreateModelPeriodInput = {
@@ -450,7 +495,7 @@ export type ModelPeriodTrackingSnapshot = {
 
 export async function getModelCycleInfoResponse(modelId: string): Promise<ModelCycleInfoResponse> {
   const model = await getModelById(modelId);
-  const current = await getCurrentPeriod(modelId);
+  const current = await getCurrentPeriod(modelId, model);
   const upcoming = await getUpcomingPeriod(modelId, model);
   return {
     current_period: current,

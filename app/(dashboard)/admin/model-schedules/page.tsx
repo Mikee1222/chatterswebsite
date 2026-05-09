@@ -78,7 +78,7 @@ export default async function AdminModelSchedulesPage({
     listModelScheduleItems(modelId, { fromDate, toDate }).catch(() => []),
     listModelLiveStreams(modelId),
     getPeriodDatesForWeek(modelId, weekStart, weekEnd).catch(() => [] as string[]),
-    getCurrentPeriod(modelId).catch(() => null),
+    getCurrentPeriod(modelId, modelRecord).catch(() => null),
     getUpcomingPeriod(modelId, modelRecord).catch(() => null),
   ]);
   const predictedPeriodStart = upcoming?.predicted_start ?? null;

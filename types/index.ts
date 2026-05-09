@@ -190,6 +190,8 @@ export interface ModelPeriodRecord {
   predicted_next_date?: string | null;
   /** Per-row flag from Airtable when present; UI guard prefers modelss.period_tracking_enabled. */
   tracking_enabled?: boolean;
+  /** Present when {@link getCurrentPeriod} derives an active bleed window from the latest start + avg period length. */
+  day_number?: number | null;
 }
 
 export type PeriodLoggedBy = "model" | "admin" | "va";

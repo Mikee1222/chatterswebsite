@@ -49,7 +49,7 @@ export default async function SettingsPage() {
           const modelRecord = await getModelById(linked).catch(() => null);
           if (modelRecord) {
             const [currentPeriod, periods, upcomingPeriod] = await Promise.all([
-              getCurrentPeriod(linked).catch(() => null),
+              getCurrentPeriod(linked, modelRecord).catch(() => null),
               getPeriodsForModel(linked).catch(() => []),
               getUpcomingPeriod(linked, modelRecord).catch(() => null),
             ]);
