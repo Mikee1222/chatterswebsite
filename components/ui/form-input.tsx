@@ -5,17 +5,21 @@ import { motion } from "framer-motion";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const formShellControlClass =
-  "w-full min-h-[52px] origin-center rounded-xl border border-white/12 bg-[#1a1a1a] px-4 py-4 text-[15px] text-white placeholder:text-white/40 [color-scheme:dark] transition-[border-color,box-shadow,background-color,transform] duration-200 ease-out hover:border-pink-400/30 hover:bg-[#1f1f1f] focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/25 focus:bg-[#1f1f1f] focus:scale-[1.01]";
+const formShellControlClass = cn(
+  "w-full min-h-[52px] origin-center rounded-2xl border border-white/10 bg-white/5 px-4 py-3.5 text-[15px] text-white placeholder:text-white/30 [color-scheme:dark] transition-[border-color,box-shadow,background-color,transform] duration-200 ease-out",
+  "focus:border-pink-500/50 focus:outline-none focus:ring-0",
+  "md:rounded-xl md:border-white/12 md:bg-[#1a1a1a] md:py-4 md:placeholder:text-white/40 md:hover:border-pink-400/30 md:hover:bg-[#1f1f1f]",
+  "md:focus:border-pink-500 md:focus:ring-2 md:focus:ring-pink-500/25 md:focus:bg-[#1f1f1f] md:focus:scale-[1.01]"
+);
 
 const formShellErrorClass =
-  "border-rose-500/60 bg-rose-500/[0.07] focus:border-rose-500 focus:ring-rose-500/25";
+  "border-rose-500/60 bg-rose-500/[0.07] focus:border-rose-500 focus:ring-0 md:focus:ring-2 md:focus:ring-rose-500/25";
 
 const formShellSuccessClass =
-  "border-emerald-500/50 bg-emerald-500/[0.05] focus:border-emerald-500/70 focus:ring-emerald-500/20";
+  "border-emerald-500/50 bg-emerald-500/[0.05] focus:border-emerald-500/70 focus:ring-0 md:focus:ring-2 md:focus:ring-emerald-500/20";
 
 const disabledControlClass =
-  "cursor-not-allowed opacity-60 hover:border-white/12 hover:bg-[#1a1a1a] focus:border-white/12 focus:ring-0 focus:scale-100";
+  "cursor-not-allowed opacity-60 focus:border-white/12 focus:ring-0 focus:scale-100 md:hover:border-white/12 md:hover:bg-[#1a1a1a] md:focus:border-white/12 md:focus:ring-0 md:focus:scale-100";
 
 function hasErrorState(error: string | boolean | undefined): boolean {
   return error === true || (typeof error === "string" && error.trim().length > 0);

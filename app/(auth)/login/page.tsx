@@ -26,8 +26,8 @@ export default async function LoginPage({
       <AnimatedBackground />
 
       <div className="relative z-10 flex min-h-screen items-center justify-center px-4 py-10">
-        <div className="w-full max-w-md">
-          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
+        <div className="mx-auto w-full max-w-sm px-2 md:max-w-md md:px-0">
+          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.06] p-6 shadow-xl backdrop-blur-xl md:rounded-3xl md:bg-white/5 md:p-8 md:shadow-2xl">
             <div className="absolute left-1/4 right-1/4 top-0 h-px bg-gradient-to-r from-transparent via-pink-500/50 to-transparent" />
 
             <div className="relative flex justify-center pb-8 pt-2">
@@ -76,14 +76,15 @@ export default async function LoginPage({
                     className="pr-12"
                   />
                 </FormField>
-                <div className="space-y-2 rounded-xl border border-white/10 bg-[#1a1a1a] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
+                <div className="space-y-2 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none md:rounded-xl md:border md:border-white/10 md:bg-[#1a1a1a] md:px-4 md:py-3 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
                   <Checkbox
                     id="remember_me"
                     name="remember_me"
                     value="on"
                     label="Remember me for 30 days"
+                    className="items-center gap-3"
                   />
-                  <p className="pl-8 text-xs leading-relaxed text-white/45">
+                  <p className="text-xs leading-relaxed text-white/45 max-md:pl-0 max-md:pt-0.5 md:pl-8">
                     If unchecked, you stay signed in until you close the browser or after 24 hours of use. Checked keeps
                     you signed in for up to 30 days.
                   </p>

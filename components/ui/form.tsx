@@ -256,7 +256,7 @@ export function FormActions({ children }: { children: React.ReactNode }) {
 export const selectOptionClass = "bg-[#1a1a1a] text-white";
 
 const checkboxInputClass =
-  "mt-0.5 h-[var(--luxury-checkbox-size)] w-[var(--luxury-checkbox-size)] shrink-0 cursor-pointer rounded-md border-2 border-white/20 bg-[var(--luxury-form-control-bg)] text-[var(--luxury-checkbox-accent)] accent-[var(--luxury-checkbox-accent)] transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500/35 focus:ring-offset-0 checked:border-[var(--luxury-checkbox-accent)] checked:bg-pink-500/25";
+  "mt-0.5 h-[var(--luxury-checkbox-size)] w-[var(--luxury-checkbox-size)] shrink-0 cursor-pointer rounded-md border-2 border-white/25 bg-white/5 text-[var(--luxury-checkbox-accent)] accent-[var(--luxury-checkbox-accent)] transition-colors focus:outline-none focus:ring-2 focus:ring-pink-500/35 focus:ring-offset-0 checked:border-[var(--luxury-checkbox-accent)] checked:bg-pink-500/25 md:border-white/20 md:bg-[var(--luxury-form-control-bg)]";
 
 /** Premium checkbox — pink accent, 20×20 */
 export const Checkbox = React.forwardRef<
@@ -272,7 +272,7 @@ export const Checkbox = React.forwardRef<
         {...props}
       />
       {label != null && (
-        <span className="text-[15px] leading-snug text-white/92 md:text-sm">{label}</span>
+        <span className="text-sm leading-snug text-white/70 md:text-[15px] md:text-white/92">{label}</span>
       )}
     </label>
   );
