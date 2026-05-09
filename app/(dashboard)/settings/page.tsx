@@ -10,11 +10,8 @@ import { AdminNotificationsSettings } from "@/components/admin-notifications-set
 import { getAdminNotificationIds } from "@/services/admin-notification-settings";
 import { getUserByAirtableId, listAllUsers } from "@/services/users";
 import { ModelProfileSettingsForm } from "@/components/model-profile-settings-form";
-import { ModelPeriodTracker } from "@/components/model-period-tracker";
 import { LanguageProvider } from "@/lib/language-provider";
 import { getModelDashboardLanguage } from "@/lib/model-context-server";
-import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
-import { getModelById } from "@/services/modelss";
 import { getActiveShiftByChatter, getActiveShiftByStaff } from "@/services/shifts";
 import {
   getEffectiveStaffRole,
@@ -31,7 +28,6 @@ export default async function SettingsPage() {
   let modelProfile:
     | { fullName: string; email: string; languagePreference: "en" | "es"; uiLanguage: "en" | "es" }
     | null = null;
-  let periodTrackerSection: React.ReactNode = null;
   if (user.role === "model") {
     const recordId = (user.airtableUserId ?? user.id)?.trim();
     if (recordId) {
@@ -44,33 +40,6 @@ export default async function SettingsPage() {
           languagePreference: uiLanguage,
           uiLanguage,
         };
-        const linked = row.linked_model_id?.trim();
-        if (linked) {
-          const modelRecord = await getModelById(linked).catch(() => null);
-          if (modelRecord) {
-            const [currentPeriod, periods, upcomingPeriod] = await Promise.all([
-              getCurrentPeriod(linked, modelRecord).catch(() => null),
-              getPeriodsForModel(linked).catch(() => []),
-              getUpcomingPeriod(linked, modelRecord).catch(() => null),
-            ]);
-            const defaultLen =
-              typeof modelRecord.avg_period_length === "number" && modelRecord.avg_period_length > 0
-                ? Math.min(14, Math.round(modelRecord.avg_period_length))
-                : 5;
-            if (modelRecord.period_tracking_enabled === true || periods[0]?.tracking_enabled === true) {
-              periodTrackerSection = (
-                <ModelPeriodTracker
-                  modelId={linked}
-                  modelRecord={modelRecord}
-                  currentPeriod={currentPeriod}
-                  predictedNextStart={upcomingPeriod?.predicted_start ?? null}
-                  periods={periods}
-                  defaultPeriodLengthDays={defaultLen}
-                />
-              );
-            }
-          }
-        }
       }
     }
   }
@@ -144,13 +113,6 @@ export default async function SettingsPage() {
             email={modelProfile.email}
             languagePreference={modelProfile.languagePreference}
           />
-          <div className="h-px w-full bg-gradient-to-r from-transparent via-white/12 to-transparent" aria-hidden />
-          {periodTrackerSection ? (
-            <>
-              {periodTrackerSection}
-              <div className="h-px w-full bg-gradient-to-r from-transparent via-white/12 to-transparent" aria-hidden />
-            </>
-          ) : null}
         </LanguageProvider>
       )}
 

@@ -291,7 +291,13 @@
       "periodLengthDays": "Period length (days)",
       "historyLatest": "Latest",
       "historyMissed": "Missed",
-      "historyEarly": "Early"
+      "historyEarly": "Early",
+      "periodLoggedSuccessBanner": "Period logged! Day 1",
+      "homePeriodActive": "Period active",
+      "homeDay": "Day {day}",
+      "homeNextPeriod": "Next period:",
+      "homeLogHint": "Log your period in Availability.",
+      "homeManageAvailability": "Manage in Availability"
     },
     "calendar": {
       "title": "Calendar",

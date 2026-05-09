@@ -80,13 +80,45 @@ export function ModelPeriodTrackerWidget({
   const [periodLength, setPeriodLength] = React.useState(
     typeof avgPeriodLength === "number" && avgPeriodLength > 0 ? avgPeriodLength : 5
   );
+  const [showSuccess, setShowSuccess] = React.useState(false);
+  /** Until server props refresh, show the new row in timeline / history. */
+  const [justLoggedStartYmd, setJustLoggedStartYmd] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setCycleLength(typeof avgCycleLength === "number" && avgCycleLength > 0 ? avgCycleLength : 28);
     setPeriodLength(typeof avgPeriodLength === "number" && avgPeriodLength > 0 ? avgPeriodLength : 5);
   }, [avgCycleLength, avgPeriodLength]);
 
-  const sorted = React.useMemo(() => [...periods].sort((a, b) => b.start_date.localeCompare(a.start_date)), [periods]);
+  React.useEffect(() => {
+    if (!justLoggedStartYmd) return;
+    if (periods.some((p) => p.start_date === justLoggedStartYmd)) {
+      setJustLoggedStartYmd(null);
+    }
+  }, [periods, justLoggedStartYmd]);
+
+  const mergedPeriods = React.useMemo((): ModelPeriodRecord[] => {
+    if (!justLoggedStartYmd) return periods;
+    if (periods.some((p) => p.start_date === justLoggedStartYmd)) return periods;
+    const pl = Math.max(2, Math.min(10, Math.round(periodLength)));
+    const end = addDays(justLoggedStartYmd, pl - 1);
+    const synthetic: ModelPeriodRecord = {
+      id: "__optimistic__",
+      model_id: "",
+      start_date: justLoggedStartYmd,
+      end_date: end,
+      cycle_length_days: null,
+      period_length_days: pl,
+      notes: "",
+      logged_by: "model",
+      created_at: null,
+    };
+    return [...periods, synthetic];
+  }, [periods, justLoggedStartYmd, periodLength]);
+
+  const sorted = React.useMemo(
+    () => [...mergedPeriods].sort((a, b) => b.start_date.localeCompare(a.start_date)),
+    [mergedPeriods]
+  );
   const latest = sorted[0] ?? null;
   const hasLoggedPeriod = sorted.length > 0;
   const canReportMissed = Boolean(latest);
@@ -142,10 +174,15 @@ export function ModelPeriodTrackerWidget({
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
       if (!res.ok || data.success === false) {
+        console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
+      setShowSuccess(true);
+      setJustLoggedStartYmd(today);
       refreshData();
+      window.setTimeout(() => setShowSuccess(false), 5500);
     } catch (e) {
+      console.error("[period] handleConfirmToday error:", e);
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotConfirm"));
     } finally {
       setBusyAction(null);
@@ -183,11 +220,15 @@ export function ModelPeriodTrackerWidget({
       });
       const data = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
       if (!res.ok || data.success === false) {
+        console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
+      setShowSuccess(true);
+      setJustLoggedStartYmd(startDate);
       setCustomDateOpen(false);
       setNotes("");
       refreshData();
+      window.setTimeout(() => setShowSuccess(false), 5500);
     } catch (e2) {
       setError(e2 instanceof Error ? e2.message : t("periodTracker.couldNotSavePeriod"));
     } finally {
@@ -316,6 +357,13 @@ export function ModelPeriodTrackerWidget({
             <>🩸 {t("periodTracker.myPeriodStartedToday")}</>
           )}
         </button>
+
+        {showSuccess ? (
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/15 px-4 py-3">
+            <span aria-hidden>🩸</span>
+            <p className="text-sm font-medium text-rose-400">{t("periodTracker.periodLoggedSuccessBanner")}</p>
+          </div>
+        ) : null}
 
         {hasLoggedPeriod ? (
           <div className="mt-2 flex gap-2">

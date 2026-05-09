@@ -96,6 +96,7 @@ export default async function ModelContentCalendarPage({
 
   let periodBannerProps: PeriodStatusBannerProps | null = null;
   let loggedPeriodSpans: { start_date: string; end_date: string }[] = [];
+  let activePeriodWindow: { start_date: string; end_date: string } | null = null;
   let predictedNextStart: string | null = null;
 
   if (modelRecord.period_tracking_enabled === true) {
@@ -115,6 +116,10 @@ export default async function ModelContentCalendarPage({
     ]);
     loggedPeriodSpans = periodHistory.map((p) => ({ start_date: p.start_date, end_date: p.end_date }));
     predictedNextStart = calendarUpcoming?.predicted_start ?? null;
+    activePeriodWindow =
+      calendarCurrent != null
+        ? { start_date: calendarCurrent.start_date, end_date: calendarCurrent.end_date }
+        : null;
     const today = getTodayYmd();
     periodBannerProps = {
       periodTrackingEnabled: true,
@@ -138,6 +143,7 @@ export default async function ModelContentCalendarPage({
           openAddEventInitially={searchParams?.action === "add-personal-event"}
           periodBannerProps={periodBannerProps}
           loggedPeriodSpans={loggedPeriodSpans}
+          activePeriodWindow={activePeriodWindow}
           predictedNextStart={predictedNextStart}
         />
       </Suspense>

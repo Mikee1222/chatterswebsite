@@ -291,7 +291,13 @@
       "periodLengthDays": "Duración del período (días)",
       "historyLatest": "Último",
       "historyMissed": "Perdido",
-      "historyEarly": "Temprano"
+      "historyEarly": "Temprano",
+      "periodLoggedSuccessBanner": "¡Período registrado! Día 1",
+      "homePeriodActive": "Período activo",
+      "homeDay": "Día {day}",
+      "homeNextPeriod": "Próximo período:",
+      "homeLogHint": "Registra tu período en Disponibilidad.",
+      "homeManageAvailability": "Gestionar en Disponibilidad"
     },
     "calendar": {
       "title": "Calendario",

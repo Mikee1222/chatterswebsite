@@ -593,6 +593,11 @@ function ymdInLoggedPeriod(ymd: string, periods: { start_date: string; end_date:
   return periods.some((p) => p.start_date <= ymd && ymd <= p.end_date);
 }
 
+function ymdInActiveWindow(ymd: string, win: { start_date: string; end_date: string } | null | undefined): boolean {
+  if (!ymd || !win?.start_date || !win?.end_date) return false;
+  return win.start_date <= ymd && ymd <= win.end_date;
+}
+
 function weekRangeLabel(mondayYmd: string): string {
   const sun = addDays(mondayYmd, 6);
   const a = parseLocalYmd(mondayYmd);
@@ -617,6 +622,8 @@ export type ModelContentCalendarClientProps = {
   periodBannerProps?: PeriodStatusBannerProps | null;
   /** Logged period windows for day-cell shading (tracking opted-in models only). */
   loggedPeriodSpans?: { start_date: string; end_date: string }[];
+  /** Current bleed window from server (matches getCurrentPeriod computed end). */
+  activePeriodWindow?: { start_date: string; end_date: string } | null;
   predictedNextStart?: string | null;
 };
 
@@ -629,6 +636,7 @@ export function ModelContentCalendarClient({
   openAddEventInitially = false,
   periodBannerProps = null,
   loggedPeriodSpans = [],
+  activePeriodWindow = null,
   predictedNextStart = null,
 }: ModelContentCalendarClientProps) {
   const reduceMotion = useReducedMotion();
@@ -939,7 +947,8 @@ export function ModelContentCalendarClient({
             const d = parseLocalYmd(ymd);
             const isTodayDay = todayLocalYmd() === ymd;
             const slots = slotsForDay(ymd);
-            const isPeriodDay = ymdInLoggedPeriod(ymd, loggedPeriodSpans);
+            const isPeriodDay =
+              ymdInLoggedPeriod(ymd, loggedPeriodSpans) || ymdInActiveWindow(ymd, activePeriodWindow ?? undefined);
             const isPredictedDay = Boolean(predictedNextStart && ymd === predictedNextStart);
             return (
               <div key={ymd} className="flex min-w-0 flex-col gap-1">
@@ -960,10 +969,10 @@ export function ModelContentCalendarClient({
                 <div
                   className={cn(
                     "min-h-[8rem] flex-1 space-y-1 rounded-xl border p-2",
-                    isPeriodDay && "border-rose-500/20 bg-rose-500/10",
+                    isPeriodDay && "border-rose-500/20 bg-rose-500/10 ring-1 ring-rose-500/15",
                     !isPeriodDay &&
                       isPredictedDay &&
-                      "border-amber-500/20 bg-amber-500/10",
+                      "border-amber-500/20 bg-amber-500/10 ring-1 ring-amber-500/15",
                     !isPeriodDay && !isPredictedDay && "border-white/[0.08] bg-white/[0.03]"
                   )}
                 >
@@ -1029,7 +1038,10 @@ export function ModelContentCalendarClient({
               <div key={ri} className="grid grid-cols-7 divide-x divide-white/10">
                 {row.map((cell, ci) => {
                   const slots = cell.ymd ? slotsForDay(cell.ymd) : [];
-                  const isPeriodDay = cell.ymd ? ymdInLoggedPeriod(cell.ymd, loggedPeriodSpans) : false;
+                  const isPeriodDay = cell.ymd
+                    ? ymdInLoggedPeriod(cell.ymd, loggedPeriodSpans) ||
+                      ymdInActiveWindow(cell.ymd, activePeriodWindow ?? undefined)
+                    : false;
                   const isPredictedDay = Boolean(cell.ymd && predictedNextStart && cell.ymd === predictedNextStart);
                   return (
                     <div
@@ -1038,8 +1050,8 @@ export function ModelContentCalendarClient({
                         "min-h-[112px] p-1.5 sm:min-h-[132px] sm:p-2",
                         !cell.inMonth && "bg-black/25",
                         cell.inMonth && !isPeriodDay && !isPredictedDay && "bg-transparent",
-                        cell.inMonth && isPeriodDay && "bg-rose-500/[0.10]",
-                        cell.inMonth && !isPeriodDay && isPredictedDay && "bg-amber-500/[0.10]"
+                        cell.inMonth && isPeriodDay && "border border-rose-500/20 bg-rose-500/[0.10]",
+                        cell.inMonth && !isPeriodDay && isPredictedDay && "border border-amber-500/20 bg-amber-500/[0.10]"
                       )}
                     >
                       {cell.ymd ? (

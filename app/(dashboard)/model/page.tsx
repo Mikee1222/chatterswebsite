@@ -2,17 +2,15 @@ export const dynamic = "force-dynamic";
 
 import { getModelContext } from "@/lib/model-context-server";
 import { MobileDashboardLayout } from "@/components/mobile-dashboard-layout";
-import { ModelPeriodHomeSection } from "@/components/model-period-home-section";
+import { ModelPeriodHomeStatusCard } from "@/components/model-period-home-status-card";
 import { ModelHomeClient } from "@/components/model-home-client";
 import { ModelContentRequestsSection } from "@/components/model-content-requests-section";
 import { ModelExpenseRequestsSection } from "@/components/model-expense-requests-section";
 import { countApprovedCustomRequestsWaitingSchedule } from "@/services/custom-requests";
 import { getActiveLiveStreamForModel } from "@/services/model-live-streams";
-import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
+import { getCurrentPeriod, getUpcomingPeriod } from "@/services/model-periods";
 import { listModelContentRequestsForModel } from "@/services/model-content-requests";
 import { countPendingVAContentAssignmentsForModel } from "@/services/va-content-assignments";
-import { Suspense } from "react";
-
 export default async function ModelHomePage() {
   let user: Awaited<ReturnType<typeof getModelContext>>["user"] = null;
   let modelRecord: Awaited<ReturnType<typeof getModelContext>>["modelRecord"] = null;
@@ -54,28 +52,16 @@ export default async function ModelHomePage() {
   const displayName = modelRecord.model_name || user.fullName || "Model";
 
   let currentPeriod = null;
-  let periods: Awaited<ReturnType<typeof getPeriodsForModel>> = [];
   let upcomingPeriod = null;
   let activeLiveRecord = null;
   let pendingCustomRequestsCount = 0;
   let pendingVaAssignmentsCount = 0;
   let contentRequests = [] as Awaited<ReturnType<typeof listModelContentRequestsForModel>>;
-  [
-    currentPeriod,
-    periods,
-    upcomingPeriod,
-    activeLiveRecord,
-    pendingCustomRequestsCount,
-    pendingVaAssignmentsCount,
-    contentRequests,
-  ] = await Promise.all([
+  [currentPeriod, upcomingPeriod, activeLiveRecord, pendingCustomRequestsCount, pendingVaAssignmentsCount, contentRequests] =
+    await Promise.all([
     getCurrentPeriod(linkedModelId, modelRecord).catch((error) => {
       console.error("[model/home] getCurrentPeriod failed; using null fallback", error);
       return null;
-    }),
-    getPeriodsForModel(linkedModelId).catch((error) => {
-      console.error("[model/home] getPeriodsForModel failed; using [] fallback", error);
-      return [];
     }),
     getUpcomingPeriod(linkedModelId, modelRecord).catch((error) => {
       console.error("[model/home] getUpcomingPeriod failed; using null fallback", error);
@@ -111,11 +97,6 @@ export default async function ModelHomePage() {
       }
     : null;
 
-  const defaultLen =
-    typeof modelRecord.avg_period_length === "number" && modelRecord.avg_period_length > 0
-      ? Math.min(14, Math.round(modelRecord.avg_period_length))
-      : 5;
-
   return (
     <MobileDashboardLayout>
       <div className="space-y-10 pb-6 md:space-y-12 md:pb-8">
@@ -127,15 +108,14 @@ export default async function ModelHomePage() {
           pendingVaAssignmentsCount={pendingVaAssignmentsCount}
         />
 
-        <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-white/[0.04]" />}>
-          <ModelPeriodHomeSection
-            modelId={linkedModelId}
-            currentPeriod={currentPeriod}
-            predictedNextStart={upcomingPeriod?.predicted_start ?? null}
-            periods={periods}
-            defaultPeriodLengthDays={defaultLen}
+        {modelRecord.period_tracking_enabled === true ? (
+          <ModelPeriodHomeStatusCard
+            periodTrackingEnabled
+            isInPeriod={currentPeriod != null}
+            dayNumber={currentPeriod?.day_number ?? null}
+            nextExpected={upcomingPeriod?.predicted_start ?? null}
           />
-        </Suspense>
+        ) : null}
         <ModelContentRequestsSection initialRequests={contentRequests} />
         <ModelExpenseRequestsSection />
       </div>

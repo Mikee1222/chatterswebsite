@@ -10,6 +10,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
+import { addDays } from "@/lib/weekly-program";
 import { getModelById } from "@/services/modelss";
 import { getModelCycleInfoResponse, getUpcomingPeriod, logModelPeriodFromStartDate } from "@/services/model-periods";
 import { sendPeriodConfirmedEarlyNotification } from "@/services/period-notifications";
@@ -49,8 +50,12 @@ export async function POST(req: Request) {
       }).catch(() => {});
     }
     const refreshed = await getModelById(ctx.linkedModelId);
-    const upcoming = await getUpcomingPeriod(ctx.linkedModelId, refreshed);
-    const nextExpected = upcoming?.predicted_start ?? "—";
+    const cycleLength =
+      typeof refreshed?.avg_cycle_length === "number" && refreshed.avg_cycle_length > 0
+        ? refreshed.avg_cycle_length
+        : 28;
+    /** Always set for notifications (avoids null upcoming right after write). */
+    const nextExpected = addDays(parsed.data.start_date, cycleLength);
     const start_date = parsed.data.start_date;
     const modelName = (ctx.modelRecord.model_name ?? "").trim() || "Model";
 
