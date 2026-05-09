@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { getNavRoleForSession } from "@/lib/staff-session-role";
 import { listAllUsers } from "@/services/users";
 
 export default async function DashboardPage() {
@@ -12,8 +13,9 @@ export default async function DashboardPage() {
 
   const isAdmin = user?.role === "admin";
 
-  if (user?.role === "chatter") redirect(ROUTES.chatter.home);
-  if (user?.role === "virtual_assistant") redirect(ROUTES.va.home);
+  const navRole = user ? getNavRoleForSession(user) : null;
+  if (navRole === "chatter") redirect(ROUTES.chatter.home);
+  if (navRole === "virtual_assistant") redirect(ROUTES.va.home);
   if (user?.role === "model") redirect(ROUTES.model.home);
   if (user?.role === "admin" || user?.role === "manager") redirect(ROUTES.admin.home);
 

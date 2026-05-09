@@ -39,6 +39,11 @@ type Props = { user: UserRecord; modelOptions?: { id: string; model_name: string
 
 export function EditAccountForm({ user, modelOptions = [] }: Props) {
   const [role, setRole] = React.useState<UserRole>(user.role);
+  const [secondaryRole, setSecondaryRole] = React.useState(
+    user.secondary_role === "chatter" || user.secondary_role === "virtual_assistant"
+      ? user.secondary_role
+      : ""
+  );
   const [linkedModelId, setLinkedModelId] = React.useState(user.linked_model_id ?? "");
   const [languagePreference, setLanguagePreference] = React.useState(user.language_preference ?? "en");
   const [accountStatus, setAccountStatus] = React.useState(user.status || "active");
@@ -57,7 +62,11 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
           id="role"
           name="role"
           value={role}
-          onChange={(e) => setRole(e.target.value as UserRole)}
+          onChange={(e) => {
+            const r = e.target.value as UserRole;
+            setRole(r);
+            if (r !== "chatter" && r !== "virtual_assistant") setSecondaryRole("");
+          }}
           required
         >
           {ROLES.map((r) => (
@@ -67,6 +76,31 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
           ))}
         </FormSelect>
       </FormField>
+      {(role === "chatter" || role === "virtual_assistant") && (
+        <FormField
+          label="Secondary role"
+          icon={<UserCog />}
+          htmlFor="secondary_role"
+          description="Optional second hat (chatter ↔ VA). User switches in Settings."
+        >
+          <FormSelect
+            id="secondary_role"
+            name="secondary_role"
+            value={secondaryRole}
+            onChange={(e) => setSecondaryRole(e.target.value)}
+          >
+            <option value="" className={selectOptionClass}>
+              No secondary role
+            </option>
+            <option value="virtual_assistant" className={selectOptionClass}>
+              Virtual Assistant
+            </option>
+            <option value="chatter" className={selectOptionClass}>
+              Chatter
+            </option>
+          </FormSelect>
+        </FormField>
+      )}
       {role === "model" && (
         <>
           <FormField

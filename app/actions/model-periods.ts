@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getUserByAirtableId } from "@/services/users";
 import { ROUTES } from "@/lib/routes";
 import { addDays } from "@/lib/weekly-program";
@@ -48,7 +49,7 @@ async function canManagePeriodForModel(modelId: string): Promise<boolean> {
   const session = await getSessionFromCookies();
   if (!session) return false;
   if (session.role === "admin" || session.role === "manager") return true;
-  if (session.role === "virtual_assistant") return true;
+  if (getEffectiveStaffRole(session) === "virtual_assistant") return true;
   if (session.role === "model") {
     const linked = await getLinkedModelIdForSession();
     return linked === modelId;
@@ -72,10 +73,11 @@ export async function logPeriodAction(
   const session = await getSessionFromCookies();
   if (!session) return { success: false, error: "Not signed in." };
 
+  const eff = getEffectiveStaffRole(session);
   const allowed =
     session.role === "admin" ||
     session.role === "manager" ||
-    session.role === "virtual_assistant" ||
+    eff === "virtual_assistant" ||
     (session.role === "model" && (await getLinkedModelIdForSession()) === modelId);
 
   if (!allowed) return { success: false, error: "You cannot log periods for this model." };
@@ -99,7 +101,7 @@ export async function logPeriodAction(
     return { success: false, error: "Invalid dates." };
   }
 
-  const logged_by = resolveLoggedBy(session.role);
+  const logged_by = resolveLoggedBy(getEffectiveStaffRole(session) ?? session.role);
 
   const existing = await getPeriodsForModel(modelId);
   const asc = [...existing].sort((a, b) => a.start_date.localeCompare(b.start_date));

@@ -1,4 +1,5 @@
 import { redirect, notFound } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getWhaleById } from "@/services/whales";
@@ -10,7 +11,7 @@ export default async function EditWhalePage({
   params: { id: string };
 }) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const { id } = params;
   const whale = await getWhaleById(id);

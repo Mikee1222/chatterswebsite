@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { getNotificationUserId } from "@/lib/notification-user";
 import { notifyAdmins } from "@/services/notification-service";
@@ -63,7 +64,8 @@ export async function updateVaTaskStatusAction(input: {
   completed_notes?: string;
 }): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "virtual_assistant") return { success: false, error: "Only VAs can update task status here." };
+  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant")
+    return { success: false, error: "Only VAs can update task status here." };
 
   const vaId = getNotificationUserId(user) ?? user.airtableUserId ?? user.id;
   if (!vaId) return { success: false, error: "Missing user id." };

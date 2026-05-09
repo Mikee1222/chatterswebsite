@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import type { UserRecord } from "@/types";
 import { createVaContentAssignmentAdmin } from "@/services/va-content-assignments";
@@ -33,7 +34,7 @@ async function activeModelUserId(modelssRecordId: string): Promise<string | null
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "virtual_assistant") {
+  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const vaUserRecordId = (session.airtableUserId ?? session.id)?.trim();

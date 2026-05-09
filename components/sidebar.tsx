@@ -44,6 +44,7 @@ import {
   type NavStorageProfile,
 } from "@/lib/nav-config";
 import type { SessionUser } from "@/types";
+import { getNavRoleForSession } from "@/lib/staff-session-role";
 
 const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   Home,
@@ -104,7 +105,7 @@ export function Sidebar({
   modelUiLanguage?: ModelLang;
 }) {
   const pathname = usePathname();
-  const role = (user?.role ?? "") as NavRole;
+  const role = getNavRoleForSession(user);
   const profile = navStorageProfileForRole(role);
   const hiddenForRole = React.useMemo(
     () => hiddenNavByProfile[profile] ?? [],
@@ -128,9 +129,9 @@ export function Sidebar({
   }, [baseItems, role, modelUiLanguage]);
 
   const brandHref =
-    user.role === "chatter"
+    role === "chatter"
       ? ROUTES.chatter.home
-      : user.role === "virtual_assistant"
+      : role === "virtual_assistant"
         ? ROUTES.va.home
         : user.role === "model"
           ? ROUTES.model.home
@@ -138,7 +139,7 @@ export function Sidebar({
             ? ROUTES.admin.home
             : ROUTES.dashboard;
   const brandLabel =
-    user.role === "virtual_assistant"
+    role === "virtual_assistant"
       ? "Virtual assistant"
       : user.role === "model"
         ? modelUiLanguage

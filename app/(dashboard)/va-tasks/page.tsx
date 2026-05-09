@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getVaTasksForUser } from "@/services/va-tasks";
@@ -6,7 +7,7 @@ import { VaTasksClient } from "@/components/va-tasks-client";
 
 export default async function VaTasksPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "virtual_assistant") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
 
   const vaId = user.airtableUserId ?? user.id;
   const tasks = await getVaTasksForUser(vaId).catch(() => []);

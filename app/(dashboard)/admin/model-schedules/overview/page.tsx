@@ -1,4 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { loadScheduleOverviewPageData } from "@/lib/schedule-overview-page-data";
@@ -17,7 +18,7 @@ export default async function AdminModelSchedulesOverviewPage({
   if (!user) redirect(ROUTES.login);
 
   const isStaff = user.role === "admin" || user.role === "manager";
-  const isVa = user.role === "virtual_assistant";
+  const isVa = getEffectiveStaffRole(user) === "virtual_assistant";
   if (!isStaff && !isVa) redirect(ROUTES.dashboard);
 
   let vaId = "";

@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { listRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { escapeAirtableString } from "@/lib/airtable-linked";
 import { getUserByAirtableId } from "@/services/users";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 
 const MAX = 5;
 
@@ -34,6 +35,7 @@ export async function GET(req: Request) {
   }
 
   const qLower = raw.toLowerCase();
+  const staffMode = getEffectiveStaffRole(session);
 
   const isStaffAdmin = session.role === "admin" || session.role === "manager";
   const chatterRecordId = (session.airtableUserId ?? session.id)?.trim() || "";
@@ -73,11 +75,11 @@ export async function GET(req: Request) {
     })();
 
     const whalesPromise = (async (): Promise<SearchHit[]> => {
-      if (session.role === "model" || session.role === "virtual_assistant") {
+      if (session.role === "model" || staffMode === "virtual_assistant") {
         return [];
       }
       let formula = lowerFindFormula("username", qLower);
-      if (session.role === "chatter" && chatterRecordId) {
+      if (staffMode === "chatter" && chatterRecordId) {
         const escC = escapeAirtableString(chatterRecordId);
         formula = `AND(${formula}, FIND("${escC}", ARRAYJOIN({assigned_chatter}) & "") > 0)`;
       }
@@ -97,7 +99,7 @@ export async function GET(req: Request) {
       const titlePart = lowerFindFormula("request_title", qLower);
       const fanPart = lowerFindFormula("fan_username", qLower);
       let formula = `OR(${titlePart}, ${fanPart})`;
-      if (session.role === "chatter" && chatterRecordId) {
+      if (staffMode === "chatter" && chatterRecordId) {
         const escC = escapeAirtableString(chatterRecordId);
         formula = `AND(${formula}, FIND("${escC}", ARRAYJOIN({requested_by_chatter}) & "") > 0)`;
       } else if (session.role === "model" && modelLinkedRecordId) {

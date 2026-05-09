@@ -1,6 +1,7 @@
 "use server";
 
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getActiveShifts, createShiftModel, updateShiftModel, listShiftModels } from "@/services/shifts";
 import { getModelById, updateModel } from "@/services/modelss";
 import { createActivityLog } from "@/services/activity-logs";
@@ -11,7 +12,8 @@ import { firstLinkedId } from "@/lib/airtable-linked";
 export async function enterModel(modelRecordId: string) {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
-  if (user.role !== "chatter" && user.role !== "admin") return { error: "Only chatters can enter modelss" };
+  if (getEffectiveStaffRole(user) !== "chatter" && user.role !== "admin")
+    return { error: "Only chatters can enter modelss" };
 
   const chatterRecordId = user.airtableUserId ?? "";
   const chatterName = user.fullName ?? user.email ?? "";

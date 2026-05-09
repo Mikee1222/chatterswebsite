@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { addDays, buildCustomShiftTimes, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
 import { notify, notifyAdmins } from "@/services/notification-service";
@@ -44,7 +45,8 @@ export async function submitAvailabilityVaAction(fields: {
 }): Promise<SubmitAvailabilityVaResult> {
   const user = await getSessionFromCookies();
   if (!user) return { success: false, error: "Not authenticated." };
-  if (user.role !== "virtual_assistant") return { success: false, error: "Only virtual assistants can submit VA availability." };
+  if (getEffectiveStaffRole(user) !== "virtual_assistant")
+    return { success: false, error: "Only virtual assistants can submit VA availability." };
 
   const vaId = user.airtableUserId ?? user.id;
   const vaName = user.fullName ?? user.email ?? "";
@@ -153,7 +155,8 @@ export async function updateAvailabilityVaAction(
 ): Promise<UpdateAvailabilityVaResult> {
   const user = await getSessionFromCookies();
   if (!user) return { success: false, error: "Not authenticated." };
-  if (user.role !== "virtual_assistant") return { success: false, error: "Only virtual assistants can update their availability." };
+  if (getEffectiveStaffRole(user) !== "virtual_assistant")
+    return { success: false, error: "Only virtual assistants can update their availability." };
 
   const vaId = user.airtableUserId ?? user.id;
   const existing = await getWeeklyAvailabilityRequestVaById(recordId);

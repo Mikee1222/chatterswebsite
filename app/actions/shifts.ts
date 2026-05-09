@@ -1,6 +1,7 @@
 "use server";
 
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { createShift, updateShift, getActiveShifts } from "@/services/shifts";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
@@ -9,7 +10,8 @@ import { notify } from "@/services/notification-service";
 export async function startChattingShift() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
-  if (user.role !== "chatter" && user.role !== "admin") return { error: "Only chatters can start chatting shifts" };
+  if (getEffectiveStaffRole(user) !== "chatter" && user.role !== "admin")
+    return { error: "Only chatters can start chatting shifts" };
 
   const active = await getActiveShifts("chatter");
   const myActive = active.find((s) => s.chatter_id === user.airtableUserId);
@@ -100,7 +102,8 @@ const TASK_SHIFT_TYPE_ALLOWED = new Set(["mistakes", "vault_cleaning", "other"])
 export async function startTaskShift(formData: FormData) {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
-  if (user.role !== "virtual_assistant" && user.role !== "admin") return { error: "Only virtual assistants can start task shifts" };
+  if (getEffectiveStaffRole(user) !== "virtual_assistant" && user.role !== "admin")
+    return { error: "Only virtual assistants can start task shifts" };
 
   let shiftType = (formData.get("shift_type") as string)?.trim();
   let taskLabel = (formData.get("task_label") as string)?.trim();

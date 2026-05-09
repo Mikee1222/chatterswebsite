@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getLiveShifts } from "@/services/shifts";
@@ -9,7 +10,8 @@ import { RouterRefreshInterval } from "@/components/router-refresh-interval";
 export default async function LiveShiftsPage() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
-  if (user.role !== "virtual_assistant" && user.role !== "admin" && user.role !== "manager") redirect(ROUTES.dashboard);
+  const staffVa = getEffectiveStaffRole(user) === "virtual_assistant";
+  if (!staffVa && user.role !== "admin" && user.role !== "manager") redirect(ROUTES.dashboard);
 
   const shifts = await getLiveShifts().catch(() => []);
 

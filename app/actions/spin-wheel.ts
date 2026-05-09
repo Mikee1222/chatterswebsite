@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { createRecord, getRecord, updateRecord } from "@/lib/airtable-server";
 import { awardPoints, consumeOneSpin, refundOneSpin } from "@/services/points-engine";
@@ -27,7 +28,7 @@ export async function spinWheelAction(): Promise<
   | { success: false; error: string }
 > {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") {
+  if (!user || getEffectiveStaffRole(user) !== "chatter") {
     return { success: false, error: "Unauthorized" };
   }
   const userId = user.airtableUserId ?? user.id;

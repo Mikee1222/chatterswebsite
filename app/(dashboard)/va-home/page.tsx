@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import {
@@ -119,7 +120,7 @@ function sortTasksForHome(a: VaTaskRecord, b: VaTaskRecord): number {
 
 export default async function VaHomePage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "virtual_assistant") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
 
   const vaId = user.airtableUserId ?? user.id;
   const displayName = (user.fullName ?? user.email ?? "VA").trim();

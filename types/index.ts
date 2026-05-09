@@ -579,6 +579,8 @@ export interface UserRecord {
   language_preference?: string;
   /** Only present when loading from DB; never expose to client. */
   password_hash?: string;
+  /** Airtable `secondary_role`: chatter or va (mapped to virtual_assistant in app). */
+  secondary_role?: "chatter" | "virtual_assistant" | null;
 }
 
 export interface ActivityLog {
@@ -667,6 +669,8 @@ export interface SessionUser {
   role: UserRole;
   airtableUserId: string | null;
   fullName: string | null;
+  secondary_role?: "chatter" | "virtual_assistant" | null;
+  active_role?: "chatter" | "virtual_assistant" | null;
 }
 
 // --- Notifications ---

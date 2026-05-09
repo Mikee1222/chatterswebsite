@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { MyWhalesClient } from "@/components/my-whales-client";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
@@ -8,7 +9,7 @@ import { devLog } from "@/lib/dev-log";
 
 export default async function MyWhalesPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
   const [whales, modelss] = await Promise.all([

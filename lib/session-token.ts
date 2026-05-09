@@ -16,6 +16,8 @@ type SessionPayload = {
   role: AuthUser["role"];
   airtableUserId: string | null;
   fullName: string | null;
+  secondary_role?: AuthUser["secondary_role"];
+  active_role?: AuthUser["active_role"];
 };
 
 function encodeSecret(secret: string): Uint8Array {
@@ -32,6 +34,10 @@ export async function signSessionToken(user: AuthUser, maxAgeSeconds: number): P
     role: user.role,
     airtableUserId: user.airtableUserId,
     fullName: user.fullName,
+    ...(user.secondary_role !== undefined && user.secondary_role !== null
+      ? { secondary_role: user.secondary_role }
+      : {}),
+    ...(user.active_role !== undefined && user.active_role !== null ? { active_role: user.active_role } : {}),
   } as SessionPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -52,13 +58,24 @@ export async function verifySessionToken(token: string | undefined): Promise<Aut
     const { payload } = await jwtVerify(token, key);
     const p = payload as unknown as SessionPayload;
     if (!p.id || !p.email || !p.role) return null;
-    return {
+    const out: AuthUser = {
       id: p.id,
       email: p.email,
       role: p.role,
       airtableUserId: p.airtableUserId ?? null,
       fullName: p.fullName ?? null,
     };
+    if (p.secondary_role === "chatter" || p.secondary_role === "virtual_assistant") {
+      out.secondary_role = p.secondary_role;
+    } else if (p.secondary_role === null) {
+      out.secondary_role = null;
+    }
+    if (p.active_role === "chatter" || p.active_role === "virtual_assistant") {
+      out.active_role = p.active_role;
+    } else if (p.active_role === null) {
+      out.active_role = null;
+    }
+    return out;
   } catch {
     return null;
   }

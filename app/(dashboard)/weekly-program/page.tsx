@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekAndChatter } from "@/services/weekly-program";
@@ -19,7 +20,7 @@ export default async function WeeklyProgramPage({
   searchParams: { week_start?: string };
 }) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
   const rawWeek = searchParams.week_start?.trim();

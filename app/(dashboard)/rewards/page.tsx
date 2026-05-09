@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import {
@@ -12,7 +13,7 @@ import { RewardsClient } from "@/components/rewards-client";
 
 export default async function RewardsPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const userId = user.airtableUserId ?? user.id;
 

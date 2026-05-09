@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelss } from "@/services/modelss";
@@ -7,7 +8,7 @@ import { VaContentAssignmentsClient } from "@/components/va-content-assignments-
 
 export default async function VaContentAssignmentsPage() {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "virtual_assistant") {
+  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     redirect(ROUTES.dashboard);
   }
 

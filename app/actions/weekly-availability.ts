@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { addDays, buildCustomShiftTimes, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
 import { notify, notifyAdmins } from "@/services/notification-service";
@@ -48,7 +49,7 @@ export async function submitAvailabilityAction(fields: {
 }): Promise<SubmitAvailabilityResult> {
   const user = await getSessionFromCookies();
   if (!user) return { success: false, error: "Not authenticated." };
-  if (user.role !== "chatter") return { success: false, error: "Only chatters can submit availability." };
+  if (getEffectiveStaffRole(user) !== "chatter") return { success: false, error: "Only chatters can submit availability." };
 
   const chatterId = user.airtableUserId ?? user.id;
   const chatterName = user.fullName ?? user.email ?? "";
@@ -170,7 +171,7 @@ export async function updateAvailabilityAction(
 ): Promise<UpdateAvailabilityResult> {
   const user = await getSessionFromCookies();
   if (!user) return { success: false, error: "Not authenticated." };
-  if (user.role !== "chatter") return { success: false, error: "Only chatters can update their availability." };
+  if (getEffectiveStaffRole(user) !== "chatter") return { success: false, error: "Only chatters can update their availability." };
 
   const chatterId = user.airtableUserId ?? user.id;
   const existing = await getWeeklyAvailabilityRequestById(recordId);
@@ -241,7 +242,7 @@ export type DeleteAvailabilityResult = { success: true } | { success: false; err
 export async function deleteAvailabilityAction(recordId: string): Promise<DeleteAvailabilityResult> {
   const user = await getSessionFromCookies();
   if (!user) return { success: false, error: "Not authenticated." };
-  if (user.role !== "chatter") return { success: false, error: "Only chatters can delete availability." };
+  if (getEffectiveStaffRole(user) !== "chatter") return { success: false, error: "Only chatters can delete availability." };
 
   const chatterId = user.airtableUserId ?? user.id;
   const existing = await getWeeklyAvailabilityRequestById(recordId);

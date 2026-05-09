@@ -14,6 +14,7 @@ import { getModelDashboardLanguage } from "@/lib/model-context-server";
 import { countPendingVAContentAssignments } from "@/services/va-content-assignments";
 import { countWhalesWithoutChatter } from "@/services/whales";
 import type { ModelLang } from "@/lib/model-i18n";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({
@@ -26,13 +27,14 @@ export default async function DashboardLayout({
 
   let activeShift: Awaited<ReturnType<typeof getActiveShiftByChatter>> = null;
   let activeShiftModelsCount: number | null = null;
-  if (user.role === "chatter") {
+  const staffMode = getEffectiveStaffRole(user);
+  if (staffMode === "chatter") {
     activeShift = await getActiveShiftByChatter(user.airtableUserId ?? user.id).catch(() => null);
     if (activeShift) {
       const models = await getActiveShiftModels(activeShift.id).catch(() => []);
       activeShiftModelsCount = models.length;
     }
-  } else if (user.role === "virtual_assistant") {
+  } else if (staffMode === "virtual_assistant") {
     activeShift = await getActiveShiftByStaff(user.airtableUserId ?? user.id, "virtual_assistant").catch(() => null);
     if (activeShift) {
       const models = await getActiveShiftModels(activeShift.id).catch(() => []);

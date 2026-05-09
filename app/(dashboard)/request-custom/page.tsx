@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelss } from "@/services/modelss";
@@ -10,7 +11,7 @@ import { devLog } from "@/lib/dev-log";
 
 export default async function RequestCustomPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterRecordId = user.airtableUserId ?? user.id;
   const chatterName = (user.fullName ?? user.email ?? "") as string;

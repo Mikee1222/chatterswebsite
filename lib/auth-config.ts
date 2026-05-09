@@ -38,4 +38,8 @@ export type AuthUser = {
   role: "admin" | "manager" | "chatter" | "virtual_assistant" | "model";
   airtableUserId: string | null;
   fullName: string | null;
+  /** Set when user is chatter+VA pair (Airtable `secondary_role`). */
+  secondary_role?: "chatter" | "virtual_assistant" | null;
+  /** Which staff hat is active when `secondary_role` is set. */
+  active_role?: "chatter" | "virtual_assistant" | null;
 };

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { listAdminPendingCustomRequests, listAllCustomRequests } from "@/services/custom-requests";
@@ -13,7 +14,7 @@ import type { CustomRequest } from "@/types";
  */
 export default async function VaCustomRequestsPage() {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "virtual_assistant") {
+  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     redirect(ROUTES.dashboard);
   }
 

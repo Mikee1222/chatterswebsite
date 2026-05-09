@@ -72,6 +72,9 @@ export async function login(formData: FormData) {
         valid,
       });
       if (valid) {
+        const hasPair =
+          user.secondary_role &&
+          (user.role === "chatter" || user.role === "virtual_assistant");
         const token = await setSession(
           {
             id: user.id,
@@ -79,6 +82,10 @@ export async function login(formData: FormData) {
             role: user.role,
             airtableUserId: user.id,
             fullName: user.full_name,
+            ...(user.secondary_role ? { secondary_role: user.secondary_role } : {}),
+            ...(hasPair && (user.role === "chatter" || user.role === "virtual_assistant")
+              ? { active_role: user.role }
+              : {}),
           },
           jwtMaxAgeSec
         );

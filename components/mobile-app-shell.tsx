@@ -50,6 +50,7 @@ import {
 } from "@/lib/nav-config";
 import type { SessionUser } from "@/types";
 import type { Shift } from "@/types";
+import { getNavRoleForSession, hasDualStaffRole } from "@/lib/staff-session-role";
 import { logout } from "@/app/actions/auth";
 import { MobileFab } from "@/components/mobile-fab";
 import { FloatingActionButton } from "@/components/floating-action-button";
@@ -220,7 +221,7 @@ export function MobileAppShell({
     }
   }, []);
 
-  const role = user.role as NavRole;
+  const role = getNavRoleForSession(user);
   const profile = navStorageProfileForRole(role);
   const hiddenForRole = React.useMemo(
     () => hiddenNavByProfile[profile] ?? [],
@@ -269,7 +270,15 @@ export function MobileAppShell({
     }
     return getMobileTitle(pathname);
   }, [pathname, user.role, modelUiLanguage]);
-  const shiftHref = user.role === "chatter" ? ROUTES.chatter.shift : user.role === "virtual_assistant" ? ROUTES.va.shift : null;
+  const shiftHref = role === "chatter" ? ROUTES.chatter.shift : role === "virtual_assistant" ? ROUTES.va.shift : null;
+  const dual = hasDualStaffRole(user);
+  const activeBadge = dual
+    ? role === "virtual_assistant"
+      ? "VA"
+      : role === "chatter"
+        ? "CHATTER"
+        : ""
+    : "";
 
   return (
     <MobileFabVisibilityProvider>
@@ -280,9 +289,19 @@ export function MobileAppShell({
           style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
         >
           <div className="flex h-[56px] min-h-[56px] max-h-[56px] w-full min-w-0 items-center justify-between gap-2 px-4">
-            <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight text-white">{title}</h1>
+            <div className="flex min-w-0 flex-1 items-center gap-2">
+              <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight text-white">{title}</h1>
+              {activeBadge ? (
+                <span
+                  className="shrink-0 rounded-full border border-pink-500/25 bg-pink-500/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-pink-400"
+                  title="Active role"
+                >
+                  {activeBadge}
+                </span>
+              ) : null}
+            </div>
             <div className="flex shrink-0 items-center gap-1">
-              <NotificationBell role={user.role} />
+              <NotificationBell role={role} />
               <button
                 type="button"
                 onClick={() => setMoreOpen(true)}
@@ -303,11 +322,11 @@ export function MobileAppShell({
           <LiveShiftMiniBar activeShift={activeShift} shiftHref={shiftHref} modelsCount={activeShiftModelsCount} />
         )}
 
-        {user.role === "chatter" ? (
+        {role === "chatter" ? (
           <FloatingActionButton user={user} />
         ) : user.role === "admin" || user.role === "manager" ? (
           <AdminFloatingQuickActionsButton user={user} />
-        ) : user.role === "model" ? null : user.role === "virtual_assistant" ? (
+        ) : user.role === "model" ? null : role === "virtual_assistant" ? (
           <VaFloatingActionButton user={user} />
         ) : (
           <MobileFab user={user} />
@@ -460,7 +479,7 @@ export function MobileAppShell({
         </nav>
       </div>
 
-      <MoreMenuModal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" userRole={user.role}>
+      <MoreMenuModal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" userRole={role}>
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2">
           {moreItems.map((link) => {
             const Icon = ICON_MAP[link.iconKey] ?? Users;

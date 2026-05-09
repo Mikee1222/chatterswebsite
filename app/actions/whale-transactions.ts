@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { notifyAdmins } from "@/services/notification-service";
 import {
@@ -20,7 +21,7 @@ export async function updateWhaleTransactionAction(
 ): Promise<ActionResult> {
   try {
     const user = await getSessionFromCookies();
-    if (!user || user.role !== "chatter") {
+    if (!user || getEffectiveStaffRole(user) !== "chatter") {
       return { ok: false, error: "Unauthorized" };
     }
     const chatterId = user.airtableUserId ?? user.id;
@@ -55,7 +56,7 @@ export async function updateWhaleTransactionAction(
 export async function deleteWhaleTransactionAction(recordId: string): Promise<ActionResult> {
   try {
     const user = await getSessionFromCookies();
-    if (!user || user.role !== "chatter") {
+    if (!user || getEffectiveStaffRole(user) !== "chatter") {
       return { ok: false, error: "Unauthorized" };
     }
     const chatterId = user.airtableUserId ?? user.id;

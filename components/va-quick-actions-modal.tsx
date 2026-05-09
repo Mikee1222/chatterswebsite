@@ -7,6 +7,7 @@ import { CalendarCheck, FilePlus2, Plus, X } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 
@@ -167,7 +168,7 @@ export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
   const [open, setOpen] = React.useState(false);
   const fabHiddenByOverlay = useMobileFabHidden();
 
-  if (user.role !== "virtual_assistant" || fabHiddenByOverlay) return null;
+  if (getEffectiveStaffRole(user) !== "virtual_assistant" || fabHiddenByOverlay) return null;
 
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",

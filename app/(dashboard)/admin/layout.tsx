@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 
 export default async function AdminLayout({
   children,
@@ -14,7 +15,7 @@ export default async function AdminLayout({
   if (user.role === "admin" || user.role === "manager") {
     return <>{children}</>;
   }
-  if (user.role === "virtual_assistant") {
+  if (getEffectiveStaffRole(user) === "virtual_assistant") {
     const pathname = (await headers()).get("x-pathname") ?? "";
     if (pathname !== "" && !isVaReadableAdminSchedulePath(pathname)) {
       redirect(ROUTES.dashboard);

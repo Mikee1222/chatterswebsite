@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { unstable_cache } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getNotificationUserId } from "@/lib/notification-user";
@@ -84,7 +85,7 @@ type PeriodFields = {
 
 export default async function ShiftPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const airtableUserId = user.airtableUserId ?? null;
   const notificationUserId = getNotificationUserId(user);

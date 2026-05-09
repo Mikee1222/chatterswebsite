@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getActiveShifts, getShiftById, getActiveShiftByChatter, listShiftModels } from "@/services/shifts";
 import {
   getShiftQueueWaitingForChatter,
@@ -36,7 +37,7 @@ function normalizeQueueType(raw: unknown): ShiftQueueType {
 
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "chatter") {
+  if (!session || getEffectiveStaffRole(session) !== "chatter") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const chatterId = session.airtableUserId ?? session.id;
@@ -100,7 +101,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "chatter") {
+  if (!session || getEffectiveStaffRole(session) !== "chatter") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const chatterId = session.airtableUserId ?? session.id;
@@ -235,7 +236,7 @@ export async function POST(req: Request) {
 
 export async function DELETE() {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "chatter") {
+  if (!session || getEffectiveStaffRole(session) !== "chatter") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   const chatterId = session.airtableUserId ?? session.id;

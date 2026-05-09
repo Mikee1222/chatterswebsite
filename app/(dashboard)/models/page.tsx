@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelss } from "@/services/modelss";
@@ -9,7 +10,8 @@ import { getActiveShifts, getActiveShiftModels } from "@/services/shifts";
 export default async function ModelsPage() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
-  if (user.role !== "virtual_assistant" && user.role !== "admin" && user.role !== "manager") redirect(ROUTES.dashboard);
+  const staffVa = getEffectiveStaffRole(user) === "virtual_assistant";
+  if (!staffVa && user.role !== "admin" && user.role !== "manager") redirect(ROUTES.dashboard);
 
   const [modelss, vaShifts] = await Promise.all([
     listAllModelss(),

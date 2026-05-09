@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekAndVa } from "@/services/weekly-program-va";
@@ -12,7 +13,7 @@ const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Satu
 
 export default async function VaWeeklyProgramPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "virtual_assistant") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
 
   const vaId = user.airtableUserId ?? user.id;
   const weekStart = normalizeWeekStart(getWeekStartYmdInAthens(0));

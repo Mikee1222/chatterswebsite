@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { CHATTER_QUICK_ACTIONS, QuickActionsModal } from "@/components/quick-actions-modal";
 import { FeedbackQuickActionNavRow } from "@/components/feedback-quick-action-menu-item";
@@ -31,7 +32,7 @@ export function FloatingActionButton({ user }: FloatingActionButtonProps) {
   const [open, setOpen] = React.useState(false);
   const fabHiddenByOverlay = useMobileFabHidden();
 
-  if (user.role !== "chatter" || fabHiddenByOverlay) return null;
+  if (getEffectiveStaffRole(user) !== "chatter" || fabHiddenByOverlay) return null;
 
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",

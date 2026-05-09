@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { createRecord, deleteRecord, listAllRecords } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import { createWhale, updateWhale, getWhaleById, type WhaleWriteFields } from "@/services/whales";
@@ -44,7 +45,7 @@ export async function createWhaleAction(input: {
     devLog("[createWhale] called", { username: usernameTrim });
 
     const user = await getSessionFromCookies();
-    if (!user || user.role !== "chatter") {
+    if (!user || getEffectiveStaffRole(user) !== "chatter") {
       return { success: false, error: "Unauthorized" };
     }
 
@@ -157,7 +158,7 @@ export async function createWhaleWithModelAction(input: {
   devLog("[createWhaleWithModel] called", { username: input.username?.trim() });
   try {
     const user = await getSessionFromCookies();
-    if (!user || user.role !== "chatter") {
+    if (!user || getEffectiveStaffRole(user) !== "chatter") {
       return { success: false, error: "Unauthorized" };
     }
     const chatterId = user.airtableUserId ?? user.id;

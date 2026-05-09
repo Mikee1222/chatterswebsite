@@ -4,7 +4,11 @@
  */
 
 import { cookies } from "next/headers";
-import { AUTH_COOKIE_NAME, type AuthUser } from "./auth-config";
+import {
+  AUTH_COOKIE_NAME,
+  SESSION_REMEMBER_MAX_AGE_SEC,
+  type AuthUser,
+} from "./auth-config";
 import { signSessionToken, verifySessionToken } from "./session-token";
 
 /**
@@ -28,6 +32,19 @@ export async function getSessionFromCookies(): Promise<AuthUser | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(AUTH_COOKIE_NAME)?.value;
   return verifySessionToken(token ?? undefined);
+}
+
+/** Re-issue session JWT after role switch (or similar); uses 30-day cookie max-age for stability. */
+export async function updateSessionCookie(user: AuthUser): Promise<void> {
+  const token = await setSession(user, SESSION_REMEMBER_MAX_AGE_SEC);
+  const cookieStore = await cookies();
+  cookieStore.set(AUTH_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: SESSION_REMEMBER_MAX_AGE_SEC,
+  });
 }
 
 /** @deprecated Use getSessionFromCookies. Kept for any code that looked up by session id. */

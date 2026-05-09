@@ -1,4 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { normalizeWeekStart, getThisWeekMonday } from "@/lib/weekly-program";
@@ -13,7 +14,7 @@ export default async function WeeklyAvailabilityPage({
   searchParams: Promise<{ week_start?: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const params = await searchParams;
   const rawWeek = params.week_start?.trim();

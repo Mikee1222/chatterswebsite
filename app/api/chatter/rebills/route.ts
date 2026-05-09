@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { createRecord } from "@/lib/airtable-server";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
@@ -15,7 +16,7 @@ function normalizeSubUsername(raw: string): string {
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "chatter") {
+  if (!session || getEffectiveStaffRole(session) !== "chatter") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

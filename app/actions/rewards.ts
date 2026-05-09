@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import {
   awardPoints,
@@ -16,7 +17,7 @@ export async function getLeaderboardForPeriodAction(
   period: "weekly" | "monthly" | "alltime"
 ): Promise<{ success: true; rows: LeaderboardRow[] } | { success: false; error: string; rows: LeaderboardRow[] }> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") {
+  if (!user || getEffectiveStaffRole(user) !== "chatter") {
     return { success: false, error: "Unauthorized", rows: [] };
   }
   const rows = await getLeaderboard(period);

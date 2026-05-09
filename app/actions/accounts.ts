@@ -77,6 +77,7 @@ export async function updateAccount(formData: FormData) {
   const full_name = (formData.get("full_name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim()?.toLowerCase();
   const role = formData.get("role") as UpdateUserInput["role"] | null;
+  const secondary_role_raw = (formData.get("secondary_role") as string)?.trim() ?? "";
   const status = (formData.get("status") as string)?.trim();
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim();
@@ -95,6 +96,22 @@ export async function updateAccount(formData: FormData) {
     input.language_preference = language_preference ?? undefined;
   } else {
     input.linked_model_id = null;
+  }
+  if (role === "chatter" || role === "virtual_assistant") {
+    if (secondary_role_raw === "chatter" || secondary_role_raw === "virtual_assistant") {
+      if (secondary_role_raw === role) {
+        redirect(
+          ROUTES.accounts +
+            "?error=" +
+            encodeURIComponent("Secondary role must be different from primary role.")
+        );
+      }
+      input.secondary_role = secondary_role_raw;
+    } else {
+      input.secondary_role = null;
+    }
+  } else {
+    input.secondary_role = null;
   }
   try {
     await updateUser(recordId, input);

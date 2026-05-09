@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { FormCard } from "@/components/ui/form";
@@ -7,7 +8,7 @@ import { listAllModelss } from "@/services/modelss";
 
 export default async function NewWhalePage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
   const chatterName = user.fullName ?? user.email;

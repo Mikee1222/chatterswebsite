@@ -15,6 +15,13 @@ import { LanguageProvider } from "@/lib/language-provider";
 import { getModelDashboardLanguage } from "@/lib/model-context-server";
 import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
 import { getModelById } from "@/services/modelss";
+import { getActiveShiftByChatter, getActiveShiftByStaff } from "@/services/shifts";
+import {
+  getEffectiveStaffRole,
+  getOtherStaffPairRole,
+  hasDualStaffRole,
+} from "@/lib/staff-session-role";
+import { RoleSwitcher } from "@/components/role-switcher";
 import { Settings } from "lucide-react";
 
 export default async function SettingsPage() {
@@ -71,6 +78,17 @@ export default async function SettingsPage() {
   const modelUiLanguageForSettings = user.role === "model" ? await getModelDashboardLanguage(user) : "en";
 
   const prefs = await getMyNotificationPreferences();
+
+  let hasActiveShiftForPair = false;
+  if (hasDualStaffRole(user)) {
+    const mode = getEffectiveStaffRole(user);
+    const uid = user.airtableUserId ?? user.id;
+    if (mode === "chatter") {
+      hasActiveShiftForPair = !!(await getActiveShiftByChatter(uid).catch(() => null));
+    } else if (mode === "virtual_assistant") {
+      hasActiveShiftForPair = !!(await getActiveShiftByStaff(uid, "virtual_assistant").catch(() => null));
+    }
+  }
 
   let adminNotifAdmins: { id: string; name: string; email: string }[] = [];
   let adminNotifPickable: { id: string; name: string; email: string }[] = [];
@@ -135,6 +153,20 @@ export default async function SettingsPage() {
           ) : null}
         </LanguageProvider>
       )}
+
+      {hasDualStaffRole(user) && getEffectiveStaffRole(user) && getOtherStaffPairRole(user) ? (
+        <>
+          <section className="space-y-3">
+            <p className="text-xs uppercase tracking-widest text-white/40">Role</p>
+            <RoleSwitcher
+              currentRole={getEffectiveStaffRole(user)!}
+              secondaryRole={getOtherStaffPairRole(user)!}
+              hasActiveShift={hasActiveShiftForPair}
+            />
+          </section>
+          <div className="h-px w-full bg-gradient-to-r from-transparent via-white/12 to-transparent" aria-hidden />
+        </>
+      ) : null}
 
       <section className="relative z-[25] min-w-0 max-md:px-0">
         <h2 className="mb-2 text-lg font-semibold tracking-tight text-white">Notifications</h2>

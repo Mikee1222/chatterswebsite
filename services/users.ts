@@ -19,6 +19,8 @@ type Fields = {
   full_name?: string;
   email?: string;
   role?: string;
+  /** Airtable single select: chatter | va */
+  secondary_role?: string;
   status?: string;
   can_login?: boolean;
   notes?: string;
@@ -28,6 +30,13 @@ type Fields = {
   linked_model?: string | string[];
   language_preference?: string;
 };
+
+function mapSecondaryRoleField(raw: unknown): "chatter" | "virtual_assistant" | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "chatter") return "chatter";
+  if (s === "va" || s === "virtual_assistant") return "virtual_assistant";
+  return null;
+}
 
 function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): UserRecord {
   const f = rec.fields;
@@ -49,6 +58,8 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   if (typeof f.language_preference === "string" && f.language_preference.trim()) {
     out.language_preference = f.language_preference.trim();
   }
+  const sec = mapSecondaryRoleField(f.secondary_role);
+  if (sec) out.secondary_role = sec;
   return out;
 }
 
@@ -152,6 +163,8 @@ export type UpdateUserInput = Partial<{
   notes: string;
   linked_model_id: string | null;
   language_preference: string | null;
+  /** Persists Airtable values `chatter` or `va` (null clears). */
+  secondary_role: "chatter" | "virtual_assistant" | null;
 }>;
 
 export async function updateUser(recordId: string, input: UpdateUserInput): Promise<UserRecord> {
@@ -167,6 +180,13 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   }
   if (input.language_preference !== undefined) {
     fields.language_preference = input.language_preference ?? "";
+  }
+  if (input.secondary_role !== undefined) {
+    if (input.secondary_role === null) {
+      (fields as Record<string, unknown>).secondary_role = null;
+    } else {
+      fields.secondary_role = input.secondary_role === "virtual_assistant" ? "va" : "chatter";
+    }
   }
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   return mapRecord(rec);

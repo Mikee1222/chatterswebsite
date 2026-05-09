@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getWhalesByChatter } from "@/services/whales";
@@ -67,7 +68,7 @@ async function getHomeShiftCardData(chatterId: string): Promise<HomeShiftCardDat
 
 export default async function ChatterHomePage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "chatter") redirect(ROUTES.dashboard);
+  if (!user || getEffectiveStaffRole(user) !== "chatter") redirect(ROUTES.dashboard);
 
   const chatterId = user.airtableUserId ?? user.id;
   const athens = getNowInAthens();
