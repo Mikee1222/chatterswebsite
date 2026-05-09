@@ -59,6 +59,7 @@ import { AdminFloatingQuickActionsButton } from "@/components/admin-quick-action
 import { MoreMenuModal } from "@/components/more-menu-modal";
 import { MobileFabVisibilityProvider } from "@/contexts/mobile-fab-visibility-context";
 import { ChatterRebillTipFabProvider } from "@/contexts/chatter-rebill-tip-fab-context";
+import { ChatterRebillTipFabHost } from "@/components/chatter-rebill-tip-fab-host";
 import { LiveShiftMiniBar } from "@/components/live-shift-mini-bar";
 import { NotificationBell } from "@/components/notification-bell";
 import { useNotificationCenter } from "@/contexts/notification-center-context";
@@ -283,6 +284,7 @@ export function MobileAppShell({
   return (
     <MobileFabVisibilityProvider>
       <ChatterRebillTipFabProvider>
+        <ChatterRebillTipFabHost enabled={role === "chatter"} />
       <div className="flex min-h-[100dvh] flex-col bg-transparent md:min-h-0">
         <header
           className="sticky top-0 z-30 shrink-0 overflow-hidden border-b border-white/10 bg-zinc-900/80 backdrop-blur-xl md:hidden"

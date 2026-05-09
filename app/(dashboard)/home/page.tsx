@@ -13,8 +13,6 @@ import { getNowInAthens } from "@/lib/airtable-datetime";
 import { ChatterHomeClient } from "@/components/chatter-home-client";
 import { ChatterHomePageClient } from "@/components/chatter-home-page-client";
 import type { WhaleTransaction } from "@/types";
-import { listAllRecords } from "@/lib/airtable-server";
-import type { ChatterModalModelOption } from "@/components/rebill-modal";
 
 export type HomeShiftCardData =
   | {
@@ -74,24 +72,11 @@ export default async function ChatterHomePage() {
   const athens = getNowInAthens();
   const currentMonthKey = `${athens.getUTCFullYear()}-${String(athens.getUTCMonth() + 1).padStart(2, "0")}`;
 
-  const [whales, shiftCardData, transactions, monthlyTarget, chatterActiveModels] = await Promise.all([
+  const [whales, shiftCardData, transactions, monthlyTarget] = await Promise.all([
     getWhalesByChatter(chatterId).catch(() => []),
     getHomeShiftCardData(chatterId),
     listTransactionsByChatter(chatterId, 10000).catch(() => []),
     getMonthlyTargetByTeamMemberAndMonth(chatterId, currentMonthKey).catch(() => null),
-    listAllRecords<{ model_name?: string; model_id?: string }>("modelss", {
-      filterByFormula: `{status} = "active"`,
-      _caller: "home.page.chatterActiveModels",
-    })
-      .then((records) =>
-        [...records]
-          .map((r) => ({
-            id: r.id,
-            name: (r.fields.model_name || r.fields.model_id || r.id).trim() || r.id,
-          }))
-          .sort((a: ChatterModalModelOption, b: ChatterModalModelOption) => a.name.localeCompare(b.name))
-      )
-      .catch(() => [] as ChatterModalModelOption[]),
   ]);
 
   const assignedWhalesCount = whales.length;
@@ -130,7 +115,6 @@ export default async function ChatterHomePage() {
         shiftCardData={shiftCardData}
         assignedWhalesCount={assignedWhalesCount}
         monthlyTargetData={monthlyTargetData}
-        chatterActiveModels={chatterActiveModels}
       />
 
       <section>

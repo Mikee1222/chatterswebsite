@@ -6,53 +6,64 @@ import { useChatterRebillTipFabHandlers } from "@/contexts/chatter-rebill-tip-fa
 
 type Variant = "sheet" | "nav";
 
+const iconWrapClass = "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#2a1a2e]";
+
 export function ChatterRebillTipFabMenuItems({ onClose, variant }: { onClose: () => void; variant: Variant }) {
   const handlers = useChatterRebillTipFabHandlers();
-  if (!handlers) return null;
+  const rowClass =
+    variant === "sheet"
+      ? "flex w-full items-center gap-4 px-4 py-4 transition-all hover:bg-white/5 border-t border-white/[0.08]"
+      : "flex w-full items-center gap-4 px-4 py-3.5 text-left transition-colors hover:bg-white/[0.08]";
 
-  const sheetBtnClass =
-    "flex w-full min-h-[52px] items-center gap-3 rounded-xl px-3 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors active:bg-white/10 touch-manipulation";
-  const navBtnClass =
-    "flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-white/5 w-full text-left";
+  const onRebill = () => {
+    onClose();
+    handlers?.openRebill();
+  };
 
-  const btnClass = variant === "sheet" ? sheetBtnClass : navBtnClass;
+  const onTip = () => {
+    onClose();
+    handlers?.openTip();
+  };
+
+  if (variant === "sheet") {
+    return (
+      <>
+        <li>
+          <button type="button" onClick={onRebill} disabled={!handlers} className={rowClass}>
+            <div className={iconWrapClass}>
+              <RefreshCw className="h-5 w-5 text-pink-400" />
+            </div>
+            <span className="text-base text-white">Add rebill</span>
+          </button>
+        </li>
+        <li>
+          <button type="button" onClick={onTip} disabled={!handlers} className={rowClass}>
+            <div className={iconWrapClass}>
+              <DollarSign className="h-5 w-5 text-pink-400" />
+            </div>
+            <span className="text-base text-white">Add missing tip</span>
+          </button>
+        </li>
+      </>
+    );
+  }
 
   return (
     <>
       <li>
-        <button
-          type="button"
-          onClick={() => {
-            onClose();
-            handlers.openRebill();
-          }}
-          className={btnClass}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-green-500/20">
-            <RefreshCw className="h-4 w-4 text-green-400" />
+        <button type="button" onClick={onRebill} disabled={!handlers} className={rowClass}>
+          <div className={iconWrapClass}>
+            <RefreshCw className="h-5 w-5 text-pink-400" />
           </div>
-          <div>
-            <p className="text-sm font-medium text-white">Add rebill</p>
-            <p className="text-xs text-white/40">Log a subscriber rebill</p>
-          </div>
+          <span className="text-base text-white">Add rebill</span>
         </button>
       </li>
       <li>
-        <button
-          type="button"
-          onClick={() => {
-            onClose();
-            handlers.openTip();
-          }}
-          className={btnClass}
-        >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
-            <DollarSign className="h-4 w-4 text-amber-400" />
+        <button type="button" onClick={onTip} disabled={!handlers} className={rowClass}>
+          <div className={iconWrapClass}>
+            <DollarSign className="h-5 w-5 text-pink-400" />
           </div>
-          <div>
-            <p className="text-sm font-medium text-white">Add missing tip</p>
-            <p className="text-xs text-white/40">Report an unlocked tip</p>
-          </div>
+          <span className="text-base text-white">Add missing tip</span>
         </button>
       </li>
     </>

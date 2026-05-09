@@ -14,34 +14,18 @@ type Ctx = {
 
 const ChatterRebillTipFabContext = React.createContext<Ctx | null>(null);
 
-/** Wraps dashboard shell so the chatter FAB can open rebill/tip modals registered from the home page client. */
-export function ChatterRebillTipFabProvider({ children }: { children: React.ReactNode }) {
-  const [handlers, setHandlers] = React.useState<ChatterRebillTipFabHandlers | null>(null);
-  const value = React.useMemo(() => ({ handlers, setHandlers }), [handlers]);
-  return <ChatterRebillTipFabContext.Provider value={value}>{children}</ChatterRebillTipFabContext.Provider>;
+export function useChatterRebillTipFabContext(): Ctx | null {
+  return React.useContext(ChatterRebillTipFabContext);
 }
 
-/** Call from `ChatterHomeClient` to register openers; cleanup on unmount. */
-export function useRegisterChatterRebillTipFabHandlers(
-  openRebill: () => void,
-  openTip: () => void
-): void {
-  const ctx = React.useContext(ChatterRebillTipFabContext);
-  const rb = React.useRef(openRebill);
-  const tp = React.useRef(openTip);
-  rb.current = openRebill;
-  tp.current = openTip;
-
-  const setHandlers = ctx?.setHandlers;
-
-  React.useEffect(() => {
-    if (!setHandlers) return;
-    setHandlers({
-      openRebill: () => rb.current(),
-      openTip: () => tp.current(),
-    });
-    return () => setHandlers(null);
-  }, [setHandlers]);
+/** Wraps dashboard shell so the chatter FAB can open rebill/tip modals (see {@link ChatterRebillTipFabHost}). */
+export function ChatterRebillTipFabProvider({ children }: { children: React.ReactNode }) {
+  const [handlers, setHandlersState] = React.useState<ChatterRebillTipFabHandlers | null>(null);
+  const setHandlers = React.useCallback((next: ChatterRebillTipFabHandlers | null) => {
+    setHandlersState(next);
+  }, []);
+  const value = React.useMemo(() => ({ handlers, setHandlers }), [handlers, setHandlers]);
+  return <ChatterRebillTipFabContext.Provider value={value}>{children}</ChatterRebillTipFabContext.Provider>;
 }
 
 export function useChatterRebillTipFabHandlers(): ChatterRebillTipFabHandlers | null {

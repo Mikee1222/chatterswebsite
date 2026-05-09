@@ -3,16 +3,12 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import { Calculator, Clock } from "lucide-react";
-import { RebillModal } from "@/components/rebill-modal";
-import { TipModal } from "@/components/tip-modal";
-import type { ChatterModalModelOption } from "@/components/rebill-modal";
 import { usdToEur } from "@/lib/exchange";
 import { ROUTES } from "@/lib/routes";
 import { formatTimeEuropean, formatDurationMinutes, formatDateEuropean } from "@/lib/format";
 import { Label, Input } from "@/components/ui/form";
 import type { HomeShiftCardData } from "@/app/(dashboard)/home/page";
 import type { MonthlyTarget } from "@/types";
-import { useRegisterChatterRebillTipFabHandlers } from "@/contexts/chatter-rebill-tip-fab-context";
 
 type MonthlyTargetData = { target: MonthlyTarget; achievedUsd: number } | null;
 
@@ -21,8 +17,6 @@ type Props = {
   shiftCardData: HomeShiftCardData;
   assignedWhalesCount: number;
   monthlyTargetData?: MonthlyTargetData;
-  /** Active modelss rows for rebill/tip dropdowns */
-  chatterActiveModels?: ChatterModalModelOption[];
 };
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
@@ -76,12 +70,9 @@ export function ChatterHomeClient({
   shiftCardData,
   assignedWhalesCount,
   monthlyTargetData = null,
-  chatterActiveModels = [],
 }: Props) {
   const [revenueUsd, setRevenueUsd] = React.useState("");
   const [chatterPct, setChatterPct] = React.useState("");
-  const [rebillOpen, setRebillOpen] = React.useState(false);
-  const [tipOpen, setTipOpen] = React.useState(false);
 
   const rev = parseFloat(revenueUsd) || 0;
   const pct = parseFloat(chatterPct) || 0;
@@ -189,9 +180,6 @@ export function ChatterHomeClient({
           <p className="mt-2 text-sm text-white/45">Tap to log a whale session</p>
         </motion.a>
       </Reveal>
-
-      <RebillModal open={rebillOpen} onClose={() => setRebillOpen(false)} models={chatterActiveModels} />
-      <TipModal open={tipOpen} onClose={() => setTipOpen(false)} models={chatterActiveModels} />
 
       <div className="grid gap-8 lg:grid-cols-2">
         <Reveal delay={0.18}>
