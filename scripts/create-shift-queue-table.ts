@@ -55,6 +55,17 @@ async function createTable() {
           ],
         },
       },
+      {
+        name: "queue_type",
+        type: "singleSelect",
+        options: {
+          choices: [
+            { name: "full_start", color: "blueLight2" },
+            { name: "add_models", color: "yellowLight2" },
+          ],
+        },
+      },
+      { name: "target_shift_id", type: "singleLineText" },
       { name: "waiting_for_shift_id", type: "singleLineText" },
       { name: "waiting_for_chatter_name", type: "singleLineText" },
       { name: "created_at", type: "dateTime", options: dateTimeOptions },

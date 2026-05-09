@@ -1,5 +1,7 @@
 import { listAllRecords, createRecord, updateRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
-import type { ShiftQueueEntryApi, ShiftQueueStatus } from "@/types";
+import type { ShiftQueueEntryApi, ShiftQueueStatus, ShiftQueueType } from "@/types";
+
+/** Add `queue_type` + `target_shift_id` in Airtable when missing (see `scripts/create-shift-queue-table.ts`). */
 
 const SHIFT_QUEUE_TABLE = "shift_queue";
 
@@ -10,6 +12,8 @@ type ShiftQueueFields = {
   selected_model_ids?: string;
   selected_model_names?: string;
   status?: string;
+  queue_type?: string;
+  target_shift_id?: string;
   waiting_for_shift_id?: string;
   waiting_for_chatter_name?: string;
   created_at?: string;
@@ -19,6 +23,13 @@ type ShiftQueueFields = {
 
 function escapeFormulaString(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function normalizeQueueType(raw: string | undefined): ShiftQueueType {
+  const v = String(raw ?? "full_start")
+    .trim()
+    .toLowerCase();
+  return v === "add_models" ? "add_models" : "full_start";
 }
 
 function normalizeQueueStatus(raw: string | undefined): ShiftQueueStatus {
@@ -55,6 +66,8 @@ function mapShiftQueueRecord(rec: AirtableRecord<ShiftQueueFields>): ShiftQueueE
     selected_model_ids,
     selected_model_names,
     status: normalizeQueueStatus(f.status),
+    queue_type: normalizeQueueType(f.queue_type),
+    target_shift_id: String(f.target_shift_id ?? "").trim(),
     waiting_for_shift_id: String(f.waiting_for_shift_id ?? ""),
     waiting_for_chatter_name: String(f.waiting_for_chatter_name ?? ""),
     created_at: f.created_at ?? null,
@@ -121,6 +134,8 @@ export async function createShiftQueueEntry(payload: {
   waiting_for_shift_id: string;
   waiting_for_chatter_name: string;
   created_at: string;
+  queue_type?: ShiftQueueType;
+  target_shift_id?: string;
 }): Promise<{ id: string }> {
   const rec = await createRecord(SHIFT_QUEUE_TABLE, payload as Record<string, unknown>);
   return { id: rec.id };

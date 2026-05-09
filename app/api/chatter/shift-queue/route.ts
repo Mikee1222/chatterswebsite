@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getActiveShifts, getShiftById } from "@/services/shifts";
+import { getActiveShifts, getShiftById, getActiveShiftByChatter, listShiftModels } from "@/services/shifts";
 import {
   getShiftQueueWaitingForChatter,
   createShiftQueueEntry,
   deleteShiftQueueRecord,
   updateShiftQueueRecord,
 } from "@/services/shift-queue";
-import type { ActiveShiftBrief } from "@/types";
+import type { ActiveShiftBrief, ShiftQueueType } from "@/types";
 
 function activeShiftsBrief(): Promise<ActiveShiftBrief[]> {
   return getActiveShifts("chatter").then((shifts) => {
@@ -27,6 +27,13 @@ function activeShiftsBrief(): Promise<ActiveShiftBrief[]> {
   });
 }
 
+function normalizeQueueType(raw: unknown): ShiftQueueType {
+  const v = String(raw ?? "full_start")
+    .trim()
+    .toLowerCase();
+  return v === "add_models" ? "add_models" : "full_start";
+}
+
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session || session.role !== "chatter") {
@@ -38,17 +45,40 @@ export async function GET() {
   }
 
   try {
-    const [rawQueueEntry, activeShifts] = await Promise.all([
+    const [rawQueueEntry, activeShifts, myActiveShift] = await Promise.all([
       getShiftQueueWaitingForChatter(chatterId),
       activeShiftsBrief(),
+      getActiveShiftByChatter(chatterId).catch(() => null),
     ]);
     let queueEntry = rawQueueEntry;
+    const nowIso = new Date().toISOString();
+
+    if (queueEntry) {
+      const qt = queueEntry.queue_type ?? "full_start";
+      if (qt === "add_models") {
+        const tid = (queueEntry.target_shift_id ?? "").trim();
+        if (!tid || !myActiveShift || myActiveShift.id !== tid) {
+          await updateShiftQueueRecord(queueEntry.id, {
+            status: "expired",
+            cancelled_at: nowIso,
+          }).catch(() => {});
+          queueEntry = null;
+        }
+      } else if (myActiveShift) {
+        await updateShiftQueueRecord(queueEntry.id, {
+          status: "expired",
+          cancelled_at: nowIso,
+        }).catch(() => {});
+        queueEntry = null;
+      }
+    }
+
     if (queueEntry?.waiting_for_shift_id) {
       const waited = await getShiftById(queueEntry.waiting_for_shift_id);
       if (!waited || waited.status === "completed" || waited.status === "cancelled") {
         await updateShiftQueueRecord(queueEntry.id, {
           status: "expired",
-          cancelled_at: new Date().toISOString(),
+          cancelled_at: nowIso,
         }).catch(() => {});
         queueEntry = null;
       }
@@ -92,6 +122,8 @@ export async function POST(req: Request) {
     ? (b.selected_model_names as unknown[]).map((x) => String(x).trim())
     : [];
   const waiting_for_shift_id = String(b.waiting_for_shift_id ?? "").trim();
+  const queue_type = normalizeQueueType(b.queue_type);
+  const target_shift_id = String(b.target_shift_id ?? "").trim();
 
   if (selected_model_ids.length === 0) {
     return NextResponse.json({ error: "Select at least one model" }, { status: 400 });
@@ -101,7 +133,10 @@ export async function POST(req: Request) {
   }
 
   try {
-    const active = await getActiveShifts("chatter");
+    const [active, myActive] = await Promise.all([
+      getActiveShifts("chatter"),
+      getActiveShiftByChatter(chatterId).catch(() => null),
+    ]);
     const target = active.find((s) => s.id === waiting_for_shift_id);
     if (!target) {
       return NextResponse.json({ error: "That shift is no longer active" }, { status: 400 });
@@ -118,23 +153,76 @@ export async function POST(req: Request) {
     const chatterName = session.fullName?.trim() || session.email || "Chatter";
     const waitingForChatterName = (target.chatter_name ?? "Chatter").trim() || "Chatter";
     const queue_id = `sq_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+    const created_at = new Date().toISOString();
+
+    const namesPayload =
+      selected_model_names.length >= selected_model_ids.length
+        ? selected_model_names
+        : [
+            ...selected_model_names,
+            ...Array(Math.max(0, selected_model_ids.length - selected_model_names.length)).fill(""),
+          ];
+
+    if (queue_type === "full_start") {
+      if (myActive) {
+        return NextResponse.json(
+          { error: "You already have an active shift. Use queue for extra models from the shift screen." },
+          { status: 400 }
+        );
+      }
+      const created = await createShiftQueueEntry({
+        queue_id,
+        chatter_id: chatterId,
+        chatter_name: chatterName,
+        selected_model_ids: JSON.stringify(selected_model_ids),
+        selected_model_names: JSON.stringify(namesPayload),
+        status: "waiting",
+        waiting_for_shift_id,
+        waiting_for_chatter_name: waitingForChatterName,
+        created_at,
+        queue_type: "full_start",
+      });
+      return NextResponse.json({ success: true, queue_id, id: created.id });
+    }
+
+    // add_models
+    if (!myActive) {
+      return NextResponse.json({ error: "Start a shift before queuing to add models." }, { status: 400 });
+    }
+    if (!target_shift_id || target_shift_id !== myActive.id) {
+      return NextResponse.json(
+        { error: "target_shift_id must be your current active shift." },
+        { status: 400 }
+      );
+    }
+
+    const waitedModels = await listShiftModels(waiting_for_shift_id);
+    const stillOnWaitedShift = new Set(
+      waitedModels.filter((sm) => !sm.left_at && sm.model_id).map((sm) => String(sm.model_id))
+    );
+    const notOnShift = selected_model_ids.filter((id) => !stillOnWaitedShift.has(id));
+    if (notOnShift.length > 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Some models are not on the shift you are waiting for. Refresh the page and try again.",
+        },
+        { status: 400 }
+      );
+    }
+
     const created = await createShiftQueueEntry({
       queue_id,
       chatter_id: chatterId,
       chatter_name: chatterName,
       selected_model_ids: JSON.stringify(selected_model_ids),
-      selected_model_names: JSON.stringify(
-        selected_model_names.length >= selected_model_ids.length
-          ? selected_model_names
-          : [
-              ...selected_model_names,
-              ...Array(Math.max(0, selected_model_ids.length - selected_model_names.length)).fill(""),
-            ]
-      ),
+      selected_model_names: JSON.stringify(namesPayload),
       status: "waiting",
       waiting_for_shift_id,
       waiting_for_chatter_name: waitingForChatterName,
-      created_at: new Date().toISOString(),
+      created_at,
+      queue_type: "add_models",
+      target_shift_id,
     });
 
     return NextResponse.json({ success: true, queue_id, id: created.id });

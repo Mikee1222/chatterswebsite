@@ -324,9 +324,20 @@ export function AdminLiveShiftsClient({ shiftsWithModels, shiftQueue = [] }: Pro
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="text-sm font-medium text-white">{entry.chatter_name}</span>
-                      <span className="text-xs text-sky-300">
-                        Waiting for {entry.waitingForChatterName || "chatter"}
-                      </span>
+                      <div className="flex flex-wrap items-center justify-end gap-2 text-right">
+                        {entry.queue_type === "add_models" ? (
+                          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-medium text-amber-200">
+                            Add models
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/50">
+                            Full start
+                          </span>
+                        )}
+                        <span className="text-xs text-sky-300">
+                          Waiting for {entry.waitingForChatterName || "chatter"}
+                        </span>
+                      </div>
                     </div>
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {entry.selectedModelNames.map((name, idx) => (

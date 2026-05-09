@@ -338,6 +338,8 @@ export async function bulkAddModelsToShift(params: {
   items: { modelRecordId: string; modelName: string }[];
   chatterRecordId: string;
   chatterName: string;
+  /** When true, skip the in-app push for models added (e.g. shift-queue auto-attach sends its own copy). */
+  skipNotification?: boolean;
 }): Promise<BulkAddModelsToShiftResult> {
   try {
     const { shiftRecordId, chatterRecordId, chatterName } = params;
@@ -419,29 +421,31 @@ export async function bulkAddModelsToShift(params: {
     devLog("[bulkAddModelsToShift] attached", { count: eligible.length, shiftRecordId });
     revalidatePath(ROUTES.chatter.shift);
 
-    const names = eligible.map((e) => e.modelName).filter(Boolean);
-    const body =
-      eligible.length === 1
-        ? names[0]
-          ? `You're now chatting with ${names[0]}.`
-          : "A model was added to your shift."
-        : `${eligible.length} models were added to your shift.`;
+    if (!params.skipNotification) {
+      const names = eligible.map((e) => e.modelName).filter(Boolean);
+      const body =
+        eligible.length === 1
+          ? names[0]
+            ? `You're now chatting with ${names[0]}.`
+            : "A model was added to your shift."
+          : `${eligible.length} models were added to your shift.`;
 
-    try {
-      await notify({
-        user_id: chatterRecordId,
-        event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: eligible.length === 1 ? "Model added to shift" : "Models added to shift",
-        body,
-        entity_type: "model",
-        entity_id: eligible[0]?.modelRecordId ?? shiftRecordId,
-        actor_user_id: chatterRecordId,
-        actor_name: chatterName,
-        _triggerSource: "bulkAddModelsToShift",
-      });
-    } catch (e) {
-      console.error("[notify] bulkAddModelsToShift failed", e);
+      try {
+        await notify({
+          user_id: chatterRecordId,
+          event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: eligible.length === 1 ? "Model added to shift" : "Models added to shift",
+          body,
+          entity_type: "model",
+          entity_id: eligible[0]?.modelRecordId ?? shiftRecordId,
+          actor_user_id: chatterRecordId,
+          actor_name: chatterName,
+          _triggerSource: "bulkAddModelsToShift",
+        });
+      } catch (e) {
+        console.error("[notify] bulkAddModelsToShift failed", e);
+      }
     }
 
     return { success: true, added: eligible.length };
@@ -701,8 +705,9 @@ export async function endBreak(shiftRecordId: string, additionalBreakMinutes: nu
 }
 
 /**
- * After a chatter shift ends, try queued chatters (FIFO) for that shift id: first successful
- * `startShiftWithModels` wins; remaining rows for this shift are marked expired.
+ * After a chatter shift ends, process `shift_queue` rows waiting on this shift id:
+ * - `add_models`: attach selected free models to `target_shift_id` (no FIFO mutual exclusion).
+ * - `full_start`: FIFO — first successful `startShiftWithModels` wins; other waiting rows for this shift expire.
  */
 async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<void> {
   try {
@@ -712,17 +717,143 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
     const queue = await listShiftQueueWaitingForShift(endedShiftId);
     if (queue.length === 0) return;
 
-    let startedOne = false;
+    let startedOneFullStart = false;
     const nowIso = new Date().toISOString();
 
     for (const entry of queue) {
-      if (startedOne) {
+      const modelIds = entry.selected_model_ids.filter(Boolean);
+      if (modelIds.length === 0) {
         await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
         continue;
       }
 
-      const modelIds = entry.selected_model_ids.filter(Boolean);
-      if (modelIds.length === 0) {
+      const queueType = entry.queue_type ?? "full_start";
+      const targetShiftId = entry.target_shift_id?.trim() ?? "";
+
+      if (queueType === "add_models") {
+        if (!targetShiftId) {
+          await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+          continue;
+        }
+        const targetShift = await getShiftById(targetShiftId);
+        const targetLive =
+          targetShift &&
+          (targetShift.status === "active" || targetShift.status === "on_break") &&
+          targetShift.staff_role === "chatter";
+        if (!targetLive) {
+          await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+          continue;
+        }
+        if ((targetShift.chatter_id ?? "").trim() !== (entry.chatter_id ?? "").trim()) {
+          await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+          continue;
+        }
+
+        const rawNames = entry.selected_model_names;
+        const desired = modelIds.map((id, i) => ({
+          modelRecordId: id,
+          modelName: (rawNames[i] ?? "").trim() || "Model",
+        }));
+
+        const alreadyOnTarget = await listShiftModels(targetShiftId);
+        const onTargetIds = new Set(alreadyOnTarget.map((sm) => sm.model_id).filter(Boolean));
+
+        const eligible: { modelRecordId: string; modelName: string }[] = [];
+        for (const it of desired) {
+          if (onTargetIds.has(it.modelRecordId)) continue;
+          const model = await getModelById(it.modelRecordId);
+          if (model?.current_status !== "free") continue;
+          eligible.push({
+            modelRecordId: it.modelRecordId,
+            modelName: (it.modelName || model.model_name || "Model").trim() || "Model",
+          });
+        }
+
+        if (eligible.length === 0) {
+          await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+          try {
+            await notify({
+              user_id: entry.chatter_id,
+              event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+              priority: NOTIFICATION_PRIORITY.NORMAL,
+              title: "Shift queue: no models to add",
+              body: "None of the queued models were free to attach. Try adding them manually from the shift page.",
+              entity_type: NOTIFICATION_ENTITY.SHIFT,
+              entity_id: endedShiftId,
+              actor_user_id: entry.chatter_id,
+              actor_name: entry.chatter_name,
+            });
+          } catch (_) {
+            /* ignore */
+          }
+          continue;
+        }
+
+        const bulk = await bulkAddModelsToShift({
+          shiftRecordId: targetShiftId,
+          items: eligible,
+          chatterRecordId: entry.chatter_id,
+          chatterName: (entry.chatter_name || "Chatter").trim() || "Chatter",
+          skipNotification: true,
+        });
+
+        if (bulk.success) {
+          await updateShiftQueueRecord(entry.id, { status: "started", started_at: nowIso }).catch(() => {});
+          const namesLabel = eligible.map((x) => x.modelName).filter(Boolean).join(", ") || `${bulk.added} model(s)`;
+          try {
+            await notify({
+              user_id: entry.chatter_id,
+              event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
+              priority: NOTIFICATION_PRIORITY.NORMAL,
+              title: "✅ Models added to your shift!",
+              body: `${namesLabel} ${bulk.added === 1 ? "has" : "have"} been added to your shift automatically.`,
+              entity_type: NOTIFICATION_ENTITY.SHIFT,
+              entity_id: targetShiftId,
+              actor_user_id: entry.chatter_id,
+              actor_name: entry.chatter_name,
+              _triggerSource: "shiftQueueAddModels",
+            });
+          } catch (e) {
+            console.error("[notify] shift queue add_models chatter failed", e);
+          }
+          try {
+            await notifyAdmins({
+              event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
+              priority: NOTIFICATION_PRIORITY.NORMAL,
+              title: `🔄 Models auto-added: ${entry.chatter_name || "Chatter"}`,
+              body: `${namesLabel} were added to ${(entry.chatter_name || "a chatter").trim()}'s shift from queue.`,
+              entity_type: NOTIFICATION_ENTITY.SHIFT,
+              entity_id: targetShiftId,
+              actor_user_id: entry.chatter_id,
+              actor_name: entry.chatter_name,
+            });
+          } catch (e) {
+            console.error("[notify] shift queue add_models admins failed", e);
+          }
+          revalidatePath(ROUTES.chatter.shift);
+          revalidatePath(ROUTES.admin.liveShifts);
+        } else {
+          await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
+          try {
+            await notify({
+              user_id: entry.chatter_id,
+              event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+              priority: NOTIFICATION_PRIORITY.NORMAL,
+              title: "Shift queue: could not add models",
+              body: bulk.error ?? "Models could not be attached. Try adding them manually.",
+              entity_type: NOTIFICATION_ENTITY.SHIFT,
+              entity_id: endedShiftId,
+              actor_user_id: entry.chatter_id,
+              actor_name: entry.chatter_name,
+            });
+          } catch (_) {
+            /* ignore */
+          }
+        }
+        continue;
+      }
+
+      if (startedOneFullStart) {
         await updateShiftQueueRecord(entry.id, { status: "expired", cancelled_at: nowIso }).catch(() => {});
         continue;
       }
@@ -736,7 +867,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
       );
 
       if (result.success) {
-        startedOne = true;
+        startedOneFullStart = true;
         await updateShiftQueueRecord(entry.id, { status: "started", started_at: nowIso }).catch(() => {});
         const namesLabel = modelNames.length ? modelNames.join(", ") : `${modelIds.length} model(s)`;
         try {

@@ -25,6 +25,9 @@ export type ShiftType = "chatting" | "mistakes" | "vault_cleaning" | "other";
 /** Airtable `shift_queue` — chatter waits for an active shift to end, then auto-starts. */
 export type ShiftQueueStatus = "waiting" | "started" | "cancelled" | "expired";
 
+/** `shift_queue.queue_type` — full new shift vs attach models to existing shift when freed. */
+export type ShiftQueueType = "full_start" | "add_models";
+
 export type ShiftQueueEntryApi = {
   id: string;
   queue_id: string;
@@ -35,9 +38,20 @@ export type ShiftQueueEntryApi = {
   status: ShiftQueueStatus;
   waiting_for_shift_id: string;
   waiting_for_chatter_name: string;
+  /** Defaults to `full_start` when column missing (legacy rows). */
+  queue_type: ShiftQueueType;
+  /** For `add_models`: Airtable record id of the chatter's shift to attach models to. */
+  target_shift_id: string;
   created_at: string | null;
   started_at: string | null;
   cancelled_at: string | null;
+};
+
+/** Occupied model row for shift page — which shift holds the model. */
+export type OccupiedModelDetail = {
+  model_id: string;
+  chatter_name: string;
+  shift_id: string;
 };
 
 /** Active chatter shift summary for queue UI / APIs. */
@@ -54,6 +68,7 @@ export type AdminShiftQueueRow = {
   waitingForChatterName: string;
   waiting_for_shift_id: string;
   selectedModelNames: string[];
+  queue_type?: ShiftQueueType;
 };
 
 /** Airtable `va_tasks` — VA operational tasks. */

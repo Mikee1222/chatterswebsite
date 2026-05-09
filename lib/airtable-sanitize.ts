@@ -238,6 +238,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   shift_queue: {
     status: new Set(["waiting", "started", "cancelled", "expired"]),
+    queue_type: new Set(["full_start", "add_models"]),
   },
   va_tasks: {
     status: new Set(["pending", "in_progress", "done", "skipped"]),

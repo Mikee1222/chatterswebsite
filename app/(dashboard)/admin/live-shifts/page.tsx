@@ -25,6 +25,7 @@ export default async function AdminLiveShiftsPage() {
     waitingForChatterName: e.waiting_for_chatter_name,
     waiting_for_shift_id: e.waiting_for_shift_id,
     selectedModelNames: e.selected_model_names.filter(Boolean),
+    queue_type: e.queue_type ?? "full_start",
   }));
 
   return <AdminLiveShiftsClient shiftsWithModels={withModelNames} shiftQueue={shiftQueue} />;

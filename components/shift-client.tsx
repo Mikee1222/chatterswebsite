@@ -24,7 +24,7 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
 import { useToast } from "@/contexts/toast-context";
 import { useMobileFabVisibility } from "@/contexts/mobile-fab-visibility-context";
-import type { AppNotification, Shift, ShiftModel, ModelRecord } from "@/types";
+import type { AppNotification, Shift, ShiftModel, ModelRecord, ShiftQueueEntryApi } from "@/types";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high" = "high"): AppNotification {
   return {
@@ -95,7 +95,7 @@ type Props = {
 
 type ShiftQueueOverviewResponse = {
   inQueue: boolean;
-  queueEntry: unknown;
+  queueEntry: ShiftQueueEntryApi | null;
   activeShifts: { id: string; chatter_name: string; duration_minutes: number }[];
 };
 
@@ -109,6 +109,7 @@ type ShiftQueueStatusResponse = {
   queuePosition: number;
   totalInQueue: number;
   selectedModelNames: string[];
+  queue_type: "full_start" | "add_models";
 };
 
 async function shiftQueueJsonFetcher<T>(url: string): Promise<T> {
@@ -662,21 +663,51 @@ export function ShiftClient({
   const [queueSelectedModelIds, setQueueSelectedModelIds] = React.useState<Set<string>>(() => new Set());
   const [queueJoinBusy, setQueueJoinBusy] = React.useState(false);
   const [queueCancelBusy, setQueueCancelBusy] = React.useState(false);
+  const [addModelsQueueBusy, setAddModelsQueueBusy] = React.useState(false);
   const queuePresetInitRef = React.useRef(false);
 
   const { data: queueOverview, mutate: mutateQueueOverview } = useSWR<ShiftQueueOverviewResponse>(
-    !activeShift ? "/api/chatter/shift-queue" : null,
+    "/api/chatter/shift-queue",
     shiftQueueJsonFetcher,
-    { refreshInterval: 60_000 }
+    { refreshInterval: 45_000 }
   );
   const inQueue = Boolean(queueOverview?.inQueue);
+  const queueEntryApi = queueOverview?.queueEntry ?? null;
+  const addModelsQueueEntry =
+    activeShift && inQueue && queueEntryApi?.queue_type === "add_models" ? queueEntryApi : null;
   const activeShiftsFromApi = queueOverview?.activeShifts ?? [];
 
+  const pollQueueStatusDetail =
+    inQueue && (!activeShift || queueEntryApi?.queue_type === "add_models");
+
   const { data: queueStatus } = useSWR<ShiftQueueStatusResponse>(
-    !activeShift && inQueue ? "/api/chatter/shift-queue/status" : null,
+    pollQueueStatusDetail ? "/api/chatter/shift-queue/status" : null,
     shiftQueueJsonFetcher,
     { refreshInterval: 30_000 }
   );
+
+  const takenWeeklyModels = React.useMemo(() => {
+    if (!activeShift || !weeklyProgramModels?.length) return [];
+    const myModelIds = new Set(shiftModels.map((sm) => sm.model_id).filter(Boolean));
+    const cid = chatterId.trim();
+    const out: { id: string; name: string; takenByChatter: string; waitingShiftId: string }[] = [];
+    for (const m of weeklyProgramModels) {
+      if (myModelIds.has(m.id)) continue;
+      const row = modelss.find((x) => x.id === m.id);
+      if (!row || row.current_status !== "occupied") continue;
+      const other = (row.current_chatter_id ?? "").trim();
+      if (!other || other === cid) continue;
+      const waitingShiftId = (row.current_shift_id ?? "").trim();
+      if (!waitingShiftId) continue;
+      out.push({
+        id: m.id,
+        name: m.name,
+        takenByChatter: (row.current_chatter_name ?? "").trim() || "another chatter",
+        waitingShiftId,
+      });
+    }
+    return out;
+  }, [activeShift, weeklyProgramModels, shiftModels, modelss, chatterId]);
 
   React.useEffect(() => {
     if (activeShift) queuePresetInitRef.current = false;
@@ -878,6 +909,41 @@ export function ShiftClient({
       setError(e instanceof Error ? e.message : "Could not cancel queue");
     } finally {
       setQueueCancelBusy(false);
+    }
+  }
+
+  async function handleQueueForModels() {
+    if (!activeShift || takenWeeklyModels.length === 0) return;
+    const firstShiftId = takenWeeklyModels[0]?.waitingShiftId;
+    if (!firstShiftId) return;
+    const modelsForWait = takenWeeklyModels.filter((m) => m.waitingShiftId === firstShiftId);
+    if (modelsForWait.length === 0) return;
+
+    setAddModelsQueueBusy(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/chatter/shift-queue", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          selected_model_ids: modelsForWait.map((m) => m.id),
+          selected_model_names: modelsForWait.map((m) => m.name),
+          waiting_for_shift_id: firstShiftId,
+          queue_type: "add_models",
+          target_shift_id: activeShift.id,
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(typeof data.error === "string" ? data.error : "Could not join queue");
+        return;
+      }
+      await mutateQueueOverview();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not join queue");
+    } finally {
+      setAddModelsQueueBusy(false);
     }
   }
 
@@ -1466,6 +1532,80 @@ export function ShiftClient({
             )}
           </div>
         </div>
+
+        {activeShift && takenWeeklyModels.length > 0 && !addModelsQueueEntry && (
+          <div className="mt-4 rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
+            <div className="mb-3 flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/20">
+                <Clock className="h-4 w-4 text-amber-400" aria-hidden />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-white">Models in use</p>
+                <p className="text-xs text-white/50">Queue to auto-add when they are free</p>
+              </div>
+            </div>
+            <div className="mb-3 space-y-1.5">
+              {takenWeeklyModels.map((model) => (
+                <div
+                  key={model.id}
+                  className="flex items-center justify-between rounded-xl bg-white/5 px-3 py-2"
+                >
+                  <span className="text-sm text-white/70">{model.name}</span>
+                  <span className="text-xs text-amber-400">With {model.takenByChatter}</span>
+                </div>
+              ))}
+            </div>
+            {takenWeeklyModels.some((m) => m.waitingShiftId !== takenWeeklyModels[0]?.waitingShiftId) ? (
+              <p className="mb-2 text-xs text-white/40">
+                Only models on the same shift as &ldquo;{takenWeeklyModels[0]?.name}&rdquo; will be queued first.
+                After they join your shift, queue again for any others.
+              </p>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void handleQueueForModels()}
+              disabled={addModelsQueueBusy}
+              className="w-full rounded-xl border border-amber-500/30 bg-amber-500/20 py-2.5 text-sm font-semibold text-amber-400 transition hover:bg-amber-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {addModelsQueueBusy ? "Joining…" : "Queue for these models"}
+            </button>
+          </div>
+        )}
+
+        {addModelsQueueEntry && (
+          <div className="mt-4 rounded-2xl border border-sky-500/25 bg-sky-500/5 p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-sky-400" aria-hidden />
+                <span className="text-sm font-semibold text-sky-400">Waiting for models</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => void handleCancelQueue()}
+                disabled={queueCancelBusy}
+                className="text-xs text-white/30 transition hover:text-red-400 disabled:opacity-50"
+              >
+                {queueCancelBusy ? "…" : "Cancel"}
+              </button>
+            </div>
+            {queueStatus?.queue_type === "add_models" && (queueStatus?.totalInQueue ?? 0) > 1 ? (
+              <p className="mb-2 text-xs text-white/35">
+                {queueStatus.queuePosition} of {queueStatus.totalInQueue} in this add-models queue
+              </p>
+            ) : null}
+            <p className="mb-2 text-xs text-white/40">Will be added when freed:</p>
+            <div className="flex flex-wrap gap-1.5">
+              {(addModelsQueueEntry.selected_model_names.filter(Boolean).length
+                ? addModelsQueueEntry.selected_model_names.filter(Boolean)
+                : takenWeeklyModels.map((m) => m.name)
+              ).map((name, idx) => (
+                <span key={`${name}-${idx}`} className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/60">
+                  {name}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Desktop: inline action buttons */}
         <div className="mt-6 hidden flex-wrap items-center gap-3 md:mt-8 md:flex">

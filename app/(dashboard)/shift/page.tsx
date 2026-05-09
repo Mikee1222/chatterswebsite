@@ -25,6 +25,7 @@ type SlimModelFields = {
   current_status?: string;
   current_chatter?: unknown;
   current_chatter_name?: unknown;
+  current_shift_id?: unknown;
 };
 
 function mapSlimModelToModelRecord(rec: AirtableRecord<SlimModelFields>): ModelRecord {
@@ -38,7 +39,10 @@ function mapSlimModelToModelRecord(rec: AirtableRecord<SlimModelFields>): ModelR
     current_status: f.current_status === "occupied" ? "occupied" : "free",
     current_chatter_id: firstLinkedId(f.current_chatter) ?? "",
     current_chatter_name: typeof f.current_chatter_name === "string" ? f.current_chatter_name.trim() : "",
-    current_shift_id: "",
+    current_shift_id:
+      typeof f.current_shift_id === "string" && f.current_shift_id
+        ? f.current_shift_id
+        : firstLinkedId(f.current_shift_id) ?? "",
     entered_at: null,
     last_chatter_id: "",
     last_chatter_name: "",
@@ -57,11 +61,18 @@ function mapSlimModelToModelRecord(rec: AirtableRecord<SlimModelFields>): ModelR
 const getCachedShiftPageModelss = unstable_cache(
   async (): Promise<ModelRecord[]> => {
     const records = await listAllRecords<SlimModelFields>("modelss", {
-      fields: ["model_name", "current_status", "current_chatter", "current_chatter_name", "model_id"],
+      fields: [
+        "model_name",
+        "current_status",
+        "current_chatter",
+        "current_chatter_name",
+        "model_id",
+        "current_shift_id",
+      ],
     });
     return records.map(mapSlimModelToModelRecord);
   },
-  ["shift-page-modelss-slim-v1"],
+  ["shift-page-modelss-slim-v2"],
   { revalidate: 60 }
 );
 
