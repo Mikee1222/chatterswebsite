@@ -75,6 +75,7 @@ import {
   taskShiftEndedAdmin,
 } from "@/lib/notification-copy";
 import { devLog } from "@/lib/dev-log";
+import { formatTimeAthens } from "@/lib/format";
 import { listShiftQueueWaitingForShift, updateShiftQueueRecord } from "@/services/shift-queue";
 
 export type StartShiftResult = { success: true; shiftId: string } | { success: false; error: string };
@@ -876,7 +877,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
             event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
             priority: NOTIFICATION_PRIORITY.NORMAL,
             title: "🚀 Shift started!",
-            body: `Your shift has started automatically with ${namesLabel}. You're live!`,
+            body: `Your shift started at ${formatTimeAthens(nowIso)} with ${namesLabel}. You're live!`,
             entity_type: NOTIFICATION_ENTITY.SHIFT,
             entity_id: result.shiftId,
             actor_user_id: entry.chatter_id,
@@ -891,7 +892,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
             event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
             priority: NOTIFICATION_PRIORITY.NORMAL,
             title: `🔄 Auto-shift: ${entry.chatter_name || "Chatter"}`,
-            body: `${(entry.chatter_name || "A chatter").trim()}'s shift started automatically from queue. Models: ${namesLabel}`,
+            body: `${(entry.chatter_name || "A chatter").trim()}'s shift started automatically from queue at ${formatTimeAthens(nowIso)}. Models: ${namesLabel}`,
             entity_type: NOTIFICATION_ENTITY.SHIFT,
             entity_id: result.shiftId,
             actor_user_id: entry.chatter_id,
@@ -1114,7 +1115,7 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
           event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: "Shift ended by admin",
-          body: `An administrator ended your shift.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
+          body: `An administrator ended your shift at ${formatTimeAthens(now)}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
           entity_type: NOTIFICATION_ENTITY.SHIFT,
           entity_id: id,
         });
@@ -1126,7 +1127,7 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
           event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: `Shift force-ended: ${chatterNameForNotify}`,
-          body: `Admin ended shift ${id}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
+          body: `Admin ended shift ${id} at ${formatTimeAthens(now)}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
           entity_type: NOTIFICATION_ENTITY.SHIFT,
           entity_id: id,
           actor_user_id: session.airtableUserId ?? session.id,

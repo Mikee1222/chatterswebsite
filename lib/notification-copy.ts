@@ -1,17 +1,20 @@
 /**
  * Notification copy for in-app and push. Short, scannable, lock-screen friendly.
+ * Times use {@link formatTimeAthens} / {@link formatDateTimeAthens} (Europe/Athens) so UTC servers show correct local wall clock.
  */
 
-/** Format time for notification body (e.g. "5:09 pm"). */
+import { formatTimeAthens, formatDateTimeAthens } from "@/lib/format";
+
+/** Format time for notification body (24h, Europe/Athens). */
 export function formatTimeShort(isoOrDate: string | Date): string {
-  const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
-  return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit", hour12: true }).toLowerCase();
+  const s = typeof isoOrDate === "string" ? isoOrDate : isoOrDate.toISOString();
+  return formatTimeAthens(s);
 }
 
-/** Format date + time for body (e.g. "10 Mar, 10:00 am"). */
+/** Format date + time for body (Europe/Athens, 24h). */
 export function formatDateTimeShort(isoOrDate: string | Date): string {
-  const d = typeof isoOrDate === "string" ? new Date(isoOrDate) : isoOrDate;
-  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true });
+  const s = typeof isoOrDate === "string" ? isoOrDate : isoOrDate.toISOString();
+  return formatDateTimeAthens(s);
 }
 
 /** Human-readable model list: "lydia, mia". */
@@ -106,10 +109,16 @@ export function breakStartedSelf(): { title: string; body: string } {
 }
 
 /** Break started — admin. */
-export function breakStartedAdmin(chatterName: string, _startedAt?: string | Date): { title: string; body: string } {
+export function breakStartedAdmin(chatterName: string, startedAt?: string | Date): { title: string; body: string } {
+  const time =
+    startedAt != null
+      ? formatTimeShort(typeof startedAt === "string" ? startedAt : startedAt.toISOString())
+      : null;
   return {
     title: `☕ ${chatterName} is on break`,
-    body: "Break started — they'll be back shortly.",
+    body: time
+      ? `Break started at ${time} — they'll be back shortly.`
+      : "Break started — they'll be back shortly.",
   };
 }
 
@@ -121,14 +130,17 @@ export function breakEndedSelf(): { title: string; body: string } {
 /** Break ended — admin. */
 export function breakEndedAdmin(
   chatterName: string,
-  _endTime: string | Date,
+  endTime: string | Date,
   durationMinutes?: number
 ): { title: string; body: string } {
   const duration = durationMinutes;
   const hasDuration = duration != null && duration > 0;
+  const time = formatTimeShort(typeof endTime === "string" ? endTime : endTime.toISOString());
   return {
     title: `✅ ${chatterName} is back`,
-    body: hasDuration ? `Returned from break after ${duration} min.` : "Returned from break.",
+    body: hasDuration
+      ? `Returned from break at ${time} after ${duration} min.`
+      : `Returned from break at ${time}.`,
   };
 }
 

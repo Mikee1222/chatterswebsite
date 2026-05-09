@@ -253,3 +253,33 @@ export function formatRelativeTime(dateInput: string | Date | null | undefined):
     return "—";
   }
 }
+
+/** In-app / push notification wall clock (Greece, 24h). Server runs UTC; use this for user-facing times in bodies. */
+const NOTIFICATION_TIME_ZONE = "Europe/Athens";
+const NOTIFICATION_TIME_LOCALE = "el-GR";
+
+/** Time only in Europe/Athens (24h). `isoString` omitted → “now” in Athens. */
+export function formatTimeAthens(isoString?: string | null): string {
+  const date = isoString != null && String(isoString).trim() !== "" ? new Date(String(isoString)) : new Date();
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleTimeString(NOTIFICATION_TIME_LOCALE, {
+    timeZone: NOTIFICATION_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+/** Date + time in Europe/Athens (24h). `isoString` omitted → “now” in Athens. */
+export function formatDateTimeAthens(isoString?: string | null): string {
+  const date = isoString != null && String(isoString).trim() !== "" ? new Date(String(isoString)) : new Date();
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString(NOTIFICATION_TIME_LOCALE, {
+    timeZone: NOTIFICATION_TIME_ZONE,
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
