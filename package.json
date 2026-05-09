@@ -26,6 +26,7 @@
     "complete:model-fields": "tsx scripts/complete-model-fields.ts",
     "complete:period-fields": "tsx scripts/complete-period-fields.ts",
     "add:language-field": "tsx scripts/add-language-field.ts",
+    "add:secondary-role-field": "tsx scripts/add-secondary-role-field.ts",
     "add:model-availability-windows-field": "tsx scripts/add-model-availability-windows-field.ts",
     "create:model-groups-table": "tsx scripts/create-model-groups-table.ts",
     "add:custom-requests-audit-fields": "tsx scripts/add-custom-requests-audit-fields.ts",
