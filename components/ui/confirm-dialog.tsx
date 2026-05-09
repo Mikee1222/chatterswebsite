@@ -99,6 +99,25 @@ export function ConfirmDialog({
           {title}
         </h2>
         <p className="mt-3 text-sm text-white/65">{description}</p>
+        {requireNameConfirmation ? (
+          <div className="mt-4">
+            <p className="mb-2 text-sm text-white/60">
+              Type <span className="font-semibold text-white">&quot;{nameToConfirm}&quot;</span> to confirm:
+            </p>
+            <input
+              id="confirm-dialog-name"
+              type="text"
+              value={typedName}
+              onChange={(e) => setTypedName(e.target.value)}
+              placeholder={`Type "${nameToConfirm}"`}
+              autoFocus
+              disabled={showSpinner}
+              autoComplete="off"
+              aria-label="Type the name to confirm"
+              className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none transition-all placeholder:text-white/20 focus:border-red-500/50 disabled:opacity-50"
+            />
+          </div>
+        ) : null}
         {showReasonInput ? (
           <div className="mt-4">
             <Label htmlFor="confirm-dialog-reason">{requireReason ? "Reason" : "Note (optional)"}</Label>
