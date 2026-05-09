@@ -195,6 +195,7 @@ export default async function ShiftPage() {
           todaySchedule={todaySchedule}
           modelIdsInActivePeriodToday={modelIdsInActivePeriodToday}
           weeklyProgramModels={weeklyProgramModels}
+          freeModelsForQueue={modelss.filter((m) => m.current_status === "free")}
         />
       </div>
     </RouterRefreshInterval>

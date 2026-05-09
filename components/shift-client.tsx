@@ -89,6 +89,8 @@ type Props = {
   modelIdsInActivePeriodToday?: string[];
   /** Today's weekly-program model rows (deduped) for queue presets. */
   weeklyProgramModels?: { id: string; name: string }[];
+  /** Free `modelss` rows for queue picker when there is no weekly program today (same filter as Free models panel). */
+  freeModelsForQueue?: ModelRecord[];
 };
 
 type ShiftQueueOverviewResponse = {
@@ -605,6 +607,7 @@ export function ShiftClient({
   todaySchedule,
   modelIdsInActivePeriodToday = [],
   weeklyProgramModels = [],
+  freeModelsForQueue,
 }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
@@ -763,6 +766,7 @@ export function ShiftClient({
 
   const freeModelss = modelss.filter((m) => m.current_status === "free");
   const occupiedModelss = modelss.filter((m) => m.current_status === "occupied");
+  const queuePickerFreeModels = freeModelsForQueue ?? freeModelss;
 
   function toggleModelSelection(id: string) {
     if (isStartingShift) return;
@@ -804,7 +808,13 @@ export function ShiftClient({
   const toggleQueueModel = React.useCallback(
     (id: string) => {
       if (queueJoinBusy || isStartingShift || inQueue) return;
-      if (!weeklyProgramModels.some((m) => m.id === id)) return;
+      const allowedWeekly = weeklyProgramModels.some((m) => m.id === id);
+      const allowedFree = queuePickerFreeModels.some((m) => m.id === id);
+      if (weeklyProgramModels.length > 0) {
+        if (!allowedWeekly) return;
+      } else if (!allowedFree) {
+        return;
+      }
       setQueueSelectedModelIds((prev) => {
         const next = new Set(prev);
         if (next.has(id)) next.delete(id);
@@ -812,7 +822,7 @@ export function ShiftClient({
         return next;
       });
     },
-    [queueJoinBusy, isStartingShift, inQueue, weeklyProgramModels]
+    [queueJoinBusy, isStartingShift, inQueue, weeklyProgramModels, queuePickerFreeModels]
   );
 
   async function handleJoinQueue() {
@@ -826,6 +836,7 @@ export function ShiftClient({
       const names = ids.map(
         (id) =>
           weeklyProgramModels.find((m) => m.id === id)?.name ??
+          queuePickerFreeModels.find((m) => m.id === id)?.model_name ??
           modelss.find((x) => x.id === id)?.model_name ??
           id
       );
@@ -1151,46 +1162,88 @@ export function ShiftClient({
                 </div>
 
                 <div className="mb-4">
-                  <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Your models (from weekly program)</p>
                   {weeklyProgramModels.length === 0 ? (
-                    <p className="text-sm text-white/45">No models in your weekly program for today.</p>
+                    <>
+                      <p className="mb-2 text-xs uppercase tracking-widest text-white/40">
+                        Select models for your shift
+                      </p>
+                      <div className="flex max-h-48 flex-col gap-2 overflow-y-auto pr-1">
+                        {queuePickerFreeModels.map((model) => (
+                          <label
+                            key={model.id}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 transition-all",
+                              queueSelectedModelIds.has(model.id)
+                                ? "border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 text-[hsl(330,90%,80%)]"
+                                : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={queueSelectedModelIds.has(model.id)}
+                              onChange={() => toggleQueueModel(model.id)}
+                              className="sr-only"
+                            />
+                            <div
+                              className={cn(
+                                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                                queueSelectedModelIds.has(model.id)
+                                  ? "bg-[hsl(330,80%,55%)]/30 text-[hsl(330,90%,80%)]"
+                                  : "bg-white/10 text-white/50"
+                              )}
+                            >
+                              {(model.model_name || "?").trim().slice(0, 1).toUpperCase() || "?"}
+                            </div>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium">{model.model_name}</span>
+                            <span className="shrink-0 text-xs font-medium text-emerald-400">Free</span>
+                          </label>
+                        ))}
+                      </div>
+                      {queuePickerFreeModels.length === 0 ? (
+                        <p className="mt-2 text-sm text-white/30">No free models available right now.</p>
+                      ) : null}
+                    </>
                   ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {weeklyProgramModels.map((model) => (
-                        <label
-                          key={model.id}
-                          className={cn(
-                            "flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition-all",
-                            queueSelectedModelIds.has(model.id)
-                              ? "border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 text-[hsl(330,90%,80%)]"
-                              : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"
-                          )}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={queueSelectedModelIds.has(model.id)}
-                            onChange={() => toggleQueueModel(model.id)}
-                            className="sr-only"
-                          />
-                          {model.name}
-                        </label>
-                      ))}
-                    </div>
+                    <>
+                      <p className="mb-2 text-xs uppercase tracking-widest text-white/40">
+                        Your models (from weekly program)
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {weeklyProgramModels.map((model) => (
+                          <label
+                            key={model.id}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-1.5 text-sm transition-all",
+                              queueSelectedModelIds.has(model.id)
+                                ? "border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 text-[hsl(330,90%,80%)]"
+                                : "border-white/10 bg-white/5 text-white/60 hover:border-white/20"
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={queueSelectedModelIds.has(model.id)}
+                              onChange={() => toggleQueueModel(model.id)}
+                              className="sr-only"
+                            />
+                            {model.name}
+                          </label>
+                        ))}
+                      </div>
+                    </>
                   )}
                 </div>
 
                 <button
                   type="button"
                   onClick={() => void handleJoinQueue()}
-                  disabled={
-                    queueJoinBusy ||
-                    isStartingShift ||
-                    queueSelectedModelIds.size === 0 ||
-                    weeklyProgramModels.length === 0
-                  }
-                  className="w-full rounded-xl border border-sky-500/35 bg-sky-500/15 py-3 font-semibold text-sky-300 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={queueJoinBusy || isStartingShift || queueSelectedModelIds.size === 0}
+                  className="w-full rounded-xl border border-sky-500/35 bg-sky-500/15 py-3 font-semibold text-sky-300 transition hover:bg-sky-500/25 disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  {queueJoinBusy ? "Joining…" : "Join queue"}
+                  {queueJoinBusy
+                    ? "Joining…"
+                    : queueSelectedModelIds.size === 0
+                      ? "Select at least one model"
+                      : `Join queue with ${queueSelectedModelIds.size} model${queueSelectedModelIds.size > 1 ? "s" : ""}`}
                 </button>
               </div>
             )}
@@ -1237,7 +1290,10 @@ export function ShiftClient({
                     {(queueStatus?.selectedModelNames?.length
                       ? queueStatus.selectedModelNames
                       : Array.from(queueSelectedModelIds).map(
-                          (id) => weeklyProgramModels.find((m) => m.id === id)?.name ?? id
+                          (id) =>
+                            weeklyProgramModels.find((m) => m.id === id)?.name ??
+                            modelss.find((m) => m.id === id)?.model_name ??
+                            id
                         )
                     ).map((name, idx) => (
                       <span
