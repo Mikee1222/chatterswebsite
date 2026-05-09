@@ -10,7 +10,8 @@ const nextConfig = {
   outputFileTracingRoot: path.join(__dirname, "."),
   async redirects() {
     return [
-      { source: "/manifest", destination: "/manifest.webmanifest", permanent: false },
+      { source: "/manifest", destination: "/manifest.json", permanent: false },
+      { source: "/manifest.webmanifest", destination: "/manifest.json", permanent: false },
       { source: "/apple-touch-icon.png", destination: "/apple-touch-icon-v2.png", permanent: false },
       { source: "/apple-touch-icon-precomposed.png", destination: "/apple-touch-icon-precomposed-v2.png", permanent: false },
     ];

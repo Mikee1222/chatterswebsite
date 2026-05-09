@@ -1,6 +1,13 @@
 {
   "name": "Gunzo Partner",
   "short_name": "Gunzo Partner",
+  "description": "Gunzo Agency — Εσωτερική πλατφόρμα για chatters, VAs, models και admins.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0f0f1a",
+  "theme_color": "#EC4899",
+  "orientation": "portrait",
   "icons": [
     {
       "src": "/icon-192-v2.png",
@@ -26,10 +33,5 @@
       "type": "image/png",
       "purpose": "maskable"
     }
-  ],
-  "theme_color": "#ec4899",
-  "background_color": "#0f0f1a",
-  "display": "standalone",
-  "start_url": "/",
-  "orientation": "portrait"
+  ]
 }

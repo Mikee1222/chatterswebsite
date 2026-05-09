@@ -7,16 +7,19 @@ export const metadata: Metadata = {
   applicationName: "Gunzo Partner",
   description: "Gunzo Agency — Διαχείριση βαρδιών, models, whales και περιεχομένου.",
   icons: {
-    icon: "/icon-192-v2.png",
-    apple: "/apple-touch-icon-v2.png",
+    icon: [
+      { url: "/icon-192-v2.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512-v2.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/apple-touch-icon-v2.png", sizes: "180x180", type: "image/png" }],
     shortcut: "/icon-192-v2.png",
   },
   appleWebApp: {
+    capable: true,
     title: "Gunzo Partner",
     statusBarStyle: "black-translucent",
-    startupImage: "/apple-touch-icon-v2.png",
   },
-  manifest: "/manifest.webmanifest",
+  manifest: "/manifest.json",
   openGraph: {
     title: "Gunzo Partner",
     description: "Gunzo Agency — Εσωτερική πλατφόρμα διαχείρισης.",
@@ -48,6 +51,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <link rel="apple-touch-icon" href="/apple-touch-icon-v2.png" />
+        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192-v2.png" />
+        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512-v2.png" />
+        <link rel="manifest" href="/manifest.json" />
+      </head>
       <body className="min-h-screen text-[hsl(0,0%,98%)]">
         {children}
         <ToasterProvider />
