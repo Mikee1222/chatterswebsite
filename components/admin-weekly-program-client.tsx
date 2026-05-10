@@ -5,7 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Calendar, CalendarDays, Clock, Copy, Layers, Loader2, Moon, Search, StickyNote, Sun, UserRound } from "lucide-react";
+import { Calendar, CalendarDays, Copy, Layers, Loader2, Moon, Search, StickyNote, Sun, UserRound } from "lucide-react";
 import {
   createProgramAction,
   updateProgramAction,
@@ -17,7 +17,7 @@ import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
-import { CustomSelect, CUSTOM_SELECT_HOUR_12_OPTIONS, type CustomSelectOption } from "@/components/ui/custom-select";
+import { CustomSelect, type CustomSelectOption } from "@/components/ui/custom-select";
 import { adminWeeklyProgramUrl, adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
@@ -35,6 +35,7 @@ import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/l
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
 import type { WeeklyAvailabilityRequest } from "@/types";
+import { WeeklyProgramCustomTimeInput } from "@/components/weekly-program-custom-time-input";
 import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/admin-list-primitives";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -545,88 +546,6 @@ function lastWithLabel(
 function isoTimeToHHmm(iso: string | undefined): string {
   if (!iso || iso.length < 16) return "";
   return iso.slice(11, 16);
-}
-
-function hhmm24To12Parts(hhmm: string): { h12: number; minute: number; pm: boolean } {
-  const [hs, ms] = hhmm.trim().split(":");
-  const h24 = Math.min(23, Math.max(0, parseInt(hs ?? "0", 10) || 0));
-  const minute = Math.min(59, Math.max(0, parseInt(ms ?? "0", 10) || 0));
-  const pm = h24 >= 12;
-  let h12 = h24 % 12;
-  if (h12 === 0) h12 = 12;
-  return { h12, minute, pm };
-}
-
-function hhmm12To24(h12: number, minute: number, pm: boolean): string {
-  const h12Safe = Number.isFinite(h12) ? h12 : 12;
-  const minSafe = Number.isFinite(minute) ? minute : 0;
-  const h = Math.min(12, Math.max(1, Math.round(h12Safe)));
-  const m = Math.min(59, Math.max(0, Math.round(minSafe)));
-  let h24: number;
-  if (pm) h24 = h === 12 ? 12 : h + 12;
-  else h24 = h === 12 ? 0 : h;
-  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${pad(h24)}:${pad(m)}`;
-}
-
-function CustomTime12hBlock({
-  label,
-  required,
-  value,
-  onChange,
-  ariaInvalid,
-}: {
-  label: string;
-  required?: boolean;
-  value: string;
-  onChange: (next: string) => void;
-  ariaInvalid?: boolean;
-}) {
-  const { h12, minute, pm } = hhmm24To12Parts(value || "09:00");
-  const sync = (patch: Partial<{ h12: number; minute: number; pm: boolean }>) => {
-    const next = { h12, minute, pm, ...patch };
-    onChange(hhmm12To24(next.h12, next.minute, next.pm));
-  };
-  return (
-    <FormField label={label} icon={<Clock />} required={required}>
-      <div className="flex flex-wrap items-center gap-2">
-        <CustomSelect portaled
-          value={String(h12)}
-          onChange={(v) => {
-            const n = Number(v);
-            sync({ h12: Number.isFinite(n) ? n : 12 });
-          }}
-          options={CUSTOM_SELECT_HOUR_12_OPTIONS}
-          className="w-[4.5rem] shrink-0"
-          aria-invalid={ariaInvalid}
-        />
-        <span className="text-white/50">:</span>
-        <FormInput
-          type="number"
-          min={0}
-          max={59}
-          step={1}
-          inputMode="numeric"
-          value={minute}
-          onChange={(e) => {
-            const v = parseInt(e.target.value, 10);
-            sync({ minute: Number.isNaN(v) ? 0 : Math.min(59, Math.max(0, v)) });
-          }}
-          className="!min-h-[44px] w-[4.25rem] shrink-0 px-2 py-2 text-center text-[15px] md:!min-h-0"
-          aria-invalid={ariaInvalid}
-        />
-        <button
-          type="button"
-          onClick={() => sync({ pm: !pm })}
-          className="min-h-[44px] min-w-[3.75rem] shrink-0 rounded-2xl border border-white/20 bg-white/[0.08] px-3 text-sm font-semibold text-white transition-colors hover:border-white/30 hover:bg-white/[0.12] md:min-h-[var(--luxury-form-min-height)]"
-          aria-pressed={pm}
-          aria-label={pm ? "Currently PM, switch to AM" : "Currently AM, switch to PM"}
-        >
-          {pm ? "PM" : "AM"}
-        </button>
-      </div>
-    </FormField>
-  );
 }
 
 export function AdminWeeklyProgramClient({
@@ -2553,18 +2472,24 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
           }`}
           aria-hidden={shiftType !== "Custom"}
         >
-          <CustomTime12hBlock
+          <WeeklyProgramCustomTimeInput
             label="Start time"
             required
             value={customStartTime}
-            onChange={(v) => { setCustomStartTime(v); setCustomTimeError(null); }}
+            onChange={(v) => {
+              setCustomStartTime(v);
+              setCustomTimeError(null);
+            }}
             ariaInvalid={!!customTimeError}
           />
-          <CustomTime12hBlock
+          <WeeklyProgramCustomTimeInput
             label="End time"
             required
             value={customEndTime}
-            onChange={(v) => { setCustomEndTime(v); setCustomTimeError(null); }}
+            onChange={(v) => {
+              setCustomEndTime(v);
+              setCustomTimeError(null);
+            }}
             ariaInvalid={!!customTimeError}
           />
         </div>

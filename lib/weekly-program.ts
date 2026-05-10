@@ -102,6 +102,58 @@ export function normalizeHHmm(input: string): string | null {
 }
 
 /**
+ * Whether two same-calendar-day wall-clock ranges overlap, using minutes and overnight extension.
+ * - If `end <= start` for a range, that range is treated as crossing midnight (`end += 24h`).
+ * - If the second range lies entirely before the first’s start on the clock (e.g. 00:00–03:00 vs 20:00–…),
+ *   the second is shifted by +24h so it lines up with an overnight first range.
+ * Same symmetric shift applies when the first range is the “early” one.
+ *
+ * Expected cases (first pair vs second pair):
+ * - `20:00–00:00` vs `00:00–03:00` → false (touching / adjacent)
+ * - `12:00–20:00` vs `20:00–03:00` → false
+ * - `20:00–03:00` vs `03:00–12:00` → false
+ * - `20:00–03:00` vs `22:00–06:00` → true
+ * - `20:00–00:00` vs `22:00–02:00` → true
+ */
+export function hhmmWallClockRangesOverlap(
+  start1: string,
+  end1: string,
+  start2: string,
+  end2: string,
+): boolean {
+  const a = normalizeHHmm(start1.trim());
+  const b = normalizeHHmm(end1.trim());
+  const c = normalizeHHmm(start2.trim());
+  const d = normalizeHHmm(end2.trim());
+  if (!a || !b || !c || !d) return false;
+
+  const toMinutes = (t: string): number => {
+    const [h, m] = t.split(":").map((x) => parseInt(x, 10));
+    const hh = Number.isFinite(h) ? h : 0;
+    const mm = Number.isFinite(m) ? m : 0;
+    return hh * 60 + mm;
+  };
+
+  let s1 = toMinutes(a);
+  let e1 = toMinutes(b);
+  let s2 = toMinutes(c);
+  let e2 = toMinutes(d);
+
+  if (e1 <= s1) e1 += 24 * 60;
+  if (e2 <= s2) e2 += 24 * 60;
+  if (s2 < s1 && e2 < s1) {
+    s2 += 24 * 60;
+    e2 += 24 * 60;
+  }
+  if (s1 < s2 && e1 < s2) {
+    s1 += 24 * 60;
+    e1 += 24 * 60;
+  }
+
+  return s1 < e2 && s2 < e1;
+}
+
+/**
  * Build ISO start_time and end_time for Custom shift.
  * dateYmd = YYYY-MM-DD for the shift day. startHHmm/endHHmm = "HH:mm" (24h).
  * If end_time is earlier than or equal to start_time, end is treated as next day.
