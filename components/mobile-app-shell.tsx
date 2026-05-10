@@ -37,6 +37,7 @@ import {
   AlertCircle,
   Settings2,
   Coins,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -122,6 +123,7 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   AlertCircle,
   Settings2,
   Coins,
+  TrendingUp,
 };
 
 function getMobileTitle(pathname: string): string {
@@ -139,6 +141,7 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.va.models || pathname === ROUTES.admin.models) return "Models";
   if (pathname.startsWith(`${ROUTES.admin.models}/`)) return "Model";
   if (pathname === ROUTES.admin.customRequests) return "Custom requests";
+  if (pathname === ROUTES.admin.marketing || pathname.startsWith(`${ROUTES.admin.marketing}/`)) return "Marketing";
   if (pathname === ROUTES.va.contentAssignments) return "Content assignments";
   if (pathname === ROUTES.va.scheduleOverview) return "Schedule overview";
   if (pathname === "/admin/schedule-overview" || pathname.startsWith("/admin/schedule-overview/")) return "Schedule overview";
@@ -498,12 +501,23 @@ export function MobileAppShell({
 
       <MoreMenuModal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" userRole={role}>
         <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2">
-          {moreItems.map((link) => {
+          {moreItems.map((link, linkIndex) => {
+            const prevLink = linkIndex > 0 ? moreItems[linkIndex - 1] : null;
+            const showSection =
+              link.navSection && (!prevLink || prevLink.navSection !== link.navSection);
             const Icon = ICON_MAP[link.iconKey] ?? Users;
             const active = !link.disabled && navActive(link.href);
             if (link.disabled) {
               return (
                 <li key={link.href}>
+                  {showSection ? (
+                    <div
+                      className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-white/40"
+                      role="presentation"
+                    >
+                      {link.navSection}
+                    </div>
+                  ) : null}
                   <div
                     className={cn(MORE_MENU_ROW_CLASS, "cursor-not-allowed text-white/40")}
                     aria-disabled="true"
@@ -525,6 +539,14 @@ export function MobileAppShell({
             }
             return (
               <li key={link.href}>
+                {showSection ? (
+                  <div
+                    className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wider text-white/40"
+                    role="presentation"
+                  >
+                    {link.navSection}
+                  </div>
+                ) : null}
                 <Link
                   href={link.href}
                   prefetch

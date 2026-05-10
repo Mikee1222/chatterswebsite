@@ -70,7 +70,8 @@ export type NavIconKey =
   | "AlertTriangle"
   | "AlertCircle"
   | "Settings2"
-  | "Coins";
+  | "Coins"
+  | "TrendingUp";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -94,6 +95,11 @@ export type NavItem = {
   adminOnly?: boolean;
   /** When true, item never fills a mobile bottom-bar slot (stays in the More sheet only). */
   excludeFromMobileMainTabs?: boolean;
+  /**
+   * When set, a non-interactive section label is rendered above this item (admin sidebar + mobile More list).
+   * Omitted on all other items; change the string to start a new group.
+   */
+  navSection?: string;
   /**
    * Chatter mobile bottom bar: center tab uses FAB-style pink gradient + custom icon (see `MobileAppShell`).
    * `iconKey` is still used for sidebar / More menu.
@@ -160,6 +166,12 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.modelCustoms, label: "Model customs", iconKey: "Package" },
   { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
   { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
+  {
+    href: ROUTES.admin.marketing,
+    label: "Marketing",
+    iconKey: "TrendingUp",
+    navSection: "MARKETING",
+  },
   { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
   { href: ROUTES.admin.rebillsTips, label: "Rebills & Tips", iconKey: "Receipt" },
   { href: ROUTES.admin.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins" },

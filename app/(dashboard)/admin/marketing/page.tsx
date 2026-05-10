@@ -1,0 +1,38 @@
+import { redirect } from "next/navigation";
+import { getSessionFromCookies } from "@/lib/auth";
+import { ROUTES } from "@/lib/routes";
+import { getAllAccounts, getAllFunnels, getAllPlatforms } from "@/services/marketing";
+import { listAllModelss } from "@/services/modelss";
+import { listAllUsers } from "@/services/users";
+import { AdminMarketingClient } from "@/components/admin-marketing-client";
+
+export default async function AdminMarketingPage() {
+  const session = await getSessionFromCookies();
+  if (!session || (session.role !== "admin" && session.role !== "manager")) {
+    redirect(ROUTES.admin.home);
+  }
+
+  const [platforms, accounts, funnels, models, allUsers] = await Promise.all([
+    getAllPlatforms().catch(() => []),
+    getAllAccounts().catch(() => []),
+    getAllFunnels().catch(() => []),
+    listAllModelss().catch(() => []),
+    listAllUsers().catch(() => []),
+  ]);
+
+  const vaUsers = allUsers.filter(
+    (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
+  );
+
+  return (
+    <div className="w-full max-w-full px-4 py-6 md:px-6">
+      <AdminMarketingClient
+        platforms={platforms}
+        accounts={accounts}
+        funnels={funnels}
+        models={models}
+        vaUsers={vaUsers}
+      />
+    </div>
+  );
+}

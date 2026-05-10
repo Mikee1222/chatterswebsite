@@ -33,6 +33,7 @@ import {
   AlertCircle,
   Settings2,
   Coins,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -79,6 +80,7 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   AlertCircle,
   Settings2,
   Coins,
+  TrendingUp,
 };
 
 const BETA_BADGE_CLASS =
@@ -170,7 +172,10 @@ export function Sidebar({
           </Link>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          {items.map((item) => {
+          {items.map((item, index) => {
+            const prev = index > 0 ? items[index - 1] : null;
+            const showSection =
+              item.navSection && (!prev || prev.navSection !== item.navSection);
             const Icon = ICON_MAP[item.iconKey];
             const isActive = !item.disabled && navItemIsActive(pathname, item, items);
             const rowClass = cn(
@@ -189,31 +194,47 @@ export function Sidebar({
                   ? "text-pink-200 drop-shadow-[0_0_10px_rgba(236,72,153,0.35)]"
                   : "text-white/45 group-hover:text-pink-200/85"
             );
+            const sectionEl = showSection ? (
+              <div
+                key={`nav-section-${item.href}-${item.navSection}`}
+                className="px-3.5 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-wider text-white/40 first:pt-0"
+                role="presentation"
+              >
+                {item.navSection}
+              </div>
+            ) : null;
+
             if (item.disabled) {
               return (
-                <div key={item.href} className={rowClass} aria-disabled="true" title={item.badge}>
-                  <Icon className={iconClass} aria-hidden />
-                  <span className="relative z-10 min-w-0 flex-1 truncate leading-snug">
-                    {item.label}
-                    {item.badge ? <NavComingSoonBadge text={item.badge} /> : null}
-                  </span>
-                </div>
+                <React.Fragment key={item.href}>
+                  {sectionEl}
+                  <div className={rowClass} aria-disabled="true" title={item.badge}>
+                    <Icon className={iconClass} aria-hidden />
+                    <span className="relative z-10 min-w-0 flex-1 truncate leading-snug">
+                      {item.label}
+                      {item.badge ? <NavComingSoonBadge text={item.badge} /> : null}
+                    </span>
+                  </div>
+                </React.Fragment>
               );
             }
             return (
-              <Link key={item.href} href={item.href} prefetch className={rowClass}>
-                <Icon className={iconClass} aria-hidden />
-                <span className="relative z-10 min-w-0 flex-1 truncate leading-snug">
-                  {item.label}
-                  {item.beta ? <NavBetaBadge /> : null}
-                  {item.badge && !item.disabled ? <NavComingSoonBadge text={item.badge} /> : null}
-                  {(navBadgeCounts?.[item.href] ?? 0) > 0 ? (
-                    <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full border border-amber-500/45 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-100">
-                      {(navBadgeCounts?.[item.href] ?? 0) > 99 ? "99+" : navBadgeCounts?.[item.href]}
-                    </span>
-                  ) : null}
-                </span>
-              </Link>
+              <React.Fragment key={item.href}>
+                {sectionEl}
+                <Link href={item.href} prefetch className={rowClass}>
+                  <Icon className={iconClass} aria-hidden />
+                  <span className="relative z-10 min-w-0 flex-1 truncate leading-snug">
+                    {item.label}
+                    {item.beta ? <NavBetaBadge /> : null}
+                    {item.badge && !item.disabled ? <NavComingSoonBadge text={item.badge} /> : null}
+                    {(navBadgeCounts?.[item.href] ?? 0) > 0 ? (
+                      <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-full border border-amber-500/45 bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-amber-100">
+                        {(navBadgeCounts?.[item.href] ?? 0) > 99 ? "99+" : navBadgeCounts?.[item.href]}
+                      </span>
+                    ) : null}
+                  </span>
+                </Link>
+              </React.Fragment>
             );
           })}
         </nav>
