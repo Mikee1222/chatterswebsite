@@ -11,6 +11,7 @@ import {
   runVaRecurringTaskSpawner,
   runStuckCustomRequestAlerts,
   runPersonalEventReminders,
+  runPhaseOverdueCheck,
 } from "@/services/cron-notification-jobs";
 
 /**
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
       stuckCustomRequestAlerts,
       personalEventReminders,
       modelLiveScheduledReminders,
+      phaseOverdueCheck,
     ] = await Promise.all([
       runCheckLateShifts(),
       runSundayAvailabilityReminders(),
@@ -65,6 +67,7 @@ export async function GET(request: Request) {
       runStuckCustomRequestAlerts(),
       runPersonalEventReminders(),
       runModelLiveScheduledReminders(),
+      runPhaseOverdueCheck(),
     ]);
     return NextResponse.json({
       ...lateShifts,
@@ -78,6 +81,7 @@ export async function GET(request: Request) {
       stuck_custom_request_alerts: stuckCustomRequestAlerts,
       personal_event_reminders: personalEventReminders,
       model_live_scheduled_reminders: modelLiveScheduledReminders,
+      phase_overdue_check: phaseOverdueCheck,
     });
   } catch (err) {
     console.error("[cron/check-late-shifts]", err);

@@ -1,13 +1,22 @@
 "use client";
 
 import * as React from "react";
-import { Bell, ClipboardList, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
+import { Bell, Check, ClipboardList, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
-import type { AppNotification, VaTaskRecord, VaTaskStatus, VaTaskPriority, VaRecurrenceType, VaRecurrenceDay } from "@/types";
+import type {
+  AppNotification,
+  ModelRecord,
+  VaTaskRecord,
+  VaTaskStatus,
+  VaTaskPriority,
+  VaRecurrenceType,
+  VaRecurrenceDay,
+} from "@/types";
+import type { TaskPhase } from "@/services/task-phases";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 
@@ -49,6 +58,7 @@ type VaUserOption = { id: string; full_name: string; email: string };
 type Props = {
   tasks: VaTaskRecord[];
   vaUsers: VaUserOption[];
+  modelss: ModelRecord[];
 };
 
 function toLocalYmd(isoLike: string | null): string {
@@ -145,13 +155,18 @@ function emptyForm() {
   };
 }
 
-export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
+export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const [localTasks, setLocalTasks] = React.useState(tasks);
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
   const [reminding, setReminding] = React.useState<string | null>(null);
+  const [remindSuccessTaskId, setRemindSuccessTaskId] = React.useState<string | null>(null);
+
+  const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
+  const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
+  const [loadingPhases, setLoadingPhases] = React.useState<string | null>(null);
 
   React.useEffect(() => setLocalTasks(tasks), [tasks]);
 
@@ -313,11 +328,140 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
           "normal"
         )
       );
+      setRemindSuccessTaskId(task.id);
+      window.setTimeout(() => setRemindSuccessTaskId((id) => (id === task.id ? null : id)), 2000);
     } catch {
       addToast(localToast(`vat-rm-${Date.now()}`, "Remind failed", "Network error.", "high"));
     } finally {
       setReminding(null);
     }
+  }
+
+  async function loadPhases(taskId: string) {
+    if (taskPhases[taskId]) return;
+    setLoadingPhases(taskId);
+    try {
+      const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+      setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
+    } finally {
+      setLoadingPhases(null);
+    }
+  }
+
+  async function handleAddPhase(taskId: string, taskTitle: string) {
+    const phases = taskPhases[taskId] ?? [];
+    const res = await fetch("/api/admin/task-phases", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        task_id: taskId,
+        task_title: taskTitle,
+        phase_number: phases.length + 1,
+        title: `Phase ${phases.length + 1}`,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { phase?: TaskPhase };
+    const newPhase = data.phase;
+    if (newPhase) {
+      setTaskPhases((prev) => ({ ...prev, [taskId]: [...(prev[taskId] ?? []), newPhase] }));
+    }
+  }
+
+  function patchPhasePayload(updates: Partial<TaskPhase>): Partial<TaskPhase> {
+    const out = { ...updates };
+    if ("scheduled_time" in out) {
+      const raw = out.scheduled_time;
+      if (raw === null || raw === "") {
+        out.scheduled_time = null;
+      } else if (typeof raw === "string") {
+        const iso = fromDatetimeLocal(raw);
+        out.scheduled_time = iso ?? raw;
+      }
+    }
+    return out;
+  }
+
+  async function handleUpdatePhase(phaseId: string, taskId: string, updates: Partial<TaskPhase>) {
+    const payload = patchPhasePayload(updates);
+    setTaskPhases((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, ...payload } : p)),
+    }));
+    await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function handleDeletePhase(phaseId: string, taskId: string) {
+    if (!confirm("Delete this phase?")) return;
+    await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, { method: "DELETE", credentials: "include" });
+    setTaskPhases((prev) => ({ ...prev, [taskId]: (prev[taskId] ?? []).filter((p) => p.id !== phaseId) }));
+  }
+
+  async function handleAddPhaseItem(phaseId: string, taskId: string) {
+    const phase = (taskPhases[taskId] ?? []).find((p) => p.id === phaseId);
+    const itemCount = phase?.items?.length ?? 0;
+    const res = await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}/items`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        task_id: taskId,
+        title: "",
+        requires_screenshot: false,
+        sort_order: itemCount,
+      }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { item?: TaskPhase["items"][number] };
+    const newItem = data.item;
+    if (newItem) {
+      setTaskPhases((prev) => ({
+        ...prev,
+        [taskId]: (prev[taskId] ?? []).map((p) =>
+          p.id === phaseId ? { ...p, items: [...(p.items ?? []), newItem] } : p,
+        ),
+      }));
+    }
+  }
+
+  async function handleUpdatePhaseItem(
+    itemId: string,
+    phaseId: string,
+    taskId: string,
+    updates: Partial<TaskPhase["items"][number]>,
+  ) {
+    setTaskPhases((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).map((p) =>
+        p.id === phaseId
+          ? { ...p, items: (p.items ?? []).map((i) => (i.id === itemId ? { ...i, ...updates } : i)) }
+          : p,
+      ),
+    }));
+    await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify(updates),
+    });
+  }
+
+  async function handleDeletePhaseItem(itemId: string, phaseId: string, taskId: string) {
+    await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    setTaskPhases((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).map((p) =>
+        p.id === phaseId ? { ...p, items: (p.items ?? []).filter((i) => i.id !== itemId) } : p,
+      ),
+    }));
   }
 
   const assignedLabel = (t: VaTaskRecord) => {
@@ -483,7 +627,7 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
                         className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-40"
                       >
                         <Bell className="h-3.5 w-3.5" aria-hidden />
-                        {reminding === task.id ? "Sending…" : "Remind"}
+                        {reminding === task.id ? "Sending…" : remindSuccessTaskId === task.id ? "Sent ✓" : "Remind"}
                       </button>
                     ) : null}
                     <button
@@ -521,6 +665,280 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
                   <span>{assignedLabel(task)}</span>
                   {task.reminder_minutes_before != null ? (
                     <span>{formatReminderLabel(task.reminder_minutes_before)}</span>
+                  ) : null}
+                </div>
+
+                <div className="mt-3 border-t border-white/[0.08] pt-3">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (expandedTaskId === task.id) {
+                        setExpandedTaskId(null);
+                        return;
+                      }
+                      setExpandedTaskId(task.id);
+                      await loadPhases(task.id);
+                    }}
+                    className="flex items-center gap-2 text-xs text-white/30 transition-colors hover:text-white/60"
+                  >
+                    <span aria-hidden>{expandedTaskId === task.id ? "▼" : "▶"}</span>
+                    Phases{" "}
+                    {taskPhases[task.id]?.length ? `(${taskPhases[task.id].length})` : ""}
+                    {loadingPhases === task.id ? <span className="animate-pulse">loading…</span> : null}
+                  </button>
+
+                  {expandedTaskId === task.id ? (
+                    <div className="mt-4">
+                      {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => (
+                        <div
+                          key={phase.id}
+                          className={cn(
+                            "mb-4 overflow-hidden rounded-2xl border",
+                            phase.status === "completed"
+                              ? "border-emerald-500/25 bg-emerald-500/[0.03]"
+                              : phase.status === "overdue"
+                                ? "border-red-500/25 bg-red-500/[0.03]"
+                                : phase.status === "in_progress"
+                                  ? "border-sky-500/25 bg-sky-500/[0.03]"
+                                  : "border-white/10 bg-white/[0.01]",
+                          )}
+                        >
+                          <div className="flex items-center gap-3 border-b border-white/[0.08] px-4 py-3">
+                            <div
+                              className={cn(
+                                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold",
+                                phase.status === "completed"
+                                  ? "bg-emerald-500 text-white"
+                                  : phase.status === "overdue"
+                                    ? "bg-red-500 text-white"
+                                    : phase.status === "in_progress"
+                                      ? "bg-sky-500 text-white"
+                                      : "bg-white/10 text-white/50",
+                              )}
+                            >
+                              {phaseIndex + 1}
+                            </div>
+                            <input
+                              value={phase.title}
+                              onChange={(e) =>
+                                setTaskPhases((prev) => ({
+                                  ...prev,
+                                  [task.id]: (prev[task.id] ?? []).map((p) =>
+                                    p.id === phase.id ? { ...p, title: e.target.value } : p,
+                                  ),
+                                }))
+                              }
+                              onBlur={(e) =>
+                                void handleUpdatePhase(phase.id, task.id, { title: e.currentTarget.value })
+                              }
+                              placeholder={`Phase ${phaseIndex + 1}`}
+                              className="flex-1 border-b border-transparent bg-transparent pb-0.5 text-sm font-semibold text-white focus:border-white/20 focus:outline-none"
+                            />
+                            <span
+                              className={cn(
+                                "shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold capitalize",
+                                phase.status === "completed"
+                                  ? "border-emerald-500/25 bg-emerald-500/15 text-emerald-400"
+                                  : phase.status === "overdue"
+                                    ? "border-red-500/25 bg-red-500/15 text-red-400"
+                                    : phase.status === "in_progress"
+                                      ? "border-sky-500/25 bg-sky-500/15 text-sky-400"
+                                      : "border-white/15 bg-white/8 text-white/40",
+                              )}
+                            >
+                              {phase.status.replace(/_/g, " ")}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void handleDeletePhase(phase.id, task.id)}
+                              className="shrink-0 rounded-lg p-1 text-white/20 hover:bg-red-500/10 hover:text-red-400"
+                              aria-label="Delete phase"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-3 border-b border-white/[0.05] px-4 py-3 md:grid-cols-4">
+                            <div>
+                              <label className="mb-1 block text-xs text-white/25">Scheduled at</label>
+                              <input
+                                type="datetime-local"
+                                value={phase.scheduled_time ? toDatetimeLocalValue(phase.scheduled_time) : ""}
+                                onChange={(e) =>
+                                  setTaskPhases((prev) => ({
+                                    ...prev,
+                                    [task.id]: (prev[task.id] ?? []).map((p) =>
+                                      p.id === phase.id ? { ...p, scheduled_time: e.target.value || null } : p,
+                                    ),
+                                  }))
+                                }
+                                onBlur={(e) => {
+                                  const v = e.currentTarget.value.trim();
+                                  void handleUpdatePhase(phase.id, task.id, {
+                                    scheduled_time: v ? (fromDatetimeLocal(v) ?? v) : null,
+                                  });
+                                }}
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white [color-scheme:dark]"
+                              />
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-white/25">VA</label>
+                              <select
+                                value={phase.assigned_va_id ?? ""}
+                                onChange={(e) => {
+                                  const id = e.target.value;
+                                  const va = vaUsers.find((v) => v.id === id);
+                                  const name = (va?.full_name || va?.email || "").trim();
+                                  void handleUpdatePhase(phase.id, task.id, {
+                                    assigned_va_id: id,
+                                    assigned_va_name: name,
+                                  });
+                                }}
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white"
+                              >
+                                <option value="">Any VA</option>
+                                {vaUsers.map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {(v.full_name || v.email).trim() || v.id}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-white/25">Creator</label>
+                              <select
+                                value={phase.assigned_model_id ?? ""}
+                                onChange={(e) => {
+                                  const id = e.target.value;
+                                  const m = modelss.find((x) => x.id === id);
+                                  void handleUpdatePhase(phase.id, task.id, {
+                                    assigned_model_id: id,
+                                    assigned_model_name: m?.model_name ?? "",
+                                  });
+                                }}
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white"
+                              >
+                                <option value="">No creator</option>
+                                {modelss.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.model_name || m.model_id}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="mb-1 block text-xs text-white/25">Region</label>
+                              <select
+                                value={phase.region ?? "Global"}
+                                onChange={(e) =>
+                                  void handleUpdatePhase(phase.id, task.id, {
+                                    region: e.target.value as TaskPhase["region"],
+                                  })
+                                }
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white"
+                              >
+                                <option value="Greek">Greek</option>
+                                <option value="USA">USA</option>
+                                <option value="Global">Global</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div className="px-4 py-3">
+                            <div className="mb-3 space-y-2">
+                              {(phase.items ?? []).map((item) => (
+                                <div key={item.id} className="group flex items-center gap-3">
+                                  <div
+                                    className={cn(
+                                      "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2",
+                                      item.status === "completed"
+                                        ? "border-emerald-500 bg-emerald-500"
+                                        : "border-white/20 bg-white/5",
+                                    )}
+                                  >
+                                    {item.status === "completed" ? <Check className="h-3 w-3 text-white" /> : null}
+                                  </div>
+                                  <input
+                                    value={item.title}
+                                    onChange={(e) =>
+                                      setTaskPhases((prev) => ({
+                                        ...prev,
+                                        [task.id]: (prev[task.id] ?? []).map((p) =>
+                                          p.id === phase.id
+                                            ? {
+                                                ...p,
+                                                items: (p.items ?? []).map((i) =>
+                                                  i.id === item.id ? { ...i, title: e.target.value } : i,
+                                                ),
+                                              }
+                                            : p,
+                                        ),
+                                      }))
+                                    }
+                                    onBlur={(e) =>
+                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, {
+                                        title: e.currentTarget.value,
+                                      })
+                                    }
+                                    placeholder="Task item…"
+                                    className={cn(
+                                      "flex-1 border-b border-transparent bg-transparent text-sm focus:border-white/20 focus:outline-none",
+                                      item.status === "completed" ? "text-white/30 line-through" : "text-white",
+                                    )}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, {
+                                        requires_screenshot: !item.requires_screenshot,
+                                      })
+                                    }
+                                    className={cn(
+                                      "relative h-4 w-8 shrink-0 rounded-full transition-all",
+                                      item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
+                                    )}
+                                    aria-label="Toggle screenshot required"
+                                  >
+                                    <span
+                                      className={cn(
+                                        "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
+                                        item.requires_screenshot ? "left-4" : "left-0.5",
+                                      )}
+                                    />
+                                  </button>
+                                  <span className="shrink-0 text-xs text-white/25" aria-hidden>
+                                    📸
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}
+                                    className="rounded p-1 text-white/15 opacity-0 hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                                    aria-label="Remove item"
+                                  >
+                                    <X className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleAddPhaseItem(phase.id, task.id)}
+                              className="flex items-center gap-1.5 text-xs text-white/25 transition-colors hover:text-white/50"
+                            >
+                              <Plus className="h-3.5 w-3.5" /> Add item
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+
+                      <button
+                        type="button"
+                        onClick={() => void handleAddPhase(task.id, task.title)}
+                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 px-4 py-2 text-xs text-white/30 transition-all hover:border-pink-500/40 hover:text-pink-400"
+                      >
+                        <Plus className="h-3.5 w-3.5" /> Add phase
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               </div>
