@@ -33,6 +33,9 @@ import {
   CalendarClock,
   MessageSquarePlus,
   ImageOff,
+  AlertTriangle,
+  AlertCircle,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -114,6 +117,9 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   CalendarClock,
   MessageSquarePlus,
   ImageOff,
+  AlertTriangle,
+  AlertCircle,
+  Settings2,
 };
 
 function getMobileTitle(pathname: string): string {
@@ -150,6 +156,10 @@ function getMobileTitle(pathname: string): string {
   if (pathname === ROUTES.chatter.rewards) return "Rewards";
   if (pathname === ROUTES.chatter.spinWheel) return "Spin wheel";
   if (pathname === ROUTES.chatter.challenges) return "Challenges";
+  if (pathname === ROUTES.chatter.mistakes) return "My mistakes";
+  if (pathname === ROUTES.va.mistakes) return "Mistakes";
+  if (pathname === ROUTES.admin.mistakes) return "Mistakes";
+  if (pathname === ROUTES.admin.mistakeReasons) return "Mistake reasons";
   if (pathname === ROUTES.admin.challenges) return "Challenges";
   if (pathname === ROUTES.admin.spinResults) return "Spin results";
   if (pathname === ROUTES.admin.testNotifications) return "Test notifications";

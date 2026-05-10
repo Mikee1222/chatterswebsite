@@ -140,3 +140,33 @@ export function toHHmm(value: string): string {
   }
   return t.slice(0, 5);
 }
+
+/** `YYYY-MM-DDTHH:mm` for `<input type="datetime-local">` — Athens wall using fixed UTC+3 (see {@link getNowInAthens}). */
+export function getNowDatetimeLocalAthens(): string {
+  const a = getNowInAthens();
+  const y = a.getUTCFullYear();
+  const mo = String(a.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(a.getUTCDate()).padStart(2, "0");
+  const h = String(a.getUTCHours()).padStart(2, "0");
+  const mi = String(a.getUTCMinutes()).padStart(2, "0");
+  return `${y}-${mo}-${day}T${h}:${mi}`;
+}
+
+/**
+ * Interpret naive `YYYY-MM-DDTHH:mm` as Athens wall time (fixed UTC+3) → UTC ISO for Airtable/API.
+ */
+export function athensDatetimeLocalToISO(local: string): string {
+  const s = local.trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2}))?/.exec(s);
+  if (!m) {
+    const d = new Date(s);
+    return Number.isFinite(d.getTime()) ? d.toISOString() : new Date().toISOString();
+  }
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  const h = Number(m[4]);
+  const min = Number(m[5]);
+  const utcMs = Date.UTC(y, mo - 1, d, h, min, 0, 0) - ATHENS_OFFSET_MS;
+  return new Date(utcMs).toISOString();
+}

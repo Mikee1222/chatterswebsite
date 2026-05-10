@@ -66,7 +66,10 @@ export type NavIconKey =
   | "CalendarDays"
   | "CalendarClock"
   | "MessageSquarePlus"
-  | "ImageOff";
+  | "ImageOff"
+  | "AlertTriangle"
+  | "AlertCircle"
+  | "Settings2";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -120,6 +123,7 @@ const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
+  { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings", excludeFromMobileMainTabs: true },
 ];
 
@@ -129,6 +133,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays" },
   { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
+  { href: ROUTES.va.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
   { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
@@ -157,9 +162,11 @@ const adminNav: NavItem[] = [
   // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
   { href: ROUTES.admin.vaTasks, label: "VA tasks", iconKey: "ListTodo" },
   { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
+  { href: ROUTES.admin.mistakeReasons, label: "Mistake reasons", iconKey: "Settings2", adminOnly: true },
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
   { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
+  { href: ROUTES.admin.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
   { href: ROUTES.admin.feedback, label: "Feedback", iconKey: "MessageSquarePlus" },
   { href: ROUTES.activityLogs, label: "Activity logs", iconKey: "Activity" },
   {

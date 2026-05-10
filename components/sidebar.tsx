@@ -29,6 +29,9 @@ import {
   CalendarClock,
   MessageSquarePlus,
   ImageOff,
+  AlertTriangle,
+  AlertCircle,
+  Settings2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -71,6 +74,9 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   CalendarClock,
   MessageSquarePlus,
   ImageOff,
+  AlertTriangle,
+  AlertCircle,
+  Settings2,
 };
 
 const BETA_BADGE_CLASS =

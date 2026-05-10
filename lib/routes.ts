@@ -9,9 +9,9 @@ import { getThisWeekMonday } from "@/lib/weekly-program";
  *
  *   Auth:        /login, /dashboard
  *   Chatter:     /home, /shift, /weekly-program, /weekly-availability, /request-custom,
- *                /my-whales, /my-whales/new, /log-transaction, /rewards, /spin-wheel, /challenges, /admin/spin-results
- *   VA:          /va-home, /va-tasks, /va/schedule-overview, /va/content-assignments, /va/custom-requests, /va/blur-tool, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
- *   Admin:       /admin, /admin/va-tasks, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models,
+ *                /my-whales, /my-whales/new, /log-transaction, /rewards, /spin-wheel, /challenges, /mistakes, /admin/spin-results
+ *   VA:          /va-home, /va-tasks, /va/schedule-overview, /va/content-assignments, /va/custom-requests, /va/mistakes, /va/blur-tool, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
+ *   Admin:       /admin, /admin/va-tasks, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models, /admin/mistakes, /admin/mistake-reasons,
  *                /admin/shift-activity, /admin/earnings, /admin/earnings-config, /admin/rewards, /admin/challenges, /admin/spin-results, /admin/whales, /admin/whales/[id], /admin/customs, /admin/custom-requests, /admin/accounts, /admin/accounts/[id], /admin/rewards-config,
  *                /admin/model-schedules/overview, /admin/va-content-assignments, /admin/rebills-tips, /admin/test-notifications, /admin/notification-diagnostic
  *   Accounts:    /accounts, /accounts/new, /accounts/[id]/edit, /accounts/[id]/reset-password,
@@ -38,6 +38,7 @@ export const ROUTES = {
     rewards: "/rewards",
     spinWheel: "/spin-wheel",
     challenges: "/challenges",
+    mistakes: "/mistakes",
   },
 
   /** Virtual assistant (role: virtual_assistant) */
@@ -57,6 +58,7 @@ export const ROUTES = {
     weeklyAvailability: "/va-weekly-availability",
     liveShifts: "/live-shifts",
     models: "/models",
+    mistakes: "/va/mistakes",
   },
 
   /** Admin / manager (role: admin | manager) */
@@ -95,6 +97,8 @@ export const ROUTES = {
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",
+    mistakes: "/admin/mistakes",
+    mistakeReasons: "/admin/mistake-reasons",
     feedback: "/admin/feedback",
     spinResults: "/admin/spin-results",
     /** Admin-only notification lab (`ENABLE_NOTIFICATION_TESTING` in production). */

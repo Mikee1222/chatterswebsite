@@ -124,6 +124,7 @@ export const NOTIFICATION_ENTITY = {
   CUSTOM_REQUEST: "custom_request",
   PERIOD: "model_period",
   ACCOUNT: "account",
+  CHATTER_MISTAKE: "chatter_mistake",
 } as const;
 
 /** Priorities. */
