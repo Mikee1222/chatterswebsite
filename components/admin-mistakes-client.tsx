@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Copy, Search, X } from "lucide-react";
+import { Check, Copy, Search, X } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
 import { formatDateTimeAthens } from "@/lib/format";
@@ -49,6 +49,39 @@ function statusBadgeClass(st: string): string {
   return "bg-amber-500/15 border-amber-500/25 text-amber-400";
 }
 
+/** Convert any image blob to PNG for `ClipboardItem` (expects `image/png`). */
+async function convertToPng(blob: Blob): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth;
+      canvas.height = img.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        URL.revokeObjectURL(url);
+        reject(new Error("no canvas context"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(
+        (pngBlob) => {
+          URL.revokeObjectURL(url);
+          if (pngBlob) resolve(pngBlob);
+          else reject(new Error("canvas toBlob failed"));
+        },
+        "image/png"
+      );
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("img load failed"));
+    };
+    img.src = url;
+  });
+}
+
 type Props = {
   initialMistakes: MistakeRecord[];
   reasons: MistakeReasonRecord[];
@@ -69,6 +102,7 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
   const [toDate, setToDate] = React.useState("");
   const [adminNotes, setAdminNotes] = React.useState("");
   const [saving, setSaving] = React.useState(false);
+  const [copySuccess, setCopySuccess] = React.useState<string | null>(null);
 
   const reasonPointsByReasonId = React.useMemo(() => {
     const m = new Map<string, number>();
@@ -134,10 +168,44 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
     ]
       .filter(Boolean)
       .join("\n");
+
+    const imageUrl = m.screenshot?.[0]?.url;
+
+    try {
+      const ClipboardItemCtor = typeof ClipboardItem !== "undefined" ? ClipboardItem : undefined;
+      if (imageUrl && navigator.clipboard?.write && ClipboardItemCtor) {
+        const imgResponse = await fetch(imageUrl);
+        if (!imgResponse.ok) throw new Error(`image fetch ${imgResponse.status}`);
+        const imgBlob = await imgResponse.blob();
+
+        let pngBlob = imgBlob;
+        if (imgBlob.type !== "image/png") {
+          pngBlob = await convertToPng(imgBlob);
+        }
+
+        await navigator.clipboard.write([
+          new ClipboardItemCtor({
+            "text/plain": new Blob([text], { type: "text/plain" }),
+            "image/png": pngBlob,
+          }),
+        ]);
+
+        setCopySuccess(m.id);
+        window.setTimeout(() => setCopySuccess(null), 2000);
+        addToast(localToast("mist-copy", "Copied", "Copied text and screenshot to clipboard.", "normal"));
+        return;
+      }
+    } catch (err) {
+      console.warn("[easy-copy] image copy failed, falling back to text only:", err);
+    }
+
     try {
       await navigator.clipboard.writeText(text);
-      addToast(localToast("mist-copy", "Copied", "Copied to clipboard!", "normal"));
-    } catch {
+      setCopySuccess(m.id);
+      window.setTimeout(() => setCopySuccess(null), 2000);
+      addToast(localToast("mist-copy", "Copied", "Copied to clipboard (text only).", "normal"));
+    } catch (err) {
+      console.error("[easy-copy] clipboard write failed:", err);
       addToast(localToast("mist-copy-fail", "Copy failed", "Clipboard unavailable.", "high"));
     }
   }
@@ -369,9 +437,21 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
             <button
               type="button"
               onClick={() => void handleEasyCopy(selected)}
-              className="mb-3 flex w-full items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 py-2 text-sm text-white/60 transition-all hover:bg-white/10"
+              className={`mb-3 flex w-full items-center justify-center gap-2 rounded-xl border py-2.5 text-sm font-medium transition-all ${
+                copySuccess === selected.id
+                  ? "border-green-500/30 bg-green-500/20 text-green-400"
+                  : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+              }`}
             >
-              <Copy className="h-4 w-4" /> Easy copy
+              {copySuccess === selected.id ? (
+                <>
+                  <Check className="h-4 w-4" /> Copied!
+                </>
+              ) : (
+                <>
+                  <Copy className="h-4 w-4" /> Easy copy (text + image)
+                </>
+              )}
             </button>
 
             <textarea
