@@ -14,6 +14,8 @@ export interface TaskPhase {
   title: string;
   description: string;
   scheduled_time: string | null;
+  start_time: string | null;
+  end_time: string | null;
   status: "pending" | "in_progress" | "completed" | "overdue";
   assigned_va_id: string;
   assigned_va_name: string;
@@ -51,6 +53,8 @@ type PhaseFields = {
   title?: string;
   description?: string;
   scheduled_time?: string | null;
+  start_time?: string | null;
+  end_time?: string | null;
   status?: string;
   assigned_va_id?: string;
   assigned_va_name?: string;
@@ -114,6 +118,8 @@ function mapPhase(rec: AirtableRecord<PhaseFields>, items: PhaseItem[] = []): Ta
     title: (f.title as string) ?? "",
     description: (f.description as string) ?? "",
     scheduled_time: (f.scheduled_time as string | null) ?? null,
+    start_time: (f.start_time as string | null) ?? null,
+    end_time: (f.end_time as string | null) ?? null,
     status: asPhaseStatus(f.status),
     assigned_va_id: (f.assigned_va_id as string) ?? "",
     assigned_va_name: (f.assigned_va_name as string) ?? "",
@@ -196,6 +202,8 @@ export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> 
     title: data.title ?? `Phase ${data.phase_number ?? 1}`,
     description: data.description ?? "",
     scheduled_time: data.scheduled_time ?? null,
+    start_time: data.start_time ?? null,
+    end_time: data.end_time ?? null,
     status: "pending",
     assigned_va_id: data.assigned_va_id ?? "",
     assigned_va_name: data.assigned_va_name ?? "",
@@ -212,6 +220,8 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   if (data.title !== undefined) patch.title = data.title;
   if (data.description !== undefined) patch.description = data.description;
   if (data.scheduled_time !== undefined) patch.scheduled_time = data.scheduled_time;
+  if (data.start_time !== undefined) patch.start_time = data.start_time;
+  if (data.end_time !== undefined) patch.end_time = data.end_time;
   if (data.status !== undefined) patch.status = data.status;
   if (data.assigned_va_id !== undefined) patch.assigned_va_id = data.assigned_va_id;
   if (data.assigned_va_name !== undefined) patch.assigned_va_name = data.assigned_va_name;

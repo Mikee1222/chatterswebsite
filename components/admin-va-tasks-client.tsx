@@ -362,15 +362,20 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
   function normalizePhasePatch(updates: Partial<TaskPhase>): Partial<TaskPhase> {
     const out = { ...updates };
-    if (out.scheduled_time !== undefined) {
-      const s = out.scheduled_time;
+    const normalizeDt = (key: "scheduled_time" | "start_time" | "end_time") => {
+      const s = out[key];
+      if (s === undefined) return;
       if (s == null || (typeof s === "string" && s.trim() === "")) {
-        out.scheduled_time = null;
+        out[key] = null;
       } else if (typeof s === "string") {
-        const iso = fromDatetimeLocal(s.length > 16 ? s.slice(0, 16) : s);
-        out.scheduled_time = iso ?? null;
+        const raw = s.length > 16 ? s.slice(0, 16) : s;
+        const iso = fromDatetimeLocal(raw);
+        out[key] = iso ?? null;
       }
-    }
+    };
+    normalizeDt("scheduled_time");
+    normalizeDt("start_time");
+    normalizeDt("end_time");
     return out;
   }
 
@@ -789,23 +794,70 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                               </button>
                             </div>
 
+                            {(phase.start_time || phase.end_time) && (
+                              <div className="flex flex-wrap items-center gap-2 px-5 pb-2 text-xs text-white/30">
+                                {phase.start_time ? (
+                                  <span className="flex items-center gap-1">
+                                    ▶{" "}
+                                    {new Date(phase.start_time).toLocaleString("el-GR", {
+                                      timeZone: "Europe/Athens",
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                ) : null}
+                                {phase.start_time && phase.end_time ? <span>→</span> : null}
+                                {phase.end_time ? (
+                                  <span className="flex items-center gap-1">
+                                    ⏹{" "}
+                                    {new Date(phase.end_time).toLocaleString("el-GR", {
+                                      timeZone: "Europe/Athens",
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
+                                ) : null}
+                              </div>
+                            )}
+
                             <div className="flex flex-wrap gap-2 px-5 pb-3">
                               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <Clock className="h-3.5 w-3.5 shrink-0 text-white/30" aria-hidden />
+                                <span className="shrink-0 text-xs text-white/30" aria-hidden>
+                                  ▶
+                                </span>
                                 <input
                                   type="datetime-local"
-                                  value={toDatetimeLocalValue(phase.scheduled_time)}
+                                  value={toDatetimeLocalValue(phase.start_time)}
                                   onChange={(e) =>
                                     updatePhaseLocal(phase.id, task.id, {
-                                      scheduled_time: e.target.value ? e.target.value : null,
+                                      start_time: e.target.value ? e.target.value : null,
                                     })
                                   }
-                                  onBlur={(e) => {
-                                    const raw = e.target.value;
-                                    void handleUpdatePhase(phase.id, task.id, {
-                                      scheduled_time: raw ? raw : null,
-                                    });
-                                  }}
+                                  onBlur={() =>
+                                    void handleUpdatePhase(phase.id, task.id, { start_time: phase.start_time })
+                                  }
+                                  className="w-36 bg-transparent text-xs text-white [color-scheme:dark] focus:outline-none"
+                                />
+                              </div>
+                              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                <span className="shrink-0 text-xs text-white/30" aria-hidden>
+                                  ⏹
+                                </span>
+                                <input
+                                  type="datetime-local"
+                                  value={toDatetimeLocalValue(phase.end_time)}
+                                  onChange={(e) =>
+                                    updatePhaseLocal(phase.id, task.id, {
+                                      end_time: e.target.value ? e.target.value : null,
+                                    })
+                                  }
+                                  onBlur={() =>
+                                    void handleUpdatePhase(phase.id, task.id, { end_time: phase.end_time })
+                                  }
                                   className="w-36 bg-transparent text-xs text-white [color-scheme:dark] focus:outline-none"
                                 />
                               </div>
@@ -876,14 +928,13 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   <div
                                     key={item.id}
                                     className={cn(
-                                      "group flex items-center gap-3 px-4 py-3",
+                                      "group flex items-start gap-3 px-4 py-3",
                                       idx < items.length - 1 ? "border-b border-white/5" : "",
-                                      item.status === "completed" ? "opacity-50" : "",
                                     )}
                                   >
                                     <div
                                       className={cn(
-                                        "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2",
+                                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2",
                                         item.status === "completed"
                                           ? "border-green-500 bg-green-500"
                                           : "border-white/20 bg-transparent",
@@ -893,51 +944,95 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                         <Check className="h-3 w-3 text-white" aria-hidden />
                                       ) : null}
                                     </div>
-                                    <input
-                                      value={item.title}
-                                      onChange={(e) =>
-                                        updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
-                                      }
-                                      onBlur={() =>
-                                        void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
-                                      }
-                                      placeholder={`Item ${idx + 1}…`}
-                                      className={cn(
-                                        "min-w-0 flex-1 bg-transparent text-sm focus:outline-none",
-                                        item.status === "completed" ? "text-white/30 line-through" : "text-white/80",
-                                      )}
-                                    />
-                                    <label className="flex shrink-0 cursor-pointer items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                                      <span className="text-xs text-white/30">📸</span>
+                                    <div className="min-w-0 flex-1">
+                                      <input
+                                        value={item.title}
+                                        onChange={(e) =>
+                                          updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
+                                        }
+                                        onBlur={() =>
+                                          void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
+                                        }
+                                        placeholder={`Item ${idx + 1}…`}
+                                        className={cn(
+                                          "w-full bg-transparent text-sm focus:outline-none",
+                                          item.status === "completed" ? "text-white/30 line-through" : "text-white/80",
+                                        )}
+                                      />
+                                      {item.status === "completed" &&
+                                      item.screenshot &&
+                                      item.screenshot.length > 0 ? (
+                                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                          <a
+                                            href={item.screenshot[0].url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300"
+                                          >
+                                            🖼 View proof
+                                          </a>
+                                          <a href={item.screenshot[0].url} target="_blank" rel="noreferrer">
+                                            <img
+                                              src={item.screenshot[0].url}
+                                              alt=""
+                                              className="h-8 w-12 rounded-lg border border-white/10 object-cover transition-opacity hover:opacity-80"
+                                            />
+                                          </a>
+                                        </div>
+                                      ) : null}
+                                      {item.requires_screenshot && item.status !== "completed" ? (
+                                        <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/50">
+                                          📸 Requires proof
+                                        </p>
+                                      ) : null}
+                                      {item.status === "completed" && item.completed_by_va_name ? (
+                                        <p className="mt-0.5 text-xs text-white/20">
+                                          ✓ {item.completed_by_va_name}
+                                          {item.completed_at
+                                            ? ` · ${new Date(item.completed_at).toLocaleString("el-GR", {
+                                                timeZone: "Europe/Athens",
+                                                day: "numeric",
+                                                month: "short",
+                                                hour: "2-digit",
+                                                minute: "2-digit",
+                                              })}`
+                                            : ""}
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-2 self-center">
+                                      <label className="flex cursor-pointer items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                        <span className="text-xs text-white/30">📸</span>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            void handleUpdatePhaseItem(item.id, phase.id, task.id, {
+                                              requires_screenshot: !item.requires_screenshot,
+                                            })
+                                          }
+                                          className={cn(
+                                            "relative h-4 w-8 rounded-full transition-all",
+                                            item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
+                                          )}
+                                          aria-label="Toggle screenshot required"
+                                        >
+                                          <span
+                                            className={cn(
+                                              "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
+                                              item.requires_screenshot ? "left-4" : "left-0.5",
+                                            )}
+                                          />
+                                        </button>
+                                      </label>
                                       <button
                                         type="button"
-                                        onClick={() =>
-                                          void handleUpdatePhaseItem(item.id, phase.id, task.id, {
-                                            requires_screenshot: !item.requires_screenshot,
-                                          })
-                                        }
-                                        className={cn(
-                                          "relative h-4 w-8 rounded-full transition-all",
-                                          item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
-                                        )}
-                                        aria-label="Toggle screenshot required"
+                                        onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}
+                                        className="rounded p-1 text-white/10 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                                        aria-label="Remove item"
                                       >
-                                        <span
-                                          className={cn(
-                                            "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                                            item.requires_screenshot ? "left-4" : "left-0.5",
-                                          )}
-                                        />
+                                        <X className="h-3 w-3" />
                                       </button>
-                                    </label>
-                                    <button
-                                      type="button"
-                                      onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}
-                                      className="rounded p-1 text-white/10 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
-                                      aria-label="Remove item"
-                                    >
-                                      <X className="h-3 w-3" />
-                                    </button>
+                                    </div>
                                   </div>
                                 ))}
                                 <button

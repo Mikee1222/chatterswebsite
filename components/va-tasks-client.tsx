@@ -485,10 +485,11 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                     const doneCount = items.filter((i) => i.status === "completed").length;
                     const total = items.length;
                     const progress = total > 0 ? (doneCount / Math.max(total, 1)) * 100 : 0;
-                    const sched = phase.scheduled_time?.trim();
-                    const schedMs = sched ? new Date(sched).getTime() : NaN;
+                    const schedStart = (phase.start_time ?? phase.scheduled_time)?.trim();
+                    const schedMs = schedStart ? new Date(schedStart).getTime() : NaN;
                     const schedLate =
                       Number.isFinite(schedMs) && schedMs < Date.now() && phase.status !== "completed";
+                    const schedEnd = phase.end_time?.trim();
 
                     return (
                       <div key={phase.id} className="mb-6 last:mb-0">
@@ -594,22 +595,40 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                 {phase.title || `Phase ${phaseIndex + 1}`}
                               </p>
                               <div className="mt-0.5 flex flex-wrap items-center gap-3">
-                                {sched ? (
-                                  <span
+                                {schedStart || schedEnd ? (
+                                  <div
                                     className={cn(
-                                      "flex items-center gap-1 text-xs",
+                                      "flex flex-wrap items-center gap-2 text-xs",
                                       schedLate ? "text-red-400" : "text-white/30",
                                     )}
                                   >
                                     <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                                    {new Date(sched).toLocaleString("el-GR", {
-                                      timeZone: "Europe/Athens",
-                                      day: "numeric",
-                                      month: "short",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </span>
+                                    {schedStart ? (
+                                      <span className="flex items-center gap-1">
+                                        ▶{" "}
+                                        {new Date(schedStart).toLocaleString("el-GR", {
+                                          timeZone: "Europe/Athens",
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    ) : null}
+                                    {schedStart && schedEnd ? <span className="text-white/20">→</span> : null}
+                                    {schedEnd ? (
+                                      <span className="flex items-center gap-1">
+                                        ⏹{" "}
+                                        {new Date(schedEnd).toLocaleString("el-GR", {
+                                          timeZone: "Europe/Athens",
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    ) : null}
+                                  </div>
                                 ) : null}
                                 {phase.region ? (
                                   <span className="text-xs text-white/25">

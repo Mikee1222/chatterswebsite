@@ -371,7 +371,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   model_social_accounts: new Set(["created_at", "last_updated"]),
   model_funnel_links: new Set(["created_at"]),
   shadowban_reports: new Set(["created_at", "reviewed_at"]),
-  va_task_phases: new Set(["created_at", "completed_at", "scheduled_time"]),
+  va_task_phases: new Set(["created_at", "completed_at", "scheduled_time", "start_time", "end_time"]),
   va_task_phase_items: new Set(["created_at", "completed_at"]),
   /** Server sets mistake timestamps explicitly. */
   chatter_mistakes: new Set(["created_at", "updated_at"]),
