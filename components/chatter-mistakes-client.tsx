@@ -12,6 +12,42 @@ type Props = {
 const filterFieldClass =
   "min-h-10 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-pink-500/50 focus:outline-none [color-scheme:dark]";
 
+const SEVERITY_CONFIG = {
+  High: {
+    emoji: "🔴",
+    label: "High severity",
+    weight: "Major mistake",
+    description: "Serious impact on performance and client experience",
+    barColor: "bg-red-500",
+    barWidth: "w-full",
+  },
+  Medium: {
+    emoji: "🟠",
+    label: "Medium severity",
+    weight: "Moderate mistake",
+    description: "Notable impact on quality and client satisfaction",
+    barColor: "bg-amber-500",
+    barWidth: "w-2/3",
+  },
+  Low: {
+    emoji: "🟡",
+    label: "Low severity",
+    weight: "Minor mistake",
+    description: "Small impact, easy to improve",
+    barColor: "bg-yellow-500",
+    barWidth: "w-1/3",
+  },
+} as const satisfies Record<
+  MistakeReasonCategory,
+  { emoji: string; label: string; weight: string; description: string; barColor: string; barWidth: string }
+>;
+
+const SEVERITY_LEGEND_ITEMS = [
+  { cat: "Low" as const, emoji: "🟡", pts: "5 pts", bar: "w-1/3 bg-yellow-500" },
+  { cat: "Medium" as const, emoji: "🟠", pts: "10 pts", bar: "w-2/3 bg-amber-500" },
+  { cat: "High" as const, emoji: "🔴", pts: "20 pts", bar: "w-full bg-red-500" },
+];
+
 export function ChatterMistakesClient({ initialMistakes }: Props) {
   const [mistakes] = React.useState(initialMistakes);
   const [q, setQ] = React.useState("");
@@ -94,6 +130,21 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
           >
             <p className="mb-2 text-xs uppercase tracking-widest text-white/30">{stat.label}</p>
             <p className={`text-2xl font-bold tabular-nums sm:text-3xl ${stat.text}`}>{stat.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 px-1">
+        <p className="text-xs uppercase tracking-widest text-white/30">Severity:</p>
+        {SEVERITY_LEGEND_ITEMS.map((item) => (
+          <div key={item.cat} className="flex items-center gap-2">
+            <span className="text-sm">{item.emoji}</span>
+            <div className="h-1 w-12 rounded-full bg-white/10">
+              <div className={`h-1 rounded-full ${item.bar}`} />
+            </div>
+            <span className="text-xs text-white/40">
+              {item.cat} · {item.pts}
+            </span>
           </div>
         ))}
       </div>
@@ -195,6 +246,39 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
                   </span>
 
                   <h3 className="mb-2 text-base font-semibold text-white">{m.reason_label}</h3>
+
+                  {(() => {
+                    const sev = SEVERITY_CONFIG[m.reason_category];
+                    return (
+                      <div
+                        className={`mt-3 rounded-xl border p-3 ${
+                          m.reason_category === "High"
+                            ? "border-red-500/15 bg-red-500/5"
+                            : m.reason_category === "Medium"
+                              ? "border-amber-500/15 bg-amber-500/5"
+                              : "border-yellow-500/15 bg-yellow-500/5"
+                        }`}
+                      >
+                        <div className="mb-2 flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{sev.emoji}</span>
+                            <span className="text-xs font-semibold uppercase tracking-widest text-white/70">
+                              {sev.label}
+                            </span>
+                          </div>
+                          <span className="text-xs text-white/40">{sev.weight}</span>
+                        </div>
+
+                        <div className="mb-2 h-1.5 w-full rounded-full bg-white/10">
+                          <div
+                            className={`h-1.5 rounded-full ${sev.barColor} ${sev.barWidth} transition-all`}
+                          />
+                        </div>
+
+                        <p className="text-xs text-white/30">{sev.description}</p>
+                      </div>
+                    );
+                  })()}
 
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/40">
                     <span>📅 {formatDateTimeAthens(m.mistake_date)}</span>
