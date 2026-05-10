@@ -37,6 +37,8 @@ type Fields = {
   created_at?: string;
   updated_at?: string;
   last_updated_by?: string;
+  created_by?: string;
+  "Created by"?: string;
 };
 
 function mapRecord(rec: AirtableRecord<Fields>): Whale {
@@ -73,6 +75,7 @@ function mapRecord(rec: AirtableRecord<Fields>): Whale {
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
     last_updated_by: f.last_updated_by ?? "",
+    created_by: snapshotText(f.created_by ?? f["Created by"]) || "",
   };
 }
 
@@ -88,6 +91,7 @@ export type WhaleWriteFields = Partial<{
   status: string;
   hours_active?: string[];
   notes: string;
+  created_by?: string;
   [k: string]: unknown;
 }>;
 

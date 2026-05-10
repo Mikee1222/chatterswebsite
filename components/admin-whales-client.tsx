@@ -585,6 +585,7 @@ function exportWhalesToCsv(whales: Whale[]) {
   const headers = [
     "id",
     "whale_id",
+    "created_by",
     "username",
     "platform",
     "status",
@@ -599,6 +600,7 @@ function exportWhalesToCsv(whales: Whale[]) {
     [
       w.id,
       w.whale_id ?? "",
+      w.created_by ?? "",
       w.username ?? "",
       w.platform ?? "",
       w.status ?? "",
@@ -702,6 +704,12 @@ function AdminWhaleHistorySheet({
           ) : null}
           <p className="text-xs uppercase tracking-wider text-white/40">Whale ID</p>
           <p className="mt-1 font-mono text-xs text-white/80">{whale.whale_id || "—"}</p>
+          {whale.created_by?.trim() ? (
+            <div className="mt-3 flex items-center justify-between border-b border-white/5 py-2">
+              <span className="text-xs uppercase tracking-widest text-white/30">Added by</span>
+              <span className="text-sm text-white/60">{whale.created_by}</span>
+            </div>
+          ) : null}
           <p className="mt-4 text-xs uppercase tracking-wider text-white/40">Totals (from record)</p>
           <p className="mt-1 text-white/80">${whale.total_spent.toLocaleString("en-US", { minimumFractionDigits: 2 })}</p>
         </div>
@@ -909,7 +917,13 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
               </div>
               <div className="min-w-0">
                 <h3 className="truncate text-base font-semibold text-white">{whale.username || "—"}</h3>
-                <p className="truncate font-mono text-xs text-white/40">{whale.whale_id || "—"}</p>
+                <p className="truncate font-mono text-xs text-white/30">{whale.whale_id || "—"}</p>
+                {whale.created_by?.trim() ? (
+                  <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-white/20">
+                    <span>Added by</span>
+                    <span className="font-medium text-white/35">{whale.created_by}</span>
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>

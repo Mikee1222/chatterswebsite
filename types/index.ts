@@ -146,6 +146,8 @@ export interface Whale {
   created_at: string;
   updated_at: string;
   last_updated_by: string;
+  /** Who created this whale (name or email); Airtable `created_by` when the column exists. */
+  created_by: string;
 }
 
 export interface ModelRecord {

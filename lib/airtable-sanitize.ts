@@ -381,6 +381,8 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   challenge_progress: new Set(["updated_at"]),
   /** Break reminder ISO datetime; explicit so payloads are never treated as non-writable elsewhere. */
   shifts: new Set(["break_reminder_at"]),
+  /** Display name / email of who created the whale row (set on create). */
+  whales: new Set(["created_by"]),
 };
 
 function getNonWritableNormalizedForTable(tableName: string): Set<string> {
