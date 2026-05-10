@@ -17,10 +17,21 @@ import type { ModelRecord, VaContentAssignmentRecord } from "@/types";
 
 export type VaAssignmentWithModel = VaContentAssignmentRecord & { model_name: string };
 
-type StatusTab = "pending" | "scheduled" | "completed";
+type StatusTab = "pending" | "scheduled" | "completed" | "rejected";
 
 function statusKey(s: string): string {
   return (s || "").trim().toLowerCase();
+}
+
+function isPendingTabStatus(s: string): boolean {
+  const k = statusKey(s);
+  return k === "pending" || k === "pending_approval";
+}
+
+function statusLabelForList(s: string): string {
+  const k = statusKey(s);
+  if (k === "pending_approval") return "pending approval";
+  return k || "—";
 }
 
 function priorityClass(p: string): string {
@@ -79,15 +90,21 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
 
   const counts = React.useMemo(() => {
     return {
-      pending: visible.filter((r) => statusKey(r.status) === "pending").length,
+      pendingAction: visible.filter((r) => isPendingTabStatus(r.status)).length,
       scheduled: visible.filter((r) => statusKey(r.status) === "scheduled").length,
       completed: visible.filter((r) => statusKey(r.status) === "completed").length,
+      rejected: visible.filter((r) => statusKey(r.status) === "rejected").length,
       total: visible.length,
     };
   }, [visible]);
 
   const filtered = React.useMemo(() => {
-    let list = visible.filter((r) => statusKey(r.status) === filter);
+    let list =
+      filter === "rejected"
+        ? visible.filter((r) => statusKey(r.status) === "rejected")
+        : filter === "pending"
+          ? visible.filter((r) => isPendingTabStatus(r.status))
+          : visible.filter((r) => statusKey(r.status) === filter);
     if (modelId !== "all") list = list.filter((r) => r.model_id === modelId);
     if (prioritySet.size > 0) {
       list = list.filter((r) => prioritySet.has((r.priority || "normal").toLowerCase()));
@@ -190,9 +207,9 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
             <p className="text-xs text-white/50">excl. cancelled</p>
           </MobileCard>
           <MobileCard padding="md" className="border-amber-500/25 bg-amber-500/5 ring-amber-500/10">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Pending</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{counts.pending}</p>
-            <p className="text-xs text-white/50">awaiting model</p>
+            <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Awaiting action</p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{counts.pendingAction}</p>
+            <p className="text-xs text-white/50">admin approval or model</p>
           </MobileCard>
           <MobileCard padding="md" className="border-sky-500/25 bg-sky-500/5 ring-sky-500/10">
             <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Scheduled</p>
@@ -214,9 +231,10 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
               <span className="text-xs font-semibold uppercase tracking-wide text-white/45">Status</span>
               {(
                 [
-                  ["pending", "Pending", counts.pending],
+                  ["pending", "Pending", counts.pendingAction],
                   ["scheduled", "Scheduled", counts.scheduled],
                   ["completed", "Completed", counts.completed],
+                  ["rejected", "Rejected", counts.rejected],
                 ] as const
               ).map(([key, label, n]) => (
                 <button
@@ -306,7 +324,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
 
           {filtered.length === 0 ? (
             <p className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center text-sm text-white/55">
-              No matching {filter} assignments.
+              No matching assignments for this filter.
             </p>
           ) : (
             <>
@@ -335,12 +353,27 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                           <div className={cn("h-full min-h-[48px] w-1 bg-gradient-to-b", gradientClassForContentType(r.content_type))} />
                         </td>
                         <td className="px-4 py-3 text-white/90">{r.model_name}</td>
-                        <td className="max-w-[220px] truncate px-4 py-3 text-white/85" title={r.title}>
-                          {r.title || "—"}
+                        <td className="max-w-[260px] px-4 py-3 text-white/85">
+                          <div className="truncate font-medium" title={r.title}>
+                            {r.title || "—"}
+                          </div>
+                          {statusKey(r.status) === "rejected" ? (
+                            <div className="mt-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
+                              <p className="text-[11px] font-semibold text-rose-300">Rejected by admin</p>
+                              {(r.rejection_reason ?? "").trim() ? (
+                                <p className="mt-0.5 text-[11px] text-white/55">{r.rejection_reason}</p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {statusKey(r.status) === "pending_approval" ? (
+                            <div className="mt-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+                              <p className="text-[11px] font-semibold text-sky-300">Waiting for admin approval</p>
+                            </div>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-white/65">{r.content_type || "—"}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-white/70">{formatDateEuropean(r.deadline)}</td>
-                        <td className="px-4 py-3 capitalize text-white/80">{statusKey(r.status) || "—"}</td>
+                        <td className="px-4 py-3 capitalize text-white/80">{statusLabelForList(r.status)}</td>
                         <td className="px-4 py-3">
                           <span
                             className={cn(
@@ -355,7 +388,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                           className="px-4 py-3 text-right"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          {statusKey(r.status) === "pending" ? (
+                          {statusKey(r.status) === "pending" || statusKey(r.status) === "pending_approval" ? (
                             <div className="flex flex-wrap justify-end gap-2">
                               <button
                                 type="button"
@@ -397,7 +430,9 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                     <div className="min-w-0 flex-1 space-y-1 p-4 text-left">
                       <div className="flex items-start justify-between gap-2">
                         <p className="truncate font-medium text-white">{r.title || "—"}</p>
-                        <span className="shrink-0 text-[10px] uppercase text-white/40">{statusKey(r.status)}</span>
+                        <span className="shrink-0 text-[10px] uppercase text-white/40">
+                          {statusLabelForList(r.status)}
+                        </span>
                       </div>
                       <p className="text-xs text-white/55">{r.model_name}</p>
                       <div className="flex flex-wrap items-center gap-2 pt-1">
@@ -414,7 +449,20 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
                         </span>
                         <span className="text-[11px] text-white/45">Due {formatDateEuropean(r.deadline)}</span>
                       </div>
-                      {statusKey(r.status) === "pending" ? (
+                      {statusKey(r.status) === "rejected" ? (
+                        <div className="mt-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-rose-300">Rejected by admin</p>
+                          {(r.rejection_reason ?? "").trim() ? (
+                            <p className="mt-0.5 text-[11px] text-white/55">{r.rejection_reason}</p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {statusKey(r.status) === "pending_approval" ? (
+                        <div className="mt-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+                          <p className="text-[11px] font-semibold text-sky-300">Waiting for admin approval</p>
+                        </div>
+                      ) : null}
+                      {statusKey(r.status) === "pending" || statusKey(r.status) === "pending_approval" ? (
                         <div
                           className="flex gap-2 border-t border-white/10 p-3"
                           onClick={(e) => e.stopPropagation()}
@@ -557,7 +605,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
             ? [
                 {
                   label: "Status",
-                  value: selected.status,
+                  value: statusLabelForList(selected.status),
                   accent: "blue" as const,
                   icon: <ListChecks className="h-5 w-5" aria-hidden />,
                 },
@@ -583,6 +631,20 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
             : []
         }
         description={selected?.description || undefined}
+        children={
+          selected && statusKey(selected.status) === "rejected" ? (
+            <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
+              <p className="text-xs font-semibold text-rose-300">Rejected by admin</p>
+              {(selected.rejection_reason ?? "").trim() ? (
+                <p className="mt-1 text-xs text-white/55">{selected.rejection_reason}</p>
+              ) : null}
+            </div>
+          ) : selected && statusKey(selected.status) === "pending_approval" ? (
+            <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+              <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+            </div>
+          ) : null
+        }
         uploadInfo={
           selected?.file_url ? (
             <a href={selected.file_url} target="_blank" rel="noreferrer" className="text-sky-300 underline">

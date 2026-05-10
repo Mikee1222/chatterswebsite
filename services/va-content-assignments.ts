@@ -1,7 +1,9 @@
 "use server";
 
 import { createRecord, listAllRecords, getRecord, updateRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
-import { getUserByAirtableId } from "@/services/users";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { notify } from "@/services/notification-service";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId, getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
 import {
   firstLinkedId,
@@ -50,6 +52,10 @@ type Fields = {
   completed_at?: string;
   created_at?: string;
   updated_at?: string;
+  rejection_reason?: string;
+  admin_edit_notes?: string;
+  reviewed_by?: string;
+  reviewed_at?: string;
 };
 
 function parseAttachments(raw: unknown): VaAttachmentCell[] {
@@ -103,6 +109,10 @@ function mapRecord(rec: AirtableRecord<Fields>): VaContentAssignmentRecord {
     completed_at: f.completed_at ?? null,
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
+    rejection_reason: typeof f.rejection_reason === "string" ? f.rejection_reason : "",
+    admin_edit_notes: typeof f.admin_edit_notes === "string" ? f.admin_edit_notes : "",
+    reviewed_by: typeof f.reviewed_by === "string" ? f.reviewed_by : "",
+    reviewed_at: typeof f.reviewed_at === "string" ? f.reviewed_at : null,
   };
 }
 
@@ -197,6 +207,32 @@ function assignmentMappedModelMatches(
   if (row.model_id === airtableModelRecordId) return true;
   const sid = stableModelId?.trim();
   return Boolean(sid && row.model_id === sid);
+}
+
+function statusNorm(status: string | undefined): string {
+  return String(status ?? "").trim().toLowerCase();
+}
+
+/** Rows the model must not see until approved (or at all if rejected). */
+function isHiddenFromModelStatus(status: string | undefined): boolean {
+  const k = statusNorm(status);
+  return k === "pending_approval" || k === "rejected";
+}
+
+function isVaEditableStatus(status: string | undefined): boolean {
+  const k = statusNorm(status);
+  return k === "pending" || k === "pending_approval";
+}
+
+/** Linked modelss Airtable record id for resolving the model user (not stable `model_…` text). */
+async function modelssAirtableRecordIdForUserNotify(assignmentRecordId: string): Promise<string | null> {
+  try {
+    const rec = await getRecord<Fields>(TABLE, assignmentRecordId);
+    const f = rec.fields;
+    return firstLinkedId(f.model) ?? firstLinkedId(f.assigned_model) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** List VA rows for a modelss Airtable id and/or stable `model_id` string on `modelss`. */
@@ -458,7 +494,7 @@ export async function updatePendingVAContentAssignmentByVa(
   patch: VaUpdatePendingAssignmentInput
 ): Promise<VaContentAssignmentRecord | null> {
   const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
-  if (!current || String(current.status ?? "").trim().toLowerCase() !== "pending") return null;
+  if (!current || !isVaEditableStatus(current.status)) return null;
   const fields: Partial<Fields> = {};
   if (patch.title !== undefined) fields.title = patch.title.trim();
   if (patch.description !== undefined) fields.description = patch.description.trim();
@@ -479,7 +515,7 @@ export async function deletePendingVAContentAssignmentByVa(
   vaUserRecordId: string
 ): Promise<boolean> {
   const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
-  if (!current || String(current.status ?? "").trim().toLowerCase() !== "pending") return false;
+  if (!current || !isVaEditableStatus(current.status)) return false;
   await deleteRecord(TABLE, assignmentRecordId);
   return true;
 }
@@ -563,7 +599,10 @@ export async function listVAContentAssignmentsForModel(
       sid = rec?.model_id?.trim() ?? "";
     }
     const records = await fetchAssignmentRecordsForModel(modelRecordId, sid || null);
-    return sortAssignmentsForModel(records.map((r) => mapRecord(r as AirtableRecord<Fields>)));
+    const mapped = records
+      .map((r) => mapRecord(r as AirtableRecord<Fields>))
+      .filter((row) => !isHiddenFromModelStatus(row.status));
+    return sortAssignmentsForModel(mapped);
   } catch {
     return [];
   }
@@ -608,14 +647,17 @@ export async function getVAContentAssignmentById(assignmentRecordId: string): Pr
 export async function countPendingVAContentAssignments(): Promise<number> {
   try {
     const records = await listAllRecords<Fields>(TABLE, {
-      filterByFormula: `{status}="pending"`,
+      filterByFormula: `OR({status}="pending",{status}="pending_approval")`,
       fields: ["status"],
     });
     return records.length;
   } catch {
     try {
       const rows = await listAllVAContentAssignments();
-      return rows.filter((r) => String(r.status ?? "").trim().toLowerCase() === "pending").length;
+      return rows.filter((r) => {
+        const k = String(r.status ?? "").trim().toLowerCase();
+        return k === "pending" || k === "pending_approval";
+      }).length;
     } catch {
       return 0;
     }
@@ -701,7 +743,9 @@ export async function getVAContentAssignmentForModel(
   try {
     const rec = await getRecord<Fields>(TABLE, assignmentRecordId);
     const row = mapRecord(rec as AirtableRecord<Fields>);
-    return assignmentMappedModelMatches(row, modelRecordId, stableModelId) ? row : null;
+    if (!assignmentMappedModelMatches(row, modelRecordId, stableModelId)) return null;
+    if (isHiddenFromModelStatus(row.status)) return null;
+    return row;
   } catch {
     return null;
   }
@@ -814,7 +858,7 @@ export async function createVaContentAssignmentAdmin(
     description: input.description.trim(),
     content_type: (input.content_type || "Other").trim(),
     priority: priorityNorm,
-    status: "pending",
+    status: "pending_approval",
     model_notes: "",
     va_notes: "",
   };
@@ -829,4 +873,141 @@ export async function createVaContentAssignmentAdmin(
   }
   const rec = await createRecord<Fields>(TABLE, payload as Fields);
   return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+export type ReviewVAContentAssignmentAdminInput = {
+  action: "approve" | "reject" | "edit_and_approve";
+  reviewerLabel: string;
+  rejection_reason?: string;
+  edits?: {
+    title?: string;
+    description?: string;
+    deadline?: string | null;
+    content_type?: string;
+    priority?: string;
+    admin_edit_notes?: string;
+  };
+};
+
+/**
+ * Admin/manager approves, rejects, or edits-then-approves a row in `pending_approval`.
+ * On approve: status becomes `pending`, model receives VA_CONTENT_ASSIGNED, VA receives system_alert.
+ */
+export async function reviewVAContentAssignmentByAdmin(
+  assignmentRecordId: string,
+  input: ReviewVAContentAssignmentAdminInput
+): Promise<
+  | { ok: true; action: "approved" | "rejected"; record: VaContentAssignmentRecord }
+  | { ok: false; error: string; statusCode: number }
+> {
+  const rid = assignmentRecordId?.trim();
+  if (!rid) return { ok: false, error: "Missing id", statusCode: 400 };
+
+  let current: VaContentAssignmentRecord;
+  try {
+    const rec = await getRecord<Fields>(TABLE, rid);
+    current = mapRecord(rec as AirtableRecord<Fields>);
+  } catch {
+    return { ok: false, error: "Not found", statusCode: 404 };
+  }
+
+  if (statusNorm(current.status) !== "pending_approval") {
+    return { ok: false, error: "Assignment is not awaiting approval", statusCode: 400 };
+  }
+
+  const now = new Date().toISOString();
+  const reviewer = input.reviewerLabel?.trim() || "Admin";
+
+  if (input.action === "reject") {
+    const reason = input.rejection_reason?.trim();
+    if (!reason) return { ok: false, error: "Rejection reason required", statusCode: 400 };
+
+    const fields: Partial<Fields> = {
+      status: "rejected",
+      rejection_reason: reason,
+      reviewed_by: reviewer,
+      reviewed_at: now,
+    };
+    const rec = await updateRecord<Fields>(TABLE, rid, fields);
+    const row = mapRecord(rec as AirtableRecord<Fields>);
+
+    const vaTarget = current.va_id?.trim();
+    if (vaTarget) {
+      await notify({
+        user_id: vaTarget,
+        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "Assignment rejected",
+        body: `Your assignment "${current.title}" was rejected. Reason: ${reason}`,
+        entity_type: "va_content_assignment",
+        entity_id: rid,
+        _triggerSource: "va_assignment_admin_review",
+      }).catch(() => {});
+    }
+    return { ok: true, action: "rejected", record: row };
+  }
+
+  if (input.action === "approve" || input.action === "edit_and_approve") {
+    const updateData: Partial<Fields> = {
+      status: "pending",
+      reviewed_by: reviewer,
+      reviewed_at: now,
+    };
+    if (input.action === "edit_and_approve" && input.edits) {
+      const e = input.edits;
+      if (typeof e.title === "string" && e.title.trim()) updateData.title = e.title.trim();
+      if (typeof e.description === "string") updateData.description = e.description.trim();
+      if (e.deadline !== undefined) {
+        updateData.deadline = e.deadline?.trim() ? e.deadline.trim() : "";
+      }
+      if (typeof e.content_type === "string" && e.content_type.trim()) {
+        updateData.content_type = e.content_type.trim();
+      }
+      if (typeof e.priority === "string" && e.priority.trim()) {
+        updateData.priority = e.priority.trim().toLowerCase();
+      }
+      if (typeof e.admin_edit_notes === "string" && e.admin_edit_notes.trim()) {
+        updateData.admin_edit_notes = e.admin_edit_notes.trim();
+      }
+    }
+
+    const rec = await updateRecord<Fields>(TABLE, rid, updateData);
+    const row = mapRecord(rec as AirtableRecord<Fields>);
+
+    const modelRecId = await modelssAirtableRecordIdForUserNotify(rid);
+    if (modelRecId) {
+      const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(modelRecId);
+      if (modelUserId) {
+        const displayTitle = (row.title || current.title).trim() || "VA content assignment";
+        await notify({
+          user_id: modelUserId,
+          event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "New VA content assignment",
+          body: `${displayTitle} — open Content assignments or your calendar.`,
+          entity_type: "va_content_assignment",
+          entity_id: rid,
+          _triggerSource: "va_assignment_admin_review",
+        }).catch(() => {});
+      }
+    }
+
+    const vaTarget = current.va_id?.trim();
+    if (vaTarget) {
+      await notify({
+        user_id: vaTarget,
+        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: input.action === "edit_and_approve" ? "Assignment approved (with edits)" : "Assignment approved",
+        body: `Your assignment "${current.title}" was approved and sent to the model.`,
+        entity_type: "va_content_assignment",
+        entity_id: rid,
+        _triggerSource: "va_assignment_admin_review",
+      }).catch(() => {});
+    }
+
+    return { ok: true, action: "approved", record: row };
+  }
+
+  return { ok: false, error: "Invalid action", statusCode: 400 };
 }

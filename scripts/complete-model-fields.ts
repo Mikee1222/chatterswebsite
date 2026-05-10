@@ -72,6 +72,8 @@ const MODEL_SCHEDULE_ITEM_TYPE_CHOICES = [
 
 const VA_CONTENT_ASSIGNMENT_STATUS_CHOICES = [
   "pending",
+  "pending_approval",
+  "rejected",
   "scheduled",
   "completed",
   "cancelled",

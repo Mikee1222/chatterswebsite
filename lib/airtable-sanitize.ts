@@ -260,7 +260,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     logged_by: new Set(["model", "admin", "va"]),
   },
   va_content_assignments: {
-    status: new Set(["pending", "scheduled", "completed", "cancelled"]),
+    status: new Set(["pending", "pending_approval", "rejected", "scheduled", "completed", "cancelled"]),
     priority: new Set(["low", "normal", "high", "urgent"]),
     content_type: new Set(["PDF", "Video Script", "Photo Guide", "Other"]),
   },

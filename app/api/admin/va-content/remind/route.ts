@@ -31,6 +31,14 @@ export async function POST(req: Request) {
   const assignment = await getVAContentAssignmentById(parsed.data.assignment_id);
   if (!assignment) return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
 
+  const st = (assignment.status ?? "").trim().toLowerCase();
+  if (st !== "pending") {
+    return NextResponse.json(
+      { error: "Reminders are only sent for assignments awaiting the model (pending)." },
+      { status: 400 }
+    );
+  }
+
   const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(assignment.model_id);
   if (!modelUserId) {
     return NextResponse.json({ error: "No active model account linked to assignment" }, { status: 400 });

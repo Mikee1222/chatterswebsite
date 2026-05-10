@@ -397,6 +397,10 @@ export interface VaContentAssignmentRecord {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
+  rejection_reason: string;
+  admin_edit_notes: string;
+  reviewed_by: string;
+  reviewed_at: string | null;
 }
 
 /** Serializable row for model VA content UI (no internal notes). */

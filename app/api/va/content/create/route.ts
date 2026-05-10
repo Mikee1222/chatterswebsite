@@ -4,10 +4,10 @@ import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
-import type { UserRecord } from "@/types";
 import { createVaContentAssignmentAdmin } from "@/services/va-content-assignments";
-import { getActiveModelUserAirtableIdByLinkedModelRecordId, listAllUsers } from "@/services/users";
-import { notify } from "@/services/notification-service";
+import { getUserByAirtableId } from "@/services/users";
+import { getModelById } from "@/services/modelss";
+import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 
@@ -20,17 +20,6 @@ const formSchema = z.object({
   deadline: z.string().trim().max(80).optional().nullable(),
   file_url: z.string().trim().max(2000).optional().nullable(),
 });
-
-async function activeModelUserId(modelssRecordId: string): Promise<string | null> {
-  const users = await listAllUsers();
-  const found = users.find(
-    (x: UserRecord) =>
-      x.role === "model" &&
-      x.linked_model_id === modelssRecordId &&
-      (x.status ?? "").toLowerCase() === "active"
-  );
-  return found?.id ?? null;
-}
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
@@ -109,21 +98,28 @@ export async function POST(req: Request) {
       }
     }
 
-    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(parsed.data.model_record_id);
-    if (modelUserId) {
-      await notify({
-        user_id: modelUserId,
-        event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "New VA content assignment",
-        body: `${parsed.data.title.trim()} — open Content assignments or your calendar.`,
-        entity_type: "va_content_assignment",
-        entity_id: row.id,
-        _triggerSource: "va_content_create",
-      }).catch(() => {});
-    }
+    const [modelRec, vaProfile] = await Promise.all([
+      getModelById(parsed.data.model_record_id).catch(() => null),
+      getUserByAirtableId(vaUserRecordId).catch(() => null),
+    ]);
+    const modelName = (modelRec?.model_name ?? "").trim() || "the model";
+    const vaName =
+      (vaProfile?.full_name ?? "").trim() ||
+      (vaProfile?.email ?? "").trim() ||
+      "A VA";
+
+    await notifyAdmins({
+      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "New VA assignment needs review",
+      body: `${vaName} created an assignment for ${modelName}: "${parsed.data.title.trim()}". Needs your approval.`,
+      entity_type: "va_content_assignment",
+      entity_id: row.id,
+      _triggerSource: "va_content_create_admin_queue",
+    }).catch(() => {});
 
     revalidatePath(ROUTES.va.contentAssignments);
+    revalidatePath(ROUTES.admin.vaContentAssignments);
     revalidatePath(ROUTES.model.contentCalendar);
     revalidatePath(ROUTES.model.contentAssignments);
 

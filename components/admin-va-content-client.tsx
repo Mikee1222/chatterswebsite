@@ -53,7 +53,7 @@ function dateInOrOverlapsRange(
   return inRange(created) || inRange(deadline);
 }
 
-type StatusFilterValue = "all" | "pending" | "completed" | "cancelled" | "scheduled";
+type StatusFilterValue = "all" | "pending" | "pending_approval" | "rejected" | "completed" | "cancelled" | "scheduled";
 
 function StatusBadge({ status }: { status: string }) {
   const k = statusKey(status);
@@ -63,11 +63,15 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-green-500/20 text-green-400 border border-green-500/30"
       : k === "pending"
         ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
-        : k === "cancelled"
-          ? "bg-red-500/20 text-red-400 border border-red-500/30"
-          : k === "scheduled"
-            ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-            : "border border-white/15 bg-white/10 text-white/70";
+        : k === "pending_approval"
+          ? "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+          : k === "rejected"
+            ? "bg-rose-500/20 text-rose-300 border border-rose-500/35"
+            : k === "cancelled"
+              ? "bg-red-500/20 text-red-400 border border-red-500/30"
+              : k === "scheduled"
+                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                : "border border-white/15 bg-white/10 text-white/70";
 
   return (
     <span
@@ -88,6 +92,31 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
   const router = useRouter();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
+
+  const [reviewModal, setReviewModal] = React.useState<AdminVaContentAssignmentDTO | null>(null);
+  const [editTitle, setEditTitle] = React.useState("");
+  const [editDescription, setEditDescription] = React.useState("");
+  const [editDeadline, setEditDeadline] = React.useState("");
+  const [editPriority, setEditPriority] = React.useState("normal");
+  const [editAdminNotes, setEditAdminNotes] = React.useState("");
+  const [rejectionReason, setRejectionReason] = React.useState("");
+  const [reviewing, setReviewing] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!reviewModal) return;
+    setEditTitle(reviewModal.title ?? "");
+    setEditDescription(reviewModal.description ?? "");
+    const d = (reviewModal.deadline ?? "").trim();
+    setEditDeadline(d.length >= 10 ? d.slice(0, 10) : "");
+    setEditPriority((reviewModal.priority ?? "normal").trim().toLowerCase() || "normal");
+    setEditAdminNotes("");
+    setRejectionReason("");
+  }, [reviewModal]);
+
+  const pendingApprovalItems = React.useMemo(
+    () => rows.filter((r) => statusKey(r.status) === "pending_approval"),
+    [rows]
+  );
 
   const [searchTitle, setSearchTitle] = React.useState("");
   const [filterModelId, setFilterModelId] = React.useState("");
@@ -125,7 +154,9 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
   const statusSelectOptions = React.useMemo(
     () => [
       { value: "all", label: "All Statuses" },
-      { value: "pending", label: "Pending" },
+      { value: "pending_approval", label: "Pending approval" },
+      { value: "pending", label: "Pending (model)" },
+      { value: "rejected", label: "Rejected" },
       { value: "completed", label: "Completed" },
       { value: "cancelled", label: "Cancelled" },
       { value: "scheduled", label: "Scheduled" },
@@ -183,6 +214,41 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
     }
   };
 
+  async function handleReview(action: "approve" | "reject" | "edit_and_approve") {
+    if (!reviewModal) return;
+    setReviewing(true);
+    try {
+      const res = await fetch(`/api/admin/va-content-assignments/${reviewModal.id}/review`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action,
+          rejection_reason: rejectionReason,
+          edits: {
+            title: editTitle,
+            description: editDescription,
+            deadline: editDeadline.trim() ? editDeadline.trim() : null,
+            priority: editPriority,
+            admin_edit_notes: editAdminNotes,
+          },
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        alert(data.error ?? "Review failed");
+        return;
+      }
+      setReviewModal(null);
+      router.refresh();
+    } catch (e) {
+      console.error(e);
+      alert("Review failed");
+    } finally {
+      setReviewing(false);
+    }
+  }
+
   const onCancel = async (id: string) => {
     const reason = window.prompt("Cancellation reason (min 3 characters):")?.trim();
     if (!reason || reason.length < 3) return;
@@ -206,16 +272,17 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
 
   const showActionButtons = (r: AdminVaContentAssignmentDTO) => {
     const k = statusKey(r.status);
-    return k === "pending" || k === "scheduled";
+    return k === "pending" || k === "scheduled" || k === "pending_approval";
   };
 
   const showRemind = (r: AdminVaContentAssignmentDTO) => {
     const k = statusKey(r.status);
-    if (k === "completed" || k === "cancelled") return false;
-    return showActionButtons(r);
+    return k === "pending";
   };
 
   const showCancel = (r: AdminVaContentAssignmentDTO) => showActionButtons(r);
+
+  const showReview = (r: AdminVaContentAssignmentDTO) => statusKey(r.status) === "pending_approval";
 
   return (
     <div className="space-y-6">
@@ -283,6 +350,157 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
           </Dialog.Content>
         </Dialog.Portal>
       </Dialog.Root>
+
+      {pendingApprovalItems.length > 0 ? (
+        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 md:p-5">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="h-2 w-2 shrink-0 rounded-full bg-sky-400 animate-pulse" aria-hidden />
+            <p className="text-sky-300 font-semibold text-sm">
+              {pendingApprovalItems.length} assignment{pendingApprovalItems.length > 1 ? "s" : ""} waiting for review
+            </p>
+          </div>
+          <div className="space-y-2">
+            {pendingApprovalItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col gap-3 rounded-xl bg-black/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-sm text-white truncate">{item.title}</p>
+                  <p className="text-white/45 text-xs mt-0.5">
+                    {item.va_name} → {item.model_name} · {item.content_type}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReviewModal(item)}
+                  className="shrink-0 rounded-xl border border-sky-500/35 bg-sky-500/15 px-3 py-1.5 text-sky-200 text-xs font-semibold transition hover:bg-sky-500/25"
+                >
+                  Review →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {reviewModal ? (
+        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+          <div
+            className="max-h-[min(90vh,720px)] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl"
+            role="dialog"
+            aria-modal
+            aria-labelledby="va-review-title"
+          >
+            <h3 id="va-review-title" className="text-white font-bold text-xl mb-1">
+              Review assignment
+            </h3>
+            <p className="text-white/40 text-sm mb-5">
+              {reviewModal.va_name} → {reviewModal.model_name}
+            </p>
+
+            <div className="mb-5 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div>
+                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Title</p>
+                <input
+                  value={editTitle}
+                  onChange={(e) => setEditTitle(e.target.value)}
+                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-pink-500/50"
+                />
+              </div>
+              <div>
+                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Description</p>
+                <textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  rows={3}
+                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-pink-500/50"
+                />
+              </div>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Deadline</p>
+                  <input
+                    type="date"
+                    value={editDeadline}
+                    onChange={(e) => setEditDeadline(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none focus:border-pink-500/50 [color-scheme:dark]"
+                  />
+                </div>
+                <div>
+                  <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Priority</p>
+                  <select
+                    value={editPriority}
+                    onChange={(e) => setEditPriority(e.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
+                  >
+                    <option value="low">Low</option>
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="urgent">Urgent</option>
+                  </select>
+                </div>
+              </div>
+              <div>
+                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Edit notes (optional)</p>
+                <textarea
+                  value={editAdminNotes}
+                  onChange={(e) => setEditAdminNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Note what you changed…"
+                  className="w-full resize-none rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-pink-500/50"
+                />
+              </div>
+            </div>
+
+            <div className="mb-5">
+              <p className="text-white/40 text-xs uppercase tracking-widest mb-2">Rejection reason (required to reject)</p>
+              <textarea
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                rows={2}
+                placeholder="Explain why this is being rejected…"
+                className="w-full resize-none rounded-xl border border-rose-500/25 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-rose-500/50"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                onClick={() => void handleReview("approve")}
+                disabled={reviewing}
+                className="w-full rounded-2xl border border-emerald-500/35 bg-emerald-500/15 py-3 font-bold text-emerald-200 transition hover:bg-emerald-500/25 disabled:opacity-40"
+              >
+                Approve &amp; send to model
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReview("edit_and_approve")}
+                disabled={reviewing}
+                className="w-full rounded-2xl border border-sky-500/35 bg-sky-500/15 py-3 font-bold text-sky-200 transition hover:bg-sky-500/25 disabled:opacity-40"
+              >
+                Edit &amp; approve
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleReview("reject")}
+                disabled={reviewing || !rejectionReason.trim()}
+                className="w-full rounded-2xl border border-rose-500/40 bg-rose-500/15 py-3 font-bold text-rose-200 transition hover:bg-rose-500/25 disabled:opacity-40"
+              >
+                Reject (send reason to VA)
+              </button>
+              <button
+                type="button"
+                onClick={() => setReviewModal(null)}
+                disabled={reviewing}
+                className="w-full rounded-2xl border border-white/10 bg-white/5 py-2.5 text-white/55 transition hover:bg-white/10 disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl md:p-5">
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -444,6 +662,19 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
                     </td>
                     <td className="px-4 py-3.5 text-right align-middle md:px-5">
                       <div className="flex flex-wrap items-center justify-end gap-2">
+                        {showReview(r) ? (
+                          <button
+                            type="button"
+                            disabled={busyId === r.id}
+                            onClick={() => setReviewModal(r)}
+                            className={cn(
+                              "rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-200",
+                              "transition hover:border-sky-400/55 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                            )}
+                          >
+                            Review
+                          </button>
+                        ) : null}
                         {showRemind(r) ? (
                           <button
                             type="button"
