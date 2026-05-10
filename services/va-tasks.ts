@@ -98,6 +98,8 @@ type Fields = {
   description?: string;
   assigned_to?: string | string[];
   assigned_by?: string | string[];
+  assigned_model_ids?: string;
+  assigned_model_names?: string;
   status?: string;
   priority?: string;
   due_date?: string;
@@ -131,6 +133,11 @@ function parseRecurrenceType(raw: unknown): VaRecurrenceType | "" {
   return "";
 }
 
+function parseCommaList(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  return raw.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
 function parseRecurrenceDays(raw: unknown): VaRecurrenceDay[] {
   const allowed = new Set<VaRecurrenceDay>([
     "Monday",
@@ -154,6 +161,8 @@ function mapRecord(rec: AirtableRecord<Fields>): VaTaskRecord {
     description: snapshotText(f.description, ""),
     assigned_to_ids: linkedRecordIds(f.assigned_to),
     assigned_by_ids: linkedRecordIds(f.assigned_by),
+    assigned_model_ids: parseCommaList(f.assigned_model_ids),
+    assigned_model_names: parseCommaList(f.assigned_model_names),
     status: parseStatus(f.status),
     priority: parsePriority(f.priority),
     due_date: readRawDueDateFromFields(f) ?? null,
@@ -220,6 +229,8 @@ export type VaTaskCreateInput = {
   description?: string;
   assigned_to_ids: string[];
   assigned_by_ids?: string[];
+  assigned_model_ids?: string[];
+  assigned_model_names?: string[];
   status?: VaTaskStatus;
   priority?: VaTaskPriority;
   due_date?: string | null;
@@ -246,6 +257,8 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
     description: (data.description ?? "").trim(),
     assigned_to: data.assigned_to_ids.length ? data.assigned_to_ids : [],
     assigned_by: data.assigned_by_ids?.length ? data.assigned_by_ids : [],
+    assigned_model_ids: (data.assigned_model_ids ?? []).join(","),
+    assigned_model_names: (data.assigned_model_names ?? []).join(","),
     status: data.status ?? "pending",
     priority: data.priority ?? "normal",
     is_recurring: Boolean(data.is_recurring),
@@ -269,6 +282,8 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
   if (data.description !== undefined) payload.description = data.description.trim();
   if (data.assigned_to_ids !== undefined) payload.assigned_to = data.assigned_to_ids.length ? data.assigned_to_ids : [];
   if (data.assigned_by_ids !== undefined) payload.assigned_by = data.assigned_by_ids.length ? data.assigned_by_ids : [];
+  if (data.assigned_model_ids !== undefined) payload.assigned_model_ids = (data.assigned_model_ids ?? []).join(",");
+  if (data.assigned_model_names !== undefined) payload.assigned_model_names = (data.assigned_model_names ?? []).join(",");
   if (data.status !== undefined) payload.status = data.status;
   if (data.priority !== undefined) payload.priority = data.priority;
   if (data.due_date !== undefined) {

@@ -17,13 +17,13 @@ import {
   type VaTaskUpdateInput,
 } from "@/services/va-tasks";
 import { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
-import type { VaTaskStatus } from "@/types";
+import type { VaTaskRecord, VaTaskStatus } from "@/types";
 
 function isAdminLike(role: string | undefined) {
   return role === "admin" || role === "manager";
 }
 
-export type VaTaskActionResult = { success: true } | { success: false; error: string };
+export type VaTaskActionResult = { success: true; task?: VaTaskRecord } | { success: false; error: string };
 
 export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
@@ -33,7 +33,7 @@ export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTa
   if (!input.title?.trim()) return { success: false, error: "Title is required." };
 
   try {
-    await createVaTask({
+    const task = await createVaTask({
       ...input,
       assigned_by_ids: input.assigned_by_ids?.length ? input.assigned_by_ids : actorId ? [actorId] : [],
     });
@@ -41,7 +41,7 @@ export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTa
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
     revalidatePath(ROUTES.va.schedule);
-    return { success: true };
+    return { success: true, task };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Create failed." };
   }
@@ -120,6 +120,8 @@ export async function updateVaTaskStatusAction(input: {
               description: task.description,
               assigned_to_ids: [...task.assigned_to_ids],
               assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
+              assigned_model_ids: [...(task.assigned_model_ids ?? [])],
+              assigned_model_names: [...(task.assigned_model_names ?? [])],
               status: "pending",
               priority: task.priority,
               due_date: nextDue,

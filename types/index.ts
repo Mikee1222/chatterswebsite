@@ -92,6 +92,9 @@ export type VaTaskRecord = {
   description: string;
   assigned_to_ids: string[];
   assigned_by_ids: string[];
+  /** Comma-separated model record ids in Airtable; parsed to arrays in the app layer. */
+  assigned_model_ids: string[];
+  assigned_model_names: string[];
   status: VaTaskStatus;
   priority: VaTaskPriority;
   due_date: string | null;
