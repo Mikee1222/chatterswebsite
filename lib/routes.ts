@@ -10,7 +10,7 @@ import { getThisWeekMonday } from "@/lib/weekly-program";
  *   Auth:        /login, /dashboard
  *   Chatter:     /home, /shift, /weekly-program, /weekly-availability, /request-custom,
  *                /my-whales, /my-whales/new, /log-transaction, /rewards, /spin-wheel, /challenges, /mistakes, /fines-bonuses, /admin/spin-results
- *   VA:          /va-home, /va-tasks, /va/schedule-overview, /va/whales, /va/content-assignments, /va/custom-requests, /va/mistakes, /fines-bonuses, /va/blur-tool, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
+ *   VA:          /va-home, /va-tasks, /va/schedule, /va/schedule-overview, /va/whales, /va/content-assignments, /va/custom-requests, /va/mistakes, /fines-bonuses, /va/blur-tool, /va-shift, /va-weekly-program, /va-weekly-availability, /live-shifts, /models
  *   Admin:       /admin, /admin/va-tasks, /admin/weekly-program, /admin/weekly-program-va, /admin/live-shifts, /admin/models, /admin/mistakes, /admin/mistake-reasons,
  *                /admin/shift-activity, /admin/earnings, /admin/earnings-config, /admin/rewards, /admin/challenges, /admin/spin-results, /admin/whales, /admin/whales/[id], /admin/customs, /admin/custom-requests, /admin/accounts, /admin/accounts/[id], /admin/rewards-config,
  *                /admin/model-schedules/overview, /admin/va-content-assignments, /admin/rebills-tips, /admin/fines-bonuses,
@@ -46,6 +46,8 @@ export const ROUTES = {
   va: {
     home: "/va-home",
     tasks: "/va-tasks",
+    /** Personal week/month view: VA program shifts, tasks, active shift. */
+    schedule: "/va/schedule",
     /** Read-only multi-model schedule (models inferred from VA content assignments). */
     scheduleOverview: "/va/schedule-overview",
     /** Read-only agency whales list (same filters as admin). */

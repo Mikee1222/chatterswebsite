@@ -1,9 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ClipboardList, Plus, Trash2 } from "lucide-react";
+import { Bell, ClipboardList, Clock, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { formatDateEuropean } from "@/lib/format";
+import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
@@ -40,13 +40,9 @@ const WEEKDAYS: VaRecurrenceDay[] = [
   "Saturday",
   "Sunday",
 ];
+const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-const STATUS_FORM_OPTIONS = STATUSES.map((s) => ({ value: s, label: s }));
-const PRIORITY_FORM_OPTIONS = PRIORITIES.map((p) => ({ value: p, label: p }));
-const RECURRENCE_FORM_OPTIONS = [
-  { value: "", label: "—" },
-  ...RECURRENCE_TYPES.map((r) => ({ value: r, label: r })),
-];
+const REMINDER_CHIPS = [15, 30, 60, 120, 1440] as const;
 
 type VaUserOption = { id: string; full_name: string; email: string };
 
@@ -55,34 +51,49 @@ type Props = {
   vaUsers: VaUserOption[];
 };
 
-const inputClass =
-  "mt-2 block h-12 w-full rounded-xl border border-white/10 bg-white/5 px-4 text-white placeholder:text-white/30 outline-none transition-colors focus:border-pink-500 focus:ring-0";
-const textareaClass =
-  "mt-2 block min-h-[100px] w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/30 outline-none transition-colors focus:border-pink-500 focus:ring-0";
-const labelClass = "block text-sm font-medium text-white/70";
-
-function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-3">
-        <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.22em] text-white/45">
-          {title}
-        </span>
-        <span
-          className="h-px min-w-[2rem] flex-1 bg-gradient-to-r from-white/20 via-white/10 to-transparent"
-          aria-hidden
-        />
-      </div>
-      <div className="space-y-4">{children}</div>
-    </div>
-  );
+function toLocalYmd(isoLike: string | null): string {
+  if (!isoLike?.trim()) return "";
+  const d = new Date(isoLike.trim());
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
-const filterSelectTriggerClass =
-  "h-11 min-h-[2.75rem] rounded-xl border border-white/10 bg-white/5 text-sm text-white hover:border-white/15 hover:bg-white/8";
+function toDatetimeLocalValue(isoLike: string | null): string {
+  if (!isoLike?.trim()) return "";
+  const d = new Date(isoLike.trim());
+  if (Number.isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const h = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${y}-${m}-${day}T${h}:${min}`;
+}
 
-const filterDateInputClass =
-  "h-11 w-full min-w-[10.5rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none transition-colors [color-scheme:dark] placeholder:text-white/35 focus:border-pink-500/40 focus:ring-2 focus:ring-pink-500/20";
+function fromDatetimeLocal(s: string): string | undefined {
+  if (!s?.trim()) return undefined;
+  const t = new Date(s).getTime();
+  if (Number.isNaN(t)) return undefined;
+  return new Date(t).toISOString();
+}
+
+function isPastDue(isoLike: string | null | undefined): boolean {
+  if (!isoLike?.trim()) return false;
+  const t = new Date(isoLike.trim()).getTime();
+  if (!Number.isFinite(t)) return false;
+  return t < Date.now();
+}
+
+function formatReminderLabel(minutes: number | null): string {
+  if (minutes == null) return "";
+  if (minutes === 1440) return "1 day before";
+  if (minutes === 120) return "2h before";
+  if (minutes === 60) return "1h before";
+  return `${minutes}m before`;
+}
 
 function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
   const k = (priority || "normal").toLowerCase();
@@ -116,35 +127,6 @@ function StatusBadge({ status }: { status: VaTaskStatus }) {
   );
 }
 
-function toLocalYmd(isoLike: string | null): string {
-  if (!isoLike?.trim()) return "";
-  const d = new Date(isoLike.trim());
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-function toDatetimeLocalValue(isoLike: string | null): string {
-  if (!isoLike?.trim()) return "";
-  const d = new Date(isoLike.trim());
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const h = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day}T${h}:${min}`;
-}
-
-function fromDatetimeLocal(s: string): string | undefined {
-  if (!s?.trim()) return undefined;
-  const t = new Date(s).getTime();
-  if (Number.isNaN(t)) return undefined;
-  return new Date(t).toISOString();
-}
-
 function emptyForm() {
   return {
     title: "",
@@ -169,6 +151,7 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
   const [localTasks, setLocalTasks] = React.useState(tasks);
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
+  const [reminding, setReminding] = React.useState<string | null>(null);
 
   React.useEffect(() => setLocalTasks(tasks), [tasks]);
 
@@ -180,22 +163,15 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
     return m;
   }, [vaUsers]);
 
-  const filterVaOptions = React.useMemo(
-    () => [
-      { value: "", label: "All" },
-      ...vaUsers.map((u) => ({ value: u.id, label: u.full_name || u.email })),
-    ],
+  const vaOptionsForFilter = React.useMemo(
+    () => [{ value: "", label: "All VAs" }, ...vaUsers.map((u) => ({ value: u.id, label: (u.full_name || u.email).trim() || u.id }))],
     [vaUsers]
   );
-  const filterStatusOptions = React.useMemo(
-    () => [{ value: "", label: "All" }, ...STATUSES.map((s) => ({ value: s, label: s }))],
-    []
-  );
 
-  const [filterVa, setFilterVa] = React.useState<string>("");
-  const [filterStatus, setFilterStatus] = React.useState<string>("");
-  const [filterFrom, setFilterFrom] = React.useState("");
-  const [filterTo, setFilterTo] = React.useState("");
+  const [search, setSearch] = React.useState("");
+  const [filterVa, setFilterVa] = React.useState("");
+  const [filterStatus, setFilterStatus] = React.useState("");
+  const [filterPriority, setFilterPriority] = React.useState("");
 
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -231,35 +207,22 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
     setModalOpen(true);
   };
 
-  const filtered = React.useMemo(() => {
+  const filteredTasks = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
     return localTasks.filter((t) => {
+      if (q) {
+        const blob = `${t.title} ${t.description}`.toLowerCase();
+        if (!blob.includes(q)) return false;
+      }
       if (filterStatus && t.status !== filterStatus) return false;
+      if (filterPriority && t.priority !== filterPriority) return false;
       if (filterVa) {
         if (t.assigned_to_ids.length === 0) return true;
         if (!t.assigned_to_ids.includes(filterVa)) return false;
       }
-      const ymd = t.due_date ? toLocalYmd(t.due_date) : "";
-      if (filterFrom && (!ymd || ymd < filterFrom)) return false;
-      if (filterTo && (!ymd || ymd > filterTo)) return false;
       return true;
     });
-  }, [localTasks, filterVa, filterStatus, filterFrom, filterTo]);
-
-  const grouped = React.useMemo(() => {
-    const m = new Map<string, VaTaskRecord[]>();
-    for (const t of filtered) {
-      const key = t.due_date ? toLocalYmd(t.due_date) : "__none__";
-      const list = m.get(key) ?? [];
-      list.push(t);
-      m.set(key, list);
-    }
-    const keys = [...m.keys()].sort((a, b) => {
-      if (a === "__none__") return 1;
-      if (b === "__none__") return -1;
-      return a.localeCompare(b);
-    });
-    return keys.map((k) => ({ dateKey: k, list: m.get(k)! }));
-  }, [filtered]);
+  }, [localTasks, search, filterVa, filterStatus, filterPriority]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -269,8 +232,7 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
     const dueIso = form.due_local ? fromDatetimeLocal(form.due_local) : undefined;
     const rawI = form.recurrence_interval.trim();
     const interval = rawI === "" ? null : Number(rawI);
-    const reminder =
-      form.reminder_minutes.trim() === "" ? null : Number(form.reminder_minutes);
+    const reminder = form.reminder_minutes.trim() === "" ? null : Number(form.reminder_minutes);
 
     const payload = {
       title: form.title,
@@ -299,7 +261,7 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
       return;
     }
     setModalOpen(false);
-    window.location.reload();
+    router.refresh();
   };
 
   const confirmDeleteTask = React.useCallback(async () => {
@@ -324,379 +286,556 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
     }
   }, [taskPendingDelete, addToast, router]);
 
+  async function handleRemind(task: VaTaskRecord) {
+    setReminding(task.id);
+    try {
+      const res = await fetch(`/api/admin/va-tasks/${encodeURIComponent(task.id)}/remind`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; notified?: number };
+      if (!res.ok) {
+        addToast(localToast(`vat-rm-${Date.now()}`, "Remind failed", data.error ?? "Could not send reminder.", "high"));
+        return;
+      }
+      addToast(
+        localToast(
+          `vat-rm-ok-${Date.now()}`,
+          "Reminder sent",
+          `Notified ${data.notified ?? 0} recipient(s).`,
+          "normal"
+        )
+      );
+    } catch {
+      addToast(localToast(`vat-rm-${Date.now()}`, "Remind failed", "Network error.", "high"));
+    } finally {
+      setReminding(null);
+    }
+  }
+
   const assignedLabel = (t: VaTaskRecord) => {
     if (t.assigned_to_ids.length === 0) return "All VAs";
     return t.assigned_to_ids.map((id) => nameById[id] ?? id).join(", ");
   };
 
-  const filtersActive = Boolean(filterVa || filterStatus || filterFrom || filterTo);
+  const reminderChipActive = (min: number) => form.reminder_minutes === String(min);
 
-  const clearFilters = () => {
-    setFilterVa("");
-    setFilterStatus("");
-    setFilterFrom("");
-    setFilterTo("");
+  const toggleRecurrenceDayIndex = (i: number) => {
+    const day = WEEKDAYS[i];
+    setForm((f) => {
+      const set = new Set(f.recurrence_days);
+      if (set.has(day)) set.delete(day);
+      else set.add(day);
+      return { ...f, recurrence_days: [...set] as VaRecurrenceDay[] };
+    });
   };
 
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">VA tasks</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/60">
-            Create, assign, filter, and manage operational tasks for VAs.
-          </p>
+          <p className="text-xs font-bold uppercase tracking-widest text-pink-400/60">Administration</p>
+          <h1 className="mt-1 text-3xl font-bold text-white">VA tasks</h1>
+          <p className="mt-1 text-sm text-white/40">Assign and manage tasks for your virtual assistants</p>
         </div>
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-950/25 transition hover:opacity-90"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:opacity-90"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
           New task
         </button>
       </div>
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 backdrop-blur-xl">
-        <div className="flex flex-col flex-wrap gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="flex min-w-0 flex-1 flex-col flex-wrap gap-4 sm:flex-row sm:items-end lg:flex-nowrap lg:gap-4">
-            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[200px]">
-              <span className="mb-1 block text-xs text-white/40">VA</span>
-              <CustomSelect
-                value={filterVa}
-                onChange={setFilterVa}
-                options={filterVaOptions}
-                triggerClassName={filterSelectTriggerClass}
-                portaled
-              />
-            </label>
-            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[200px]">
-              <span className="mb-1 block text-xs text-white/40">Status</span>
-              <CustomSelect
-                value={filterStatus}
-                onChange={setFilterStatus}
-                options={filterStatusOptions}
-                triggerClassName={filterSelectTriggerClass}
-                portaled
-              />
-            </label>
-            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[180px]">
-              <span className="mb-1 block text-xs text-white/40">From date</span>
-              <input
-                type="date"
-                value={filterFrom}
-                onChange={(e) => setFilterFrom(e.target.value)}
-                className={filterDateInputClass}
-              />
-            </label>
-            <label className="min-w-[140px] shrink-0 sm:flex-1 lg:max-w-[180px]">
-              <span className="mb-1 block text-xs text-white/40">To date</span>
-              <input
-                type="date"
-                value={filterTo}
-                onChange={(e) => setFilterTo(e.target.value)}
-                className={filterDateInputClass}
-              />
-            </label>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: "Total", value: localTasks.length, color: "text-white" },
+          { label: "Pending", value: localTasks.filter((t) => t.status === "pending").length, color: "text-amber-400" },
+          {
+            label: "In progress",
+            value: localTasks.filter((t) => t.status === "in_progress").length,
+            color: "text-sky-400",
+          },
+          { label: "Done", value: localTasks.filter((t) => t.status === "done").length, color: "text-emerald-400" },
+        ].map((s) => (
+          <div key={s.label} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/30">{s.label}</p>
+            <p className={cn("mt-1 text-3xl font-bold tabular-nums", s.color)}>{s.value}</p>
           </div>
-          {filtersActive ? (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="shrink-0 rounded-xl border border-transparent px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white/55 transition hover:border-white/10 hover:bg-white/5 hover:text-white/80"
-            >
-              Clear filters
-            </button>
-          ) : null}
-        </div>
+        ))}
       </div>
 
-      <div className="space-y-0">
-        {grouped.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-16 text-center backdrop-blur-xl">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
-              <ClipboardList className="h-7 w-7" aria-hidden />
-            </div>
-            <p className="mt-5 text-base font-semibold text-white/90">No tasks found</p>
-            <p className="mt-2 max-w-sm text-sm leading-relaxed text-white/50">
-              Adjust your filters or create a new task.
-            </p>
-          </div>
-        ) : (
-          grouped.map(({ dateKey, list }, idx) => (
-            <section key={dateKey} className={idx !== 0 ? "mt-6" : ""}>
-              <h2 className="mb-3 text-xs font-semibold uppercase tracking-widest text-white/40">
-                {dateKey === "__none__" ? "No due date" : formatDateEuropean(dateKey)}
-              </h2>
-              <ul className="space-y-3">
-                {list.map((t) => (
-                  <li
-                    key={t.id}
-                    className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/5 p-4 transition-all hover:bg-white/8 sm:flex-row sm:items-start sm:justify-between"
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="text-base font-semibold text-white">{t.title}</p>
-                      {t.description ? (
-                        <p className="mt-0.5 text-sm text-white/60">{t.description}</p>
-                      ) : null}
-                      <p className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-white/50">
-                        <span>
-                          Assigned: <span className="text-white/70">{assignedLabel(t)}</span>
-                        </span>
-                        <span className="text-white/30" aria-hidden>
-                          ·
-                        </span>
-                        <PriorityBadge priority={t.priority} />
-                        <span className="text-white/30" aria-hidden>
-                          ·
-                        </span>
-                        <StatusBadge status={t.status} />
-                        {t.is_recurring ? (
-                          <>
-                            <span className="text-white/30" aria-hidden>
-                              ·
-                            </span>
-                            <span className="text-white/45">recurring</span>
-                          </>
-                        ) : null}
-                      </p>
-                    </div>
-                    <div className="flex shrink-0 items-center justify-end gap-2 sm:pt-0.5">
-                      <button
-                        type="button"
-                        onClick={() => openEdit(t)}
-                        className="rounded-lg border border-white/10 bg-transparent px-3 py-1.5 text-xs font-medium text-white/80 transition hover:border-white/20 hover:bg-white/10 hover:text-white"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        disabled={confirmingTaskDelete && taskPendingDelete?.id === t.id}
-                        onClick={() => setTaskPendingDelete(t)}
-                        className="rounded-lg border border-white/10 bg-transparent p-2 text-white/60 transition hover:border-red-500/35 hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
-                        title="Delete task"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden />
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ))
-        )}
+      <div className="flex flex-wrap gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+        <input
+          type="search"
+          placeholder="Search tasks…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-pink-500/50"
+        />
+        <CustomSelect
+          value={filterVa}
+          onChange={setFilterVa}
+          options={vaOptionsForFilter}
+          triggerClassName="h-11 min-w-[10rem] rounded-xl border border-white/10 bg-white/5 text-sm text-white"
+          portaled
+        />
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-pink-500/50"
+        >
+          <option value="">All statuses</option>
+          {STATUSES.map((s) => (
+            <option key={s} value={s}>
+              {s.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filterPriority}
+          onChange={(e) => setFilterPriority(e.target.value)}
+          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-pink-500/50"
+        >
+          <option value="">All priorities</option>
+          {PRIORITIES.map((p) => (
+            <option key={p} value={p}>
+              {p}
+            </option>
+          ))}
+        </select>
       </div>
+
+      {filteredTasks.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-16 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
+            <ClipboardList className="h-7 w-7" aria-hidden />
+          </div>
+          <p className="mt-5 text-base font-semibold text-white/90">No tasks match</p>
+          <p className="mt-2 max-w-sm text-sm text-white/50">Adjust search or filters, or create a new task.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filteredTasks.map((task) => (
+            <div
+              key={task.id}
+              className={cn(
+                "group relative rounded-2xl border p-5 pl-6 transition-all hover:bg-white/[0.04]",
+                task.status === "done"
+                  ? "border-emerald-500/15 opacity-70"
+                  : task.priority === "urgent"
+                    ? "border-red-500/25"
+                    : task.priority === "high"
+                      ? "border-amber-500/20"
+                      : "border-white/8"
+              )}
+            >
+              <div
+                className={cn(
+                  "absolute left-2 top-4 bottom-4 w-1 rounded-full",
+                  task.priority === "urgent"
+                    ? "bg-red-500"
+                    : task.priority === "high"
+                      ? "bg-amber-500"
+                      : task.priority === "normal"
+                        ? "bg-sky-500"
+                        : "bg-white/25"
+                )}
+              />
+              <div className="pl-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <StatusBadge status={task.status} />
+                      <PriorityBadge priority={task.priority} />
+                      {task.is_recurring ? (
+                        <span className="rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-300">
+                          Recurring
+                        </span>
+                      ) : null}
+                    </div>
+                    <h3
+                      className={cn(
+                        "font-semibold text-white",
+                        task.status === "done" && "text-white/50 line-through"
+                      )}
+                    >
+                      {task.title}
+                    </h3>
+                    {task.description ? (
+                      <p className="mt-1 line-clamp-2 text-sm text-white/40">{task.description}</p>
+                    ) : null}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                    {task.status !== "done" && task.status !== "skipped" ? (
+                      <button
+                        type="button"
+                        onClick={() => void handleRemind(task)}
+                        disabled={reminding === task.id}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-40"
+                      >
+                        <Bell className="h-3.5 w-3.5" aria-hidden />
+                        {reminding === task.id ? "Sending…" : "Remind"}
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => openEdit(task)}
+                      className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
+                      title="Edit"
+                    >
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
+                      onClick={() => setTaskPendingDelete(task)}
+                      className="rounded-lg p-1.5 text-white/40 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                    </button>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/30">
+                  {task.due_date ? (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1",
+                        isPastDue(task.due_date) && task.status !== "done" && "text-red-400"
+                      )}
+                    >
+                      <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                      {formatDateTimeAthens(task.due_date)}
+                      {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
+                    </span>
+                  ) : null}
+                  <span>{assignedLabel(task)}</span>
+                  {task.reminder_minutes_before != null ? (
+                    <span>{formatReminderLabel(task.reminder_minutes_before)}</span>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 p-4 backdrop-blur-sm sm:items-center">
-          <div className="max-h-[92vh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950/95 p-8 shadow-[0_0_60px_-12px_rgba(236,72,153,0.25)]">
-            <h3 className="text-xl font-semibold tracking-tight text-white">
-              {editingId ? "Edit task" : "New task"}
-            </h3>
-            <p className="mt-1 text-sm text-white/45">Configure assignment, schedule, and reminders.</p>
-            <form onSubmit={submit} className="mt-8 space-y-10">
-              {error ? <p className="text-sm text-red-400">{error}</p> : null}
+          <div className="max-h-[92vh] w-full max-w-xl overflow-hidden rounded-3xl border border-white/15 bg-[#0f0f1a] shadow-2xl">
+            <form onSubmit={submit} className="flex max-h-[92vh] flex-col">
+              <div className="flex items-start justify-between border-b border-white/10 p-6 pb-4">
+                <div>
+                  <h2 className="text-xl font-bold text-white">{editingId ? "Edit task" : "New task"}</h2>
+                  <p className="mt-0.5 text-sm text-white/40">Configure assignment, schedule, and reminders</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setModalOpen(false)}
+                  className="rounded-xl p-2 text-white/30 transition hover:bg-white/5 hover:text-white"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
 
-              <FormSection title="Assignment">
-                <label className={`${labelClass} flex cursor-pointer items-center gap-3`}>
-                  <input
-                    type="checkbox"
-                    checked={form.allVas}
-                    onChange={(e) =>
+              <div className="max-h-[70vh] space-y-5 overflow-y-auto p-6 pr-4">
+                {error ? <p className="text-sm text-red-400">{error}</p> : null}
+
+                <div>
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-pink-400/70">Assignment</p>
+                  <label className="mb-1.5 block text-xs text-white/40">Assign to</label>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={form.allVas}
+                    onClick={() =>
                       setForm((f) => ({
                         ...f,
-                        allVas: e.target.checked,
-                        assigned_to_ids: e.target.checked ? [] : f.assigned_to_ids,
+                        allVas: !f.allVas,
+                        assigned_to_ids: !f.allVas ? [] : f.assigned_to_ids,
                       }))
                     }
-                    className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/5 text-pink-500 accent-pink-500 focus:ring-pink-500/40"
-                  />
-                  <span className="text-white/85">All VAs (no specific assignees)</span>
-                </label>
-                {!form.allVas ? (
-                  <fieldset>
-                    <legend className={labelClass}>Assign to</legend>
-                    <div className="mt-2 max-h-40 space-y-2 overflow-y-auto rounded-xl border border-white/10 bg-white/[0.03] p-3">
-                      {vaUsers.map((u) => (
-                        <label key={u.id} className="flex cursor-pointer items-center gap-3 py-1">
-                          <input
-                            type="checkbox"
-                            checked={form.assigned_to_ids.includes(u.id)}
-                            onChange={(e) => {
-                              setForm((f) => {
-                                const set = new Set(f.assigned_to_ids);
-                                if (e.target.checked) set.add(u.id);
-                                else set.delete(u.id);
-                                return { ...f, assigned_to_ids: [...set] };
-                              });
-                            }}
-                            className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/5 text-pink-500 accent-pink-500 focus:ring-pink-500/40"
-                          />
-                          <span className="text-sm text-white/85">{u.full_name || u.email}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </fieldset>
-                ) : null}
-              </FormSection>
-
-              <FormSection title="Details">
-                <label className={labelClass}>
-                  Title *
-                  <input
-                    required
-                    value={form.title}
-                    onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
-                    className={inputClass}
-                    placeholder="Task title"
-                  />
-                </label>
-                <label className={labelClass}>
-                  Description
-                  <textarea
-                    rows={3}
-                    value={form.description}
-                    onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                    className={textareaClass}
-                    placeholder="Optional details…"
-                  />
-                </label>
-              </FormSection>
-
-              <FormSection title="Schedule">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <label className={labelClass}>
-                    Status
-                    <CustomSelect
-                      value={form.status}
-                      onChange={(v) => setForm((f) => ({ ...f, status: v as VaTaskStatus }))}
-                      options={STATUS_FORM_OPTIONS}
-                      className="mt-2"
-                    />
-                  </label>
-                  <label className={labelClass}>
-                    Priority
-                    <CustomSelect
-                      value={form.priority}
-                      onChange={(v) => setForm((f) => ({ ...f, priority: v as VaTaskPriority }))}
-                      options={PRIORITY_FORM_OPTIONS}
-                      className="mt-2"
-                    />
-                  </label>
-                </div>
-                <label className={labelClass}>
-                  Due date &amp; time
-                  <input
-                    type="datetime-local"
-                    value={form.due_local}
-                    onChange={(e) => setForm((f) => ({ ...f, due_local: e.target.value }))}
-                    className={`${inputClass} [color-scheme:dark]`}
-                  />
-                </label>
-              </FormSection>
-
-              <FormSection title="Recurrence">
-                <label className={`${labelClass} flex cursor-pointer items-center gap-3`}>
-                  <input
-                    type="checkbox"
-                    checked={form.is_recurring}
-                    onChange={(e) => setForm((f) => ({ ...f, is_recurring: e.target.checked }))}
-                    className="h-5 w-5 shrink-0 rounded border-white/25 bg-white/5 text-pink-500 accent-pink-500 focus:ring-pink-500/40"
-                  />
-                  <span className="text-white/85">Recurring task</span>
-                </label>
-                {form.is_recurring ? (
-                  <div className="space-y-4">
-                    <label className={labelClass}>
-                      Recurrence type
-                      <CustomSelect
-                        value={form.recurrence_type}
-                        onChange={(v) =>
-                          setForm((f) => ({ ...f, recurrence_type: v as VaRecurrenceType | "" }))
-                        }
-                        options={RECURRENCE_FORM_OPTIONS}
-                        className="mt-2"
+                    className="mb-3 flex cursor-pointer items-center gap-3"
+                  >
+                    <span
+                      className={cn(
+                        "relative h-5 w-10 rounded-full transition-colors",
+                        form.allVas ? "bg-pink-500" : "bg-white/20"
+                      )}
+                    >
+                      <span
+                        className={cn(
+                          "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all",
+                          form.allVas ? "left-5" : "left-0.5"
+                        )}
                       />
-                    </label>
-                    <div>
-                      <span className={labelClass}>Recurrence days</span>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {WEEKDAYS.map((d) => {
-                          const on = form.recurrence_days.includes(d);
-                          return (
-                            <button
-                              key={d}
-                              type="button"
-                              onClick={() => {
+                    </span>
+                    <span className="text-sm text-white/60">All VAs</span>
+                  </button>
+                  {!form.allVas ? (
+                    <div className="flex flex-wrap gap-2">
+                      {vaUsers.map((va) => {
+                        const name = (va.full_name || va.email).trim() || va.id;
+                        const initial = name.charAt(0).toUpperCase();
+                        const on = form.assigned_to_ids.includes(va.id);
+                        return (
+                          <label
+                            key={va.id}
+                            className={cn(
+                              "flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-1.5 transition-all",
+                              on
+                                ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                                : "border-white/10 bg-white/5 text-white/60 hover:bg-white/[0.08]"
+                            )}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              onChange={() =>
                                 setForm((f) => {
-                                  const set = new Set(f.recurrence_days);
-                                  if (set.has(d)) set.delete(d);
-                                  else set.add(d);
-                                  return { ...f, recurrence_days: [...set] as VaRecurrenceDay[] };
-                                });
-                              }}
-                              className={`rounded-full px-3.5 py-2 text-xs font-medium transition-colors ${
-                                on
-                                  ? "bg-pink-500/35 text-pink-100 ring-1 ring-pink-400/50"
-                                  : "border border-white/10 bg-white/5 text-white/65 hover:border-white/20 hover:bg-white/[0.08]"
-                              }`}
-                            >
-                              {d.slice(0, 3)}
-                            </button>
-                          );
-                        })}
+                                  const set = new Set(f.assigned_to_ids);
+                                  if (set.has(va.id)) set.delete(va.id);
+                                  else set.add(va.id);
+                                  return { ...f, assigned_to_ids: [...set] };
+                                })
+                              }
+                              className="sr-only"
+                            />
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-pink-500/20 text-xs font-bold text-pink-400">
+                              {initial}
+                            </span>
+                            <span className="text-sm">{name}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="h-px bg-white/[0.08]" />
+
+                <div>
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-pink-400/70">Details</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-white/40">Title *</label>
+                      <input
+                        required
+                        value={form.title}
+                        onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+                        placeholder="Task title…"
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-pink-500/50"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs text-white/40">Description</label>
+                      <textarea
+                        rows={3}
+                        value={form.description}
+                        onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
+                        placeholder="What needs to be done?"
+                        className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none placeholder:text-white/20 focus:border-pink-500/50"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-1.5 block text-xs text-white/40">Status</label>
+                        <select
+                          value={form.status}
+                          onChange={(e) => setForm((f) => ({ ...f, status: e.target.value as VaTaskStatus }))}
+                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white outline-none focus:border-pink-500/50"
+                        >
+                          {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s.replace(/_/g, " ")}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs text-white/40">Priority</label>
+                        <select
+                          value={form.priority}
+                          onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as VaTaskPriority }))}
+                          className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white outline-none focus:border-pink-500/50"
+                        >
+                          <option value="low">Low</option>
+                          <option value="normal">Normal</option>
+                          <option value="high">High</option>
+                          <option value="urgent">Urgent</option>
+                        </select>
                       </div>
                     </div>
-                    <label className={labelClass}>
-                      Recurrence interval
-                      <input
-                        type="number"
-                        min={1}
-                        value={form.recurrence_interval}
-                        onChange={(e) => setForm((f) => ({ ...f, recurrence_interval: e.target.value }))}
-                        className={inputClass}
-                        placeholder="1"
-                      />
-                    </label>
-                    <label className={labelClass}>
-                      Recurrence end date
-                      <input
-                        type="date"
-                        value={form.recurrence_end}
-                        onChange={(e) => setForm((f) => ({ ...f, recurrence_end: e.target.value }))}
-                        className={`${inputClass} [color-scheme:dark]`}
-                      />
-                    </label>
                   </div>
-                ) : null}
-              </FormSection>
+                </div>
 
-              <FormSection title="Reminder">
-                <label className={labelClass}>
-                  Minutes before due
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.reminder_minutes}
-                    onChange={(e) => setForm((f) => ({ ...f, reminder_minutes: e.target.value }))}
-                    className={inputClass}
-                    placeholder="e.g. 15"
-                  />
-                </label>
-              </FormSection>
+                <div className="h-px bg-white/[0.08]" />
 
-              <div className="space-y-3 pt-2">
+                <div>
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-pink-400/70">Schedule</p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-white/40">Due date &amp; time</label>
+                      <input
+                        type="datetime-local"
+                        value={form.due_local}
+                        onChange={(e) => setForm((f) => ({ ...f, due_local: e.target.value }))}
+                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white outline-none [color-scheme:dark] focus:border-pink-500/50"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={form.is_recurring}
+                      onClick={() => setForm((f) => ({ ...f, is_recurring: !f.is_recurring }))}
+                      className="flex cursor-pointer items-center gap-3"
+                    >
+                      <span
+                        className={cn(
+                          "relative h-5 w-10 rounded-full transition-colors",
+                          form.is_recurring ? "bg-pink-500" : "bg-white/20"
+                        )}
+                      >
+                        <span
+                          className={cn(
+                            "absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all",
+                            form.is_recurring ? "left-5" : "left-0.5"
+                          )}
+                        />
+                      </span>
+                      <span className="text-sm text-white/60">Recurring task</span>
+                    </button>
+                    {form.is_recurring ? (
+                      <div className="space-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1.5 block text-xs text-white/40">Recurrence type</label>
+                            <select
+                              value={form.recurrence_type}
+                              onChange={(e) =>
+                                setForm((f) => ({ ...f, recurrence_type: e.target.value as VaRecurrenceType | "" }))
+                              }
+                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/50"
+                            >
+                              <option value="">—</option>
+                              {RECURRENCE_TYPES.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="mb-1.5 block text-xs text-white/40">Interval</label>
+                            <input
+                              type="number"
+                              min={1}
+                              value={form.recurrence_interval}
+                              onChange={(e) => setForm((f) => ({ ...f, recurrence_interval: e.target.value }))}
+                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/50"
+                            />
+                          </div>
+                        </div>
+                        {form.recurrence_type === "weekly" ? (
+                          <div>
+                            <label className="mb-2 block text-xs text-white/40">Days</label>
+                            <div className="flex flex-wrap gap-1.5">
+                              {WEEKDAY_SHORT.map((day, i) => {
+                                const on = form.recurrence_days.includes(WEEKDAYS[i]);
+                                return (
+                                  <button
+                                    key={day}
+                                    type="button"
+                                    onClick={() => toggleRecurrenceDayIndex(i)}
+                                    className={cn(
+                                      "h-10 w-10 rounded-xl border text-xs font-semibold transition-all",
+                                      on
+                                        ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                                        : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10"
+                                    )}
+                                  >
+                                    {day}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : null}
+                        <div>
+                          <label className="mb-1.5 block text-xs text-white/40">End date</label>
+                          <input
+                            type="date"
+                            value={form.recurrence_end}
+                            onChange={(e) => setForm((f) => ({ ...f, recurrence_end: e.target.value }))}
+                            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none [color-scheme:dark] focus:border-pink-500/50"
+                          />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="h-px bg-white/[0.08]" />
+
+                <div>
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-pink-400/70">Reminder</p>
+                  <label className="mb-1.5 block text-xs text-white/40">Minutes before due</label>
+                  <div className="flex flex-wrap gap-2">
+                    {REMINDER_CHIPS.map((min) => (
+                      <button
+                        key={min}
+                        type="button"
+                        onClick={() =>
+                          setForm((f) => ({
+                            ...f,
+                            reminder_minutes: reminderChipActive(min) ? "" : String(min),
+                          }))
+                        }
+                        className={cn(
+                          "rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                          reminderChipActive(min)
+                            ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                            : "border-white/10 bg-white/5 text-white/50 hover:bg-white/10"
+                        )}
+                      >
+                        {min === 1440 ? "1 day" : min === 120 ? "2h" : min === 60 ? "1h" : `${min}m`}
+                      </button>
+                    ))}
+                    <input
+                      type="number"
+                      min={1}
+                      placeholder="Custom…"
+                      value={
+                        form.reminder_minutes &&
+                        !REMINDER_CHIPS.some((m) => String(m) === form.reminder_minutes)
+                          ? form.reminder_minutes
+                          : ""
+                      }
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((f) => ({ ...f, reminder_minutes: v === "" ? "" : String(Math.max(1, Number(v)) || 1) }));
+                      }}
+                      className="w-24 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white outline-none placeholder:text-white/20 focus:border-pink-500/50"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-2 border-t border-white/8 p-6 pt-4">
                 <button
                   type="submit"
-                  disabled={saving}
-                  className="flex h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-[hsl(330,72%,48%)] to-[hsl(330,82%,40%)] text-sm font-semibold text-white shadow-lg shadow-pink-950/30 transition-opacity hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-45"
+                  disabled={!form.title.trim() || saving}
+                  className="flex-1 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 py-3 text-sm font-bold text-white shadow-lg shadow-pink-500/20 disabled:opacity-40"
                 >
-                  {saving ? "Saving…" : editingId ? "Save changes" : "Create task"}
+                  {saving ? "Saving…" : editingId ? "Update task" : "Create task"}
                 </button>
                 <button
                   type="button"
                   onClick={() => setModalOpen(false)}
-                  className="flex h-12 w-full items-center justify-center rounded-xl border border-white/20 bg-transparent text-sm font-medium text-white/85 transition-colors hover:bg-white/[0.06]"
+                  className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/50 transition hover:bg-white/10"
                 >
                   Cancel
                 </button>

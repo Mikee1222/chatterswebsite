@@ -3,8 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { ListChecks, StickyNote, X } from "lucide-react";
-import { formatDateEuropean } from "@/lib/format";
+import { Check, ListChecks, StickyNote, X } from "lucide-react";
+import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
@@ -12,6 +12,7 @@ import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import type { VaTaskRecord, VaTaskPriority, VaTaskStatus } from "@/types";
+import { cn } from "@/lib/utils";
 
 type Props = { tasks: VaTaskRecord[] };
 
@@ -25,16 +26,43 @@ function toLocalYmd(isoLike: string | null): string {
   return `${y}-${m}-${day}`;
 }
 
-function todayYmd(): string {
-  const n = new Date();
-  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`;
+function isPastDue(isoLike: string | null | undefined): boolean {
+  if (!isoLike?.trim()) return false;
+  const t = new Date(isoLike.trim()).getTime();
+  if (!Number.isFinite(t)) return false;
+  return t < Date.now();
 }
 
-function priorityClasses(p: VaTaskPriority): string {
-  if (p === "urgent") return "border-l-4 border-l-red-500 bg-red-500/10";
-  if (p === "high") return "border-l-4 border-l-orange-400 bg-orange-500/10";
-  if (p === "low") return "border-l-4 border-l-white/20 bg-white/[0.03]";
-  return "border-l-4 border-l-emerald-500/40 bg-white/[0.04]";
+function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
+  const k = (priority || "normal").toLowerCase();
+  const variant =
+    k === "urgent"
+      ? "border border-red-500/30 bg-red-500/20 text-red-300"
+      : k === "high"
+        ? "border border-amber-500/30 bg-amber-500/20 text-amber-300"
+        : "border border-white/15 bg-white/10 text-white/65";
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
+      {priority}
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: VaTaskStatus }) {
+  const k = (status || "").toLowerCase();
+  const variant =
+    k === "pending"
+      ? "border border-amber-500/30 bg-amber-500/20 text-amber-300"
+      : k === "done"
+        ? "border border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
+        : k === "skipped"
+          ? "border border-red-500/30 bg-red-500/20 text-red-300"
+          : "border border-sky-500/30 bg-sky-500/15 text-sky-200";
+  return (
+    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
+      {status.replace(/_/g, " ")}
+    </span>
+  );
 }
 
 const fieldMotion = {
@@ -45,30 +73,40 @@ const fieldMotion = {
 
 export function VaTasksClient({ tasks: initialTasks }: Props) {
   const router = useRouter();
-  const [tasks] = React.useState(initialTasks);
+  const tasks = initialTasks;
   const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
   const [notes, setNotes] = React.useState("");
   const [statusPick, setStatusPick] = React.useState<VaTaskStatus>("done");
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
+  const [completing, setCompleting] = React.useState<string | null>(null);
 
-  const today = todayYmd();
+  const [search, setSearch] = React.useState("");
+  const [filterStatus, setFilterStatus] = React.useState("");
+  const [filterPriority, setFilterPriority] = React.useState("");
 
-  const grouped = React.useMemo(() => {
-    const m = new Map<string, VaTaskRecord[]>();
-    for (const t of tasks) {
-      const key = t.due_date ? toLocalYmd(t.due_date) : "__none__";
-      const list = m.get(key) ?? [];
-      list.push(t);
-      m.set(key, list);
+  const filteredTasks = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    let list = [...tasks];
+    if (q) {
+      list = list.filter((t) => {
+        const blob = `${t.title} ${t.description}`.toLowerCase();
+        return blob.includes(q);
+      });
     }
-    const keys = [...m.keys()].sort((a, b) => {
-      if (a === "__none__") return 1;
-      if (b === "__none__") return -1;
-      return a.localeCompare(b);
+    if (filterStatus) list = list.filter((t) => t.status === filterStatus);
+    if (filterPriority) list = list.filter((t) => t.priority === filterPriority);
+    const dueMs = (t: VaTaskRecord) => (t.due_date ? new Date(t.due_date).getTime() : 0);
+    const createdMs = (t: VaTaskRecord) => (t.created_at ? new Date(t.created_at).getTime() : 0);
+    return list.sort((a, b) => {
+      const da = dueMs(a);
+      const db = dueMs(b);
+      if (da && db && da !== db) return da - db;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
+      return createdMs(b) - createdMs(a);
     });
-    return keys.map((k) => ({ dateKey: k, list: m.get(k)! }));
-  }, [tasks]);
+  }, [tasks, search, filterStatus, filterPriority]);
 
   const openTask = (t: VaTaskRecord) => {
     setSelected(t);
@@ -95,51 +133,148 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     router.refresh();
   };
 
+  async function handleMarkComplete(task: VaTaskRecord, e?: React.MouseEvent) {
+    e?.stopPropagation();
+    setCompleting(task.id);
+    try {
+      const res = await updateVaTaskStatusAction({
+        taskId: task.id,
+        status: "done",
+        completed_notes: "",
+      });
+      if (!res.success) {
+        setErr(res.error);
+        return;
+      }
+      if (selected?.id === task.id) setSelected(null);
+      router.refresh();
+    } finally {
+      setCompleting(null);
+    }
+  }
+
   return (
-    <div className="space-y-8">
-      {grouped.map(({ dateKey, list }) => {
-        const isToday = dateKey === today;
-        return (
-          <section key={dateKey}>
-            <h2
-              className={`mb-3 text-lg font-semibold ${
-                isToday ? "text-[hsl(330,90%,72%)]" : "text-white"
-              }`}
+    <div className="space-y-6">
+      <div>
+        <p className="text-xs font-bold uppercase tracking-widest text-purple-400/60">My work</p>
+        <h1 className="mt-1 text-3xl font-bold text-white">VA tasks</h1>
+        <p className="mt-1 text-sm text-white/40">Your assigned tasks and to-dos</p>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <input
+          type="search"
+          placeholder="Search tasks…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/20 focus:border-purple-500/50"
+        />
+        <select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-purple-500/50"
+        >
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="in_progress">In progress</option>
+          <option value="done">Done</option>
+          <option value="skipped">Skipped</option>
+        </select>
+        <select
+          value={filterPriority}
+          onChange={(e) => setFilterPriority(e.target.value)}
+          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-purple-500/50"
+        >
+          <option value="">All priorities</option>
+          <option value="urgent">Urgent</option>
+          <option value="high">High</option>
+          <option value="normal">Normal</option>
+          <option value="low">Low</option>
+        </select>
+      </div>
+
+      {err && !selected ? (
+        <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
+          {err}
+        </div>
+      ) : null}
+
+      {filteredTasks.length === 0 ? (
+        <p className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-10 text-center text-sm text-white/50">
+          No tasks match your filters.
+        </p>
+      ) : (
+        <div className="space-y-3">
+          {filteredTasks.map((task) => (
+            <div
+              key={task.id}
+              role="button"
+              tabIndex={0}
+              onClick={() => openTask(task)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  openTask(task);
+                }
+              }}
+              className={cn(
+                "relative cursor-pointer rounded-2xl border p-5 transition-all",
+                task.status === "done"
+                  ? "border-emerald-500/15 opacity-60"
+                  : task.priority === "urgent"
+                    ? "border-red-500/25 bg-red-500/[0.02]"
+                    : task.priority === "high"
+                      ? "border-amber-500/20"
+                      : "border-white/8 hover:border-white/15"
+              )}
             >
-              {dateKey === "__none__" ? "No due date" : formatDateEuropean(dateKey)}
-              {isToday ? " · Today" : ""}
-            </h2>
-            <ul className="space-y-2">
-              {list.map((t) => {
-                const rowToday = t.due_date && toLocalYmd(t.due_date) === today;
-                return (
-                  <li key={t.id}>
-                    <button
-                      type="button"
-                      onClick={() => openTask(t)}
-                      className={`w-full rounded-xl border border-white/10 px-4 py-3 text-left text-sm transition hover:bg-white/[0.06] ${priorityClasses(t.priority)} ${
-                        rowToday ? "ring-1 ring-[hsl(330,80%,55%)]/50" : ""
-                      }`}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-white">{t.title}</span>
-                        {t.is_recurring ? (
-                          <span className="rounded bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase text-violet-200">
-                            Recurring
-                          </span>
-                        ) : null}
-                        <span className="ml-auto text-xs capitalize text-white/50">{t.priority}</span>
-                      </div>
-                      {t.description ? <p className="mt-1 text-white/55">{t.description}</p> : null}
-                      <p className="mt-2 text-xs text-white/40">{t.status}</p>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        );
-      })}
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <StatusBadge status={task.status} />
+                    <PriorityBadge priority={task.priority} />
+                  </div>
+                  <h3
+                    className={cn(
+                      "font-semibold",
+                      task.status === "done" ? "text-white/40 line-through" : "text-white"
+                    )}
+                  >
+                    {task.title}
+                  </h3>
+                  {task.description ? <p className="mt-1 text-sm text-white/40">{task.description}</p> : null}
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-white/30">
+                    {task.due_date ? (
+                      <span className={isPastDue(task.due_date) && task.status !== "done" ? "text-red-400" : ""}>
+                        {formatDateTimeAthens(task.due_date)}
+                        {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
+                      </span>
+                    ) : (
+                      <span>No due date</span>
+                    )}
+                  </div>
+                </div>
+                {task.status !== "done" && task.status !== "skipped" ? (
+                  <button
+                    type="button"
+                    onClick={(e) => void handleMarkComplete(task, e)}
+                    disabled={completing === task.id}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-40"
+                  >
+                    <Check className="h-4 w-4" aria-hidden />
+                    {completing === task.id ? "Saving…" : "Done"}
+                  </button>
+                ) : (
+                  <div className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
+                    <Check className="h-3.5 w-3.5" aria-hidden />
+                    Completed
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {selected ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm sm:items-center">
@@ -148,6 +283,9 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
             className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.85)]"
+            onClick={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal
           >
             <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
               <div className="min-w-0">

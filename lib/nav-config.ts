@@ -131,6 +131,7 @@ const chatterNav: NavItem[] = [
 
 const vaNav: NavItem[] = [
   { href: ROUTES.va.home, label: "Home", iconKey: "Home" },
+  { href: ROUTES.va.schedule, label: "My schedule", iconKey: "Calendar" },
   { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo" },
   { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays" },
   { href: ROUTES.va.whales, label: "Whales", iconKey: "Users" },

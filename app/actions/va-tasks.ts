@@ -38,6 +38,7 @@ export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTa
     revalidatePath(ROUTES.admin.vaTasks);
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
+    revalidatePath(ROUTES.va.schedule);
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Create failed." };
@@ -52,6 +53,7 @@ export async function updateVaTaskAction(id: string, data: VaTaskUpdateInput): P
     revalidatePath(ROUTES.admin.vaTasks);
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
+    revalidatePath(ROUTES.va.schedule);
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Update failed." };
@@ -91,6 +93,7 @@ export async function updateVaTaskStatusAction(input: {
     await updateVaTask(input.taskId, patch);
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
+    revalidatePath(ROUTES.va.schedule);
     revalidatePath(ROUTES.admin.vaTasks);
 
     if (input.status === "done") {
@@ -119,6 +122,7 @@ export async function deleteVaTaskAction(id: string): Promise<VaTaskActionResult
     revalidatePath(ROUTES.admin.vaTasks);
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
+    revalidatePath(ROUTES.va.schedule);
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Delete failed." };
