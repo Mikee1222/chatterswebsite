@@ -15,6 +15,7 @@ import {
   type VaTaskCreateInput,
   type VaTaskUpdateInput,
 } from "@/services/va-tasks";
+import { getNextOccurrence, shouldSpawnRecurring } from "@/lib/recurrence";
 import type { VaTaskStatus } from "@/types";
 
 function isAdminLike(role: string | undefined) {
@@ -91,6 +92,39 @@ export async function updateVaTaskStatusAction(input: {
 
   try {
     await updateVaTask(input.taskId, patch);
+
+    if (input.status === "done" && shouldSpawnRecurring(task) && task.due_date && task.recurrence_type) {
+      const nextDue = getNextOccurrence(
+        task.due_date,
+        task.recurrence_type,
+        task.recurrence_interval ?? 1,
+        task.recurrence_days ?? [],
+        task.recurrence_end_date
+      );
+      if (nextDue) {
+        try {
+          await createVaTask({
+            title: task.title,
+            description: task.description,
+            assigned_to_ids: [...task.assigned_to_ids],
+            assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
+            status: "pending",
+            priority: task.priority,
+            due_date: nextDue,
+            is_recurring: true,
+            recurrence_type: task.recurrence_type,
+            recurrence_days: [...task.recurrence_days],
+            recurrence_interval: task.recurrence_interval ?? undefined,
+            recurrence_end_date: task.recurrence_end_date,
+            reminder_minutes_before: task.reminder_minutes_before,
+          });
+          console.log(`[va-tasks] spawned next occurrence for "${task.title}" → ${nextDue}`);
+        } catch (spawnErr) {
+          console.error("[va-tasks] spawn next occurrence failed", spawnErr);
+        }
+      }
+    }
+
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
     revalidatePath(ROUTES.va.schedule);

@@ -233,6 +233,22 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                   <div className="mb-2 flex flex-wrap items-center gap-2">
                     <StatusBadge status={task.status} />
                     <PriorityBadge priority={task.priority} />
+                    {task.is_recurring ? (
+                      <span className="inline-flex items-center rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
+                        🔄{" "}
+                        {task.recurrence_interval != null && task.recurrence_interval > 1
+                          ? `Every ${task.recurrence_interval} ${
+                              task.recurrence_type === "daily"
+                                ? "days"
+                                : task.recurrence_type === "weekly"
+                                  ? "weeks"
+                                  : task.recurrence_type === "monthly"
+                                    ? "months"
+                                    : "times"
+                            }`
+                          : task.recurrence_type || "recurring"}
+                      </span>
+                    ) : null}
                   </div>
                   <h3
                     className={cn(

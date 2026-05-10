@@ -340,6 +340,85 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
   return { ok: true, overdue_scanned: tasks.length, notifications_sent };
 }
 
+export type VaRecurringSpawnCronResult = {
+  ok: true;
+  scanned: number;
+  spawned: number;
+};
+
+/**
+ * Backfill: recurring tasks marked done whose next occurrence row is missing (e.g. spawn failed on completion).
+ * De-dupes by series key (title + assignees) and next due within ±1h of an existing task.
+ */
+export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronResult> {
+  try {
+    const { getAllVaTasks, createVaTask } = await import("@/services/va-tasks");
+    const { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } = await import("@/lib/recurrence");
+
+    let allTasks = await getAllVaTasks();
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const doneRecurring = allTasks.filter((t) => {
+      if (!t.is_recurring || t.status !== "done" || !t.due_date?.trim()) return false;
+      const due = new Date(t.due_date.trim());
+      if (!Number.isFinite(due.getTime())) return false;
+      return due.getTime() < today.getTime();
+    });
+
+    let spawned = 0;
+    for (const task of doneRecurring) {
+      if (!shouldSpawnRecurring(task)) continue;
+      if (!task.due_date || !task.recurrence_type) continue;
+      const nextDue = getNextOccurrence(
+        task.due_date,
+        task.recurrence_type,
+        task.recurrence_interval ?? 1,
+        task.recurrence_days ?? [],
+        task.recurrence_end_date
+      );
+      if (!nextDue) continue;
+
+      const series = vaTaskSeriesKey(task);
+      const nextMs = new Date(nextDue).getTime();
+      if (!Number.isFinite(nextMs)) continue;
+
+      const alreadyExists = allTasks.some((t2) => {
+        if (vaTaskSeriesKey(t2) !== series) return false;
+        if (!t2.due_date?.trim()) return false;
+        const d = new Date(t2.due_date.trim()).getTime();
+        if (!Number.isFinite(d)) return false;
+        return Math.abs(d - nextMs) < 60 * 60 * 1000;
+      });
+      if (alreadyExists) continue;
+
+      await createVaTask({
+        title: task.title,
+        description: task.description,
+        assigned_to_ids: [...task.assigned_to_ids],
+        assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
+        status: "pending",
+        priority: task.priority,
+        due_date: nextDue,
+        is_recurring: true,
+        recurrence_type: task.recurrence_type,
+        recurrence_days: [...task.recurrence_days],
+        recurrence_interval: task.recurrence_interval ?? undefined,
+        recurrence_end_date: task.recurrence_end_date,
+        reminder_minutes_before: task.reminder_minutes_before,
+      });
+      spawned += 1;
+      console.log(`[cron] spawned recurring task "${task.title}" → ${nextDue}`);
+      allTasks = await getAllVaTasks();
+    }
+
+    return { ok: true, scanned: doneRecurring.length, spawned };
+  } catch (e) {
+    console.error("[runVaRecurringTaskSpawner]", e);
+    return { ok: true, scanned: 0, spawned: 0 };
+  }
+}
+
 export type StuckCustomRequestAlertResult = {
   ok: true;
   requests_scanned: number;
