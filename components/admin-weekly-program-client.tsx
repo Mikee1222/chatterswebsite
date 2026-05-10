@@ -5,7 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Calendar, CalendarDays, Clock, Layers, Loader2, Moon, Search, StickyNote, Sun, UserRound } from "lucide-react";
+import { Calendar, CalendarDays, Clock, Copy, Layers, Loader2, Moon, Search, StickyNote, Sun, UserRound } from "lucide-react";
 import {
   createProgramAction,
   updateProgramAction,
@@ -20,7 +20,16 @@ import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { CustomSelect, CUSTOM_SELECT_HOUR_12_OPTIONS, type CustomSelectOption } from "@/components/ui/custom-select";
 import { adminWeeklyProgramUrl, adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import { getTimesForShiftType, buildCustomShiftTimes, getThisWeekMonday, addDays, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
+import {
+  getTimesForShiftType,
+  buildCustomShiftTimes,
+  getThisWeekMonday,
+  addDays,
+  addWeeks,
+  normalizeWeekStart,
+  formatWeekLabel,
+  normalizeHHmm,
+} from "@/lib/weekly-program";
 import { getWeeklyProgramConflicts } from "@/lib/weekly-program-conflicts";
 import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
@@ -549,8 +558,10 @@ function hhmm24To12Parts(hhmm: string): { h12: number; minute: number; pm: boole
 }
 
 function hhmm12To24(h12: number, minute: number, pm: boolean): string {
-  const h = Math.min(12, Math.max(1, Math.round(h12)));
-  const m = Math.min(59, Math.max(0, Math.round(minute)));
+  const h12Safe = Number.isFinite(h12) ? h12 : 12;
+  const minSafe = Number.isFinite(minute) ? minute : 0;
+  const h = Math.min(12, Math.max(1, Math.round(h12Safe)));
+  const m = Math.min(59, Math.max(0, Math.round(minSafe)));
   let h24: number;
   if (pm) h24 = h === 12 ? 12 : h + 12;
   else h24 = h === 12 ? 0 : h;
@@ -581,7 +592,10 @@ function CustomTime12hBlock({
       <div className="flex flex-wrap items-center gap-2">
         <CustomSelect portaled
           value={String(h12)}
-          onChange={(v) => sync({ h12: Number(v) })}
+          onChange={(v) => {
+            const n = Number(v);
+            sync({ h12: Number.isFinite(n) ? n : 12 });
+          }}
           options={CUSTOM_SELECT_HOUR_12_OPTIONS}
           className="w-[4.5rem] shrink-0"
           aria-invalid={ariaInvalid}
@@ -591,6 +605,7 @@ function CustomTime12hBlock({
           type="number"
           min={0}
           max={59}
+          step={1}
           inputMode="numeric"
           value={minute}
           onChange={(e) => {
@@ -649,6 +664,13 @@ export function AdminWeeklyProgramClient({
   const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
   /** idle: ready · working: Airtable copy in flight · done / failed: brief feedback before reset */
   const [duplicateUi, setDuplicateUi] = React.useState<"idle" | "working" | "done" | "failed">("idle");
+  const [duplicateWeekModal, setDuplicateWeekModal] = React.useState<{
+    chatterId: string;
+    chatterName: string;
+  } | null>(null);
+  const [duplicateWeekTarget, setDuplicateWeekTarget] = React.useState<string>("");
+  const [duplicateWeekOverwrite, setDuplicateWeekOverwrite] = React.useState(false);
+  const [duplicateWeekUi, setDuplicateWeekUi] = React.useState<"idle" | "working" | "failed">("idle");
   const duplicateUiRef = React.useRef(duplicateUi);
   React.useEffect(() => {
     duplicateUiRef.current = duplicateUi;
@@ -709,6 +731,18 @@ export function AdminWeeklyProgramClient({
         !p.id.startsWith("dup-pending-")
     ).length;
   }, [duplicateOpenDay, duplicateTargetDay, programs, effectiveWeekStart]);
+
+  const chattersWithSlotsThisWeek = React.useMemo(() => {
+    const seen = new Map<string, string>();
+    for (const p of programsThisWeek) {
+      if (!p.chatter_id || p.id.startsWith("dup-pending-")) continue;
+      if (!seen.has(p.chatter_id)) seen.set(p.chatter_id, p.chatter_name?.trim() || "—");
+    }
+    return [...seen.entries()].map(([id, name]) => ({ id, name }));
+  }, [programsThisWeek]);
+
+  const duplicateWeekNextStart = React.useMemo(() => addWeeks(effectiveWeekStart, 1), [effectiveWeekStart]);
+  const duplicateWeekAfterStart = React.useMemo(() => addWeeks(effectiveWeekStart, 2), [effectiveWeekStart]);
 
   const filteredAvailabilityRequests = React.useMemo(() => {
     const list = Array.isArray(availabilityRequests) ? availabilityRequests : [];
@@ -986,6 +1020,83 @@ export function AdminWeeklyProgramClient({
     })();
   };
 
+  const closeDuplicateWeekModal = React.useCallback(() => {
+    if (duplicateWeekUi === "working") return;
+    setDuplicateWeekModal(null);
+    setDuplicateWeekUi("idle");
+  }, [duplicateWeekUi]);
+
+  const openDuplicateWeekModal = (chatterId: string, chatterName: string) => {
+    setError(null);
+    setSuccess(null);
+    setDuplicateWeekModal({ chatterId, chatterName });
+    setDuplicateWeekTarget(addWeeks(effectiveWeekStart, 1));
+    setDuplicateWeekOverwrite(false);
+    setDuplicateWeekUi("idle");
+  };
+
+  const runDuplicateEntireWeek = () => {
+    if (!duplicateWeekModal || duplicateWeekUi === "working") return;
+    const { chatterId, chatterName } = duplicateWeekModal;
+    const sourceNorm = effectiveWeekStart;
+    const targetNorm = normalizeWeekStart(duplicateWeekTarget);
+    if (targetNorm === sourceNorm) {
+      setError("Choose a target week different from the current week.");
+      return;
+    }
+    const sourceEntries = programsThisWeek.filter(
+      (p) => p.chatter_id === chatterId && !p.id.startsWith("dup-pending-")
+    );
+    if (sourceEntries.length === 0) {
+      setError("No shifts for this chatter in the week you are viewing.");
+      return;
+    }
+    setError(null);
+    setSuccess(null);
+    setDuplicateWeekUi("working");
+    void (async () => {
+      try {
+        if (duplicateWeekOverwrite) {
+          const victims = programs.filter(
+            (p) =>
+              p.chatter_id === chatterId &&
+              normalizeWeekStart(p.week_start) === targetNorm &&
+              !p.id.startsWith("dup-pending-")
+          );
+          for (const p of victims) {
+            const d = await deleteProgramAction(p.id);
+            if (!d.success) throw new Error(d.error);
+          }
+        }
+        for (const e of sourceEntries) {
+          const res = await createProgramAction({
+            chatter: [e.chatter_id],
+            chatter_name: e.chatter_name,
+            models: e.model_ids,
+            day: e.day,
+            shift_type: e.shift_type,
+            week_start: targetNorm,
+            notes: e.notes || "",
+            modelIdToName,
+            ...(e.shift_type === "Custom" && {
+              custom_start_time: isoTimeToHHmm(e.start_time),
+              custom_end_time: isoTimeToHHmm(e.end_time),
+            }),
+          });
+          if (!res.success) throw new Error(res.error);
+        }
+        setDuplicateWeekModal(null);
+        setDuplicateWeekUi("idle");
+        setSuccess(`Copied full week for ${chatterName} to week of ${formatWeekLabel(targetNorm)}.`);
+        router.refresh();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        setDuplicateWeekUi("failed");
+      }
+    })();
+  };
+
   return (
     <>
     <div className="flex flex-col xl:flex-row xl:gap-6 gap-6">
@@ -1174,6 +1285,36 @@ export function AdminWeeklyProgramClient({
           </ButtonPrimary>
         </div>
       </div>
+
+      {chattersWithSlotsThisWeek.length > 0 ? (
+        <div className="glass-card space-y-3 p-5">
+          <div>
+            <h2 className="text-sm font-semibold uppercase tracking-wider text-white/60">Duplicate chatter week</h2>
+            <p className="mt-0.5 text-xs text-white/45">
+              Copy every shift for a chatter from <span className="text-white/70">week of {formatWeekLabel(effectiveWeekStart)}</span> into another week.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+            {chattersWithSlotsThisWeek.map((c) => (
+              <div
+                key={c.id}
+                className="flex min-w-0 flex-1 basis-[220px] items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2.5"
+              >
+                <span className="truncate text-sm font-semibold text-white/90">{c.name}</span>
+                <button
+                  type="button"
+                  onClick={() => openDuplicateWeekModal(c.id, c.name)}
+                  disabled={duplicateWeekUi === "working"}
+                  className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60 transition-all hover:bg-white/10 hover:text-white/85 disabled:opacity-50"
+                >
+                  <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                  Duplicate week
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Model coverage board */}
       <section className="space-y-4">
@@ -1739,6 +1880,71 @@ export function AdminWeeklyProgramClient({
       confirmVariant="danger"
       loading={deletingId != null}
     />
+
+      {duplicateWeekModal ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60" role="dialog" aria-modal="true" aria-labelledby="dup-week-title">
+          <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+            <h3 id="dup-week-title" className="text-lg font-bold text-white">
+              Duplicate week for {duplicateWeekModal.chatterName}
+            </h3>
+            <p className="mt-2 text-sm text-white/50">
+              Copy all shifts from <span className="text-white/75">week of {formatWeekLabel(effectiveWeekStart)}</span> to:
+            </p>
+            <label className="mt-4 block text-xs font-medium uppercase tracking-wider text-white/40" htmlFor="dup-week-target">
+              Target week
+            </label>
+            <select
+              id="dup-week-target"
+              value={duplicateWeekTarget}
+              onChange={(e) => setDuplicateWeekTarget(e.target.value)}
+              disabled={duplicateWeekUi === "working"}
+              className="mt-1.5 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/40 disabled:opacity-50"
+            >
+              <option value={duplicateWeekNextStart}>
+                Next week ({formatWeekLabel(duplicateWeekNextStart)})
+              </option>
+              <option value={duplicateWeekAfterStart}>
+                Week after ({formatWeekLabel(duplicateWeekAfterStart)})
+              </option>
+            </select>
+            <Checkbox
+              className="mt-4"
+              checked={duplicateWeekOverwrite}
+              onChange={(e) => setDuplicateWeekOverwrite(e.target.checked)}
+              disabled={duplicateWeekUi === "working"}
+              label="Overwrite this chatter's existing shifts in the target week"
+            />
+            {duplicateWeekUi === "failed" ? (
+              <p className="mt-3 text-sm font-medium text-red-400">Something went wrong. Check the message above or try again.</p>
+            ) : null}
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={runDuplicateEntireWeek}
+                disabled={duplicateWeekUi === "working"}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-pink-500/30 bg-pink-500/20 py-2.5 text-sm font-semibold text-pink-300 transition-colors hover:bg-pink-500/30 disabled:opacity-50"
+              >
+                {duplicateWeekUi === "working" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    Copying…
+                  </>
+                ) : (
+                  "Duplicate"
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={closeDuplicateWeekModal}
+                disabled={duplicateWeekUi === "working"}
+                className="flex-1 rounded-xl border border-white/10 bg-white/5 py-2.5 text-sm font-medium text-white/60 transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
     </>
   );
@@ -1909,8 +2115,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       startIso = t.start_time;
       endIso = t.end_time;
     } else {
-      const startHHmm = customStartTime.trim();
-      const endHHmm = customEndTime.trim();
+      const startHHmm = normalizeHHmm(customStartTime.trim());
+      const endHHmm = normalizeHHmm(customEndTime.trim());
       if (!startHHmm || !endHHmm || startHHmm === endHHmm) {
         return { dateLabel, day, chatterName, modelNames: [], shiftType, timeRange: "—", durationHours: null };
       }
@@ -1937,8 +2143,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       const t = getTimesForShiftType("Night", dateYmd);
       return { startIso: t.start_time, endIso: t.end_time };
     }
-    const startHHmm = customStartTime.trim();
-    const endHHmm = customEndTime.trim();
+    const startHHmm = normalizeHHmm(customStartTime.trim());
+    const endHHmm = normalizeHHmm(customEndTime.trim());
     if (!startHHmm || !endHHmm || startHHmm === endHHmm) return null;
     const built = buildCustomShiftTimes(dateYmd, startHHmm, endHHmm);
     return { startIso: built.start_time, endIso: built.end_time };
@@ -1996,6 +2202,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const performSave = React.useCallback(async () => {
     if (!chatterId || selectedModelIds.size === 0) return;
     setSaving(true);
+    const startNorm = shiftType === "Custom" ? normalizeHHmm(customStartTime.trim()) : null;
+    const endNorm = shiftType === "Custom" ? normalizeHHmm(customEndTime.trim()) : null;
     const fields = {
       chatter_id: chatterId,
       chatter_name: chatterName,
@@ -2004,10 +2212,12 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       shift_type: shiftType,
       week_start: weekStartVal,
       notes,
-      ...(shiftType === "Custom" && {
-        custom_start_time: customStartTime.trim(),
-        custom_end_time: customEndTime.trim(),
-      }),
+      ...(shiftType === "Custom" &&
+        startNorm &&
+        endNorm && {
+          custom_start_time: startNorm,
+          custom_end_time: endNorm,
+        }),
     };
     if (onUpdate) await onUpdate(fields);
     else await onCreate(fields);
@@ -2017,12 +2227,16 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCustomTimeError(null);
-    if (!chatterId || selectedModelIds.size === 0) return;
+    if (!chatterId) return;
+    if (selectedModelIds.size === 0) {
+      setCustomTimeError("Select at least one model for this shift.");
+      return;
+    }
     if (shiftType === "Custom") {
-      const start = customStartTime.trim();
-      const end = customEndTime.trim();
+      const start = normalizeHHmm(customStartTime.trim());
+      const end = normalizeHHmm(customEndTime.trim());
       if (!start || !end) {
-        setCustomTimeError("Start time and End time are required for Custom shift.");
+        setCustomTimeError("Enter valid times (HH:mm, hour 00–23, minute 00–59).");
         return;
       }
       if (start === end) {

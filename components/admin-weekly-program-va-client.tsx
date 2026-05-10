@@ -19,7 +19,15 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { CustomSelect, CUSTOM_SELECT_HOUR_12_OPTIONS, type CustomSelectOption } from "@/components/ui/custom-select";
 import { adminWeeklyProgramUrl, adminWeeklyProgramVaUrl } from "@/lib/routes";
-import { getTimesForShiftType, buildCustomShiftTimes, getThisWeekMonday, addDays, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
+import {
+  getTimesForShiftType,
+  buildCustomShiftTimes,
+  getThisWeekMonday,
+  addDays,
+  normalizeWeekStart,
+  formatWeekLabel,
+  normalizeHHmm,
+} from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { ConflictSummary, CoverageBoard } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
@@ -124,8 +132,10 @@ function hhmm24To12Parts(hhmm: string): { h12: number; minute: number; pm: boole
 }
 
 function hhmm12To24(h12: number, minute: number, pm: boolean): string {
-  const h = Math.min(12, Math.max(1, Math.round(h12)));
-  const m = Math.min(59, Math.max(0, Math.round(minute)));
+  const h12Safe = Number.isFinite(h12) ? h12 : 12;
+  const minSafe = Number.isFinite(minute) ? minute : 0;
+  const h = Math.min(12, Math.max(1, Math.round(h12Safe)));
+  const m = Math.min(59, Math.max(0, Math.round(minSafe)));
   let h24: number;
   if (pm) h24 = h === 12 ? 12 : h + 12;
   else h24 = h === 12 ? 0 : h;
@@ -156,7 +166,10 @@ function CustomTime12hBlock({
       <div className="flex flex-wrap items-center gap-2">
         <CustomSelect portaled
           value={String(h12)}
-          onChange={(v) => sync({ h12: Number(v) })}
+          onChange={(v) => {
+            const n = Number(v);
+            sync({ h12: Number.isFinite(n) ? n : 12 });
+          }}
           options={CUSTOM_SELECT_HOUR_12_OPTIONS}
           className="w-[4.5rem] shrink-0"
           aria-invalid={ariaInvalid}
@@ -166,6 +179,7 @@ function CustomTime12hBlock({
           type="number"
           min={0}
           max={59}
+          step={1}
           inputMode="numeric"
           value={minute}
           onChange={(e) => {
@@ -1415,8 +1429,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       startIso = t.start_time;
       endIso = t.end_time;
     } else {
-      const startHHmm = customStartTime.trim();
-      const endHHmm = customEndTime.trim();
+      const startHHmm = normalizeHHmm(customStartTime.trim());
+      const endHHmm = normalizeHHmm(customEndTime.trim());
       if (!startHHmm || !endHHmm || startHHmm === endHHmm) {
         return { dateLabel, day, chatterName, modelNames: [], shiftType, timeRange: "—", durationHours: null };
       }
@@ -1443,8 +1457,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       const t = getTimesForShiftType("Night", dateYmd);
       return { startIso: t.start_time, endIso: t.end_time };
     }
-    const startHHmm = customStartTime.trim();
-    const endHHmm = customEndTime.trim();
+    const startHHmm = normalizeHHmm(customStartTime.trim());
+    const endHHmm = normalizeHHmm(customEndTime.trim());
     if (!startHHmm || !endHHmm || startHHmm === endHHmm) return null;
     const built = buildCustomShiftTimes(dateYmd, startHHmm, endHHmm);
     return { startIso: built.start_time, endIso: built.end_time };
@@ -1502,6 +1516,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const performSave = React.useCallback(async () => {
     if (!chatterId || selectedModelIds.size === 0) return;
     setSaving(true);
+    const startNorm = shiftType === "Custom" ? normalizeHHmm(customStartTime.trim()) : null;
+    const endNorm = shiftType === "Custom" ? normalizeHHmm(customEndTime.trim()) : null;
     const fields = {
       chatter_id: chatterId,
       chatter_name: chatterName,
@@ -1510,10 +1526,12 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       shift_type: shiftType,
       week_start: weekStartVal,
       notes,
-      ...(shiftType === "Custom" && {
-        custom_start_time: customStartTime.trim(),
-        custom_end_time: customEndTime.trim(),
-      }),
+      ...(shiftType === "Custom" &&
+        startNorm &&
+        endNorm && {
+          custom_start_time: startNorm,
+          custom_end_time: endNorm,
+        }),
     };
     if (onUpdate) await onUpdate(fields);
     else await onCreate(fields);
@@ -1523,12 +1541,16 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCustomTimeError(null);
-    if (!chatterId || selectedModelIds.size === 0) return;
+    if (!chatterId) return;
+    if (selectedModelIds.size === 0) {
+      setCustomTimeError("Select at least one model for this shift.");
+      return;
+    }
     if (shiftType === "Custom") {
-      const start = customStartTime.trim();
-      const end = customEndTime.trim();
+      const start = normalizeHHmm(customStartTime.trim());
+      const end = normalizeHHmm(customEndTime.trim());
       if (!start || !end) {
-        setCustomTimeError("Start time and End time are required for Custom shift.");
+        setCustomTimeError("Enter valid times (HH:mm, hour 00–23, minute 00–59).");
         return;
       }
       if (start === end) {

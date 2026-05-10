@@ -75,10 +75,30 @@ export function getTimesForShiftType(
   throw new Error("Custom shift requires buildCustomShiftTimes()");
 }
 
-/** Parse HH:mm to minutes since midnight for comparison. */
+/** Parse HH:mm to minutes since midnight (24h). Expects normalized `HH:mm`. */
 function parseHHmmToMinutes(hhmm: string): number {
-  const [h, m] = hhmm.split(":").map(Number);
-  return (h ?? 0) * 60 + (m ?? 0);
+  const [hRaw, mRaw] = hhmm.split(":");
+  const h = parseInt(hRaw ?? "", 10);
+  const m = parseInt(mRaw ?? "", 10);
+  const hh = Number.isFinite(h) ? h : 0;
+  const mm = Number.isFinite(m) ? m : 0;
+  return hh * 60 + mm;
+}
+
+/**
+ * Normalize a wall time to `HH:mm` (24h). Rejects hours outside 0–23 or minutes outside 0–59.
+ * Use before building ISO schedule strings so `T9:00` / invalid components never reach Date logic.
+ */
+export function normalizeHHmm(input: string): string | null {
+  const s = input.trim();
+  const m = /^(\d{1,2}):(\d{1,2})$/.exec(s);
+  if (!m) return null;
+  const h = parseInt(m[1]!, 10);
+  const min = parseInt(m[2]!, 10);
+  if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
+  if (h < 0 || h > 23 || min < 0 || min > 59) return null;
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  return `${pad(h)}:${pad(min)}`;
 }
 
 /**
@@ -91,17 +111,22 @@ export function buildCustomShiftTimes(
   startHHmm: string,
   endHHmm: string
 ): { start_time: string; end_time: string } {
-  const startMinutes = parseHHmmToMinutes(startHHmm);
-  const endMinutes = parseHHmmToMinutes(endHHmm);
+  const startNorm = normalizeHHmm(startHHmm);
+  const endNorm = normalizeHHmm(endHHmm);
+  if (!startNorm || !endNorm) {
+    throw new Error("Invalid time: use HH:mm with hour 00–23 and minute 00–59.");
+  }
+  const startMinutes = parseHHmmToMinutes(startNorm);
+  const endMinutes = parseHHmmToMinutes(endNorm);
   const endIsNextDay = endMinutes <= startMinutes;
-  const start_time = `${dateYmd}T${startHHmm}:00.000Z`;
+  const start_time = `${dateYmd}T${startNorm}:00.000Z`;
   let endYmd = dateYmd;
   if (endIsNextDay) {
     const d = new Date(dateYmd + "T12:00:00.000Z");
     d.setUTCDate(d.getUTCDate() + 1);
     endYmd = d.toISOString().split("T")[0];
   }
-  const end_time = `${endYmd}T${endHHmm}:00.000Z`;
+  const end_time = `${endYmd}T${endNorm}:00.000Z`;
   return { start_time, end_time };
 }
 

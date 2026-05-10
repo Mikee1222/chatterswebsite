@@ -12,7 +12,14 @@ import {
 import type { CreateWeeklyProgramFields } from "@/services/weekly-program";
 import { getLastAssignmentBatch } from "@/services/shifts";
 import type { LastAssignmentInfo } from "@/services/shifts";
-import { getTimesForShiftType, buildCustomShiftTimes, addDays, getMondayOfWeek, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
+import {
+  getTimesForShiftType,
+  buildCustomShiftTimes,
+  addDays,
+  getMondayOfWeek,
+  WEEKLY_PROGRAM_DAY_OPTIONS,
+  normalizeHHmm,
+} from "@/lib/weekly-program";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import { notifyActiveChattersWeeklyProgramPublished } from "@/services/weekly-program-publish-notify";
 import { notify } from "@/services/notification-service";
@@ -50,10 +57,13 @@ export async function createProgramAction(fields: {
     let start_time: string;
     let end_time: string;
     if (fields.shift_type === "Custom") {
-      const startHHmm = fields.custom_start_time?.trim();
-      const endHHmm = fields.custom_end_time?.trim();
+      const startHHmm = normalizeHHmm(fields.custom_start_time?.trim() ?? "");
+      const endHHmm = normalizeHHmm(fields.custom_end_time?.trim() ?? "");
       if (!startHHmm || !endHHmm) {
-        return { success: false, error: "Custom shift requires Start time and End time." };
+        return {
+          success: false,
+          error: "Custom shift requires valid start and end times (HH:mm, hour 00–23, minute 00–59).",
+        };
       }
       if (startHHmm === endHHmm) {
         return { success: false, error: "End time cannot equal Start time." };
@@ -135,10 +145,13 @@ export async function updateProgramAction(
     let start_time: string;
     let end_time: string;
     if (shiftType === "Custom") {
-      const startHHmm = fields.custom_start_time?.trim();
-      const endHHmm = fields.custom_end_time?.trim();
+      const startHHmm = normalizeHHmm(fields.custom_start_time?.trim() ?? "");
+      const endHHmm = normalizeHHmm(fields.custom_end_time?.trim() ?? "");
       if (!startHHmm || !endHHmm) {
-        return { success: false, error: "Custom shift requires Start time and End time." };
+        return {
+          success: false,
+          error: "Custom shift requires valid start and end times (HH:mm, hour 00–23, minute 00–59).",
+        };
       }
       if (startHHmm === endHHmm) {
         return { success: false, error: "End time cannot equal Start time." };
