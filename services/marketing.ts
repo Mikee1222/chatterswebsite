@@ -5,6 +5,9 @@ import { createRecord, listAllRecords, updateRecord, type AirtableRecord } from 
 const TABLE_PLATFORMS = "marketing_platforms";
 const TABLE_ACCOUNTS = "model_social_accounts";
 const TABLE_FUNNELS = "model_funnel_links";
+const TABLE_SHADOWBAN_REPORTS = "shadowban_reports";
+
+export type SocialAccountStatus = "active" | "shadowbanned" | "banned";
 
 export interface SocialAccount {
   id: string;
@@ -22,6 +25,31 @@ export interface SocialAccount {
   active: boolean;
   last_updated: string;
   created_at: string;
+  account_status: SocialAccountStatus;
+  shadowban_reported_at: string | null;
+  shadowban_reported_by: string;
+  shadowban_screenshot: { url: string }[];
+}
+
+export type ShadowbanReportStatus = "pending" | "approved" | "dismissed";
+
+export interface ShadowbanReport {
+  id: string;
+  report_id: string;
+  account_id: string;
+  model_id: string;
+  model_name: string;
+  platform: string;
+  username: string;
+  reported_by_id: string;
+  reported_by_name: string;
+  reported_by_role: string;
+  screenshot: { url: string }[];
+  notes: string;
+  status: ShadowbanReportStatus;
+  reviewed_by: string;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export interface FunnelLink {
@@ -62,6 +90,28 @@ type AccountFields = {
   active?: boolean;
   last_updated?: string;
   created_at?: string;
+  account_status?: string;
+  shadowban_reported_at?: string | null;
+  shadowban_reported_by?: string;
+  shadowban_screenshot?: unknown;
+};
+
+type ShadowbanReportFields = {
+  report_id?: string;
+  account_id?: string;
+  model_id?: string;
+  model_name?: string;
+  platform?: string;
+  username?: string;
+  reported_by_id?: string;
+  reported_by_name?: string;
+  reported_by_role?: string;
+  screenshot?: unknown;
+  notes?: string;
+  status?: string;
+  reviewed_by?: string;
+  created_at?: string;
+  reviewed_at?: string | null;
 };
 
 type FunnelFields = {
@@ -90,6 +140,27 @@ function airtableFormulaString(value: string): string {
   return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
+function normalizeAttachmentUrls(raw: unknown): { url: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const out: { url: string }[] = [];
+  for (const row of raw) {
+    if (row && typeof row === "object" && "url" in row && typeof (row as { url: unknown }).url === "string") {
+      out.push({ url: (row as { url: string }).url });
+    }
+  }
+  return out;
+}
+
+function asAccountStatus(v: unknown): SocialAccountStatus {
+  if (v === "shadowbanned" || v === "banned") return v;
+  return "active";
+}
+
+function asShadowbanReportStatus(v: unknown): ShadowbanReportStatus {
+  if (v === "approved" || v === "dismissed") return v;
+  return "pending";
+}
+
 function mapAccount(rec: AirtableRecord<AccountFields>): SocialAccount {
   const f = rec.fields ?? {};
   const at = f.account_type === "secondary" ? "secondary" : "main";
@@ -110,6 +181,32 @@ function mapAccount(rec: AirtableRecord<AccountFields>): SocialAccount {
     active: f.active !== false,
     last_updated: (f.last_updated as string) ?? "",
     created_at: (f.created_at as string) ?? "",
+    account_status: asAccountStatus(f.account_status),
+    shadowban_reported_at: (f.shadowban_reported_at as string | null) ?? null,
+    shadowban_reported_by: (f.shadowban_reported_by as string) ?? "",
+    shadowban_screenshot: normalizeAttachmentUrls(f.shadowban_screenshot),
+  };
+}
+
+function mapShadowbanReport(rec: AirtableRecord<ShadowbanReportFields>): ShadowbanReport {
+  const f = rec.fields ?? {};
+  return {
+    id: rec.id,
+    report_id: (f.report_id as string) ?? rec.id,
+    account_id: (f.account_id as string) ?? "",
+    model_id: (f.model_id as string) ?? "",
+    model_name: (f.model_name as string) ?? "",
+    platform: (f.platform as string) ?? "",
+    username: (f.username as string) ?? "",
+    reported_by_id: (f.reported_by_id as string) ?? "",
+    reported_by_name: (f.reported_by_name as string) ?? "",
+    reported_by_role: (f.reported_by_role as string) ?? "",
+    screenshot: normalizeAttachmentUrls(f.screenshot),
+    notes: (f.notes as string) ?? "",
+    status: asShadowbanReportStatus(f.status),
+    reviewed_by: (f.reviewed_by as string) ?? "",
+    created_at: (f.created_at as string) ?? "",
+    reviewed_at: (f.reviewed_at as string | null) ?? null,
   };
 }
 
@@ -225,6 +322,7 @@ export async function createAccount(data: Partial<SocialAccount>): Promise<Socia
     assigned_va_name: data.assigned_va_name ?? "",
     notes: data.notes ?? "",
     active: true,
+    account_status: data.account_status ?? "active",
     last_updated: now,
     created_at: now,
   });
@@ -246,7 +344,59 @@ export async function updateAccount(id: string, data: Partial<SocialAccount>): P
   if (data.assigned_va_name !== undefined) patch.assigned_va_name = data.assigned_va_name;
   if (data.notes !== undefined) patch.notes = data.notes;
   if (data.active !== undefined) patch.active = data.active;
+  if (data.account_status !== undefined) patch.account_status = data.account_status;
+  if (data.shadowban_reported_at !== undefined) patch.shadowban_reported_at = data.shadowban_reported_at;
+  if (data.shadowban_reported_by !== undefined) patch.shadowban_reported_by = data.shadowban_reported_by;
+  if (data.shadowban_screenshot !== undefined) patch.shadowban_screenshot = data.shadowban_screenshot;
   await updateRecord(TABLE_ACCOUNTS, id, patch);
+}
+
+/** Pending reports only (e.g. badges, focused queues). */
+export async function getPendingShadowbanReports(): Promise<ShadowbanReport[]> {
+  const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
+    filterByFormula: `{status} = "pending"`,
+    sort: [{ field: "created_at", direction: "desc" }],
+  });
+  return records.map(mapShadowbanReport);
+}
+
+export async function getAllShadowbanReports(): Promise<ShadowbanReport[]> {
+  const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
+    sort: [{ field: "created_at", direction: "desc" }],
+  });
+  return records.map(mapShadowbanReport);
+}
+
+export async function createShadowbanReport(
+  data: Partial<ShadowbanReport> & { screenshot?: { url: string }[] },
+): Promise<ShadowbanReport> {
+  const now = new Date().toISOString();
+  const reportId = `sbr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const rec = await createRecord<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
+    report_id: reportId,
+    account_id: data.account_id ?? "",
+    model_id: data.model_id ?? "",
+    model_name: data.model_name ?? "",
+    platform: data.platform ?? "",
+    username: data.username ?? "",
+    reported_by_id: data.reported_by_id ?? "",
+    reported_by_name: data.reported_by_name ?? "",
+    reported_by_role: data.reported_by_role ?? "",
+    notes: data.notes ?? "",
+    status: "pending",
+    created_at: now,
+    ...(data.screenshot && data.screenshot.length > 0 ? { screenshot: data.screenshot } : {}),
+  });
+  return mapShadowbanReport(rec);
+}
+
+export async function updateShadowbanReport(id: string, data: Partial<ShadowbanReport>): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (data.status !== undefined) patch.status = data.status;
+  if (data.reviewed_by !== undefined) patch.reviewed_by = data.reviewed_by;
+  if (data.reviewed_at !== undefined) patch.reviewed_at = data.reviewed_at;
+  if (Object.keys(patch).length === 0) return;
+  await updateRecord(TABLE_SHADOWBAN_REPORTS, id, patch);
 }
 
 export async function deleteAccount(id: string): Promise<void> {

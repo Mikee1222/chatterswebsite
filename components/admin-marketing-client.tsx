@@ -1,15 +1,60 @@
 "use client";
 
 import * as React from "react";
-import { Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Check, ChevronDown, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { FunnelLink, MarketingPlatform, SocialAccount } from "@/services/marketing";
+import type {
+  FunnelLink,
+  MarketingPlatform,
+  ShadowbanReport,
+  SocialAccount,
+  SocialAccountStatus,
+} from "@/services/marketing";
 import type { ModelRecord, UserRecord } from "@/types";
 
-type Tab = "platforms" | "accounts" | "funnels";
+type Tab = "platforms" | "accounts" | "funnels" | "reports";
 
 const REGIONS = ["USA", "Greek", "Global"] as const;
 const ACCOUNT_TYPES = ["main", "secondary"] as const;
+
+const STATUS_CONFIG: Record<
+  SocialAccountStatus,
+  { label: string; color: string; bg: string; border: string; dot: string }
+> = {
+  active: {
+    label: "Active",
+    color: "text-green-400",
+    bg: "bg-green-500/10",
+    border: "border-green-500/20",
+    dot: "bg-green-400",
+  },
+  shadowbanned: {
+    label: "Shadowbanned",
+    color: "text-amber-400",
+    bg: "bg-amber-500/10",
+    border: "border-amber-500/20",
+    dot: "bg-amber-400",
+  },
+  banned: {
+    label: "Banned",
+    color: "text-red-400",
+    bg: "bg-red-500/10",
+    border: "border-red-500/20",
+    dot: "bg-red-500",
+  },
+};
+
+const PLATFORM_ICONS: Record<string, string> = {
+  Instagram: "📸",
+  Facebook: "👥",
+  TikTok: "🎵",
+  Twitter: "🐦",
+  YouTube: "▶️",
+  Snapchat: "👻",
+  Telegram: "✈️",
+  GetMyLinks: "🔗",
+  Other: "📱",
+};
 
 function pill(active: boolean) {
   return cn(
@@ -112,6 +157,47 @@ export function AdminMarketingClient({
   const [aVaId, setAVaId] = React.useState("");
   const [aNotes, setANotes] = React.useState("");
   const [editAccount, setEditAccount] = React.useState<SocialAccount | null>(null);
+  const [reports, setReports] = React.useState<ShadowbanReport[]>([]);
+  const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
+  const [shadowbanFile, setShadowbanFile] = React.useState<File | null>(null);
+  const [shadowbanNotes, setShadowbanNotes] = React.useState("");
+  const [shadowbanSubmitting, setShadowbanSubmitting] = React.useState(false);
+  const shadowbanProofRef = React.useRef<HTMLInputElement>(null);
+  const shadowbanPreviewUrl = React.useMemo(
+    () => (shadowbanFile ? URL.createObjectURL(shadowbanFile) : null),
+    [shadowbanFile],
+  );
+  React.useEffect(() => {
+    return () => {
+      if (shadowbanPreviewUrl) URL.revokeObjectURL(shadowbanPreviewUrl);
+    };
+  }, [shadowbanPreviewUrl]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/admin/marketing/shadowban-reports", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { reports?: ShadowbanReport[] }) => {
+        if (!cancelled) setReports(d.reports ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      if (!shadowbanReportTarget) return;
+      const found = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
+      if (found) {
+        const f = found.getAsFile();
+        if (f) setShadowbanFile(f);
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  }, [shadowbanReportTarget]);
 
   const filteredAccounts = React.useMemo(() => {
     const q = accSearch.trim().toLowerCase();
@@ -181,6 +267,81 @@ export function AdminMarketingClient({
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleUpdateAccountStatus(accountId: string, status: SocialAccountStatus) {
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/marketing/accounts/${encodeURIComponent(accountId)}/status`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ account_status: status }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setAccounts((prev) => prev.map((a) => (a.id === accountId ? { ...a, account_status: status } : a)));
+      setEditAccount((cur) => (cur?.id === accountId ? { ...cur, account_status: status } : cur));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Status update failed");
+    }
+  }
+
+  async function handleReviewReport(reportId: string, action: "approve" | "dismiss") {
+    const reportBefore = reports.find((r) => r.id === reportId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/marketing/shadowban-reports/${encodeURIComponent(reportId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ action }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const listRes = await fetch("/api/admin/marketing/shadowban-reports", { credentials: "include" });
+      const listData = (await listRes.json()) as { reports?: ShadowbanReport[] };
+      setReports(listData.reports ?? []);
+      if (action === "approve" && reportBefore) {
+        setAccounts((prev) =>
+          prev.map((a) =>
+            a.account_id === reportBefore.account_id ? { ...a, account_status: "shadowbanned" as const } : a,
+          ),
+        );
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Review failed");
+    }
+  }
+
+  async function handleSubmitShadowbanReportAdmin() {
+    if (!shadowbanReportTarget || !shadowbanFile) return;
+    setShadowbanSubmitting(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      fd.append("account_id", shadowbanReportTarget.account_id);
+      fd.append("model_id", shadowbanReportTarget.model_id);
+      fd.append("model_name", shadowbanReportTarget.model_name);
+      fd.append("platform", shadowbanReportTarget.platform);
+      fd.append("username", shadowbanReportTarget.username);
+      fd.append("notes", shadowbanNotes);
+      fd.append("screenshot", shadowbanFile);
+      const res = await fetch("/api/va/marketing/report-shadowban", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const listRes = await fetch("/api/admin/marketing/shadowban-reports", { credentials: "include" });
+      const listData = (await listRes.json()) as { reports?: ShadowbanReport[] };
+      setReports(listData.reports ?? []);
+      setShadowbanReportTarget(null);
+      setShadowbanFile(null);
+      setShadowbanNotes("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Report failed");
+    } finally {
+      setShadowbanSubmitting(false);
     }
   }
 
@@ -294,6 +455,9 @@ export function AdminMarketingClient({
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
         <button type="button" className={pill(tab === "accounts")} onClick={() => setTab("accounts")}>
           Social accounts
+        </button>
+        <button type="button" className={pill(tab === "reports")} onClick={() => setTab("reports")}>
+          Shadowban reports
         </button>
         <button type="button" className={pill(tab === "funnels")} onClick={() => setTab("funnels")}>
           Funnel links
@@ -615,8 +779,11 @@ export function AdminMarketingClient({
                   <th className="px-3 py-3">Type</th>
                   <th className="px-3 py-3">Region</th>
                   <th className="px-3 py-3">VA</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-widest text-white/25">
+                    Status
+                  </th>
                   <th className="px-3 py-3">Active</th>
-                  <th className="px-3 py-3 w-24"> </th>
+                  <th className="px-3 py-3 w-36"> </th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-white/5 text-white/85">
@@ -637,6 +804,50 @@ export function AdminMarketingClient({
                       <td className="px-3 py-2.5 capitalize">{a.account_type}</td>
                       <td className="px-3 py-2.5">{a.region}</td>
                       <td className="px-3 py-2.5 text-xs text-white/60">{a.assigned_va_name || "—"}</td>
+                      <td className="px-4 py-3">
+                        <div className="group/status relative">
+                          {(() => {
+                            const st = (a.account_status ?? "active") as SocialAccountStatus;
+                            const cfg = STATUS_CONFIG[st];
+                            return (
+                              <div
+                                className={cn(
+                                  "flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5",
+                                  cfg.bg,
+                                  cfg.border,
+                                )}
+                              >
+                                <div className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
+                                <span className={cn("text-xs font-semibold", cfg.color)}>{cfg.label}</span>
+                                <ChevronDown className={cn("h-3 w-3 opacity-50", cfg.color)} aria-hidden />
+                              </div>
+                            );
+                          })()}
+                          <div className="absolute left-0 top-full z-20 mt-1 hidden min-w-[9rem] rounded-xl border border-white/15 bg-[#0f0f1a] p-1 shadow-2xl group-hover/status:block">
+                            {(["active", "shadowbanned", "banned"] as const).map((status) => {
+                              const cfg = STATUS_CONFIG[status];
+                              return (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  onClick={() => void handleUpdateAccountStatus(a.id, status)}
+                                  className={cn(
+                                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all hover:bg-white/5",
+                                    cfg.color,
+                                    (a.account_status ?? "active") === status ? "bg-white/5" : "",
+                                  )}
+                                >
+                                  <div className={cn("h-2 w-2 rounded-full", cfg.dot)} />
+                                  {cfg.label}
+                                  {(a.account_status ?? "active") === status ? (
+                                    <Check className="ml-auto h-3 w-3" aria-hidden />
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </td>
                       <td className="px-3 py-2.5">
                         <button
                           type="button"
@@ -651,7 +862,20 @@ export function AdminMarketingClient({
                         </button>
                       </td>
                       <td className="px-3 py-2.5">
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1">
+                          {(a.account_status ?? "active") === "active" ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShadowbanReportTarget(a);
+                                setShadowbanFile(null);
+                                setShadowbanNotes("");
+                              }}
+                              className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-400 hover:bg-amber-500/20"
+                            >
+                              Report
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => setEditAccount((c) => (c?.id === a.id ? null : a))}
@@ -674,7 +898,7 @@ export function AdminMarketingClient({
                     </tr>
                     {editAccount?.id === a.id ? (
                       <tr className="bg-white/[0.03]">
-                        <td colSpan={8} className="px-3 py-4">
+                        <td colSpan={9} className="px-3 py-4">
                           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                             <label className="flex flex-col gap-1 text-xs text-white/50">
                               Username
@@ -803,6 +1027,133 @@ export function AdminMarketingClient({
               </tbody>
             </table>
           </div>
+        </div>
+      ) : null}
+
+      {tab === "reports" ? (
+        <div>
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-white">Shadowban reports</h2>
+              <p className="text-sm text-white/40">Submitted by VAs — review and approve</p>
+            </div>
+            {reports.filter((r) => r.status === "pending").length > 0 ? (
+              <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/15 px-3 py-1.5">
+                <div className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+                <span className="text-sm font-semibold text-amber-400">
+                  {reports.filter((r) => r.status === "pending").length} pending
+                </span>
+              </div>
+            ) : null}
+          </div>
+
+          {reports.length === 0 ? (
+            <div className="py-16 text-center text-white/20">
+              <p className="mb-3 text-4xl">✅</p>
+              <p>No shadowban reports</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {reports.map((report) => (
+                <div
+                  key={report.id}
+                  className={cn(
+                    "rounded-2xl border p-5",
+                    report.status === "pending"
+                      ? "border-amber-500/20 bg-amber-500/[0.03]"
+                      : report.status === "approved"
+                        ? "border-red-500/15 bg-red-500/[0.02] opacity-70"
+                        : "border-white/8 opacity-50",
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <span className="text-xl">{PLATFORM_ICONS[report.platform] ?? "📱"}</span>
+                        <span className="font-bold text-white">@{report.username}</span>
+                        <span className="text-sm text-white/40">{report.platform}</span>
+                        <span className="text-xs text-white/30">·</span>
+                        <span className="text-sm text-white/40">{report.model_name || "—"}</span>
+                        <span
+                          className={cn(
+                            "ml-auto rounded-full border px-2 py-0.5 text-xs font-semibold",
+                            report.status === "pending"
+                              ? "border-amber-500/25 bg-amber-500/15 text-amber-400"
+                              : report.status === "approved"
+                                ? "border-red-500/25 bg-red-500/15 text-red-400"
+                                : "border-white/10 bg-white/5 text-white/30",
+                          )}
+                        >
+                          {report.status}
+                        </span>
+                      </div>
+                      <div className="mb-3 flex flex-wrap gap-3 text-xs text-white/30">
+                        <span>
+                          Reported by {report.reported_by_name} ({report.reported_by_role})
+                        </span>
+                        <span>·</span>
+                        <span>
+                          {report.created_at
+                            ? new Date(report.created_at).toLocaleString("el-GR", { timeZone: "Europe/Athens" })
+                            : "—"}
+                        </span>
+                      </div>
+                      {report.notes ? (
+                        <p className="mb-3 rounded-xl bg-white/5 px-3 py-2 text-sm text-white/50">&ldquo;{report.notes}&rdquo;</p>
+                      ) : null}
+                      {report.screenshot?.[0]?.url ? (
+                        <a
+                          href={report.screenshot[0].url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="mb-3 inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300"
+                        >
+                          🖼 View screenshot
+                        </a>
+                      ) : null}
+                    </div>
+                    {report.screenshot?.[0]?.url ? (
+                      <a
+                        href={report.screenshot[0].url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="shrink-0 transition-opacity hover:opacity-80"
+                      >
+                        <img
+                          src={report.screenshot[0].url}
+                          alt=""
+                          className="h-16 w-24 rounded-xl border border-white/10 object-cover"
+                        />
+                      </a>
+                    ) : null}
+                  </div>
+                  {report.status === "pending" ? (
+                    <div className="mt-3 flex gap-2 border-t border-white/8 pt-3">
+                      <button
+                        type="button"
+                        onClick={() => void handleReviewReport(report.id, "approve")}
+                        className="flex-1 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-semibold text-red-400 transition-all hover:bg-red-500/30"
+                      >
+                        Approve — mark as shadowbanned
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleReviewReport(report.id, "dismiss")}
+                        className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/40 transition-all hover:bg-white/10"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  ) : null}
+                  {report.status !== "pending" && report.reviewed_by ? (
+                    <p className="mt-2 border-t border-white/5 pt-2 text-xs text-white/20">
+                      Reviewed by {report.reviewed_by}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
 
@@ -1006,6 +1357,84 @@ export function AdminMarketingClient({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      ) : null}
+
+      {shadowbanReportTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+            <h3 className="mb-1 text-lg font-bold text-white">Report shadowban</h3>
+            <div className="mb-5 flex items-center gap-2">
+              <span className="text-xl">{PLATFORM_ICONS[shadowbanReportTarget.platform] ?? "📱"}</span>
+              <p className="text-sm text-white/50">
+                @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
+              </p>
+            </div>
+            <div className="mb-4">
+              <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">
+                Screenshot <span className="text-amber-400">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => shadowbanProofRef.current?.click()}
+                className={cn(
+                  "w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all",
+                  shadowbanFile ? "border-amber-500/40 bg-amber-500/5" : "border-white/15 hover:border-amber-500/40 hover:bg-amber-500/5",
+                )}
+              >
+                {shadowbanPreviewUrl ? (
+                  <img
+                    src={shadowbanPreviewUrl}
+                    alt=""
+                    className="mx-auto max-h-28 rounded-xl object-contain"
+                  />
+                ) : (
+                  <>
+                    <p className="mb-1 text-2xl">📋</p>
+                    <p className="text-sm text-white/40">Paste (Ctrl+V) or click</p>
+                  </>
+                )}
+              </button>
+              <input
+                ref={shadowbanProofRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setShadowbanFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            <div className="mb-5">
+              <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">Notes</label>
+              <textarea
+                value={shadowbanNotes}
+                onChange={(e) => setShadowbanNotes(e.target.value)}
+                rows={2}
+                placeholder="What did you notice?"
+                className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-amber-500/50 focus:outline-none"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSubmitShadowbanReportAdmin()}
+                disabled={!shadowbanFile || shadowbanSubmitting}
+                className="flex-1 rounded-2xl border border-amber-500/30 bg-amber-500/20 py-3 font-bold text-amber-400 hover:bg-amber-500/30 disabled:opacity-40"
+              >
+                {shadowbanSubmitting ? "Submitting…" : "Submit report"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShadowbanReportTarget(null);
+                  setShadowbanFile(null);
+                  setShadowbanNotes("");
+                }}
+                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-white/50 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       ) : null}

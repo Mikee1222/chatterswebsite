@@ -284,6 +284,21 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   model_social_accounts: {
     account_type: new Set(["main", "secondary"]),
     region: new Set(["USA", "Greek", "Global"]),
+    account_status: new Set(["active", "shadowbanned", "banned"]),
+    platform: new Set([
+      "Instagram",
+      "Facebook",
+      "TikTok",
+      "Twitter",
+      "YouTube",
+      "Snapchat",
+      "Other",
+      "Telegram",
+      "GetMyLinks",
+    ]),
+  },
+  shadowban_reports: {
+    status: new Set(["pending", "approved", "dismissed"]),
   },
   model_funnel_links: {
     region: new Set(["USA", "Greek", "Global"]),
@@ -355,6 +370,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   marketing_platforms: new Set(["created_at"]),
   model_social_accounts: new Set(["created_at", "last_updated"]),
   model_funnel_links: new Set(["created_at"]),
+  shadowban_reports: new Set(["created_at", "reviewed_at"]),
   va_task_phases: new Set(["created_at", "completed_at", "scheduled_time"]),
   va_task_phase_items: new Set(["created_at", "completed_at"]),
   /** Server sets mistake timestamps explicitly. */

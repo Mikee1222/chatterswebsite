@@ -80,6 +80,8 @@ const SOCIAL_COLORS: Record<string, string> = {
   Twitter: "#1DA1F2",
   YouTube: "#FF0000",
   Snapchat: "#FFFC00",
+  Telegram: "#229ED9",
+  GetMyLinks: "#9333EA",
 };
 
 const SOCIAL_ICONS: Record<string, string> = {
@@ -89,6 +91,8 @@ const SOCIAL_ICONS: Record<string, string> = {
   Twitter: "🐦",
   YouTube: "▶️",
   Snapchat: "👻",
+  Telegram: "✈️",
+  GetMyLinks: "🔗",
 };
 
 export function VaTasksClient({ tasks: initialTasks }: Props) {
@@ -122,18 +126,33 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     };
   }, [proofPreviewUrl]);
 
+  const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
+  const [shadowbanFile, setShadowbanFile] = React.useState<File | null>(null);
+  const [shadowbanNotes, setShadowbanNotes] = React.useState("");
+  const [shadowbanSubmitting, setShadowbanSubmitting] = React.useState(false);
+  const shadowbanProofRef = React.useRef<HTMLInputElement>(null);
+  const shadowbanPreviewUrl = React.useMemo(
+    () => (shadowbanFile ? URL.createObjectURL(shadowbanFile) : null),
+    [shadowbanFile],
+  );
+  React.useEffect(() => {
+    return () => {
+      if (shadowbanPreviewUrl) URL.revokeObjectURL(shadowbanPreviewUrl);
+    };
+  }, [shadowbanPreviewUrl]);
+
   React.useEffect(() => {
     function onPaste(e: ClipboardEvent) {
-      if (!completingItem) return;
       const found = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
-      if (found) {
-        const f = found.getAsFile();
-        if (f) setProofFile(f);
-      }
+      if (!found) return;
+      const f = found.getAsFile();
+      if (!f) return;
+      if (completingItem) setProofFile(f);
+      else if (shadowbanReportTarget) setShadowbanFile(f);
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [completingItem]);
+  }, [completingItem, shadowbanReportTarget]);
 
   const filteredTasks = React.useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -234,6 +253,47 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
       if (payload.allPhasesCompleted) router.refresh();
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function handleSubmitShadowbanReport() {
+    if (!shadowbanReportTarget || !shadowbanFile) return;
+    setShadowbanSubmitting(true);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append("account_id", shadowbanReportTarget.account_id);
+      fd.append("model_id", shadowbanReportTarget.model_id);
+      fd.append("model_name", shadowbanReportTarget.model_name);
+      fd.append("platform", shadowbanReportTarget.platform);
+      fd.append("username", shadowbanReportTarget.username);
+      fd.append("notes", shadowbanNotes);
+      fd.append("screenshot", shadowbanFile);
+      const res = await fetch("/api/va/marketing/report-shadowban", {
+        method: "POST",
+        credentials: "include",
+        body: fd,
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setErr(payload.error?.trim() || "Could not submit report");
+        return;
+      }
+      const mId = shadowbanReportTarget.model_id?.trim();
+      if (mId) {
+        const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(mId)}`, {
+          credentials: "include",
+        });
+        const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
+        if (accRes.ok) {
+          setModelAccounts((prev) => ({ ...prev, [mId]: accData.accounts ?? [] }));
+        }
+      }
+      setShadowbanReportTarget(null);
+      setShadowbanFile(null);
+      setShadowbanNotes("");
+    } finally {
+      setShadowbanSubmitting(false);
     }
   }
 
@@ -443,32 +503,59 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                 const plat = acc.platform?.trim() || "";
                                 const color = SOCIAL_COLORS[plat] ?? "#888888";
                                 const href = acc.account_link?.trim() || "#";
+                                const st = acc.account_status ?? "active";
                                 return (
-                                  <a
-                                    key={acc.id}
-                                    href={href}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="flex select-none cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                                    style={{
-                                      backgroundColor: `${color}12`,
-                                      borderColor: `${color}35`,
-                                    }}
-                                    onClick={(e) => {
-                                      if (!acc.account_link?.trim()) e.preventDefault();
-                                    }}
-                                  >
-                                    <span className="text-2xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
-                                    <div className="min-w-0">
-                                      <p className="text-xs font-bold text-white">@{acc.username}</p>
-                                      <p className="text-[10px]" style={{ color: `${color}aa` }}>
-                                        {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
-                                        {" · "}
-                                        {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"}
-                                      </p>
-                                    </div>
-                                    <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
-                                  </a>
+                                  <div key={acc.id} className="group/acc relative pb-6">
+                                    <a
+                                      href={href}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="flex select-none cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                      style={{
+                                        backgroundColor: `${color}12`,
+                                        borderColor: `${color}35`,
+                                      }}
+                                      onClick={(e) => {
+                                        if (!acc.account_link?.trim()) e.preventDefault();
+                                      }}
+                                    >
+                                      <span className="text-2xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
+                                      <div className="min-w-0">
+                                        <p className="text-xs font-bold text-white">@{acc.username}</p>
+                                        <p className="text-[10px]" style={{ color: `${color}aa` }}>
+                                          {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
+                                          {" · "}
+                                          {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"}
+                                        </p>
+                                      </div>
+                                      <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
+                                    </a>
+                                    {st !== "active" ? (
+                                      <div
+                                        className={cn(
+                                          "absolute -right-1 -top-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-md",
+                                          st === "shadowbanned" ? "bg-amber-500" : "bg-red-500",
+                                        )}
+                                      >
+                                        {st === "shadowbanned" ? "⚠️" : "🚫"}
+                                      </div>
+                                    ) : null}
+                                    {st === "active" ? (
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.preventDefault();
+                                          e.stopPropagation();
+                                          setShadowbanReportTarget(acc);
+                                          setShadowbanFile(null);
+                                          setShadowbanNotes("");
+                                        }}
+                                        className="absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 opacity-0 transition-all hover:bg-amber-500/30 group-hover/acc:opacity-100"
+                                      >
+                                        ⚠️ Report
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 );
                               })}
                             </div>
@@ -740,6 +827,87 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
               </div>
             </form>
           </motion.div>
+        </div>
+      ) : null}
+
+      {shadowbanReportTarget ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+            <h3 className="text-lg font-bold text-white">Report shadowban</h3>
+            <div className="mt-1 flex items-center gap-2">
+              <span className="text-xl">{SOCIAL_ICONS[shadowbanReportTarget.platform?.trim() ?? ""] ?? "📱"}</span>
+              <p className="text-sm text-white/50">
+                @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
+              </p>
+            </div>
+            <div className="mt-5">
+              <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">
+                Screenshot <span className="text-amber-400">*</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => shadowbanProofRef.current?.click()}
+                className={cn(
+                  "w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all",
+                  shadowbanFile
+                    ? "border-amber-500/40 bg-amber-500/5"
+                    : "border-white/15 hover:border-amber-500/40 hover:bg-amber-500/5",
+                )}
+              >
+                {shadowbanPreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={shadowbanPreviewUrl}
+                    alt="Evidence preview"
+                    className="mx-auto max-h-28 rounded-xl object-contain"
+                  />
+                ) : (
+                  <>
+                    <p className="mb-1 text-2xl">📋</p>
+                    <p className="text-sm text-white/40">Paste (Ctrl+V) or click</p>
+                  </>
+                )}
+              </button>
+              <input
+                ref={shadowbanProofRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => setShadowbanFile(e.target.files?.[0] ?? null)}
+              />
+            </div>
+            <div className="mt-4">
+              <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">Notes</label>
+              <textarea
+                value={shadowbanNotes}
+                onChange={(e) => setShadowbanNotes(e.target.value)}
+                rows={2}
+                placeholder="What happened? What did you notice?"
+                className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-amber-500/50 focus:outline-none"
+              />
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void handleSubmitShadowbanReport()}
+                disabled={!shadowbanFile || shadowbanSubmitting}
+                className="flex-1 rounded-2xl border border-amber-500/30 bg-amber-500/20 py-3 font-bold text-amber-400 hover:bg-amber-500/30 disabled:opacity-40"
+              >
+                {shadowbanSubmitting ? "Submitting…" : "Submit report"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShadowbanReportTarget(null);
+                  setShadowbanFile(null);
+                  setShadowbanNotes("");
+                }}
+                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-white/50 hover:bg-white/10"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
