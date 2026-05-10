@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown, Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Plus, Pencil, Trash2, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   FunnelLink,
@@ -54,6 +54,18 @@ const PLATFORM_ICONS: Record<string, string> = {
   Telegram: "✈️",
   GetMyLinks: "🔗",
   Other: "📱",
+};
+
+const PLATFORM_COLORS: Record<string, string> = {
+  Instagram: "#E4405F",
+  Facebook: "#1877F2",
+  TikTok: "#000000",
+  Twitter: "#1D9BF0",
+  YouTube: "#FF0000",
+  Snapchat: "#FFFC00",
+  Telegram: "#26A5E4",
+  GetMyLinks: "#ec4899",
+  Other: "#888888",
 };
 
 function pill(active: boolean) {
@@ -144,19 +156,14 @@ export function AdminMarketingClient({
   }
 
   // —— Accounts ——
-  const [accSearch, setAccSearch] = React.useState("");
-  const [accModel, setAccModel] = React.useState("");
-  const [accVa, setAccVa] = React.useState("");
-  const [accPlatform, setAccPlatform] = React.useState("");
-  const [aModelId, setAModelId] = React.useState("");
-  const [aPlatform, setAPlatform] = React.useState("");
-  const [aUsername, setAUsername] = React.useState("");
-  const [aLink, setALink] = React.useState("");
-  const [aType, setAType] = React.useState<"main" | "secondary">("main");
-  const [aRegion, setARegion] = React.useState<(typeof REGIONS)[number]>("Global");
-  const [aVaId, setAVaId] = React.useState("");
-  const [aNotes, setANotes] = React.useState("");
-  const [editAccount, setEditAccount] = React.useState<SocialAccount | null>(null);
+  const [searchAccounts, setSearchAccounts] = React.useState("");
+  const [filterModel, setFilterModel] = React.useState("");
+  const [filterPlatform, setFilterPlatform] = React.useState("");
+  const [filterVA, setFilterVA] = React.useState("");
+  const [filterStatus, setFilterStatus] = React.useState("");
+  const [accountModalOpen, setAccountModalOpen] = React.useState(false);
+  const [editingAccountId, setEditingAccountId] = React.useState<string | null>(null);
+  const [accountDraft, setAccountDraft] = React.useState<Partial<SocialAccount>>({});
   const [reports, setReports] = React.useState<ShadowbanReport[]>([]);
   const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
   const [shadowbanFile, setShadowbanFile] = React.useState<File | null>(null);
@@ -199,55 +206,138 @@ export function AdminMarketingClient({
     return () => document.removeEventListener("paste", onPaste);
   }, [shadowbanReportTarget]);
 
+  const platformColorByName = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of platforms) {
+      if (p.name) m[p.name] = p.color;
+    }
+    return m;
+  }, [platforms]);
+
   const filteredAccounts = React.useMemo(() => {
-    const q = accSearch.trim().toLowerCase();
+    const q = searchAccounts.trim().toLowerCase();
     return accounts.filter((a) => {
-      if (accModel && a.model_id !== accModel) return false;
-      if (accVa && a.assigned_va_id !== accVa) return false;
-      if (accPlatform && a.platform !== accPlatform) return false;
+      if (filterModel && a.model_id !== filterModel) return false;
+      if (filterVA && a.assigned_va_id !== filterVA) return false;
+      if (filterPlatform && a.platform !== filterPlatform) return false;
+      if (filterStatus && (a.account_status ?? "active") !== filterStatus) return false;
       if (!q) return true;
       return `${a.model_name} ${a.platform} ${a.username} ${a.account_link} ${a.notes}`.toLowerCase().includes(q);
     });
-  }, [accounts, accSearch, accModel, accVa, accPlatform]);
+  }, [accounts, searchAccounts, filterModel, filterVA, filterPlatform, filterStatus]);
 
-  async function addAccount(e: React.FormEvent) {
+  const accountsByModel = React.useMemo(() => {
+    const groups = new Map<string, { model_id: string; model_name: string; accounts: SocialAccount[] }>();
+    for (const a of filteredAccounts) {
+      const mid = a.model_id;
+      const name = a.model_name || modelNameById[mid] || mid || "Unknown";
+      let g = groups.get(mid);
+      if (!g) {
+        g = { model_id: mid, model_name: name, accounts: [] };
+        groups.set(mid, g);
+      }
+      g.accounts.push(a);
+    }
+    return Array.from(groups.values()).sort((x, y) => x.model_name.localeCompare(y.model_name));
+  }, [filteredAccounts, modelNameById]);
+
+  function openNewAccount(preset?: { model_id?: string; model_name?: string }) {
+    setEditingAccountId(null);
+    const mid = preset?.model_id ?? "";
+    setAccountDraft({
+      model_id: mid,
+      model_name: preset?.model_name ?? (mid ? (modelNameById[mid] ?? "") : ""),
+      platform: "",
+      username: "",
+      account_link: "",
+      account_type: "main",
+      region: "Global",
+      assigned_va_id: "",
+      assigned_va_name: "",
+      notes: "",
+      active: true,
+    });
+    setAccountModalOpen(true);
+  }
+
+  function openEditAccount(acc: SocialAccount) {
+    setEditingAccountId(acc.id);
+    setAccountDraft({ ...acc });
+    setAccountModalOpen(true);
+  }
+
+  function closeAccountModal() {
+    setAccountModalOpen(false);
+    setEditingAccountId(null);
+    setAccountDraft({});
+  }
+
+  async function saveAccountFromModal(e: React.FormEvent) {
     e.preventDefault();
-    if (!aModelId || !aPlatform.trim() || !aUsername.trim()) {
+    const modelId = accountDraft.model_id?.trim() ?? "";
+    const platform = accountDraft.platform?.trim() ?? "";
+    const username = accountDraft.username?.trim() ?? "";
+    if (!modelId || !platform || !username) {
       setError("Model, platform, and username are required.");
       return;
     }
     setError(null);
-    setBusy("account-add");
-    const va = vaUsers.find((u) => u.id === aVaId);
+    const va = vaUsers.find((u) => u.id === (accountDraft.assigned_va_id ?? ""));
+    const body = {
+      model_id: modelId,
+      model_name: accountDraft.model_name?.trim() || modelNameById[modelId] || "",
+      platform,
+      account_link: (accountDraft.account_link ?? "").trim(),
+      username,
+      account_type: (accountDraft.account_type === "secondary" ? "secondary" : "main") as "main" | "secondary",
+      region: (accountDraft.region === "USA" || accountDraft.region === "Greek" ? accountDraft.region : "Global") as SocialAccount["region"],
+      assigned_va_id: accountDraft.assigned_va_id ?? "",
+      assigned_va_name: va?.full_name?.trim() || va?.email || accountDraft.assigned_va_name || "",
+      notes: (accountDraft.notes ?? "").trim(),
+    };
+    setBusy(editingAccountId ? `account-${editingAccountId}` : "account-add");
     try {
-      const res = await fetch("/api/admin/marketing/accounts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model_id: aModelId,
-          model_name: modelNameById[aModelId] ?? "",
-          platform: aPlatform.trim(),
-          account_link: aLink.trim(),
-          username: aUsername.trim(),
-          account_type: aType,
-          region: aRegion,
-          assigned_va_id: aVaId || "",
-          assigned_va_name: va?.full_name?.trim() || va?.email || "",
-          notes: aNotes.trim(),
-        }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      const data = (await res.json()) as { account: SocialAccount };
-      setAccounts((prev) => [data.account, ...prev]);
-      setAPlatform("");
-      setAUsername("");
-      setALink("");
-      setAVaId("");
-      setANotes("");
+      if (editingAccountId) {
+        const res = await fetch(`/api/admin/marketing/accounts/${editingAccountId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        setAccounts((prev) => prev.map((a) => (a.id === editingAccountId ? { ...a, ...body } : a)));
+      } else {
+        const res = await fetch("/api/admin/marketing/accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as { account: SocialAccount };
+        setAccounts((prev) => [data.account, ...prev]);
+      }
+      closeAccountModal();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not add account");
+      setError(err instanceof Error ? err.message : "Could not save account");
     } finally {
       setBusy(null);
+    }
+  }
+
+  async function handleDeleteAccount(id: string) {
+    if (!confirm("Permanently delete this account?")) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/marketing/accounts/${id}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setAccounts((prev) => prev.filter((a) => a.id !== id));
+      if (editingAccountId === id) closeAccountModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
     }
   }
 
@@ -262,7 +352,6 @@ export function AdminMarketingClient({
       });
       if (!res.ok) throw new Error(await res.text());
       setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, ...body } : a)));
-      setEditAccount((cur) => (cur?.id === id ? { ...cur, ...body } : cur));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
@@ -281,7 +370,6 @@ export function AdminMarketingClient({
       });
       if (!res.ok) throw new Error(await res.text());
       setAccounts((prev) => prev.map((a) => (a.id === accountId ? { ...a, account_status: status } : a)));
-      setEditAccount((cur) => (cur?.id === accountId ? { ...cur, account_status: status } : cur));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Status update failed");
     }
@@ -324,6 +412,7 @@ export function AdminMarketingClient({
       fd.append("model_name", shadowbanReportTarget.model_name);
       fd.append("platform", shadowbanReportTarget.platform);
       fd.append("username", shadowbanReportTarget.username);
+      fd.append("report_type", "shadowbanned");
       fd.append("notes", shadowbanNotes);
       fd.append("screenshot", shadowbanFile);
       const res = await fetch("/api/va/marketing/report-shadowban", {
@@ -342,22 +431,6 @@ export function AdminMarketingClient({
       setError(err instanceof Error ? err.message : "Report failed");
     } finally {
       setShadowbanSubmitting(false);
-    }
-  }
-
-  async function removeAccount(id: string) {
-    if (!confirm("Deactivate this social account?")) return;
-    setError(null);
-    setBusy(`account-del-${id}`);
-    try {
-      const res = await fetch(`/api/admin/marketing/accounts/${id}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
-      setAccounts((prev) => prev.map((a) => (a.id === id ? { ...a, active: false } : a)));
-      setEditAccount((c) => (c?.id === id ? null : c));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
-    } finally {
-      setBusy(null);
     }
   }
 
@@ -638,18 +711,38 @@ export function AdminMarketingClient({
       ) : null}
 
       {tab === "accounts" ? (
-        <div className="space-y-6">
-          <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-white/10 bg-zinc-950/50 px-4 py-3">
-            <div className="relative min-w-[200px] flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+        <div>
+          <div className="mb-6 flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-bold text-white">Social Accounts</h2>
+              <p className="mt-0.5 text-sm text-white/40">
+                {accounts.length} accounts across {[...new Set(accounts.map((a) => a.model_id))].length} models
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => openNewAccount()}
+              className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 font-semibold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90"
+            >
+              <Plus className="h-4 w-4" /> Add Account
+            </button>
+          </div>
+
+          <div className="mb-6 flex flex-wrap gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+            <div className="relative min-w-48 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
               <input
-                value={accSearch}
-                onChange={(e) => setAccSearch(e.target.value)}
-                placeholder="Search…"
-                className={cn(selectClass, "w-full pl-10")}
+                placeholder="Search username, model..."
+                value={searchAccounts}
+                onChange={(e) => setSearchAccounts(e.target.value)}
+                className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-9 pr-4 text-sm text-white placeholder:text-white/20 focus:border-pink-500/50 focus:outline-none"
               />
             </div>
-            <select value={accModel} onChange={(e) => setAccModel(e.target.value)} className={selectClass}>
+            <select
+              value={filterModel}
+              onChange={(e) => setFilterModel(e.target.value)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
+            >
               <option value="">All models</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -657,376 +750,267 @@ export function AdminMarketingClient({
                 </option>
               ))}
             </select>
-            <select value={accVa} onChange={(e) => setAccVa(e.target.value)} className={selectClass}>
-              <option value="">All VAs</option>
-              {vaUsers.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.full_name || u.email}
-                </option>
-              ))}
-            </select>
-            <select value={accPlatform} onChange={(e) => setAccPlatform(e.target.value)} className={selectClass}>
+            <select
+              value={filterPlatform}
+              onChange={(e) => setFilterPlatform(e.target.value)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
+            >
               <option value="">All platforms</option>
-              {platformNames.map((n) => (
-                <option key={n} value={n}>
-                  {n}
+              {[...new Set(accounts.map((a) => a.platform).filter(Boolean))].sort().map((p) => (
+                <option key={p} value={p}>
+                  {PLATFORM_ICONS[p] ?? "📱"} {p}
                 </option>
               ))}
             </select>
+            <select
+              value={filterVA}
+              onChange={(e) => setFilterVA(e.target.value)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
+            >
+              <option value="">All VAs</option>
+              {vaUsers.map((v) => (
+                <option key={v.id} value={v.id}>
+                  {v.full_name || v.email}
+                </option>
+              ))}
+            </select>
+            <select
+              value={filterStatus}
+              onChange={(e) => setFilterStatus(e.target.value)}
+              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
+            >
+              <option value="">All statuses</option>
+              <option value="active">✅ Active</option>
+              <option value="shadowbanned">⚠️ Shadowbanned</option>
+              <option value="banned">🚫 Banned</option>
+            </select>
+            {(searchAccounts || filterModel || filterPlatform || filterVA || filterStatus) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchAccounts("");
+                  setFilterModel("");
+                  setFilterPlatform("");
+                  setFilterVA("");
+                  setFilterStatus("");
+                }}
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white/40 hover:text-white"
+              >
+                Clear
+              </button>
+            )}
           </div>
 
-          <form
-            onSubmit={addAccount}
-            className="rounded-2xl border border-white/10 bg-zinc-950/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-          >
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-white/50">Add social account</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Model
-                <select
-                  value={aModelId}
-                  onChange={(e) => setAModelId(e.target.value)}
-                  className={selectClass}
-                  required
-                >
-                  <option value="">Select…</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.model_name || m.model_id}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Platform
-                <input
-                  value={aPlatform}
-                  onChange={(e) => setAPlatform(e.target.value)}
-                  className={selectClass}
-                  list="platform-name-list"
-                  placeholder="e.g. Instagram"
-                  required
-                />
-                <datalist id="platform-name-list">
-                  {platformNames.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Username
-                <input value={aUsername} onChange={(e) => setAUsername(e.target.value)} className={selectClass} required />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Link
-                <input value={aLink} onChange={(e) => setALink(e.target.value)} className={selectClass} placeholder="https://…" />
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Type
-                <select value={aType} onChange={(e) => setAType(e.target.value as "main" | "secondary")} className={selectClass}>
-                  {ACCOUNT_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Region
-                <select value={aRegion} onChange={(e) => setARegion(e.target.value as (typeof REGIONS)[number])} className={selectClass}>
-                  {REGIONS.map((r) => (
-                    <option key={r} value={r}>
-                      {r}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50">
-                Assigned VA
-                <select value={aVaId} onChange={(e) => setAVaId(e.target.value)} className={selectClass}>
-                  <option value="">—</option>
-                  {vaUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name || u.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2 lg:col-span-3">
-                Notes
-                <input value={aNotes} onChange={(e) => setANotes(e.target.value)} className={selectClass} />
-              </label>
+          {accountsByModel.length === 0 ? (
+            <div className="py-20 text-center text-white/20">
+              <p className="mb-4 text-5xl">📱</p>
+              <p className="text-lg">No social accounts yet</p>
+              <p className="mt-1 text-sm">Add the first account to get started</p>
             </div>
-            <div className="mt-4">
-              <button
-                type="submit"
-                disabled={busy === "account-add"}
-                className="inline-flex items-center gap-2 rounded-xl bg-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-400 disabled:opacity-50"
-              >
-                <Plus className="h-4 w-4" />
-                Add account
-              </button>
-            </div>
-          </form>
+          ) : (
+            accountsByModel.map((group) => (
+              <div key={group.model_id} className="mb-10">
+                <div className="mb-4 flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-pink-500/20 bg-gradient-to-br from-pink-500/20 to-rose-500/20 text-lg font-bold text-pink-400">
+                    {(group.model_name || "?")[0]}
+                  </div>
+                  <div className="flex-1">
+                    <h3 className="text-base font-bold text-white">{group.model_name}</h3>
+                    <p className="text-xs text-white/30">
+                      {group.accounts.length} account{group.accounts.length !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openNewAccount({ model_id: group.model_id, model_name: group.model_name })
+                    }
+                    className="flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/40 transition-all hover:bg-white/10 hover:text-white"
+                  >
+                    <Plus className="h-3 w-3" /> Add account
+                  </button>
+                </div>
 
-          <div className="overflow-x-auto rounded-2xl border border-white/10 bg-zinc-950/40">
-            <table className="w-full min-w-[900px] text-left text-sm">
-              <thead className="border-b border-white/10 text-xs uppercase tracking-wide text-white/45">
-                <tr>
-                  <th className="px-3 py-3">Model</th>
-                  <th className="px-3 py-3">Platform</th>
-                  <th className="px-3 py-3">Username</th>
-                  <th className="px-3 py-3">Type</th>
-                  <th className="px-3 py-3">Region</th>
-                  <th className="px-3 py-3">VA</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium uppercase tracking-widest text-white/25">
-                    Status
-                  </th>
-                  <th className="px-3 py-3">Active</th>
-                  <th className="px-3 py-3 w-36"> </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-white/5 text-white/85">
-                {filteredAccounts.map((a) => (
-                  <React.Fragment key={a.id}>
-                    <tr className={!a.active ? "opacity-50" : undefined}>
-                      <td className="px-3 py-2.5">{a.model_name || modelNameById[a.model_id] || a.model_id}</td>
-                      <td className="px-3 py-2.5">{a.platform}</td>
-                      <td className="px-3 py-2.5">
-                        {a.account_link ? (
-                          <a href={a.account_link} className="text-pink-300 hover:underline" target="_blank" rel="noreferrer">
-                            @{a.username}
-                          </a>
-                        ) : (
-                          <span>@{a.username}</span>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {group.accounts.map((acc) => {
+                    const color =
+                      platformColorByName[acc.platform] ?? PLATFORM_COLORS[acc.platform] ?? "#888888";
+                    const icon = PLATFORM_ICONS[acc.platform] ?? "📱";
+                    const statusCfg = STATUS_CONFIG[acc.account_status ?? "active"];
+
+                    return (
+                      <div
+                        key={acc.id}
+                        className={cn(
+                          "group relative overflow-hidden rounded-2xl border transition-all hover:scale-[1.01]",
+                          acc.account_status === "banned"
+                            ? "border-red-500/25 bg-red-500/[0.03]"
+                            : acc.account_status === "shadowbanned"
+                              ? "border-amber-500/25 bg-amber-500/[0.03]"
+                              : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]",
+                          !acc.active && "opacity-60",
                         )}
-                      </td>
-                      <td className="px-3 py-2.5 capitalize">{a.account_type}</td>
-                      <td className="px-3 py-2.5">{a.region}</td>
-                      <td className="px-3 py-2.5 text-xs text-white/60">{a.assigned_va_name || "—"}</td>
-                      <td className="px-4 py-3">
-                        <div className="group/status relative">
-                          {(() => {
-                            const st = (a.account_status ?? "active") as SocialAccountStatus;
-                            const cfg = STATUS_CONFIG[st];
-                            return (
+                      >
+                        <div className="h-1 w-full" style={{ backgroundColor: `${color}99` }} />
+
+                        <div className="p-4">
+                          <div className="mb-3 flex items-start justify-between">
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
+                                style={{
+                                  backgroundColor: `${color}26`,
+                                  border: `1px solid ${color}4d`,
+                                }}
+                              >
+                                {icon}
+                              </div>
+                              <div>
+                                <p className="text-sm font-bold text-white">@{acc.username}</p>
+                                <p className="text-xs text-white/40">{acc.platform}</p>
+                              </div>
+                            </div>
+
+                            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                              {acc.account_link ? (
+                                <a
+                                  href={acc.account_link}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-white/10 hover:text-white"
+                                >
+                                  <ExternalLink className="h-3.5 w-3.5" />
+                                </a>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => openEditAccount(acc)}
+                                className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-white/10 hover:text-white"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void handleDeleteAccount(acc.id)}
+                                className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="mb-3 flex flex-wrap gap-1.5">
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-xs font-semibold",
+                                acc.account_type === "main"
+                                  ? "border-green-500/20 bg-green-500/10 text-green-400"
+                                  : "border-blue-500/20 bg-blue-500/10 text-blue-400",
+                              )}
+                            >
+                              {acc.account_type === "main" ? "⭐ Main" : "2nd"}
+                            </span>
+                            <span
+                              className={cn(
+                                "rounded-full border px-2 py-0.5 text-xs font-semibold",
+                                acc.region === "Greek"
+                                  ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
+                                  : acc.region === "USA"
+                                    ? "border-red-500/20 bg-red-500/10 text-red-400"
+                                    : "border-purple-500/20 bg-purple-500/10 text-purple-400",
+                              )}
+                            >
+                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"} {acc.region}
+                            </span>
+                          </div>
+
+                          {acc.assigned_va_name ? (
+                            <div className="mb-3 flex items-center gap-1.5">
+                              <div className="flex h-5 w-5 items-center justify-center rounded-full bg-purple-500/20 text-xs font-bold text-purple-400">
+                                {acc.assigned_va_name[0]}
+                              </div>
+                              <span className="text-xs text-white/40">{acc.assigned_va_name}</span>
+                            </div>
+                          ) : null}
+
+                          <div className="mb-3">
+                            <button
+                              type="button"
+                              onClick={() => void patchAccount(acc.id, { active: !acc.active })}
+                              disabled={busy === `account-${acc.id}`}
+                              className={cn(
+                                "rounded-lg px-2 py-1 text-xs font-medium",
+                                acc.active ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-white/50",
+                              )}
+                            >
+                              Active: {acc.active ? "On" : "Off"}
+                            </button>
+                          </div>
+
+                          <div className="group/status relative mt-auto">
+                            <button
+                              type="button"
+                              className={cn(
+                                "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+                                statusCfg.bg,
+                                statusCfg.border,
+                              )}
+                            >
                               <div
                                 className={cn(
-                                  "flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border px-2.5 py-1.5",
-                                  cfg.bg,
-                                  cfg.border,
+                                  "h-2 w-2 rounded-full",
+                                  statusCfg.dot,
+                                  acc.account_status === "active" ? "animate-pulse" : "",
                                 )}
-                              >
-                                <div className={cn("h-1.5 w-1.5 rounded-full", cfg.dot)} />
-                                <span className={cn("text-xs font-semibold", cfg.color)}>{cfg.label}</span>
-                                <ChevronDown className={cn("h-3 w-3 opacity-50", cfg.color)} aria-hidden />
-                              </div>
-                            );
-                          })()}
-                          <div className="absolute left-0 top-full z-20 mt-1 hidden min-w-[9rem] rounded-xl border border-white/15 bg-[#0f0f1a] p-1 shadow-2xl group-hover/status:block">
-                            {(["active", "shadowbanned", "banned"] as const).map((status) => {
-                              const cfg = STATUS_CONFIG[status];
-                              return (
-                                <button
-                                  key={status}
-                                  type="button"
-                                  onClick={() => void handleUpdateAccountStatus(a.id, status)}
-                                  className={cn(
-                                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-xs font-medium transition-all hover:bg-white/5",
-                                    cfg.color,
-                                    (a.account_status ?? "active") === status ? "bg-white/5" : "",
-                                  )}
-                                >
-                                  <div className={cn("h-2 w-2 rounded-full", cfg.dot)} />
-                                  {cfg.label}
-                                  {(a.account_status ?? "active") === status ? (
-                                    <Check className="ml-auto h-3 w-3" aria-hidden />
-                                  ) : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <button
-                          type="button"
-                          onClick={() => patchAccount(a.id, { active: !a.active })}
-                          disabled={busy === `account-${a.id}`}
-                          className={cn(
-                            "rounded-lg px-2 py-1 text-xs font-medium",
-                            a.active ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-white/50",
-                          )}
-                        >
-                          {a.active ? "On" : "Off"}
-                        </button>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex flex-wrap gap-1">
-                          {(a.account_status ?? "active") === "active" ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setShadowbanReportTarget(a);
-                                setShadowbanFile(null);
-                                setShadowbanNotes("");
-                              }}
-                              className="rounded-lg border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-xs font-semibold text-amber-400 hover:bg-amber-500/20"
-                            >
-                              Report
+                              />
+                              <span className={statusCfg.color}>{statusCfg.label}</span>
+                              <ChevronDown className={cn("ml-auto h-3 w-3 opacity-50", statusCfg.color)} />
                             </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => setEditAccount((c) => (c?.id === a.id ? null : a))}
-                            className="rounded-lg p-2 text-white/60 hover:bg-white/10"
-                            aria-label="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => removeAccount(a.id)}
-                            disabled={busy?.startsWith("account-del")}
-                            className="rounded-lg p-2 text-red-400/80 hover:bg-red-500/10"
-                            aria-label="Deactivate"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                    {editAccount?.id === a.id ? (
-                      <tr className="bg-white/[0.03]">
-                        <td colSpan={9} className="px-3 py-4">
-                          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                            <label className="flex flex-col gap-1 text-xs text-white/50">
-                              Username
-                              <input
-                                value={editAccount.username}
-                                onChange={(e) => setEditAccount({ ...editAccount, username: e.target.value })}
-                                className={selectClass}
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
-                              Link
-                              <input
-                                value={editAccount.account_link}
-                                onChange={(e) => setEditAccount({ ...editAccount, account_link: e.target.value })}
-                                className={selectClass}
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-white/50">
-                              Platform
-                              <input
-                                value={editAccount.platform}
-                                onChange={(e) => setEditAccount({ ...editAccount, platform: e.target.value })}
-                                className={selectClass}
-                              />
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-white/50">
-                              Type
-                              <select
-                                value={editAccount.account_type}
-                                onChange={(e) =>
-                                  setEditAccount({ ...editAccount, account_type: e.target.value as "main" | "secondary" })
-                                }
-                                className={selectClass}
-                              >
-                                {ACCOUNT_TYPES.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-white/50">
-                              Region
-                              <select
-                                value={editAccount.region}
-                                onChange={(e) =>
-                                  setEditAccount({
-                                    ...editAccount,
-                                    region: e.target.value as SocialAccount["region"],
-                                  })
-                                }
-                                className={selectClass}
-                              >
-                                {REGIONS.map((r) => (
-                                  <option key={r} value={r}>
-                                    {r}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-white/50">
-                              Assigned VA
-                              <select
-                                value={editAccount.assigned_va_id}
-                                onChange={(e) => {
-                                  const id = e.target.value;
-                                  const u = vaUsers.find((x) => x.id === id);
-                                  setEditAccount({
-                                    ...editAccount,
-                                    assigned_va_id: id,
-                                    assigned_va_name: u?.full_name?.trim() || u?.email || "",
-                                  });
+
+                            <div className="absolute bottom-full left-0 z-30 mb-1 hidden min-w-[11rem] rounded-xl border border-white/15 bg-[#0f0f1a] p-1.5 shadow-2xl group-hover/status:block">
+                              {(["active", "shadowbanned", "banned"] as const).map((status) => {
+                                const cfg = STATUS_CONFIG[status];
+                                return (
+                                  <button
+                                    key={status}
+                                    type="button"
+                                    onClick={() => void handleUpdateAccountStatus(acc.id, status)}
+                                    className={cn(
+                                      "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all hover:bg-white/5",
+                                      cfg.color,
+                                      acc.account_status === status ? "bg-white/5" : "",
+                                    )}
+                                  >
+                                    <div className={cn("h-2 w-2 rounded-full", cfg.dot)} />
+                                    {cfg.label}
+                                    {acc.account_status === status ? (
+                                      <Check className="ml-auto h-3 w-3 opacity-60" />
+                                    ) : null}
+                                  </button>
+                                );
+                              })}
+                              <div className="my-1 h-px bg-white/[0.08]" />
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setShadowbanReportTarget(acc);
+                                  setShadowbanFile(null);
+                                  setShadowbanNotes("");
                                 }}
-                                className={selectClass}
+                                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/10"
                               >
-                                <option value="">—</option>
-                                {vaUsers.map((u) => (
-                                  <option key={u.id} value={u.id}>
-                                    {u.full_name || u.email}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2 lg:col-span-4">
-                              Notes
-                              <input
-                                value={editAccount.notes}
-                                onChange={(e) => setEditAccount({ ...editAccount, notes: e.target.value })}
-                                className={selectClass}
-                              />
-                            </label>
+                                ⚠️ Report shadowban
+                              </button>
+                            </div>
                           </div>
-                          <div className="mt-3 flex gap-2">
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                await patchAccount(editAccount.id, {
-                                  username: editAccount.username,
-                                  account_link: editAccount.account_link,
-                                  platform: editAccount.platform,
-                                  account_type: editAccount.account_type,
-                                  region: editAccount.region,
-                                  assigned_va_id: editAccount.assigned_va_id,
-                                  assigned_va_name: editAccount.assigned_va_name,
-                                  notes: editAccount.notes,
-                                });
-                                setEditAccount(null);
-                              }}
-                              className="rounded-xl bg-white/10 px-4 py-2 text-sm font-medium text-white hover:bg-white/15"
-                            >
-                              Save changes
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setEditAccount(null)}
-                              className="rounded-xl px-4 py-2 text-sm text-white/60 hover:bg-white/5"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ) : null}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))
+          )}
         </div>
       ) : null}
 
@@ -1357,6 +1341,167 @@ export function AdminMarketingClient({
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      ) : null}
+
+      {accountModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">{editingAccountId ? "Edit account" : "Add social account"}</h3>
+              <button
+                type="button"
+                onClick={closeAccountModal}
+                className="rounded-lg px-2 py-1 text-sm text-white/50 hover:bg-white/10 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            <form onSubmit={saveAccountFromModal} className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Model
+                <select
+                  value={accountDraft.model_id ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    setAccountDraft((d) => ({
+                      ...d,
+                      model_id: id,
+                      model_name: id ? modelNameById[id] ?? "" : "",
+                    }));
+                  }}
+                  className={selectClass}
+                  required
+                >
+                  <option value="">Select…</option>
+                  {models.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.model_name || m.model_id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Platform
+                <input
+                  value={accountDraft.platform ?? ""}
+                  onChange={(e) => setAccountDraft((d) => ({ ...d, platform: e.target.value }))}
+                  className={selectClass}
+                  list="platform-name-list-account-modal"
+                  placeholder="e.g. Instagram"
+                  required
+                />
+                <datalist id="platform-name-list-account-modal">
+                  {platformNames.map((n) => (
+                    <option key={n} value={n} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                Username
+                <input
+                  value={accountDraft.username ?? ""}
+                  onChange={(e) => setAccountDraft((d) => ({ ...d, username: e.target.value }))}
+                  className={selectClass}
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Link
+                <input
+                  value={accountDraft.account_link ?? ""}
+                  onChange={(e) => setAccountDraft((d) => ({ ...d, account_link: e.target.value }))}
+                  className={selectClass}
+                  placeholder="https://…"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                Type
+                <select
+                  value={accountDraft.account_type ?? "main"}
+                  onChange={(e) =>
+                    setAccountDraft((d) => ({
+                      ...d,
+                      account_type: e.target.value as "main" | "secondary",
+                    }))
+                  }
+                  className={selectClass}
+                >
+                  {ACCOUNT_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                Region
+                <select
+                  value={accountDraft.region ?? "Global"}
+                  onChange={(e) =>
+                    setAccountDraft((d) => ({
+                      ...d,
+                      region: e.target.value as SocialAccount["region"],
+                    }))
+                  }
+                  className={selectClass}
+                >
+                  {REGIONS.map((r) => (
+                    <option key={r} value={r}>
+                      {r}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Assigned VA
+                <select
+                  value={accountDraft.assigned_va_id ?? ""}
+                  onChange={(e) => {
+                    const id = e.target.value;
+                    const u = vaUsers.find((x) => x.id === id);
+                    setAccountDraft((d) => ({
+                      ...d,
+                      assigned_va_id: id,
+                      assigned_va_name: u?.full_name?.trim() || u?.email || "",
+                    }));
+                  }}
+                  className={selectClass}
+                >
+                  <option value="">—</option>
+                  {vaUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name || u.email}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Notes
+                <input
+                  value={accountDraft.notes ?? ""}
+                  onChange={(e) => setAccountDraft((d) => ({ ...d, notes: e.target.value }))}
+                  className={selectClass}
+                />
+              </label>
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={busy === "account-add" || (!!editingAccountId && busy === `account-${editingAccountId}`)}
+                  className="rounded-xl bg-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-400 disabled:opacity-50"
+                >
+                  {editingAccountId ? "Save changes" : "Add account"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closeAccountModal}
+                  className="rounded-xl px-4 py-2.5 text-sm text-white/60 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}

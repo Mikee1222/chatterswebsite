@@ -10,6 +10,8 @@ import type { SessionUser } from "@/types";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
+import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
+import type { SocialAccount } from "@/services/marketing";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 
@@ -29,13 +31,15 @@ export const VA_QUICK_ACTIONS: {
 export type VaQuickActionsModalProps = {
   open: boolean;
   onClose: () => void;
+  /** Opens the VA shadowban report flow (parent should close FAB and show modal). */
+  onReportShadowban?: () => void;
 };
 
 /**
  * Virtual assistant quick actions as a mobile bottom sheet: spring slide-up, blurred backdrop,
  * swipe-down / backdrop / ESC to close — matches chatter `QuickActionsModal`.
  */
-export function VaQuickActionsModal({ open, onClose }: VaQuickActionsModalProps) {
+export function VaQuickActionsModal({ open, onClose, onReportShadowban }: VaQuickActionsModalProps) {
   const dragControls = useDragControls();
 
   React.useEffect(() => {
@@ -138,6 +142,23 @@ export function VaQuickActionsModal({ open, onClose }: VaQuickActionsModalProps)
                     </Link>
                   </li>
                 ))}
+                {onReportShadowban ? (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={onReportShadowban}
+                      className="flex w-full min-h-[52px] items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors active:bg-white/10"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                        <span className="text-sm">⚠️</span>
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white">Report shadowban</p>
+                        <p className="text-xs text-white/40">Report an account issue</p>
+                      </div>
+                    </button>
+                  </li>
+                ) : null}
                 <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
@@ -167,7 +188,30 @@ type VaFloatingActionButtonProps = {
  */
 export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
   const [open, setOpen] = React.useState(false);
+  const [shadowbanModalOpen, setShadowbanModalOpen] = React.useState(false);
+  const [vaAccounts, setVaAccounts] = React.useState<SocialAccount[]>([]);
   const fabHiddenByOverlay = useMobileFabHidden();
+
+  const openShadowbanReport = React.useCallback(() => {
+    setOpen(false);
+    setShadowbanModalOpen(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!shadowbanModalOpen) return;
+    let cancelled = false;
+    fetch("/api/va/marketing/accounts", { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { accounts?: SocialAccount[] }) => {
+        if (!cancelled) setVaAccounts(d.accounts ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setVaAccounts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shadowbanModalOpen]);
 
   if (getEffectiveStaffRole(user) !== "virtual_assistant" || fabHiddenByOverlay) return null;
 
@@ -182,8 +226,17 @@ export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
 
   return (
     <>
+      <VAShadowbanReportModal
+        open={shadowbanModalOpen}
+        onClose={() => setShadowbanModalOpen(false)}
+        vaAccounts={vaAccounts}
+      />
       <div className="md:hidden">
-        <VaQuickActionsModal open={open} onClose={() => setOpen(false)} />
+        <VaQuickActionsModal
+          open={open}
+          onClose={() => setOpen(false)}
+          onReportShadowban={openShadowbanReport}
+        />
 
         <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
           <button
@@ -233,6 +286,21 @@ export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
                   </Link>
                 </li>
               ))}
+              <li>
+                <button
+                  type="button"
+                  onClick={openShadowbanReport}
+                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                    <span className="text-sm">⚠️</span>
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-white">Report shadowban</p>
+                    <p className="text-xs text-white/40">Report an account issue</p>
+                  </div>
+                </button>
+              </li>
               <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
             </ul>
           </nav>

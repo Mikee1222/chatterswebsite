@@ -24,7 +24,17 @@ export async function POST(req: Request) {
   const model_name = String(formData.get("model_name") ?? "").trim();
   const platform = String(formData.get("platform") ?? "").trim();
   const username = String(formData.get("username") ?? "").trim();
-  const notes = String(formData.get("notes") ?? "").trim();
+  const rawNotes = String(formData.get("notes") ?? "").trim();
+  const reportTypeRaw = String(formData.get("report_type") ?? "").trim();
+  const report_type: "shadowbanned" | "banned" = reportTypeRaw === "banned" ? "banned" : "shadowbanned";
+  const notes =
+    report_type === "banned"
+      ? rawNotes
+        ? `[Ban reported] ${rawNotes}`
+        : "[Ban reported]"
+      : rawNotes
+        ? `[Shadowban reported] ${rawNotes}`
+        : "[Shadowban reported]";
   const screenshot = formData.get("screenshot");
 
   if (!account_id || !platform || !username) {
@@ -65,11 +75,12 @@ export async function POST(req: Request) {
   });
 
   const who = reporterName;
+  const isBan = report_type === "banned";
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.HIGH,
-    title: `Shadowban reported: @${username}`,
-    body: `${who} reported a possible shadowban on ${platform} for ${model_name || "model"} (@${username}).`,
+    title: `${isBan ? "🚫" : "⚠️"} ${isBan ? "Ban" : "Shadowban"} reported: @${username}`,
+    body: `${who} reported ${report_type} on ${platform} for ${model_name || "model"} (@${username})`,
     entity_type: NOTIFICATION_ENTITY.ACCOUNT,
     entity_id: report.report_id,
   }).catch(() => {});
