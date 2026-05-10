@@ -259,13 +259,14 @@ export type ConflictResult =
   | { conflict: true; type: "model"; message: string; modelName?: string; otherChatter?: string };
 
 /**
- * Conflict rule: same model on the same day cannot have overlapping time windows (by start_time/end_time).
- * Supports Morning, Night, and Custom shifts; overnight shifts use full ISO timestamps so overlap works correctly.
+ * Conflict rule: same model cannot be in two shifts whose ISO time windows overlap in this week.
+ * Uses full start_time/end_time (overnight-safe); not limited to the same `day` label so Mon night → Tue
+ * is still compared correctly against Tue windows.
  */
 export async function checkScheduledShiftConflicts(
-  chatterId: string,
+  _chatterId: string,
   modelIds: string[],
-  day: WeeklyProgramDay,
+  _day: WeeklyProgramDay,
   _shiftType: WeeklyProgramShiftType,
   weekStart: string,
   excludeRecordId: string | undefined,
@@ -274,9 +275,9 @@ export async function checkScheduledShiftConflicts(
   end_time: string
 ): Promise<ConflictResult> {
   const programs = await getProgramsForWeek(weekStart);
-  const sameDay = programs.filter((p) => p.day === day && p.id !== excludeRecordId);
+  const others = programs.filter((p) => p.id !== excludeRecordId);
   const modelSet = new Set(modelIds.filter(Boolean));
-  for (const p of sameDay) {
+  for (const p of others) {
     if (!p.start_time || !p.end_time) continue;
     if (!rangesOverlap(p.start_time, p.end_time, start_time, end_time)) continue;
     for (const mid of p.model_ids.filter(Boolean)) {
@@ -285,7 +286,7 @@ export async function checkScheduledShiftConflicts(
       return {
         conflict: true,
         type: "model",
-        message: `Model "${modelName}" is already assigned to ${p.chatter_name ?? "another chatter"} during overlapping time on ${day}. Same model cannot be in two overlapping shifts.`,
+        message: `Model "${modelName}" is already assigned to ${p.chatter_name ?? "another chatter"} during overlapping hours in this week. Same model cannot be in two overlapping shifts.`,
         modelName,
         otherChatter: p.chatter_name ?? undefined,
       };

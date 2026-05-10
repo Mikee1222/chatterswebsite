@@ -262,9 +262,9 @@ export type ConflictResultVa =
   | { conflict: true; type: "model"; message: string; modelName?: string; otherVa?: string };
 
 export async function checkScheduledShiftConflictsVa(
-  vaId: string,
+  _vaId: string,
   modelIds: string[],
-  day: WeeklyProgramDay,
+  _day: WeeklyProgramDay,
   _shiftType: WeeklyProgramShiftType,
   weekStart: string,
   excludeRecordId: string | undefined,
@@ -273,9 +273,9 @@ export async function checkScheduledShiftConflictsVa(
   end_time: string
 ): Promise<ConflictResultVa> {
   const programs = await getProgramsForWeekVa(weekStart);
-  const sameDay = programs.filter((p) => p.day === day && p.id !== excludeRecordId);
+  const others = programs.filter((p) => p.id !== excludeRecordId);
   const modelSet = new Set(modelIds.filter(Boolean));
-  for (const p of sameDay) {
+  for (const p of others) {
     if (!p.start_time || !p.end_time) continue;
     if (!rangesOverlap(p.start_time, p.end_time, start_time, end_time)) continue;
     for (const mid of p.model_ids.filter(Boolean)) {
@@ -284,7 +284,7 @@ export async function checkScheduledShiftConflictsVa(
       return {
         conflict: true,
         type: "model",
-        message: `Model "${modelName}" is already assigned to ${p.chatter_name ?? "another VA"} during overlapping time on ${day}.`,
+        message: `Model "${modelName}" is already assigned to ${p.chatter_name ?? "another VA"} during overlapping hours in this week.`,
         modelName,
         otherVa: p.chatter_name ?? undefined,
       };

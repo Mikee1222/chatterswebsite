@@ -30,7 +30,7 @@ import {
   formatWeekLabel,
   normalizeHHmm,
 } from "@/lib/weekly-program";
-import { getWeeklyProgramConflicts } from "@/lib/weekly-program-conflicts";
+import { getWeeklyProgramConflicts, rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
@@ -671,6 +671,11 @@ export function AdminWeeklyProgramClient({
   const [duplicateWeekTarget, setDuplicateWeekTarget] = React.useState<string>("");
   const [duplicateWeekOverwrite, setDuplicateWeekOverwrite] = React.useState(false);
   const [duplicateWeekUi, setDuplicateWeekUi] = React.useState<"idle" | "working" | "failed">("idle");
+  const [duplicateSlotModal, setDuplicateSlotModal] = React.useState<WeeklyProgramRecord | null>(null);
+  const [dupSlotTargetWeek, setDupSlotTargetWeek] = React.useState<string>("");
+  const [dupSlotSelectedDays, setDupSlotSelectedDays] = React.useState<number[]>([]);
+  const [dupSlotOverwrite, setDupSlotOverwrite] = React.useState(false);
+  const [dupSlotUi, setDupSlotUi] = React.useState<"idle" | "working" | "failed">("idle");
   const duplicateUiRef = React.useRef(duplicateUi);
   React.useEffect(() => {
     duplicateUiRef.current = duplicateUi;
@@ -1033,6 +1038,91 @@ export function AdminWeeklyProgramClient({
     setDuplicateWeekTarget(addWeeks(effectiveWeekStart, 1));
     setDuplicateWeekOverwrite(false);
     setDuplicateWeekUi("idle");
+  };
+
+  const openDuplicateSlotModal = (slot: WeeklyProgramRecord) => {
+    if (slot.id.startsWith("dup-pending-")) return;
+    setError(null);
+    setSuccess(null);
+    setDuplicateSlotModal(slot);
+    setDupSlotTargetWeek(addWeeks(effectiveWeekStart, 1));
+    setDupSlotSelectedDays([DAYS.indexOf(slot.day)]);
+    setDupSlotOverwrite(false);
+    setDupSlotUi("idle");
+  };
+
+  const closeDuplicateSlotModal = React.useCallback(() => {
+    if (dupSlotUi === "working") return;
+    setDuplicateSlotModal(null);
+    setDupSlotUi("idle");
+  }, [dupSlotUi]);
+
+  const toggleDupSlotDay = (dayIndex: number) => {
+    setDupSlotSelectedDays((prev) => {
+      if (prev.includes(dayIndex)) return prev.filter((d) => d !== dayIndex);
+      const next = [...prev, dayIndex];
+      next.sort((a, b) => a - b);
+      return next;
+    });
+  };
+
+  const runDuplicateSlot = () => {
+    if (!duplicateSlotModal || dupSlotUi === "working") return;
+    const slot = duplicateSlotModal;
+    if (dupSlotSelectedDays.length === 0) {
+      setError("Select at least one day.");
+      return;
+    }
+    const targetNorm = normalizeWeekStart(dupSlotTargetWeek);
+    const dayCount = dupSlotSelectedDays.length;
+    setError(null);
+    setSuccess(null);
+    setDupSlotUi("working");
+    void (async () => {
+      try {
+        for (const dayIdx of dupSlotSelectedDays) {
+          const targetDay = DAYS[dayIdx];
+          if (!targetDay) continue;
+          if (dupSlotOverwrite) {
+            const victims = programs.filter((p) => {
+              if (p.id.startsWith("dup-pending-")) return false;
+              if (normalizeWeekStart(p.week_start) !== targetNorm) return false;
+              if (p.chatter_id !== slot.chatter_id) return false;
+              if (p.day !== targetDay) return false;
+              if (!p.start_time || !p.end_time || !slot.start_time || !slot.end_time) return false;
+              return rangesOverlap(p.start_time, p.end_time, slot.start_time, slot.end_time);
+            });
+            for (const p of victims) {
+              const d = await deleteProgramAction(p.id);
+              if (!d.success) throw new Error(d.error);
+            }
+          }
+          const res = await createProgramAction({
+            chatter: [slot.chatter_id],
+            chatter_name: slot.chatter_name,
+            models: slot.model_ids,
+            day: targetDay,
+            shift_type: slot.shift_type,
+            week_start: targetNorm,
+            notes: slot.notes || "",
+            modelIdToName,
+            ...(slot.shift_type === "Custom" && {
+              custom_start_time: isoTimeToHHmm(slot.start_time),
+              custom_end_time: isoTimeToHHmm(slot.end_time),
+            }),
+          });
+          if (!res.success) throw new Error(res.error);
+        }
+        setDuplicateSlotModal(null);
+        setDupSlotUi("idle");
+        setSuccess(`Created ${dayCount} slot${dayCount !== 1 ? "s" : ""} in week of ${formatWeekLabel(targetNorm)}.`);
+        router.refresh();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(msg);
+        setDupSlotUi("failed");
+      }
+    })();
   };
 
   const runDuplicateEntireWeek = () => {
@@ -1469,6 +1559,17 @@ export function AdminWeeklyProgramClient({
                             )}
                           </div>
                           {e.chatter_name && <p className="mt-0.5 text-xs text-white/50">{e.chatter_name}</p>}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              disabled={e.id.startsWith("dup-pending-")}
+                              onClick={() => openDuplicateSlotModal(e)}
+                              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60 transition-all hover:bg-white/10 hover:text-white/85 disabled:opacity-40"
+                            >
+                              <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              Duplicate
+                            </button>
+                          </div>
                         </div>
                       );
                     })
@@ -1566,12 +1667,21 @@ export function AdminWeeklyProgramClient({
                                   )}
                                 </div>
                               </div>
-                              <div className="mt-3 flex items-center gap-2">
+                              <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <button type="button" onClick={() => setEditingEntry(e)} className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
                                   Edit
                                 </button>
                                 <button type="button" onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-300/80 hover:bg-red-500/10 disabled:opacity-50 transition-colors">
                                   {deletingId === e.id ? "…" : "Delete"}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={e.id.startsWith("dup-pending-")}
+                                  onClick={() => openDuplicateSlotModal(e)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/60 transition-colors hover:bg-white/10 hover:text-white/85 disabled:opacity-40"
+                                >
+                                  <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                  Duplicate
                                 </button>
                               </div>
                             </div>
@@ -1945,6 +2055,118 @@ export function AdminWeeklyProgramClient({
           </div>
         </div>
       ) : null}
+
+      {duplicateSlotModal ? (
+        <div
+          className="fixed inset-0 z-[61] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="dup-slot-title"
+          onClick={() => dupSlotUi !== "working" && closeDuplicateSlotModal()}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl"
+            onClick={(ev) => ev.stopPropagation()}
+          >
+            <h3 id="dup-slot-title" className="text-lg font-bold text-white">
+              Duplicate slot
+            </h3>
+            <p className="mt-1 text-sm text-white/40">
+              {duplicateSlotModal.chatter_name || "—"} ·{" "}
+              {duplicateSlotModal.start_time && duplicateSlotModal.end_time
+                ? formatTimeRange(duplicateSlotModal.start_time, duplicateSlotModal.end_time)
+                : "—"}
+            </p>
+            <div className="mt-5">
+              <p className="text-xs font-medium uppercase tracking-wider text-white/40">Week</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {[
+                  { label: "This week", value: effectiveWeekStart },
+                  { label: "Next week", value: duplicateWeekNextStart },
+                  { label: "Week after", value: duplicateWeekAfterStart },
+                ].map((w) => (
+                  <button
+                    key={w.value}
+                    type="button"
+                    disabled={dupSlotUi === "working"}
+                    onClick={() => setDupSlotTargetWeek(w.value)}
+                    className={`rounded-xl border px-3 py-2 text-sm transition-all ${
+                      normalizeWeekStart(dupSlotTargetWeek) === normalizeWeekStart(w.value)
+                        ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                        : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+                    } disabled:opacity-50`}
+                  >
+                    {w.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="mt-5">
+              <p className="text-xs font-medium uppercase tracking-wider text-white/40">Days</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const).map((abbr, i) => {
+                  const selected = dupSlotSelectedDays.includes(i);
+                  return (
+                    <button
+                      key={abbr}
+                      type="button"
+                      disabled={dupSlotUi === "working"}
+                      onClick={() => toggleDupSlotDay(i)}
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl border text-xs font-medium transition-all ${
+                        selected
+                          ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                          : "border-white/10 bg-white/5 text-white/50 hover:bg-white/10"
+                      } disabled:opacity-50`}
+                    >
+                      {abbr}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-xs text-white/30">
+                {dupSlotSelectedDays.length === 0
+                  ? "Select at least one day"
+                  : `Will create ${dupSlotSelectedDays.length} slot${dupSlotSelectedDays.length !== 1 ? "s" : ""}`}
+              </p>
+            </div>
+            <Checkbox
+              className="mt-4"
+              checked={dupSlotOverwrite}
+              onChange={(e) => setDupSlotOverwrite(e.target.checked)}
+              disabled={dupSlotUi === "working"}
+              label="Overwrite overlapping slots (same chatter, same day, overlapping hours in target week)"
+            />
+            {dupSlotUi === "failed" ? (
+              <p className="mt-3 text-sm font-medium text-red-400">Could not duplicate. See the message above.</p>
+            ) : null}
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={runDuplicateSlot}
+                disabled={dupSlotSelectedDays.length === 0 || dupSlotUi === "working"}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-pink-500/30 bg-pink-500/20 py-3 text-sm font-semibold text-pink-300 transition-colors hover:bg-pink-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {dupSlotUi === "working" ? (
+                  <>
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                    Creating…
+                  </>
+                ) : (
+                  `Duplicate to ${dupSlotSelectedDays.length} day${dupSlotSelectedDays.length !== 1 ? "s" : ""}`
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={closeDuplicateSlotModal}
+                disabled={dupSlotUi === "working"}
+                className="rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-medium text-white/60 transition-colors hover:bg-white/10 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
     </>
   );
@@ -2160,7 +2382,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       for (const p of otherPrograms) {
         if (!p.start_time || !p.end_time) continue;
         if (!p.model_ids.includes(m.id)) continue;
-        if (!intervalsStrictOverlap(p.start_time, p.end_time, window.startIso, window.endIso)) continue;
+        if (!rangesOverlap(p.start_time, p.end_time, window.startIso, window.endIso)) continue;
         result[m.id] = { taken: true, takenBy: p.chatter_name ?? "—" };
         break;
       }
