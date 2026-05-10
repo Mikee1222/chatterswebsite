@@ -275,6 +275,10 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   mistake_reasons: {
     category: new Set(["Low", "Medium", "High"]),
   },
+  fines_and_bonuses: {
+    user_role: new Set(["chatter", "va"]),
+    type: new Set(["bonus", "fine"]),
+  },
 };
 
 function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: string): Set<string> | null {
@@ -334,6 +338,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   model_personal_events: new Set(["created_at"]),
   /** Server sets mistake timestamps explicitly. */
   chatter_mistakes: new Set(["created_at", "updated_at"]),
+  fines_and_bonuses: new Set(["created_at"]),
   shift_queue: new Set(["created_at", "started_at", "cancelled_at"]),
   /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
   challenge_progress: new Set(["updated_at"]),

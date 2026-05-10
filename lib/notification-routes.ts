@@ -36,6 +36,8 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
     case "spin_wheel_spin":
       if (isAdmin) return ROUTES.admin.spinResults;
       return ROUTES.chatter.rewards;
+    case "fine_bonus":
+      return ROUTES.finesBonuses;
     case "system":
     case "account":
       return ROUTES.settings;
@@ -74,6 +76,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
     case "spin_wheel_spin":
       if (isAdmin) return ROUTES.admin.spinResults;
       return ROUTES.chatter.rewards;
+    case "fine_bonus":
+      return ROUTES.finesBonuses;
     case "system":
     case "account":
       return ROUTES.settings;

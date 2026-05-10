@@ -24,6 +24,11 @@ import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
+import {
+  AdminFineBonusModal,
+  FineBonusQuickActionNavRow,
+  FineBonusQuickActionSheetRow,
+} from "@/components/admin-fine-bonus-modal";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 const SWIPE_CLOSE_PX = 100;
@@ -82,12 +87,14 @@ export type AdminQuickActionsModalProps = {
   open: boolean;
   onClose: () => void;
   actions: AdminQuickActionItem[];
+  /** Opens the add fine/bonus modal (admin FAB). */
+  onOpenFineBonus?: () => void;
 };
 
 /**
  * Admin / manager quick actions — same bottom sheet behavior as chatter `QuickActionsModal`.
  */
-export function AdminQuickActionsModal({ open, onClose, actions }: AdminQuickActionsModalProps) {
+export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus }: AdminQuickActionsModalProps) {
   const dragControls = useDragControls();
 
   React.useEffect(() => {
@@ -190,6 +197,9 @@ export function AdminQuickActionsModal({ open, onClose, actions }: AdminQuickAct
                     </Link>
                   </li>
                 ))}
+                {onOpenFineBonus ? (
+                  <FineBonusQuickActionSheetRow onClose={onClose} onOpen={onOpenFineBonus} />
+                ) : null}
                 <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
@@ -209,6 +219,7 @@ type AdminFloatingQuickActionsButtonProps = {
  */
 export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActionsButtonProps) {
   const [open, setOpen] = React.useState(false);
+  const [fineBonusOpen, setFineBonusOpen] = React.useState(false);
   const fabHiddenByOverlay = useMobileFabHidden();
 
   const actions = React.useMemo(() => buildAdminQuickActions(user.role), [user.role]);
@@ -226,8 +237,14 @@ export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActi
 
   return (
     <>
+      <AdminFineBonusModal open={fineBonusOpen} onClose={() => setFineBonusOpen(false)} />
       <div className="md:hidden">
-        <AdminQuickActionsModal open={open} onClose={() => setOpen(false)} actions={actions} />
+        <AdminQuickActionsModal
+          open={open}
+          onClose={() => setOpen(false)}
+          actions={actions}
+          onOpenFineBonus={() => setFineBonusOpen(true)}
+        />
 
         <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
           <button
@@ -277,6 +294,7 @@ export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActi
                   </Link>
                 </li>
               ))}
+              <FineBonusQuickActionNavRow onClose={() => setOpen(false)} onOpen={() => setFineBonusOpen(true)} />
               <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
             </ul>
           </nav>

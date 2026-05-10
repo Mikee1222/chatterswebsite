@@ -32,6 +32,7 @@ import {
   AlertTriangle,
   AlertCircle,
   Settings2,
+  Coins,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -77,6 +78,7 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   AlertTriangle,
   AlertCircle,
   Settings2,
+  Coins,
 };
 
 const BETA_BADGE_CLASS =

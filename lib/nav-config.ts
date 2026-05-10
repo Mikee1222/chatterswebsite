@@ -69,7 +69,8 @@ export type NavIconKey =
   | "ImageOff"
   | "AlertTriangle"
   | "AlertCircle"
-  | "Settings2";
+  | "Settings2"
+  | "Coins";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -124,6 +125,7 @@ const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true },
+  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings", excludeFromMobileMainTabs: true },
 ];
 
@@ -134,6 +136,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
   { href: ROUTES.va.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
+  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
   { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
@@ -157,6 +160,7 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
   { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
   { href: ROUTES.admin.rebillsTips, label: "Rebills & Tips", iconKey: "Receipt" },
+  { href: ROUTES.admin.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins" },
   { href: ROUTES.admin.earnings, label: "Earnings", iconKey: "LineChart", adminOnly: true },
   // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.
   // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },

@@ -283,3 +283,20 @@ export function formatDateTimeAthens(isoString?: string | null): string {
     hour12: false,
   });
 }
+
+/** `YYYY-MM` → display like "May 2026" (calendar month, Europe/Athens). */
+export function formatMonthYyyyMm(ym: string | null | undefined): string {
+  if (ym == null || String(ym).trim() === "") return "—";
+  const s = String(ym).trim().slice(0, 7);
+  const m = /^(\d{4})-(\d{2})$/.exec(s);
+  if (!m) return s;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  if (!Number.isFinite(y) || mo < 1 || mo > 12) return s;
+  const d = new Date(Date.UTC(y, mo - 1, 1, 12, 0, 0));
+  return d.toLocaleDateString(NOTIFICATION_TIME_LOCALE, {
+    timeZone: NOTIFICATION_TIME_ZONE,
+    month: "long",
+    year: "numeric",
+  });
+}
