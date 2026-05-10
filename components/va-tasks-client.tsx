@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Check, ListChecks, StickyNote, X } from "lucide-react";
+import { Check, Clock, ExternalLink, ListChecks, StickyNote, X } from "lucide-react";
 import { formatDateTimeAthens } from "@/lib/format";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { selectOptionClass } from "@/components/ui/form";
@@ -410,207 +410,229 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
               </div>
 
               {expandedTaskId === task.id ? (
-                <div className="mt-4 border-t border-white/10 pt-4">
-                  {(() => {
-                    const modelIds = [
-                      ...new Set(
-                        (taskPhases[task.id] ?? []).map((p) => p.assigned_model_id).filter(Boolean),
-                      ),
-                    ] as string[];
-                    return modelIds.map((modelId) => {
-                      const accs = modelAccounts[modelId] ?? [];
-                      if (!accs.length) return null;
-                      const labelPhase = (taskPhases[task.id] ?? []).find((p) => p.assigned_model_id === modelId);
-                      const label = labelPhase?.assigned_model_name?.trim() || "Model";
-                      return (
-                        <div key={`accs-${task.id}-${modelId}`} className="mb-4">
-                          <p className="mb-2 text-xs uppercase tracking-widest text-white/25">
-                            {label} · Social accounts
-                          </p>
-                          <div className="flex flex-wrap gap-2">
-                            {accs.map((acc) => {
-                              const plat = acc.platform?.trim() || "";
-                              const color = SOCIAL_COLORS[plat] ?? "#888888";
-                              const href = acc.account_link?.trim() || "#";
-                              return (
-                                <a
-                                  key={acc.id}
-                                  href={href}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  className="flex cursor-pointer items-center gap-2 rounded-2xl border px-3 py-2.5 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                                  style={{
-                                    backgroundColor: `${color}15`,
-                                    borderColor: `${color}40`,
-                                  }}
-                                  onClick={(e) => {
-                                    if (!acc.account_link?.trim()) e.preventDefault();
-                                  }}
-                                >
-                                  <span className="text-xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
-                                  <div>
-                                    <p className="text-xs font-bold leading-tight text-white">@{acc.username}</p>
-                                    <p className="text-xs leading-tight" style={{ color: `${color}bb` }}>
-                                      {acc.account_type === "main" ? "Main" : "Secondary"} ·{" "}
-                                      {acc.region === "Greek" ? "GR" : acc.region === "USA" ? "US" : "Global"}
-                                    </p>
-                                  </div>
-                                </a>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-
+                <div className="mt-5 border-t border-white/10 pt-5">
                   {(taskPhases[task.id] ?? []).length === 0 ? (
-                    <p className="py-4 text-center text-sm text-white/20">No phases for this task</p>
+                    <p className="rounded-2xl border border-white/8 bg-white/[0.02] py-10 text-center text-sm text-white/25">
+                      No phases for this task
+                    </p>
                   ) : null}
 
                   {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
-                    const doneCount = phase.items.filter((i) => i.status === "completed").length;
-                    const total = phase.items.length;
-                    const progress = total > 0 ? (doneCount / total) * 100 : 0;
-                    return (
-                      <div
-                        key={phase.id}
-                        className={cn(
-                          "mb-4 overflow-hidden rounded-2xl border",
-                          phase.status === "completed"
-                            ? "border-green-500/20 bg-green-500/[0.03]"
-                            : phase.status === "overdue"
-                              ? "border-red-500/20 bg-red-500/[0.03]"
-                              : phase.status === "in_progress"
-                                ? "border-blue-500/20 bg-blue-500/[0.03]"
-                                : "border-white/10 bg-white/[0.02]",
-                        )}
-                      >
-                        <div className="flex items-center gap-3 border-b border-white/[0.08] px-4 py-3">
-                          <div
-                            className={cn(
-                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold",
-                              phase.status === "completed"
-                                ? "bg-green-500 text-white"
-                                : phase.status === "overdue"
-                                  ? "bg-red-500 text-white"
-                                  : phase.status === "in_progress"
-                                    ? "bg-blue-500/70 text-white"
-                                    : "bg-white/10 text-white/50",
-                            )}
-                          >
-                            {phaseIndex + 1}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-semibold text-white">
-                              {phase.title || `Phase ${phaseIndex + 1}`}
-                            </p>
-                            {phase.scheduled_time ? (
-                              <p className="text-xs text-white/30">
-                                Due:{" "}
-                                {new Date(phase.scheduled_time).toLocaleString("el-GR", {
-                                  timeZone: "Europe/Athens",
-                                })}
-                              </p>
-                            ) : null}
-                          </div>
-                          <div className="shrink-0 text-right">
-                            <p className="text-xs text-white/30">
-                              {doneCount}/{total}
-                            </p>
-                            <div className="mt-1 h-1.5 w-16 rounded-full bg-white/10">
-                              <div
-                                className={cn(
-                                  "h-1.5 rounded-full transition-all",
-                                  phase.status === "completed"
-                                    ? "bg-green-500"
-                                    : phase.status === "overdue"
-                                      ? "bg-red-500"
-                                      : "bg-blue-500",
-                                )}
-                                style={{ width: `${progress}%` }}
-                              />
-                            </div>
-                          </div>
-                        </div>
+                    const accs = phase.assigned_model_id
+                      ? (modelAccounts[phase.assigned_model_id] ?? [])
+                      : [];
+                    const items = phase.items ?? [];
+                    const doneCount = items.filter((i) => i.status === "completed").length;
+                    const total = items.length;
+                    const progress = total > 0 ? (doneCount / Math.max(total, 1)) * 100 : 0;
+                    const sched = phase.scheduled_time?.trim();
+                    const schedMs = sched ? new Date(sched).getTime() : NaN;
+                    const schedLate =
+                      Number.isFinite(schedMs) && schedMs < Date.now() && phase.status !== "completed";
 
-                        {(phase.region || phase.assigned_model_name) ? (
-                          <div className="flex flex-wrap gap-2 border-b border-white/[0.05] px-4 py-2">
-                            {phase.region ? (
-                              <span
-                                className={cn(
-                                  "rounded-full border px-2 py-0.5 text-xs",
-                                  phase.region === "Greek"
-                                    ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
-                                    : phase.region === "USA"
-                                      ? "border-red-500/20 bg-red-500/10 text-red-400"
-                                      : "border-purple-500/20 bg-purple-500/10 text-purple-400",
-                                )}
-                              >
-                                {phase.region}
-                              </span>
-                            ) : null}
-                            {phase.assigned_model_name ? (
-                              <span className="rounded-full border border-pink-500/20 bg-pink-500/10 px-2 py-0.5 text-xs text-pink-400">
-                                {phase.assigned_model_name}
-                              </span>
-                            ) : null}
+                    return (
+                      <div key={phase.id} className="mb-6 last:mb-0">
+                        {accs.length > 0 ? (
+                          <div className="mb-5">
+                            <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/25">
+                              <span aria-hidden>📱</span>
+                              {phase.assigned_model_name?.trim() || "Creator"} — Quick links
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              {accs.map((acc) => {
+                                const plat = acc.platform?.trim() || "";
+                                const color = SOCIAL_COLORS[plat] ?? "#888888";
+                                const href = acc.account_link?.trim() || "#";
+                                return (
+                                  <a
+                                    key={acc.id}
+                                    href={href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex select-none cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                    style={{
+                                      backgroundColor: `${color}12`,
+                                      borderColor: `${color}35`,
+                                    }}
+                                    onClick={(e) => {
+                                      if (!acc.account_link?.trim()) e.preventDefault();
+                                    }}
+                                  >
+                                    <span className="text-2xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-bold text-white">@{acc.username}</p>
+                                      <p className="text-[10px]" style={{ color: `${color}aa` }}>
+                                        {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
+                                        {" · "}
+                                        {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"}
+                                      </p>
+                                    </div>
+                                    <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
+                                  </a>
+                                );
+                              })}
+                            </div>
                           </div>
                         ) : null}
 
-                        <div className="space-y-3 px-4 py-3">
-                          {phase.items.map((item) => (
-                            <div key={item.id} className="flex items-start gap-3">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (item.status === "completed" || phase.status === "overdue") return;
-                                  setCompletingItem({ item, taskId: task.id });
-                                  setProofFile(null);
-                                }}
-                                disabled={item.status === "completed" || phase.status === "overdue"}
-                                className={cn(
-                                  "mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition-all",
-                                  item.status === "completed"
-                                    ? "cursor-default border-green-500 bg-green-500"
-                                    : "cursor-pointer border-white/25 bg-white/5 hover:border-pink-500/60 hover:bg-pink-500/10",
-                                )}
-                              >
-                                {item.status === "completed" ? <Check className="h-3.5 w-3.5 text-white" /> : null}
-                              </button>
-                              <div className="min-w-0 flex-1">
-                                <p
-                                  className={cn(
-                                    "text-sm",
-                                    item.status === "completed" ? "text-white/30 line-through" : "text-white",
-                                  )}
-                                >
-                                  {item.title || "—"}
-                                </p>
-                                {item.requires_screenshot && item.status !== "completed" ? (
-                                  <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/70">
-                                    Screenshot required
-                                  </p>
-                                ) : null}
-                                {item.screenshot?.[0]?.url ? (
-                                  <a
-                                    href={item.screenshot[0].url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="mt-1 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+                        <div
+                          className={cn(
+                            "overflow-hidden rounded-2xl border",
+                            phase.status === "completed"
+                              ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.04] to-transparent"
+                              : phase.status === "overdue"
+                                ? "border-red-500/20 bg-gradient-to-br from-red-500/[0.04] to-transparent"
+                                : phase.status === "in_progress"
+                                  ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.04] to-transparent"
+                                  : "border-white/10 bg-white/[0.02]",
+                          )}
+                        >
+                          <div className="flex items-center gap-3 px-5 py-4">
+                            <div
+                              className={cn(
+                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
+                                phase.status === "completed"
+                                  ? "bg-green-500 text-white shadow-md shadow-green-500/25"
+                                  : phase.status === "overdue"
+                                    ? "bg-red-500 text-white shadow-md shadow-red-500/25"
+                                    : phase.status === "in_progress"
+                                      ? "bg-blue-500 text-white"
+                                      : "bg-white/10 text-white/50",
+                              )}
+                            >
+                              {phaseIndex + 1}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <p className="font-semibold text-white">
+                                {phase.title || `Phase ${phaseIndex + 1}`}
+                              </p>
+                              <div className="mt-0.5 flex flex-wrap items-center gap-3">
+                                {sched ? (
+                                  <span
+                                    className={cn(
+                                      "flex items-center gap-1 text-xs",
+                                      schedLate ? "text-red-400" : "text-white/30",
+                                    )}
                                   >
-                                    View proof
-                                  </a>
+                                    <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                                    {new Date(sched).toLocaleString("el-GR", {
+                                      timeZone: "Europe/Athens",
+                                      day: "numeric",
+                                      month: "short",
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                    })}
+                                  </span>
                                 ) : null}
-                                {item.status === "completed" && item.completed_by_va_name ? (
-                                  <p className="mt-0.5 text-xs text-white/25">✓ {item.completed_by_va_name}</p>
+                                {phase.region ? (
+                                  <span className="text-xs text-white/25">
+                                    {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : "🌍"}{" "}
+                                    {phase.region}
+                                  </span>
                                 ) : null}
                               </div>
                             </div>
-                          ))}
-                          {phase.items.length === 0 ? (
-                            <p className="text-xs text-white/20">No items in this phase</p>
-                          ) : null}
+                            {total > 0 ? (
+                              <div className="shrink-0 text-right">
+                                <p
+                                  className={cn(
+                                    "text-sm font-bold tabular-nums",
+                                    phase.status === "completed"
+                                      ? "text-green-400"
+                                      : phase.status === "overdue"
+                                        ? "text-red-400"
+                                        : "text-white/60",
+                                  )}
+                                >
+                                  {doneCount}/{total}
+                                </p>
+                                <div className="mt-1 h-2 w-20 rounded-full bg-white/10">
+                                  <div
+                                    className={cn(
+                                      "h-2 rounded-full transition-all",
+                                      phase.status === "completed"
+                                        ? "bg-green-500"
+                                        : phase.status === "overdue"
+                                          ? "bg-red-500"
+                                          : "bg-gradient-to-r from-pink-500 to-rose-500",
+                                    )}
+                                    style={{ width: `${progress}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
+                          </div>
+
+                          <div className="space-y-2 px-5 pb-5">
+                            {items.map((item) => (
+                              <div
+                                key={item.id}
+                                className={cn(
+                                  "flex items-center gap-3 rounded-xl border p-3.5 transition-all",
+                                  item.status === "completed"
+                                    ? "border-green-500/15 bg-green-500/[0.04]"
+                                    : "border-white/8 bg-white/[0.02] hover:bg-white/[0.04]",
+                                )}
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (item.status === "completed" || phase.status === "overdue") return;
+                                    setCompletingItem({ item, taskId: task.id });
+                                    setProofFile(null);
+                                  }}
+                                  disabled={item.status === "completed" || phase.status === "overdue"}
+                                  className={cn(
+                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border-2 transition-all",
+                                    item.status === "completed"
+                                      ? "cursor-default border-green-500 bg-green-500"
+                                      : "cursor-pointer border-white/20 hover:border-pink-500/60 hover:bg-pink-500/10 active:scale-95",
+                                  )}
+                                >
+                                  {item.status === "completed" ? (
+                                    <Check className="h-4 w-4 text-white" aria-hidden />
+                                  ) : (
+                                    <div className="h-2 w-2 rounded-full bg-white/20" aria-hidden />
+                                  )}
+                                </button>
+                                <div className="min-w-0 flex-1">
+                                  <p
+                                    className={cn(
+                                      "text-sm font-medium",
+                                      item.status === "completed" ? "text-white/30 line-through" : "text-white",
+                                    )}
+                                  >
+                                    {item.title || "—"}
+                                  </p>
+                                  {item.requires_screenshot && item.status !== "completed" ? (
+                                    <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/60">
+                                      <span aria-hidden>📸</span>
+                                      Screenshot required
+                                    </p>
+                                  ) : null}
+                                  {item.screenshot?.[0]?.url ? (
+                                    <a
+                                      href={item.screenshot[0].url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="mt-0.5 flex items-center gap-1 text-xs text-blue-400/70 hover:text-blue-400"
+                                    >
+                                      🖼 View proof
+                                    </a>
+                                  ) : null}
+                                  {item.status === "completed" && item.completed_by_va_name ? (
+                                    <p className="mt-0.5 text-xs text-white/20">✓ {item.completed_by_va_name}</p>
+                                  ) : null}
+                                </div>
+                                {item.status === "completed" ? (
+                                  <Check className="h-4 w-4 shrink-0 text-green-400" aria-hidden />
+                                ) : null}
+                              </div>
+                            ))}
+                            {items.length === 0 ? (
+                              <p className="py-4 text-center text-xs text-white/20">No items in this phase</p>
+                            ) : null}
+                          </div>
                         </div>
                       </div>
                     );
