@@ -7,16 +7,8 @@ import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
-import type {
-  AppNotification,
-  ModelRecord,
-  VaTaskRecord,
-  VaTaskStatus,
-  VaTaskPriority,
-  VaRecurrenceType,
-  VaRecurrenceDay,
-} from "@/types";
-import type { TaskPhase } from "@/services/task-phases";
+import type { AppNotification, ModelRecord, VaTaskRecord, VaTaskStatus, VaTaskPriority, VaRecurrenceType, VaRecurrenceDay } from "@/types";
+import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 
@@ -162,8 +154,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
   const [reminding, setReminding] = React.useState<string | null>(null);
-  const [remindSuccessTaskId, setRemindSuccessTaskId] = React.useState<string | null>(null);
-
+  const [remindSuccess, setRemindSuccess] = React.useState<string | null>(null);
   const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const [loadingPhases, setLoadingPhases] = React.useState<string | null>(null);
@@ -310,6 +301,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
   async function handleRemind(task: VaTaskRecord) {
     setReminding(task.id);
+    setRemindSuccess(null);
     try {
       const res = await fetch(`/api/admin/va-tasks/${encodeURIComponent(task.id)}/remind`, {
         method: "POST",
@@ -328,8 +320,8 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           "normal"
         )
       );
-      setRemindSuccessTaskId(task.id);
-      window.setTimeout(() => setRemindSuccessTaskId((id) => (id === task.id ? null : id)), 2000);
+      setRemindSuccess(task.id);
+      window.setTimeout(() => setRemindSuccess(null), 2000);
     } catch {
       addToast(localToast(`vat-rm-${Date.now()}`, "Remind failed", "Network error.", "high"));
     } finally {
@@ -363,38 +355,37 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       }),
     });
     const data = (await res.json().catch(() => ({}))) as { phase?: TaskPhase };
-    const newPhase = data.phase;
-    if (newPhase) {
-      setTaskPhases((prev) => ({ ...prev, [taskId]: [...(prev[taskId] ?? []), newPhase] }));
+    if (data.phase) {
+      setTaskPhases((prev) => ({ ...prev, [taskId]: [...(prev[taskId] ?? []), data.phase!] }));
     }
   }
 
-  function patchPhasePayload(updates: Partial<TaskPhase>): Partial<TaskPhase> {
+  function normalizePhasePatch(updates: Partial<TaskPhase>): Partial<TaskPhase> {
     const out = { ...updates };
-    if ("scheduled_time" in out) {
-      const raw = out.scheduled_time;
-      if (raw === null || raw === "") {
+    if (out.scheduled_time !== undefined) {
+      const s = out.scheduled_time;
+      if (s == null || (typeof s === "string" && s.trim() === "")) {
         out.scheduled_time = null;
-      } else if (typeof raw === "string") {
-        const iso = fromDatetimeLocal(raw);
-        out.scheduled_time = iso ?? raw;
+      } else if (typeof s === "string") {
+        const iso = fromDatetimeLocal(s.length > 16 ? s.slice(0, 16) : s);
+        out.scheduled_time = iso ?? null;
       }
     }
     return out;
   }
 
   async function handleUpdatePhase(phaseId: string, taskId: string, updates: Partial<TaskPhase>) {
-    const payload = patchPhasePayload(updates);
-    setTaskPhases((prev) => ({
-      ...prev,
-      [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, ...payload } : p)),
-    }));
+    const payload = normalizePhasePatch(updates);
     await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify(payload),
     });
+    setTaskPhases((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, ...payload } : p)),
+    }));
   }
 
   async function handleDeletePhase(phaseId: string, taskId: string) {
@@ -417,45 +408,39 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         sort_order: itemCount,
       }),
     });
-    const data = (await res.json().catch(() => ({}))) as { item?: TaskPhase["items"][number] };
-    const newItem = data.item;
-    if (newItem) {
+    const data = (await res.json().catch(() => ({}))) as { item?: PhaseItem };
+    if (data.item) {
       setTaskPhases((prev) => ({
         ...prev,
         [taskId]: (prev[taskId] ?? []).map((p) =>
-          p.id === phaseId ? { ...p, items: [...(p.items ?? []), newItem] } : p,
+          p.id === phaseId ? { ...p, items: [...(p.items ?? []), data.item!] } : p,
         ),
       }));
     }
   }
 
-  async function handleUpdatePhaseItem(
-    itemId: string,
-    phaseId: string,
-    taskId: string,
-    updates: Partial<TaskPhase["items"][number]>,
-  ) {
-    setTaskPhases((prev) => ({
-      ...prev,
-      [taskId]: (prev[taskId] ?? []).map((p) =>
-        p.id === phaseId
-          ? { ...p, items: (p.items ?? []).map((i) => (i.id === itemId ? { ...i, ...updates } : i)) }
-          : p,
-      ),
-    }));
+  async function handleUpdatePhaseItem(itemId: string, phaseId: string, taskId: string, updates: Partial<PhaseItem>) {
     await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify(updates),
     });
+    setTaskPhases((prev) => ({
+      ...prev,
+      [taskId]: (prev[taskId] ?? []).map((p) =>
+        p.id === phaseId
+          ? {
+              ...p,
+              items: (p.items ?? []).map((i) => (i.id === itemId ? { ...i, ...updates } : i)),
+            }
+          : p,
+      ),
+    }));
   }
 
   async function handleDeletePhaseItem(itemId: string, phaseId: string, taskId: string) {
-    await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
+    await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, { method: "DELETE", credentials: "include" });
     setTaskPhases((prev) => ({
       ...prev,
       [taskId]: (prev[taskId] ?? []).map((p) =>
@@ -627,7 +612,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-40"
                       >
                         <Bell className="h-3.5 w-3.5" aria-hidden />
-                        {reminding === task.id ? "Sending…" : remindSuccessTaskId === task.id ? "Sent ✓" : "Remind"}
+                        {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
                       </button>
                     ) : null}
                     <button
@@ -681,9 +666,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                     }}
                     className="flex items-center gap-2 text-xs text-white/30 transition-colors hover:text-white/60"
                   >
-                    <span aria-hidden>{expandedTaskId === task.id ? "▼" : "▶"}</span>
-                    Phases{" "}
-                    {taskPhases[task.id]?.length ? `(${taskPhases[task.id].length})` : ""}
+                    <span>{expandedTaskId === task.id ? "▼" : "▶"}</span>
+                    Phases
+                    {taskPhases[task.id]?.length ? ` (${taskPhases[task.id].length})` : ""}
                     {loadingPhases === task.id ? <span className="animate-pulse">loading…</span> : null}
                   </button>
 
@@ -695,11 +680,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                           className={cn(
                             "mb-4 overflow-hidden rounded-2xl border",
                             phase.status === "completed"
-                              ? "border-emerald-500/25 bg-emerald-500/[0.03]"
+                              ? "border-green-500/25 bg-green-500/[0.03]"
                               : phase.status === "overdue"
                                 ? "border-red-500/25 bg-red-500/[0.03]"
                                 : phase.status === "in_progress"
-                                  ? "border-sky-500/25 bg-sky-500/[0.03]"
+                                  ? "border-blue-500/25 bg-blue-500/[0.03]"
                                   : "border-white/10 bg-white/[0.01]",
                           )}
                         >
@@ -708,11 +693,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                               className={cn(
                                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold",
                                 phase.status === "completed"
-                                  ? "bg-emerald-500 text-white"
+                                  ? "bg-green-500 text-white"
                                   : phase.status === "overdue"
                                     ? "bg-red-500 text-white"
                                     : phase.status === "in_progress"
-                                      ? "bg-sky-500 text-white"
+                                      ? "bg-blue-500 text-white"
                                       : "bg-white/10 text-white/50",
                               )}
                             >
@@ -728,25 +713,23 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   ),
                                 }))
                               }
-                              onBlur={(e) =>
-                                void handleUpdatePhase(phase.id, task.id, { title: e.currentTarget.value })
-                              }
+                              onBlur={() => void handleUpdatePhase(phase.id, task.id, { title: phase.title })}
                               placeholder={`Phase ${phaseIndex + 1}`}
                               className="flex-1 border-b border-transparent bg-transparent pb-0.5 text-sm font-semibold text-white focus:border-white/20 focus:outline-none"
                             />
                             <span
                               className={cn(
-                                "shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold capitalize",
+                                "shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold",
                                 phase.status === "completed"
-                                  ? "border-emerald-500/25 bg-emerald-500/15 text-emerald-400"
+                                  ? "border-green-500/25 bg-green-500/15 text-green-400"
                                   : phase.status === "overdue"
                                     ? "border-red-500/25 bg-red-500/15 text-red-400"
                                     : phase.status === "in_progress"
-                                      ? "border-sky-500/25 bg-sky-500/15 text-sky-400"
+                                      ? "border-blue-500/25 bg-blue-500/15 text-blue-400"
                                       : "border-white/15 bg-white/8 text-white/40",
                               )}
                             >
-                              {phase.status.replace(/_/g, " ")}
+                              {phase.status}
                             </span>
                             <button
                               type="button"
@@ -760,10 +743,10 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
                           <div className="grid grid-cols-2 gap-3 border-b border-white/[0.05] px-4 py-3 md:grid-cols-4">
                             <div>
-                              <label className="mb-1 block text-xs text-white/25">Scheduled at</label>
+                              <span className="mb-1 block text-xs text-white/25">Scheduled at</span>
                               <input
                                 type="datetime-local"
-                                value={phase.scheduled_time ? toDatetimeLocalValue(phase.scheduled_time) : ""}
+                                value={toDatetimeLocalValue(phase.scheduled_time)}
                                 onChange={(e) =>
                                   setTaskPhases((prev) => ({
                                     ...prev,
@@ -773,25 +756,23 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   }))
                                 }
                                 onBlur={(e) => {
-                                  const v = e.currentTarget.value.trim();
+                                  const raw = e.target.value;
                                   void handleUpdatePhase(phase.id, task.id, {
-                                    scheduled_time: v ? (fromDatetimeLocal(v) ?? v) : null,
+                                    scheduled_time: raw ? raw : null,
                                   });
                                 }}
                                 className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white [color-scheme:dark]"
                               />
                             </div>
                             <div>
-                              <label className="mb-1 block text-xs text-white/25">VA</label>
+                              <span className="mb-1 block text-xs text-white/25">VA</span>
                               <select
                                 value={phase.assigned_va_id ?? ""}
                                 onChange={(e) => {
-                                  const id = e.target.value;
-                                  const va = vaUsers.find((v) => v.id === id);
-                                  const name = (va?.full_name || va?.email || "").trim();
+                                  const v = vaUsers.find((x) => x.id === e.target.value);
                                   void handleUpdatePhase(phase.id, task.id, {
-                                    assigned_va_id: id,
-                                    assigned_va_name: name,
+                                    assigned_va_id: e.target.value,
+                                    assigned_va_name: v ? (v.full_name || v.email).trim() : "",
                                   });
                                 }}
                                 className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white"
@@ -805,14 +786,13 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                               </select>
                             </div>
                             <div>
-                              <label className="mb-1 block text-xs text-white/25">Creator</label>
+                              <span className="mb-1 block text-xs text-white/25">Creator</span>
                               <select
                                 value={phase.assigned_model_id ?? ""}
                                 onChange={(e) => {
-                                  const id = e.target.value;
-                                  const m = modelss.find((x) => x.id === id);
+                                  const m = modelss.find((x) => x.id === e.target.value);
                                   void handleUpdatePhase(phase.id, task.id, {
-                                    assigned_model_id: id,
+                                    assigned_model_id: e.target.value,
                                     assigned_model_name: m?.model_name ?? "",
                                   });
                                 }}
@@ -821,13 +801,13 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                 <option value="">No creator</option>
                                 {modelss.map((m) => (
                                   <option key={m.id} value={m.id}>
-                                    {m.model_name || m.model_id}
+                                    {m.model_name}
                                   </option>
                                 ))}
                               </select>
                             </div>
                             <div>
-                              <label className="mb-1 block text-xs text-white/25">Region</label>
+                              <span className="mb-1 block text-xs text-white/25">Region</span>
                               <select
                                 value={phase.region ?? "Global"}
                                 onChange={(e) =>
@@ -852,7 +832,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                     className={cn(
                                       "flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2",
                                       item.status === "completed"
-                                        ? "border-emerald-500 bg-emerald-500"
+                                        ? "border-green-500 bg-green-500"
                                         : "border-white/20 bg-white/5",
                                     )}
                                   >
@@ -875,10 +855,8 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                         ),
                                       }))
                                     }
-                                    onBlur={(e) =>
-                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, {
-                                        title: e.currentTarget.value,
-                                      })
+                                    onBlur={() =>
+                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
                                     }
                                     placeholder="Task item…"
                                     className={cn(
@@ -886,29 +864,29 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                       item.status === "completed" ? "text-white/30 line-through" : "text-white",
                                     )}
                                   />
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, {
-                                        requires_screenshot: !item.requires_screenshot,
-                                      })
-                                    }
-                                    className={cn(
-                                      "relative h-4 w-8 shrink-0 rounded-full transition-all",
-                                      item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
-                                    )}
-                                    aria-label="Toggle screenshot required"
-                                  >
-                                    <span
+                                  <label className="flex shrink-0 cursor-pointer items-center gap-1.5">
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        void handleUpdatePhaseItem(item.id, phase.id, task.id, {
+                                          requires_screenshot: !item.requires_screenshot,
+                                        })
+                                      }
                                       className={cn(
-                                        "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                                        item.requires_screenshot ? "left-4" : "left-0.5",
+                                        "relative h-4 w-8 rounded-full transition-all",
+                                        item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
                                       )}
-                                    />
-                                  </button>
-                                  <span className="shrink-0 text-xs text-white/25" aria-hidden>
-                                    📸
-                                  </span>
+                                      aria-label="Toggle screenshot required"
+                                    >
+                                      <span
+                                        className={cn(
+                                          "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
+                                          item.requires_screenshot ? "left-4" : "left-0.5",
+                                        )}
+                                      />
+                                    </button>
+                                    <span className="text-xs text-white/25">Screenshot</span>
+                                  </label>
                                   <button
                                     type="button"
                                     onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}

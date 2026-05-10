@@ -1,12 +1,16 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { getPhasesByTask } from "@/services/task-phases";
 import { getVaTaskById } from "@/services/va-tasks";
+import { getPhasesByTask } from "@/services/task-phases";
 
-function taskVisibleToVa(assignedToIds: string[], vaUserId: string): boolean {
-  if (assignedToIds.length === 0) return true;
-  return assignedToIds.includes(vaUserId);
+function vaCanReadTask(
+  session: { id: string; airtableUserId: string | null },
+  task: { assigned_to_ids: string[] },
+): boolean {
+  const uid = session.airtableUserId ?? session.id;
+  if (task.assigned_to_ids.length === 0) return true;
+  return task.assigned_to_ids.includes(uid);
 }
 
 export async function GET(req: Request) {
@@ -14,16 +18,16 @@ export async function GET(req: Request) {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const vaId = session.airtableUserId ?? session.id;
   const { searchParams } = new URL(req.url);
-  const taskId = searchParams.get("task_id");
-  if (!taskId?.trim()) {
-    return NextResponse.json({ error: "task_id required" }, { status: 400 });
-  }
-  const task = await getVaTaskById(taskId.trim());
-  if (!task || !taskVisibleToVa(task.assigned_to_ids, vaId)) {
+  const taskId = searchParams.get("task_id")?.trim();
+  if (!taskId) return NextResponse.json({ error: "task_id required" }, { status: 400 });
+
+  const task = await getVaTaskById(taskId);
+  if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (!vaCanReadTask(session, task)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  const phases = await getPhasesByTask(taskId.trim());
+
+  const phases = await getPhasesByTask(taskId);
   return NextResponse.json({ phases });
 }

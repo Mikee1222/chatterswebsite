@@ -1,7 +1,6 @@
 "use server";
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
-import { airtableFormulaString } from "@/lib/airtable-formula";
 
 const TABLE_PHASES = "va_task_phases";
 const TABLE_ITEMS = "va_task_phase_items";
@@ -77,6 +76,10 @@ type ItemFields = {
   sort_order?: number;
   created_at?: string;
 };
+
+function airtableFormulaString(value: string): string {
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
 
 function asRegion(v: unknown): "USA" | "Greek" | "Global" {
   return v === "USA" || v === "Greek" ? v : "Global";

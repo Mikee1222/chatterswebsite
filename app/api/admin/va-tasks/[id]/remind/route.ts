@@ -6,13 +6,14 @@ import { listAllUsers } from "@/services/users";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { formatDateTimeAthens } from "@/lib/format";
 
-export async function POST(_req: Request, { params }: { params: { id: string } }) {
+export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session || (session.role !== "admin" && session.role !== "manager")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const id = params.id?.trim();
+  const { id: rawId } = await ctx.params;
+  const id = rawId?.trim();
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   const task = await getVaTaskById(id);

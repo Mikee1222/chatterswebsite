@@ -19,7 +19,6 @@ import { listModelPersonalEventsInDateRange, personalEventEmoji, personalEventLa
 import { listAllModelss } from "@/services/modelss";
 import { listAllVAContentAssignments } from "@/services/va-content-assignments";
 import { listAllRecords, updateRecord } from "@/lib/airtable-server";
-import { airtableFormulaString } from "@/lib/airtable-formula";
 
 /** Stored Airtable event_type for va_task_reminder (see EVENT_TYPE_TO_AIRTABLE). */
 const AIRTABLE_EVENT_TASK_SHIFT_STARTED = "task_shift_started";
@@ -519,62 +518,49 @@ export async function runPersonalEventReminders(): Promise<PersonalEventReminder
 
 export type PhaseOverdueCronResult = {
   ok: true;
-  /** Rows returned from the pending+scheduled_time filter (before per-phase item checks). */
-  phases_scanned: number;
-  phases_marked_overdue: number;
+  phases_marked: number;
+  notifications_sent: number;
 };
 
-/**
- * Mark scheduled VA task phases as overdue when `scheduled_time` has passed and
- * at least one checklist item is still incomplete. Notifies admins and the assigned VA (if any).
- */
+/** Mark pending phases past `scheduled_time` as overdue and notify admins + assigned VA. */
 export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
-  let phases_marked_overdue = 0;
-  let phases_scanned = 0;
+  const esc = (s: string) => String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  let phases_marked = 0;
+  let notifications_sent = 0;
   try {
-    const now = new Date().toISOString();
-    type PhaseFields = {
-      phase_id?: string;
-      task_id?: string;
-      title?: string;
-      scheduled_time?: string;
-      status?: string;
-      assigned_va_id?: string;
-    };
-    const phases = await listAllRecords<PhaseFields>("va_task_phases", {
+    const phases = await listAllRecords("va_task_phases", {
       filterByFormula: `AND({status} = "pending", {scheduled_time} != "")`,
     });
-    phases_scanned = phases.length;
 
-    for (const rec of phases) {
-      const f = rec.fields ?? {};
-      const scheduledTime = typeof f.scheduled_time === "string" ? f.scheduled_time.trim() : "";
-      if (!scheduledTime || scheduledTime > now) continue;
+    for (const phase of phases) {
+      const scheduled = String((phase.fields as { scheduled_time?: string }).scheduled_time ?? "").trim();
+      if (!scheduled) continue;
+      const tMs = new Date(scheduled).getTime();
+      if (!Number.isFinite(tMs) || tMs > Date.now()) continue;
 
-      const phaseKey = String(f.phase_id ?? rec.id);
-      const esc = airtableFormulaString(phaseKey);
-      type ItemFields = { status?: string };
-      const items = await listAllRecords<ItemFields>("va_task_phase_items", {
-        filterByFormula: `{phase_id} = "${esc}"`,
+      const phaseKey = String((phase.fields as { phase_id?: string }).phase_id ?? phase.id);
+      const items = await listAllRecords("va_task_phase_items", {
+        filterByFormula: `{phase_id} = "${esc(phaseKey)}"`,
       });
-      const allDone =
-        items.length > 0 && items.every((i) => (i.fields?.status ?? "") === "completed");
+      const allDone = items.length > 0 && items.every((i) => (i.fields as { status?: string }).status === "completed");
       if (allDone) continue;
 
-      await updateRecord("va_task_phases", rec.id, { status: "overdue" });
-      phases_marked_overdue += 1;
+      await updateRecord("va_task_phases", phase.id, { status: "overdue" });
+      phases_marked += 1;
 
-      const phaseTitle = typeof f.title === "string" && f.title.trim() ? f.title.trim() : "Phase";
+      const phaseTitle = String((phase.fields as { title?: string }).title ?? "Phase");
+      const vaId = String((phase.fields as { assigned_va_id?: string }).assigned_va_id ?? "").trim();
+
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.PHASE_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: "Phase overdue",
         body: `"${phaseTitle}" deadline passed with incomplete items`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
-        entity_id: rec.id,
+        entity_id: phase.id,
       }).catch(() => {});
+      notifications_sent += 1;
 
-      const vaId = typeof f.assigned_va_id === "string" ? f.assigned_va_id.trim() : "";
       if (vaId) {
         await notify({
           user_id: vaId,
@@ -583,12 +569,16 @@ export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
           title: `Phase overdue: ${phaseTitle}`,
           body: `The deadline for "${phaseTitle}" has passed. Please complete remaining items.`,
           entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
-          entity_id: rec.id,
+          entity_id: phase.id,
         }).catch(() => {});
+        notifications_sent += 1;
       }
     }
+
+    return { ok: true, phases_marked, notifications_sent };
   } catch (e) {
     console.error("[runPhaseOverdueCheck]", e);
+    return { ok: true, phases_marked, notifications_sent };
   }
-  return { ok: true, phases_scanned, phases_marked_overdue };
 }
+
