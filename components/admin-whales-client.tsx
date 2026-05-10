@@ -628,16 +628,52 @@ function AdminWhaleHistorySheet({
   onClose: () => void;
   readOnly?: boolean;
 }) {
+  React.useEffect(() => {
+    const body = document.body;
+    const html = document.documentElement;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    body.style.overflow = "hidden";
+    const scrollbarGap = Math.max(0, window.innerWidth - html.clientWidth);
+    if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`;
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <motion.div
+      layout={false}
       className="fixed inset-0 z-[70] flex justify-end"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0, pointerEvents: "none" }}
+      animate={{ opacity: 1, pointerEvents: "auto" }}
+      exit={{
+        opacity: 0,
+        pointerEvents: "none",
+        transition: { opacity: { duration: 0.15 }, pointerEvents: { duration: 0 } },
+      }}
       transition={{ duration: 0.15 }}
     >
-      <button type="button" className="absolute inset-0 bg-black/60" aria-label="Close" onClick={onClose} />
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/60"
+        aria-label="Close"
+        onClick={onClose}
+      />
       <motion.aside
+        layout={false}
         className="relative z-[1] flex h-full w-full max-w-md flex-col border-l border-white/10 bg-black/95 shadow-2xl"
         initial={{ x: 40 }}
         animate={{ x: 0 }}
@@ -701,6 +737,31 @@ function AdminEditWhaleModal({
     setStatus(whale.status);
   }, [whale]);
 
+  React.useEffect(() => {
+    const body = document.body;
+    const html = document.documentElement;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    body.style.overflow = "hidden";
+    const scrollbarGap = Math.max(0, window.innerWidth - html.clientWidth);
+    if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`;
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setPending(true);
@@ -716,13 +777,20 @@ function AdminEditWhaleModal({
 
   return (
     <motion.div
+      layout={false}
       className="fixed inset-0 z-[70] flex items-end justify-center md:items-center md:p-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0, pointerEvents: "none" }}
+      animate={{ opacity: 1, pointerEvents: "auto" }}
+      exit={{
+        opacity: 0,
+        pointerEvents: "none",
+        transition: { opacity: { duration: 0.15 }, pointerEvents: { duration: 0 } },
+      }}
+      transition={{ duration: 0.15 }}
     >
       <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
       <motion.div
+        layout={false}
         className="relative z-[1] max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-white/10 bg-black/95 p-6 shadow-2xl md:rounded-2xl"
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -1081,6 +1149,14 @@ export function AdminWhalesClient({
   const [confirmingWhaleDelete, setConfirmingWhaleDelete] = React.useState(false);
 
   const CLIENT_PAGE_SIZE = 24;
+
+  const closeHistorySheet = React.useCallback(() => {
+    setHistoryWhale(null);
+  }, []);
+
+  const closeEditWhaleModal = React.useCallback(() => {
+    setEditingWhale(null);
+  }, []);
 
   React.useEffect(() => {
     setLocalWhales(initialWhales);
@@ -1836,7 +1912,7 @@ export function AdminWhalesClient({
             key={historyWhale.id}
             whale={historyWhale}
             readOnly={readOnly}
-            onClose={() => setHistoryWhale(null)}
+            onClose={closeHistorySheet}
           />
         ) : null}
       </AnimatePresence>
@@ -1845,7 +1921,7 @@ export function AdminWhalesClient({
           <AdminEditWhaleModal
             key={editingWhale.id}
             whale={editingWhale}
-            onClose={() => setEditingWhale(null)}
+            onClose={closeEditWhaleModal}
             onUpdateFields={handleUpdateFields}
           />
         ) : null}

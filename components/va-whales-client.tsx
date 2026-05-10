@@ -1,5 +1,10 @@
 "use client";
 
+/**
+ * Read-only whales UI for VAs. Overlays (history sheet, etc.) are implemented in
+ * `admin-whales-client.tsx` (`AdminWhalesClient` with `readOnly` + `headerVariant="va"`).
+ */
+
 import {
   AdminWhalesClient,
   type AdminWhalesInitialFilters,

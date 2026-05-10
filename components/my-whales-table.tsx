@@ -510,16 +510,47 @@ function NotesCell({
 }
 
 function ChatterWhaleHistorySheet({ whale, onClose }: { whale: Whale; onClose: () => void }) {
+  React.useEffect(() => {
+    const body = document.body;
+    const html = document.documentElement;
+    const prevOverflow = body.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    body.style.overflow = "hidden";
+    const scrollbarGap = Math.max(0, window.innerWidth - html.clientWidth);
+    if (scrollbarGap > 0) body.style.paddingRight = `${scrollbarGap}px`;
+    return () => {
+      body.style.overflow = prevOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <motion.div
+      layout={false}
       className="fixed inset-0 z-[70] flex justify-end"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
+      initial={{ opacity: 0, pointerEvents: "none" }}
+      animate={{ opacity: 1, pointerEvents: "auto" }}
+      exit={{
+        opacity: 0,
+        pointerEvents: "none",
+        transition: { opacity: { duration: 0.15 }, pointerEvents: { duration: 0 } },
+      }}
       transition={{ duration: 0.15 }}
     >
       <button type="button" className="absolute inset-0 bg-black/60" aria-label="Close" onClick={onClose} />
       <motion.aside
+        layout={false}
         className="relative z-[1] flex h-full w-full max-w-md flex-col border-l border-white/10 bg-black/95 shadow-2xl"
         initial={{ x: 48 }}
         animate={{ x: 0 }}
@@ -693,6 +724,10 @@ function WhaleChatterCard({
   const [logOpen, setLogOpen] = React.useState(false);
   const logAnchorRef = React.useRef<HTMLButtonElement>(null);
 
+  const closeHistorySheet = React.useCallback(() => {
+    setHistoryOpen(false);
+  }, []);
+
   const canToggle = whale.status === "Active" || whale.status === "Inactive";
   const nextStatus = whale.status === "Active" ? "Inactive" : "Active";
 
@@ -837,7 +872,7 @@ function WhaleChatterCard({
 
       <AnimatePresence>
         {historyOpen ? (
-          <ChatterWhaleHistorySheet key={whale.id} whale={whale} onClose={() => setHistoryOpen(false)} />
+          <ChatterWhaleHistorySheet key={whale.id} whale={whale} onClose={closeHistorySheet} />
         ) : null}
       </AnimatePresence>
     </motion.div>
