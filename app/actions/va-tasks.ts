@@ -12,10 +12,11 @@ import {
   updateVaTask,
   deleteVaTask,
   getVaTaskById,
+  getAllVaTasks,
   type VaTaskCreateInput,
   type VaTaskUpdateInput,
 } from "@/services/va-tasks";
-import { getNextOccurrence, shouldSpawnRecurring } from "@/lib/recurrence";
+import { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import type { VaTaskStatus } from "@/types";
 
 function isAdminLike(role: string | undefined) {
@@ -103,22 +104,36 @@ export async function updateVaTaskStatusAction(input: {
       );
       if (nextDue) {
         try {
-          await createVaTask({
-            title: task.title,
-            description: task.description,
-            assigned_to_ids: [...task.assigned_to_ids],
-            assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
-            status: "pending",
-            priority: task.priority,
-            due_date: nextDue,
-            is_recurring: true,
-            recurrence_type: task.recurrence_type,
-            recurrence_days: [...task.recurrence_days],
-            recurrence_interval: task.recurrence_interval ?? undefined,
-            recurrence_end_date: task.recurrence_end_date,
-            reminder_minutes_before: task.reminder_minutes_before,
-          });
-          console.log(`[va-tasks] spawned next occurrence for "${task.title}" → ${nextDue}`);
+          const allTasks = await getAllVaTasks();
+          const series = vaTaskSeriesKey(task);
+          const alreadyExists = allTasks.some(
+            (t) =>
+              t.id !== task.id &&
+              vaTaskSeriesKey(t) === series &&
+              t.is_recurring &&
+              (t.status === "pending" || t.status === "in_progress")
+          );
+
+          if (!alreadyExists) {
+            await createVaTask({
+              title: task.title,
+              description: task.description,
+              assigned_to_ids: [...task.assigned_to_ids],
+              assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
+              status: "pending",
+              priority: task.priority,
+              due_date: nextDue,
+              is_recurring: true,
+              recurrence_type: task.recurrence_type,
+              recurrence_days: [...task.recurrence_days],
+              recurrence_interval: task.recurrence_interval ?? undefined,
+              recurrence_end_date: task.recurrence_end_date,
+              reminder_minutes_before: task.reminder_minutes_before,
+            });
+            console.log(`[va-tasks] spawned next occurrence for "${task.title}" → ${nextDue}`);
+          } else {
+            console.log(`[va-tasks] skipping spawn — pending recurring task already exists for "${task.title}"`);
+          }
         } catch (spawnErr) {
           console.error("[va-tasks] spawn next occurrence failed", spawnErr);
         }

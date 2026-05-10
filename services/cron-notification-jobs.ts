@@ -392,6 +392,14 @@ export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronR
       });
       if (alreadyExists) continue;
 
+      const seriesHasOpen = allTasks.some(
+        (t2) =>
+          vaTaskSeriesKey(t2) === series &&
+          t2.is_recurring &&
+          (t2.status === "pending" || t2.status === "in_progress")
+      );
+      if (seriesHasOpen) continue;
+
       await createVaTask({
         title: task.title,
         description: task.description,

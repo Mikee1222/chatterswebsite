@@ -157,13 +157,25 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
   const recurringPreviews = React.useMemo(() => {
     const map: Record<string, VaTaskRecord[]> = {};
 
+    const seriesMap = new Map<string, VaTaskRecord>();
     for (const task of tasks) {
-      if (!task.is_recurring) continue;
+      if (!task.is_recurring || !task.due_date?.trim()) continue;
+      if (task.status !== "pending" && task.status !== "in_progress") continue;
 
+      const key = vaTaskSeriesKey(task);
+      const existing = seriesMap.get(key);
+      const td = new Date(task.due_date.trim()).getTime();
+      const ed = existing?.due_date ? new Date(existing.due_date.trim()).getTime() : NaN;
+      if (!existing || (!Number.isNaN(td) && (Number.isNaN(ed) || td > ed))) {
+        seriesMap.set(key, task);
+      }
+    }
+
+    for (const [, task] of seriesMap) {
       const futureDates = getRecurringPreviewDates(task, calendarStart, calendarEnd);
+      const series = vaTaskSeriesKey(task);
 
       for (const date of futureDates) {
-        const series = vaTaskSeriesKey(task);
         const alreadyHasRealTask = tasks.some((t) => {
           const y = toLocalYmd(t.due_date);
           return y === date && vaTaskSeriesKey(t) === series;
