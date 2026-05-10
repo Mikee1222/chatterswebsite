@@ -582,6 +582,8 @@ export function AdminWeeklyProgramClient({
   const [mobileHelperOpen, setMobileHelperOpen] = React.useState(false);
   const [duplicateOpenDay, setDuplicateOpenDay] = React.useState<WeeklyProgramDay | null>(null);
   const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
+  /** Monday YYYY-MM-DD of the week rows are created in (copy day modal). */
+  const [copyTargetWeek, setCopyTargetWeek] = React.useState(() => normalizeWeekStart(currentWeekStart));
   /** idle: ready · working: Airtable copy in flight · done / failed: brief feedback before reset */
   const [duplicateUi, setDuplicateUi] = React.useState<"idle" | "working" | "done" | "failed">("idle");
   const [duplicateWeekModal, setDuplicateWeekModal] = React.useState<{
@@ -620,6 +622,10 @@ export function AdminWeeklyProgramClient({
 
   const effectiveWeekStart = normalizeWeekStart(searchParams.get("week_start") || currentWeekStart);
 
+  React.useEffect(() => {
+    if (duplicateOpenDay) setCopyTargetWeek(effectiveWeekStart);
+  }, [duplicateOpenDay, effectiveWeekStart]);
+
   const programsThisWeek = React.useMemo(
     () => programs.filter((p) => normalizeWeekStart(p.week_start) === effectiveWeekStart),
     [programs, effectiveWeekStart]
@@ -649,13 +655,14 @@ export function AdminWeeklyProgramClient({
 
   const duplicateTargetExistingCount = React.useMemo(() => {
     if (!duplicateOpenDay) return 0;
+    const targetWeekMon = normalizeWeekStart(copyTargetWeek);
     return programs.filter(
       (p) =>
         p.day === duplicateTargetDay &&
-        normalizeWeekStart(p.week_start) === effectiveWeekStart &&
+        normalizeWeekStart(p.week_start) === targetWeekMon &&
         !p.id.startsWith("dup-pending-")
     ).length;
-  }, [duplicateOpenDay, duplicateTargetDay, programs, effectiveWeekStart]);
+  }, [duplicateOpenDay, duplicateTargetDay, programs, copyTargetWeek]);
 
   const chattersWithSlotsThisWeek = React.useMemo(() => {
     const seen = new Map<string, string>();
@@ -862,6 +869,7 @@ export function AdminWeeklyProgramClient({
     setDuplicateUi("idle");
     setDuplicateOpenDay(sourceDay);
     setDuplicateTargetDay(DAYS.find((d) => d !== sourceDay) ?? "Tuesday");
+    setCopyTargetWeek(effectiveWeekStart);
   };
 
   const closeDuplicateModal = React.useCallback(() => {
@@ -872,9 +880,10 @@ export function AdminWeeklyProgramClient({
   }, [clearDuplicateResetTimer]);
 
   const handleDuplicateCopy = (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
-    const week = effectiveWeekStart;
+    const sourceWeekMon = effectiveWeekStart;
+    const targetWeekMon = normalizeWeekStart(copyTargetWeek);
     const sourceEntries = programs.filter(
-      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
+      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === sourceWeekMon
     );
     if (sourceEntries.length === 0) {
       setError("No shifts to copy on that day.");
@@ -893,6 +902,7 @@ export function AdminWeeklyProgramClient({
       ...e,
       id: pendingIds[i]!,
       day: targetDay,
+      week_start: targetWeekMon,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     }));
@@ -908,7 +918,7 @@ export function AdminWeeklyProgramClient({
               models: e.model_ids,
               day: targetDay,
               shift_type: e.shift_type,
-              week_start: week,
+              week_start: targetWeekMon,
               notes: e.notes || "",
               modelIdToName,
               ...(e.shift_type === "Custom" && {
@@ -1836,27 +1846,56 @@ export function AdminWeeklyProgramClient({
               <h2 id="dup-week-title" className="text-lg font-semibold tracking-tight text-white">
                 Copy {duplicateOpenDay} shifts to:
               </h2>
-              <p className="mt-1 text-xs text-white/50">Pick a day. New rows appear right away; Airtable saves in the background.</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {DAYS.filter((d) => d !== duplicateOpenDay).map((d) => {
-                  const abbrev = d.slice(0, 3);
-                  const selected = duplicateTargetDay === d;
-                  return (
+              <p className="mt-1 text-xs text-white/50">
+                Pick week and day. New rows appear right away; Airtable saves in the background.
+              </p>
+              <div className="mb-4 mt-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-widest text-white/40">Week</p>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: "This week", value: effectiveWeekStart },
+                    { label: "Next week", value: addWeeks(effectiveWeekStart, 1) },
+                    { label: "Week after", value: addWeeks(effectiveWeekStart, 2) },
+                  ].map((w) => (
                     <button
-                      key={d}
+                      key={w.value}
                       type="button"
                       disabled={duplicateUi === "working"}
-                      onClick={() => setDuplicateTargetDay(d)}
-                      className={`min-w-[3rem] rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                        selected
-                          ? "border-[hsl(330,80%,55%)]/60 bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,85%)]"
-                          : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
+                      onClick={() => setCopyTargetWeek(w.value)}
+                      className={`rounded-xl border px-4 py-2 text-sm font-medium transition-all ${
+                        normalizeWeekStart(copyTargetWeek) === normalizeWeekStart(w.value)
+                          ? "border-pink-500/40 bg-pink-500/20 text-pink-400"
+                          : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
                       } disabled:opacity-50`}
                     >
-                      {abbrev}
+                      {w.label}
                     </button>
-                  );
-                })}
+                  ))}
+                </div>
+              </div>
+              <div className="mb-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-widest text-white/40">Day</p>
+                <div className="flex flex-wrap gap-2">
+                  {DAYS.filter((d) => d !== duplicateOpenDay).map((d) => {
+                    const abbrev = d.slice(0, 3);
+                    const selected = duplicateTargetDay === d;
+                    return (
+                      <button
+                        key={d}
+                        type="button"
+                        disabled={duplicateUi === "working"}
+                        onClick={() => setDuplicateTargetDay(d)}
+                        className={`min-w-[3rem] rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
+                          selected
+                            ? "border-[hsl(330,80%,55%)]/60 bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,85%)]"
+                            : "border-white/15 bg-white/5 text-white/80 hover:bg-white/10"
+                        } disabled:opacity-50`}
+                      >
+                        {abbrev}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               {duplicateTargetExistingCount > 0 ? (
                 <p className="mt-3 text-xs font-medium text-amber-300/90">This will add to existing shifts.</p>

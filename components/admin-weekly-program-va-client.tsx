@@ -24,6 +24,7 @@ import {
   buildCustomShiftTimes,
   getThisWeekMonday,
   addDays,
+  addWeeks,
   normalizeWeekStart,
   formatWeekLabel,
   normalizeHHmm,
@@ -155,6 +156,8 @@ export function AdminWeeklyProgramVaClient({
   const [mobileHelperOpen, setMobileHelperOpen] = React.useState(false);
   const [duplicateOpenDay, setDuplicateOpenDay] = React.useState<WeeklyProgramDay | null>(null);
   const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
+  /** Monday YYYY-MM-DD of the week rows are created in (duplicate day flow). */
+  const [copyTargetWeek, setCopyTargetWeek] = React.useState(() => normalizeWeekStart(currentWeekStart));
   const [duplicateBusy, setDuplicateBusy] = React.useState(false);
   const [duplicateReplacePrompt, setDuplicateReplacePrompt] = React.useState<{
     sourceDay: WeeklyProgramDay;
@@ -171,6 +174,10 @@ export function AdminWeeklyProgramVaClient({
   );
 
   const effectiveWeekStart = normalizeWeekStart(searchParams.get("week_start") || currentWeekStart);
+
+  React.useEffect(() => {
+    if (duplicateOpenDay) setCopyTargetWeek(effectiveWeekStart);
+  }, [duplicateOpenDay, effectiveWeekStart]);
 
   const filtered = React.useMemo(() => {
     let list = programs;
@@ -373,12 +380,13 @@ export function AdminWeeklyProgramVaClient({
   };
 
   const runDuplicateDayCopy = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
-    const week = effectiveWeekStart;
+    const sourceWeekMon = effectiveWeekStart;
+    const targetWeekMon = normalizeWeekStart(copyTargetWeek);
     const sourceEntries = programs.filter(
-      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
+      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === sourceWeekMon
     );
     const targetEntries = programs.filter(
-      (p) => p.day === targetDay && normalizeWeekStart(p.week_start) === week
+      (p) => p.day === targetDay && normalizeWeekStart(p.week_start) === targetWeekMon
     );
     if (sourceEntries.length === 0) {
       setError("No shifts to copy on that day.");
@@ -404,7 +412,7 @@ export function AdminWeeklyProgramVaClient({
           models: e.model_ids,
           day: targetDay,
           shift_type: e.shift_type,
-          week_start: week,
+          week_start: targetWeekMon,
           notes: e.notes || "",
           modelIdToName,
           ...(e.shift_type === "Custom" && {
@@ -419,7 +427,9 @@ export function AdminWeeklyProgramVaClient({
           return;
         }
       }
-      setSuccess(`Copied ${sourceEntries.length} shift(s) from ${sourceDay} to ${targetDay}.`);
+      setSuccess(
+        `Copied ${sourceEntries.length} shift(s) from ${sourceDay} to ${targetDay} (week of ${formatWeekLabel(targetWeekMon)}).`
+      );
       setDuplicateOpenDay(null);
       setDuplicateReplacePrompt(null);
       router.refresh();
@@ -429,12 +439,13 @@ export function AdminWeeklyProgramVaClient({
   };
 
   const handleDuplicateDay = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
-    const week = effectiveWeekStart;
+    const sourceWeekMon = effectiveWeekStart;
+    const targetWeekMon = normalizeWeekStart(copyTargetWeek);
     const sourceEntries = programs.filter(
-      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === week
+      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === sourceWeekMon
     );
     const targetEntries = programs.filter(
-      (p) => p.day === targetDay && normalizeWeekStart(p.week_start) === week
+      (p) => p.day === targetDay && normalizeWeekStart(p.week_start) === targetWeekMon
     );
     if (sourceEntries.length === 0) {
       setError("No shifts to copy on that day.");
@@ -758,8 +769,13 @@ export function AdminWeeklyProgramVaClient({
                     <button
                       type="button"
                       onClick={() => {
-                        setDuplicateOpenDay(duplicateOpenDay === day ? null : day);
-                        setDuplicateTargetDay(DAYS.find((d) => d !== day) ?? "Tuesday");
+                        if (duplicateOpenDay === day) {
+                          setDuplicateOpenDay(null);
+                        } else {
+                          setDuplicateOpenDay(day);
+                          setDuplicateTargetDay(DAYS.find((d) => d !== day) ?? "Tuesday");
+                          setCopyTargetWeek(effectiveWeekStart);
+                        }
                       }}
                       className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10"
                     >
@@ -768,7 +784,32 @@ export function AdminWeeklyProgramVaClient({
                   ) : null}
                 </div>
                 {duplicateOpenDay === day && entries.length > 0 ? (
-                  <div className="flex flex-wrap items-end gap-2 border-b border-white/10 bg-black/30 px-4 py-2">
+                  <div className="flex flex-col gap-3 border-b border-white/10 bg-black/30 px-4 py-3">
+                    <div>
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Week</span>
+                      <div className="mt-1.5 flex flex-wrap gap-2">
+                        {[
+                          { label: "This week", value: effectiveWeekStart },
+                          { label: "Next week", value: addWeeks(effectiveWeekStart, 1) },
+                          { label: "Week after", value: addWeeks(effectiveWeekStart, 2) },
+                        ].map((w) => (
+                          <button
+                            key={w.value}
+                            type="button"
+                            disabled={duplicateBusy}
+                            onClick={() => setCopyTargetWeek(w.value)}
+                            className={`rounded-xl border px-3 py-1.5 text-xs font-medium transition-all ${
+                              normalizeWeekStart(copyTargetWeek) === normalizeWeekStart(w.value)
+                                ? "border-pink-500/40 bg-pink-500/20 text-pink-400"
+                                : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+                            } disabled:opacity-50`}
+                          >
+                            {w.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap items-end gap-2">
                     <div className="min-w-[140px] flex-1">
                       <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Copy to</span>
                       <CustomSelect portaled
@@ -787,6 +828,7 @@ export function AdminWeeklyProgramVaClient({
                     >
                       {duplicateBusy ? "…" : "Copy"}
                     </button>
+                    </div>
                   </div>
                 ) : null}
                 <div className="p-4 space-y-3">
@@ -851,8 +893,13 @@ export function AdminWeeklyProgramVaClient({
                         <button
                           type="button"
                           onClick={() => {
-                            setDuplicateOpenDay(duplicateOpenDay === day ? null : day);
-                            setDuplicateTargetDay(DAYS.find((d) => d !== day) ?? "Tuesday");
+                            if (duplicateOpenDay === day) {
+                              setDuplicateOpenDay(null);
+                            } else {
+                              setDuplicateOpenDay(day);
+                              setDuplicateTargetDay(DAYS.find((d) => d !== day) ?? "Tuesday");
+                              setCopyTargetWeek(effectiveWeekStart);
+                            }
                           }}
                           className="shrink-0 rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-[10px] font-medium text-white/80 hover:bg-white/10"
                         >
@@ -861,7 +908,31 @@ export function AdminWeeklyProgramVaClient({
                       ) : null}
                     </div>
                     {duplicateOpenDay === day && entries.length > 0 ? (
-                      <div className="mt-3 flex flex-col gap-2 border-t border-white/10 pt-3">
+                      <div className="mt-3 flex flex-col gap-3 border-t border-white/10 pt-3">
+                        <div>
+                          <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Week</span>
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {[
+                              { label: "This week", value: effectiveWeekStart },
+                              { label: "Next week", value: addWeeks(effectiveWeekStart, 1) },
+                              { label: "Week after", value: addWeeks(effectiveWeekStart, 2) },
+                            ].map((w) => (
+                              <button
+                                key={w.value}
+                                type="button"
+                                disabled={duplicateBusy}
+                                onClick={() => setCopyTargetWeek(w.value)}
+                                className={`rounded-lg border px-2 py-1 text-[10px] font-medium transition-all ${
+                                  normalizeWeekStart(copyTargetWeek) === normalizeWeekStart(w.value)
+                                    ? "border-pink-500/40 bg-pink-500/20 text-pink-400"
+                                    : "border-white/10 bg-white/5 text-white/60 hover:bg-white/10"
+                                } disabled:opacity-50`}
+                              >
+                                {w.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
                         <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Copy to</span>
                         <CustomSelect portaled
                           value={duplicateTargetDay}
@@ -1171,7 +1242,7 @@ export function AdminWeeklyProgramVaClient({
       title="Replace existing shifts?"
       description={
         duplicateReplacePrompt
-          ? `${duplicateReplacePrompt.targetDay} already has ${duplicateReplacePrompt.replaceCount} shift(s). Replace them with copies from ${duplicateReplacePrompt.sourceDay}? Existing shifts on ${duplicateReplacePrompt.targetDay} will be removed.`
+          ? `${duplicateReplacePrompt.targetDay} (week of ${formatWeekLabel(normalizeWeekStart(copyTargetWeek))}) already has ${duplicateReplacePrompt.replaceCount} shift(s). Replace them with copies from ${duplicateReplacePrompt.sourceDay}? Existing shifts on that day will be removed.`
           : ""
       }
       confirmLabel="Replace and copy"
