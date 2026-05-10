@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
-import { CalendarCheck, DollarSign, FileText, Play, UserPlus, X } from "lucide-react";
+import { CalendarCheck, Coins, DollarSign, FileText, Play, UserPlus, X } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
@@ -24,6 +24,7 @@ export const CHATTER_QUICK_ACTIONS: {
   { href: ROUTES.chatter.myWhalesNew, label: "Add new whale", Icon: UserPlus },
   { href: ROUTES.chatter.requestCustom, label: "Request a custom", Icon: FileText },
   { href: ROUTES.chatter.logTransaction, label: "Whale session", Icon: DollarSign },
+  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", Icon: Coins },
 ];
 
 export type QuickActionsModalProps = {

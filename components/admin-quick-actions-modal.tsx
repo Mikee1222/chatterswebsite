@@ -7,6 +7,7 @@ import {
   Activity,
   Calendar,
   Clock,
+  Coins,
   Dices,
   DollarSign,
   FileText,
@@ -67,6 +68,7 @@ function buildAdminQuickActions(role: SessionUser["role"]): AdminQuickActionItem
     { href: ROUTES.hours, label: "Hours", Icon: Clock },
     { href: ROUTES.activityLogs, label: "Activity logs", Icon: FileText },
     { href: ROUTES.admin.spinResults, label: "Spin results", Icon: Dices },
+    { href: ROUTES.admin.finesBonuses, label: "Fines & bonuses", Icon: Coins },
     { href: ROUTES.admin.whales, label: "Whales", Icon: Fish },
     { href: ROUTES.settings, label: "System settings", Icon: Settings },
   ];

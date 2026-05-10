@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
-import { CalendarCheck, FilePlus2, Plus, X } from "lucide-react";
+import { CalendarCheck, Coins, FilePlus2, Plus, X } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
@@ -23,6 +23,7 @@ export const VA_QUICK_ACTIONS: {
 }[] = [
   { href: ROUTES.va.contentAssignments, label: "Assign content to model", Icon: FilePlus2 },
   { href: ROUTES.va.weeklyAvailability, label: "Submit availability", Icon: CalendarCheck },
+  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", Icon: Coins },
 ];
 
 export type VaQuickActionsModalProps = {
