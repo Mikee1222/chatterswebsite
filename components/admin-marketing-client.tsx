@@ -1382,22 +1382,50 @@ export function AdminMarketingClient({
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
-                Platform
-                <input
-                  value={accountDraft.platform ?? ""}
-                  onChange={(e) => setAccountDraft((d) => ({ ...d, platform: e.target.value }))}
-                  className={selectClass}
-                  list="platform-name-list-account-modal"
-                  placeholder="e.g. Instagram"
-                  required
-                />
-                <datalist id="platform-name-list-account-modal">
-                  {platformNames.map((n) => (
-                    <option key={n} value={n} />
-                  ))}
-                </datalist>
-              </label>
+              <div className="sm:col-span-2">
+                <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">Platform *</label>
+                <div className="flex flex-wrap gap-2">
+                  {[...platforms]
+                    .filter((p) => p.active)
+                    .sort((a, b) => a.sort_order - b.sort_order)
+                    .map((p) => {
+                      const selected = accountDraft.platform === p.name;
+                      const col = p.color ?? "#888888";
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => setAccountDraft((prev) => ({ ...prev, platform: p.name }))}
+                          className={cn(
+                            "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-semibold transition-all",
+                            selected
+                              ? "scale-105 text-white"
+                              : "border-white/10 bg-white/5 text-white/40 hover:bg-white/[0.08]",
+                          )}
+                          style={
+                            selected
+                              ? {
+                                  backgroundColor: `${col}33`,
+                                  borderColor: `${col}80`,
+                                  color: col,
+                                  boxShadow: `0 0 12px ${col}40`,
+                                }
+                              : undefined
+                          }
+                        >
+                          <span className="text-lg">{p.icon}</span>
+                          {p.name}
+                        </button>
+                      );
+                    })}
+                </div>
+                {accountDraft.platform ? (
+                  <p className="mt-2 text-xs text-white/25">
+                    Selected: {platforms.find((p) => p.name === accountDraft.platform)?.icon}{" "}
+                    {accountDraft.platform}
+                  </p>
+                ) : null}
+              </div>
               <label className="flex flex-col gap-1 text-xs text-white/50">
                 Username
                 <input
