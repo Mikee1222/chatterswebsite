@@ -1,10 +1,18 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Check, ChevronLeft, ChevronRight } from "lucide-react";
-import { formatDateEuropean, formatDateTimeAthens, formatTimeFromISO } from "@/lib/format";
+import {
+  Calendar,
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  Clock,
+  RotateCcw,
+  CheckCircle2,
+} from "lucide-react";
+import { formatDateEuropean, formatDateTimeAthens, formatTimeFromISO, formatTimeRange } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import {
   WEEKLY_PROGRAM_DAY_OPTIONS,
@@ -12,6 +20,8 @@ import {
   addWeeks,
   formatWeekLabel,
   getMondayOfWeek,
+  getThisWeekMonday,
+  getTodayYmd,
 } from "@/lib/weekly-program";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { getNextOccurrence, vaTaskSeriesKey } from "@/lib/recurrence";
@@ -25,6 +35,12 @@ export type VaScheduleClientProps = {
   weekStart: string;
 };
 
+function monthFirstYmd(mondayYmd: string): string {
+  const [y, m] = mondayYmd.split("-").map(Number);
+  if (!y || !m) return mondayYmd;
+  return `${y}-${String(m).padStart(2, "0")}-01`;
+}
+
 function toLocalYmd(isoLike: string | null): string {
   if (!isoLike?.trim()) return "";
   const d = new Date(isoLike.trim());
@@ -35,20 +51,6 @@ function toLocalYmd(isoLike: string | null): string {
   return `${y}-${m}-${day}`;
 }
 
-function monthFirstYmd(mondayYmd: string): string {
-  const [y, m] = mondayYmd.split("-").map(Number);
-  if (!y || !m) return mondayYmd;
-  return `${y}-${String(m).padStart(2, "0")}-01`;
-}
-
-function taskPillClass(task: VaTaskRecord): string {
-  if (task.status === "done") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-400 line-through";
-  if (task.priority === "urgent") return "border-red-500/30 bg-red-500/20 text-red-300";
-  if (task.priority === "high") return "border-amber-500/30 bg-amber-500/20 text-amber-300";
-  return "border-white/10 bg-white/5 text-white/70";
-}
-
-/** YYYY-MM-DD preview keys aligned with `toLocalYmd` for task pills. */
 function getRecurringPreviewDates(
   task: VaTaskRecord,
   calendarStart: string,
@@ -84,18 +86,53 @@ function getRecurringPreviewDates(
   return dates;
 }
 
+const SHIFT_TYPE_CONFIG = {
+  Morning: {
+    label: "Morning",
+    emoji: "☀️",
+    color: "from-amber-500/20 to-orange-500/10",
+    border: "border-amber-500/25",
+    text: "text-amber-400",
+    dot: "bg-amber-400",
+  },
+  Night: {
+    label: "Night",
+    emoji: "🌙",
+    color: "from-blue-500/20 to-indigo-500/10",
+    border: "border-blue-500/25",
+    text: "text-blue-400",
+    dot: "bg-blue-400",
+  },
+  Custom: {
+    label: "Custom",
+    emoji: "⚡",
+    color: "from-purple-500/20 to-pink-500/10",
+    border: "border-purple-500/25",
+    text: "text-purple-400",
+    dot: "bg-purple-400",
+  },
+} as const;
+
+const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
 export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart }: VaScheduleClientProps) {
   const router = useRouter();
   const [view, setView] = React.useState<"week" | "month">("week");
+  const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
   const [detailTask, setDetailTask] = React.useState<VaTaskRecord | null>(null);
   const [completing, setCompleting] = React.useState(false);
 
-  const weekDates = React.useMemo(() => {
-    return WEEKLY_PROGRAM_DAY_OPTIONS.map((day, i) => ({
-      day,
-      ymd: addDays(weekStart, i),
-    }));
-  }, [weekStart]);
+  const todayYmd = getTodayYmd();
+  const thisWeekMonday = getThisWeekMonday();
+
+  const weekDates = React.useMemo(
+    () =>
+      WEEKLY_PROGRAM_DAY_OPTIONS.map((day, i) => ({
+        day,
+        ymd: addDays(weekStart, i),
+      })),
+    [weekStart]
+  );
 
   const monthGrid = React.useMemo(() => {
     const first = monthFirstYmd(weekStart);
@@ -115,30 +152,33 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
     return rows;
   }, [weekStart]);
 
+  const programsByYmd = React.useMemo(() => {
+    const m = new Map<string, WeeklyProgramRecord[]>();
+    for (const p of weeklyProgram) {
+      const monday = (p.week_start ?? "").trim().slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(monday)) continue;
+      const di = WEEKLY_PROGRAM_DAY_OPTIONS.indexOf(p.day);
+      if (di < 0) continue;
+      const ymd = addDays(monday, di);
+      const list = m.get(ymd) ?? [];
+      list.push(p);
+      m.set(ymd, list);
+    }
+    return m;
+  }, [weeklyProgram]);
+
   const tasksByYmd = React.useMemo(() => {
-    const m = new Map<string, VaTaskRecord[]>();
+    const map = new Map<string, VaTaskRecord[]>();
     for (const t of tasks) {
       if (!t.due_date?.trim()) continue;
       const y = toLocalYmd(t.due_date);
       if (!y) continue;
-      const list = m.get(y) ?? [];
+      const list = map.get(y) ?? [];
       list.push(t);
-      m.set(y, list);
+      map.set(y, list);
     }
-    return m;
+    return map;
   }, [tasks]);
-
-  const shiftsByYmd = React.useMemo(() => {
-    const m = new Map<string, Shift[]>();
-    for (const s of activeShifts) {
-      const d = (s.date ?? "").trim().slice(0, 10);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) continue;
-      const list = m.get(d) ?? [];
-      list.push(s);
-      m.set(d, list);
-    }
-    return m;
-  }, [activeShifts]);
 
   const { calendarStart, calendarEnd } = React.useMemo(() => {
     if (view === "week") {
@@ -156,7 +196,6 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
 
   const recurringPreviews = React.useMemo(() => {
     const map: Record<string, VaTaskRecord[]> = {};
-
     const seriesMap = new Map<string, VaTaskRecord>();
     for (const task of tasks) {
       if (!task.is_recurring || !task.due_date?.trim()) continue;
@@ -190,6 +229,20 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
     return map;
   }, [tasks, calendarStart, calendarEnd]);
 
+  function navigateWeeks(delta: number) {
+    const next = addWeeks(weekStart, delta);
+    router.push(`${ROUTES.va.schedule}?week_start=${encodeURIComponent(next)}`);
+  }
+
+  function goToThisWeek() {
+    router.push(`${ROUTES.va.schedule}?week_start=${encodeURIComponent(thisWeekMonday)}`);
+  }
+
+  const isCurrentWeek = weekStart === thisWeekMonday;
+
+  const selectedPrograms = selectedDay ? (programsByYmd.get(selectedDay) ?? []) : [];
+  const selectedTasks = selectedDay ? (tasksByYmd.get(selectedDay) ?? []) : [];
+
   async function markTaskDone(task: VaTaskRecord) {
     setCompleting(true);
     try {
@@ -207,170 +260,369 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
     }
   }
 
-  const prevWeek = addWeeks(weekStart, -1);
-  const nextWeek = addWeeks(weekStart, 1);
+  function formatDayNum(ymd: string): string {
+    return new Date(ymd + "T12:00:00.000Z").toLocaleDateString("en-GB", {
+      day: "numeric",
+      timeZone: "UTC",
+    });
+  }
 
-  function cellContent(ymd: string, day: WeeklyProgramDay, programWeekMonday: string, previewTasks: VaTaskRecord[]) {
-    const ws = programWeekMonday.trim();
-    const programs = weeklyProgram.filter((p) => p.day === day && (p.week_start ?? "").trim() === ws);
-    const dayTasks = tasksByYmd.get(ymd) ?? [];
-    const dayShifts = shiftsByYmd.get(ymd) ?? [];
+  function formatMonthYearFromMonday(mondayYmd: string): string {
+    const first = monthFirstYmd(mondayYmd);
+    return new Date(first + "T12:00:00.000Z").toLocaleDateString("en-GB", {
+      month: "long",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+  }
+
+  function DayCell({ ymd, compact }: { ymd: string; compact?: boolean }) {
+    const programs = programsByYmd.get(ymd) ?? [];
+    const dayTasks = (tasksByYmd.get(ymd) ?? []).filter((t) => t.status === "pending" || t.status === "in_progress");
+    const previews = recurringPreviews[ymd] ?? [];
+    const todayCell = ymd === todayYmd;
+    const isSelected = selectedDay === ymd;
+    const isCurrentMonth = ymd.slice(0, 7) === monthFirstYmd(weekStart).slice(0, 7);
 
     return (
-      <div className="min-h-[120px] space-y-1.5 rounded-xl border border-white/8 bg-black/30 p-2">
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-white/35">{formatDateEuropean(ymd)}</p>
-        {dayShifts.map((s) => (
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => setSelectedDay(isSelected ? null : ymd)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setSelectedDay(isSelected ? null : ymd);
+          }
+        }}
+        className={cn(
+          "relative min-h-[90px] cursor-pointer rounded-2xl border transition-all",
+          compact && "min-h-[72px]",
+          !compact && "min-h-[110px]",
+          isSelected && "border-pink-500/40 bg-pink-500/[0.08]",
+          !isSelected && todayCell && "border-pink-500/25 bg-pink-500/[0.05]",
+          !isSelected &&
+            !todayCell &&
+            (view === "week" || isCurrentMonth) &&
+            "border-white/10 bg-white/[0.02] hover:bg-white/[0.05]",
+          !isSelected && !todayCell && view === "month" && !isCurrentMonth && "border-white/5 bg-white/[0.01] hover:bg-white/[0.03]"
+        )}
+      >
+        <div className="flex items-center justify-between px-3 pb-1 pt-2.5">
           <div
-            key={s.id}
-            className="truncate rounded-lg border border-purple-500/30 bg-purple-500/15 px-2 py-1 text-[11px] text-purple-200"
-            title={s.scheduled_shift}
-          >
-            {s.start_time && s.end_time
-              ? `${formatTimeFromISO(s.start_time)}–${formatTimeFromISO(s.end_time)}`
-              : s.scheduled_shift || "Shift"}
-          </div>
-        ))}
-        {programs.map((p) => (
-          <div
-            key={p.id}
-            className="truncate rounded-lg border border-purple-500/30 bg-purple-500/15 px-2 py-1 text-[11px] text-purple-200"
-          >
-            {p.shift_type} · {formatTimeFromISO(p.start_time)}–{formatTimeFromISO(p.end_time)}
-          </div>
-        ))}
-        {dayTasks.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setDetailTask(t)}
             className={cn(
-              "block w-full truncate rounded-lg border px-2 py-1 text-left text-[11px] transition hover:opacity-90",
-              taskPillClass(t)
+              "flex h-7 w-7 items-center justify-center rounded-xl text-xs font-bold",
+              todayCell && "bg-gradient-to-br from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/30",
+              !todayCell && (view === "week" || isCurrentMonth) && "text-white/70",
+              !todayCell && view === "month" && !isCurrentMonth && "text-white/25"
             )}
           >
-            {t.title}
-          </button>
-        ))}
-        {previewTasks.map((t) => (
-          <div
-            key={`preview-${t.id}-${ymd}`}
-            className="truncate rounded-lg border border-dashed border-purple-500/30 bg-purple-500/5 px-2 py-1 text-[11px] text-purple-400/50"
-            title={`Upcoming recurring: ${t.title}`}
-          >
-            🔄 {t.title}
+            {formatDayNum(ymd)}
           </div>
-        ))}
+          {(programs.length > 0 || dayTasks.length > 0) && (
+            <div className="flex gap-1">
+              {programs.length > 0 ? <div className="h-1.5 w-1.5 rounded-full bg-purple-400" aria-hidden /> : null}
+              {dayTasks.length > 0 ? <div className="h-1.5 w-1.5 rounded-full bg-pink-400" aria-hidden /> : null}
+            </div>
+          )}
+        </div>
+
+        <div className="space-y-1 px-2 pb-2">
+          {programs.slice(0, 2).map((p) => {
+            const cfg = SHIFT_TYPE_CONFIG[p.shift_type] ?? SHIFT_TYPE_CONFIG.Custom;
+            const timeLabel = formatTimeRange(p.start_time, p.end_time);
+            return (
+              <div
+                key={p.id}
+                className={cn(
+                  "flex items-center gap-1.5 truncate rounded-xl border bg-gradient-to-r px-2 py-1",
+                  cfg.color,
+                  cfg.border
+                )}
+              >
+                <span className="text-xs" aria-hidden>
+                  {cfg.emoji}
+                </span>
+                <span className={cn("truncate text-xs font-semibold", cfg.text)}>{timeLabel}</span>
+              </div>
+            );
+          })}
+          {programs.length > 2 ? (
+            <p className="px-1 text-xs text-white/30">+{programs.length - 2} more shifts</p>
+          ) : null}
+
+          {dayTasks.slice(0, 1).map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDetailTask(t);
+              }}
+              className={cn(
+                "flex w-full items-center gap-1.5 truncate rounded-xl border px-2 py-1 text-left text-xs transition hover:opacity-90",
+                t.status === "in_progress" ? "border-blue-500/20 bg-blue-500/10" : "border-white/10 bg-white/5"
+              )}
+            >
+              <span aria-hidden>{t.is_recurring ? "🔄" : "📋"}</span>
+              <span className="truncate text-white/70">{t.title}</span>
+            </button>
+          ))}
+
+          {previews.slice(0, 1).map((t) => (
+            <div
+              key={`preview-${t.id}-${ymd}`}
+              className="flex items-center gap-1.5 truncate rounded-xl border border-dashed border-purple-500/20 bg-purple-500/5 px-2 py-1"
+              title={`Upcoming recurring: ${t.title}`}
+            >
+              <span className="text-xs" aria-hidden>
+                🔄
+              </span>
+              <span className="truncate text-xs text-purple-400/60">{t.title}</span>
+            </div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+    <div className="mx-auto max-w-5xl space-y-6 p-4 md:p-6">
+      <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-sky-400/60">Schedule</p>
-          <h1 className="mt-1 text-2xl font-bold text-white md:text-3xl">My schedule</h1>
-          <p className="mt-1 text-sm text-white/45">Weekly program, tasks, and active shifts in one view.</p>
+          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/70">My schedule</p>
+          <h1 className="text-2xl font-bold text-white md:text-3xl">
+            {view === "week" ? `Week of ${formatWeekLabel(weekStart)}` : formatMonthYearFromMonday(weekStart)}
+          </h1>
+          <p className="mt-1 text-sm text-white/45">Weekly program, tasks, and active shifts.</p>
         </div>
+
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex rounded-xl border border-white/10 bg-white/5 p-1">
+          <div className="flex rounded-2xl border border-white/10 bg-white/5 p-1">
+            {(["week", "month"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setView(v)}
+                className={cn(
+                  "rounded-xl px-4 py-2 text-xs font-semibold capitalize transition-all",
+                  view === v
+                    ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/20"
+                    : "text-white/40 hover:text-white"
+                )}
+              >
+                {v}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setView("week")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                view === "week" ? "bg-white/15 text-white" : "text-white/50 hover:text-white/80"
-              )}
+              onClick={() => navigateWeeks(-1)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/50 transition hover:bg-white/10 hover:text-white"
+              aria-label="Previous week"
             >
-              Week
+              <ChevronLeft className="h-4 w-4" />
             </button>
+            {!isCurrentWeek ? (
+              <button
+                type="button"
+                onClick={goToThisWeek}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/50 transition hover:bg-white/10 hover:text-white"
+              >
+                <RotateCcw className="h-3 w-3" aria-hidden />
+                This week
+              </button>
+            ) : null}
             <button
               type="button"
-              onClick={() => setView("month")}
-              className={cn(
-                "rounded-lg px-3 py-1.5 text-xs font-semibold transition",
-                view === "month" ? "bg-white/15 text-white" : "text-white/50 hover:text-white/80"
-              )}
+              onClick={() => navigateWeeks(1)}
+              className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/50 transition hover:bg-white/10 hover:text-white"
+              aria-label="Next week"
             >
-              Month
+              <ChevronRight className="h-4 w-4" />
             </button>
           </div>
-          <Link
-            href={`${ROUTES.va.schedule}?week_start=${encodeURIComponent(prevWeek)}`}
-            className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10"
-          >
-            <ChevronLeft className="h-4 w-4" aria-hidden />
-            Prev
-          </Link>
-          <Link
-            href={ROUTES.va.schedule}
-            className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10"
-          >
-            This week
-          </Link>
-          <Link
-            href={`${ROUTES.va.schedule}?week_start=${encodeURIComponent(nextWeek)}`}
-            className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/80 transition hover:bg-white/10"
-          >
-            Next
-            <ChevronRight className="h-4 w-4" aria-hidden />
-          </Link>
+        </div>
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center gap-4 text-xs text-white/35">
+        {[
+          { dot: "bg-amber-400", label: "Morning shift" },
+          { dot: "bg-blue-400", label: "Night shift" },
+          { dot: "bg-purple-400", label: "Custom / program" },
+          { dot: "bg-pink-400", label: "Task due" },
+        ].map((l) => (
+          <div key={l.label} className="flex items-center gap-1.5">
+            <div className={cn("h-2 w-2 rounded-full", l.dot)} />
+            <span>{l.label}</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-1.5">
+          <div className="h-3 w-3 rounded border border-dashed border-purple-500/40" />
+          <span>Upcoming recurring</span>
         </div>
       </div>
 
       {activeShifts.length > 0 ? (
-        <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
-          <span className="font-semibold">On shift now</span>
-          <span className="text-white/60"> — </span>
-          {activeShifts.map((s) => (
-            <span key={s.id} className="text-white/85">
-              {s.scheduled_shift}
-              {s.start_time ? ` (${formatTimeFromISO(s.start_time)})` : ""}
-            </span>
-          ))}
+        <div className="flex items-center gap-3 rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3">
+          <div className="h-2.5 w-2.5 shrink-0 animate-pulse rounded-full bg-emerald-400" />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-emerald-200">On shift now</p>
+            <p className="mt-0.5 truncate text-xs text-emerald-100/70">
+              {activeShifts
+                .map((s) => `${s.scheduled_shift || s.shift_type || "Shift"}${s.start_time ? ` (${formatTimeFromISO(s.start_time)})` : ""}`)
+                .join(" · ")}
+            </p>
+          </div>
+          <span className="shrink-0 text-xs text-emerald-300/60">Live</span>
         </div>
       ) : null}
 
-      <p className="text-sm text-white/50">
-        {view === "week" ? `Week of ${formatWeekLabel(weekStart)}` : `Month around ${formatWeekLabel(weekStart)}`}
-      </p>
-
       {view === "week" ? (
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-7">
-          {weekDates.map(({ day, ymd }) => (
-            <div key={ymd}>
-              <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wide text-white/50">{day}</p>
-              {cellContent(ymd, day, weekStart, recurringPreviews[ymd] ?? [])}
-            </div>
-          ))}
+        <div>
+          <div className="mb-2 grid grid-cols-7 gap-2">
+            {weekDates.map(({ ymd }, i) => (
+              <div key={ymd} className="text-center">
+                <p className={cn("text-xs font-bold uppercase tracking-wider", ymd === todayYmd ? "text-pink-400" : "text-white/30")}>
+                  {DAY_LABELS[i]}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-2">
+            {weekDates.map(({ ymd }) => (
+              <DayCell key={ymd} ymd={ymd} />
+            ))}
+          </div>
         </div>
       ) : (
         <div className="space-y-2 overflow-x-auto">
-          <div className="grid min-w-[720px] grid-cols-7 gap-1 text-center text-[10px] font-semibold uppercase text-white/40">
-            {WEEKLY_PROGRAM_DAY_OPTIONS.map((d) => (
-              <div key={d}>{d.slice(0, 3)}</div>
+          <div className="grid min-w-[720px] grid-cols-7 gap-1.5">
+            {DAY_LABELS.map((d) => (
+              <div key={d} className="text-center">
+                <p className="text-xs font-bold uppercase tracking-wider text-white/25">{d}</p>
+              </div>
             ))}
           </div>
           {monthGrid.map((row, ri) => (
-            <div key={ri} className="grid min-w-[720px] grid-cols-7 gap-1">
-              {row.map(({ ymd, day }) => (
-                <div key={ymd}>{cellContent(ymd, day, getMondayOfWeek(ymd), recurringPreviews[ymd] ?? [])}</div>
+            <div key={ri} className="grid min-w-[720px] grid-cols-7 gap-1.5">
+              {row.map(({ ymd }) => (
+                <DayCell key={ymd} ymd={ymd} compact />
               ))}
             </div>
           ))}
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-white/30">
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded border border-purple-500/30 bg-purple-500/20" />
-          <span>Task</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="h-3 w-3 rounded border border-dashed border-purple-500/30 bg-purple-500/5" />
-          <span>Upcoming recurring</span>
-        </div>
-      </div>
+      {selectedDay ? (
+        selectedPrograms.length > 0 || selectedTasks.length > 0 ? (
+          <div className="mt-5 overflow-hidden rounded-3xl border border-white/10 bg-white/[0.03]">
+            <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+              <div>
+                <p className="font-bold text-white">{formatDateEuropean(selectedDay)}</p>
+                <p className="mt-0.5 text-xs text-white/35">
+                  {selectedPrograms.length} shift{selectedPrograms.length !== 1 ? "s" : ""} · {selectedTasks.length} task
+                  {selectedTasks.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                className="text-2xl leading-none text-white/35 transition hover:text-white"
+                aria-label="Close day detail"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4 px-5 py-4">
+              {selectedPrograms.map((p) => {
+                const cfg = SHIFT_TYPE_CONFIG[p.shift_type] ?? SHIFT_TYPE_CONFIG.Custom;
+                return (
+                  <div key={p.id} className={cn("rounded-2xl border bg-gradient-to-r p-4", cfg.color, cfg.border)}>
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={cn(
+                          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border text-xl",
+                          cfg.border,
+                          "bg-white/10"
+                        )}
+                        aria-hidden
+                      >
+                        {cfg.emoji}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-0.5 flex flex-wrap items-center gap-2">
+                          <span className={cn("text-sm font-bold", cfg.text)}>{cfg.label} shift</span>
+                          <span className={cn("rounded-full bg-white/10 px-2 py-0.5 text-xs", cfg.text)}>{p.shift_type}</span>
+                        </div>
+                        <p className="flex items-center gap-1 text-sm text-white/60">
+                          <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                          {formatTimeRange(p.start_time, p.end_time)}
+                        </p>
+                      </div>
+                    </div>
+                    {p.model_ids.length > 0 ? (
+                      <p className="mt-3 text-xs text-white/45">
+                        {p.model_ids.length} model{p.model_ids.length !== 1 ? "s" : ""} assigned
+                      </p>
+                    ) : null}
+                    {p.notes?.trim() ? <p className="mt-2 text-xs text-white/40">{p.notes}</p> : null}
+                  </div>
+                );
+              })}
+
+              {selectedTasks.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setDetailTask(t)}
+                  className={cn(
+                    "w-full rounded-2xl border p-4 text-left transition hover:opacity-95",
+                    t.status === "in_progress" ? "border-blue-500/20 bg-blue-500/5" : "border-white/10 bg-white/[0.02]"
+                  )}
+                >
+                  <div className="flex items-center gap-3">
+                    {t.status === "in_progress" ? (
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-blue-400" aria-hidden />
+                    ) : (
+                      <Circle className="h-5 w-5 shrink-0 text-white/30" aria-hidden />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-white">{t.title}</p>
+                      {t.description ? <p className="mt-0.5 truncate text-xs text-white/40">{t.description}</p> : null}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {t.is_recurring ? (
+                        <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-xs text-purple-400">
+                          🔄
+                        </span>
+                      ) : null}
+                      <span
+                        className={cn(
+                          "rounded-full border px-2 py-0.5 text-xs font-semibold",
+                          t.priority === "urgent" && "border-red-500/20 bg-red-500/10 text-red-400",
+                          t.priority === "high" && "border-amber-500/20 bg-amber-500/10 text-amber-400",
+                          t.priority !== "urgent" && t.priority !== "high" && "border-white/10 bg-white/5 text-white/40"
+                        )}
+                      >
+                        {t.priority}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="mt-5 rounded-3xl border border-white/10 bg-white/[0.02] px-5 py-8 text-center">
+            <Calendar className="mx-auto mb-2 h-8 w-8 text-white/20" aria-hidden />
+            <p className="text-sm text-white/35">Nothing scheduled for this day</p>
+          </div>
+        )
+      ) : null}
 
       {detailTask ? (
         <div
@@ -385,7 +637,9 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
             aria-modal
           >
             <h3 className="text-lg font-semibold text-white">{detailTask.title}</h3>
-            <p className="mt-1 text-xs uppercase text-white/40">{detailTask.status.replace(/_/g, " ")} · {detailTask.priority}</p>
+            <p className="mt-1 text-xs uppercase text-white/40">
+              {detailTask.status.replace(/_/g, " ")} · {detailTask.priority}
+            </p>
             {detailTask.description ? <p className="mt-3 text-sm text-white/55">{detailTask.description}</p> : null}
             {detailTask.due_date ? (
               <p className="mt-3 text-sm text-white/50">Due {formatDateTimeAthens(detailTask.due_date)}</p>
