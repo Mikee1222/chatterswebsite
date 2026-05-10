@@ -59,6 +59,25 @@ function normalizeShiftType(raw: unknown): WeeklyProgramShiftType {
   return found ?? "Morning";
 }
 
+/** Names from rollup / lookup / text fields (varies by Airtable base). */
+function parseModelNamesFromFields(f: Record<string, unknown>): string[] {
+  const keys = ["model_names", "Model names", "models_name", "Models name", "model_name_lookup"];
+  for (const k of keys) {
+    const v = f[k];
+    if (Array.isArray(v)) {
+      const names = v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((s) => s.trim());
+      if (names.length) return names;
+    }
+    if (typeof v === "string" && v.trim()) {
+      return v
+        .split(/\s*,\s*/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+    }
+  }
+  return [];
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): WeeklyProgramRecord {
   const f = rec.fields as unknown as Record<string, unknown>;
   const chatterLinked = f.chatter ?? f["Chatter"] ?? f["VA"];
@@ -69,6 +88,7 @@ function mapRecord(rec: AirtableRecord<Fields>): WeeklyProgramRecord {
     chatter_id: firstLinkedId(chatterLinked) ?? "",
     chatter_name: snapshotText(f.chatter_name ?? f["Chatter name"] ?? f["VA name"]),
     model_ids: linkedRecordIds(modelsRaw),
+    model_names: parseModelNamesFromFields(f),
     day: normalizeDay(f.day ?? f["Day"]),
     shift_type: normalizeShiftType(f.shift_type ?? f["Shift type"]),
     start_time: String(f.start_time ?? f["Start time"] ?? ""),

@@ -638,6 +638,8 @@ export interface WeeklyProgramRecord {
   chatter_name: string;
   /** Linked model IDs (modelss). Multiple models per shift. */
   model_ids: string[];
+  /** Lookup / rollup names from Airtable when the base exposes them. */
+  model_names?: string[];
   day: WeeklyProgramDay;
   shift_type: WeeklyProgramShiftType;
   start_time: string;

@@ -12,7 +12,7 @@ import {
   RotateCcw,
   CheckCircle2,
 } from "lucide-react";
-import { formatDateEuropean, formatDateTimeAthens, formatTimeFromISO, formatTimeRange } from "@/lib/format";
+import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
 import {
   WEEKLY_PROGRAM_DAY_OPTIONS,
@@ -33,7 +33,46 @@ export type VaScheduleClientProps = {
   tasks: VaTaskRecord[];
   activeShifts: Shift[];
   weekStart: string;
+  /** Resolve `model_ids` to display names when Airtable does not return `model_names`. */
+  modelIdToName?: Record<string, string>;
 };
+
+/** Weekly program times are stored as UTC instants; show UTC clock (no locale shift). */
+function formatShiftTime(isoString: string | null | undefined): string {
+  if (isoString == null || String(isoString).trim() === "") return "?";
+  const s = String(isoString).trim();
+  if (!s.includes("T")) {
+    const m = /^(\d{1,2}):(\d{2})/.exec(s);
+    if (m) return `${m[1].padStart(2, "0")}:${m[2]}`;
+    return s.slice(0, 5);
+  }
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return "?";
+  const h = d.getUTCHours().toString().padStart(2, "0");
+  const min = d.getUTCMinutes().toString().padStart(2, "0");
+  return `${h}:${min}`;
+}
+
+function formatShiftTimeRange(start: string | null | undefined, end: string | null | undefined): string {
+  const a = formatShiftTime(start);
+  const b = formatShiftTime(end);
+  if (a === "?" && b === "?") return "—";
+  if (b === "?") return a;
+  if (a === "?") return b;
+  return `${a}–${b}`;
+}
+
+function collectProgramModelNames(
+  p: WeeklyProgramRecord,
+  modelIdToName: Record<string, string> | undefined
+): string[] {
+  const fromRollup = (p.model_names ?? []).map((n) => n.trim()).filter(Boolean);
+  if (fromRollup.length) return fromRollup;
+  if (!modelIdToName) return [];
+  return (p.model_ids ?? [])
+    .map((id) => modelIdToName[id]?.trim())
+    .filter((n): n is string => Boolean(n));
+}
 
 function monthFirstYmd(mondayYmd: string): string {
   const [y, m] = mondayYmd.split("-").map(Number);
@@ -115,7 +154,13 @@ const SHIFT_TYPE_CONFIG = {
 
 const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
-export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart }: VaScheduleClientProps) {
+export function VaScheduleClient({
+  weeklyProgram,
+  tasks,
+  activeShifts,
+  weekStart,
+  modelIdToName,
+}: VaScheduleClientProps) {
   const router = useRouter();
   const [view, setView] = React.useState<"week" | "month">("week");
   const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
@@ -330,7 +375,7 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
         <div className="space-y-1 px-2 pb-2">
           {programs.slice(0, 2).map((p) => {
             const cfg = SHIFT_TYPE_CONFIG[p.shift_type] ?? SHIFT_TYPE_CONFIG.Custom;
-            const timeLabel = formatTimeRange(p.start_time, p.end_time);
+            const timeLabel = formatShiftTimeRange(p.start_time, p.end_time);
             return (
               <div
                 key={p.id}
@@ -472,7 +517,10 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
             <p className="text-sm font-semibold text-emerald-200">On shift now</p>
             <p className="mt-0.5 truncate text-xs text-emerald-100/70">
               {activeShifts
-                .map((s) => `${s.scheduled_shift || s.shift_type || "Shift"}${s.start_time ? ` (${formatTimeFromISO(s.start_time)})` : ""}`)
+                .map(
+                  (s) =>
+                    `${s.scheduled_shift || s.shift_type || "Shift"}${s.start_time ? ` (${formatShiftTime(s.start_time)})` : ""}`
+                )
                 .join(" · ")}
             </p>
           </div>
@@ -560,15 +608,36 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
                         </div>
                         <p className="flex items-center gap-1 text-sm text-white/60">
                           <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                          {formatTimeRange(p.start_time, p.end_time)}
+                          {formatShiftTime(p.start_time)} – {formatShiftTime(p.end_time)}
                         </p>
                       </div>
                     </div>
-                    {p.model_ids.length > 0 ? (
-                      <p className="mt-3 text-xs text-white/45">
-                        {p.model_ids.length} model{p.model_ids.length !== 1 ? "s" : ""} assigned
-                      </p>
-                    ) : null}
+                    {(() => {
+                      const names = collectProgramModelNames(p, modelIdToName);
+                      if (names.length === 0) return null;
+                      return (
+                        <div className="mt-3">
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-white/25">Models</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {names.map((mn) => (
+                              <span
+                                key={mn}
+                                className={cn(
+                                  "flex items-center gap-1.5 rounded-xl border bg-white/10 px-2.5 py-1.5 text-xs font-medium",
+                                  cfg.border,
+                                  cfg.text
+                                )}
+                              >
+                                <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-xs font-bold">
+                                  {(mn || "?").trim().slice(0, 1).toUpperCase()}
+                                </span>
+                                {mn}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {p.notes?.trim() ? <p className="mt-2 text-xs text-white/40">{p.notes}</p> : null}
                   </div>
                 );

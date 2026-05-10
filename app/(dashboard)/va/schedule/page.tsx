@@ -5,6 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getVaTasksForUser } from "@/services/va-tasks";
 import { getActiveShifts } from "@/services/shifts";
+import { listAllModelss } from "@/services/modelss";
 import { VaScheduleClient } from "@/components/va-schedule-client";
 import { normalizeWeekStart } from "@/lib/weekly-program";
 
@@ -44,11 +45,16 @@ export default async function VaSchedulePage({ searchParams }: { searchParams?: 
   const weekParam = sp?.week_start;
   const weekStart = normalizeWeekStart(typeof weekParam === "string" ? weekParam : undefined);
 
-  const [allWeeklyPrograms, tasks, activeAll] = await Promise.all([
+  const [allWeeklyPrograms, tasks, activeAll, modelss] = await Promise.all([
     getProgramsForWeekVa(weekStart).catch(() => []),
     getVaTasksForUser(userId).catch(() => []),
     getActiveShifts("virtual_assistant").catch(() => []),
+    listAllModelss().catch(() => []),
   ]);
+
+  const modelIdToName = Object.fromEntries(
+    modelss.map((m) => [m.id, (m.model_name || "").trim() || m.id])
+  );
 
   const weeklyProgram = allWeeklyPrograms.filter((p) =>
     matchesVaProgram(p, airtableId, plainId, session.fullName, session.email)
@@ -69,7 +75,13 @@ export default async function VaSchedulePage({ searchParams }: { searchParams?: 
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-      <VaScheduleClient weeklyProgram={weeklyProgram} tasks={tasks} activeShifts={activeShifts} weekStart={weekStart} />
+      <VaScheduleClient
+        weeklyProgram={weeklyProgram}
+        tasks={tasks}
+        activeShifts={activeShifts}
+        weekStart={weekStart}
+        modelIdToName={modelIdToName}
+      />
     </div>
   );
 }
