@@ -281,7 +281,6 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     user_role: new Set(["chatter", "va"]),
     type: new Set(["bonus", "fine"]),
   },
-  marketing_platforms: {},
   model_social_accounts: {
     account_type: new Set(["main", "secondary"]),
     region: new Set(["USA", "Greek", "Global"]),
