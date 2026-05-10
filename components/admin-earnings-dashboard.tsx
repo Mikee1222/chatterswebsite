@@ -449,7 +449,7 @@ export function AdminEarningsDashboard({
               <div className="h-48 w-full max-w-md animate-pulse rounded-xl bg-white/10" />
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={288}>
               <AreaChart data={trend}>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
                 <XAxis

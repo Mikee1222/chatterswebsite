@@ -443,7 +443,7 @@ export function AdminHomeClient(props: Props) {
             </div>
           </div>
           <div className="relative z-[1] mt-4 h-20 w-full">
-            <ResponsiveContainer width="100%" height="100%">
+            <ResponsiveContainer width="100%" height={80}>
               <LineChart data={sparklineWow.sparkline7} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
                 <Tooltip
                   contentStyle={{
