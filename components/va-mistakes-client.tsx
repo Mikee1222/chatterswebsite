@@ -165,6 +165,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
   const [screenshotPreviewUrl, setScreenshotPreviewUrl] = React.useState<string | null>(null);
   const [explanation, setExplanation] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [justPasted, setJustPasted] = React.useState(false);
   const fileRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
@@ -176,6 +177,28 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
     setScreenshotPreviewUrl(u);
     return () => URL.revokeObjectURL(u);
   }, [screenshot]);
+
+  React.useEffect(() => {
+    if (mainTab !== "submit") return;
+    let timeoutId: number | undefined;
+    function handleGlobalPaste(e: ClipboardEvent) {
+      const items = Array.from(e.clipboardData?.items ?? []);
+      const imageItem = items.find((item) => item.type.startsWith("image/"));
+      if (!imageItem) return;
+      const file = imageItem.getAsFile();
+      if (!file) return;
+      e.preventDefault();
+      setScreenshot(file);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+      setJustPasted(true);
+      timeoutId = window.setTimeout(() => setJustPasted(false), 1500);
+    }
+    document.addEventListener("paste", handleGlobalPaste);
+    return () => {
+      document.removeEventListener("paste", handleGlobalPaste);
+      if (timeoutId !== undefined) window.clearTimeout(timeoutId);
+    };
+  }, [mainTab]);
 
   const chatterItems = React.useMemo(
     () => chatters.map((c) => ({ id: c.id, label: c.name })),
@@ -208,14 +231,6 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
     setReasonId("");
     setScreenshot(null);
     setExplanation("");
-  }
-
-  function handlePaste(e: React.ClipboardEvent) {
-    const item = Array.from(e.clipboardData.items).find((i) => i.type.startsWith("image/"));
-    if (item) {
-      const file = item.getAsFile();
-      if (file) setScreenshot(file);
-    }
   }
 
   async function refreshList() {
@@ -352,19 +367,44 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
     [mistakes, subTab]
   );
 
+  const selectedReason = React.useMemo(
+    () => reasons.find((r) => r.reason_id === reasonId),
+    [reasons, reasonId]
+  );
+
+  const pendingCount = React.useMemo(() => mistakes.filter((m) => m.status === "pending").length, [mistakes]);
+
+  const isFormValid = Boolean(
+    subUsername.trim().replace(/^@+/, "") &&
+      chatterId &&
+      modelId &&
+      reasonId &&
+      explanation.trim() &&
+      screenshot &&
+      mistakeLocal
+  );
+
+  const labelClass = "text-xs font-bold uppercase tracking-widest text-white/40 mb-2 block";
+  const fieldClass =
+    "w-full bg-white/5 border border-white/10 rounded-2xl px-4 py-3.5 text-white placeholder:text-white/20 focus:outline-none focus:border-pink-500/60 focus:bg-white/8 transition-all text-sm";
+  const selectClass = `${fieldClass} appearance-none cursor-pointer bg-neutral-950/80`;
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Mistakes</h1>
-        <p className="mt-1 text-sm text-white/50">Submit chatter mistake reports for admin review.</p>
+      <div className="mb-2">
+        <p className="mb-1 text-xs font-semibold uppercase tracking-widest text-pink-400/60">Virtual assistant</p>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Mistake reports</h1>
+        <p className="mt-1 text-sm text-white/40">Document chatter mistakes for admin review.</p>
       </div>
 
-      <div className="flex gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-1">
+      <div className="mb-2 flex w-fit rounded-2xl border border-white/10 bg-white/5 p-1">
         <button
           type="button"
           onClick={() => setMainTab("submit")}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors ${
-            mainTab === "submit" ? "bg-pink-500/20 text-white" : "text-white/50 hover:text-white/80"
+          className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-all ${
+            mainTab === "submit"
+              ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/20"
+              : "text-white/50 hover:text-white"
           }`}
         >
           📝 Submit mistake
@@ -372,132 +412,195 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
         <button
           type="button"
           onClick={() => setMainTab("submitted")}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-colors ${
-            mainTab === "submitted" ? "bg-pink-500/20 text-white" : "text-white/50 hover:text-white/80"
+          className={`rounded-xl px-6 py-2.5 text-sm font-semibold transition-all ${
+            mainTab === "submitted"
+              ? "bg-gradient-to-r from-pink-500 to-rose-500 text-white shadow-lg shadow-pink-500/20"
+              : "text-white/50 hover:text-white"
           }`}
         >
           📋 Submitted
+          {pendingCount > 0 ? (
+            <span className="ml-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-xs text-white">{pendingCount}</span>
+          ) : null}
         </button>
       </div>
 
       {mainTab === "submit" ? (
-        <form onSubmit={onSubmit} className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+        <form
+          onSubmit={onSubmit}
+          className="max-w-2xl space-y-5 rounded-3xl border border-white/10 bg-white/[0.03] p-8 shadow-xl shadow-black/20 backdrop-blur-sm"
+        >
           <div>
-            <Label className="text-white/70">Sub username</Label>
-            <div className="mt-1 flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3">
-              <span className="text-white/40">@</span>
-              <FormInput
+            <label className={labelClass}>
+              Sub username <span className="text-pink-400">*</span>
+            </label>
+            <div className="relative">
+              <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 font-medium text-white/30">@</span>
+              <input
                 value={subUsername}
                 onChange={(e) => setSubUsername(e.target.value)}
                 required
                 placeholder="username"
-                className="!border-0 !bg-transparent !px-0"
+                className={`${fieldClass} pl-9 pr-4`}
               />
             </div>
           </div>
 
-          <div>
-            <Label className="text-white/70">Chatter</Label>
-            <div className="mt-1">
-              <SearchablePicker
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className={labelClass}>
+                Chatter <span className="text-pink-400">*</span>
+              </label>
+              <select
+                required
                 value={chatterId}
-                onChange={(id, label) => {
+                onChange={(e) => {
+                  const id = e.target.value;
                   setChatterId(id);
-                  setChatterName(label);
+                  const c = chatters.find((x) => x.id === id);
+                  setChatterName(c?.name ?? "");
                 }}
-                items={chatterItems}
-                placeholder="Search chatters…"
-                emptyLabel="Select chatter"
-              />
+                className={selectClass}
+              >
+                <option value="">Select chatter</option>
+                {chatters.map((c) => (
+                  <option key={c.id} value={c.id} className="bg-neutral-900">
+                    {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
-          </div>
-
-          <div>
-            <Label className="text-white/70">Model</Label>
-            <div className="mt-1">
-              <SearchablePicker
+            <div>
+              <label className={labelClass}>
+                Model <span className="text-pink-400">*</span>
+              </label>
+              <select
+                required
                 value={modelId}
-                onChange={(id, label) => {
+                onChange={(e) => {
+                  const id = e.target.value;
                   setModelId(id);
-                  setModelName(label);
+                  const m = models.find((x) => x.id === id);
+                  setModelName(m?.model_name ?? "");
                 }}
-                items={modelItems}
-                placeholder="Search models…"
-                emptyLabel="Select model"
-              />
+                className={selectClass}
+              >
+                <option value="">Select model</option>
+                {models.map((m) => (
+                  <option key={m.id} value={m.id} className="bg-neutral-900">
+                    {m.model_name}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
 
           <div>
-            <Label className="text-white/70">Date &amp; time (Athens)</Label>
-            <FormInput
+            <label className={labelClass}>
+              Date &amp; time <span className="text-pink-400">*</span>
+            </label>
+            <input
               type="datetime-local"
               value={mistakeLocal}
               onChange={(e) => setMistakeLocal(e.target.value)}
               required
-              className="mt-1"
+              className={`${fieldClass} [color-scheme:dark]`}
             />
           </div>
 
           <div>
-            <Label className="text-white/70">Reason</Label>
+            <label className={labelClass}>
+              Reason <span className="text-pink-400">*</span>
+            </label>
             <select
               required
               value={reasonId}
               onChange={(e) => setReasonId(e.target.value)}
-              className="mt-1 flex min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white focus:border-pink-500/50 focus:outline-none"
+              className={selectClass}
             >
-              <option value="" disabled className="bg-neutral-900">
-                Select reason
-              </option>
-              <optgroup label="🟡 Low" className="bg-neutral-900">
-                {reasons
-                  .filter((r) => r.category === "Low")
-                  .map((r) => (
-                    <option key={r.reason_id} value={r.reason_id} className="bg-neutral-900">
-                      {r.label} ({r.points_deduction} pts)
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="🟠 Medium" className="bg-neutral-900">
-                {reasons
-                  .filter((r) => r.category === "Medium")
-                  .map((r) => (
-                    <option key={r.reason_id} value={r.reason_id} className="bg-neutral-900">
-                      {r.label} ({r.points_deduction} pts)
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="🔴 High" className="bg-neutral-900">
-                {reasons
-                  .filter((r) => r.category === "High")
-                  .map((r) => (
-                    <option key={r.reason_id} value={r.reason_id} className="bg-neutral-900">
-                      {r.label} ({r.points_deduction} pts)
-                    </option>
-                  ))}
-              </optgroup>
+              <option value="">Select reason…</option>
+              {(["Low", "Medium", "High"] as const).map((cat) => (
+                <optgroup
+                  key={cat}
+                  label={`${cat === "High" ? "🔴" : cat === "Medium" ? "🟠" : "🟡"} ${cat} mistakes`}
+                  className="bg-neutral-900"
+                >
+                  {reasons
+                    .filter((r) => r.category === cat)
+                    .map((r) => (
+                      <option key={r.reason_id} value={r.reason_id} className="bg-neutral-900">
+                        {r.label}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
             </select>
+            {selectedReason ? (
+              <div className="mt-2 flex items-center gap-2">
+                <span
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                    selectedReason.category === "High"
+                      ? "border-red-500/25 bg-red-500/15 text-red-400"
+                      : selectedReason.category === "Medium"
+                        ? "border-amber-500/25 bg-amber-500/15 text-amber-400"
+                        : "border-yellow-500/25 bg-yellow-500/15 text-yellow-400"
+                  }`}
+                >
+                  {selectedReason.category} · -{selectedReason.points_deduction} pts
+                </span>
+              </div>
+            ) : null}
           </div>
 
           <div>
-            <Label className="text-white/70">Screenshot</Label>
+            <label className={labelClass}>
+              Screenshot <span className="text-pink-400">*</span>
+            </label>
             <div
               role="button"
               tabIndex={0}
-              onPaste={handlePaste}
               onClick={() => fileRef.current?.click()}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
               }}
-              className="mt-1 cursor-pointer rounded-2xl border-2 border-dashed border-white/20 p-8 text-center transition-all hover:border-pink-500/50"
+              className={`relative flex min-h-[140px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed transition-all ${
+                justPasted
+                  ? "border-green-500/60 bg-green-500/10"
+                  : screenshotPreviewUrl
+                    ? "border-pink-500/40 bg-pink-500/5"
+                    : "border-white/15 bg-white/[0.03] hover:border-pink-500/40 hover:bg-white/5"
+              }`}
             >
-              {screenshot && screenshotPreviewUrl ? (
-                <img src={screenshotPreviewUrl} alt="" className="mx-auto max-h-40 rounded-xl" />
+              {screenshotPreviewUrl ? (
+                <>
+                  <img src={screenshotPreviewUrl} alt="" className="max-h-48 rounded-xl object-contain" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setScreenshot(null);
+                    }}
+                    className="absolute right-2 top-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500/80 text-xs text-white hover:bg-red-500"
+                    aria-label="Remove screenshot"
+                  >
+                    ×
+                  </button>
+                  {justPasted ? (
+                    <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-green-500/20">
+                      <span className="text-lg font-bold text-green-400">✓ Pasted!</span>
+                    </div>
+                  ) : null}
+                </>
               ) : (
                 <>
-                  <p className="text-white/60">📋 Paste screenshot here (Ctrl+V)</p>
-                  <p className="mt-1 text-sm text-white/30">or click to upload</p>
+                  <div className="mb-3 text-4xl">📋</div>
+                  <p className="text-sm font-semibold text-white/60">
+                    {justPasted ? "✓ Pasted!" : "Paste screenshot (Ctrl+V)"}
+                  </p>
+                  <p className="mt-1 text-xs text-white/30">or click to upload</p>
+                  <p className="mt-3 px-4 text-center text-xs text-white/20">
+                    Paste works anywhere on this page while you are on Submit — press Ctrl+V (or ⌘V) with an image in the clipboard.
+                  </p>
                 </>
               )}
               <input
@@ -511,33 +614,35 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
           </div>
 
           <div>
-            <Label className="text-white/70">Explanation</Label>
-            <FormTextarea
+            <label className={labelClass}>
+              Explanation <span className="text-pink-400">*</span>
+            </label>
+            <textarea
               value={explanation}
               onChange={(e) => setExplanation(e.target.value)}
               required
               rows={4}
-              className="mt-1"
-              placeholder="What happened?"
+              placeholder="Describe exactly what happened…"
+              className={`${fieldClass} resize-none`}
             />
           </div>
 
           <button
             type="submit"
-            disabled={submitting}
-            className="w-full rounded-xl bg-gradient-to-r from-pink-500/80 to-fuchsia-600/80 py-3 text-sm font-semibold text-white shadow-lg transition-opacity disabled:opacity-50"
+            disabled={submitting || !isFormValid}
+            className="w-full rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 py-4 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition-all hover:shadow-pink-500/40 enabled:hover:scale-[1.01] active:enabled:scale-[0.99] disabled:scale-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {submitting ? "Submitting…" : "Submit mistake"}
+            {submitting ? "Submitting…" : "🚀 Submit mistake report"}
           </button>
         </form>
       ) : (
-        <div className="space-y-4">
-          <div className="flex gap-2">
+        <div className="space-y-5">
+          <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => setSubTab("all")}
-              className={`rounded-xl px-4 py-2 text-xs font-semibold uppercase tracking-wide ${
-                subTab === "all" ? "bg-white/10 text-white" : "text-white/45 hover:text-white/70"
+              className={`rounded-xl px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                subTab === "all" ? "bg-white/10 text-white ring-1 ring-pink-500/30" : "text-white/45 hover:text-white/70"
               }`}
             >
               All submitted
@@ -545,8 +650,8 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
             <button
               type="button"
               onClick={() => setSubTab("rejected")}
-              className={`rounded-xl px-4 py-2 text-xs font-semibold uppercase tracking-wide ${
-                subTab === "rejected" ? "bg-red-500/20 text-red-300" : "text-white/45 hover:text-white/70"
+              className={`rounded-xl px-4 py-2.5 text-xs font-semibold uppercase tracking-wide transition-colors ${
+                subTab === "rejected" ? "bg-red-500/25 text-red-200 ring-1 ring-red-500/30" : "text-white/45 hover:text-white/70"
               }`}
             >
               ❌ Rejected (needs attention)
@@ -564,37 +669,49 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
                 return (
                   <div
                     key={m.id}
-                    className={`rounded-2xl p-4 ${
+                    className={`relative overflow-hidden rounded-2xl border p-5 backdrop-blur-sm transition-transform hover:scale-[1.005] ${
                       rejected
                         ? "border-2 border-red-500/35 bg-red-500/[0.06]"
                         : "border border-white/10 bg-white/[0.04]"
                     }`}
                   >
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
-                        {m.reason_category}
-                      </span>
-                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(m.status)}`}>
-                        {m.status}
-                      </span>
+                    <div
+                      className={`absolute bottom-0 left-0 top-0 w-1 rounded-l-2xl ${
+                        m.reason_category === "High"
+                          ? "bg-red-500"
+                          : m.reason_category === "Medium"
+                            ? "bg-amber-500"
+                            : "bg-yellow-500"
+                      }`}
+                    />
+                    <div className="pl-3">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
+                          {m.reason_category === "High" ? "🔴 " : m.reason_category === "Medium" ? "🟠 " : "🟡 "}
+                          {m.reason_category}
+                        </span>
+                        <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(m.status)}`}>
+                          {m.status}
+                        </span>
+                      </div>
+                      <p className="mt-2 font-semibold text-white">{m.reason_label}</p>
+                      <p className="mt-1 text-xs text-white/45">
+                        {m.chatter_name} · {m.model_name} · @{m.sub_username}
+                      </p>
+                      <p className="mt-1 text-xs text-white/35">{formatDateTimeAthens(m.mistake_date)}</p>
+                      {rejected && m.admin_notes ? (
+                        <p className="mt-2 border-t border-red-500/20 pt-2 text-sm italic text-red-200/80">Admin: {m.admin_notes}</p>
+                      ) : null}
+                      {canEditMistake(m) ? (
+                        <button
+                          type="button"
+                          onClick={() => openEdit(m)}
+                          className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10"
+                        >
+                          <Pencil className="h-3.5 w-3.5" /> Edit
+                        </button>
+                      ) : null}
                     </div>
-                    <p className="mt-2 font-semibold text-white">{m.reason_label}</p>
-                    <p className="mt-1 text-xs text-white/45">
-                      {m.chatter_name} · {m.model_name} · @{m.sub_username}
-                    </p>
-                    <p className="mt-1 text-xs text-white/35">{formatDateTimeAthens(m.mistake_date)}</p>
-                    {rejected && m.admin_notes ? (
-                      <p className="mt-2 border-t border-red-500/20 pt-2 text-sm italic text-red-200/80">Admin: {m.admin_notes}</p>
-                    ) : null}
-                    {canEditMistake(m) ? (
-                      <button
-                        type="button"
-                        onClick={() => openEdit(m)}
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-white/15 px-3 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10"
-                      >
-                        <Pencil className="h-3.5 w-3.5" /> Edit
-                      </button>
-                    ) : null}
                   </div>
                 );
               })
