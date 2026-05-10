@@ -15,6 +15,7 @@ import type { VaTaskRecord, VaTaskPriority, VaTaskStatus } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { SocialAccount } from "@/services/marketing";
 import { cn } from "@/lib/utils";
+import { groupRecurringTasks } from "@/lib/recurring-utils";
 
 type Props = { tasks: VaTaskRecord[] };
 
@@ -177,6 +178,13 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     });
   }, [tasks, search, filterStatus, filterPriority]);
 
+  const { regularTasks, recurringGroups } = React.useMemo(
+    () => groupRecurringTasks(filteredTasks),
+    [filteredTasks],
+  );
+
+  const [expandedVaRecurringHistory, setExpandedVaRecurringHistory] = React.useState(() => new Set<string>());
+
   const openTask = (t: VaTaskRecord) => {
     setSelected(t);
     setNotes(t.completed_notes ?? "");
@@ -317,6 +325,386 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     }
   }
 
+  function renderVaTaskCard(task: VaTaskRecord) {
+    return (
+                <div
+                  className={cn(
+                    "relative rounded-2xl border p-5 transition-all",
+                    task.status === "done"
+                      ? "border-emerald-500/15 opacity-60"
+                      : task.priority === "urgent"
+                        ? "border-red-500/25 bg-red-500/[0.02]"
+                        : task.priority === "high"
+                          ? "border-amber-500/20"
+                          : "border-white/8 hover:border-white/15",
+                  )}
+                >
+                  <div className="flex items-start justify-between gap-4">
+                    <button
+                      type="button"
+                      className="min-w-0 flex-1 cursor-pointer rounded-xl text-left outline-none ring-purple-500/40 focus-visible:ring-2"
+                      onClick={async () => {
+                        if (expandedTaskId === task.id) {
+                          setExpandedTaskId(null);
+                          return;
+                        }
+                        setExpandedTaskId(task.id);
+                        await loadPhasesAndAccounts(task);
+                      }}
+                    >
+                      <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <StatusBadge status={task.status} />
+                        <PriorityBadge priority={task.priority} />
+                        {task.is_recurring ? (
+                          <span className="inline-flex items-center rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
+                            🔄{" "}
+                            {task.recurrence_interval != null && task.recurrence_interval > 1
+                              ? `Every ${task.recurrence_interval} ${
+                                  task.recurrence_type === "daily"
+                                    ? "days"
+                                    : task.recurrence_type === "weekly"
+                                      ? "weeks"
+                                      : task.recurrence_type === "monthly"
+                                        ? "months"
+                                        : "times"
+                                }`
+                              : task.recurrence_type || "recurring"}
+                          </span>
+                        ) : null}
+                        <span className="text-xs text-white/25">
+                          {expandedTaskId === task.id ? "▼" : "▶"} Phases
+                        </span>
+                      </div>
+                      <h3
+                        className={cn(
+                          "font-semibold",
+                          task.status === "done" ? "text-white/40 line-through" : "text-white",
+                        )}
+                      >
+                        {task.title}
+                      </h3>
+                      {task.description ? <p className="mt-1 text-sm text-white/40">{task.description}</p> : null}
+                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-white/30">
+                        {task.due_date ? (
+                          <span className={isPastDue(task.due_date) && task.status !== "done" ? "text-red-400" : ""}>
+                            {formatDateTimeAthens(task.due_date)}
+                            {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
+                          </span>
+                        ) : (
+                          <span>No due date</span>
+                        )}
+                      </div>
+                    </button>
+                    <div className="flex shrink-0 flex-col items-end gap-2">
+                      {task.status !== "done" && task.status !== "skipped" ? (
+                        <button
+                          type="button"
+                          onClick={(e) => void handleMarkComplete(task, e)}
+                          disabled={completing === task.id}
+                          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-40"
+                        >
+                          <Check className="h-4 w-4" aria-hidden />
+                          {completing === task.id ? "Saving…" : "Done"}
+                        </button>
+                      ) : (
+                        <div className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
+                          <Check className="h-3.5 w-3.5" aria-hidden />
+                          Completed
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openTask(task);
+                        }}
+                        className="text-xs font-medium text-purple-300/90 underline-offset-2 hover:text-purple-200 hover:underline"
+                      >
+                        Details &amp; notes
+                      </button>
+                    </div>
+                  </div>
+
+                  {expandedTaskId === task.id ? (
+                    <div className="mt-5 border-t border-white/10 pt-5">
+                      {(taskPhases[task.id] ?? []).length === 0 ? (
+                        <p className="rounded-2xl border border-white/8 bg-white/[0.02] py-10 text-center text-sm text-white/25">
+                          No phases for this task
+                        </p>
+                      ) : null}
+
+                      {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
+                        const accs = phase.assigned_model_id
+                          ? (modelAccounts[phase.assigned_model_id] ?? [])
+                          : [];
+                        const items = phase.items ?? [];
+                        const doneCount = items.filter((i) => i.status === "completed").length;
+                        const total = items.length;
+                        const progress = total > 0 ? (doneCount / Math.max(total, 1)) * 100 : 0;
+                        const schedStart = (phase.start_time ?? phase.scheduled_time)?.trim();
+                        const schedMs = schedStart ? new Date(schedStart).getTime() : NaN;
+                        const schedLate =
+                          Number.isFinite(schedMs) && schedMs < Date.now() && phase.status !== "completed";
+                        const schedEnd = phase.end_time?.trim();
+
+                        return (
+                          <div key={phase.id} className="mb-6 last:mb-0">
+                            {accs.length > 0 ? (
+                              <div className="mb-5">
+                                <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/25">
+                                  <span aria-hidden>📱</span>
+                                  {phase.assigned_model_name?.trim() || "Creator"} — Quick links
+                                </p>
+                                <div className="flex flex-wrap gap-2">
+                                  {accs.map((acc) => {
+                                    const plat = acc.platform?.trim() || "";
+                                    const color = SOCIAL_COLORS[plat] ?? "#888888";
+                                    const href = acc.account_link?.trim() || "#";
+                                    const st = acc.account_status ?? "active";
+                                    return (
+                                      <div key={acc.id} className="group/acc relative pb-6">
+                                        <a
+                                          href={href}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="flex select-none cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
+                                          style={{
+                                            backgroundColor: `${color}12`,
+                                            borderColor: `${color}35`,
+                                          }}
+                                          onClick={(e) => {
+                                            if (!acc.account_link?.trim()) e.preventDefault();
+                                          }}
+                                        >
+                                          <span className="text-2xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
+                                          <div className="min-w-0">
+                                            <p className="text-xs font-bold text-white">@{acc.username}</p>
+                                            <p className="text-[10px]" style={{ color: `${color}aa` }}>
+                                              {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
+                                              {" · "}
+                                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"}
+                                            </p>
+                                          </div>
+                                          <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
+                                        </a>
+                                        {st !== "active" ? (
+                                          <div
+                                            className={cn(
+                                              "absolute -right-1 -top-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-md",
+                                              st === "shadowbanned" ? "bg-amber-500" : "bg-red-500",
+                                            )}
+                                          >
+                                            {st === "shadowbanned" ? "⚠️" : "🚫"}
+                                          </div>
+                                        ) : null}
+                                        {st === "active" ? (
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.preventDefault();
+                                              e.stopPropagation();
+                                              setShadowbanReportTarget(acc);
+                                              setShadowbanFile(null);
+                                              setShadowbanNotes("");
+                                            }}
+                                            className="absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 opacity-0 transition-all hover:bg-amber-500/30 group-hover/acc:opacity-100"
+                                          >
+                                            ⚠️ Report
+                                          </button>
+                                        ) : null}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div
+                              className={cn(
+                                "overflow-hidden rounded-2xl border",
+                                phase.status === "completed"
+                                  ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.04] to-transparent"
+                                  : phase.status === "overdue"
+                                    ? "border-red-500/20 bg-gradient-to-br from-red-500/[0.04] to-transparent"
+                                    : phase.status === "in_progress"
+                                      ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.04] to-transparent"
+                                      : "border-white/10 bg-white/[0.02]",
+                              )}
+                            >
+                              <div className="flex items-center gap-3 px-5 py-4">
+                                <div
+                                  className={cn(
+                                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
+                                    phase.status === "completed"
+                                      ? "bg-green-500 text-white shadow-md shadow-green-500/25"
+                                      : phase.status === "overdue"
+                                        ? "bg-red-500 text-white shadow-md shadow-red-500/25"
+                                        : phase.status === "in_progress"
+                                          ? "bg-blue-500 text-white"
+                                          : "bg-white/10 text-white/50",
+                                  )}
+                                >
+                                  {phaseIndex + 1}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="font-semibold text-white">
+                                    {phase.title || `Phase ${phaseIndex + 1}`}
+                                  </p>
+                                  <div className="mt-0.5 flex flex-wrap items-center gap-3">
+                                    {schedStart || schedEnd ? (
+                                      <div
+                                        className={cn(
+                                          "flex flex-wrap items-center gap-2 text-xs",
+                                          schedLate ? "text-red-400" : "text-white/30",
+                                        )}
+                                      >
+                                        <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                                        {schedStart ? (
+                                          <span className="flex items-center gap-1">
+                                            ▶{" "}
+                                            {new Date(schedStart).toLocaleString("el-GR", {
+                                              timeZone: "Europe/Athens",
+                                              day: "numeric",
+                                              month: "short",
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        ) : null}
+                                        {schedStart && schedEnd ? <span className="text-white/20">→</span> : null}
+                                        {schedEnd ? (
+                                          <span className="flex items-center gap-1">
+                                            ⏹{" "}
+                                            {new Date(schedEnd).toLocaleString("el-GR", {
+                                              timeZone: "Europe/Athens",
+                                              day: "numeric",
+                                              month: "short",
+                                              hour: "2-digit",
+                                              minute: "2-digit",
+                                            })}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    ) : null}
+                                    {phase.region ? (
+                                      <span className="text-xs text-white/25">
+                                        {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : "🌍"}{" "}
+                                        {phase.region}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </div>
+                                {total > 0 ? (
+                                  <div className="shrink-0 text-right">
+                                    <p
+                                      className={cn(
+                                        "text-sm font-bold tabular-nums",
+                                        phase.status === "completed"
+                                          ? "text-green-400"
+                                          : phase.status === "overdue"
+                                            ? "text-red-400"
+                                            : "text-white/60",
+                                      )}
+                                    >
+                                      {doneCount}/{total}
+                                    </p>
+                                    <div className="mt-1 h-2 w-20 rounded-full bg-white/10">
+                                      <div
+                                        className={cn(
+                                          "h-2 rounded-full transition-all",
+                                          phase.status === "completed"
+                                            ? "bg-green-500"
+                                            : phase.status === "overdue"
+                                              ? "bg-red-500"
+                                              : "bg-gradient-to-r from-pink-500 to-rose-500",
+                                        )}
+                                        style={{ width: `${progress}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              <div className="space-y-2 px-5 pb-5">
+                                {items.map((item) => (
+                                  <div
+                                    key={item.id}
+                                    className={cn(
+                                      "flex items-center gap-3 rounded-xl border p-3.5 transition-all",
+                                      item.status === "completed"
+                                        ? "border-green-500/15 bg-green-500/[0.04]"
+                                        : "border-white/8 bg-white/[0.02] hover:bg-white/[0.04]",
+                                    )}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (item.status === "completed" || phase.status === "overdue") return;
+                                        setCompletingItem({ item, taskId: task.id });
+                                        setProofFile(null);
+                                      }}
+                                      disabled={item.status === "completed" || phase.status === "overdue"}
+                                      className={cn(
+                                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border-2 transition-all",
+                                        item.status === "completed"
+                                          ? "cursor-default border-green-500 bg-green-500"
+                                          : "cursor-pointer border-white/20 hover:border-pink-500/60 hover:bg-pink-500/10 active:scale-95",
+                                      )}
+                                    >
+                                      {item.status === "completed" ? (
+                                        <Check className="h-4 w-4 text-white" aria-hidden />
+                                      ) : (
+                                        <div className="h-2 w-2 rounded-full bg-white/20" aria-hidden />
+                                      )}
+                                    </button>
+                                    <div className="min-w-0 flex-1">
+                                      <p
+                                        className={cn(
+                                          "text-sm font-medium",
+                                          item.status === "completed" ? "text-white/30 line-through" : "text-white",
+                                        )}
+                                      >
+                                        {item.title || "—"}
+                                      </p>
+                                      {item.requires_screenshot && item.status !== "completed" ? (
+                                        <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/60">
+                                          <span aria-hidden>📸</span>
+                                          Screenshot required
+                                        </p>
+                                      ) : null}
+                                      {item.screenshot?.[0]?.url ? (
+                                        <a
+                                          href={item.screenshot[0].url}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          className="mt-0.5 flex items-center gap-1 text-xs text-blue-400/70 hover:text-blue-400"
+                                        >
+                                          🖼 View proof
+                                        </a>
+                                      ) : null}
+                                      {item.status === "completed" && item.completed_by_va_name ? (
+                                        <p className="mt-0.5 text-xs text-white/20">✓ {item.completed_by_va_name}</p>
+                                      ) : null}
+                                    </div>
+                                    {item.status === "completed" ? (
+                                      <Check className="h-4 w-4 shrink-0 text-green-400" aria-hidden />
+                                    ) : null}
+                                  </div>
+                                ))}
+                                {items.length === 0 ? (
+                                  <p className="py-4 text-center text-xs text-white/20">No items in this phase</p>
+                                ) : null}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -363,390 +751,112 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
         </div>
       ) : null}
 
-      {filteredTasks.length === 0 ? (
+      {regularTasks.length === 0 && recurringGroups.length === 0 ? (
         <p className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-10 text-center text-sm text-white/50">
           No tasks match your filters.
         </p>
       ) : (
         <div className="space-y-3">
-          {filteredTasks.map((task) => (
-            <div
-              key={task.id}
-              className={cn(
-                "relative rounded-2xl border p-5 transition-all",
-                task.status === "done"
-                  ? "border-emerald-500/15 opacity-60"
-                  : task.priority === "urgent"
-                    ? "border-red-500/25 bg-red-500/[0.02]"
-                    : task.priority === "high"
-                      ? "border-amber-500/20"
-                      : "border-white/8 hover:border-white/15",
-              )}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <button
-                  type="button"
-                  className="min-w-0 flex-1 cursor-pointer rounded-xl text-left outline-none ring-purple-500/40 focus-visible:ring-2"
-                  onClick={async () => {
-                    if (expandedTaskId === task.id) {
-                      setExpandedTaskId(null);
-                      return;
-                    }
-                    setExpandedTaskId(task.id);
-                    await loadPhasesAndAccounts(task);
-                  }}
-                >
-                  <div className="mb-2 flex flex-wrap items-center gap-2">
-                    <StatusBadge status={task.status} />
-                    <PriorityBadge priority={task.priority} />
-                    {task.is_recurring ? (
-                      <span className="inline-flex items-center rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
-                        🔄{" "}
-                        {task.recurrence_interval != null && task.recurrence_interval > 1
-                          ? `Every ${task.recurrence_interval} ${
-                              task.recurrence_type === "daily"
-                                ? "days"
-                                : task.recurrence_type === "weekly"
-                                  ? "weeks"
-                                  : task.recurrence_type === "monthly"
-                                    ? "months"
-                                    : "times"
-                            }`
-                          : task.recurrence_type || "recurring"}
-                      </span>
-                    ) : null}
-                    <span className="text-xs text-white/25">
-                      {expandedTaskId === task.id ? "▼" : "▶"} Phases
+          {regularTasks.map((task) => (
+            <React.Fragment key={task.id}>{renderVaTaskCard(task)}</React.Fragment>
+          ))}
+          {recurringGroups.map((group) => (
+            <div key={group.title} className="mb-4">
+              {group.currentTask ? (
+                <React.Fragment key={group.currentTask.id}>{renderVaTaskCard(group.currentTask)}</React.Fragment>
+              ) : (
+                <div className="rounded-2xl border border-purple-500/15 bg-white/[0.02] px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xl" aria-hidden>
+                      🔄
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-semibold text-white/50">{group.title}</p>
+                      <p className="text-xs text-white/25">Next occurrence pending...</p>
+                    </div>
+                    <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-xs text-purple-400">
+                      {group.totalCompleted} done
                     </span>
                   </div>
-                  <h3
-                    className={cn(
-                      "font-semibold",
-                      task.status === "done" ? "text-white/40 line-through" : "text-white",
-                    )}
-                  >
-                    {task.title}
-                  </h3>
-                  {task.description ? <p className="mt-1 text-sm text-white/40">{task.description}</p> : null}
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-white/30">
-                    {task.due_date ? (
-                      <span className={isPastDue(task.due_date) && task.status !== "done" ? "text-red-400" : ""}>
-                        {formatDateTimeAthens(task.due_date)}
-                        {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
-                      </span>
-                    ) : (
-                      <span>No due date</span>
-                    )}
-                  </div>
-                </button>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {task.status !== "done" && task.status !== "skipped" ? (
-                    <button
-                      type="button"
-                      onClick={(e) => void handleMarkComplete(task, e)}
-                      disabled={completing === task.id}
-                      className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-40"
-                    >
-                      <Check className="h-4 w-4" aria-hidden />
-                      {completing === task.id ? "Saving…" : "Done"}
-                    </button>
-                  ) : (
-                    <div className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
-                      <Check className="h-3.5 w-3.5" aria-hidden />
-                      Completed
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openTask(task);
-                    }}
-                    className="text-xs font-medium text-purple-300/90 underline-offset-2 hover:text-purple-200 hover:underline"
-                  >
-                    Details &amp; notes
-                  </button>
                 </div>
-              </div>
-
-              {expandedTaskId === task.id ? (
-                <div className="mt-5 border-t border-white/10 pt-5">
-                  {(taskPhases[task.id] ?? []).length === 0 ? (
-                    <p className="rounded-2xl border border-white/8 bg-white/[0.02] py-10 text-center text-sm text-white/25">
-                      No phases for this task
-                    </p>
-                  ) : null}
-
-                  {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
-                    const accs = phase.assigned_model_id
-                      ? (modelAccounts[phase.assigned_model_id] ?? [])
-                      : [];
-                    const items = phase.items ?? [];
-                    const doneCount = items.filter((i) => i.status === "completed").length;
-                    const total = items.length;
-                    const progress = total > 0 ? (doneCount / Math.max(total, 1)) * 100 : 0;
-                    const schedStart = (phase.start_time ?? phase.scheduled_time)?.trim();
-                    const schedMs = schedStart ? new Date(schedStart).getTime() : NaN;
-                    const schedLate =
-                      Number.isFinite(schedMs) && schedMs < Date.now() && phase.status !== "completed";
-                    const schedEnd = phase.end_time?.trim();
-
-                    return (
-                      <div key={phase.id} className="mb-6 last:mb-0">
-                        {accs.length > 0 ? (
-                          <div className="mb-5">
-                            <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/25">
-                              <span aria-hidden>📱</span>
-                              {phase.assigned_model_name?.trim() || "Creator"} — Quick links
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {accs.map((acc) => {
-                                const plat = acc.platform?.trim() || "";
-                                const color = SOCIAL_COLORS[plat] ?? "#888888";
-                                const href = acc.account_link?.trim() || "#";
-                                const st = acc.account_status ?? "active";
-                                return (
-                                  <div key={acc.id} className="group/acc relative pb-6">
-                                    <a
-                                      href={href}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="flex select-none cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                                      style={{
-                                        backgroundColor: `${color}12`,
-                                        borderColor: `${color}35`,
-                                      }}
-                                      onClick={(e) => {
-                                        if (!acc.account_link?.trim()) e.preventDefault();
-                                      }}
-                                    >
-                                      <span className="text-2xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
-                                      <div className="min-w-0">
-                                        <p className="text-xs font-bold text-white">@{acc.username}</p>
-                                        <p className="text-[10px]" style={{ color: `${color}aa` }}>
-                                          {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
-                                          {" · "}
-                                          {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"}
-                                        </p>
-                                      </div>
-                                      <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
-                                    </a>
-                                    {st !== "active" ? (
-                                      <div
-                                        className={cn(
-                                          "absolute -right-1 -top-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-md",
-                                          st === "shadowbanned" ? "bg-amber-500" : "bg-red-500",
-                                        )}
-                                      >
-                                        {st === "shadowbanned" ? "⚠️" : "🚫"}
-                                      </div>
-                                    ) : null}
-                                    {st === "active" ? (
-                                      <button
-                                        type="button"
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          e.stopPropagation();
-                                          setShadowbanReportTarget(acc);
-                                          setShadowbanFile(null);
-                                          setShadowbanNotes("");
-                                        }}
-                                        className="absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 opacity-0 transition-all hover:bg-amber-500/30 group-hover/acc:opacity-100"
-                                      >
-                                        ⚠️ Report
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </div>
-                        ) : null}
-
-                        <div
-                          className={cn(
-                            "overflow-hidden rounded-2xl border",
-                            phase.status === "completed"
-                              ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.04] to-transparent"
-                              : phase.status === "overdue"
-                                ? "border-red-500/20 bg-gradient-to-br from-red-500/[0.04] to-transparent"
-                                : phase.status === "in_progress"
-                                  ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.04] to-transparent"
-                                  : "border-white/10 bg-white/[0.02]",
-                          )}
-                        >
-                          <div className="flex items-center gap-3 px-5 py-4">
-                            <div
-                              className={cn(
-                                "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
-                                phase.status === "completed"
-                                  ? "bg-green-500 text-white shadow-md shadow-green-500/25"
-                                  : phase.status === "overdue"
-                                    ? "bg-red-500 text-white shadow-md shadow-red-500/25"
-                                    : phase.status === "in_progress"
-                                      ? "bg-blue-500 text-white"
-                                      : "bg-white/10 text-white/50",
-                              )}
-                            >
-                              {phaseIndex + 1}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <p className="font-semibold text-white">
-                                {phase.title || `Phase ${phaseIndex + 1}`}
-                              </p>
-                              <div className="mt-0.5 flex flex-wrap items-center gap-3">
-                                {schedStart || schedEnd ? (
-                                  <div
-                                    className={cn(
-                                      "flex flex-wrap items-center gap-2 text-xs",
-                                      schedLate ? "text-red-400" : "text-white/30",
-                                    )}
-                                  >
-                                    <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                                    {schedStart ? (
-                                      <span className="flex items-center gap-1">
-                                        ▶{" "}
-                                        {new Date(schedStart).toLocaleString("el-GR", {
-                                          timeZone: "Europe/Athens",
-                                          day: "numeric",
-                                          month: "short",
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
-                                      </span>
-                                    ) : null}
-                                    {schedStart && schedEnd ? <span className="text-white/20">→</span> : null}
-                                    {schedEnd ? (
-                                      <span className="flex items-center gap-1">
-                                        ⏹{" "}
-                                        {new Date(schedEnd).toLocaleString("el-GR", {
-                                          timeZone: "Europe/Athens",
-                                          day: "numeric",
-                                          month: "short",
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                                {phase.region ? (
-                                  <span className="text-xs text-white/25">
-                                    {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : "🌍"}{" "}
-                                    {phase.region}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-                            {total > 0 ? (
-                              <div className="shrink-0 text-right">
-                                <p
-                                  className={cn(
-                                    "text-sm font-bold tabular-nums",
-                                    phase.status === "completed"
-                                      ? "text-green-400"
-                                      : phase.status === "overdue"
-                                        ? "text-red-400"
-                                        : "text-white/60",
-                                  )}
-                                >
-                                  {doneCount}/{total}
-                                </p>
-                                <div className="mt-1 h-2 w-20 rounded-full bg-white/10">
-                                  <div
-                                    className={cn(
-                                      "h-2 rounded-full transition-all",
-                                      phase.status === "completed"
-                                        ? "bg-green-500"
-                                        : phase.status === "overdue"
-                                          ? "bg-red-500"
-                                          : "bg-gradient-to-r from-pink-500 to-rose-500",
-                                    )}
-                                    style={{ width: `${progress}%` }}
-                                  />
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-
-                          <div className="space-y-2 px-5 pb-5">
-                            {items.map((item) => (
-                              <div
-                                key={item.id}
-                                className={cn(
-                                  "flex items-center gap-3 rounded-xl border p-3.5 transition-all",
-                                  item.status === "completed"
-                                    ? "border-green-500/15 bg-green-500/[0.04]"
-                                    : "border-white/8 bg-white/[0.02] hover:bg-white/[0.04]",
-                                )}
-                              >
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    if (item.status === "completed" || phase.status === "overdue") return;
-                                    setCompletingItem({ item, taskId: task.id });
-                                    setProofFile(null);
-                                  }}
-                                  disabled={item.status === "completed" || phase.status === "overdue"}
-                                  className={cn(
-                                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border-2 transition-all",
-                                    item.status === "completed"
-                                      ? "cursor-default border-green-500 bg-green-500"
-                                      : "cursor-pointer border-white/20 hover:border-pink-500/60 hover:bg-pink-500/10 active:scale-95",
-                                  )}
-                                >
-                                  {item.status === "completed" ? (
-                                    <Check className="h-4 w-4 text-white" aria-hidden />
-                                  ) : (
-                                    <div className="h-2 w-2 rounded-full bg-white/20" aria-hidden />
-                                  )}
-                                </button>
-                                <div className="min-w-0 flex-1">
-                                  <p
-                                    className={cn(
-                                      "text-sm font-medium",
-                                      item.status === "completed" ? "text-white/30 line-through" : "text-white",
-                                    )}
-                                  >
-                                    {item.title || "—"}
-                                  </p>
-                                  {item.requires_screenshot && item.status !== "completed" ? (
-                                    <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/60">
-                                      <span aria-hidden>📸</span>
-                                      Screenshot required
-                                    </p>
-                                  ) : null}
-                                  {item.screenshot?.[0]?.url ? (
-                                    <a
-                                      href={item.screenshot[0].url}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="mt-0.5 flex items-center gap-1 text-xs text-blue-400/70 hover:text-blue-400"
-                                    >
-                                      🖼 View proof
-                                    </a>
-                                  ) : null}
-                                  {item.status === "completed" && item.completed_by_va_name ? (
-                                    <p className="mt-0.5 text-xs text-white/20">✓ {item.completed_by_va_name}</p>
-                                  ) : null}
-                                </div>
-                                {item.status === "completed" ? (
-                                  <Check className="h-4 w-4 shrink-0 text-green-400" aria-hidden />
-                                ) : null}
-                              </div>
-                            ))}
-                            {items.length === 0 ? (
-                              <p className="py-4 text-center text-xs text-white/20">No items in this phase</p>
-                            ) : null}
-                          </div>
-                        </div>
+              )}
+              {group.history.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setExpandedVaRecurringHistory((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(group.title)) next.delete(group.title);
+                      else next.add(group.title);
+                      return next;
+                    });
+                  }}
+                  className="ml-2 mt-2 flex items-center gap-2 text-xs text-white/25 transition-colors hover:text-white/50"
+                >
+                  <span
+                    className={cn(
+                      "inline-block transition-transform",
+                      expandedVaRecurringHistory.has(group.title) ? "rotate-90" : "",
+                    )}
+                  >
+                    ▶
+                  </span>
+                  <span>
+                    {expandedVaRecurringHistory.has(group.title) ? "Hide" : "Show"} history (
+                    {group.totalCompleted} completed)
+                  </span>
+                </button>
+              ) : null}
+              {expandedVaRecurringHistory.has(group.title) ? (
+                <div className="ml-3 mt-2 space-y-2 border-l-2 border-purple-500/20 pl-4">
+                  {group.history.map((histTask, idx) => (
+                    <div
+                      key={histTask.id}
+                      className={cn(
+                        "flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.01] px-4 py-3 transition-all",
+                        idx === 0 ? "opacity-60" : "opacity-40",
+                      )}
+                    >
+                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-green-500/15">
+                        <Check className="h-4 w-4 text-green-400" />
                       </div>
-                    );
-                  })}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm text-white/40 line-through">{histTask.title}</p>
+                        {histTask.completed_notes ? (
+                          <p className="mt-0.5 truncate text-xs italic text-white/20">
+                            &ldquo;{histTask.completed_notes}&rdquo;
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="text-xs text-green-400/40">
+                          ✓{" "}
+                          {histTask.completed_at
+                            ? new Date(histTask.completed_at).toLocaleDateString("el-GR", {
+                                timeZone: "Europe/Athens",
+                                day: "numeric",
+                                month: "short",
+                              })
+                            : "—"}
+                        </p>
+                        {histTask.due_date ? (
+                          <p className="text-xs text-white/20">
+                            Due{" "}
+                            {new Date(histTask.due_date).toLocaleDateString("el-GR", {
+                              timeZone: "Europe/Athens",
+                              day: "numeric",
+                              month: "short",
+                            })}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ) : null}
             </div>
           ))}
+
         </div>
       )}
 

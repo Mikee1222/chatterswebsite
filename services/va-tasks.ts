@@ -191,6 +191,21 @@ export async function getAllVaTasks(): Promise<VaTaskRecord[]> {
   return records.map(mapRecord);
 }
 
+/** Escape a string for use inside an Airtable formula literal. */
+function airtableFormulaString(value: string): string {
+  return String(value ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/** Completed recurring instances with the same title (`is_recurring` = true). */
+export async function getRecurringTaskHistory(title: string, _assignedToIds: string[]): Promise<VaTaskRecord[]> {
+  const escaped = airtableFormulaString(title);
+  const records = await listAllRecords<Fields>(TABLE, {
+    filterByFormula: `AND({title} = "${escaped}", {is_recurring} = TRUE(), {status} = "done")`,
+    sort: [{ field: "due_date", direction: "desc" }],
+  });
+  return records.map(mapRecord);
+}
+
 export async function getVaTaskById(id: string): Promise<VaTaskRecord | null> {
   try {
     const rec = await getRecord<Fields>(TABLE, id);

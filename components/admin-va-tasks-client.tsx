@@ -11,6 +11,7 @@ import type { AppNotification, ModelRecord, VaTaskRecord, VaTaskStatus, VaTaskPr
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
+import { groupRecurringTasks } from "@/lib/recurring-utils";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -229,6 +230,38 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       return true;
     });
   }, [localTasks, search, filterVa, filterStatus, filterPriority]);
+
+  const { regularTasks, recurringGroups } = React.useMemo(
+    () => groupRecurringTasks(filteredTasks),
+    [filteredTasks],
+  );
+
+  const activeTasksForStats = React.useMemo(() => {
+    const currents = recurringGroups.map((g) => g.currentTask).filter(Boolean) as VaTaskRecord[];
+    return [...regularTasks, ...currents];
+  }, [regularTasks, recurringGroups]);
+
+  const taskStats = React.useMemo(() => {
+    const doneFromRecurring = recurringGroups.reduce((sum, g) => sum + g.totalCompleted, 0);
+    const doneFromRegular = regularTasks.filter((t) => t.status === "done").length;
+    return {
+      total: activeTasksForStats.length,
+      pending: activeTasksForStats.filter((t) => t.status === "pending").length,
+      inProgress: activeTasksForStats.filter((t) => t.status === "in_progress").length,
+      done: doneFromRecurring + doneFromRegular,
+    };
+  }, [activeTasksForStats, regularTasks, recurringGroups]);
+
+  const [expandedRecurringHistory, setExpandedRecurringHistory] = React.useState(() => new Set<string>());
+
+  function toggleRecurringHistory(title: string) {
+    setExpandedRecurringHistory((prev) => {
+      const next = new Set(prev);
+      if (next.has(title)) next.delete(title);
+      else next.add(title);
+      return next;
+    });
+  }
 
   const recurrenceIntervalNum = React.useMemo(() => {
     const t = form.recurrence_interval.trim();
@@ -496,6 +529,488 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
     });
   };
 
+  function renderAdminTaskCard(task: VaTaskRecord) {
+    return (
+                <div
+                  className={cn(
+                    "group relative rounded-2xl border p-5 pl-6 transition-all hover:bg-white/[0.04]",
+                    task.status === "done"
+                      ? "border-emerald-500/15 opacity-70"
+                      : task.priority === "urgent"
+                        ? "border-red-500/25"
+                        : task.priority === "high"
+                          ? "border-amber-500/20"
+                          : "border-white/8"
+                  )}
+                >
+                  <div
+                    className={cn(
+                      "absolute left-2 top-4 bottom-4 w-1 rounded-full",
+                      task.priority === "urgent"
+                        ? "bg-red-500"
+                        : task.priority === "high"
+                          ? "bg-amber-500"
+                          : task.priority === "normal"
+                            ? "bg-sky-500"
+                            : "bg-white/25"
+                    )}
+                  />
+                  <div className="pl-2">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                          <StatusBadge status={task.status} />
+                          <PriorityBadge priority={task.priority} />
+                          {task.is_recurring ? (
+                            <span className="rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-300">
+                              Recurring
+                            </span>
+                          ) : null}
+                        </div>
+                        <h3
+                          className={cn(
+                            "font-semibold text-white",
+                            task.status === "done" && "text-white/50 line-through"
+                          )}
+                        >
+                          {task.title}
+                        </h3>
+                        {task.description ? (
+                          <p className="mt-1 line-clamp-2 text-sm text-white/40">{task.description}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                        {task.status !== "done" && task.status !== "skipped" ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRemind(task)}
+                            disabled={reminding === task.id}
+                            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-40"
+                          >
+                            <Bell className="h-3.5 w-3.5" aria-hidden />
+                            {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => openEdit(task)}
+                          className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
+                          title="Edit"
+                        >
+                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
+                          onClick={() => setTaskPendingDelete(task)}
+                          className="rounded-lg p-1.5 text-white/40 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
+                          title="Delete"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                        </button>
+                      </div>
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/30">
+                      {task.due_date ? (
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1",
+                            isPastDue(task.due_date) && task.status !== "done" && "text-red-400"
+                          )}
+                        >
+                          <Clock className="h-3 w-3 shrink-0" aria-hidden />
+                          {formatDateTimeAthens(task.due_date)}
+                          {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
+                        </span>
+                      ) : null}
+                      <span>{assignedLabel(task)}</span>
+                      {task.reminder_minutes_before != null ? (
+                        <span>{formatReminderLabel(task.reminder_minutes_before)}</span>
+                      ) : null}
+                    </div>
+
+                    <div className="mt-3 border-t border-white/[0.08] pt-3">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (expandedTaskId === task.id) {
+                            setExpandedTaskId(null);
+                            return;
+                          }
+                          setExpandedTaskId(task.id);
+                          await loadPhases(task.id);
+                        }}
+                        className="group/ph flex items-center gap-2 text-xs text-white/35 transition-colors hover:text-white/70"
+                      >
+                        <span
+                          className={cn(
+                            "flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[10px] transition-colors group-hover/ph:border-white/20",
+                            expandedTaskId === task.id && "border-pink-500/30 bg-pink-500/10 text-pink-300",
+                          )}
+                        >
+                          {expandedTaskId === task.id ? "▼" : "▶"}
+                        </span>
+                        <span className="font-semibold tracking-wide">Phases</span>
+                        {taskPhases[task.id]?.length ? (
+                          <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold text-white/50">
+                            {taskPhases[task.id].length}
+                          </span>
+                        ) : null}
+                        {loadingPhases === task.id ? <span className="animate-pulse text-white/30">Loading…</span> : null}
+                      </button>
+
+                      {expandedTaskId === task.id ? (
+                        <div className="mt-5 space-y-1">
+                          {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
+                            const items = phase.items ?? [];
+                            const doneItems = items.filter((i) => i.status === "completed").length;
+                            const progressPct = items.length > 0 ? (doneItems / items.length) * 100 : 0;
+                            return (
+                              <div
+                                key={phase.id}
+                                className={cn(
+                                  "mb-3 overflow-hidden rounded-2xl border transition-all",
+                                  phase.status === "completed"
+                                    ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.05] to-transparent"
+                                    : phase.status === "overdue"
+                                      ? "border-red-500/25 bg-gradient-to-br from-red-500/[0.05] to-transparent"
+                                      : phase.status === "in_progress"
+                                        ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.05] to-transparent"
+                                        : "border-white/10 bg-white/[0.02]",
+                                )}
+                              >
+                                <div className="flex items-center gap-3 px-5 py-4">
+                                  <div
+                                    className={cn(
+                                      "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
+                                      phase.status === "completed"
+                                        ? "bg-green-500 text-white shadow-lg shadow-green-500/30"
+                                        : phase.status === "overdue"
+                                          ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
+                                          : phase.status === "in_progress"
+                                            ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
+                                            : "bg-white/10 text-white/50",
+                                    )}
+                                  >
+                                    {phaseIndex + 1}
+                                  </div>
+                                  <input
+                                    value={phase.title}
+                                    onChange={(e) => updatePhaseTitleLocal(phase.id, task.id, e.target.value)}
+                                    onBlur={() => void handleUpdatePhase(phase.id, task.id, { title: phase.title })}
+                                    placeholder={`Phase ${phaseIndex + 1}`}
+                                    className="min-w-0 flex-1 bg-transparent text-base font-semibold text-white placeholder:text-white/20 focus:outline-none"
+                                  />
+                                  {items.length > 0 ? (
+                                    <div
+                                      className={cn(
+                                        "flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold",
+                                        phase.status === "completed"
+                                          ? "bg-green-500/15 text-green-400"
+                                          : phase.status === "overdue"
+                                            ? "bg-red-500/15 text-red-400"
+                                            : "bg-white/8 text-white/50",
+                                      )}
+                                    >
+                                      <div className="h-1.5 w-16 rounded-full bg-white/10">
+                                        <div
+                                          className={cn(
+                                            "h-1.5 rounded-full transition-all",
+                                            phase.status === "completed"
+                                              ? "bg-green-500"
+                                              : phase.status === "overdue"
+                                                ? "bg-red-500"
+                                                : "bg-blue-400",
+                                          )}
+                                          style={{ width: `${progressPct}%` }}
+                                        />
+                                      </div>
+                                      <span className="tabular-nums">
+                                        {doneItems}/{items.length}
+                                      </span>
+                                    </div>
+                                  ) : null}
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeletePhase(phase.id, task.id)}
+                                    className="shrink-0 rounded-lg p-1.5 text-white/15 transition-all hover:bg-red-500/10 hover:text-red-400"
+                                    aria-label="Delete phase"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+
+                                {(phase.start_time || phase.end_time) && (
+                                  <div className="flex flex-wrap items-center gap-2 px-5 pb-2 text-xs text-white/30">
+                                    {phase.start_time ? (
+                                      <span className="flex items-center gap-1">
+                                        ▶{" "}
+                                        {new Date(phase.start_time).toLocaleString("el-GR", {
+                                          timeZone: "Europe/Athens",
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    ) : null}
+                                    {phase.start_time && phase.end_time ? <span>→</span> : null}
+                                    {phase.end_time ? (
+                                      <span className="flex items-center gap-1">
+                                        ⏹{" "}
+                                        {new Date(phase.end_time).toLocaleString("el-GR", {
+                                          timeZone: "Europe/Athens",
+                                          day: "numeric",
+                                          month: "short",
+                                          hour: "2-digit",
+                                          minute: "2-digit",
+                                        })}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                )}
+
+                                <div className="flex flex-wrap gap-2 px-5 pb-3">
+                                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                    <span className="shrink-0 text-xs text-white/30" aria-hidden>
+                                      ▶
+                                    </span>
+                                    <input
+                                      type="datetime-local"
+                                      value={toDatetimeLocalValue(phase.start_time)}
+                                      onChange={(e) =>
+                                        updatePhaseLocal(phase.id, task.id, {
+                                          start_time: e.target.value ? e.target.value : null,
+                                        })
+                                      }
+                                      onBlur={() =>
+                                        void handleUpdatePhase(phase.id, task.id, { start_time: phase.start_time })
+                                      }
+                                      className="w-36 bg-transparent text-xs text-white [color-scheme:dark] focus:outline-none"
+                                    />
+                                  </div>
+                                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                    <span className="shrink-0 text-xs text-white/30" aria-hidden>
+                                      ⏹
+                                    </span>
+                                    <input
+                                      type="datetime-local"
+                                      value={toDatetimeLocalValue(phase.end_time)}
+                                      onChange={(e) =>
+                                        updatePhaseLocal(phase.id, task.id, {
+                                          end_time: e.target.value ? e.target.value : null,
+                                        })
+                                      }
+                                      onBlur={() =>
+                                        void handleUpdatePhase(phase.id, task.id, { end_time: phase.end_time })
+                                      }
+                                      className="w-36 bg-transparent text-xs text-white [color-scheme:dark] focus:outline-none"
+                                    />
+                                  </div>
+                                  <div className="flex min-w-[8.5rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                    <Users className="h-3.5 w-3.5 shrink-0 text-white/30" aria-hidden />
+                                    <select
+                                      value={phase.assigned_va_id ?? ""}
+                                      onChange={(e) => {
+                                        const v = vaUsers.find((x) => x.id === e.target.value);
+                                        void handleUpdatePhase(phase.id, task.id, {
+                                          assigned_va_id: e.target.value,
+                                          assigned_va_name: v ? (v.full_name || v.email).trim() : "",
+                                        });
+                                      }}
+                                      className="min-w-0 flex-1 cursor-pointer bg-transparent text-xs text-white focus:outline-none"
+                                    >
+                                      <option value="">Any VA</option>
+                                      {vaUsers.map((v) => (
+                                        <option key={v.id} value={v.id}>
+                                          {(v.full_name || v.email).trim() || v.id}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="flex min-w-[7rem] max-w-[10rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                    <span className="shrink-0 text-xs" aria-hidden>
+                                      🎭
+                                    </span>
+                                    <select
+                                      value={phase.assigned_model_id ?? ""}
+                                      onChange={(e) => {
+                                        const m = modelss.find((x) => x.id === e.target.value);
+                                        void handleUpdatePhase(phase.id, task.id, {
+                                          assigned_model_id: e.target.value,
+                                          assigned_model_name: m?.model_name ?? "",
+                                        });
+                                      }}
+                                      className="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-xs text-white focus:outline-none"
+                                    >
+                                      <option value="">No creator</option>
+                                      {modelss.map((m) => (
+                                        <option key={m.id} value={m.id}>
+                                          {m.model_name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                                    <select
+                                      value={phase.region ?? "Global"}
+                                      onChange={(e) =>
+                                        void handleUpdatePhase(phase.id, task.id, {
+                                          region: e.target.value as TaskPhase["region"],
+                                        })
+                                      }
+                                      className="cursor-pointer bg-transparent text-xs text-white focus:outline-none"
+                                    >
+                                      <option value="Greek">🇬🇷 Greek</option>
+                                      <option value="USA">🇺🇸 USA</option>
+                                      <option value="Global">🌍 Global</option>
+                                    </select>
+                                  </div>
+                                </div>
+
+                                <div className="px-5 pb-4">
+                                  <div className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]">
+                                    {items.map((item, idx) => (
+                                      <div
+                                        key={item.id}
+                                        className={cn(
+                                          "group flex items-start gap-3 px-4 py-3",
+                                          idx < items.length - 1 ? "border-b border-white/5" : "",
+                                        )}
+                                      >
+                                        <div
+                                          className={cn(
+                                            "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2",
+                                            item.status === "completed"
+                                              ? "border-green-500 bg-green-500"
+                                              : "border-white/20 bg-transparent",
+                                          )}
+                                        >
+                                          {item.status === "completed" ? (
+                                            <Check className="h-3 w-3 text-white" aria-hidden />
+                                          ) : null}
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                          <input
+                                            value={item.title}
+                                            onChange={(e) =>
+                                              updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
+                                            }
+                                            onBlur={() =>
+                                              void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
+                                            }
+                                            placeholder={`Item ${idx + 1}…`}
+                                            className={cn(
+                                              "w-full bg-transparent text-sm focus:outline-none",
+                                              item.status === "completed" ? "text-white/30 line-through" : "text-white/80",
+                                            )}
+                                          />
+                                          {item.status === "completed" &&
+                                          item.screenshot &&
+                                          item.screenshot.length > 0 ? (
+                                            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                                              <a
+                                                href={item.screenshot[0].url}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300"
+                                              >
+                                                🖼 View proof
+                                              </a>
+                                              <a href={item.screenshot[0].url} target="_blank" rel="noreferrer">
+                                                <img
+                                                  src={item.screenshot[0].url}
+                                                  alt=""
+                                                  className="h-8 w-12 rounded-lg border border-white/10 object-cover transition-opacity hover:opacity-80"
+                                                />
+                                              </a>
+                                            </div>
+                                          ) : null}
+                                          {item.requires_screenshot && item.status !== "completed" ? (
+                                            <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/50">
+                                              📸 Requires proof
+                                            </p>
+                                          ) : null}
+                                          {item.status === "completed" && item.completed_by_va_name ? (
+                                            <p className="mt-0.5 text-xs text-white/20">
+                                              ✓ {item.completed_by_va_name}
+                                              {item.completed_at
+                                                ? ` · ${new Date(item.completed_at).toLocaleString("el-GR", {
+                                                    timeZone: "Europe/Athens",
+                                                    day: "numeric",
+                                                    month: "short",
+                                                    hour: "2-digit",
+                                                    minute: "2-digit",
+                                                  })}`
+                                                : ""}
+                                            </p>
+                                          ) : null}
+                                        </div>
+                                        <div className="flex shrink-0 items-center gap-2 self-center">
+                                          <label className="flex cursor-pointer items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                                            <span className="text-xs text-white/30">📸</span>
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                void handleUpdatePhaseItem(item.id, phase.id, task.id, {
+                                                  requires_screenshot: !item.requires_screenshot,
+                                                })
+                                              }
+                                              className={cn(
+                                                "relative h-4 w-8 rounded-full transition-all",
+                                                item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
+                                              )}
+                                              aria-label="Toggle screenshot required"
+                                            >
+                                              <span
+                                                className={cn(
+                                                  "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
+                                                  item.requires_screenshot ? "left-4" : "left-0.5",
+                                                )}
+                                              />
+                                            </button>
+                                          </label>
+                                          <button
+                                            type="button"
+                                            onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}
+                                            className="rounded p-1 text-white/10 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
+                                            aria-label="Remove item"
+                                          >
+                                            <X className="h-3 w-3" />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleAddPhaseItem(phase.id, task.id)}
+                                      className="flex w-full items-center gap-2 border-t border-white/5 px-4 py-3 text-xs text-white/25 transition-all hover:bg-white/[0.03] hover:text-white/50"
+                                    >
+                                      <Plus className="h-3.5 w-3.5" />
+                                      Add checklist item
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          <button
+                            type="button"
+                            onClick={() => void handleAddPhase(task.id, task.title)}
+                            className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 px-5 py-3 text-xs text-white/25 transition-all hover:border-pink-500/40 hover:text-pink-400"
+                          >
+                            <Plus className="h-4 w-4" />
+                            Add phase
+                          </button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -516,14 +1031,14 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Total", value: localTasks.length, color: "text-white" },
-          { label: "Pending", value: localTasks.filter((t) => t.status === "pending").length, color: "text-amber-400" },
+          { label: "Total", value: taskStats.total, color: "text-white" },
+          { label: "Pending", value: taskStats.pending, color: "text-amber-400" },
           {
             label: "In progress",
-            value: localTasks.filter((t) => t.status === "in_progress").length,
+            value: taskStats.inProgress,
             color: "text-sky-400",
           },
-          { label: "Done", value: localTasks.filter((t) => t.status === "done").length, color: "text-emerald-400" },
+          { label: "Done", value: taskStats.done, color: "text-emerald-400" },
         ].map((s) => (
           <div key={s.label} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
             <p className="text-[11px] font-semibold uppercase tracking-widest text-white/30">{s.label}</p>
@@ -573,7 +1088,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         </select>
       </div>
 
-      {filteredTasks.length === 0 ? (
+      {regularTasks.length === 0 && recurringGroups.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
             <ClipboardList className="h-7 w-7" aria-hidden />
@@ -583,486 +1098,89 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredTasks.map((task) => (
-            <div
-              key={task.id}
-              className={cn(
-                "group relative rounded-2xl border p-5 pl-6 transition-all hover:bg-white/[0.04]",
-                task.status === "done"
-                  ? "border-emerald-500/15 opacity-70"
-                  : task.priority === "urgent"
-                    ? "border-red-500/25"
-                    : task.priority === "high"
-                      ? "border-amber-500/20"
-                      : "border-white/8"
+          {regularTasks.map((task) => (
+            <React.Fragment key={task.id}>{renderAdminTaskCard(task)}</React.Fragment>
+          ))}
+          {recurringGroups.map((group) => (
+            <div key={group.title} className="mb-3">
+              {group.currentTask ? (
+                <React.Fragment key={group.currentTask.id}>{renderAdminTaskCard(group.currentTask)}</React.Fragment>
+              ) : (
+                <div className="mb-1 rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-4">
+                  <div className="flex items-center gap-3">
+                    <div className="h-2 w-2 rounded-full bg-purple-400/50" />
+                    <span className="text-sm font-semibold text-white/50">{group.title}</span>
+                    <span className="rounded-full border border-purple-500/20 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
+                      🔄 Recurring
+                    </span>
+                    <span className="ml-auto text-xs text-white/25">Waiting for next spawn...</span>
+                  </div>
+                </div>
               )}
-            >
-              <div
-                className={cn(
-                  "absolute left-2 top-4 bottom-4 w-1 rounded-full",
-                  task.priority === "urgent"
-                    ? "bg-red-500"
-                    : task.priority === "high"
-                      ? "bg-amber-500"
-                      : task.priority === "normal"
-                        ? "bg-sky-500"
-                        : "bg-white/25"
-                )}
-              />
-              <div className="pl-2">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="mb-2 flex flex-wrap items-center gap-2">
-                      <StatusBadge status={task.status} />
-                      <PriorityBadge priority={task.priority} />
-                      {task.is_recurring ? (
-                        <span className="rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-300">
-                          Recurring
-                        </span>
-                      ) : null}
-                    </div>
-                    <h3
-                      className={cn(
-                        "font-semibold text-white",
-                        task.status === "done" && "text-white/50 line-through"
-                      )}
-                    >
-                      {task.title}
-                    </h3>
-                    {task.description ? (
-                      <p className="mt-1 line-clamp-2 text-sm text-white/40">{task.description}</p>
-                    ) : null}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
-                    {task.status !== "done" && task.status !== "skipped" ? (
-                      <button
-                        type="button"
-                        onClick={() => void handleRemind(task)}
-                        disabled={reminding === task.id}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-40"
-                      >
-                        <Bell className="h-3.5 w-3.5" aria-hidden />
-                        {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      onClick={() => openEdit(task)}
-                      className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
-                      title="Edit"
-                    >
-                      <Pencil className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                    <button
-                      type="button"
-                      disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
-                      onClick={() => setTaskPendingDelete(task)}
-                      className="rounded-lg p-1.5 text-white/40 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                    </button>
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/30">
-                  {task.due_date ? (
-                    <span
-                      className={cn(
-                        "inline-flex items-center gap-1",
-                        isPastDue(task.due_date) && task.status !== "done" && "text-red-400"
-                      )}
-                    >
-                      <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                      {formatDateTimeAthens(task.due_date)}
-                      {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
-                    </span>
-                  ) : null}
-                  <span>{assignedLabel(task)}</span>
-                  {task.reminder_minutes_before != null ? (
-                    <span>{formatReminderLabel(task.reminder_minutes_before)}</span>
-                  ) : null}
-                </div>
-
-                <div className="mt-3 border-t border-white/[0.08] pt-3">
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (expandedTaskId === task.id) {
-                        setExpandedTaskId(null);
-                        return;
-                      }
-                      setExpandedTaskId(task.id);
-                      await loadPhases(task.id);
-                    }}
-                    className="group/ph flex items-center gap-2 text-xs text-white/35 transition-colors hover:text-white/70"
+              {group.history.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => toggleRecurringHistory(group.title)}
+                  className="flex w-full items-center gap-2 px-4 py-2 text-xs text-white/30 transition-colors hover:text-white/60"
+                >
+                  <div
+                    className={cn(
+                      "transition-transform",
+                      expandedRecurringHistory.has(group.title) ? "rotate-90" : "",
+                    )}
                   >
-                    <span
-                      className={cn(
-                        "flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[10px] transition-colors group-hover/ph:border-white/20",
-                        expandedTaskId === task.id && "border-pink-500/30 bg-pink-500/10 text-pink-300",
-                      )}
+                    ▶
+                  </div>
+                  <span>History ({group.totalCompleted} completed)</span>
+                  <div className="ml-2 h-px flex-1 bg-white/8" />
+                </button>
+              ) : null}
+              {expandedRecurringHistory.has(group.title) ? (
+                <div className="mb-3 ml-4 mt-1 space-y-2 border-l border-white/10 pl-4">
+                  {group.history.map((histTask) => (
+                    <div
+                      key={histTask.id}
+                      className="flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.015] px-4 py-3 opacity-70"
                     >
-                      {expandedTaskId === task.id ? "▼" : "▶"}
-                    </span>
-                    <span className="font-semibold tracking-wide">Phases</span>
-                    {taskPhases[task.id]?.length ? (
-                      <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold text-white/50">
-                        {taskPhases[task.id].length}
-                      </span>
-                    ) : null}
-                    {loadingPhases === task.id ? <span className="animate-pulse text-white/30">Loading…</span> : null}
-                  </button>
-
-                  {expandedTaskId === task.id ? (
-                    <div className="mt-5 space-y-1">
-                      {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
-                        const items = phase.items ?? [];
-                        const doneItems = items.filter((i) => i.status === "completed").length;
-                        const progressPct = items.length > 0 ? (doneItems / items.length) * 100 : 0;
-                        return (
-                          <div
-                            key={phase.id}
-                            className={cn(
-                              "mb-3 overflow-hidden rounded-2xl border transition-all",
-                              phase.status === "completed"
-                                ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.05] to-transparent"
-                                : phase.status === "overdue"
-                                  ? "border-red-500/25 bg-gradient-to-br from-red-500/[0.05] to-transparent"
-                                  : phase.status === "in_progress"
-                                    ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.05] to-transparent"
-                                    : "border-white/10 bg-white/[0.02]",
-                            )}
-                          >
-                            <div className="flex items-center gap-3 px-5 py-4">
-                              <div
-                                className={cn(
-                                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
-                                  phase.status === "completed"
-                                    ? "bg-green-500 text-white shadow-lg shadow-green-500/30"
-                                    : phase.status === "overdue"
-                                      ? "bg-red-500 text-white shadow-lg shadow-red-500/30"
-                                      : phase.status === "in_progress"
-                                        ? "bg-blue-500 text-white shadow-lg shadow-blue-500/30"
-                                        : "bg-white/10 text-white/50",
-                                )}
-                              >
-                                {phaseIndex + 1}
-                              </div>
-                              <input
-                                value={phase.title}
-                                onChange={(e) => updatePhaseTitleLocal(phase.id, task.id, e.target.value)}
-                                onBlur={() => void handleUpdatePhase(phase.id, task.id, { title: phase.title })}
-                                placeholder={`Phase ${phaseIndex + 1}`}
-                                className="min-w-0 flex-1 bg-transparent text-base font-semibold text-white placeholder:text-white/20 focus:outline-none"
-                              />
-                              {items.length > 0 ? (
-                                <div
-                                  className={cn(
-                                    "flex shrink-0 items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold",
-                                    phase.status === "completed"
-                                      ? "bg-green-500/15 text-green-400"
-                                      : phase.status === "overdue"
-                                        ? "bg-red-500/15 text-red-400"
-                                        : "bg-white/8 text-white/50",
-                                  )}
-                                >
-                                  <div className="h-1.5 w-16 rounded-full bg-white/10">
-                                    <div
-                                      className={cn(
-                                        "h-1.5 rounded-full transition-all",
-                                        phase.status === "completed"
-                                          ? "bg-green-500"
-                                          : phase.status === "overdue"
-                                            ? "bg-red-500"
-                                            : "bg-blue-400",
-                                      )}
-                                      style={{ width: `${progressPct}%` }}
-                                    />
-                                  </div>
-                                  <span className="tabular-nums">
-                                    {doneItems}/{items.length}
-                                  </span>
-                                </div>
-                              ) : null}
-                              <button
-                                type="button"
-                                onClick={() => void handleDeletePhase(phase.id, task.id)}
-                                className="shrink-0 rounded-lg p-1.5 text-white/15 transition-all hover:bg-red-500/10 hover:text-red-400"
-                                aria-label="Delete phase"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
-                            </div>
-
-                            {(phase.start_time || phase.end_time) && (
-                              <div className="flex flex-wrap items-center gap-2 px-5 pb-2 text-xs text-white/30">
-                                {phase.start_time ? (
-                                  <span className="flex items-center gap-1">
-                                    ▶{" "}
-                                    {new Date(phase.start_time).toLocaleString("el-GR", {
-                                      timeZone: "Europe/Athens",
-                                      day: "numeric",
-                                      month: "short",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </span>
-                                ) : null}
-                                {phase.start_time && phase.end_time ? <span>→</span> : null}
-                                {phase.end_time ? (
-                                  <span className="flex items-center gap-1">
-                                    ⏹{" "}
-                                    {new Date(phase.end_time).toLocaleString("el-GR", {
-                                      timeZone: "Europe/Athens",
-                                      day: "numeric",
-                                      month: "short",
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                    })}
-                                  </span>
-                                ) : null}
-                              </div>
-                            )}
-
-                            <div className="flex flex-wrap gap-2 px-5 pb-3">
-                              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <span className="shrink-0 text-xs text-white/30" aria-hidden>
-                                  ▶
-                                </span>
-                                <input
-                                  type="datetime-local"
-                                  value={toDatetimeLocalValue(phase.start_time)}
-                                  onChange={(e) =>
-                                    updatePhaseLocal(phase.id, task.id, {
-                                      start_time: e.target.value ? e.target.value : null,
-                                    })
-                                  }
-                                  onBlur={() =>
-                                    void handleUpdatePhase(phase.id, task.id, { start_time: phase.start_time })
-                                  }
-                                  className="w-36 bg-transparent text-xs text-white [color-scheme:dark] focus:outline-none"
-                                />
-                              </div>
-                              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <span className="shrink-0 text-xs text-white/30" aria-hidden>
-                                  ⏹
-                                </span>
-                                <input
-                                  type="datetime-local"
-                                  value={toDatetimeLocalValue(phase.end_time)}
-                                  onChange={(e) =>
-                                    updatePhaseLocal(phase.id, task.id, {
-                                      end_time: e.target.value ? e.target.value : null,
-                                    })
-                                  }
-                                  onBlur={() =>
-                                    void handleUpdatePhase(phase.id, task.id, { end_time: phase.end_time })
-                                  }
-                                  className="w-36 bg-transparent text-xs text-white [color-scheme:dark] focus:outline-none"
-                                />
-                              </div>
-                              <div className="flex min-w-[8.5rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <Users className="h-3.5 w-3.5 shrink-0 text-white/30" aria-hidden />
-                                <select
-                                  value={phase.assigned_va_id ?? ""}
-                                  onChange={(e) => {
-                                    const v = vaUsers.find((x) => x.id === e.target.value);
-                                    void handleUpdatePhase(phase.id, task.id, {
-                                      assigned_va_id: e.target.value,
-                                      assigned_va_name: v ? (v.full_name || v.email).trim() : "",
-                                    });
-                                  }}
-                                  className="min-w-0 flex-1 cursor-pointer bg-transparent text-xs text-white focus:outline-none"
-                                >
-                                  <option value="">Any VA</option>
-                                  {vaUsers.map((v) => (
-                                    <option key={v.id} value={v.id}>
-                                      {(v.full_name || v.email).trim() || v.id}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex min-w-[7rem] max-w-[10rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <span className="shrink-0 text-xs" aria-hidden>
-                                  🎭
-                                </span>
-                                <select
-                                  value={phase.assigned_model_id ?? ""}
-                                  onChange={(e) => {
-                                    const m = modelss.find((x) => x.id === e.target.value);
-                                    void handleUpdatePhase(phase.id, task.id, {
-                                      assigned_model_id: e.target.value,
-                                      assigned_model_name: m?.model_name ?? "",
-                                    });
-                                  }}
-                                  className="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-xs text-white focus:outline-none"
-                                >
-                                  <option value="">No creator</option>
-                                  {modelss.map((m) => (
-                                    <option key={m.id} value={m.id}>
-                                      {m.model_name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </div>
-                              <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                <select
-                                  value={phase.region ?? "Global"}
-                                  onChange={(e) =>
-                                    void handleUpdatePhase(phase.id, task.id, {
-                                      region: e.target.value as TaskPhase["region"],
-                                    })
-                                  }
-                                  className="cursor-pointer bg-transparent text-xs text-white focus:outline-none"
-                                >
-                                  <option value="Greek">🇬🇷 Greek</option>
-                                  <option value="USA">🇺🇸 USA</option>
-                                  <option value="Global">🌍 Global</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            <div className="px-5 pb-4">
-                              <div className="overflow-hidden rounded-xl border border-white/8 bg-white/[0.03]">
-                                {items.map((item, idx) => (
-                                  <div
-                                    key={item.id}
-                                    className={cn(
-                                      "group flex items-start gap-3 px-4 py-3",
-                                      idx < items.length - 1 ? "border-b border-white/5" : "",
-                                    )}
-                                  >
-                                    <div
-                                      className={cn(
-                                        "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border-2",
-                                        item.status === "completed"
-                                          ? "border-green-500 bg-green-500"
-                                          : "border-white/20 bg-transparent",
-                                      )}
-                                    >
-                                      {item.status === "completed" ? (
-                                        <Check className="h-3 w-3 text-white" aria-hidden />
-                                      ) : null}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <input
-                                        value={item.title}
-                                        onChange={(e) =>
-                                          updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
-                                        }
-                                        onBlur={() =>
-                                          void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
-                                        }
-                                        placeholder={`Item ${idx + 1}…`}
-                                        className={cn(
-                                          "w-full bg-transparent text-sm focus:outline-none",
-                                          item.status === "completed" ? "text-white/30 line-through" : "text-white/80",
-                                        )}
-                                      />
-                                      {item.status === "completed" &&
-                                      item.screenshot &&
-                                      item.screenshot.length > 0 ? (
-                                        <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                                          <a
-                                            href={item.screenshot[0].url}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                            className="flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300"
-                                          >
-                                            🖼 View proof
-                                          </a>
-                                          <a href={item.screenshot[0].url} target="_blank" rel="noreferrer">
-                                            <img
-                                              src={item.screenshot[0].url}
-                                              alt=""
-                                              className="h-8 w-12 rounded-lg border border-white/10 object-cover transition-opacity hover:opacity-80"
-                                            />
-                                          </a>
-                                        </div>
-                                      ) : null}
-                                      {item.requires_screenshot && item.status !== "completed" ? (
-                                        <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/50">
-                                          📸 Requires proof
-                                        </p>
-                                      ) : null}
-                                      {item.status === "completed" && item.completed_by_va_name ? (
-                                        <p className="mt-0.5 text-xs text-white/20">
-                                          ✓ {item.completed_by_va_name}
-                                          {item.completed_at
-                                            ? ` · ${new Date(item.completed_at).toLocaleString("el-GR", {
-                                                timeZone: "Europe/Athens",
-                                                day: "numeric",
-                                                month: "short",
-                                                hour: "2-digit",
-                                                minute: "2-digit",
-                                              })}`
-                                            : ""}
-                                        </p>
-                                      ) : null}
-                                    </div>
-                                    <div className="flex shrink-0 items-center gap-2 self-center">
-                                      <label className="flex cursor-pointer items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                                        <span className="text-xs text-white/30">📸</span>
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            void handleUpdatePhaseItem(item.id, phase.id, task.id, {
-                                              requires_screenshot: !item.requires_screenshot,
-                                            })
-                                          }
-                                          className={cn(
-                                            "relative h-4 w-8 rounded-full transition-all",
-                                            item.requires_screenshot ? "bg-amber-500" : "bg-white/15",
-                                          )}
-                                          aria-label="Toggle screenshot required"
-                                        >
-                                          <span
-                                            className={cn(
-                                              "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                                              item.requires_screenshot ? "left-4" : "left-0.5",
-                                            )}
-                                          />
-                                        </button>
-                                      </label>
-                                      <button
-                                        type="button"
-                                        onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}
-                                        className="rounded p-1 text-white/10 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
-                                        aria-label="Remove item"
-                                      >
-                                        <X className="h-3 w-3" />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                                <button
-                                  type="button"
-                                  onClick={() => void handleAddPhaseItem(phase.id, task.id)}
-                                  className="flex w-full items-center gap-2 border-t border-white/5 px-4 py-3 text-xs text-white/25 transition-all hover:bg-white/[0.03] hover:text-white/50"
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                  Add checklist item
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      <button
-                        type="button"
-                        onClick={() => void handleAddPhase(task.id, task.title)}
-                        className="mt-1 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 px-5 py-3 text-xs text-white/25 transition-all hover:border-pink-500/40 hover:text-pink-400"
-                      >
-                        <Plus className="h-4 w-4" />
-                        Add phase
-                      </button>
+                      <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-green-500/20">
+                        <Check className="h-3.5 w-3.5 text-green-400" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-white/60 line-through">{histTask.title}</p>
+                        {histTask.completed_notes ? (
+                          <p className="mt-0.5 text-xs italic text-white/30">&ldquo;{histTask.completed_notes}&rdquo;</p>
+                        ) : null}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {histTask.due_date ? (
+                          <p className="text-xs text-white/25">
+                            {new Date(histTask.due_date).toLocaleDateString("el-GR", {
+                              timeZone: "Europe/Athens",
+                              day: "numeric",
+                              month: "short",
+                            })}
+                          </p>
+                        ) : null}
+                        {histTask.completed_at ? (
+                          <p className="text-xs text-green-400/50">
+                            ✓{" "}
+                            {new Date(histTask.completed_at).toLocaleString("el-GR", {
+                              timeZone: "Europe/Athens",
+                              day: "numeric",
+                              month: "short",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
+                  ))}
                 </div>
-              </div>
+              ) : null}
             </div>
           ))}
+
         </div>
       )}
 
