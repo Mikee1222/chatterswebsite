@@ -130,13 +130,20 @@ function modelLinkIds(f: Fields): string[] {
  * Single-line text columns that may store the app `users.user_id` (e.g. `user_1772875569566_i2wv85a5`)
  * instead of a linked `rec…` users row id.
  */
+/** Optional single-line text fields storing `users.user_id` (e.g. `user_…`). Most bases only link `va` to `rec…`. */
 const VA_STABLE_TEXT_FIELD_NAMES = ["va_id"] as const;
 
 /**
  * Link field API names to try for server-side filter (one field per attempt).
  * A single OR() across names fails if any referenced field does not exist in the base.
+ * Do not include `va_id` here — in many bases it is absent or is text, not a link.
  */
-const VA_FILTER_LINK_FIELD_NAMES = ["va", "va_id", "VA", "assigned_va", "virtual_assistant"] as const;
+const VA_FILTER_LINK_FIELD_NAMES = ["va", "VA", "assigned_va", "virtual_assistant"] as const;
+
+function isAirtableUnknownFieldInFormulaError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("Unknown field names") || msg.includes("INVALID_FILTER_BY_FORMULA");
+}
 
 /**
  * All Airtable identity keys to match for this VA: users table record id (`rec…`) plus stable `user_id` when present.
@@ -285,11 +292,15 @@ async function fetchAssignmentRecordsForSingleVaLookupKey(lookupKey: string): Pr
         });
         if (records.length > 0) return records;
       } catch (error) {
-        console.error(`${DEBUG_PREFIX} va query failed on text field`, {
-          fieldName,
-          filterByFormula: formulaTextEquals(fieldName, key),
-          error: error instanceof Error ? error.message : String(error),
-        });
+        if (isAirtableUnknownFieldInFormulaError(error)) {
+          console.log(`${DEBUG_PREFIX} va query skip text field (not in base)`, { fieldName });
+        } else {
+          console.error(`${DEBUG_PREFIX} va query failed on text field`, {
+            fieldName,
+            filterByFormula: formulaTextEquals(fieldName, key),
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
   }
@@ -308,12 +319,16 @@ async function fetchAssignmentRecordsForSingleVaLookupKey(lookupKey: string): Pr
       });
       return records;
     } catch (error) {
-      console.error(`${DEBUG_PREFIX} va query failed on field`, {
-        table: TABLE,
-        fieldName,
-        filterByFormula: formulaLinkedContains(fieldName, key),
-        error: error instanceof Error ? error.message : String(error),
-      });
+      if (isAirtableUnknownFieldInFormulaError(error)) {
+        console.log(`${DEBUG_PREFIX} va query skip link field (not in base)`, { fieldName });
+      } else {
+        console.error(`${DEBUG_PREFIX} va query failed on field`, {
+          table: TABLE,
+          fieldName,
+          filterByFormula: formulaLinkedContains(fieldName, key),
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
       /* field missing or formula error — try next */
     }
   }

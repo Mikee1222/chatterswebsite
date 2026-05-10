@@ -3,6 +3,7 @@
  * Never import this from client components. Use in Server Components, Route Handlers, or Server Actions.
  */
 
+import { airtableQueue } from "@/lib/airtable-queue";
 import { sanitizePayloadForAirtable } from "@/lib/airtable-sanitize";
 import { devLog } from "@/lib/dev-log";
 
@@ -86,18 +87,46 @@ export type AirtableBaseSchema = {
   tables: AirtableTableSchema[];
 };
 
+async function airtableHttpJsonWithRetry<T>(
+  url: string,
+  options: RequestInit = {},
+  retries = 3
+): Promise<T> {
+  const { token } = getConfig();
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        ...options.headers,
+      },
+    });
+    if (res.status === 429 && attempt < retries - 1) {
+      const delay = Math.pow(2, attempt) * 1000;
+      console.warn(
+        `[airtableFetch] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`
+      );
+      await new Promise((r) => setTimeout(r, delay));
+      continue;
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("[airtableFetch] API error", { status: res.status, url, body: text });
+      throw new Error(`Airtable API ${res.status}: ${text}`);
+    }
+    return (await res.json()) as T;
+  }
+  throw new Error("Airtable rate limit exceeded after retries");
+}
+
 /** Fetch base schema from Airtable Meta API. Logs shifts table field names and status options. */
 export async function getBaseSchema(): Promise<AirtableBaseSchema> {
-  const { token, baseId } = getConfig();
+  const { baseId } = getConfig();
   const url = `${AIRTABLE_META_API}/bases/${baseId}/tables`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Airtable Meta API ${res.status}: ${text}`);
-  }
-  const data = (await res.json()) as AirtableBaseSchema;
+  const data = await airtableQueue.add(() =>
+    airtableHttpJsonWithRetry<AirtableBaseSchema>(url, { method: "GET" })
+  );
   const shiftsTable = data.tables?.find((t) => t.name === "shifts" || t.name === "Shifts");
   if (shiftsTable && process.env.NODE_ENV !== "production") {
     const statusField = shiftsTable.fields.find((f) => f.name.toLowerCase() === "status");
@@ -147,25 +176,8 @@ export type ListParams = {
   fields?: string[];
 };
 
-async function airtableFetch<T>(
-  path: string,
-  options: RequestInit = {}
-): Promise<T> {
-  const { token } = getConfig();
-  const res = await fetch(path, {
-    ...options,
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-      ...options.headers,
-    },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("[airtableFetch] API error", { status: res.status, path, body: text });
-    throw new Error(`Airtable API ${res.status}: ${text}`);
-  }
-  return res.json() as Promise<T>;
+async function airtableFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  return airtableQueue.add(() => airtableHttpJsonWithRetry<T>(path, options));
 }
 
 /** List records from a table. Table name must match base (e.g. modelss, whales). */
@@ -343,16 +355,9 @@ export async function batchUpdateRecords(
 
 /** Delete a record. Airtable returns 200 with { deleted: true }. */
 export async function deleteRecord(tableName: string, recordId: string): Promise<void> {
-  const { baseId, token } = getConfig();
+  const { baseId } = getConfig();
   const url = `${AIRTABLE_API}/${baseId}/${encodeURIComponent(tableName)}/${recordId}`;
-  const res = await fetch(url, {
-    method: "DELETE",
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Airtable API ${res.status}: ${text}`);
-  }
+  await airtableFetch<{ deleted?: boolean }>(url, { method: "DELETE" });
   invalidateListRecordsReadCacheForTable(tableName);
 }
 
@@ -367,6 +372,9 @@ export async function listAllRecords<T = Record<string, unknown>>(
     const page = await listRecords<T>(tableName, { ...params, offset });
     all.push(...page.records);
     offset = page.offset;
+    if (offset) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
   } while (offset);
   return all;
 }

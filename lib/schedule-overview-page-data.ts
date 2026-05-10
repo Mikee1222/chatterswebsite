@@ -1,5 +1,6 @@
 import type { AdminScheduleOverviewRow } from "@/lib/admin-schedule-overview-rows";
 import { buildAdminScheduleOverviewRows } from "@/lib/admin-schedule-overview-rows";
+import { batchAsync } from "@/lib/utils";
 import { addDays, addWeeks, getThisWeekMonday, getTodayYmd, parseWeekStart } from "@/lib/weekly-program";
 import { listAcceptedCustomRequestsInDateRange } from "@/services/custom-requests";
 import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
@@ -37,8 +38,9 @@ function ymdCalendarDayDiff(fromYmd: string, toYmd: string): number {
 
 async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<Record<string, ScheduleOverviewPeriodIndicator>> {
   const today = getTodayYmd();
-  const entries = await Promise.all(
-    models.map(async (m) => {
+  const entries = await batchAsync(
+    models,
+    async (m) => {
       if (!m.period_tracking_enabled) {
         const empty: ScheduleOverviewPeriodIndicator = {
           trackingEnabled: false,
@@ -87,7 +89,9 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
           } satisfies ScheduleOverviewPeriodIndicator,
         ] as const;
       }
-    })
+    },
+    3,
+    200
   );
   return Object.fromEntries(entries);
 }

@@ -1,5 +1,6 @@
 import {
   listAllRecords,
+  listRecords,
   getRecord,
   createRecord,
   updateRecord,
@@ -115,33 +116,53 @@ export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
 
 const MODEL_LINK_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const;
 
+let cachedModelPeriodLinkField: string | null = null;
+let resolveModelPeriodLinkFieldPromise: Promise<string> | null = null;
+
+/** Resolve which linked-record field name exists on `model_periods` once per process. */
+async function resolveModelPeriodLinkFieldName(): Promise<string> {
+  if (cachedModelPeriodLinkField) return cachedModelPeriodLinkField;
+  if (!resolveModelPeriodLinkFieldPromise) {
+    resolveModelPeriodLinkFieldPromise = (async () => {
+      const probeId = "recAAAAAAAAAAAAAA";
+      for (const fieldName of MODEL_LINK_FIELD_NAMES) {
+        try {
+          await listRecords<Fields>(TABLE, {
+            filterByFormula: formulaLinkedContains(fieldName, probeId),
+            pageSize: 1,
+            _caller: "model-periods.resolve-link-field",
+          });
+          cachedModelPeriodLinkField = fieldName;
+          periodTrace("[model-periods] resolved link field:", fieldName);
+          return fieldName;
+        } catch {
+          /* unknown field or invalid formula — try next name */
+        }
+      }
+      cachedModelPeriodLinkField = "model_id";
+      periodTrace("[model-periods] link field probe failed; fallback:", cachedModelPeriodLinkField);
+      return cachedModelPeriodLinkField;
+    })().finally(() => {
+      resolveModelPeriodLinkFieldPromise = null;
+    });
+  }
+  return resolveModelPeriodLinkFieldPromise;
+}
+
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
   if (!modelId) return [];
   periodTrace("[periods] fetching for modelId:", modelId);
-  let records: AirtableRecord<Fields>[] | null = null;
-  let formulaFieldUsed: string | null = null;
-  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
-    try {
-      records = await listAllRecords<Fields>(TABLE, {
-        filterByFormula: formulaLinkedContains(fieldName, modelId),
-      });
-      formulaFieldUsed = fieldName;
-      break;
-    } catch (err) {
-      if (process.env.NODE_ENV !== "production") {
-        devLog("[getPeriodsForModel] filter formula failed; trying next link field name", {
-          fieldName,
-          err: err instanceof Error ? err.message : String(err),
-        });
-      }
-    }
-  }
-  if (records == null) {
+  const fieldName = await resolveModelPeriodLinkFieldName();
+  let records: AirtableRecord<Fields>[];
+  try {
+    records = await listAllRecords<Fields>(TABLE, {
+      filterByFormula: formulaLinkedContains(fieldName, modelId),
+    });
+    periodTrace("[periods] formula field:", fieldName, "raw records:", records.length);
+  } catch {
     const all = await listAllRecords<Fields>(TABLE, {});
     records = all.filter((rec) => linkedModelIdFromPeriodFields(rec.fields as Fields) === modelId);
-    periodTrace("[periods] fallback full-table filter (no formula field worked), matched:", records.length);
-  } else {
-    periodTrace("[periods] formula field:", formulaFieldUsed, "raw records:", records.length);
+    periodTrace("[periods] formula query failed; full-table filter, matched:", records.length);
   }
   const mapped = records.map(mapRecord).filter((p) => p.start_date && p.end_date);
   mapped.sort((a, b) => b.start_date.localeCompare(a.start_date));
