@@ -14,7 +14,8 @@ import {
   getMondayOfWeek,
 } from "@/lib/weekly-program";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
-import type { Shift, VaTaskRecord, VaTaskPriority, WeeklyProgramDay, WeeklyProgramRecord } from "@/types";
+import { getNextOccurrence, vaTaskSeriesKey } from "@/lib/recurrence";
+import type { Shift, VaTaskRecord, WeeklyProgramDay, WeeklyProgramRecord } from "@/types";
 import { cn } from "@/lib/utils";
 
 export type VaScheduleClientProps = {
@@ -45,6 +46,42 @@ function taskPillClass(task: VaTaskRecord): string {
   if (task.priority === "urgent") return "border-red-500/30 bg-red-500/20 text-red-300";
   if (task.priority === "high") return "border-amber-500/30 bg-amber-500/20 text-amber-300";
   return "border-white/10 bg-white/5 text-white/70";
+}
+
+/** YYYY-MM-DD preview keys aligned with `toLocalYmd` for task pills. */
+function getRecurringPreviewDates(
+  task: VaTaskRecord,
+  calendarStart: string,
+  calendarEnd: string,
+  maxOccurrences = 20
+): string[] {
+  if (!task.is_recurring || !task.due_date?.trim() || !task.recurrence_type) return [];
+
+  const dates: string[] = [];
+  let current = task.due_date.trim();
+  let count = 0;
+
+  while (count < maxOccurrences) {
+    const next = getNextOccurrence(
+      current,
+      task.recurrence_type,
+      task.recurrence_interval ?? 1,
+      task.recurrence_days ?? [],
+      task.recurrence_end_date
+    );
+
+    if (!next) break;
+
+    const nextYmd = toLocalYmd(next) || next.slice(0, 10);
+    if (!nextYmd) break;
+    if (nextYmd > calendarEnd) break;
+    if (nextYmd >= calendarStart) dates.push(nextYmd);
+
+    current = next;
+    count++;
+  }
+
+  return dates;
 }
 
 export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart }: VaScheduleClientProps) {
@@ -103,6 +140,44 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
     return m;
   }, [activeShifts]);
 
+  const { calendarStart, calendarEnd } = React.useMemo(() => {
+    if (view === "week") {
+      const start = weekDates[0]?.ymd ?? weekStart;
+      const end = weekDates[weekDates.length - 1]?.ymd ?? weekStart;
+      return { calendarStart: start, calendarEnd: end };
+    }
+    const flat = monthGrid.flat().map((c) => c.ymd);
+    const sorted = [...flat].sort();
+    return {
+      calendarStart: sorted[0] ?? weekStart,
+      calendarEnd: sorted[sorted.length - 1] ?? weekStart,
+    };
+  }, [view, weekDates, monthGrid, weekStart]);
+
+  const recurringPreviews = React.useMemo(() => {
+    const map: Record<string, VaTaskRecord[]> = {};
+
+    for (const task of tasks) {
+      if (!task.is_recurring) continue;
+
+      const futureDates = getRecurringPreviewDates(task, calendarStart, calendarEnd);
+
+      for (const date of futureDates) {
+        const series = vaTaskSeriesKey(task);
+        const alreadyHasRealTask = tasks.some((t) => {
+          const y = toLocalYmd(t.due_date);
+          return y === date && vaTaskSeriesKey(t) === series;
+        });
+        if (alreadyHasRealTask) continue;
+
+        if (!map[date]) map[date] = [];
+        if (!map[date].some((t) => t.id === task.id)) map[date].push(task);
+      }
+    }
+
+    return map;
+  }, [tasks, calendarStart, calendarEnd]);
+
   async function markTaskDone(task: VaTaskRecord) {
     setCompleting(true);
     try {
@@ -123,7 +198,7 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
   const prevWeek = addWeeks(weekStart, -1);
   const nextWeek = addWeeks(weekStart, 1);
 
-  function cellContent(ymd: string, day: WeeklyProgramDay, programWeekMonday: string) {
+  function cellContent(ymd: string, day: WeeklyProgramDay, programWeekMonday: string, previewTasks: VaTaskRecord[]) {
     const ws = programWeekMonday.trim();
     const programs = weeklyProgram.filter((p) => p.day === day && (p.week_start ?? "").trim() === ws);
     const dayTasks = tasksByYmd.get(ymd) ?? [];
@@ -163,6 +238,15 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
           >
             {t.title}
           </button>
+        ))}
+        {previewTasks.map((t) => (
+          <div
+            key={`preview-${t.id}-${ymd}`}
+            className="truncate rounded-lg border border-dashed border-purple-500/30 bg-purple-500/5 px-2 py-1 text-[11px] text-purple-400/50"
+            title={`Upcoming recurring: ${t.title}`}
+          >
+            🔄 {t.title}
+          </div>
         ))}
       </div>
     );
@@ -244,7 +328,7 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
           {weekDates.map(({ day, ymd }) => (
             <div key={ymd}>
               <p className="mb-2 text-center text-xs font-semibold uppercase tracking-wide text-white/50">{day}</p>
-              {cellContent(ymd, day, weekStart)}
+              {cellContent(ymd, day, weekStart, recurringPreviews[ymd] ?? [])}
             </div>
           ))}
         </div>
@@ -258,12 +342,23 @@ export function VaScheduleClient({ weeklyProgram, tasks, activeShifts, weekStart
           {monthGrid.map((row, ri) => (
             <div key={ri} className="grid min-w-[720px] grid-cols-7 gap-1">
               {row.map(({ ymd, day }) => (
-                <div key={ymd}>{cellContent(ymd, day, getMondayOfWeek(ymd))}</div>
+                <div key={ymd}>{cellContent(ymd, day, getMondayOfWeek(ymd), recurringPreviews[ymd] ?? [])}</div>
               ))}
             </div>
           ))}
         </div>
       )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-white/30">
+        <div className="flex items-center gap-1.5">
+          <div className="h-3 w-3 rounded border border-purple-500/30 bg-purple-500/20" />
+          <span>Task</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <div className="h-3 w-3 rounded border border-dashed border-purple-500/30 bg-purple-500/5" />
+          <span>Upcoming recurring</span>
+        </div>
+      </div>
 
       {detailTask ? (
         <div
