@@ -64,6 +64,7 @@ export const ROUTES = {
     liveShifts: "/live-shifts",
     models: "/models",
     mistakes: "/va/mistakes",
+    marketingAccounts: "/va/marketing",
   },
 
   /** Admin / manager (role: admin | manager) */
@@ -99,6 +100,7 @@ export const ROUTES = {
     modelCustoms: "/admin/model-customs",
     modelContentRequests: "/admin/model-content-requests",
     expenseRequests: "/admin/expense-requests",
+    marketing: "/admin/marketing",
     vaTasks: "/admin/va-tasks",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",

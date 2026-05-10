@@ -51,6 +51,8 @@ const DATE_TIME_FIELD_NORMALIZED = new Set([
   "break_reminder_at",
   "mistake_date",
   "reviewed_at",
+  "scheduled_time",
+  "last_updated",
 ]);
 
 function isDateTimeField(key: string): boolean {
@@ -279,6 +281,21 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     user_role: new Set(["chatter", "va"]),
     type: new Set(["bonus", "fine"]),
   },
+  marketing_platforms: {},
+  model_social_accounts: {
+    account_type: new Set(["main", "secondary"]),
+    region: new Set(["USA", "Greek", "Global"]),
+  },
+  model_funnel_links: {
+    region: new Set(["USA", "Greek", "Global"]),
+  },
+  va_task_phases: {
+    status: new Set(["pending", "in_progress", "completed", "overdue"]),
+    region: new Set(["USA", "Greek", "Global"]),
+  },
+  va_task_phase_items: {
+    status: new Set(["pending", "completed"]),
+  },
 };
 
 function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: string): Set<string> | null {
@@ -336,6 +353,11 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   model_content_requests: new Set(["created_at", "updated_at"]),
   model_expense_requests: new Set(["created_at", "updated_at"]),
   model_personal_events: new Set(["created_at"]),
+  marketing_platforms: new Set(["created_at"]),
+  model_social_accounts: new Set(["created_at", "last_updated"]),
+  model_funnel_links: new Set(["created_at"]),
+  va_task_phases: new Set(["created_at", "completed_at", "scheduled_time"]),
+  va_task_phase_items: new Set(["created_at", "completed_at"]),
   /** Server sets mistake timestamps explicitly. */
   chatter_mistakes: new Set(["created_at", "updated_at"]),
   fines_and_bonuses: new Set(["created_at"]),

@@ -731,6 +731,10 @@ export type NotificationEventType =
   | "task_overdue"
   | "tasks_not_started"
   | "va_task_reminder"
+  | "phase_task_completed"
+  | "phase_completed"
+  | "phase_overdue"
+  | "all_phases_completed"
   // Custom
   | "custom_request_created"
   | "custom_request_updated"

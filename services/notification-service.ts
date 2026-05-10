@@ -40,6 +40,10 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   task_overdue: "task",
   tasks_not_started: "task",
   va_task_reminder: "task",
+  phase_task_completed: "task",
+  phase_completed: "task",
+  phase_overdue: "task",
+  all_phases_completed: "task",
   model_became_free: "model",
   model_taken: "model",
   /** Live events: gated by notification_preferences.model_alerts (see CATEGORY_TO_PREF_KEY). */

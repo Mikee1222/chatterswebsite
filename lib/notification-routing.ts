@@ -85,6 +85,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_user_only",
     description: "The VA assigned to the task (reminder before due).",
   },
+  phase_task_completed: { rule: "admin_only", description: "Admins only (VA checklist progress)." },
+  phase_completed: { rule: "admin_only", description: "Admins only (VA finished all items in a phase)." },
+  phase_overdue: { rule: "admin_only", description: "Admins only (scheduled phase missed)." },
+  all_phases_completed: { rule: "admin_only", description: "Admins only (all phases for a VA task done)." },
 
   // ---- Model (session / live) ----
   model_became_free: {
@@ -237,6 +241,7 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "break_too_long",
   "task_overdue",
   "tasks_not_started",
+  "phase_overdue",
   "model_live_scheduled",
   "model_missed_live",
   "system_alert",

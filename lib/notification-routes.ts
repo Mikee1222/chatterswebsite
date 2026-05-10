@@ -21,6 +21,9 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return ROUTES.va.liveShifts;
     case "va_task":
       return ROUTES.va.tasks;
+    case "va_task_phase":
+    case "va_task_phase_item":
+      return isAdmin ? ROUTES.admin.vaTasks : ROUTES.va.tasks;
     case "va_content_assignment":
       if (isModel) return ROUTES.model.contentCalendar;
       return ROUTES.va.tasks;
@@ -61,6 +64,9 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return ROUTES.va.liveShifts;
     case "va_task":
       return ROUTES.va.tasks;
+    case "va_task_phase":
+    case "va_task_phase_item":
+      return isAdmin ? ROUTES.admin.vaTasks : ROUTES.va.tasks;
     case "va_content_assignment":
       if (isModel) return ROUTES.model.contentCalendar;
       return ROUTES.va.tasks;
@@ -132,6 +138,10 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "model_content_completed":
     case "model_content_scheduled":
     case "va_content_assigned":
+    case "phase_task_completed":
+    case "phase_completed":
+    case "phase_overdue":
+    case "all_phases_completed":
       return "Task";
     case "model_became_free":
     case "model_taken":
