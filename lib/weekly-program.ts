@@ -86,19 +86,69 @@ function parseHHmmToMinutes(hhmm: string): number {
 }
 
 /**
+ * Normalize any common time string to `HH:mm` (24h) for scheduling.
+ * Handles: empty → `00:00`, ISO `…T00:00…`, `HH:mm:ss`, `H:mm` / `HH:mm` (24h), and `H:MM AM/PM`.
+ */
+export function normalizeTime(t: string): string {
+  const s = (t ?? "").trim();
+  if (!s) return "00:00";
+
+  // ISO datetime — schedule fields use `…T00:00…Z` UTC wall fragment
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && s.length >= 16) {
+    return s.slice(11, 16);
+  }
+
+  // 12h: "12:00 AM", "3:05 pm", "1:00 PM"
+  const ampm = /^(\d{1,2}):(\d{2})\s*(AM|PM)\s*$/i.exec(s);
+  if (ampm) {
+    let h = parseInt(ampm[1]!, 10);
+    const min = ampm[2]!;
+    const ap = ampm[3]!.toUpperCase();
+    if (ap === "AM" && h === 12) h = 0;
+    else if (ap === "PM" && h !== 12) h += 12;
+    if (!Number.isFinite(h) || h < 0 || h > 23) return "00:00";
+    return `${String(h).padStart(2, "0")}:${min}`;
+  }
+
+  // HH:mm:ss or H:mm:ss (24h)
+  const withSec = /^(\d{1,2}):(\d{2}):(\d{2})$/.exec(s);
+  if (withSec) {
+    const h = parseInt(withSec[1]!, 10);
+    const min = withSec[2]!;
+    const sec = parseInt(withSec[3]!, 10);
+    if (!Number.isFinite(h) || h < 0 || h > 23 || !Number.isFinite(sec) || sec < 0 || sec > 59) return "00:00";
+    const mm = parseInt(min, 10);
+    if (!Number.isFinite(mm) || mm < 0 || mm > 59) return "00:00";
+    return `${String(h).padStart(2, "0")}:${min}`;
+  }
+
+  // H:mm or HH:mm (24h)
+  const clock = /^(\d{1,2}):(\d{2})$/.exec(s);
+  if (clock) {
+    const h = parseInt(clock[1]!, 10);
+    const min = parseInt(clock[2]!, 10);
+    if (!Number.isFinite(h) || !Number.isFinite(min)) return "00:00";
+    if (h < 0 || h > 23 || min < 0 || min > 59) return "00:00";
+    const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+    return `${pad(h)}:${pad(min)}`;
+  }
+
+  return s.length >= 5 ? s.slice(0, 5) : "00:00";
+}
+
+/**
  * Normalize a wall time to `HH:mm` (24h). Rejects hours outside 0–23 or minutes outside 0–59.
- * Use before building ISO schedule strings so `T9:00` / invalid components never reach Date logic.
+ * Runs {@link normalizeTime} first so 12h strings and ISO fragments parse consistently.
  */
 export function normalizeHHmm(input: string): string | null {
-  const s = input.trim();
-  const m = /^(\d{1,2}):(\d{1,2})$/.exec(s);
+  const wall = normalizeTime((input ?? "").trim());
+  const m = /^(\d{2}):(\d{2})$/.exec(wall);
   if (!m) return null;
   const h = parseInt(m[1]!, 10);
   const min = parseInt(m[2]!, 10);
   if (!Number.isFinite(h) || !Number.isFinite(min)) return null;
   if (h < 0 || h > 23 || min < 0 || min > 59) return null;
-  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
-  return `${pad(h)}:${pad(min)}`;
+  return wall;
 }
 
 /**
@@ -139,17 +189,20 @@ export function hhmmWallClockRangesOverlap(
   let s2 = toMinutes(c);
   let e2 = toMinutes(d);
 
-  if (e1 <= s1) e1 += 24 * 60;
-  if (e2 <= s2) e2 += 24 * 60;
-  if (s2 < s1 && e2 < s1) {
-    s2 += 24 * 60;
-    e2 += 24 * 60;
+  const DAY = 24 * 60;
+  if (e1 <= s1) e1 += DAY;
+  if (e2 <= s2) e2 += DAY;
+  // Align overnight / post-midnight windows (±12h heuristic) so e.g. 20:00–00:00 vs 00:00–03:00 does not false-overlap.
+  if (s2 < s1 - DAY / 2) {
+    s2 += DAY;
+    e2 += DAY;
   }
-  if (s1 < s2 && e1 < s2) {
-    s1 += 24 * 60;
-    e1 += 24 * 60;
+  if (s1 < s2 - DAY / 2) {
+    s1 += DAY;
+    e1 += DAY;
   }
 
+  // Strict: touching endpoints are not overlap (half-open style in minute space after extension).
   return s1 < e2 && s2 < e1;
 }
 

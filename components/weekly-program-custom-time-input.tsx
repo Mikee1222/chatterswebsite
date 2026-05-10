@@ -5,7 +5,7 @@ import { Clock } from "lucide-react";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
 import { cn } from "@/lib/utils";
-import { normalizeHHmm } from "@/lib/weekly-program";
+import { normalizeHHmm, normalizeTime } from "@/lib/weekly-program";
 
 export type WeeklyProgramCustomTimeInputProps = {
   label: string;
@@ -44,8 +44,8 @@ export function WeeklyProgramCustomTimeInput({
             onChange("00:00");
             return;
           }
-          const n = normalizeHHmm(raw);
-          onChange(n ?? raw.slice(0, 5));
+          const n = normalizeHHmm(normalizeTime(raw));
+          onChange(n ?? normalizeTime(raw));
         }}
         aria-invalid={ariaInvalid}
         className={cn(

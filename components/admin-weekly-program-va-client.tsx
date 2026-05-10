@@ -27,6 +27,7 @@ import {
   normalizeWeekStart,
   formatWeekLabel,
   normalizeHHmm,
+  normalizeTime,
 } from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { ConflictSummary, CoverageBoard } from "@/lib/weekly-program-conflicts";
@@ -118,8 +119,8 @@ function lastWithLabel(
 }
 
 function isoTimeToHHmm(iso: string | undefined): string {
-  if (!iso || iso.length < 16) return "";
-  return iso.slice(11, 16);
+  if (!iso) return "";
+  return normalizeTime(iso);
 }
 
 export function AdminWeeklyProgramVaClient({
@@ -1233,13 +1234,13 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     setWeekStartDisplay(isoToEuropeanDisplay(weekStartVal));
   }, [weekStartVal]);
   const [customStartTime, setCustomStartTime] = React.useState(() => {
-    if (entry?.shift_type === "Custom") return isoTimeToHHmm(entry.start_time);
-    if (prefill?.shift_type === "Custom" && prefill.custom_start_time) return prefill.custom_start_time.length >= 16 ? prefill.custom_start_time.slice(11, 16) : prefill.custom_start_time;
+    if (entry?.shift_type === "Custom") return normalizeTime(entry.start_time);
+    if (prefill?.shift_type === "Custom" && prefill.custom_start_time) return normalizeTime(prefill.custom_start_time);
     return "09:00";
   });
   const [customEndTime, setCustomEndTime] = React.useState(() => {
-    if (entry?.shift_type === "Custom") return isoTimeToHHmm(entry.end_time);
-    if (prefill?.shift_type === "Custom" && prefill.custom_end_time) return prefill.custom_end_time.length >= 16 ? prefill.custom_end_time.slice(11, 16) : prefill.custom_end_time;
+    if (entry?.shift_type === "Custom") return normalizeTime(entry.end_time);
+    if (prefill?.shift_type === "Custom" && prefill.custom_end_time) return normalizeTime(prefill.custom_end_time);
     return "17:00";
   });
   const [notes, setNotes] = React.useState(entry?.notes ?? "");
@@ -1256,8 +1257,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
 
   React.useEffect(() => {
     if (entry?.shift_type === "Custom") {
-      setCustomStartTime(isoTimeToHHmm(entry.start_time));
-      setCustomEndTime(isoTimeToHHmm(entry.end_time));
+      setCustomStartTime(normalizeTime(entry.start_time));
+      setCustomEndTime(normalizeTime(entry.end_time));
     }
   }, [entry?.id, entry?.shift_type, entry?.start_time, entry?.end_time]);
 
@@ -1269,8 +1270,8 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       if (prefillFromAvailability.shift_type === "Custom") {
         const st = prefillFromAvailability.custom_start_time;
         const et = prefillFromAvailability.custom_end_time;
-        setCustomStartTime(st?.length >= 16 ? st.slice(11, 16) : st || "09:00");
-        setCustomEndTime(et?.length >= 16 ? et.slice(11, 16) : et || "17:00");
+        setCustomStartTime(normalizeTime(st || "09:00"));
+        setCustomEndTime(normalizeTime(et || "17:00"));
       }
     }
   }, [prefillFromAvailability?.id]);
@@ -1398,8 +1399,29 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         break;
       }
     }
+    if (process.env.NODE_ENV === "development") {
+      const sameDaySlots = otherPrograms.filter((p) => p.day === day);
+      devLog("[weekly-program] checking availability for new slot:", {
+        newStartIso: window?.startIso,
+        newEndIso: window?.endIso,
+        day,
+        shiftType,
+        customStartRaw: shiftType === "Custom" ? customStartTime : undefined,
+        customEndRaw: shiftType === "Custom" ? customEndTime : undefined,
+        normalizedStart: shiftType === "Custom" ? normalizeTime(customStartTime.trim()) : undefined,
+        normalizedEnd: shiftType === "Custom" ? normalizeTime(customEndTime.trim()) : undefined,
+        existingSlotsSameDay: sameDaySlots.map((s) => ({
+          chatter: s.chatter_name,
+          day: s.day,
+          start: s.start_time,
+          end: s.end_time,
+          models: s.model_ids,
+          overlaps: window ? rangesOverlap(s.start_time, s.end_time, window.startIso, window.endIso) : false,
+        })),
+      });
+    }
     return result;
-  }, [programs, entry?.id, modelss, formTimeWindow]);
+  }, [programs, entry?.id, modelss, formTimeWindow, day, shiftType, customStartTime, customEndTime]);
 
   React.useEffect(() => {
     const next = new Set(selectedModelIds);
