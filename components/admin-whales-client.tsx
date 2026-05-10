@@ -78,6 +78,10 @@ type Props = {
   revenueByModel: [string, number][];
   revenueByChatter: [string, number][];
   initialFilters: AdminWhalesInitialFilters;
+  /** VA read-only: no assigns, edits, or deletes. */
+  readOnly?: boolean;
+  /** `va` shows read-only title + badge; default admin header. */
+  headerVariant?: "admin" | "va";
 };
 
 function notesSummary(notes: string | undefined, maxLen = 40): string {
@@ -567,6 +571,7 @@ type WhaleRowProps = {
   rowIndex: number;
   chatters: Chatter[];
   modelOptions: ModelOption[];
+  readOnly?: boolean;
   onAssignChatter: (id: string, chatterId: string, chatterName: string) => Promise<{ success: boolean; error?: string }>;
   onAssignModel: (id: string, modelId: string, modelName: string) => Promise<{ success: boolean; error?: string }>;
   onClearChatter: (id: string) => Promise<{ success: boolean; error?: string }>;
@@ -576,7 +581,53 @@ type WhaleRowProps = {
   deleting: boolean;
 };
 
-function AdminWhaleHistorySheet({ whale, onClose }: { whale: Whale; onClose: () => void }) {
+function exportWhalesToCsv(whales: Whale[]) {
+  const headers = [
+    "id",
+    "whale_id",
+    "username",
+    "platform",
+    "status",
+    "model",
+    "chatter",
+    "relationship",
+    "total_spent",
+    "notes",
+  ] as const;
+  const escape = (v: string) => `"${v.replace(/"/g, '""')}"`;
+  const rows = whales.map((w) =>
+    [
+      w.id,
+      w.whale_id ?? "",
+      w.username ?? "",
+      w.platform ?? "",
+      w.status ?? "",
+      w.assigned_model_name ?? "",
+      w.assigned_chatter_name ?? "",
+      w.relationship_status ?? "",
+      String(w.total_spent ?? ""),
+      (w.notes ?? "").replace(/\r?\n/g, " "),
+    ].map((c) => escape(String(c)))
+  );
+  const csv = [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `whales-export-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function AdminWhaleHistorySheet({
+  whale,
+  onClose,
+  readOnly,
+}: {
+  whale: Whale;
+  onClose: () => void;
+  readOnly?: boolean;
+}) {
   return (
     <motion.div
       className="fixed inset-0 z-[70] flex justify-end"
@@ -607,6 +658,12 @@ function AdminWhaleHistorySheet({ whale, onClose }: { whale: Whale; onClose: () 
           </Link>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-sm text-white/60">
+          {readOnly ? (
+            <div className="mb-4 flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+              <span className="text-xs text-white/40">Assigned chatter:</span>
+              <span className="text-sm font-medium text-white">{whale.assigned_chatter_name?.trim() || "—"}</span>
+            </div>
+          ) : null}
           <p className="text-xs uppercase tracking-wider text-white/40">Whale ID</p>
           <p className="mt-1 font-mono text-xs text-white/80">{whale.whale_id || "—"}</p>
           <p className="mt-4 text-xs uppercase tracking-wider text-white/40">Totals (from record)</p>
@@ -729,6 +786,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
   rowIndex,
   chatters,
   modelOptions,
+  readOnly = false,
   onAssignChatter,
   onAssignModel,
   onClearChatter,
@@ -794,48 +852,58 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Model</p>
             <p className="mt-1 truncate text-sm font-medium text-white">{whale.assigned_model_name?.trim() || "—"}</p>
-            <div className="mt-2">
-              <ModelCell
-                whale={whale}
-                modelOptions={modelOptions}
-                onSave={onAssignModel}
-                onClear={onClearModel}
-                unassignedLabel="Assign model"
-              />
-            </div>
+            {!readOnly ? (
+              <div className="mt-2">
+                <ModelCell
+                  whale={whale}
+                  modelOptions={modelOptions}
+                  onSave={onAssignModel}
+                  onClear={onClearModel}
+                  unassignedLabel="Assign model"
+                />
+              </div>
+            ) : null}
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Chatter</p>
             <p className="mt-1 truncate text-sm font-medium text-white">{whale.assigned_chatter_name?.trim() || "—"}</p>
-            <div className="mt-2">
-              <ChatterCell
-                whale={whale}
-                chatters={chatters}
-                onSave={onAssignChatter}
-                onClear={onClearChatter}
-                unassignedLabel="Assign chatter"
-              />
-            </div>
+            {!readOnly ? (
+              <div className="mt-2">
+                <ChatterCell
+                  whale={whale}
+                  chatters={chatters}
+                  onSave={onAssignChatter}
+                  onClear={onClearChatter}
+                  unassignedLabel="Assign chatter"
+                />
+              </div>
+            ) : null}
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Relationship</p>
             <div className="mt-1.5">
-              <CustomSelect
-                value={whale.relationship_status || ""}
-                disabled={relSaving}
-                placeholder="—"
-                options={[
-                  { value: "", label: "—" },
-                  ...RELATIONSHIP_STATUS_OPTIONS.map((o) => ({ value: o, label: label(o) })),
-                ]}
-                onChange={(v) => {
-                  void (async () => {
-                    setRelSaving(true);
-                    await onUpdateFields(whale.id, { relationship_status: v });
-                    setRelSaving(false);
-                  })();
-                }}
-              />
+              {readOnly ? (
+                <Badge variant="default">
+                  {whale.relationship_status?.trim() ? label(whale.relationship_status) : "—"}
+                </Badge>
+              ) : (
+                <CustomSelect
+                  value={whale.relationship_status || ""}
+                  disabled={relSaving}
+                  placeholder="—"
+                  options={[
+                    { value: "", label: "—" },
+                    ...RELATIONSHIP_STATUS_OPTIONS.map((o) => ({ value: o, label: label(o) })),
+                  ]}
+                  onChange={(v) => {
+                    void (async () => {
+                      setRelSaving(true);
+                      await onUpdateFields(whale.id, { relationship_status: v });
+                      setRelSaving(false);
+                    })();
+                  }}
+                />
+              )}
             </div>
           </div>
         </div>
@@ -843,89 +911,126 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
         <div className="mb-4">
           <p className="text-xs font-medium uppercase tracking-wider text-white/40">Hours active</p>
           <div className="mt-1.5">
-            <HoursActiveCell value={whale.hours_active ?? []} whaleId={whale.id} onSave={onUpdateFields} />
+            {readOnly ? (
+              <div className="flex flex-wrap gap-1.5">
+                {(whale.hours_active ?? []).filter(Boolean).length === 0 ? (
+                  <span className="text-sm text-white/50">—</span>
+                ) : (
+                  (whale.hours_active ?? [])
+                    .filter(Boolean)
+                    .map((slot) => (
+                      <span
+                        key={slot}
+                        className="inline-flex items-center rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-xs font-medium text-white/90"
+                      >
+                        {slot}
+                      </span>
+                    ))
+                )}
+              </div>
+            ) : (
+              <HoursActiveCell value={whale.hours_active ?? []} whaleId={whale.id} onSave={onUpdateFields} />
+            )}
           </div>
         </div>
 
         <div className="mb-4">
           <p className="text-xs font-medium uppercase tracking-wider text-white/40">Notes</p>
           <div className="mt-1.5">
-            <NotesCell value={whale.notes ?? ""} whaleId={whale.id} onSave={onUpdateFields} />
+            {readOnly ? (
+              <p className="rounded-lg border border-white/10 bg-white/[0.03] px-2 py-2 text-sm text-white/70">
+                {whale.notes?.trim() ? whale.notes : "—"}
+              </p>
+            ) : (
+              <NotesCell value={whale.notes ?? ""} whaleId={whale.id} onSave={onUpdateFields} />
+            )}
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div ref={quickActionsRef} className="relative">
+          {readOnly ? (
             <button
               type="button"
-              onClick={() => setQuickActionsOpen((v) => !v)}
+              onClick={() => onOpenHistory(whale)}
               className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
             >
-              Quick actions ▾
+              View history
             </button>
-            <InlinePopover
-              open={quickActionsOpen}
-              onClose={() => setQuickActionsOpen(false)}
-              wrapperRef={quickActionsRef}
-              className="w-52 py-1"
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickActionsOpen(false);
-                  onOpenHistory(whale);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10"
-              >
-                View history
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickActionsOpen(false);
-                  onOpenEdit(whale);
-                }}
-                className="w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10"
-              >
-                Edit whale
-              </button>
-              {canQuickToggle ? (
+          ) : (
+            <>
+              <div ref={quickActionsRef} className="relative">
                 <button
                   type="button"
-                  onClick={() => {
-                    setQuickActionsOpen(false);
-                    void onUpdateFields(whale.id, { status: nextToggleStatus });
-                  }}
-                  className="w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                  onClick={() => setQuickActionsOpen((v) => !v)}
+                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/85 hover:bg-white/10"
                 >
-                  Mark {nextToggleStatus}
+                  Quick actions ▾
                 </button>
-              ) : null}
-              <div className="my-1 border-t border-white/10" />
-              <button
-                type="button"
-                onClick={() => {
-                  setQuickActionsOpen(false);
-                  onRequestDeleteWhale(whale);
-                }}
-                className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10"
-              >
-                <Trash2 className="h-4 w-4" />
-                Delete whale
-              </button>
-            </InlinePopover>
-          </div>
+                <InlinePopover
+                  open={quickActionsOpen}
+                  onClose={() => setQuickActionsOpen(false)}
+                  wrapperRef={quickActionsRef}
+                  className="w-52 py-1"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickActionsOpen(false);
+                      onOpenHistory(whale);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                  >
+                    View history
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickActionsOpen(false);
+                      onOpenEdit(whale);
+                    }}
+                    className="w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                  >
+                    Edit whale
+                  </button>
+                  {canQuickToggle ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setQuickActionsOpen(false);
+                        void onUpdateFields(whale.id, { status: nextToggleStatus });
+                      }}
+                      className="w-full px-4 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+                    >
+                      Mark {nextToggleStatus}
+                    </button>
+                  ) : null}
+                  <div className="my-1 border-t border-white/10" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setQuickActionsOpen(false);
+                      onRequestDeleteWhale(whale);
+                    }}
+                    className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete whale
+                  </button>
+                </InlinePopover>
+              </div>
 
-          {!canQuickToggle ? (
-            <SelectBadgeCell
-              value={whale.status}
-              options={WHALE_STATUS_OPTIONS}
-              whaleId={whale.id}
-              field="status"
-              onSave={onUpdateFields}
-              badgeVariant={whaleStatusBadgeVariant(whale.status) as keyof typeof badgeVariants}
-            />
-          ) : null}
+              {!canQuickToggle ? (
+                <SelectBadgeCell
+                  value={whale.status}
+                  options={WHALE_STATUS_OPTIONS}
+                  whaleId={whale.id}
+                  field="status"
+                  onSave={onUpdateFields}
+                  badgeVariant={whaleStatusBadgeVariant(whale.status) as keyof typeof badgeVariants}
+                />
+              ) : null}
+            </>
+          )}
         </div>
       </div>
     </motion.div>
@@ -953,6 +1058,8 @@ export function AdminWhalesClient({
   revenueByModel,
   revenueByChatter,
   initialFilters,
+  readOnly = false,
+  headerVariant = "admin",
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1085,6 +1192,7 @@ export function AdminWhalesClient({
 
   const handleAssignChatter = React.useCallback(
     async (whaleId: string, chatterId: string, chatterName: string) => {
+      if (readOnly) return { success: false as const, error: "Read-only" };
       setError(null);
       const prev = localWhales.find((w) => w.id === whaleId);
       if (prev) updateWhaleInList(whaleId, { assigned_chatter_id: chatterId, assigned_chatter_name: chatterName });
@@ -1097,11 +1205,12 @@ export function AdminWhalesClient({
       }
       return res;
     },
-    [router, localWhales, updateWhaleInList]
+    [router, localWhales, updateWhaleInList, readOnly]
   );
 
   const handleAssignModel = React.useCallback(
     async (whaleId: string, modelId: string, modelName: string) => {
+      if (readOnly) return { success: false as const, error: "Read-only" };
       setError(null);
       const prev = localWhales.find((w) => w.id === whaleId);
       if (prev) updateWhaleInList(whaleId, { assigned_model_id: modelId, assigned_model_name: modelName });
@@ -1114,11 +1223,12 @@ export function AdminWhalesClient({
       }
       return res;
     },
-    [router, localWhales, updateWhaleInList]
+    [router, localWhales, updateWhaleInList, readOnly]
   );
 
   const handleClearModel = React.useCallback(
     async (whaleId: string) => {
+      if (readOnly) return { success: false as const, error: "Read-only" };
       setError(null);
       const prev = localWhales.find((w) => w.id === whaleId);
       if (prev) updateWhaleInList(whaleId, { assigned_model_id: "", assigned_model_name: "" });
@@ -1131,11 +1241,12 @@ export function AdminWhalesClient({
       }
       return res;
     },
-    [router, localWhales, updateWhaleInList]
+    [router, localWhales, updateWhaleInList, readOnly]
   );
 
   const handleClearChatter = React.useCallback(
     async (whaleId: string) => {
+      if (readOnly) return { success: false as const, error: "Read-only" };
       setError(null);
       const prev = localWhales.find((w) => w.id === whaleId);
       if (prev) updateWhaleInList(whaleId, { assigned_chatter_id: "", assigned_chatter_name: "" });
@@ -1148,7 +1259,7 @@ export function AdminWhalesClient({
       }
       return res;
     },
-    [router, localWhales, updateWhaleInList]
+    [router, localWhales, updateWhaleInList, readOnly]
   );
 
   const activeFilterCount = React.useMemo(() => {
@@ -1268,6 +1379,7 @@ export function AdminWhalesClient({
 
   const handleUpdateFields = React.useCallback(
     async (whaleId: string, payload: Record<string, string | string[]>) => {
+      if (readOnly) return { success: false as const, error: "Read-only" };
       setError(null);
       const prev = localWhales.find((w) => w.id === whaleId);
       if (prev) {
@@ -1288,16 +1400,17 @@ export function AdminWhalesClient({
       }
       return res;
     },
-    [router, localWhales, updateWhaleInList]
+    [router, localWhales, updateWhaleInList, readOnly]
   );
 
   const handleRequestDeleteWhale = React.useCallback((w: Whale) => {
+    if (readOnly) return;
     setError(null);
     setWhalePendingDelete(w);
-  }, []);
+  }, [readOnly]);
 
   const handleConfirmDeleteWhale = React.useCallback(async () => {
-    if (!whalePendingDelete) return;
+    if (readOnly || !whalePendingDelete) return;
     const whaleId = whalePendingDelete.id;
     const label = whalePendingDelete.username || "Whale";
     setError(null);
@@ -1328,18 +1441,41 @@ export function AdminWhalesClient({
         return next;
       });
     }
-  }, [whalePendingDelete, router]);
+  }, [whalePendingDelete, router, readOnly]);
 
   return (
     <div className="space-y-6 md:space-y-8">
-      <div>
-        <h1 className="bg-gradient-to-r from-white via-white to-white/75 bg-clip-text text-2xl font-semibold tracking-tight text-transparent md:text-3xl">
-          Whales
-        </h1>
-        <p className="mt-1.5 max-w-2xl text-sm text-white/55">
-          All whales. Edit inline. Revenue from whale_transactions.
-        </p>
-      </div>
+      {headerVariant === "va" ? (
+        <div className="mb-2 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-wrap items-center gap-3">
+            <div>
+              <h1 className="text-3xl font-bold text-white">Whales</h1>
+              <p className="mt-1 text-sm text-white/40">All agency whales — read-only view</p>
+            </div>
+            <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium uppercase tracking-widest text-white/40">
+              View only
+            </span>
+          </div>
+          {readOnly ? (
+            <button
+              type="button"
+              onClick={() => exportWhalesToCsv(localWhales)}
+              className="shrink-0 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10"
+            >
+              Export CSV
+            </button>
+          ) : null}
+        </div>
+      ) : (
+        <div>
+          <h1 className="bg-gradient-to-r from-white via-white to-white/75 bg-clip-text text-2xl font-semibold tracking-tight text-transparent md:text-3xl">
+            Whales
+          </h1>
+          <p className="mt-1.5 max-w-2xl text-sm text-white/55">
+            All whales. Edit inline. Revenue from whale_transactions.
+          </p>
+        </div>
+      )}
 
       {/* Summary stats (global totals across all whales, not filtered table) */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
@@ -1456,24 +1592,26 @@ export function AdminWhalesClient({
         </div>
       ) : null}
 
-      <ConfirmDeleteModal
-        open={whalePendingDelete != null}
-        title="Delete whale?"
-        description={
-          <>
-            Are you sure you want to delete{" "}
-            <span className="font-medium text-white">
-              {whalePendingDelete?.username || whalePendingDelete?.whale_id || "this whale"}
-            </span>
-            ? This action cannot be undone.
-          </>
-        }
-        onClose={() => {
-          if (!confirmingWhaleDelete) setWhalePendingDelete(null);
-        }}
-        onConfirm={handleConfirmDeleteWhale}
-        confirming={confirmingWhaleDelete}
-      />
+      {!readOnly ? (
+        <ConfirmDeleteModal
+          open={whalePendingDelete != null}
+          title="Delete whale?"
+          description={
+            <>
+              Are you sure you want to delete{" "}
+              <span className="font-medium text-white">
+                {whalePendingDelete?.username || whalePendingDelete?.whale_id || "this whale"}
+              </span>
+              ? This action cannot be undone.
+            </>
+          }
+          onClose={() => {
+            if (!confirmingWhaleDelete) setWhalePendingDelete(null);
+          }}
+          onConfirm={handleConfirmDeleteWhale}
+          confirming={confirmingWhaleDelete}
+        />
+      ) : null}
 
       {/* Filters + search (debounced) */}
       <div
@@ -1512,15 +1650,26 @@ export function AdminWhalesClient({
               ) : null}
             </button>
           </div>
-          {activeFilterCount > 0 ? (
-            <button
-              type="button"
-              onClick={clearAllFilters}
-              className="rounded-lg border border-pink-400/25 bg-pink-500/10 px-3 py-1.5 text-xs font-semibold text-pink-200 transition-colors hover:border-pink-300/40 hover:bg-pink-500/20"
-            >
-              Clear all
-            </button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {readOnly ? (
+              <button
+                type="button"
+                onClick={() => exportWhalesToCsv(localWhales)}
+                className="hidden rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/85 transition-colors hover:bg-white/10 md:inline-flex"
+              >
+                Export CSV
+              </button>
+            ) : null}
+            {activeFilterCount > 0 ? (
+              <button
+                type="button"
+                onClick={clearAllFilters}
+                className="rounded-lg border border-pink-400/25 bg-pink-500/10 px-3 py-1.5 text-xs font-semibold text-pink-200 transition-colors hover:border-pink-300/40 hover:bg-pink-500/20"
+              >
+                Clear all
+              </button>
+            ) : null}
+          </div>
         </div>
 
         <div className="relative hidden md:block">{adminFilterFields}</div>
@@ -1619,6 +1768,7 @@ export function AdminWhalesClient({
                 rowIndex={cardPage * CLIENT_PAGE_SIZE + index}
                 chatters={chatters}
                 modelOptions={modelOptions}
+                readOnly={readOnly}
                 onAssignChatter={handleAssignChatter}
                 onAssignModel={handleAssignModel}
                 onClearChatter={handleClearChatter}
@@ -1682,11 +1832,16 @@ export function AdminWhalesClient({
 
       <AnimatePresence>
         {historyWhale ? (
-          <AdminWhaleHistorySheet key={historyWhale.id} whale={historyWhale} onClose={() => setHistoryWhale(null)} />
+          <AdminWhaleHistorySheet
+            key={historyWhale.id}
+            whale={historyWhale}
+            readOnly={readOnly}
+            onClose={() => setHistoryWhale(null)}
+          />
         ) : null}
       </AnimatePresence>
       <AnimatePresence>
-        {editingWhale ? (
+        {!readOnly && editingWhale ? (
           <AdminEditWhaleModal
             key={editingWhale.id}
             whale={editingWhale}

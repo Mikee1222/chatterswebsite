@@ -133,6 +133,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.home, label: "Home", iconKey: "Home" },
   { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo" },
   { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays" },
+  { href: ROUTES.va.whales, label: "Whales", iconKey: "Users" },
   { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
   { href: ROUTES.va.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
