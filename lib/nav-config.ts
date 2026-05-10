@@ -151,41 +151,49 @@ const vaNav: NavItem[] = [
 ];
 
 const adminNav: NavItem[] = [
-  { href: ROUTES.admin.home, label: "Home", iconKey: "Home" },
-  { href: ROUTES.admin.weeklyProgram, label: "Weekly program", iconKey: "Calendar" },
-  { href: ROUTES.admin.weeklyProgramVa, label: "VA weekly program", iconKey: "CalendarCheck" },
+  // ── OVERVIEW ──
+  { href: ROUTES.admin.home, label: "Home", iconKey: "Home", navSection: "OVERVIEW" },
   { href: ROUTES.admin.liveShifts, label: "Live shifts", iconKey: "Radio" },
-  { href: ROUTES.admin.models, label: "Models", iconKey: "UserCheck" },
-  { href: ROUTES.admin.whales, label: "Whales", iconKey: "Users" },
-  { href: ROUTES.admin.modelAvailability, label: "Model availability", iconKey: "CalendarCheck" },
   { href: ROUTES.admin.modelSchedulesOverview, label: "Schedule overview", iconKey: "CalendarDays" },
-  { href: ROUTES.admin.vaContentAssignments, label: "VA Content", iconKey: "FileText" },
+
+  // ── PROGRAMS ──
+  { href: ROUTES.admin.weeklyProgram, label: "Weekly program", iconKey: "Calendar", navSection: "PROGRAMS" },
+  { href: ROUTES.admin.weeklyProgramVa, label: "VA weekly program", iconKey: "CalendarCheck" },
+  { href: ROUTES.admin.vaTasks, label: "VA tasks", iconKey: "ListTodo" },
+  { href: ROUTES.admin.modelAvailability, label: "Model availability", iconKey: "CalendarCheck" },
   { href: ROUTES.admin.modelSchedules, label: "Model schedules", iconKey: "Calendar" },
   { href: ROUTES.admin.modelTasks, label: "Model tasks", iconKey: "FileText" },
+
+  // ── CREATORS & CLIENTS ──
+  { href: ROUTES.admin.models, label: "Models", iconKey: "UserCheck", navSection: "CREATORS & CLIENTS" },
+  { href: ROUTES.admin.whales, label: "Whales", iconKey: "Users" },
+  { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
   { href: ROUTES.admin.modelLiveStreams, label: "Model live streams", iconKey: "Radio", beta: true },
   { href: ROUTES.admin.modelCustoms, label: "Model customs", iconKey: "Package" },
+
+  // ── MARKETING ──
+  { href: ROUTES.admin.marketing, label: "Marketing", iconKey: "TrendingUp", navSection: "MARKETING" },
+  { href: ROUTES.admin.vaContentAssignments, label: "VA Content", iconKey: "FileText" },
   { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
-  { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
-  {
-    href: ROUTES.admin.marketing,
-    label: "Marketing",
-    iconKey: "TrendingUp",
-    navSection: "MARKETING",
-  },
-  { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
+
+  // ── FINANCE ──
+  { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt", navSection: "FINANCE" },
   { href: ROUTES.admin.rebillsTips, label: "Rebills & Tips", iconKey: "Receipt" },
+  { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
   { href: ROUTES.admin.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins" },
   { href: ROUTES.admin.earnings, label: "Earnings", iconKey: "LineChart", adminOnly: true },
   // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.
   // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
-  { href: ROUTES.admin.vaTasks, label: "VA tasks", iconKey: "ListTodo" },
-  { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
+
+  // ── PERFORMANCE ──
+  { href: ROUTES.admin.mistakes, label: "Mistakes", iconKey: "AlertTriangle", navSection: "PERFORMANCE" },
   { href: ROUTES.admin.mistakeReasons, label: "Mistake reasons", iconKey: "Settings2", adminOnly: true },
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
+  { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
-  { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
-  { href: ROUTES.admin.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
-  { href: ROUTES.admin.feedback, label: "Feedback", iconKey: "MessageSquarePlus" },
+
+  // ── SUPPORT ──
+  { href: ROUTES.admin.feedback, label: "Feedback", iconKey: "MessageSquarePlus", navSection: "SUPPORT" },
   { href: ROUTES.activityLogs, label: "Activity logs", iconKey: "Activity" },
   {
     href: ROUTES.admin.notificationDiagnostic,
