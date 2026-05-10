@@ -1388,12 +1388,20 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     const result: Record<string, { taken: boolean; takenBy?: string }> = {};
     const window = formTimeWindow;
     const otherPrograms = programs.filter((p) => p.id !== entry?.id);
+    const newDayIdx = DAYS.indexOf(day);
+
     for (const m of modelss) {
       result[m.id] = { taken: false };
       if (!window) continue;
       for (const p of otherPrograms) {
         if (!p.start_time || !p.end_time) continue;
         if (!p.model_ids.includes(m.id)) continue;
+
+        const slotDayIdx = DAYS.indexOf(p.day);
+        const dayDiff = Math.abs(newDayIdx - slotDayIdx);
+        const isAdjacent = dayDiff <= 1 || dayDiff === 6;
+        if (!isAdjacent) continue;
+
         if (!rangesOverlap(p.start_time, p.end_time, window.startIso, window.endIso)) continue;
         result[m.id] = { taken: true, takenBy: p.chatter_name ?? "—" };
         break;
@@ -1421,7 +1429,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       });
     }
     return result;
-  }, [programs, entry?.id, modelss, formTimeWindow, day, shiftType, customStartTime, customEndTime]);
+  }, [formTimeWindow, programs, modelss, entry?.id, day, weekStartVal]);
 
   React.useEffect(() => {
     const next = new Set(selectedModelIds);
