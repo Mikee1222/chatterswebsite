@@ -224,6 +224,13 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
     });
   }, [localTasks, search, filterVa, filterStatus, filterPriority]);
 
+  const recurrenceIntervalNum = React.useMemo(() => {
+    const t = form.recurrence_interval.trim();
+    if (t === "") return 1;
+    const n = Number(t);
+    return Math.max(1, Math.min(99, Number.isFinite(n) ? n : 1));
+  }, [form.recurrence_interval]);
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -729,14 +736,70 @@ export function AdminVaTasksClient({ tasks, vaUsers }: Props) {
                             </select>
                           </div>
                           <div>
-                            <label className="mb-1.5 block text-xs text-white/40">Interval</label>
-                            <input
-                              type="number"
-                              min={1}
-                              value={form.recurrence_interval}
-                              onChange={(e) => setForm((f) => ({ ...f, recurrence_interval: e.target.value }))}
-                              className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/50"
-                            />
+                            <label className="mb-1.5 block text-xs text-white/40">Repeat every</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                min={1}
+                                max={99}
+                                value={form.recurrence_interval}
+                                onChange={(e) => {
+                                  const raw = e.target.value;
+                                  setForm((f) => {
+                                    if (raw === "") return { ...f, recurrence_interval: "" };
+                                    const n = Math.max(1, Math.min(99, Number(raw) || 1));
+                                    return { ...f, recurrence_interval: String(n) };
+                                  });
+                                }}
+                                className="w-20 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-sm text-white outline-none focus:border-pink-500/50"
+                              />
+                              <span className="text-sm text-white/50">
+                                {form.recurrence_type === "daily"
+                                  ? recurrenceIntervalNum === 1
+                                    ? "day"
+                                    : "days"
+                                  : form.recurrence_type === "weekly"
+                                    ? recurrenceIntervalNum === 1
+                                      ? "week"
+                                      : "weeks"
+                                    : form.recurrence_type === "monthly"
+                                      ? recurrenceIntervalNum === 1
+                                        ? "month"
+                                        : "months"
+                                      : form.recurrence_type === "custom"
+                                        ? recurrenceIntervalNum === 1
+                                          ? "time"
+                                          : "times"
+                                        : recurrenceIntervalNum === 1
+                                          ? "day"
+                                          : "days"}
+                              </span>
+                            </div>
+                            <p className="mt-1.5 text-xs text-white/25">
+                              {recurrenceIntervalNum === 1
+                                ? `Repeats every ${
+                                    form.recurrence_type === "daily"
+                                      ? "day"
+                                      : form.recurrence_type === "weekly"
+                                        ? "week"
+                                        : form.recurrence_type === "monthly"
+                                          ? "month"
+                                          : form.recurrence_type === "custom"
+                                            ? "time"
+                                            : "day"
+                                  }`
+                                : `Repeats every ${recurrenceIntervalNum} ${
+                                    form.recurrence_type === "daily"
+                                      ? "days"
+                                      : form.recurrence_type === "weekly"
+                                        ? "weeks"
+                                        : form.recurrence_type === "monthly"
+                                          ? "months"
+                                          : form.recurrence_type === "custom"
+                                            ? "times"
+                                            : "days"
+                                  }`}
+                            </p>
                           </div>
                         </div>
                         {form.recurrence_type === "weekly" ? (
