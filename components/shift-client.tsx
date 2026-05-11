@@ -1011,6 +1011,7 @@ export function ShiftClient({
       if (!result.success) {
         setError(result.error);
         addToast(localToast(`add-models-err-${Date.now()}`, "Could not add models", result.error, "high"));
+        requestRouterRefresh();
         return;
       }
       setShowAddModelModal(false);

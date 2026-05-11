@@ -270,7 +270,7 @@ export async function addModelToShift(params: {
 }): Promise<AddModelToShiftResult> {
   try {
     const existing = await listShiftModels(params.shiftRecordId);
-    const alreadyAttached = existing.some((sm) => sm.model_id === params.modelRecordId);
+    const alreadyAttached = existing.some((sm) => sm.model_id === params.modelRecordId && !sm.left_at);
     if (alreadyAttached) {
       return { success: false, error: "This model is already in your shift." };
     }
@@ -282,22 +282,41 @@ export async function addModelToShift(params: {
       return { success: false, error: "Model is not available (occupied by another chatter)." };
     }
     const now = new Date().toISOString();
-    await createShiftModel({
-      shift: [params.shiftRecordId],
-      model: [params.modelRecordId],
-      model_name: params.modelName,
-      chatter: [params.chatterRecordId],
-      chatter_name: params.chatterName,
-      entered_at: now,
-      status: "active",
-    });
-    await updateModel(params.modelRecordId, {
-      current_status: "occupied",
-      current_chatter: [params.chatterRecordId],
-      current_chatter_name: params.chatterName,
-      current_shift_id: params.shiftRecordId,
-      entered_at: now,
-    });
+    let createdShiftModel: Awaited<ReturnType<typeof createShiftModel>> | null = null;
+    try {
+      createdShiftModel = await createShiftModel({
+        shift: [params.shiftRecordId],
+        model: [params.modelRecordId],
+        model_name: params.modelName,
+        chatter: [params.chatterRecordId],
+        chatter_name: params.chatterName,
+        entered_at: now,
+        status: "active",
+      });
+    } catch (e) {
+      console.error("[addModelToShift] failed to create shift_model row:", e);
+      return { success: false, error: "Failed to add model. Please try again." };
+    }
+    try {
+      await updateModel(params.modelRecordId, {
+        current_status: "occupied",
+        current_chatter: [params.chatterRecordId],
+        current_chatter_name: params.chatterName,
+        current_shift_id: params.shiftRecordId,
+        entered_at: now,
+      });
+    } catch (e) {
+      console.error("[addModelToShift] model status update failed — rolling back shift_model row:", e);
+      try {
+        if (createdShiftModel?.id) {
+          await updateShiftModel(createdShiftModel.id, { left_at: now, status: "left" });
+        }
+        console.log("[addModelToShift] rollback successful");
+      } catch (rollbackErr) {
+        console.error("[addModelToShift] ROLLBACK FAILED — orphaned row may exist:", rollbackErr);
+      }
+      return { success: false, error: "Failed to update model status. Please try again." };
+    }
     devLog("[addModelToShift] attached model", { modelRecordId: params.modelRecordId, modelName: params.modelName });
     revalidatePath(ROUTES.chatter.shift);
     try {
@@ -357,7 +376,12 @@ export async function bulkAddModelsToShift(params: {
     }
 
     const existing = await listShiftModels(shiftRecordId);
-    const attachedIds = new Set(existing.map((sm) => sm.model_id).filter(Boolean));
+    const attachedIds = new Set(
+      existing
+        .filter((sm) => !sm.left_at)
+        .map((sm) => sm.model_id)
+        .filter(Boolean)
+    );
 
     const eligible: { modelRecordId: string; modelName: string }[] = [];
     for (const it of deduped) {
@@ -386,31 +410,54 @@ export async function bulkAddModelsToShift(params: {
     }
 
     const now = new Date().toISOString();
-    await batchCreateRecords(
-      SHIFT_MODELS_TABLE,
-      eligible.map((e) => ({
-        shift: [shiftRecordId],
-        model: [e.modelRecordId],
-        model_name: e.modelName,
-        chatter: [chatterRecordId],
-        chatter_name: chatterName,
-        entered_at: now,
-        status: "active",
-      }))
-    );
-    await batchUpdateRecords(
-      MODELSS_TABLE,
-      eligible.map((e) => ({
-        id: e.modelRecordId,
-        fields: {
-          current_status: "occupied",
-          current_chatter: [chatterRecordId],
-          current_chatter_name: chatterName,
-          current_shift_id: shiftRecordId,
+    let createdRecords: { id: string }[] = [];
+    try {
+      createdRecords = await batchCreateRecords(
+        SHIFT_MODELS_TABLE,
+        eligible.map((e) => ({
+          shift: [shiftRecordId],
+          model: [e.modelRecordId],
+          model_name: e.modelName,
+          chatter: [chatterRecordId],
+          chatter_name: chatterName,
           entered_at: now,
-        },
-      }))
-    );
+          status: "active",
+        }))
+      );
+    } catch (e) {
+      console.error("[bulkAddModelsToShift] failed to create shift_model rows:", e);
+      return { success: false, error: "Failed to add models. Please try again." };
+    }
+    try {
+      await batchUpdateRecords(
+        MODELSS_TABLE,
+        eligible.map((e) => ({
+          id: e.modelRecordId,
+          fields: {
+            current_status: "occupied",
+            current_chatter: [chatterRecordId],
+            current_chatter_name: chatterName,
+            current_shift_id: shiftRecordId,
+            entered_at: now,
+          },
+        }))
+      );
+    } catch (e) {
+      console.error("[bulkAddModelsToShift] model status update failed — rolling back shift_model rows:", e);
+      try {
+        await batchUpdateRecords(
+          SHIFT_MODELS_TABLE,
+          createdRecords.map((r) => ({
+            id: r.id,
+            fields: { left_at: now, status: "left" },
+          }))
+        );
+        console.log("[bulkAddModelsToShift] rollback successful");
+      } catch (rollbackErr) {
+        console.error("[bulkAddModelsToShift] ROLLBACK FAILED — orphaned rows may exist:", rollbackErr);
+      }
+      return { success: false, error: "Failed to update model status. Please try again." };
+    }
     for (const e of eligible) {
       await broadcastRealtimeToAll({
         type: "model_status_changed",
