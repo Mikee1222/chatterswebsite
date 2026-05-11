@@ -4,6 +4,7 @@ import {
   getRecord,
   createRecord,
   updateRecord,
+  deleteRecord,
   getBaseSchema,
   type AirtableRecord,
 } from "@/lib/airtable-server";
@@ -216,6 +217,16 @@ export async function getRequestByWeekDayVa(
   return all.find((r) => r.day === day) ?? null;
 }
 
+/** Fetch all requests for (week_start, VA, day). Multiple availability slots per day are allowed. */
+export async function getRequestsByWeekDayVa(
+  weekStart: string,
+  vaRecordId: string,
+  day: WeeklyProgramDay
+): Promise<WeeklyAvailabilityRequest[]> {
+  const all = await getRequestsForWeekVa(weekStart, vaRecordId);
+  return all.filter((r) => r.day === day);
+}
+
 export function countDayOffForWeekVa(
   requests: WeeklyAvailabilityRequest[],
   excludeRecordId?: string
@@ -281,4 +292,10 @@ export async function updateWeeklyAvailabilityRequestVa(
   }
   const rec = await updateRecord<Fields>(TABLE, recordId, payload as Partial<Fields>);
   return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+export async function deleteWeeklyAvailabilityRequestVa(recordId: string): Promise<void> {
+  const id = recordId?.trim();
+  if (!id) throw new Error("Missing record id");
+  await deleteRecord(TABLE, id);
 }

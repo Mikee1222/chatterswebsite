@@ -3,8 +3,12 @@
 import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Calendar, Clock, ListChecks, StickyNote } from "lucide-react";
-import { submitAvailabilityVaAction, updateAvailabilityVaAction } from "@/app/actions/weekly-availability-va";
+import { Calendar, Clock, ListChecks, Pencil, Plus, StickyNote, Trash2 } from "lucide-react";
+import {
+  deleteAvailabilityVaAction,
+  submitAvailabilityVaAction,
+  updateAvailabilityVaAction,
+} from "@/app/actions/weekly-availability-va";
 import { vaWeeklyAvailabilityUrl } from "@/lib/routes";
 import { addDays, getThisWeekMonday, normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
 import { FormField } from "@/components/ui/form-field";
@@ -36,6 +40,30 @@ function formatCustomTime(value: string | undefined): string {
   return t;
 }
 
+function customSortMinutes(value: string | undefined): number {
+  const time = formatCustomTime(value);
+  const match = /^(\d{1,2}):(\d{2})$/.exec(time);
+  if (!match) return 24 * 60;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+function StatusBadge({ status }: { status: WeeklyAvailabilityRequest["status"] }) {
+  return (
+    <span
+      className={cn(
+        "rounded-full border px-2 py-0.5 text-xs font-semibold",
+        status === "used" || status === "reviewed"
+          ? "border-emerald-500/25 bg-emerald-500/15 text-emerald-300"
+          : status === "rejected"
+            ? "border-red-500/25 bg-red-500/15 text-red-300"
+            : "border-amber-500/25 bg-amber-500/15 text-amber-300"
+      )}
+    >
+      {status === "used" ? "Scheduled" : status === "reviewed" ? "Approved" : status === "rejected" ? "Rejected" : "Pending"}
+    </span>
+  );
+}
+
 const DAYS: WeeklyProgramDay[] = [
   "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
 ];
@@ -48,9 +76,11 @@ type Props = {
 export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initialRequests }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const formRef = React.useRef<HTMLDivElement>(null);
   const weekStart = normalizeWeekStart(searchParams.get("week_start") || initialWeekStart);
 
   const [requests, setRequests] = React.useState(initialRequests);
+  const [showForm, setShowForm] = React.useState(true);
   const [editingRequest, setEditingRequest] = React.useState<WeeklyAvailabilityRequest | null>(null);
   const [entryType, setEntryType] = React.useState<WeeklyAvailabilityEntryType>("availability");
   const [day, setDay] = React.useState<WeeklyProgramDay>("Monday");
@@ -78,6 +108,22 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
     setNotes(r.notes ?? "");
     setError(null);
     setSuccess(null);
+    setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
+  };
+
+  const handleAddSlot = (selectedDay: WeeklyProgramDay) => {
+    setEditingRequest(null);
+    setEntryType("availability");
+    setDay(selectedDay);
+    setShiftType("Custom");
+    setCustomStart("09:00");
+    setCustomEnd("17:00");
+    setNotes("");
+    setError(null);
+    setSuccess(null);
+    setShowForm(true);
+    setTimeout(() => formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
 
   const handleCancelEdit = () => {
@@ -146,20 +192,39 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
     router.refresh();
   };
 
+  const handleDelete = async (requestId: string) => {
+    if (!confirm("Delete this availability slot?")) return;
+    setError(null);
+    setSuccess(null);
+    const res = await deleteAvailabilityVaAction(requestId);
+    if (!res.success) {
+      setError(res.error ?? "Failed to delete availability.");
+      return;
+    }
+    setSuccess("Availability deleted.");
+    router.refresh();
+  };
+
   const byDay = React.useMemo(() => {
-    const order = (r: WeeklyAvailabilityRequest) =>
-      r.entry_type === "day_off" ? -1 : r.shift_type === "Morning" ? 0 : r.shift_type === "Night" ? 1 : 2;
+    const order = (r: WeeklyAvailabilityRequest) => {
+      if (r.entry_type === "day_off") return -1;
+      if (r.shift_type === "Custom") return customSortMinutes(r.custom_start_time);
+      return r.shift_type === "Morning" ? 1200 : 2000;
+    };
     return DAYS.map((d) => ({
       day: d,
       entries: requests.filter((r) => r.day === d).sort((a, b) => order(a) - order(b)),
     }));
   }, [requests]);
 
-  const daysWithSubmission = React.useMemo(() => new Set(requests.map((r) => r.day)), [requests]);
+  const daysWithDayOff = React.useMemo(
+    () => new Set(requests.filter((r) => r.entry_type === "day_off").map((r) => r.day)),
+    [requests]
+  );
 
   const dayOptionsAvailable = React.useMemo(
-    () => DAYS.filter((d) => editingRequest != null || !daysWithSubmission.has(d)).map((d) => ({ value: d, label: d })),
-    [editingRequest, daysWithSubmission]
+    () => DAYS.filter((d) => editingRequest != null || !daysWithDayOff.has(d)).map((d) => ({ value: d, label: d })),
+    [editingRequest, daysWithDayOff]
   );
 
   React.useEffect(() => {
@@ -220,7 +285,9 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {showForm && (
         <div
+          ref={formRef}
           className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl"
           style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.06)" }}
         >
@@ -286,7 +353,7 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
                       id="va-avail-day-empty"
                       className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/55"
                     >
-                      You’ve already submitted for every day this week.
+                      You’ve marked every day as day off this week.
                     </p>
                   )}
                 </FormField>
@@ -378,6 +445,7 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
             </motion.div>
           </form>
         </div>
+        )}
 
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.06)" }}>
           <div className="border-b border-white/10 bg-white/[0.04] px-5 py-4">
@@ -389,23 +457,46 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
             ) : (
               byDay.map(({ day: d, entries }) =>
                 entries.length > 0 ? (
-                  <div key={d}>
-                    <p className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-1.5">{d}</p>
+                  <div key={d} className="mb-4 last:mb-0">
+                    <div className="mb-2 flex items-center gap-2">
+                      <span className="text-xs font-bold uppercase tracking-widest text-white/50">{d}</span>
+                      <div className="h-px flex-1 bg-white/10" />
+                      {!entries.some((r) => r.entry_type === "day_off") && (
+                        <button
+                          type="button"
+                          onClick={() => handleAddSlot(d)}
+                          className="flex items-center gap-1.5 rounded-xl border border-pink-500/20 bg-pink-500/10 px-3 py-1.5 text-xs font-medium text-pink-300 transition-colors hover:bg-pink-500/20"
+                        >
+                          <Plus className="h-3 w-3" />
+                          Add slot
+                        </button>
+                      )}
+                    </div>
                     {entries.map((r) => (
-                      <div key={r.id} className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 mb-2 text-sm">
+                      <div
+                        key={r.id}
+                        className={cn(
+                          "mb-2 rounded-xl border px-4 py-3 text-sm",
+                          r.entry_type === "day_off"
+                            ? "border-red-500/20 bg-red-500/5"
+                            : r.status === "reviewed" || r.status === "used"
+                              ? "border-emerald-500/20 bg-emerald-500/5"
+                              : "border-white/10 bg-white/[0.04]"
+                        )}
+                      >
                         {r.entry_type === "day_off" ? (
                           <>
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-[hsl(330,90%,75%)]">{d} — Day off</span>
-                              <span className={`rounded-lg px-2 py-0.5 text-xs font-medium ${r.status === "submitted" ? "bg-amber-500/20 text-amber-300" : r.status === "used" ? "bg-emerald-500/20 text-emerald-300" : r.status === "rejected" ? "bg-red-500/20 text-red-300" : "bg-white/10 text-white/70"}`}>{r.status}</span>
+                              <span className="font-medium text-red-300">Day off</span>
+                              <StatusBadge status={r.status} />
                             </div>
                             {r.notes?.trim() && <p className="mt-1 text-white/50 truncate">notes: {r.notes}</p>}
                           </>
                         ) : r.entry_type === "availability" && (r.shift_type === "Morning" || r.shift_type === "Night") ? (
                           <>
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-[hsl(330,90%,75%)]">{d} — {r.shift_type}</span>
-                              <span className={`rounded-lg px-2 py-0.5 text-xs font-medium ${r.status === "submitted" ? "bg-amber-500/20 text-amber-300" : r.status === "used" ? "bg-emerald-500/20 text-emerald-300" : r.status === "rejected" ? "bg-red-500/20 text-red-300" : "bg-white/10 text-white/70"}`}>{r.status}</span>
+                              <span className="font-medium text-[hsl(330,90%,75%)]">{r.shift_type}</span>
+                              <StatusBadge status={r.status} />
                             </div>
                             <p className="mt-1 text-white/60 text-xs">{r.shift_type === "Morning" ? "12:00–20:00" : "20:00–03:00"}</p>
                             {r.notes?.trim() && <p className="mt-1 text-white/50 truncate">notes: {r.notes}</p>}
@@ -413,18 +504,33 @@ export function VaWeeklyAvailabilityClient({ weekStart: initialWeekStart, initia
                         ) : (
                           <>
                             <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-[hsl(330,90%,75%)]">{d} — Custom</span>
-                              <span className={`rounded-lg px-2 py-0.5 text-xs font-medium ${r.status === "submitted" ? "bg-amber-500/20 text-amber-300" : r.status === "used" ? "bg-emerald-500/20 text-emerald-300" : r.status === "rejected" ? "bg-red-500/20 text-red-300" : "bg-white/10 text-white/70"}`}>{r.status}</span>
+                              <span className="font-medium text-[hsl(330,90%,75%)]">Custom</span>
+                              <StatusBadge status={r.status} />
                             </div>
                             <p className="mt-1 text-white/70">{formatCustomTime(r.custom_start_time)} – {formatCustomTime(r.custom_end_time)}</p>
                             {r.notes?.trim() && <p className="mt-1 text-white/50 truncate">notes: {r.notes}</p>}
                           </>
                         )}
-                        <div className="mt-2">
-                          <button type="button" onClick={() => handleEdit(r)} className="rounded-lg border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 transition-colors">
-                            Edit
-                          </button>
-                        </div>
+                        {r.status === "submitted" && (
+                          <div className="mt-2 flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => handleEdit(r)}
+                              className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                              aria-label="Edit availability slot"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(r.id)}
+                              className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                              aria-label="Delete availability slot"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
