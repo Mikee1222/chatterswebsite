@@ -72,6 +72,22 @@ const DAYS: WeeklyProgramDay[] = [
 
 const SHIFT_TYPES: WeeklyProgramShiftType[] = ["Morning", "Night"];
 
+const SHIFT_START_FALLBACK_MINUTES: Record<WeeklyProgramShiftType, number> = {
+  Morning: 720,
+  Night: 1200,
+  Custom: 9999,
+};
+
+function startMinutesUtc(startIso: string | null | undefined, shiftType: WeeklyProgramShiftType): number {
+  if (startIso) {
+    const date = new Date(startIso);
+    if (!Number.isNaN(date.getTime())) {
+      return date.getUTCHours() * 60 + date.getUTCMinutes();
+    }
+  }
+  return SHIFT_START_FALLBACK_MINUTES[shiftType];
+}
+
 const SHIFT_FILTER_OPTIONS: CustomSelectOption[] = [
   { value: "", label: "All shifts" },
   { value: "Morning", label: "Morning" },
@@ -86,6 +102,8 @@ const AVAIL_SHIFT_TYPE_OPTIONS: CustomSelectOption[] = [
 ];
 
 type Chatter = { id: string; full_name: string };
+
+type WeeklyProgramVaPrefill = Pick<WeeklyAvailabilityRequest, "day" | "week_start"> & Partial<WeeklyAvailabilityRequest>;
 
 function getModelNames(modelIds: string[], modelss: ModelRecord[]): string[] {
   return modelIds
@@ -149,7 +167,7 @@ export function AdminWeeklyProgramVaClient({
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editingEntry, setEditingEntry] = React.useState<WeeklyProgramRecord | null>(null);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
-  const [prefillFromAvailability, setPrefillFromAvailability] = React.useState<WeeklyAvailabilityRequest | null>(null);
+  const [prefillFromAvailability, setPrefillFromAvailability] = React.useState<WeeklyProgramVaPrefill | null>(null);
   const [availFilterChatter, setAvailFilterChatter] = React.useState("");
   const [availFilterShiftType, setAvailFilterShiftType] = React.useState<WeeklyProgramShiftType | "">("");
   const [availFilterDay, setAvailFilterDay] = React.useState<WeeklyProgramDay | "">("");
@@ -192,10 +210,7 @@ export function AdminWeeklyProgramVaClient({
       day,
       entries: filtered
         .filter((e) => e.day === day)
-        .sort((a, b) => {
-          const order = (s: string) => (s === "Morning" ? 0 : s === "Night" ? 1 : 2);
-          return order(a.shift_type) - order(b.shift_type);
-        }),
+        .sort((a, b) => startMinutesUtc(a.start_time, a.shift_type) - startMinutesUtc(b.start_time, b.shift_type)),
     }));
   }, [filtered]);
 
@@ -259,6 +274,14 @@ export function AdminWeeklyProgramVaClient({
     setCreateOpen(true);
     setEditingEntry(null);
     setError(null);
+  };
+
+  const openCreateForDay = (day: WeeklyProgramDay) => {
+    setEditingEntry(null);
+    setPrefillFromAvailability({ day, week_start: effectiveWeekStart });
+    setCreateOpen(true);
+    setError(null);
+    setSuccess(null);
   };
 
   React.useEffect(() => {
@@ -865,6 +888,13 @@ export function AdminWeeklyProgramVaClient({
                       );
                     })
                   )}
+                  <button
+                    type="button"
+                    onClick={() => openCreateForDay(day)}
+                    className="w-full rounded-xl border border-dashed border-[hsl(330,80%,55%)]/45 bg-[hsl(330,80%,55%)]/10 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors"
+                  >
+                    + Add slot
+                  </button>
                 </div>
               </div>
             );
@@ -956,71 +986,80 @@ export function AdminWeeklyProgramVaClient({
                     {entries.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
                         <p className="text-sm text-white/45">No shifts</p>
-                        <button type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="mt-3 rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors">
-                          Add shift
+                        <button type="button" onClick={() => openCreateForDay(day)} className="mt-3 rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors">
+                          + Add slot
                         </button>
                       </div>
                     ) : (
-                      entries.map((e) => {
-                        const hasConflict = conflictRecordIds.includes(e.id);
-                        const modelCount = e.model_ids?.filter(Boolean).length ?? 0;
-                        const hasTooManyModels = modelCount > 10;
-                        const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
-                        return (
-                          <div
-                            key={e.id}
-                            className={cn(
-                              "rounded-xl border pl-3.5 transition-all hover:border-white/20",
-                              shiftCardAccentClass(e.shift_type),
-                              hasConflict
-                                ? "border-amber-500/40 bg-amber-500/5 ring-1 ring-amber-500/30"
-                                : "border-white/10 bg-white/[0.04] hover:bg-white/[0.06]"
-                            )}
-                          >
-                            <div className="p-4">
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0 flex-1">
-                                  <ShiftTypeBadge shiftType={e.shift_type} className="mb-2" />
-                                  <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
-                                  <p className="mt-1 font-medium text-white/95 truncate text-base">{e.chatter_name || "—"}</p>
-                                  <div className="mt-1 min-w-0 text-sm text-white/65">
-                                    {e.model_ids.length ? (
-                                      <ModelPeriodNamesRow
-                                        modelIds={e.model_ids}
-                                        idToName={modelIdToDisplayName}
-                                        dateYmd={dateYmd}
-                                        periodDatesByModelId={periodDatesByModelId}
-                                      />
-                                    ) : (
-                                      <span>—</span>
+                      <>
+                        {entries.map((e) => {
+                          const hasConflict = conflictRecordIds.includes(e.id);
+                          const modelCount = e.model_ids?.filter(Boolean).length ?? 0;
+                          const hasTooManyModels = modelCount > 10;
+                          const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
+                          return (
+                            <div
+                              key={e.id}
+                              className={cn(
+                                "rounded-xl border pl-3.5 transition-all hover:border-white/20",
+                                shiftCardAccentClass(e.shift_type),
+                                hasConflict
+                                  ? "border-amber-500/40 bg-amber-500/5 ring-1 ring-amber-500/30"
+                                  : "border-white/10 bg-white/[0.04] hover:bg-white/[0.06]"
+                              )}
+                            >
+                              <div className="p-4">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="min-w-0 flex-1">
+                                    <ShiftTypeBadge shiftType={e.shift_type} className="mb-2" />
+                                    <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
+                                    <p className="mt-1 font-medium text-white/95 truncate text-base">{e.chatter_name || "—"}</p>
+                                    <div className="mt-1 min-w-0 text-sm text-white/65">
+                                      {e.model_ids.length ? (
+                                        <ModelPeriodNamesRow
+                                          modelIds={e.model_ids}
+                                          idToName={modelIdToDisplayName}
+                                          dateYmd={dateYmd}
+                                          periodDatesByModelId={periodDatesByModelId}
+                                        />
+                                      ) : (
+                                        <span>—</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex shrink-0 items-center gap-1">
+                                    {hasTooManyModels && (
+                                      <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="More than 10 models assigned">
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                      </span>
+                                    )}
+                                    {hasConflict && (
+                                      <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="Conflict">
+                                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                      </span>
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex shrink-0 items-center gap-1">
-                                  {hasTooManyModels && (
-                                    <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="More than 10 models assigned">
-                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                    </span>
-                                  )}
-                                  {hasConflict && (
-                                    <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="Conflict">
-                                      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                                    </span>
-                                  )}
+                                <div className="mt-3 flex items-center gap-2">
+                                  <button type="button" onClick={() => setEditingEntry(e)} className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
+                                    Edit
+                                  </button>
+                                  <button type="button" onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-300/80 hover:bg-red-500/10 disabled:opacity-50 transition-colors">
+                                    {deletingId === e.id ? "…" : "Delete"}
+                                  </button>
                                 </div>
                               </div>
-                              <div className="mt-3 flex items-center gap-2">
-                                <button type="button" onClick={() => setEditingEntry(e)} className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
-                                  Edit
-                                </button>
-                                <button type="button" onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="rounded-lg border border-red-500/30 px-2.5 py-1.5 text-xs font-medium text-red-300/80 hover:bg-red-500/10 disabled:opacity-50 transition-colors">
-                                  {deletingId === e.id ? "…" : "Delete"}
-                                </button>
-                              </div>
                             </div>
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                        <button
+                          type="button"
+                          onClick={() => openCreateForDay(day)}
+                          className="w-full rounded-xl border border-dashed border-[hsl(330,80%,55%)]/45 bg-[hsl(330,80%,55%)]/10 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors"
+                        >
+                          + Add slot
+                        </button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -1259,7 +1298,7 @@ type ModalProps = {
   modelss: ModelRecord[];
   weekStart: string;
   entry: WeeklyProgramRecord | null;
-  prefillFromAvailability: WeeklyAvailabilityRequest | null;
+  prefillFromAvailability: WeeklyProgramVaPrefill | null;
   coverageBoard: CoverageBoard;
   lastAssignmentMap: Record<string, { date: string; dateTime: string; relative: string }>;
   programs: WeeklyProgramRecord[];
@@ -1335,9 +1374,10 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
 
   React.useEffect(() => {
     if (prefillFromAvailability) {
-      setChatterId(prefillFromAvailability.chatter_id);
-      setDay(prefillFromAvailability.day);
-      setShiftType(prefillFromAvailability.shift_type);
+      setChatterId(prefillFromAvailability.chatter_id ?? "");
+      if (prefillFromAvailability.day) setDay(prefillFromAvailability.day);
+      if (prefillFromAvailability.week_start) setWeekStartVal(normalizeWeekStart(prefillFromAvailability.week_start));
+      if (prefillFromAvailability.shift_type) setShiftType(prefillFromAvailability.shift_type);
       if (prefillFromAvailability.shift_type === "Custom") {
         const st = prefillFromAvailability.custom_start_time;
         const et = prefillFromAvailability.custom_end_time;
@@ -1345,7 +1385,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         setCustomEndTime(normalizeTime(et || "17:00"));
       }
     }
-  }, [prefillFromAvailability?.id]);
+  }, [prefillFromAvailability]);
 
   React.useEffect(() => {
     if (!chatterId || isEdit) return;

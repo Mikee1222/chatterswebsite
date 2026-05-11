@@ -11,6 +11,22 @@ import { WeeklyProgramDaySwiper } from "@/components/weekly-program-day-swiper";
 
 const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+const SHIFT_START_FALLBACK_MINUTES = {
+  Morning: 720,
+  Night: 1200,
+  Custom: 9999,
+} as const;
+
+function startMinutesUtc(startIso: string | null | undefined, shiftType: string): number {
+  if (startIso) {
+    const date = new Date(startIso);
+    if (!Number.isNaN(date.getTime())) {
+      return date.getUTCHours() * 60 + date.getUTCMinutes();
+    }
+  }
+  return SHIFT_START_FALLBACK_MINUTES[shiftType as keyof typeof SHIFT_START_FALLBACK_MINUTES] ?? 9999;
+}
+
 export default async function VaWeeklyProgramPage() {
   const user = await getSessionFromCookies();
   if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
@@ -30,7 +46,7 @@ export default async function VaWeeklyProgramPage() {
     day,
     entries: entries
       .filter((e) => e.day === day)
-      .sort((a, b) => (a.shift_type === "Morning" ? 0 : 1) - (b.shift_type === "Morning" ? 0 : 1)),
+      .sort((a, b) => startMinutesUtc(a.start_time, a.shift_type) - startMinutesUtc(b.start_time, b.shift_type)),
   }));
 
   const totalShifts = entries.length;
