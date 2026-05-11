@@ -53,6 +53,33 @@ function shiftCardAccentClass(shiftType: WeeklyProgramShiftType): string {
   return "border-l-[3px] border-l-pink-400/55";
 }
 
+function fallbackShiftStartMinutes(shiftType: WeeklyProgramShiftType): number {
+  if (shiftType === "Morning") return 720;
+  if (shiftType === "Night") return 1200;
+  return 9999;
+}
+
+function utcStartMinutes(entry: Pick<WeeklyProgramRecord, "start_time" | "shift_type">): number {
+  const start = new Date(entry.start_time);
+  if (Number.isFinite(start.getTime())) return start.getUTCHours() * 60 + start.getUTCMinutes();
+  return fallbackShiftStartMinutes(entry.shift_type);
+}
+
+function isOvernightContinuationStart(startIso: string): boolean {
+  const start = new Date(startIso);
+  if (!Number.isFinite(start.getTime())) return false;
+  const hour = start.getUTCHours();
+  return hour >= 0 && hour < 6;
+}
+
+function OvernightContinuationBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
+      🌙 +1 cont.
+    </span>
+  );
+}
+
 /** Duration in hours between two ISO timestamps (supports overnight). */
 function durationHours(startIso: string, endIso: string): number {
   const a = new Date(startIso).getTime();
@@ -644,10 +671,7 @@ export function AdminWeeklyProgramClient({
       day,
       entries: filtered
         .filter((e) => e.day === day)
-        .sort((a, b) => {
-          const order = (s: string) => (s === "Morning" ? 0 : s === "Night" ? 1 : 2);
-          return order(a.shift_type) - order(b.shift_type);
-        }),
+        .sort((a, b) => utcStartMinutes(a) - utcStartMinutes(b)),
     }));
   }, [filtered]);
 
@@ -1474,7 +1498,10 @@ export function AdminWeeklyProgramClient({
                           <div className="flex flex-wrap items-center gap-2">
                             <ShiftTypeBadge shiftType={e.shift_type} />
                           </div>
-                          <p className="mt-2 text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
+                          <div className="mt-2 flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
+                            {isOvernightContinuationStart(e.start_time) ? <OvernightContinuationBadge /> : null}
+                          </div>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
                             <span className="text-white/50">Models:</span>
                             {e.model_ids.length ? (
@@ -1574,7 +1601,10 @@ export function AdminWeeklyProgramClient({
                               <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0 flex-1">
                                   <ShiftTypeBadge shiftType={e.shift_type} className="mb-2" />
-                                  <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <p className="text-sm font-semibold uppercase tracking-wider text-[hsl(330,90%,75%)]">{timeRange}</p>
+                                    {isOvernightContinuationStart(e.start_time) ? <OvernightContinuationBadge /> : null}
+                                  </div>
                                   <p className="mt-1 font-medium text-white/95 truncate text-base">{e.chatter_name || "—"}</p>
                                   <div className="mt-1 min-w-0 text-sm text-white/65">
                                     {e.model_ids.length ? (

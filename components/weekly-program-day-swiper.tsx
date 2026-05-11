@@ -16,9 +16,31 @@ type Props = {
   weekStart: string;
   idToName: Record<string, string>;
   periodDatesByModelId?: Record<string, string[]>;
+  showOvernightContinuationBadge?: boolean;
 };
 
-export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName, periodDatesByModelId = {} }: Props) {
+function isOvernightContinuationStart(startIso: string): boolean {
+  const start = new Date(startIso);
+  if (!Number.isFinite(start.getTime())) return false;
+  const hour = start.getUTCHours();
+  return hour >= 0 && hour < 6;
+}
+
+function OvernightContinuationBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
+      🌙 +1 cont.
+    </span>
+  );
+}
+
+export function WeeklyProgramDaySwiper({
+  byDay,
+  weekStart,
+  idToName,
+  periodDatesByModelId = {},
+  showOvernightContinuationBadge = false,
+}: Props) {
   const scrollRef = React.useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = React.useState(0);
 
@@ -97,9 +119,12 @@ export function WeeklyProgramDaySwiper({ byDay, weekStart, idToName, periodDates
                       <span className="inline-flex rounded-full border border-pink-500/45 bg-pink-600/20 px-3 py-1.5 text-sm font-bold uppercase tracking-wide text-pink-100">
                         {e.shift_type}
                       </span>
-                      <p className="mt-3 text-xl font-semibold tabular-nums text-pink-400">
-                        {e.start_time ? formatTimeFromISO(e.start_time) : "—"} – {e.end_time ? formatTimeFromISO(e.end_time) : "—"}
-                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <p className="text-xl font-semibold tabular-nums text-pink-400">
+                          {e.start_time ? formatTimeFromISO(e.start_time) : "—"} – {e.end_time ? formatTimeFromISO(e.end_time) : "—"}
+                        </p>
+                        {showOvernightContinuationBadge && isOvernightContinuationStart(e.start_time) ? <OvernightContinuationBadge /> : null}
+                      </div>
                       {e.model_ids.length > 0 && (
                         <div className="mt-3 flex flex-wrap gap-2">
                           {e.model_ids.map((id) => {

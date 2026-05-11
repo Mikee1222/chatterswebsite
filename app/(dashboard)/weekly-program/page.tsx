@@ -14,6 +14,35 @@ import { getMondayOfWeekFromYmdAthens, getWeekStartYmdInAthens } from "@/lib/air
 
 const DAY_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+function fallbackShiftStartMinutes(shiftType: string): number {
+  if (shiftType === "Morning") return 720;
+  if (shiftType === "Night") return 1200;
+  return 9999;
+}
+
+function utcStartMinutes(entry: { start_time?: string | null; shift_type: string }): number {
+  if (entry.start_time) {
+    const start = new Date(entry.start_time);
+    if (Number.isFinite(start.getTime())) return start.getUTCHours() * 60 + start.getUTCMinutes();
+  }
+  return fallbackShiftStartMinutes(entry.shift_type);
+}
+
+function isOvernightContinuationStart(startIso: string): boolean {
+  const start = new Date(startIso);
+  if (!Number.isFinite(start.getTime())) return false;
+  const hour = start.getUTCHours();
+  return hour >= 0 && hour < 6;
+}
+
+function OvernightContinuationBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
+      🌙 +1 cont.
+    </span>
+  );
+}
+
 export default async function WeeklyProgramPage({
   searchParams,
 }: {
@@ -48,7 +77,7 @@ export default async function WeeklyProgramPage({
     day,
     entries: entries
       .filter((e) => e.day === day)
-      .sort((a, b) => (a.shift_type === "Morning" ? 0 : 1) - (b.shift_type === "Morning" ? 0 : 1)),
+      .sort((a, b) => utcStartMinutes(a) - utcStartMinutes(b)),
   }));
 
   const totalShifts = entries.length;
@@ -122,6 +151,7 @@ export default async function WeeklyProgramPage({
           weekStart={weekStart}
           idToName={idToName}
           periodDatesByModelId={periodDatesByModelId}
+          showOvernightContinuationBadge
         />
       )}
 
@@ -170,6 +200,7 @@ export default async function WeeklyProgramPage({
                         <span className="font-mono text-sm tabular-nums text-white/90">
                           {formatTimeFromISO(e.start_time)} – {formatTimeFromISO(e.end_time)}
                         </span>
+                        {isOvernightContinuationStart(e.start_time) ? <OvernightContinuationBadge /> : null}
                       </div>
                       {e.model_ids.length > 0 && (
                         <ModelPeriodNamesRow
