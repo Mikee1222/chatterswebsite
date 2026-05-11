@@ -586,6 +586,10 @@ export async function startBreak(
   if (!before) {
     return { success: false, error: "Shift not found." };
   }
+  if (before.status === "on_break" || before.break_started_at) {
+    console.warn("[startBreak] already on break:", shiftRecordId);
+    return { success: false, error: "Already on break" };
+  }
   if (before.status !== "active") {
     return { success: false, error: "You can only start a break while your shift is active." };
   }
@@ -650,18 +654,29 @@ export async function startBreak(
   return { success: true };
 }
 
-export async function endBreak(shiftRecordId: string, additionalBreakMinutes: number) {
+export type EndBreakResult = { success: true } | { success: false; error: string };
+
+export async function endBreak(shiftRecordId: string, additionalBreakMinutes: number): Promise<EndBreakResult> {
   const shiftBefore = await getShiftById(shiftRecordId);
+
+  if (!shiftBefore || shiftBefore.status !== "on_break") {
+    console.warn("[endBreak] shift is not on_break — already ended or invalid:", shiftRecordId);
+    return { success: false, error: "Break already ended" };
+  }
+
+  if (!shiftBefore.break_started_at) {
+    console.warn("[endBreak] no break_started_at — already ended:", shiftRecordId);
+    return { success: false, error: "Break already ended" };
+  }
+
   const now = new Date();
   const nowIso = now.toISOString();
-  let segmentMinutes = additionalBreakMinutes;
-  if (shiftBefore?.break_started_at) {
-    const startMs = new Date(shiftBefore.break_started_at).getTime();
-    if (!Number.isNaN(startMs)) {
-      segmentMinutes = Math.max(1, Math.ceil((now.getTime() - startMs) / 60000));
-    }
-  }
-  const currentBreak = shiftBefore?.break_minutes ?? 0;
+  const startMs = new Date(shiftBefore.break_started_at).getTime();
+  const fallbackMinutes = Number.isFinite(additionalBreakMinutes) ? additionalBreakMinutes : 1;
+  const segmentMinutes = Number.isNaN(startMs)
+    ? Math.max(1, fallbackMinutes)
+    : Math.max(1, Math.ceil((now.getTime() - startMs) / 60000));
+  const currentBreak = shiftBefore.break_minutes ?? 0;
   const newBreakTotal = Math.min(currentBreak + segmentMinutes, MAX_BREAK_MINUTES_PER_SHIFT);
   await updateShift(shiftRecordId, {
     break_minutes: newBreakTotal,
@@ -703,6 +718,7 @@ export async function endBreak(shiftRecordId: string, additionalBreakMinutes: nu
       console.error("[notify] endBreak notifyAdmins failed", e);
     }
   }
+  return { success: true };
 }
 
 /**
