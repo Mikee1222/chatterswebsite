@@ -1,13 +1,12 @@
 import {
   listAllRecords,
-  listRecords,
   getRecord,
   createRecord,
   updateRecord,
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
-import { firstLinkedId, formulaLinkedContains, formulaTextEquals } from "@/lib/airtable-linked";
+import { firstLinkedId, formulaLinkedContains } from "@/lib/airtable-linked";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { getModelById, updateModel } from "@/services/modelss";
 import type { ModelPeriodRecord, ModelRecord } from "@/types";
@@ -29,12 +28,8 @@ function periodTrace(...args: unknown[]): void {
 type Fields = {
   start_date?: string;
   end_date?: string;
-  /** Link to modelss; legacy: `model_id` */
-  model?: string | string[];
+  /** Link to modelss. */
   model_id?: string | string[];
-  /** Some bases use capitalized link field names */
-  Model?: string | string[];
-  Models?: string | string[];
   cycle_length_days?: number;
   period_length_days?: number;
   notes?: string;
@@ -54,7 +49,7 @@ function ymdOnly(value: unknown): string {
 }
 
 function linkedModelIdFromPeriodFields(f: Fields): string | null {
-  return firstLinkedId(f.model ?? f.model_id ?? f.Model ?? f.Models);
+  return firstLinkedId(f.model_id);
 }
 
 function delay(ms: number): Promise<void> {
@@ -143,41 +138,7 @@ export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
   }
 }
 
-const MODEL_LINK_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const;
-const MODEL_TEXT_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const;
-
-let cachedModelPeriodLinkField: string | null = null;
-let resolveModelPeriodLinkFieldPromise: Promise<string> | null = null;
-
-/** Resolve which linked-record field name exists on `model_periods` once per process. */
-async function resolveModelPeriodLinkFieldName(): Promise<string> {
-  if (cachedModelPeriodLinkField) return cachedModelPeriodLinkField;
-  if (!resolveModelPeriodLinkFieldPromise) {
-    resolveModelPeriodLinkFieldPromise = (async () => {
-      const probeId = "recAAAAAAAAAAAAAA";
-      for (const fieldName of MODEL_LINK_FIELD_NAMES) {
-        try {
-          await listRecords<Fields>(TABLE, {
-            filterByFormula: formulaLinkedContains(fieldName, probeId),
-            pageSize: 1,
-            _caller: "model-periods.resolve-link-field",
-          });
-          cachedModelPeriodLinkField = fieldName;
-          periodTrace("[model-periods] resolved link field:", fieldName);
-          return fieldName;
-        } catch {
-          /* unknown field or invalid formula — try next name */
-        }
-      }
-      cachedModelPeriodLinkField = "model_id";
-      periodTrace("[model-periods] link field probe failed; fallback:", cachedModelPeriodLinkField);
-      return cachedModelPeriodLinkField;
-    })().finally(() => {
-      resolveModelPeriodLinkFieldPromise = null;
-    });
-  }
-  return resolveModelPeriodLinkFieldPromise;
-}
+const MODEL_LINK_FIELD_NAMES = ["model_id"] as const;
 
 function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
   return [...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean))];
@@ -251,43 +212,22 @@ async function getPeriodsForModelRaw(modelId: string): Promise<ModelPeriodRecord
   const records: AirtableRecord<Fields>[] = [];
   const seen = new Set<string>();
 
-  if (recordIds.length > 0) {
-    const resolvedFieldName = await resolveModelPeriodLinkFieldName();
-    const linkFieldNames = uniqueNonEmpty([resolvedFieldName, ...MODEL_LINK_FIELD_NAMES]);
-    for (const recordId of recordIds) {
-      for (const fieldName of linkFieldNames) {
-        try {
-          const linkedRecords = await listAllRecords<Fields>(TABLE, {
-            filterByFormula: formulaLinkedContains(fieldName, recordId),
-          });
-          addUniqueRecords(records, seen, linkedRecords);
-          if (linkedRecords.length > 0) cachedModelPeriodLinkField = fieldName;
-          periodTrace("[periods] linked formula field:", fieldName, "raw records:", linkedRecords.length);
-        } catch {
-          periodTrace("[periods] linked formula failed for field:", fieldName);
-        }
-      }
-    }
-  }
-
-  if (stableIds.length > 0) {
-    for (const stableId of stableIds) {
-      for (const fieldName of MODEL_TEXT_FIELD_NAMES) {
-        try {
-          const textRecords = await listAllRecords<Fields>(TABLE, {
-            filterByFormula: formulaTextEquals(fieldName, stableId),
-          });
-          addUniqueRecords(records, seen, textRecords);
-          periodTrace("[periods] text formula field:", fieldName, "raw records:", textRecords.length);
-        } catch {
-          periodTrace("[periods] text formula failed for field:", fieldName);
-        }
-      }
-    }
+  try {
+    const linkedRecords = await listAllRecords<Fields>(TABLE, {
+      filterByFormula: formulaLinkedContains("model_id", modelId),
+      sort: [{ field: "start_date", direction: "desc" }],
+      _caller: "model-periods.by-model-id",
+    });
+    addUniqueRecords(records, seen, linkedRecords);
+    periodTrace("[periods] linked formula field: model_id raw records:", linkedRecords.length);
+  } catch {
+    periodTrace("[periods] linked formula failed for field: model_id");
   }
 
   if (records.length === 0) {
-    const all = await listAllRecords<Fields>(TABLE, {});
+    const all = await listAllRecords<Fields>(TABLE, {
+      sort: [{ field: "start_date", direction: "desc" }],
+    });
     addUniqueRecords(
       records,
       seen,

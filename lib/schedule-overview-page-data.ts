@@ -37,24 +37,28 @@ function ymdCalendarDayDiff(fromYmd: string, toYmd: string): number {
   return Math.round((b - a) / 86400000);
 }
 
+function emptyPeriodIndicator(trackingEnabled: boolean): ScheduleOverviewPeriodIndicator {
+  return {
+    trackingEnabled,
+    currentlyInPeriod: false,
+    current: null,
+    dayNumber: null,
+    lastPeriodDate: null,
+    lastStart: null,
+    nextExpectedDate: null,
+    daysUntilNext: null,
+  };
+}
+
 async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<Record<string, ScheduleOverviewPeriodIndicator>> {
   const today = getTodayYmd();
-  const entries = await batchAsync(
-    models,
+  const disabledEntries = models
+    .filter((m) => !m.period_tracking_enabled)
+    .map((m) => [m.id, emptyPeriodIndicator(false)] as const);
+  const trackedModels = models.filter((m) => m.period_tracking_enabled);
+  const trackedEntries = await batchAsync(
+    trackedModels,
     async (m) => {
-      if (!m.period_tracking_enabled) {
-        const empty: ScheduleOverviewPeriodIndicator = {
-          trackingEnabled: false,
-          currentlyInPeriod: false,
-          current: null,
-          dayNumber: null,
-          lastPeriodDate: null,
-          lastStart: null,
-          nextExpectedDate: null,
-          daysUntilNext: null,
-        };
-        return [m.id, empty] as const;
-      }
       try {
         const [current, upcoming, periods] = await Promise.all([
           getCurrentPeriod(m.id, m),
@@ -79,25 +83,13 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
           } satisfies ScheduleOverviewPeriodIndicator,
         ] as const;
       } catch {
-        return [
-          m.id,
-          {
-            trackingEnabled: true,
-            currentlyInPeriod: false,
-            current: null,
-            dayNumber: null,
-            lastPeriodDate: null,
-            lastStart: null,
-            nextExpectedDate: null,
-            daysUntilNext: null,
-          } satisfies ScheduleOverviewPeriodIndicator,
-        ] as const;
+        return [m.id, emptyPeriodIndicator(true)] as const;
       }
     },
     3,
-    200
+    300
   );
-  return Object.fromEntries(entries);
+  return Object.fromEntries([...disabledEntries, ...trackedEntries]);
 }
 
 export type ScheduleOverviewPageData = {

@@ -82,6 +82,26 @@ async function convertToPng(blob: Blob): Promise<Blob> {
   });
 }
 
+function copyTextWithTextarea(text: string): boolean {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "");
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+
+  try {
+    return document.execCommand("copy");
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 type Props = {
   initialMistakes: MistakeRecord[];
   reasons: MistakeReasonRecord[];
@@ -200,13 +220,22 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
       console.warn("[easy-copy] image copy failed, falling back to text only:", err);
     }
 
+    let copiedTextOnly = false;
     try {
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard.writeText unavailable");
       await navigator.clipboard.writeText(text);
+      copiedTextOnly = true;
+    } catch (err) {
+      console.warn("[easy-copy] clipboard writeText failed, falling back to textarea:", err);
+      copiedTextOnly = copyTextWithTextarea(text);
+    }
+
+    if (copiedTextOnly) {
       setCopySuccess(m.id);
       window.setTimeout(() => setCopySuccess(null), 2000);
       addToast(localToast("mist-copy", "Copied", "Copied to clipboard (text only).", "normal"));
-    } catch (err) {
-      console.error("[easy-copy] clipboard write failed:", err);
+    } else {
+      console.error("[easy-copy] clipboard fallback failed");
       addToast(localToast("mist-copy-fail", "Copy failed", "Clipboard unavailable.", "high"));
     }
   }
