@@ -292,6 +292,19 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
                       <p className="text-sm italic text-white/60">&ldquo;{m.admin_notes}&rdquo;</p>
                     </div>
                   ) : null}
+
+                  {m.screenshot?.[0]?.url ? (
+                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
+                      <p className="mb-2 text-xs uppercase tracking-widest text-white/30">Screenshot evidence</p>
+                      <a href={m.screenshot?.[0]?.url} target="_blank" rel="noreferrer">
+                        <img
+                          src={m.screenshot?.[0]?.url}
+                          alt="Mistake evidence screenshot"
+                          className="max-h-80 w-full rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-80"
+                        />
+                      </a>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="ml-2 shrink-0 text-right">
