@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { CalendarDays, Clock3, Droplets, Loader2 } from "lucide-react";
+import { Clock3, Droplets, Loader2, Trash2 } from "lucide-react";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { formatDateLong } from "@/lib/format";
 import type { ModelPeriodRecord } from "@/types";
@@ -162,6 +162,8 @@ export function ModelPeriodTrackerWidget({
   const [customDateOpen, setCustomDateOpen] = React.useState(false);
   const [missedOpen, setMissedOpen] = React.useState(false);
   const [busyAction, setBusyAction] = React.useState<null | "confirm" | "missed" | "log">(null);
+  const [deletingPeriodId, setDeletingPeriodId] = React.useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [startDate, setStartDate] = React.useState(ymdInputFromLocalNow());
   const [notes, setNotes] = React.useState("");
@@ -391,6 +393,44 @@ export function ModelPeriodTrackerWidget({
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotUpdateCycle"));
     } finally {
       setBusyAction(null);
+    }
+  };
+
+  const handleDeletePeriod = async (periodId: string) => {
+    const deletedPeriod = sorted.find((p) => p.id === periodId) ?? null;
+    setDeletingPeriodId(periodId);
+    setError(null);
+    try {
+      const res = await fetch("/api/model/period/delete", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ id: periodId }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string };
+      if (!res.ok || data.success === false) {
+        throw new Error(data.error || "Request failed");
+      }
+
+      if (deletedPeriod && cachedPeriodData?.start_date === deletedPeriod.start_date) {
+        clearPeriodCache();
+        setCachedPeriodData(null);
+      }
+      if (
+        optimisticCurrentPeriod?.id === periodId ||
+        (deletedPeriod && justLoggedStartYmd === deletedPeriod.start_date)
+      ) {
+        setOptimisticCurrentPeriod(null);
+        setOptimisticNextPeriod(null);
+        setJustLoggedStartYmd(null);
+      }
+
+      setConfirmDeleteId(null);
+      window.setTimeout(() => refreshData(), 1000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t("periodTracker.couldNotUpdateCycle"));
+    } finally {
+      setDeletingPeriodId(null);
     }
   };
 
@@ -636,43 +676,87 @@ export function ModelPeriodTrackerWidget({
               <button
                 type="button"
                 className="rounded-lg border border-white/15 px-3 py-1 text-sm text-white/70 hover:bg-white/5"
-                onClick={() => setHistoryOpen(false)}
+                onClick={() => {
+                  setConfirmDeleteId(null);
+                  setHistoryOpen(false);
+                }}
               >
                 {t("common.close")}
               </button>
             </div>
             <div className="mt-4 max-h-64 space-y-2 overflow-y-auto">
-              {sorted.map((p, i) => (
-                <div
-                  key={p.id}
-                  className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
-                >
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-white">
-                      {formatDateLong(p.start_date, locale)}
-                      {i === 0 ? (
-                        <span className="ml-2 text-xs text-rose-400">{t("periodTracker.historyLatest")}</span>
+              {sorted.map((p, i) => {
+                const isConfirmingDelete = confirmDeleteId === p.id;
+                const isDeleting = deletingPeriodId === p.id;
+                const canDeletePeriod = !p.id.startsWith("__");
+                return (
+                  <div
+                    key={p.id}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-white">
+                        {formatDateLong(p.start_date, locale)}
+                        {i === 0 ? (
+                          <span className="ml-2 text-xs text-rose-400">{t("periodTracker.historyLatest")}</span>
+                        ) : null}
+                      </p>
+                      <p className="text-xs text-white/40">
+                        {p.end_date ? `${p.start_date} → ${p.end_date}` : p.start_date}
+                        {p.cycle_length_days != null ? ` · ${p.cycle_length_days}d cycle` : ""}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <div className="flex flex-col items-end gap-1">
+                        {p.missed_period ? (
+                          <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs text-amber-400">
+                            {t("periodTracker.historyMissed")}
+                          </span>
+                        ) : null}
+                        {p.came_early ? (
+                          <span className="rounded-full border border-blue-500/25 bg-blue-500/15 px-2 py-0.5 text-xs text-blue-400">
+                            {t("periodTracker.historyEarly")}
+                          </span>
+                        ) : null}
+                      </div>
+                      {canDeletePeriod ? (
+                        isConfirmingDelete ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={deletingPeriodId !== null}
+                              onClick={() => void handleDeletePeriod(p.id)}
+                              className="inline-flex items-center justify-center gap-1 rounded-lg border border-red-400/35 bg-red-500/15 px-2 py-1 text-xs font-medium text-red-200 hover:bg-red-500/25 disabled:opacity-50"
+                            >
+                              {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
+                              {t("common.delete")}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingPeriodId !== null}
+                              onClick={() => setConfirmDeleteId(null)}
+                              className="rounded-lg border border-white/15 px-2 py-1 text-xs text-white/70 hover:bg-white/5 disabled:opacity-50"
+                            >
+                              {t("common.cancel")}
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={deletingPeriodId !== null}
+                            title={t("common.delete")}
+                            aria-label={t("common.delete")}
+                            onClick={() => setConfirmDeleteId(p.id)}
+                            className="rounded-lg border border-white/10 p-1.5 text-white/45 transition hover:border-red-400/35 hover:bg-red-500/15 hover:text-red-200 disabled:opacity-50"
+                          >
+                            <Trash2 className="h-4 w-4" aria-hidden />
+                          </button>
+                        )
                       ) : null}
-                    </p>
-                    <p className="text-xs text-white/40">
-                      {p.end_date ? `${p.start_date} → ${p.end_date}` : p.start_date}
-                      {p.cycle_length_days != null ? ` · ${p.cycle_length_days}d cycle` : ""}
-                    </p>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 flex-col items-end gap-1">
-                    {p.missed_period ? (
-                      <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs text-amber-400">
-                        {t("periodTracker.historyMissed")}
-                      </span>
-                    ) : null}
-                    {p.came_early ? (
-                      <span className="rounded-full border border-blue-500/25 bg-blue-500/15 px-2 py-0.5 text-xs text-blue-400">
-                        {t("periodTracker.historyEarly")}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="mt-4 border-t border-white/10 pt-4">
               <button
