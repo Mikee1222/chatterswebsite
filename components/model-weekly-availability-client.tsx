@@ -394,7 +394,16 @@ export function ModelWeeklyAvailabilityClient({
           </p>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-2">
+        {requests.length > 0 && (
+          <div className="mb-4 flex items-center gap-2 rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 md:hidden">
+            <span className="text-sm font-semibold text-green-400">
+              ✅ {requests.length} {requests.length === 1 ? "entry" : "entries"} submitted this week
+            </span>
+            <span className="ml-auto text-xs text-green-400/50">Scroll down to see →</span>
+          </div>
+        )}
+
+        <div className="grid gap-6 md:grid-cols-2">
           <div
             className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl"
             style={{
@@ -580,7 +589,7 @@ export function ModelWeeklyAvailabilityClient({
           </div>
 
           <div
-            className="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl"
+            className="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl md:sticky md:top-4 md:self-start md:max-h-[calc(100vh-6rem)]"
             style={{
               boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.06)",
             }}
