@@ -15,7 +15,8 @@ import type { VaContentAssignmentRecord } from "@/types";
 
 const TABLE = "va_content_assignments";
 const DEBUG_PREFIX = "[va-content-assignments]";
-let _workingModelField: string | null = "model";
+const _workingVaField = "va";
+const _workingModelTextField = "model";
 
 /** Airtable attachment cell item (subset). */
 export type VaAttachmentCell = {
@@ -137,24 +138,13 @@ function modelLinkIds(f: Fields): string[] {
   ];
 }
 
-/**
- * Single-line text columns that may store the app `users.user_id` (e.g. `user_1772875569566_i2wv85a5`)
- * instead of a linked `rec…` users row id.
- */
-/** Optional single-line text fields storing `users.user_id` (e.g. `user_…`). Most bases only link `va` to `rec…`. */
-const VA_STABLE_TEXT_FIELD_NAMES = ["va_id"] as const;
+/** No stable-text VA field exists in the current Airtable base; avoid 422s from `{va_id}`. */
+const VA_STABLE_TEXT_FIELD_NAMES = [] as const;
 
 /**
- * Link field API names to try for server-side filter (one field per attempt).
- * A single OR() across names fails if any referenced field does not exist in the base.
- * Do not include `va_id` here — in many bases it is absent or is text, not a link.
+ * Candidate list kept for logging/debugging. The actual query uses the confirmed `va` field directly.
  */
 const VA_FILTER_LINK_FIELD_NAMES = ["va", "VA", "assigned_va", "virtual_assistant"] as const;
-
-function isAirtableUnknownFieldInFormulaError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err);
-  return msg.includes("Unknown field names") || msg.includes("INVALID_FILTER_BY_FORMULA");
-}
 
 /**
  * All Airtable identity keys to match for this VA: users table record id (`rec…`) plus stable `user_id` when present.
@@ -253,7 +243,7 @@ async function listAssignmentRecordsByModelLink(
 
   if (sid) {
     try {
-      const fieldName = _workingModelField ?? "model";
+      const fieldName = _workingModelTextField;
       const filterByFormula = formulaTextEquals(fieldName, sid);
       const records = await listAllRecords<Fields>(TABLE, {
         filterByFormula,
@@ -264,13 +254,12 @@ async function listAssignmentRecordsByModelLink(
         filterByFormula,
         recordsReturned: records.length,
       });
-      _workingModelField = fieldName;
       return records;
     } catch (error) {
       console.error(`${DEBUG_PREFIX} model query failed on text field`, {
         table: TABLE,
-        fieldName: _workingModelField ?? "model",
-        filterByFormula: formulaTextEquals(_workingModelField ?? "model", sid),
+        fieldName: _workingModelTextField,
+        filterByFormula: formulaTextEquals(_workingModelTextField, sid),
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -285,63 +274,32 @@ async function listAssignmentRecordsByModelLink(
   return filtered;
 }
 
-/** Prefer server-side filter; try stable text `va_id`, then each known link field; fallback list+JS. */
+/** Prefer the confirmed working `va` link field; fallback list+JS only if the direct query fails. */
 async function fetchAssignmentRecordsForSingleVaLookupKey(lookupKey: string): Promise<AirtableRecord<Fields>[]> {
   const key = lookupKey.trim();
   if (!key) return [];
 
   console.log(`${DEBUG_PREFIX} filtering by VA lookup key`, { lookupKey: key });
 
-  if (key.startsWith("user_")) {
-    for (const fieldName of VA_STABLE_TEXT_FIELD_NAMES) {
-      try {
-        const filterByFormula = formulaTextEquals(fieldName, key);
-        const records = await listAllRecords<Fields>(TABLE, { filterByFormula });
-        console.log(`${DEBUG_PREFIX} va query (stable text on ${fieldName})`, {
-          filterByFormula,
-          recordsReturned: records.length,
-        });
-        if (records.length > 0) return records;
-      } catch (error) {
-        if (isAirtableUnknownFieldInFormulaError(error)) {
-          console.log(`${DEBUG_PREFIX} va query skip text field (not in base)`, { fieldName });
-        } else {
-          console.error(`${DEBUG_PREFIX} va query failed on text field`, {
-            fieldName,
-            filterByFormula: formulaTextEquals(fieldName, key),
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    }
-  }
-
-  for (const fieldName of VA_FILTER_LINK_FIELD_NAMES) {
-    try {
-      const filterByFormula = formulaLinkedContains(fieldName, key);
-      const records = await listAllRecords<Fields>(TABLE, {
-        filterByFormula,
-      });
-      console.log(`${DEBUG_PREFIX} va query success`, {
-        table: TABLE,
-        fieldName,
-        filterByFormula,
-        recordsReturned: records.length,
-      });
-      return records;
-    } catch (error) {
-      if (isAirtableUnknownFieldInFormulaError(error)) {
-        console.log(`${DEBUG_PREFIX} va query skip link field (not in base)`, { fieldName });
-      } else {
-        console.error(`${DEBUG_PREFIX} va query failed on field`, {
-          table: TABLE,
-          fieldName,
-          filterByFormula: formulaLinkedContains(fieldName, key),
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-      /* field missing or formula error — try next */
-    }
+  try {
+    const filterByFormula = formulaLinkedContains(_workingVaField, key);
+    const records = await listAllRecords<Fields>(TABLE, {
+      filterByFormula,
+    });
+    console.log(`${DEBUG_PREFIX} va query success`, {
+      table: TABLE,
+      fieldName: _workingVaField,
+      filterByFormula,
+      recordsReturned: records.length,
+    });
+    return records;
+  } catch (error) {
+    console.error(`${DEBUG_PREFIX} va query failed on confirmed field`, {
+      table: TABLE,
+      fieldName: _workingVaField,
+      filterByFormula: formulaLinkedContains(_workingVaField, key),
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
   try {
     const all = await listAllRecords<Fields>(TABLE);
@@ -370,7 +328,7 @@ async function fetchAssignmentRecordsForSingleVaLookupKey(lookupKey: string): Pr
   }
 }
 
-/** Merge rows for `rec…` users id and stable `user_…` app id so text `va_id` and link columns both match. */
+/** Merge rows for `rec…` users id and stable `user_…` app id through the confirmed `va` field. */
 async function fetchAssignmentRecordsForVaUser(
   vaUserRecordId: string,
   precomputedKeys?: string[]
@@ -676,13 +634,12 @@ export async function countPendingVAContentAssignmentsForModel(
 
   if (sid) {
     try {
-      const fieldName = _workingModelField ?? "model";
+      const fieldName = _workingModelTextField;
       const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
       const records = await listAllRecords<Fields>(TABLE, {
         filterByFormula: formula,
         fields: ["status"],
       });
-      _workingModelField = fieldName;
       return records.length;
     } catch {
       /* fall back to local scan */
