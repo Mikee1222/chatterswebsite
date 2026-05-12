@@ -24,6 +24,12 @@ type Fields = {
   model_alerts?: boolean;
   system_alerts?: boolean;
   task_alerts?: boolean;
+  mistake_alerts?: boolean;
+  fine_bonus_alerts?: boolean;
+  period_alerts?: boolean;
+  marketing_alerts?: boolean;
+  phase_alerts?: boolean;
+  reward_alerts?: boolean;
   quiet_hours_start?: string;
   quiet_hours_end?: string;
   mute_all?: boolean;
@@ -44,6 +50,12 @@ function mapRecord(rec: AirtableRecord<Fields>): NotificationPreference {
     model_alerts: f.model_alerts ?? true,
     system_alerts: f.system_alerts ?? true,
     task_alerts: f.task_alerts ?? true,
+    mistake_alerts: f.mistake_alerts !== false,
+    fine_bonus_alerts: f.fine_bonus_alerts !== false,
+    period_alerts: f.period_alerts !== false,
+    marketing_alerts: f.marketing_alerts !== false,
+    phase_alerts: f.phase_alerts !== false,
+    reward_alerts: f.reward_alerts !== false,
     quiet_hours_start: f.quiet_hours_start ?? "",
     quiet_hours_end: f.quiet_hours_end ?? "",
     mute_all: f.mute_all ?? false,
@@ -83,6 +95,12 @@ const DEFAULT_PREFERENCES: Partial<Fields> = {
   model_alerts: true,
   system_alerts: true,
   task_alerts: true,
+  mistake_alerts: true,
+  fine_bonus_alerts: true,
+  period_alerts: true,
+  marketing_alerts: true,
+  phase_alerts: true,
+  reward_alerts: true,
   mute_all: false,
   quiet_hours_start: "",
   quiet_hours_end: "",

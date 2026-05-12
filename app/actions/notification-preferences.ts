@@ -52,6 +52,12 @@ export async function updateMyNotificationPreferences(
     const model_alerts = formData.get("model_alerts") === "on";
     const system_alerts = formData.get("system_alerts") === "on";
     const task_alerts = formData.get("task_alerts") === "on";
+    const mistake_alerts = formData.get("mistake_alerts") === "on";
+    const fine_bonus_alerts = formData.get("fine_bonus_alerts") === "on";
+    const period_alerts = formData.get("period_alerts") === "on";
+    const marketing_alerts = formData.get("marketing_alerts") === "on";
+    const phase_alerts = formData.get("phase_alerts") === "on";
+    const reward_alerts = formData.get("reward_alerts") === "on";
     const mute_all = formData.get("mute_all") === "on";
     const quiet_hours_start = (formData.get("quiet_hours_start") as string)?.trim() ?? "";
     const quiet_hours_end = (formData.get("quiet_hours_end") as string)?.trim() ?? "";
@@ -65,6 +71,12 @@ export async function updateMyNotificationPreferences(
       model_alerts,
       system_alerts,
       task_alerts,
+      mistake_alerts,
+      fine_bonus_alerts,
+      period_alerts,
+      marketing_alerts,
+      phase_alerts,
+      reward_alerts,
       mute_all,
       quiet_hours_start,
       quiet_hours_end,

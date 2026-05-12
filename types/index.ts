@@ -811,6 +811,12 @@ export interface NotificationPreference {
   model_alerts: boolean;
   system_alerts: boolean;
   task_alerts: boolean;
+  mistake_alerts: boolean;
+  fine_bonus_alerts: boolean;
+  period_alerts: boolean;
+  marketing_alerts: boolean;
+  phase_alerts: boolean;
+  reward_alerts: boolean;
   quiet_hours_start: string;
   quiet_hours_end: string;
   mute_all: boolean;

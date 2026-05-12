@@ -83,6 +83,7 @@ export async function POST(req: Request) {
     body: `${who} reported ${report_type} on ${platform} for ${model_name || "model"} (@${username})`,
     entity_type: NOTIFICATION_ENTITY.ACCOUNT,
     entity_id: report.report_id,
+    _triggerSource: "va_marketing_report_shadowban",
   }).catch(() => {});
 
   return NextResponse.json({ success: true, report });

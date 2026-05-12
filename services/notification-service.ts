@@ -5,7 +5,10 @@ import { getPreferencesByUserId } from "./notification-preferences";
 import { getActiveSubscriptionsForUser } from "./push-subscriptions";
 import { listAllUsers } from "./users";
 import { getAdminNotificationIds } from "./admin-notification-settings";
-import { DEFAULT_PRIORITY_BY_EVENT as DEFAULT_PRIORITY_BY_EVENT_BASE } from "@/lib/notification-types";
+import {
+  DEFAULT_PRIORITY_BY_EVENT as DEFAULT_PRIORITY_BY_EVENT_BASE,
+  NOTIFICATION_ENTITY,
+} from "@/lib/notification-types";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { broadcastRealtimeEvent } from "@/lib/realtime-broadcast";
 import { sendWebPush } from "@/lib/web-push-server";
@@ -107,13 +110,22 @@ function resolveNotifyPriority(
   return explicit ?? DEFAULT_PRIORITY_BY_EVENT[event_type] ?? "normal";
 }
 
-const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, keyof {
-  whale_alerts: boolean;
-  shift_alerts: boolean;
-  model_alerts: boolean;
-  system_alerts: boolean;
-  task_alerts: boolean;
-}> = {
+type NotificationPreferenceGateKey = keyof Pick<
+  NotificationPreference,
+  | "whale_alerts"
+  | "shift_alerts"
+  | "model_alerts"
+  | "system_alerts"
+  | "task_alerts"
+  | "mistake_alerts"
+  | "fine_bonus_alerts"
+  | "period_alerts"
+  | "marketing_alerts"
+  | "phase_alerts"
+  | "reward_alerts"
+>;
+
+const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceGateKey> = {
   shift: "shift_alerts",
   model: "model_alerts",
   whale: "whale_alerts",
@@ -121,6 +133,51 @@ const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, keyof {
   system: "system_alerts",
   task: "task_alerts",
 };
+
+const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {
+  period_3_day_reminder: "period_alerts",
+  period_predicted_day: "period_alerts",
+  period_confirmed_early: "period_alerts",
+  period_overdue: "period_alerts",
+  period_prediction_reset: "period_alerts",
+  phase_task_completed: "phase_alerts",
+  phase_completed: "phase_alerts",
+  phase_overdue: "phase_alerts",
+  all_phases_completed: "phase_alerts",
+  points_awarded: "reward_alerts",
+  level_up: "reward_alerts",
+  spin_available: "reward_alerts",
+  challenge_completed: "reward_alerts",
+};
+
+const ENTITY_TO_PREF_KEY: Record<string, NotificationPreferenceGateKey> = {
+  [NOTIFICATION_ENTITY.CHATTER_MISTAKE]: "mistake_alerts",
+  [NOTIFICATION_ENTITY.FINE_BONUS]: "fine_bonus_alerts",
+  shadowban_report: "marketing_alerts",
+  challenge: "reward_alerts",
+  chatter_points: "reward_alerts",
+  points_transaction: "reward_alerts",
+  spin_wheel_spin: "reward_alerts",
+};
+
+function resolvePreferenceKey(
+  eventType: NotificationEventType,
+  category: NotificationCategory,
+  entityType?: string,
+  triggerSource?: string
+): NotificationPreferenceGateKey {
+  const entityKey = entityType?.trim() ?? "";
+  const triggerKey = triggerSource?.trim().toLowerCase() ?? "";
+  const entityPref = ENTITY_TO_PREF_KEY[entityKey];
+  if (entityPref) return entityPref;
+  if (
+    entityKey === NOTIFICATION_ENTITY.ACCOUNT &&
+    (triggerKey.includes("marketing") || triggerKey.includes("shadowban"))
+  ) {
+    return "marketing_alerts";
+  }
+  return EVENT_TO_PREF_KEY[eventType] ?? CATEGORY_TO_PREF_KEY[category];
+}
 
 function isInQuietHours(prefs: { quiet_hours_start: string; quiet_hours_end: string }): boolean {
   const start = prefs.quiet_hours_start?.trim();
@@ -173,11 +230,14 @@ function isLiveNotificationEvent(eventType: string, triggerSource?: string): boo
 function shouldSendPush(
   prefs: NotificationPreference,
   category: NotificationCategory,
-  priority: NotificationPriority
+  priority: NotificationPriority,
+  eventType: NotificationEventType,
+  entityType?: string,
+  triggerSource?: string
 ): { send: boolean; skipReason?: string } {
   if (prefs.mute_all) return { send: false, skipReason: "mute_all is true" };
   if (!prefs.push_enabled) return { send: false, skipReason: "push_enabled is false" };
-  const categoryKey = CATEGORY_TO_PREF_KEY[category];
+  const categoryKey = resolvePreferenceKey(eventType, category, entityType, triggerSource);
   if (categoryKey && !(prefs[categoryKey] as boolean))
     return { send: false, skipReason: `category preference ${categoryKey} is false` };
   if (prefs.critical_only && priority !== "critical" && priority !== "high")
@@ -308,6 +368,12 @@ export async function notify(options: NotifyOptions) {
   const category = EVENT_TO_CATEGORY[options.event_type];
   const priority = resolveNotifyPriority(options.event_type, options.priority);
   const eventTypeAirtable = EVENT_TYPE_TO_AIRTABLE[options.event_type] ?? options.event_type;
+  const preferenceKey = resolvePreferenceKey(
+    options.event_type,
+    category,
+    options.entity_type,
+    options._triggerSource
+  );
 
   if (options.event_type === "shift_started") {
     if (options._triggerSource === "notifyAdmins") {
@@ -350,8 +416,8 @@ export async function notify(options: NotifyOptions) {
     JSON.stringify({
       event_type: options.event_type,
       category,
-      preference_key_for_push_gate: CATEGORY_TO_PREF_KEY[category],
-      note: "shift category maps to shift_alerts; push skips if that column is false in Airtable prefs",
+      preference_key_for_push_gate: preferenceKey,
+      note: "push skips if the resolved notification preference column is false in Airtable prefs",
     })
   );
 
@@ -428,7 +494,7 @@ export async function notify(options: NotifyOptions) {
 
   if (prefs) {
     logCategoryPrefKeyReference();
-    const prefKey = CATEGORY_TO_PREF_KEY[category];
+    const prefKey = preferenceKey;
     devLog(
       PUSH_AUDIT,
       "prefs_row_values_for_category_gate",
@@ -442,6 +508,12 @@ export async function notify(options: NotifyOptions) {
         whale_alerts: prefs.whale_alerts,
         task_alerts: prefs.task_alerts,
         system_alerts: prefs.system_alerts,
+        mistake_alerts: prefs.mistake_alerts,
+        fine_bonus_alerts: prefs.fine_bonus_alerts,
+        period_alerts: prefs.period_alerts,
+        marketing_alerts: prefs.marketing_alerts,
+        phase_alerts: prefs.phase_alerts,
+        reward_alerts: prefs.reward_alerts,
         push_enabled: prefs.push_enabled,
         mute_all: prefs.mute_all,
         critical_only: prefs.critical_only,
@@ -450,7 +522,14 @@ export async function notify(options: NotifyOptions) {
   }
 
   if (prefs && options.event_type === "shift_started" && options._triggerSource === "notifyAdmins") {
-    const pushProbe = shouldSendPush(prefs, category, priority);
+    const pushProbe = shouldSendPush(
+      prefs,
+      category,
+      priority,
+      options.event_type,
+      options.entity_type,
+      options._triggerSource
+    );
     devLog(NOTIF, "shift_started_admin_shift_alerts_pref", JSON.stringify({
       recipient_user_id: options.user_id,
       shift_alerts: prefs.shift_alerts,
@@ -513,14 +592,21 @@ export async function notify(options: NotifyOptions) {
     return { notification, pushSent: false };
   }
 
-  const pushDecision = shouldSendPush(prefs, category, priority);
+  const pushDecision = shouldSendPush(
+    prefs,
+    category,
+    priority,
+    options.event_type,
+    options.entity_type,
+    options._triggerSource
+  );
   devLog(
     PUSH_AUDIT,
     "shouldSendPush_evaluation",
     JSON.stringify({
       recipient_user_id: options.user_id,
       category,
-      preference_key: CATEGORY_TO_PREF_KEY[category],
+      preference_key: preferenceKey,
       send: pushDecision.send,
       skip_reason: pushDecision.skipReason ?? null,
       priority_used: priority,

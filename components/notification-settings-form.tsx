@@ -11,12 +11,16 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
+  Coins,
   Cpu,
   Fish,
+  Layers,
   ListTodo,
+  Megaphone,
   Moon,
   ShieldAlert,
   Sparkles,
+  Trophy,
   UserRound,
   VolumeX,
   XCircle,
@@ -152,6 +156,12 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
   const [modelAlerts, setModelAlerts] = React.useState(prefs.model_alerts);
   const [systemAlerts, setSystemAlerts] = React.useState(prefs.system_alerts);
   const [taskAlerts, setTaskAlerts] = React.useState(prefs.task_alerts);
+  const [mistakeAlerts, setMistakeAlerts] = React.useState(prefs.mistake_alerts ?? true);
+  const [fineBonusAlerts, setFineBonusAlerts] = React.useState(prefs.fine_bonus_alerts ?? true);
+  const [periodAlerts, setPeriodAlerts] = React.useState(prefs.period_alerts ?? true);
+  const [marketingAlerts, setMarketingAlerts] = React.useState(prefs.marketing_alerts ?? true);
+  const [phaseAlerts, setPhaseAlerts] = React.useState(prefs.phase_alerts ?? true);
+  const [rewardAlerts, setRewardAlerts] = React.useState(prefs.reward_alerts ?? true);
   const [muteAll, setMuteAll] = React.useState(prefs.mute_all);
   const [quietStart, setQuietStart] = React.useState(prefs.quiet_hours_start?.trim() ?? "");
   const [quietEnd, setQuietEnd] = React.useState(prefs.quiet_hours_end?.trim() ?? "");
@@ -169,6 +179,12 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
     setModelAlerts(prefs.model_alerts);
     setSystemAlerts(prefs.system_alerts);
     setTaskAlerts(prefs.task_alerts);
+    setMistakeAlerts(prefs.mistake_alerts ?? true);
+    setFineBonusAlerts(prefs.fine_bonus_alerts ?? true);
+    setPeriodAlerts(prefs.period_alerts ?? true);
+    setMarketingAlerts(prefs.marketing_alerts ?? true);
+    setPhaseAlerts(prefs.phase_alerts ?? true);
+    setRewardAlerts(prefs.reward_alerts ?? true);
     setMuteAll(prefs.mute_all);
     setQuietStart(prefs.quiet_hours_start?.trim() ?? "");
     setQuietEnd(prefs.quiet_hours_end?.trim() ?? "");
@@ -188,6 +204,12 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
       if (modelAlerts) fd.set("model_alerts", "on");
       if (systemAlerts) fd.set("system_alerts", "on");
       if (taskAlerts) fd.set("task_alerts", "on");
+      if (mistakeAlerts) fd.set("mistake_alerts", "on");
+      if (fineBonusAlerts) fd.set("fine_bonus_alerts", "on");
+      if (periodAlerts) fd.set("period_alerts", "on");
+      if (marketingAlerts) fd.set("marketing_alerts", "on");
+      if (phaseAlerts) fd.set("phase_alerts", "on");
+      if (rewardAlerts) fd.set("reward_alerts", "on");
       if (muteAll) fd.set("mute_all", "on");
       fd.set("quiet_hours_start", quietStart.trim());
       fd.set("quiet_hours_end", quietEnd.trim());
@@ -248,42 +270,101 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
           title="Categories"
           subtitle="Fine-tune what kinds of updates you care about."
         >
-          <div className="space-y-4">
-            <NotificationToggleField
-              name="whale_alerts"
-              label="Whale alerts"
-              icon={<Fish />}
-              checked={whaleAlerts}
-              onChange={setWhaleAlerts}
-            />
-            <NotificationToggleField
-              name="shift_alerts"
-              label="Shift alerts"
-              icon={<CalendarClock />}
-              checked={shiftAlerts}
-              onChange={setShiftAlerts}
-            />
-            <NotificationToggleField
-              name="model_alerts"
-              label="Model alerts"
-              icon={<UserRound />}
-              checked={modelAlerts}
-              onChange={setModelAlerts}
-            />
-            <NotificationToggleField
-              name="system_alerts"
-              label="System alerts"
-              icon={<Cpu />}
-              checked={systemAlerts}
-              onChange={setSystemAlerts}
-            />
-            <NotificationToggleField
-              name="task_alerts"
-              label="Task alerts"
-              icon={<ListTodo />}
-              checked={taskAlerts}
-              onChange={setTaskAlerts}
-            />
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">Operations</p>
+              <div className="space-y-4">
+                <NotificationToggleField
+                  name="shift_alerts"
+                  label="Shift alerts"
+                  icon={<CalendarClock />}
+                  checked={shiftAlerts}
+                  onChange={setShiftAlerts}
+                />
+                <NotificationToggleField
+                  name="whale_alerts"
+                  label="Whale alerts"
+                  icon={<Fish />}
+                  checked={whaleAlerts}
+                  onChange={setWhaleAlerts}
+                />
+                <NotificationToggleField
+                  name="model_alerts"
+                  label="Model alerts"
+                  icon={<UserRound />}
+                  checked={modelAlerts}
+                  onChange={setModelAlerts}
+                />
+                <NotificationToggleField
+                  name="period_alerts"
+                  label="Period alerts"
+                  icon={<CalendarClock />}
+                  checked={periodAlerts}
+                  onChange={setPeriodAlerts}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">Team</p>
+              <div className="space-y-4">
+                <NotificationToggleField
+                  name="task_alerts"
+                  label="Task alerts"
+                  icon={<ListTodo />}
+                  checked={taskAlerts}
+                  onChange={setTaskAlerts}
+                />
+                <NotificationToggleField
+                  name="phase_alerts"
+                  label="Phase alerts"
+                  icon={<Layers />}
+                  checked={phaseAlerts}
+                  onChange={setPhaseAlerts}
+                />
+                <NotificationToggleField
+                  name="mistake_alerts"
+                  label="Mistake alerts"
+                  icon={<ShieldAlert />}
+                  checked={mistakeAlerts}
+                  onChange={setMistakeAlerts}
+                />
+                <NotificationToggleField
+                  name="marketing_alerts"
+                  label="Marketing alerts"
+                  icon={<Megaphone />}
+                  checked={marketingAlerts}
+                  onChange={setMarketingAlerts}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">Performance</p>
+              <div className="space-y-4">
+                <NotificationToggleField
+                  name="reward_alerts"
+                  label="Reward alerts"
+                  icon={<Trophy />}
+                  checked={rewardAlerts}
+                  onChange={setRewardAlerts}
+                />
+                <NotificationToggleField
+                  name="fine_bonus_alerts"
+                  label="Fine/bonus alerts"
+                  icon={<Coins />}
+                  checked={fineBonusAlerts}
+                  onChange={setFineBonusAlerts}
+                />
+                <NotificationToggleField
+                  name="system_alerts"
+                  label="System alerts"
+                  icon={<Cpu />}
+                  checked={systemAlerts}
+                  onChange={setSystemAlerts}
+                />
+              </div>
+            </div>
           </div>
         </SettingsSection>
 
