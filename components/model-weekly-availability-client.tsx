@@ -405,7 +405,155 @@ export function ModelWeeklyAvailabilityClient({
 
         <div className="grid gap-6 md:grid-cols-2">
           <div
-            className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl"
+            className="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl md:sticky md:top-4 md:self-start md:max-h-[calc(100vh-6rem)] md:order-2"
+            style={{
+              boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.06)",
+            }}
+          >
+            <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-5 py-4">
+              <div>
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-white/90">
+                  {t(language, "This week's submissions", "Envíos de esta semana")}
+                </h3>
+                <p className="mt-1 text-xs text-white/50">
+                  {requests.length === 0
+                    ? t(language, "No entries yet", "Sin entradas")
+                    : t(
+                        language,
+                        `${requests.length} ${requests.length === 1 ? "entry" : "entries"}`,
+                        `${requests.length} ${requests.length === 1 ? "entrada" : "entradas"}`
+                      )}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-1 flex-col overflow-hidden">
+              {requests.length === 0 ? (
+                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-14 text-center">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/35">
+                    <Inbox className="h-7 w-7" strokeWidth={1.25} aria-hidden />
+                  </div>
+                  <p className="text-base font-medium text-white/80">
+                    {t(language, "Nothing here yet", "Aún no hay nada")}
+                  </p>
+                  <p className="max-w-sm text-sm leading-relaxed text-white/50">
+                    {t(
+                      language,
+                      "You have not submitted availability for this week. Add your first entry with the form on the left.",
+                      "No has enviado disponibilidad para esta semana. Añade tu primera entrada con el formulario de la izquierda."
+                    )}
+                  </p>
+                </div>
+              ) : (
+                <div className="max-h-[min(28rem,70vh)] space-y-5 overflow-y-auto p-4">
+                  {byDay.map(({ day: d, dateYmd, entries }) => (
+                    <section key={d} className="space-y-2">
+                      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-1.5">
+                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">{d}</p>
+                        <span className="text-[11px] text-white/40">{utcDayShortLabel(dateYmd, language)}</span>
+                        {periodDateSet.has(dateYmd) ? <PeriodDayIndicator /> : null}
+                      </div>
+                      {entries.length === 0 ? (
+                        <p className="pl-0.5 text-xs text-white/35">{t(language, "No entries this day.", "Sin entradas este día.")}</p>
+                      ) : (
+                        <ul className="space-y-2.5">
+                          {entries.map((r) => {
+                            const showChips = r.entry_type !== "day_off" && r.time_windows.length > 0;
+                            const showStartEndLine =
+                              r.entry_type !== "day_off" &&
+                              !showChips &&
+                              Boolean(r.start_time && r.end_time);
+                            const mutable = canEditOrDelete(r.status);
+                            return (
+                              <li
+                                key={r.id}
+                                className={cn(
+                                  "rounded-xl border bg-white/[0.035] px-3.5 py-3 shadow-sm",
+                                  statusCardRing(r.status)
+                                )}
+                              >
+                                <div className="flex flex-wrap items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1 space-y-1.5">
+                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[hsl(330,88%,72%)]">
+                                      {entryTypeLabel(language, r.entry_type)}
+                                    </p>
+                                    {showStartEndLine ? (
+                                      <p className="text-sm font-medium tabular-nums text-white/88">
+                                        {formatTimeRange(r.start_time, r.end_time)}
+                                      </p>
+                                    ) : null}
+                                    {showChips ? (
+                                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                                        {r.time_windows.map((w, i) => (
+                                          <span
+                                            key={`${r.id}-w-${i}`}
+                                            className="inline-flex items-center rounded-md border border-white/12 bg-black/30 px-2 py-0.5 font-mono text-[11px] font-medium tabular-nums text-white/85"
+                                          >
+                                            {w.start}–{w.end}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ) : null}
+                                    {r.notes?.trim() ? (
+                                      <p className="pt-1 text-xs leading-relaxed text-white/55">{r.notes.trim()}</p>
+                                    ) : null}
+                                  </div>
+                                  <span
+                                    className={cn(
+                                      "shrink-0 rounded-lg border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                                      statusBadgeClass(r.status)
+                                    )}
+                                  >
+                                    {statusFriendlyLabel(language, r.status)}
+                                  </span>
+                                </div>
+                                {mutable ? (
+                                  <div className="mt-3 flex flex-wrap gap-2 border-t border-white/[0.06] pt-3">
+                                    <button
+                                      type="button"
+                                      disabled={submitting || deletingId !== null}
+                                      onClick={() => startEdit(r)}
+                                      className="rounded-lg border border-white/18 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/85 transition-colors hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-45"
+                                    >
+                                      {t(language, "Edit", "Editar")}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={submitting || deletingId !== null}
+                                      onClick={() => requestDeleteEntry(r.id)}
+                                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+                                    >
+                                      {deletingId === r.id ? (
+                                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
+                                      ) : null}
+                                      {deletingId === r.id
+                                        ? t(language, "Deleting…", "Eliminando…")
+                                        : t(language, "Delete", "Eliminar")}
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <p className="mt-2 border-t border-white/[0.04] pt-2 text-[10px] text-white/38">
+                                    {t(
+                                      language,
+                                      "This entry can no longer be edited from here.",
+                                      "Esta entrada ya no se puede editar desde aquí."
+                                    )}
+                                  </p>
+                                )}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </section>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div
+            className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 p-5 backdrop-blur-xl md:order-1"
             style={{
               boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.06)",
             }}
@@ -585,154 +733,6 @@ export function ModelWeeklyAvailabilityClient({
                   </FormSubmitButton>
                 </motion.div>
               </form>
-            </div>
-          </div>
-
-          <div
-            className="flex min-h-[22rem] flex-col overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl md:sticky md:top-4 md:self-start md:max-h-[calc(100vh-6rem)]"
-            style={{
-              boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 24px -8px hsl(330 80% 55% / 0.06)",
-            }}
-          >
-            <div className="flex flex-wrap items-end justify-between gap-2 border-b border-white/10 bg-white/[0.04] px-5 py-4">
-              <div>
-                <h3 className="text-sm font-semibold uppercase tracking-wider text-white/90">
-                  {t(language, "This week's submissions", "Envíos de esta semana")}
-                </h3>
-                <p className="mt-1 text-xs text-white/50">
-                  {requests.length === 0
-                    ? t(language, "No entries yet", "Sin entradas")
-                    : t(
-                        language,
-                        `${requests.length} ${requests.length === 1 ? "entry" : "entries"}`,
-                        `${requests.length} ${requests.length === 1 ? "entrada" : "entradas"}`
-                      )}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-1 flex-col overflow-hidden">
-              {requests.length === 0 ? (
-                <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-14 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-white/35">
-                    <Inbox className="h-7 w-7" strokeWidth={1.25} aria-hidden />
-                  </div>
-                  <p className="text-base font-medium text-white/80">
-                    {t(language, "Nothing here yet", "Aún no hay nada")}
-                  </p>
-                  <p className="max-w-sm text-sm leading-relaxed text-white/50">
-                    {t(
-                      language,
-                      "You have not submitted availability for this week. Add your first entry with the form on the left.",
-                      "No has enviado disponibilidad para esta semana. Añade tu primera entrada con el formulario de la izquierda."
-                    )}
-                  </p>
-                </div>
-              ) : (
-                <div className="max-h-[min(28rem,70vh)] space-y-5 overflow-y-auto p-4">
-                  {byDay.map(({ day: d, dateYmd, entries }) => (
-                    <section key={d} className="space-y-2">
-                      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-1.5">
-                        <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-white/55">{d}</p>
-                        <span className="text-[11px] text-white/40">{utcDayShortLabel(dateYmd, language)}</span>
-                        {periodDateSet.has(dateYmd) ? <PeriodDayIndicator /> : null}
-                      </div>
-                      {entries.length === 0 ? (
-                        <p className="pl-0.5 text-xs text-white/35">{t(language, "No entries this day.", "Sin entradas este día.")}</p>
-                      ) : (
-                        <ul className="space-y-2.5">
-                          {entries.map((r) => {
-                            const showChips = r.entry_type !== "day_off" && r.time_windows.length > 0;
-                            const showStartEndLine =
-                              r.entry_type !== "day_off" &&
-                              !showChips &&
-                              Boolean(r.start_time && r.end_time);
-                            const mutable = canEditOrDelete(r.status);
-                            return (
-                              <li
-                                key={r.id}
-                                className={cn(
-                                  "rounded-xl border bg-white/[0.035] px-3.5 py-3 shadow-sm",
-                                  statusCardRing(r.status)
-                                )}
-                              >
-                                <div className="flex flex-wrap items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1 space-y-1.5">
-                                    <p className="text-[11px] font-semibold uppercase tracking-wide text-[hsl(330,88%,72%)]">
-                                      {entryTypeLabel(language, r.entry_type)}
-                                    </p>
-                                    {showStartEndLine ? (
-                                      <p className="text-sm font-medium tabular-nums text-white/88">
-                                        {formatTimeRange(r.start_time, r.end_time)}
-                                      </p>
-                                    ) : null}
-                                    {showChips ? (
-                                      <div className="flex flex-wrap gap-1.5 pt-0.5">
-                                        {r.time_windows.map((w, i) => (
-                                          <span
-                                            key={`${r.id}-w-${i}`}
-                                            className="inline-flex items-center rounded-md border border-white/12 bg-black/30 px-2 py-0.5 font-mono text-[11px] font-medium tabular-nums text-white/85"
-                                          >
-                                            {w.start}–{w.end}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ) : null}
-                                    {r.notes?.trim() ? (
-                                      <p className="pt-1 text-xs leading-relaxed text-white/55">{r.notes.trim()}</p>
-                                    ) : null}
-                                  </div>
-                                  <span
-                                    className={cn(
-                                      "shrink-0 rounded-lg border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
-                                      statusBadgeClass(r.status)
-                                    )}
-                                  >
-                                    {statusFriendlyLabel(language, r.status)}
-                                  </span>
-                                </div>
-                                {mutable ? (
-                                  <div className="mt-3 flex flex-wrap gap-2 border-t border-white/[0.06] pt-3">
-                                    <button
-                                      type="button"
-                                      disabled={submitting || deletingId !== null}
-                                      onClick={() => startEdit(r)}
-                                      className="rounded-lg border border-white/18 bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-white/85 transition-colors hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-45"
-                                    >
-                                      {t(language, "Edit", "Editar")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      disabled={submitting || deletingId !== null}
-                                      onClick={() => requestDeleteEntry(r.id)}
-                                      className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-200 transition-colors hover:bg-red-500/18 disabled:cursor-not-allowed disabled:opacity-45"
-                                    >
-                                      {deletingId === r.id ? (
-                                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" aria-hidden />
-                                      ) : null}
-                                      {deletingId === r.id
-                                        ? t(language, "Deleting…", "Eliminando…")
-                                        : t(language, "Delete", "Eliminar")}
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <p className="mt-2 border-t border-white/[0.04] pt-2 text-[10px] text-white/38">
-                                    {t(
-                                      language,
-                                      "This entry can no longer be edited from here.",
-                                      "Esta entrada ya no se puede editar desde aquí."
-                                    )}
-                                  </p>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      )}
-                    </section>
-                  ))}
-                </div>
-              )}
             </div>
           </div>
         </div>
