@@ -10,7 +10,11 @@ import {
 } from "@/lib/airtable-server";
 import { firstLinkedId, formulaTextEquals } from "@/lib/airtable-linked";
 import { getModelById, listAllModelss } from "@/services/modelss";
-import { ensureMondayForQuery, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
+import {
+  airtableWeekStartToMonday,
+  ensureMondayForQuery,
+  WEEKLY_PROGRAM_DAY_OPTIONS,
+} from "@/lib/weekly-program";
 import type {
   ModelWeeklyAvailabilityRequest,
   ModelAvailabilityEntryType,
@@ -124,7 +128,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelWeeklyAvailabilityRequest 
   return {
     id: rec.id,
     request_id: f.request_id ?? "",
-    week_start: (f.week_start ?? "").slice(0, 10),
+    week_start: f.week_start?.trim() ? airtableWeekStartToMonday(f.week_start) : "",
     model_id: firstLinkedId(f.model ?? f.model_id) ?? "",
     model_name: f.model_name ?? "",
     day: parseDay(f.day),
@@ -148,7 +152,9 @@ export async function getModelAvailabilityRequestsForWeek(
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "created_at", direction: "desc" }] });
   return records
     .filter((rec) => {
-      const ws = (rec.fields.week_start ?? "").slice(0, 10);
+      const raw = rec.fields.week_start;
+      if (typeof raw !== "string" || !raw.trim()) return false;
+      const ws = airtableWeekStartToMonday(raw);
       if (ws !== monday) return false;
       return weeklyRequestFieldsMatchModelIds(rec.fields, idSet);
     })
