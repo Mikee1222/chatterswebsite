@@ -69,9 +69,18 @@ export async function POST(req: Request) {
     const nextExpected = addDays(parsed.data.start_date, cycleLength);
     const start_date = parsed.data.start_date;
     const currentPeriod: ModelPeriodRecord = {
-      ...loggedPeriod,
-      end_date: loggedPeriod.end_date || addDays(start_date, periodLength - 1),
-      period_length_days: loggedPeriod.period_length_days ?? periodLength,
+      id: loggedPeriod.id,
+      model_id: ctx.linkedModelId,
+      start_date,
+      end_date: addDays(start_date, periodLength - 1),
+      cycle_length_days: loggedPeriod.cycle_length_days ?? null,
+      period_length_days: periodLength,
+      notes: parsed.data.notes?.trim() || "",
+      logged_by: "model",
+      created_at: loggedPeriod.created_at ?? null,
+      came_early: loggedPeriod.came_early === true,
+      missed_period: loggedPeriod.missed_period === true,
+      predicted_next_date: nextExpected,
       day_number: 1,
     };
     const modelName = (ctx.modelRecord.model_name ?? "").trim() || "Model";
@@ -111,13 +120,14 @@ export async function POST(req: Request) {
       _triggerSource: "model_period_log",
     }).catch(() => {});
 
-    await delay(500);
-    const cycle = await getModelCycleInfoResponse(ctx.linkedModelId);
+    await delay(800);
+    const cycle = await getModelCycleInfoResponse(ctx.linkedModelId)
+      .then(({ current_period: _ignoredCurrentPeriod, ...rest }) => rest)
+      .catch(() => ({ predicted_next_start: null, avg_cycle_length: 28, avg_period_length: periodLength }));
     return NextResponse.json({
       success: true,
-      ...cycle,
       current_period: currentPeriod,
-      predicted_next_start: nextExpected,
+      ...cycle,
     });
   } catch {
     return NextResponse.json({ error: "Request failed" }, { status: 500 });

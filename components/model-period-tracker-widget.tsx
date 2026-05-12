@@ -179,13 +179,19 @@ export function ModelPeriodTrackerWidget({
 
   const refreshData = () => router.refresh();
 
-  const applySuccessfulLog = (data: PeriodLogResponse, loggedStart: string) => {
+  const applySuccessfulLog = (
+    data: PeriodLogResponse,
+    loggedStart: string,
+    options: { refreshDelayMs: number | null }
+  ) => {
     setShowSuccess(true);
     setJustLoggedStartYmd(loggedStart);
     if (data.current_period) setOptimisticCurrentPeriod(data.current_period);
     if ("predicted_next_start" in data) setOptimisticNextPeriod(data.predicted_next_start ?? null);
     window.setTimeout(() => setShowSuccess(false), 5500);
-    window.setTimeout(() => refreshData(), 3000);
+    if (options.refreshDelayMs != null) {
+      window.setTimeout(() => refreshData(), options.refreshDelayMs);
+    }
   };
 
   const saveCycleSettings = React.useCallback(async () => {
@@ -219,7 +225,7 @@ export function ModelPeriodTrackerWidget({
         console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
-      applySuccessfulLog(data, today);
+      applySuccessfulLog(data, today, { refreshDelayMs: data.current_period ? null : 4000 });
     } catch (e) {
       console.error("[period] handleConfirmToday error:", e);
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotConfirm"));
@@ -263,7 +269,7 @@ export function ModelPeriodTrackerWidget({
         throw new Error(data.error || "Failed");
       }
       const loggedStart = startDate.trim().slice(0, 10);
-      applySuccessfulLog(data, loggedStart);
+      applySuccessfulLog(data, loggedStart, { refreshDelayMs: 4000 });
       setCustomDateOpen(false);
       setNotes("");
     } catch (e2) {
