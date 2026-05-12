@@ -15,6 +15,14 @@ function formatShortDate(ymd: string | null | undefined): string {
   return formatDateOnlyEuropean(ymd);
 }
 
+function formatDateShort(ymd: string): string {
+  return new Date(ymd + "T12:00:00Z").toLocaleDateString("en-GB", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+}
+
 /** Rose/amber/red pills plus next/last meta for schedule overview rows (admin + VA). */
 export function ScheduleOverviewPeriodBadges({ summary, audience, className }: Props) {
   if (!summary?.trackingEnabled) return null;
@@ -22,6 +30,7 @@ export function ScheduleOverviewPeriodBadges({ summary, audience, className }: P
   const du = summary.daysUntilNext;
   const inPeriod = summary.currentlyInPeriod;
   const dayNumber = summary.dayNumber;
+  const currentEndDate = summary.current?.end_date ?? null;
   const nextExpected = summary.nextExpectedDate;
   const lastStart = summary.lastStart ?? summary.lastPeriodDate;
 
@@ -33,6 +42,7 @@ export function ScheduleOverviewPeriodBadges({ summary, audience, className }: P
       {inPeriod ? (
         <span className="rounded-full border border-rose-500/25 bg-rose-500/15 px-2 py-0.5 text-xs font-medium text-rose-400">
           🩸 Period{dayNumber != null ? ` · Day ${dayNumber}` : ""}
+          {currentEndDate ? ` · until ${formatDateShort(currentEndDate)}` : ""}
         </span>
       ) : null}
 

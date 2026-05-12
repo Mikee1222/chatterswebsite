@@ -20,6 +20,7 @@ export type ScheduleOverviewPageModelOption = { id: string; name: string };
 export type ScheduleOverviewPeriodIndicator = {
   trackingEnabled: boolean;
   currentlyInPeriod: boolean;
+  current: { end_date: string | null } | null;
   /** Day within active bleed window when `currentlyInPeriod`. */
   dayNumber: number | null;
   lastPeriodDate: string | null;
@@ -45,6 +46,7 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
         const empty: ScheduleOverviewPeriodIndicator = {
           trackingEnabled: false,
           currentlyInPeriod: false,
+          current: null,
           dayNumber: null,
           lastPeriodDate: null,
           lastStart: null,
@@ -68,6 +70,7 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
           {
             trackingEnabled: true,
             currentlyInPeriod: !!current,
+            current: current ? { end_date: current.end_date ?? null } : null,
             dayNumber: current?.day_number ?? null,
             lastPeriodDate,
             lastStart,
@@ -81,6 +84,7 @@ async function computePeriodIndicatorsForModels(models: ModelRecord[]): Promise<
           {
             trackingEnabled: true,
             currentlyInPeriod: false,
+            current: null,
             dayNumber: null,
             lastPeriodDate: null,
             lastStart: null,
