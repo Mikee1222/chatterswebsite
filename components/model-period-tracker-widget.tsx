@@ -30,27 +30,79 @@ type PeriodLogResponse = {
   predicted_next_start?: string | null;
 };
 
-const LAST_LOGGED_PERIOD_STORAGE_KEY = "lastLoggedPeriodDate";
-const LAST_LOGGED_PERIOD_MAX_AGE_MS = 10 * 60 * 1000;
+interface PeriodCache {
+  start_date: string;
+  end_date: string;
+  day_number: number;
+  predicted_next_start: string | null;
+  timestamp: number;
+}
 
-function persistLastLoggedPeriod(date: string): void {
+const PERIOD_CACHE_STORAGE_KEY = "gunzo_period_cache";
+const LEGACY_LAST_LOGGED_PERIOD_STORAGE_KEY = "lastLoggedPeriodDate";
+const PERIOD_CACHE_MAX_AGE_MS = 15 * 60 * 1000;
+
+function isYmd(value: unknown): value is string {
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function persistPeriodCache(cache: PeriodCache): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(
-      LAST_LOGGED_PERIOD_STORAGE_KEY,
-      JSON.stringify({ date, timestamp: Date.now() })
-    );
+    window.localStorage.setItem(PERIOD_CACHE_STORAGE_KEY, JSON.stringify(cache));
+    window.localStorage.removeItem(LEGACY_LAST_LOGGED_PERIOD_STORAGE_KEY);
   } catch {
     /* ignore storage failures */
   }
 }
 
-function clearPersistedLastLoggedPeriod(): void {
+function clearPeriodCache(): void {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(LAST_LOGGED_PERIOD_STORAGE_KEY);
+    window.localStorage.removeItem(PERIOD_CACHE_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_LAST_LOGGED_PERIOD_STORAGE_KEY);
   } catch {
     /* ignore storage failures */
+  }
+}
+
+function readPeriodCache(): PeriodCache | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PERIOD_CACHE_STORAGE_KEY);
+    window.localStorage.removeItem(LEGACY_LAST_LOGGED_PERIOD_STORAGE_KEY);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as Partial<PeriodCache>;
+    const predictedNextStart = isYmd(parsed.predicted_next_start) ? parsed.predicted_next_start : null;
+    if (
+      !isYmd(parsed.start_date) ||
+      !isYmd(parsed.end_date) ||
+      typeof parsed.day_number !== "number" ||
+      !Number.isFinite(parsed.day_number) ||
+      (parsed.predicted_next_start !== null && !isYmd(parsed.predicted_next_start)) ||
+      typeof parsed.timestamp !== "number" ||
+      !Number.isFinite(parsed.timestamp)
+    ) {
+      clearPeriodCache();
+      return null;
+    }
+
+    if (Date.now() - parsed.timestamp >= PERIOD_CACHE_MAX_AGE_MS) {
+      clearPeriodCache();
+      return null;
+    }
+
+    return {
+      start_date: parsed.start_date,
+      end_date: parsed.end_date,
+      day_number: Math.max(1, Math.round(parsed.day_number)),
+      predicted_next_start: predictedNextStart,
+      timestamp: parsed.timestamp,
+    };
+  } catch {
+    clearPeriodCache();
+    return null;
   }
 }
 
@@ -118,6 +170,7 @@ export function ModelPeriodTrackerWidget({
   const [justLoggedStartYmd, setJustLoggedStartYmd] = React.useState<string | null>(null);
   const [optimisticCurrentPeriod, setOptimisticCurrentPeriod] = React.useState<ModelPeriodRecord | null>(null);
   const [optimisticNextPeriod, setOptimisticNextPeriod] = React.useState<string | null>(null);
+  const [cachedPeriodData, setCachedPeriodData] = React.useState<PeriodCache | null>(null);
 
   React.useEffect(() => {
     setCycleLength(typeof avgCycleLength === "number" && avgCycleLength > 0 ? avgCycleLength : 28);
@@ -125,26 +178,19 @@ export function ModelPeriodTrackerWidget({
   }, [avgCycleLength, avgPeriodLength]);
 
   React.useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = window.localStorage.getItem(LAST_LOGGED_PERIOD_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { date?: unknown; timestamp?: unknown };
-      const date = typeof parsed.date === "string" ? parsed.date.trim().slice(0, 10) : "";
-      const timestamp = typeof parsed.timestamp === "number" ? parsed.timestamp : 0;
-      if (/^\d{4}-\d{2}-\d{2}$/.test(date) && Date.now() - timestamp < LAST_LOGGED_PERIOD_MAX_AGE_MS) {
-        setJustLoggedStartYmd(date);
-        return;
-      }
-      clearPersistedLastLoggedPeriod();
-    } catch {
-      clearPersistedLastLoggedPeriod();
-    }
+    const cache = readPeriodCache();
+    if (!cache) return;
+    setJustLoggedStartYmd(cache.start_date);
+    setCachedPeriodData(cache);
   }, []);
 
   React.useEffect(() => {
-    if (currentPeriod?.start_date && currentPeriod.start_date === justLoggedStartYmd) {
-      clearPersistedLastLoggedPeriod();
+    if (currentPeriod?.start_date) {
+      clearPeriodCache();
+      setCachedPeriodData(null);
+      if (justLoggedStartYmd === currentPeriod.start_date) {
+        setJustLoggedStartYmd(null);
+      }
     }
   }, [currentPeriod?.start_date, justLoggedStartYmd]);
 
@@ -170,9 +216,28 @@ export function ModelPeriodTrackerWidget({
     }
   }, [justLoggedStartYmd, optimisticCurrentPeriod, optimisticNextPeriod, predictedNextStart]);
 
+  const cachedCurrentPeriod = React.useMemo((): ModelPeriodRecord | null => {
+    if (currentPeriod || !cachedPeriodData) return null;
+    return {
+      id: "__cached_period__",
+      model_id: "",
+      start_date: cachedPeriodData.start_date,
+      end_date: cachedPeriodData.end_date,
+      cycle_length_days: null,
+      period_length_days: Math.max(1, dayDiff(cachedPeriodData.start_date, cachedPeriodData.end_date) + 1),
+      notes: "",
+      logged_by: "model",
+      created_at: null,
+      day_number: cachedPeriodData.day_number,
+    };
+  }, [cachedPeriodData, currentPeriod]);
+
   const mergedPeriods = React.useMemo((): ModelPeriodRecord[] => {
     if (optimisticCurrentPeriod && !periods.some((p) => p.start_date === optimisticCurrentPeriod.start_date)) {
       return [...periods, optimisticCurrentPeriod];
+    }
+    if (cachedCurrentPeriod && !periods.some((p) => p.start_date === cachedCurrentPeriod.start_date)) {
+      return [...periods, cachedCurrentPeriod];
     }
     if (!justLoggedStartYmd) return periods;
     if (periods.some((p) => p.start_date === justLoggedStartYmd)) return periods;
@@ -190,21 +255,21 @@ export function ModelPeriodTrackerWidget({
       created_at: null,
     };
     return [...periods, synthetic];
-  }, [periods, optimisticCurrentPeriod, justLoggedStartYmd, periodLength]);
+  }, [periods, optimisticCurrentPeriod, cachedCurrentPeriod, justLoggedStartYmd, periodLength]);
 
   const sorted = React.useMemo(
     () => [...mergedPeriods].sort((a, b) => b.start_date.localeCompare(a.start_date)),
     [mergedPeriods]
   );
   const latest = sorted[0] ?? null;
-  const displayCurrentPeriod = optimisticCurrentPeriod ?? currentPeriod;
-  const displayNextPeriod = optimisticNextPeriod ?? predictedNextStart;
+  const effectiveCurrentPeriod = currentPeriod ?? optimisticCurrentPeriod ?? cachedCurrentPeriod;
+  const effectiveUpcoming = predictedNextStart ?? optimisticNextPeriod ?? cachedPeriodData?.predicted_next_start ?? null;
   const hasLoggedPeriod = sorted.length > 0;
   const canReportMissed = Boolean(latest);
-  const currentlyInPeriod = displayCurrentPeriod
-    ? displayCurrentPeriod.start_date <= today && today <= displayCurrentPeriod.end_date
+  const currentlyInPeriod = effectiveCurrentPeriod
+    ? effectiveCurrentPeriod.start_date <= today && today <= effectiveCurrentPeriod.end_date
     : inPeriod(today, sorted);
-  const daysToPredicted = displayNextPeriod ? dayDiff(today, displayNextPeriod) : null;
+  const daysToPredicted = effectiveUpcoming ? dayDiff(today, effectiveUpcoming) : null;
 
   const status: CycleStatus = currentlyInPeriod
     ? "period"
@@ -227,14 +292,33 @@ export function ModelPeriodTrackerWidget({
 
   const refreshData = () => router.refresh();
 
+  const buildPeriodCache = (data: PeriodLogResponse, loggedStart: string): PeriodCache => {
+    const responsePeriod = data.current_period;
+    const resolvedPeriodLength =
+      typeof avgPeriodLength === "number" && avgPeriodLength > 0
+        ? Math.max(1, Math.round(avgPeriodLength))
+        : typeof responsePeriod?.period_length_days === "number" && responsePeriod.period_length_days > 0
+          ? Math.max(1, Math.round(responsePeriod.period_length_days))
+          : 5;
+    return {
+      start_date: loggedStart,
+      end_date: responsePeriod?.end_date || addDays(loggedStart, resolvedPeriodLength - 1),
+      day_number: 1,
+      predicted_next_start: data.predicted_next_start ?? null,
+      timestamp: Date.now(),
+    };
+  };
+
   const applySuccessfulLog = (
     data: PeriodLogResponse,
     loggedStart: string,
     options: { refreshDelayMs: number | null }
   ) => {
+    const cache = buildPeriodCache(data, loggedStart);
     setShowSuccess(true);
     setJustLoggedStartYmd(loggedStart);
-    persistLastLoggedPeriod(loggedStart);
+    setCachedPeriodData(cache);
+    persistPeriodCache(cache);
     if (data.current_period) setOptimisticCurrentPeriod(data.current_period);
     if ("predicted_next_start" in data) setOptimisticNextPeriod(data.predicted_next_start ?? null);
     window.setTimeout(() => setShowSuccess(false), 5500);
@@ -274,7 +358,7 @@ export function ModelPeriodTrackerWidget({
         console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
-      applySuccessfulLog(data, today, { refreshDelayMs: data.current_period ? null : 6000 });
+      applySuccessfulLog(data, today, { refreshDelayMs: 10000 });
     } catch (e) {
       console.error("[period] handleConfirmToday error:", e);
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotConfirm"));
@@ -318,7 +402,7 @@ export function ModelPeriodTrackerWidget({
         throw new Error(data.error || "Failed");
       }
       const loggedStart = startDate.trim().slice(0, 10);
-      applySuccessfulLog(data, loggedStart, { refreshDelayMs: 6000 });
+      applySuccessfulLog(data, loggedStart, { refreshDelayMs: 10000 });
       setCustomDateOpen(false);
       setNotes("");
     } catch (e2) {
@@ -362,7 +446,7 @@ export function ModelPeriodTrackerWidget({
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs uppercase tracking-wide text-white/45">{t("periodTracker.nextExpected")}</p>
             <p className="mt-1 text-sm font-semibold text-white">
-              {displayNextPeriod ? formatDateLong(displayNextPeriod, locale) : "—"}
+              {effectiveUpcoming ? formatDateLong(effectiveUpcoming, locale) : "—"}
             </p>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
@@ -410,7 +494,7 @@ export function ModelPeriodTrackerWidget({
             {timelineDays.map((d) => {
               const isToday = d === today;
               const isPeriod = inPeriod(d, sorted);
-              const isPredicted = displayNextPeriod && d === displayNextPeriod;
+              const isPredicted = effectiveUpcoming && d === effectiveUpcoming;
               return (
                 <motion.div
                   key={d}

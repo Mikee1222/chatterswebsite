@@ -191,7 +191,7 @@ export async function getCurrentPeriod(
 ): Promise<ModelPeriodRecord | null> {
   const current = await _getCurrentPeriodInner(modelId, model);
   if (current) return current;
-  await delay(1000);
+  await delay(3000);
   return _getCurrentPeriodInner(modelId, model);
 }
 
@@ -259,7 +259,7 @@ export async function getUpcomingPeriod(
 ): Promise<ModelUpcomingPeriod | null> {
   const upcoming = await _getUpcomingPeriodInner(modelId, model);
   if (upcoming) return upcoming;
-  await delay(1000);
+  await delay(3000);
   return _getUpcomingPeriodInner(modelId, model);
 }
 
