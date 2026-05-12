@@ -54,6 +54,10 @@ function linkedModelIdFromPeriodFields(f: Fields): string | null {
   return firstLinkedId(f.model ?? f.model_id ?? f.Model ?? f.Models);
 }
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): ModelPeriodRecord {
   const f = rec.fields;
   const predRaw = f.predicted_next_date;
@@ -185,6 +189,16 @@ export async function getCurrentPeriod(
   modelId: string,
   model?: ModelRecord | null
 ): Promise<ModelPeriodRecord | null> {
+  const current = await _getCurrentPeriodInner(modelId, model);
+  if (current) return current;
+  await delay(1000);
+  return _getCurrentPeriodInner(modelId, model);
+}
+
+async function _getCurrentPeriodInner(
+  modelId: string,
+  model?: ModelRecord | null
+): Promise<ModelPeriodRecord | null> {
   const periods = await getPeriodsForModel(modelId);
   if (periods.length === 0) return null;
 
@@ -240,6 +254,16 @@ export async function syncLatestPeriodPredictedNext(
  * Predict next period window: newest `start_date` + avg cycle/period from modelss (defaults 28 / 5).
  */
 export async function getUpcomingPeriod(
+  modelId: string,
+  model: ModelRecord | null | undefined
+): Promise<ModelUpcomingPeriod | null> {
+  const upcoming = await _getUpcomingPeriodInner(modelId, model);
+  if (upcoming) return upcoming;
+  await delay(1000);
+  return _getUpcomingPeriodInner(modelId, model);
+}
+
+async function _getUpcomingPeriodInner(
   modelId: string,
   model: ModelRecord | null | undefined
 ): Promise<ModelUpcomingPeriod | null> {

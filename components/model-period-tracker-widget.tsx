@@ -30,6 +30,30 @@ type PeriodLogResponse = {
   predicted_next_start?: string | null;
 };
 
+const LAST_LOGGED_PERIOD_STORAGE_KEY = "lastLoggedPeriodDate";
+const LAST_LOGGED_PERIOD_MAX_AGE_MS = 10 * 60 * 1000;
+
+function persistLastLoggedPeriod(date: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      LAST_LOGGED_PERIOD_STORAGE_KEY,
+      JSON.stringify({ date, timestamp: Date.now() })
+    );
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
+function clearPersistedLastLoggedPeriod(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(LAST_LOGGED_PERIOD_STORAGE_KEY);
+  } catch {
+    /* ignore storage failures */
+  }
+}
+
 function dayDiff(fromYmd: string, toYmd: string): number {
   const a = Date.parse(`${fromYmd}T12:00:00.000Z`);
   const b = Date.parse(`${toYmd}T12:00:00.000Z`);
@@ -99,6 +123,30 @@ export function ModelPeriodTrackerWidget({
     setCycleLength(typeof avgCycleLength === "number" && avgCycleLength > 0 ? avgCycleLength : 28);
     setPeriodLength(typeof avgPeriodLength === "number" && avgPeriodLength > 0 ? avgPeriodLength : 5);
   }, [avgCycleLength, avgPeriodLength]);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(LAST_LOGGED_PERIOD_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { date?: unknown; timestamp?: unknown };
+      const date = typeof parsed.date === "string" ? parsed.date.trim().slice(0, 10) : "";
+      const timestamp = typeof parsed.timestamp === "number" ? parsed.timestamp : 0;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(date) && Date.now() - timestamp < LAST_LOGGED_PERIOD_MAX_AGE_MS) {
+        setJustLoggedStartYmd(date);
+        return;
+      }
+      clearPersistedLastLoggedPeriod();
+    } catch {
+      clearPersistedLastLoggedPeriod();
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (currentPeriod?.start_date && currentPeriod.start_date === justLoggedStartYmd) {
+      clearPersistedLastLoggedPeriod();
+    }
+  }, [currentPeriod?.start_date, justLoggedStartYmd]);
 
   React.useEffect(() => {
     if (!justLoggedStartYmd) return;
@@ -186,6 +234,7 @@ export function ModelPeriodTrackerWidget({
   ) => {
     setShowSuccess(true);
     setJustLoggedStartYmd(loggedStart);
+    persistLastLoggedPeriod(loggedStart);
     if (data.current_period) setOptimisticCurrentPeriod(data.current_period);
     if ("predicted_next_start" in data) setOptimisticNextPeriod(data.predicted_next_start ?? null);
     window.setTimeout(() => setShowSuccess(false), 5500);
@@ -225,7 +274,7 @@ export function ModelPeriodTrackerWidget({
         console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
-      applySuccessfulLog(data, today, { refreshDelayMs: data.current_period ? null : 4000 });
+      applySuccessfulLog(data, today, { refreshDelayMs: data.current_period ? null : 6000 });
     } catch (e) {
       console.error("[period] handleConfirmToday error:", e);
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotConfirm"));
@@ -269,7 +318,7 @@ export function ModelPeriodTrackerWidget({
         throw new Error(data.error || "Failed");
       }
       const loggedStart = startDate.trim().slice(0, 10);
-      applySuccessfulLog(data, loggedStart, { refreshDelayMs: 4000 });
+      applySuccessfulLog(data, loggedStart, { refreshDelayMs: 6000 });
       setCustomDateOpen(false);
       setNotes("");
     } catch (e2) {
