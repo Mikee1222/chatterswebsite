@@ -191,14 +191,15 @@ export function ModelPeriodTrackerWidget({
   }, []);
 
   React.useEffect(() => {
-    if (currentPeriod?.start_date) {
+    if (!cachedPeriodData) return;
+    if (currentPeriod?.start_date === cachedPeriodData.start_date) {
       clearPeriodCache();
       setCachedPeriodData(null);
-      if (justLoggedStartYmd === currentPeriod.start_date) {
-        setJustLoggedStartYmd(null);
-      }
+      setJustLoggedStartYmd(null);
+      if (optimisticCurrentPeriod) setOptimisticCurrentPeriod(null);
+      if (optimisticNextPeriod) setOptimisticNextPeriod(null);
     }
-  }, [currentPeriod?.start_date, justLoggedStartYmd]);
+  }, [cachedPeriodData, currentPeriod?.start_date, optimisticCurrentPeriod, optimisticNextPeriod]);
 
   React.useEffect(() => {
     if (!justLoggedStartYmd) return;
