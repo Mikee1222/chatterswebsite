@@ -14,6 +14,9 @@ import type { ModelPeriodRecord, ModelRecord } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
 const TABLE = "model_periods";
+const RECENT_LOG_WINDOW_MS = 2 * 60 * 1000;
+
+const _recentlyLoggedModels = new Map<string, number>();
 
 /** Set PERIOD_TRACKER_DEBUG=true on Vercel (or run dev) to trace period fetches in logs. */
 function periodTrace(...args: unknown[]): void {
@@ -56,6 +59,28 @@ function linkedModelIdFromPeriodFields(f: Fields): string | null {
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function markModelPeriodRecentlyLogged(modelId: string): void {
+  if (!modelId) return;
+  const markedAt = Date.now();
+  _recentlyLoggedModels.set(modelId, markedAt);
+  const timer: ReturnType<typeof setTimeout> = setTimeout(() => {
+    if (_recentlyLoggedModels.get(modelId) === markedAt) {
+      _recentlyLoggedModels.delete(modelId);
+    }
+  }, RECENT_LOG_WINDOW_MS);
+  if (typeof (timer as { unref?: () => void }).unref === "function") {
+    (timer as { unref: () => void }).unref();
+  }
+}
+
+export function wasRecentlyLogged(modelId: string): boolean {
+  const markedAt = _recentlyLoggedModels.get(modelId);
+  if (markedAt == null) return false;
+  if (Date.now() - markedAt < RECENT_LOG_WINDOW_MS) return true;
+  _recentlyLoggedModels.delete(modelId);
+  return false;
 }
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelPeriodRecord {
@@ -154,6 +179,19 @@ async function resolveModelPeriodLinkFieldName(): Promise<string> {
 }
 
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
+  const initial = await getPeriodsForModelRaw(modelId);
+  if (initial.length > 0 || !wasRecentlyLogged(modelId)) return initial;
+
+  for (const retryDelayMs of [1000, 2000, 3000]) {
+    await delay(retryDelayMs);
+    const retry = await getPeriodsForModelRaw(modelId);
+    if (retry.length > 0) return retry;
+  }
+
+  return initial;
+}
+
+async function getPeriodsForModelRaw(modelId: string): Promise<ModelPeriodRecord[]> {
   if (!modelId) return [];
   periodTrace("[periods] fetching for modelId:", modelId);
   const fieldName = await resolveModelPeriodLinkFieldName();

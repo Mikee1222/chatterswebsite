@@ -280,6 +280,7 @@ export function ModelPeriodTrackerWidget({
     ? effectiveCurrentPeriod.start_date <= today && today <= effectiveCurrentPeriod.end_date
     : inPeriod(today, sorted);
   const daysToPredicted = effectiveUpcoming ? dayDiff(today, effectiveUpcoming) : null;
+  const showPredictedDayPanel = effectiveUpcoming === today && !effectiveCurrentPeriod && !currentlyInPeriod;
 
   const status: CycleStatus = currentlyInPeriod
     ? "period"
@@ -567,21 +568,53 @@ export function ModelPeriodTrackerWidget({
           <p className="mt-2 text-xs text-white/45">{t("periodTracker.timelineLegend")}</p>
         </div>
 
-        <button
-          type="button"
-          disabled={busyAction !== null}
-          onClick={() => void handleConfirmToday()}
-          className="w-full rounded-xl border border-rose-500/30 bg-rose-500/20 py-3 font-semibold text-rose-400 disabled:opacity-50"
-        >
-          {busyAction === "confirm" ? (
-            <span className="inline-flex items-center justify-center gap-2">
-              <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
-              {t("common.saving")}
-            </span>
-          ) : (
-            <>🩸 {t("periodTracker.myPeriodStartedToday")}</>
-          )}
-        </button>
+        {showPredictedDayPanel ? (
+          <div className="rounded-2xl border border-amber-400/35 bg-amber-500/12 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+            <p className="text-xs font-semibold uppercase tracking-wide text-amber-200/80">
+              {t("periodTracker.predictedDueTodayTitle")}
+            </p>
+            <p className="mt-1 text-sm text-white/70">
+              {t("periodTracker.predictedDueTodayBody")}
+            </p>
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={busyAction !== null}
+                onClick={() => void handleConfirmToday()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-rose-500/35 bg-rose-500/20 px-4 py-3 text-sm font-semibold text-rose-100 hover:bg-rose-500/25 disabled:opacity-50"
+              >
+                {busyAction === "confirm" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+                {t("periodTracker.myPeriodStartedToday")}
+              </button>
+              <button
+                type="button"
+                disabled={busyAction !== null || !canReportMissed}
+                title={!canReportMissed ? t("periodTracker.reportMissedNeedPeriod") : undefined}
+                onClick={() => void reportMissed()}
+                className="inline-flex items-center justify-center gap-2 rounded-xl border border-amber-400/35 bg-black/25 px-4 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+              >
+                {busyAction === "missed" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden /> : null}
+                {t("periodTracker.reportDidNotArrive")}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={busyAction !== null}
+            onClick={() => void handleConfirmToday()}
+            className="w-full rounded-xl border border-rose-500/30 bg-rose-500/20 py-3 font-semibold text-rose-400 disabled:opacity-50"
+          >
+            {busyAction === "confirm" ? (
+              <span className="inline-flex items-center justify-center gap-2">
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+                {t("common.saving")}
+              </span>
+            ) : (
+              <>🩸 {t("periodTracker.myPeriodStartedToday")}</>
+            )}
+          </button>
+        )}
 
         {showSuccess ? (
           <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/15 px-4 py-3">
@@ -688,7 +721,7 @@ export function ModelPeriodTrackerWidget({
               {sorted.map((p, i) => {
                 const isConfirmingDelete = confirmDeleteId === p.id;
                 const isDeleting = deletingPeriodId === p.id;
-                const canDeletePeriod = !p.id.startsWith("__");
+                const canDeletePeriod = p.id !== "optimistic" && !p.id.startsWith("__");
                 return (
                   <div
                     key={p.id}

@@ -293,6 +293,8 @@
       "historyMissed": "Missed",
       "historyEarly": "Early",
       "periodLoggedSuccessBanner": "Period logged! Day 1",
+      "predictedDueTodayTitle": "Expected today",
+      "predictedDueTodayBody": "Your period was predicted to start today. Confirm if it started, or report that it did not arrive.",
       "homePeriodActive": "Period active",
       "homeDay": "Day {day}",
       "homeNextPeriod": "Next period:",

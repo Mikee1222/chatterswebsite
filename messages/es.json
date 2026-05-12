@@ -293,6 +293,8 @@
       "historyMissed": "Perdido",
       "historyEarly": "Temprano",
       "periodLoggedSuccessBanner": "¡Período registrado! Día 1",
+      "predictedDueTodayTitle": "Esperado hoy",
+      "predictedDueTodayBody": "Tu período estaba previsto para empezar hoy. Confirma si empezó o reporta que no llegó.",
       "homePeriodActive": "Período activo",
       "homeDay": "Día {day}",
       "homeNextPeriod": "Próximo período:",

@@ -29,6 +29,7 @@ import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import { gradientClassForScheduleItemType } from "@/lib/detail-modal-gradients";
 import { useLanguage } from "@/lib/language-provider";
 import { useTranslations } from "@/lib/use-translations";
+import { cn } from "@/lib/utils";
 
 function getInstructions(item: ModelScheduleItem, lang: "en" | "es"): string {
   if (lang === "es" && item.instructions_es?.trim()) return item.instructions_es;
@@ -318,15 +319,26 @@ export function ModelScheduleClient({
             const availRows = availabilityByDay.get(weekday) ?? [];
             const offRows = dateInTimeOff(date);
             const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
+            const activePeriodDay = periodDateSet.has(date);
             return (
-              <div key={date} className="rounded-2xl border border-white/10 bg-black/40 p-4 backdrop-blur-xl">
-                {periodDateSet.has(date) && (
+              <div
+                key={date}
+                className={cn(
+                  "rounded-2xl border p-4 backdrop-blur-xl",
+                  activePeriodDay
+                    ? "border-rose-400/35 bg-rose-500/10"
+                    : predictedDay
+                      ? "border-amber-300/45 border-dashed bg-amber-500/[0.06]"
+                      : "border-white/10 bg-black/40"
+                )}
+              >
+                {activePeriodDay && (
                   <div className="mb-2 flex items-center gap-1">
                     <div className="h-2 w-2 animate-pulse rounded-full bg-red-500" />
                     <span className="text-xs text-red-400">{t("schedule.periodDay")}</span>
                   </div>
                 )}
-                {predictedDay && !periodDateSet.has(date) && (
+                {predictedDay && !activePeriodDay && (
                   <div className="mb-2 flex items-center gap-1">
                     <div className="h-2 w-2 rounded-full bg-amber-400" />
                     <span className="text-xs text-amber-300">{t("schedule.predictedPeriod")}</span>

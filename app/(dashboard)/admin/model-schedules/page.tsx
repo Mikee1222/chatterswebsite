@@ -12,6 +12,7 @@ import { modelLiveStreamPlatformLabel } from "@/lib/airtable-options";
 import type { ModelLiveStreamRecord, ModelScheduleItem } from "@/types";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 function mergeScheduleWithLives(
   scheduleItems: ModelScheduleItem[],

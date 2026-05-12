@@ -10,9 +10,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
-import { addDays } from "@/lib/weekly-program";
 import { getModelById } from "@/services/modelss";
-import { getUpcomingPeriod, logModelPeriodFromStartDate } from "@/services/model-periods";
+import {
+  getUpcomingPeriod,
+  logModelPeriodFromStartDate,
+  markModelPeriodRecentlyLogged,
+} from "@/services/model-periods";
 import { sendPeriodConfirmedEarlyNotification } from "@/services/period-notifications";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -26,6 +29,12 @@ const bodySchema = z.object({
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function addDays(ymd: string, days: number): string {
+  const d = new Date(`${ymd}T12:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 export async function POST(req: Request) {
@@ -47,7 +56,8 @@ export async function POST(req: Request) {
   try {
     const model = await getModelById(ctx.linkedModelId);
     const previousUpcoming = await getUpcomingPeriod(ctx.linkedModelId, model);
-    const loggedPeriod = await logModelPeriodFromStartDate(ctx.linkedModelId, parsed.data.start_date, parsed.data.notes, "model");
+    await logModelPeriodFromStartDate(ctx.linkedModelId, parsed.data.start_date, parsed.data.notes, "model");
+    markModelPeriodRecentlyLogged(ctx.linkedModelId);
     await delay(1500);
     if (previousUpcoming?.predicted_start && parsed.data.start_date < previousUpcoming.predicted_start) {
       await sendPeriodConfirmedEarlyNotification({
@@ -66,7 +76,7 @@ export async function POST(req: Request) {
       predicted_end: addDays(nextExpected, avgPeriodLength - 1),
     };
     const currentPeriod: ModelPeriodRecord = {
-      id: loggedPeriod.id,
+      id: "optimistic",
       model_id: ctx.linkedModelId,
       start_date,
       end_date: periodEndDate,
@@ -74,7 +84,7 @@ export async function POST(req: Request) {
       period_length_days: avgPeriodLength,
       notes: parsed.data.notes ?? "",
       logged_by: "model",
-      created_at: loggedPeriod.created_at ?? null,
+      created_at: null,
       came_early: false,
       missed_period: false,
       predicted_next_date: nextExpected,

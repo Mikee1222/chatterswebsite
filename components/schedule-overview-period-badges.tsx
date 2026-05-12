@@ -43,7 +43,7 @@ export function ScheduleOverviewPeriodBadges({ summary, audience, className }: P
       ) : null}
 
       {soon ? (
-        <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs text-amber-400">
+        <span className="rounded-full border border-dashed border-amber-400/45 bg-amber-500/12 px-2 py-0.5 text-xs text-amber-200">
           {audience === "va" ? `🗓 In ${du}d` : `⏰ In ${du}d`}
         </span>
       ) : null}
