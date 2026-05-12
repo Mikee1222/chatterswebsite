@@ -40,6 +40,7 @@ export async function POST(req: Request) {
   try {
     const model = await getModelById(ctx.linkedModelId);
     const previousUpcoming = await getUpcomingPeriod(ctx.linkedModelId, model);
+    await new Promise((r) => setTimeout(r, 2000));
     await markCurrentPeriodMissed(ctx.linkedModelId);
     if (previousUpcoming?.predicted_start) {
       await sendPeriodPredictionResetNotification({

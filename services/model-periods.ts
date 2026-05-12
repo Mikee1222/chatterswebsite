@@ -233,11 +233,17 @@ async function _getCurrentPeriodInner(
  * recently started logged period (same ordering as {@link getPeriodsForModel}).
  */
 export async function getPeriodRecordForFlags(modelId: string): Promise<ModelPeriodRecord | null> {
-  const model = await getModelById(modelId).catch(() => null);
-  const current = await getCurrentPeriod(modelId, model);
-  if (current) return current;
-  const periods = await getPeriodsForModel(modelId);
-  return periods[0] ?? null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (attempt > 0) await delay(attempt * 2000);
+
+    const model = await getModelById(modelId).catch(() => null);
+    const current = await getCurrentPeriod(modelId, model);
+    if (current) return current;
+    const periods = await getPeriodsForModel(modelId);
+    if (periods.length > 0) return periods[0];
+  }
+
+  return null;
 }
 
 /** Writes {@link getUpcomingPeriod} onto the latest logged period row when that field exists in Airtable. */
