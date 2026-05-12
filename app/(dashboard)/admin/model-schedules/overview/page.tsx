@@ -6,6 +6,7 @@ import { loadScheduleOverviewPageData } from "@/lib/schedule-overview-page-data"
 import { AdminModelSchedulesClient } from "@/components/admin-model-schedules-client";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const WEEKS_PAD = 8;
 

@@ -1,6 +1,9 @@
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /** Optional alias: `/admin/schedule-overview` → canonical model-schedules overview. */
 export default function AdminScheduleOverviewAliasPage({
   searchParams,

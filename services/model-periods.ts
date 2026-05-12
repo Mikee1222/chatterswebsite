@@ -182,15 +182,20 @@ export type ModelUpcomingPeriod = {
   period_length: number;
 };
 
+type PeriodLookupOptions = {
+  forceRetry?: boolean;
+};
+
 /**
  * Active bleed window: latest logged start through `start + avg_period_length - 1` (defaults from modelss).
  */
 export async function getCurrentPeriod(
   modelId: string,
-  model?: ModelRecord | null
+  model?: ModelRecord | null,
+  options: PeriodLookupOptions = {}
 ): Promise<ModelPeriodRecord | null> {
   const current = await _getCurrentPeriodInner(modelId, model);
-  if (current) return current;
+  if (current || !options.forceRetry) return current;
   await delay(3000);
   return _getCurrentPeriodInner(modelId, model);
 }
@@ -255,10 +260,11 @@ export async function syncLatestPeriodPredictedNext(
  */
 export async function getUpcomingPeriod(
   modelId: string,
-  model: ModelRecord | null | undefined
+  model: ModelRecord | null | undefined,
+  options: PeriodLookupOptions = {}
 ): Promise<ModelUpcomingPeriod | null> {
   const upcoming = await _getUpcomingPeriodInner(modelId, model);
-  if (upcoming) return upcoming;
+  if (upcoming || !options.forceRetry) return upcoming;
   await delay(3000);
   return _getUpcomingPeriodInner(modelId, model);
 }
@@ -538,10 +544,13 @@ export type ModelPeriodTrackingSnapshot = {
   avg_period_length: number | null;
 };
 
-export async function getModelCycleInfoResponse(modelId: string): Promise<ModelCycleInfoResponse> {
+export async function getModelCycleInfoResponse(
+  modelId: string,
+  options: PeriodLookupOptions = {}
+): Promise<ModelCycleInfoResponse> {
   const model = await getModelById(modelId);
-  const current = await getCurrentPeriod(modelId, model);
-  const upcoming = await getUpcomingPeriod(modelId, model);
+  const current = await getCurrentPeriod(modelId, model, options);
+  const upcoming = await getUpcomingPeriod(modelId, model, options);
   return {
     current_period: current,
     predicted_next_start: upcoming?.predicted_start ?? null,

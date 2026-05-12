@@ -12,7 +12,7 @@ import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
 import { addDays } from "@/lib/weekly-program";
 import { getModelById } from "@/services/modelss";
-import { getModelCycleInfoResponse, getUpcomingPeriod, logModelPeriodFromStartDate } from "@/services/model-periods";
+import { getUpcomingPeriod, logModelPeriodFromStartDate } from "@/services/model-periods";
 import { sendPeriodConfirmedEarlyNotification } from "@/services/period-notifications";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -23,10 +23,6 @@ const bodySchema = z.object({
   start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   notes: z.string().max(5000).optional(),
 });
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export async function POST(req: Request) {
   const ctx = await requireModelApiContext();
@@ -120,14 +116,13 @@ export async function POST(req: Request) {
       _triggerSource: "model_period_log",
     }).catch(() => {});
 
-    await delay(800);
-    const cycle = await getModelCycleInfoResponse(ctx.linkedModelId)
-      .then(({ current_period: _ignoredCurrentPeriod, ...rest }) => rest)
-      .catch(() => ({ predicted_next_start: null, avg_cycle_length: 28, avg_period_length: periodLength }));
+    const upcoming = await getUpcomingPeriod(ctx.linkedModelId, refreshed, { forceRetry: true }).catch(() => null);
     return NextResponse.json({
       success: true,
       current_period: currentPeriod,
-      ...cycle,
+      predicted_next_start: upcoming?.predicted_start ?? nextExpected,
+      avg_cycle_length: typeof refreshed?.avg_cycle_length === "number" ? refreshed.avg_cycle_length : cycleLength,
+      avg_period_length: typeof refreshed?.avg_period_length === "number" ? refreshed.avg_period_length : periodLength,
     });
   } catch {
     return NextResponse.json({ error: "Request failed" }, { status: 500 });
