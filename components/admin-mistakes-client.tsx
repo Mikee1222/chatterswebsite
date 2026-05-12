@@ -174,7 +174,8 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
     try {
       const ClipboardItemCtor = typeof ClipboardItem !== "undefined" ? ClipboardItem : undefined;
       if (imageUrl && navigator.clipboard?.write && ClipboardItemCtor) {
-        const imgResponse = await fetch(imageUrl);
+        const proxyImageUrl = `/api/admin/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+        const imgResponse = await fetch(proxyImageUrl);
         if (!imgResponse.ok) throw new Error(`image fetch ${imgResponse.status}`);
         const imgBlob = await imgResponse.blob();
 
