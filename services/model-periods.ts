@@ -7,7 +7,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
-import { firstLinkedId, formulaLinkedContains } from "@/lib/airtable-linked";
+import { firstLinkedId, formulaLinkedContains, formulaTextEquals } from "@/lib/airtable-linked";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { getModelById, updateModel } from "@/services/modelss";
 import type { ModelPeriodRecord, ModelRecord } from "@/types";
@@ -144,6 +144,7 @@ export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
 }
 
 const MODEL_LINK_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const;
+const MODEL_TEXT_FIELD_NAMES = ["model_id", "model", "Model", "Models"] as const;
 
 let cachedModelPeriodLinkField: string | null = null;
 let resolveModelPeriodLinkFieldPromise: Promise<string> | null = null;
@@ -178,6 +179,54 @@ async function resolveModelPeriodLinkFieldName(): Promise<string> {
   return resolveModelPeriodLinkFieldPromise;
 }
 
+function uniqueNonEmpty(values: Array<string | null | undefined>): string[] {
+  return [...new Set(values.map((value) => value?.trim() ?? "").filter(Boolean))];
+}
+
+function isAirtableRecordId(value: string): boolean {
+  return value.startsWith("rec");
+}
+
+function isStableModelId(value: string): boolean {
+  return value.startsWith("model_");
+}
+
+function valuesFromModelField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+function periodFieldsMatchModelIds(fields: Fields, ids: Set<string>): boolean {
+  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
+    for (const value of valuesFromModelField(fields[fieldName])) {
+      if (ids.has(value)) return true;
+    }
+  }
+  return false;
+}
+
+async function resolveStableModelId(modelId: string): Promise<string | null> {
+  if (isStableModelId(modelId)) return modelId;
+  if (!isAirtableRecordId(modelId)) return null;
+  const model = await getModelById(modelId).catch(() => null);
+  return model?.model_id?.trim() || null;
+}
+
+function addUniqueRecords(
+  target: AirtableRecord<Fields>[],
+  seen: Set<string>,
+  records: AirtableRecord<Fields>[]
+): void {
+  for (const record of records) {
+    if (seen.has(record.id)) continue;
+    seen.add(record.id);
+    target.push(record);
+  }
+}
+
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
   const initial = await getPeriodsForModelRaw(modelId);
   if (initial.length > 0 || !wasRecentlyLogged(modelId)) return initial;
@@ -193,19 +242,60 @@ export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRe
 
 async function getPeriodsForModelRaw(modelId: string): Promise<ModelPeriodRecord[]> {
   if (!modelId) return [];
-  periodTrace("[periods] fetching for modelId:", modelId);
-  const fieldName = await resolveModelPeriodLinkFieldName();
-  let records: AirtableRecord<Fields>[];
-  try {
-    records = await listAllRecords<Fields>(TABLE, {
-      filterByFormula: formulaLinkedContains(fieldName, modelId),
-    });
-    periodTrace("[periods] formula field:", fieldName, "raw records:", records.length);
-  } catch {
-    const all = await listAllRecords<Fields>(TABLE, {});
-    records = all.filter((rec) => linkedModelIdFromPeriodFields(rec.fields as Fields) === modelId);
-    periodTrace("[periods] formula query failed; full-table filter, matched:", records.length);
+  const stableModelId = await resolveStableModelId(modelId);
+  const recordIds = uniqueNonEmpty([isAirtableRecordId(modelId) ? modelId : null]);
+  const stableIds = uniqueNonEmpty([stableModelId, isStableModelId(modelId) ? modelId : null]);
+  const allLookupIds = new Set(uniqueNonEmpty([modelId, ...recordIds, ...stableIds]));
+  periodTrace("[periods] fetching for modelId:", modelId, "stableModelId:", stableModelId);
+
+  const records: AirtableRecord<Fields>[] = [];
+  const seen = new Set<string>();
+
+  if (recordIds.length > 0) {
+    const resolvedFieldName = await resolveModelPeriodLinkFieldName();
+    const linkFieldNames = uniqueNonEmpty([resolvedFieldName, ...MODEL_LINK_FIELD_NAMES]);
+    for (const recordId of recordIds) {
+      for (const fieldName of linkFieldNames) {
+        try {
+          const linkedRecords = await listAllRecords<Fields>(TABLE, {
+            filterByFormula: formulaLinkedContains(fieldName, recordId),
+          });
+          addUniqueRecords(records, seen, linkedRecords);
+          if (linkedRecords.length > 0) cachedModelPeriodLinkField = fieldName;
+          periodTrace("[periods] linked formula field:", fieldName, "raw records:", linkedRecords.length);
+        } catch {
+          periodTrace("[periods] linked formula failed for field:", fieldName);
+        }
+      }
+    }
   }
+
+  if (stableIds.length > 0) {
+    for (const stableId of stableIds) {
+      for (const fieldName of MODEL_TEXT_FIELD_NAMES) {
+        try {
+          const textRecords = await listAllRecords<Fields>(TABLE, {
+            filterByFormula: formulaTextEquals(fieldName, stableId),
+          });
+          addUniqueRecords(records, seen, textRecords);
+          periodTrace("[periods] text formula field:", fieldName, "raw records:", textRecords.length);
+        } catch {
+          periodTrace("[periods] text formula failed for field:", fieldName);
+        }
+      }
+    }
+  }
+
+  if (records.length === 0) {
+    const all = await listAllRecords<Fields>(TABLE, {});
+    addUniqueRecords(
+      records,
+      seen,
+      all.filter((rec) => periodFieldsMatchModelIds(rec.fields as Fields, allLookupIds))
+    );
+    periodTrace("[periods] full-table filter, matched:", records.length);
+  }
+
   const mapped = records.map(mapRecord).filter((p) => p.start_date && p.end_date);
   mapped.sort((a, b) => b.start_date.localeCompare(a.start_date));
   periodTrace("[periods] after filter (start+end):", mapped.length, "sample:", mapped[0] ?? null);
