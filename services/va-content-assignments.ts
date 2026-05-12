@@ -15,6 +15,7 @@ import type { VaContentAssignmentRecord } from "@/types";
 
 const TABLE = "va_content_assignments";
 const DEBUG_PREFIX = "[va-content-assignments]";
+let _workingModelField: string | null = "model";
 
 /** Airtable attachment cell item (subset). */
 export type VaAttachmentCell = {
@@ -172,13 +173,13 @@ async function vaIdentityLookupKeys(vaUserRecordId: string): Promise<string[]> {
   return [...keys];
 }
 
-const MODEL_LINK_FIELD_NAMES = ["model", "assigned_model"] as const;
+const MODEL_LINK_FIELD_NAMES = [] as const;
 
 /**
- * Single-line text fields that may store stable `model_…` ids (not linked `model` / `assigned_model`).
- * Try these only after linked-record filters with `modelRecordId` (`rec…`).
+ * Single-line text field storing stable `model_…` ids.
+ * Logs confirmed `model` is the only working model filter in this base.
  */
-const MODEL_STABLE_TEXT_FIELD_NAMES = ["model_id", "model"] as const;
+const MODEL_STABLE_TEXT_FIELD_NAMES = ["model"] as const;
 
 function trimmedStr(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim() : null;
@@ -235,7 +236,7 @@ async function modelssAirtableRecordIdForUserNotify(assignmentRecordId: string):
   }
 }
 
-/** List VA rows for a modelss Airtable id and/or stable `model_id` string on `modelss`. */
+/** List VA rows for a modelss stable `model_id` string on `modelss`. */
 async function listAssignmentRecordsByModelLink(
   modelRecordId: string,
   stableModelId?: string | null,
@@ -250,54 +251,28 @@ async function listAssignmentRecordsByModelLink(
     candidateLinkFields: [...MODEL_LINK_FIELD_NAMES],
   });
 
-  // 1) Linked record fields — use Airtable modelss record id (`rec…`), not stable `model_…` text.
-  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
+  if (sid) {
     try {
-      const filterByFormula = formulaLinkedContains(fieldName, modelRecordId);
+      const fieldName = _workingModelField ?? "model";
+      const filterByFormula = formulaTextEquals(fieldName, sid);
       const records = await listAllRecords<Fields>(TABLE, {
         filterByFormula,
       });
-      console.log(`${DEBUG_PREFIX} model query (linked)`, {
+      console.log(`${DEBUG_PREFIX} model query (text id)`, {
         table: TABLE,
         fieldName,
         filterByFormula,
         recordsReturned: records.length,
       });
-      if (records.length > 0) return records;
+      _workingModelField = fieldName;
+      return records;
     } catch (error) {
-      console.error(`${DEBUG_PREFIX} model query failed on linked field`, {
+      console.error(`${DEBUG_PREFIX} model query failed on text field`, {
         table: TABLE,
-        fieldName,
-        filterByFormula: formulaLinkedContains(fieldName, modelRecordId),
+        fieldName: _workingModelField ?? "model",
+        filterByFormula: formulaTextEquals(_workingModelField ?? "model", sid),
         error: error instanceof Error ? error.message : String(error),
       });
-      /* next field name */
-    }
-  }
-
-  // 2) Fallback: plain-text columns holding stable model id (bases that store `model_…` on `model_id`, etc.).
-  if (sid) {
-    for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
-      try {
-        const filterByFormula = formulaTextEquals(fieldName, sid);
-        const records = await listAllRecords<Fields>(TABLE, {
-          filterByFormula,
-        });
-        console.log(`${DEBUG_PREFIX} model query (text id)`, {
-          table: TABLE,
-          fieldName,
-          filterByFormula,
-          recordsReturned: records.length,
-        });
-        if (records.length > 0) return records;
-      } catch (error) {
-        console.error(`${DEBUG_PREFIX} model query failed on text field`, {
-          table: TABLE,
-          fieldName,
-          filterByFormula: formulaTextEquals(fieldName, sid),
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
     }
   }
   const all = await listAllRecords<Fields>(TABLE);
@@ -583,10 +558,7 @@ export async function listAllVAContentAssignmentsInRange(fromDate: string, toDat
   }
 }
 
-/**
- * VA → model content rows linked to this modelss **Airtable record id**, and/or rows where `model`
- * / `model_id` stores stable text id (`modelss.model_id`, e.g. `model_1772908052608_mk2psv`).
- */
+/** VA → model content rows where `model` stores stable text id (`modelss.model_id`, e.g. `model_1772908052608_mk2psv`). */
 export async function listVAContentAssignmentsForModel(
   modelRecordId: string,
   stableModelId?: string | null,
@@ -694,35 +666,26 @@ export async function countPendingVAContentAssignmentsForModel(
   stableModelId?: string | null,
 ): Promise<number> {
   if (!modelRecordId) return 0;
-  const sid = stableModelId?.trim();
+  let sid = stableModelId?.trim() ?? "";
+  if (!sid) {
+    const rec = await getModelById(modelRecordId).catch(() => null);
+    sid = rec?.model_id?.trim() ?? "";
+  }
   const isPending = (r: AirtableRecord<Fields>) =>
     String(r.fields.status ?? "").trim().toLowerCase() === "pending";
 
-  for (const fieldName of MODEL_LINK_FIELD_NAMES) {
+  if (sid) {
     try {
-      const formula = `AND(${formulaLinkedContains(fieldName, modelRecordId)}, {status}="pending")`;
+      const fieldName = _workingModelField ?? "model";
+      const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
       const records = await listAllRecords<Fields>(TABLE, {
         filterByFormula: formula,
         fields: ["status"],
       });
-      if (records.length > 0) return records.length;
+      _workingModelField = fieldName;
+      return records.length;
     } catch {
-      /* try next link field name */
-    }
-  }
-
-  if (sid) {
-    for (const fieldName of MODEL_STABLE_TEXT_FIELD_NAMES) {
-      try {
-        const formula = `AND(${formulaTextEquals(fieldName, sid)}, {status}="pending")`;
-        const records = await listAllRecords<Fields>(TABLE, {
-          filterByFormula: formula,
-          fields: ["status"],
-        });
-        if (records.length > 0) return records.length;
-      } catch {
-        /* field type mismatch or unknown field */
-      }
+      /* fall back to local scan */
     }
   }
   try {
