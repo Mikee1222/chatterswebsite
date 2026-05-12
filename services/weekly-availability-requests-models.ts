@@ -8,7 +8,8 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
-import { firstLinkedId } from "@/lib/airtable-linked";
+import { firstLinkedId, formulaTextEquals } from "@/lib/airtable-linked";
+import { getModelById, listAllModelss } from "@/services/modelss";
 import { ensureMondayForQuery, WEEKLY_PROGRAM_DAY_OPTIONS } from "@/lib/weekly-program";
 import type {
   ModelWeeklyAvailabilityRequest,
@@ -59,6 +60,64 @@ function parseStatus(raw: unknown): WeeklyAvailabilityRequestStatus {
   return allowed.includes(s as WeeklyAvailabilityRequestStatus) ? (s as WeeklyAvailabilityRequestStatus) : "submitted";
 }
 
+/** Same shape as {@link services/model-periods} — link arrays and legacy single-line text. */
+function valuesFromModelishField(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map((item) => (typeof item === "string" ? item.trim() : "")).filter(Boolean);
+  }
+  if (typeof value === "string" && value.trim()) return [value.trim()];
+  return [];
+}
+
+const MODEL_LINK_FIELD_NAMES = ["model", "model_id"] as const;
+
+function weeklyRequestFieldsMatchModelIds(fields: Fields, ids: Set<string>): boolean {
+  for (const name of MODEL_LINK_FIELD_NAMES) {
+    for (const v of valuesFromModelishField(fields[name])) {
+      if (ids.has(v)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * All identity keys for a model row: session `rec…`, stable `model_…`, and cross-resolved ids.
+ * Mirrors the dual-id approach in {@link getPeriodsForModelRaw}.
+ */
+async function buildWeeklyAvailabilityModelLookupIds(modelId: string): Promise<Set<string>> {
+  const trimmed = modelId.trim();
+  if (!trimmed) return new Set();
+  const out = new Set<string>([trimmed]);
+  if (trimmed.startsWith("rec")) {
+    const m = await getModelById(trimmed).catch(() => null);
+    const stable = m?.model_id?.trim();
+    if (stable) out.add(stable);
+  } else if (trimmed.startsWith("model_")) {
+    try {
+      const models = await listAllModelss(formulaTextEquals("model_id", trimmed));
+      for (const m of models) {
+        if (m.id) out.add(m.id);
+      }
+    } catch {
+      /* ignore */
+    }
+  }
+  return out;
+}
+
+/** Whether a mapped row belongs to the same model as `sessionModelId` (rec or stable). */
+export async function modelOwnsWeeklyAvailabilityRequest(
+  mappedRowModelId: string,
+  sessionModelId: string
+): Promise<boolean> {
+  const a = mappedRowModelId.trim();
+  const b = sessionModelId.trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ids = await buildWeeklyAvailabilityModelLookupIds(b);
+  return ids.has(a);
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): ModelWeeklyAvailabilityRequest {
   const f = rec.fields;
   const time_windows = windowsFromRecord(f.start_time, f.end_time, f.availability_windows);
@@ -85,10 +144,15 @@ export async function getModelAvailabilityRequestsForWeek(
 ): Promise<ModelWeeklyAvailabilityRequest[]> {
   if (!weekStart || !modelId) return [];
   const monday = ensureMondayForQuery(weekStart);
+  const idSet = await buildWeeklyAvailabilityModelLookupIds(modelId.trim());
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "created_at", direction: "desc" }] });
   return records
+    .filter((rec) => {
+      const ws = (rec.fields.week_start ?? "").slice(0, 10);
+      if (ws !== monday) return false;
+      return weeklyRequestFieldsMatchModelIds(rec.fields, idSet);
+    })
     .map(mapRecord)
-    .filter((r) => r.week_start === monday && r.model_id === modelId)
     .sort(
       (a, b) =>
         a.day.localeCompare(b.day) ||

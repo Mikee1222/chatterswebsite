@@ -9,6 +9,7 @@ import {
   deleteModelAvailabilityRequest,
   getModelAvailabilityRequestById,
   getModelAvailabilityRequestsForWeek,
+  modelOwnsWeeklyAvailabilityRequest,
 } from "@/services/weekly-availability-requests-models";
 import type { ModelAvailabilityEntryType, ModelAvailabilityTimeWindow, WeeklyProgramDay } from "@/types";
 import { validateTimeWindows } from "@/lib/model-availability-windows";
@@ -90,7 +91,9 @@ export async function updateModelAvailabilityAction(
   const ctx = await modelGuard();
   if (!ctx) return { success: false, error: "Unauthorized." };
   const existing = await getModelAvailabilityRequestById(recordId);
-  if (!existing || existing.model_id !== ctx.linkedModelId) return { success: false, error: "Entry not found." };
+  if (!existing || !(await modelOwnsWeeklyAvailabilityRequest(existing.model_id, ctx.linkedModelId))) {
+    return { success: false, error: "Entry not found." };
+  }
   let time_windows: ModelAvailabilityTimeWindow[] | undefined;
   if (needsTime(patch.entry_type)) {
     const hasExplicitWindows = (patch.time_windows?.length ?? 0) > 0;
@@ -121,7 +124,9 @@ export async function deleteModelAvailabilityAction(recordId: string): Promise<A
   const ctx = await modelGuard();
   if (!ctx) return { success: false, error: "Unauthorized." };
   const existing = await getModelAvailabilityRequestById(recordId);
-  if (!existing || existing.model_id !== ctx.linkedModelId) return { success: false, error: "Entry not found." };
+  if (!existing || !(await modelOwnsWeeklyAvailabilityRequest(existing.model_id, ctx.linkedModelId))) {
+    return { success: false, error: "Entry not found." };
+  }
   try {
     await deleteModelAvailabilityRequest(recordId);
     revalidatePath(ROUTES.model.weeklyAvailability);
