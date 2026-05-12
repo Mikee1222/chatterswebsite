@@ -28,6 +28,8 @@ type PeriodLogResponse = {
   error?: string;
   current_period?: ModelPeriodRecord | null;
   predicted_next_start?: string | null;
+  avg_cycle_length?: number | null;
+  avg_period_length?: number | null;
 };
 
 interface PeriodCache {
@@ -35,6 +37,7 @@ interface PeriodCache {
   end_date: string;
   day_number: number;
   predicted_next_start: string | null;
+  avg_cycle_length: number;
   timestamp: number;
 }
 
@@ -81,6 +84,8 @@ function readPeriodCache(): PeriodCache | null {
       typeof parsed.day_number !== "number" ||
       !Number.isFinite(parsed.day_number) ||
       (parsed.predicted_next_start !== null && !isYmd(parsed.predicted_next_start)) ||
+      typeof parsed.avg_cycle_length !== "number" ||
+      !Number.isFinite(parsed.avg_cycle_length) ||
       typeof parsed.timestamp !== "number" ||
       !Number.isFinite(parsed.timestamp)
     ) {
@@ -98,6 +103,7 @@ function readPeriodCache(): PeriodCache | null {
       end_date: parsed.end_date,
       day_number: Math.max(1, Math.round(parsed.day_number)),
       predicted_next_start: predictedNextStart,
+      avg_cycle_length: Math.max(1, Math.round(parsed.avg_cycle_length)),
       timestamp: parsed.timestamp,
     };
   } catch {
@@ -263,7 +269,8 @@ export function ModelPeriodTrackerWidget({
   );
   const latest = sorted[0] ?? null;
   const effectiveCurrentPeriod = currentPeriod ?? optimisticCurrentPeriod ?? cachedCurrentPeriod;
-  const effectiveUpcoming = predictedNextStart ?? optimisticNextPeriod ?? cachedPeriodData?.predicted_next_start ?? null;
+  const effectiveUpcoming = optimisticNextPeriod ?? predictedNextStart ?? cachedPeriodData?.predicted_next_start ?? null;
+  const effectiveAvgCycleLength = avgCycleLength ?? cachedPeriodData?.avg_cycle_length ?? null;
   const hasLoggedPeriod = sorted.length > 0;
   const canReportMissed = Boolean(latest);
   const currentlyInPeriod = effectiveCurrentPeriod
@@ -305,6 +312,7 @@ export function ModelPeriodTrackerWidget({
       end_date: responsePeriod?.end_date || addDays(loggedStart, resolvedPeriodLength - 1),
       day_number: 1,
       predicted_next_start: data.predicted_next_start ?? null,
+      avg_cycle_length: Math.max(1, Math.round(data.avg_cycle_length ?? 28)),
       timestamp: Date.now(),
     };
   };
@@ -441,7 +449,7 @@ export function ModelPeriodTrackerWidget({
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs uppercase tracking-wide text-white/45">{t("periodTracker.avgCycle")}</p>
-            <p className="mt-1 text-sm font-semibold text-white">{avgCycleLength ? `${avgCycleLength}d` : "—"}</p>
+            <p className="mt-1 text-sm font-semibold text-white">{effectiveAvgCycleLength ? `${effectiveAvgCycleLength}d` : "—"}</p>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs uppercase tracking-wide text-white/45">{t("periodTracker.nextExpected")}</p>

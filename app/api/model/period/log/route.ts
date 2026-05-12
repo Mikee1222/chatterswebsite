@@ -24,6 +24,10 @@ const bodySchema = z.object({
   notes: z.string().max(5000).optional(),
 });
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function POST(req: Request) {
   const ctx = await requireModelApiContext();
   if (!ctx.ok) return ctx.response;
@@ -44,38 +48,35 @@ export async function POST(req: Request) {
     const model = await getModelById(ctx.linkedModelId);
     const previousUpcoming = await getUpcomingPeriod(ctx.linkedModelId, model);
     const loggedPeriod = await logModelPeriodFromStartDate(ctx.linkedModelId, parsed.data.start_date, parsed.data.notes, "model");
+    await delay(1500);
     if (previousUpcoming?.predicted_start && parsed.data.start_date < previousUpcoming.predicted_start) {
       await sendPeriodConfirmedEarlyNotification({
         modelId: ctx.linkedModelId,
         predictedDate: previousUpcoming.predicted_start,
       }).catch(() => {});
     }
-    const refreshed = await getModelById(ctx.linkedModelId);
-    const cycleLength =
-      typeof refreshed?.avg_cycle_length === "number" && refreshed.avg_cycle_length > 0
-        ? refreshed.avg_cycle_length
-        : 28;
-    const periodLength =
-      typeof refreshed?.avg_period_length === "number" && refreshed.avg_period_length > 0
-        ? Math.max(1, Math.round(refreshed.avg_period_length))
-        : typeof loggedPeriod.period_length_days === "number" && loggedPeriod.period_length_days > 0
-          ? Math.max(1, Math.round(loggedPeriod.period_length_days))
-          : 5;
+    const avgCycleLength = Math.max(1, Math.round(model?.avg_cycle_length ?? 28));
+    const avgPeriodLength = Math.max(1, Math.round(model?.avg_period_length ?? 5));
     /** Always set for notifications (avoids null upcoming right after write). */
-    const nextExpected = addDays(parsed.data.start_date, cycleLength);
     const start_date = parsed.data.start_date;
+    const periodEndDate = addDays(start_date, avgPeriodLength - 1);
+    const nextExpected = addDays(start_date, avgCycleLength);
+    const upcoming = {
+      predicted_start: nextExpected,
+      predicted_end: addDays(nextExpected, avgPeriodLength - 1),
+    };
     const currentPeriod: ModelPeriodRecord = {
       id: loggedPeriod.id,
       model_id: ctx.linkedModelId,
       start_date,
-      end_date: addDays(start_date, periodLength - 1),
-      cycle_length_days: loggedPeriod.cycle_length_days ?? null,
-      period_length_days: periodLength,
-      notes: parsed.data.notes?.trim() || "",
+      end_date: periodEndDate,
+      cycle_length_days: null,
+      period_length_days: avgPeriodLength,
+      notes: parsed.data.notes ?? "",
       logged_by: "model",
       created_at: loggedPeriod.created_at ?? null,
-      came_early: loggedPeriod.came_early === true,
-      missed_period: loggedPeriod.missed_period === true,
+      came_early: false,
+      missed_period: false,
       predicted_next_date: nextExpected,
       day_number: 1,
     };
@@ -116,13 +117,12 @@ export async function POST(req: Request) {
       _triggerSource: "model_period_log",
     }).catch(() => {});
 
-    const upcoming = await getUpcomingPeriod(ctx.linkedModelId, refreshed, { forceRetry: true }).catch(() => null);
     return NextResponse.json({
       success: true,
       current_period: currentPeriod,
-      predicted_next_start: upcoming?.predicted_start ?? nextExpected,
-      avg_cycle_length: typeof refreshed?.avg_cycle_length === "number" ? refreshed.avg_cycle_length : cycleLength,
-      avg_period_length: typeof refreshed?.avg_period_length === "number" ? refreshed.avg_period_length : periodLength,
+      predicted_next_start: upcoming.predicted_start,
+      avg_cycle_length: avgCycleLength,
+      avg_period_length: avgPeriodLength,
     });
   } catch {
     return NextResponse.json({ error: "Request failed" }, { status: 500 });
