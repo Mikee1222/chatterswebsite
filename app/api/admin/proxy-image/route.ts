@@ -4,6 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 const ALLOWED_IMAGE_HOSTNAMES = [
   "v5.airtableusercontent.com",
   "airtableusercontent.com",
+  "dl.airtable.com",
   "blob.vercel-storage.com",
   "public.blob.vercel-storage.com",
 ];
@@ -43,10 +44,14 @@ export async function GET(req: Request) {
   try {
     upstream = await fetch(imageUrl, {
       headers: { Accept: "image/*" },
-      redirect: "manual",
+      redirect: "follow",
     });
   } catch {
     return NextResponse.json({ error: "Image fetch failed" }, { status: 502 });
+  }
+
+  if (!parseSafeImageUrl(upstream.url)) {
+    return NextResponse.json({ error: "Image fetch blocked" }, { status: 400 });
   }
 
   if (!upstream.ok) {

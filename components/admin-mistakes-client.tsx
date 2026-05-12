@@ -123,6 +123,7 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
   const [adminNotes, setAdminNotes] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [copySuccess, setCopySuccess] = React.useState<string | null>(null);
+  const copySuccessTimeoutRef = React.useRef<number | null>(null);
 
   const reasonPointsByReasonId = React.useMemo(() => {
     const m = new Map<string, number>();
@@ -174,6 +175,26 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
       : selected.points_deducted
     : 0;
 
+  React.useEffect(() => {
+    return () => {
+      if (copySuccessTimeoutRef.current !== null) {
+        window.clearTimeout(copySuccessTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  function markCopySuccess(id: string) {
+    if (copySuccessTimeoutRef.current !== null) {
+      window.clearTimeout(copySuccessTimeoutRef.current);
+    }
+
+    setCopySuccess(id);
+    copySuccessTimeoutRef.current = window.setTimeout(() => {
+      copySuccessTimeoutRef.current = null;
+      setCopySuccess(null);
+    }, 2000);
+  }
+
   async function handleEasyCopy(m: MistakeRecord) {
     const text = [
       `⚠️ MISTAKE REPORT`,
@@ -192,28 +213,26 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
     const imageUrl = m.screenshot?.[0]?.url;
 
     try {
-      const ClipboardItemCtor = typeof ClipboardItem !== "undefined" ? ClipboardItem : undefined;
-      if (imageUrl && navigator.clipboard?.write && ClipboardItemCtor) {
+      if (imageUrl && navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
         const proxyImageUrl = `/api/admin/proxy-image?url=${encodeURIComponent(imageUrl)}`;
         const imgResponse = await fetch(proxyImageUrl);
         if (!imgResponse.ok) throw new Error(`image fetch ${imgResponse.status}`);
         const imgBlob = await imgResponse.blob();
 
         let pngBlob = imgBlob;
-        if (imgBlob.type !== "image/png") {
+        if (imgBlob.type.toLowerCase() !== "image/png") {
           pngBlob = await convertToPng(imgBlob);
         }
 
         await navigator.clipboard.write([
-          new ClipboardItemCtor({
-            "text/plain": new Blob([text], { type: "text/plain" }),
-            "image/png": pngBlob,
+          new ClipboardItem({
+            "text/plain": Promise.resolve(new Blob([text], { type: "text/plain" })),
+            "image/png": Promise.resolve(pngBlob),
           }),
         ]);
 
-        setCopySuccess(m.id);
-        window.setTimeout(() => setCopySuccess(null), 2000);
-        addToast(localToast("mist-copy", "Copied", "Copied text and screenshot to clipboard.", "normal"));
+        markCopySuccess(m.id);
+        addToast(localToast("mist-copy", "Copied", "Text + screenshot copied!", "normal"));
         return;
       }
     } catch (err) {
@@ -231,8 +250,7 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
     }
 
     if (copiedTextOnly) {
-      setCopySuccess(m.id);
-      window.setTimeout(() => setCopySuccess(null), 2000);
+      markCopySuccess(m.id);
       addToast(localToast("mist-copy", "Copied", "Copied to clipboard (text only).", "normal"));
     } else {
       console.error("[easy-copy] clipboard fallback failed");
