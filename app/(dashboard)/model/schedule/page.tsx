@@ -133,6 +133,7 @@ export default async function ModelSchedulePage({
           <ModelPeriodTrackerWidget
             modelRecordId={linkedModelId}
             stableModelId={modelRecord.model_id}
+            currentPeriod={currentPeriod}
             periods={periodHistory}
             predictedNextStart={predictedPeriodStart}
             avgCycleLength={modelRecord.avg_cycle_length ?? null}

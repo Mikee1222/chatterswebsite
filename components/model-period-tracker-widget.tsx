@@ -16,10 +16,18 @@ type CycleStatus = "period" | "predicted_soon" | "normal" | "overdue";
 type Props = {
   modelRecordId: string;
   stableModelId?: string | null;
+  currentPeriod: ModelPeriodRecord | null;
   periods: ModelPeriodRecord[];
   predictedNextStart: string | null;
   avgCycleLength: number | null;
   avgPeriodLength: number | null;
+};
+
+type PeriodLogResponse = {
+  success?: boolean;
+  error?: string;
+  current_period?: ModelPeriodRecord | null;
+  predicted_next_start?: string | null;
 };
 
 function dayDiff(fromYmd: string, toYmd: string): number {
@@ -57,6 +65,7 @@ function ymdInputFromLocalNow(): string {
 export function ModelPeriodTrackerWidget({
   modelRecordId: _modelRecordId,
   stableModelId: _stableModelId,
+  currentPeriod,
   periods,
   predictedNextStart,
   avgCycleLength,
@@ -83,6 +92,8 @@ export function ModelPeriodTrackerWidget({
   const [showSuccess, setShowSuccess] = React.useState(false);
   /** Until server props refresh, show the new row in timeline / history. */
   const [justLoggedStartYmd, setJustLoggedStartYmd] = React.useState<string | null>(null);
+  const [optimisticCurrentPeriod, setOptimisticCurrentPeriod] = React.useState<ModelPeriodRecord | null>(null);
+  const [optimisticNextPeriod, setOptimisticNextPeriod] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setCycleLength(typeof avgCycleLength === "number" && avgCycleLength > 0 ? avgCycleLength : 28);
@@ -96,7 +107,25 @@ export function ModelPeriodTrackerWidget({
     }
   }, [periods, justLoggedStartYmd]);
 
+  React.useEffect(() => {
+    if (!optimisticCurrentPeriod) return;
+    const optimisticStart = optimisticCurrentPeriod.start_date;
+    if (currentPeriod?.start_date === optimisticStart || periods.some((p) => p.start_date === optimisticStart)) {
+      setOptimisticCurrentPeriod(null);
+    }
+  }, [currentPeriod, periods, optimisticCurrentPeriod]);
+
+  React.useEffect(() => {
+    if (!optimisticNextPeriod) return;
+    if (predictedNextStart === optimisticNextPeriod || (!optimisticCurrentPeriod && !justLoggedStartYmd && predictedNextStart)) {
+      setOptimisticNextPeriod(null);
+    }
+  }, [justLoggedStartYmd, optimisticCurrentPeriod, optimisticNextPeriod, predictedNextStart]);
+
   const mergedPeriods = React.useMemo((): ModelPeriodRecord[] => {
+    if (optimisticCurrentPeriod && !periods.some((p) => p.start_date === optimisticCurrentPeriod.start_date)) {
+      return [...periods, optimisticCurrentPeriod];
+    }
     if (!justLoggedStartYmd) return periods;
     if (periods.some((p) => p.start_date === justLoggedStartYmd)) return periods;
     const pl = Math.max(2, Math.min(10, Math.round(periodLength)));
@@ -113,17 +142,21 @@ export function ModelPeriodTrackerWidget({
       created_at: null,
     };
     return [...periods, synthetic];
-  }, [periods, justLoggedStartYmd, periodLength]);
+  }, [periods, optimisticCurrentPeriod, justLoggedStartYmd, periodLength]);
 
   const sorted = React.useMemo(
     () => [...mergedPeriods].sort((a, b) => b.start_date.localeCompare(a.start_date)),
     [mergedPeriods]
   );
   const latest = sorted[0] ?? null;
+  const displayCurrentPeriod = optimisticCurrentPeriod ?? currentPeriod;
+  const displayNextPeriod = optimisticNextPeriod ?? predictedNextStart;
   const hasLoggedPeriod = sorted.length > 0;
   const canReportMissed = Boolean(latest);
-  const currentlyInPeriod = inPeriod(today, sorted);
-  const daysToPredicted = predictedNextStart ? dayDiff(today, predictedNextStart) : null;
+  const currentlyInPeriod = displayCurrentPeriod
+    ? displayCurrentPeriod.start_date <= today && today <= displayCurrentPeriod.end_date
+    : inPeriod(today, sorted);
+  const daysToPredicted = displayNextPeriod ? dayDiff(today, displayNextPeriod) : null;
 
   const status: CycleStatus = currentlyInPeriod
     ? "period"
@@ -145,6 +178,15 @@ export function ModelPeriodTrackerWidget({
           : t("periodTracker.statusNormal");
 
   const refreshData = () => router.refresh();
+
+  const applySuccessfulLog = (data: PeriodLogResponse, loggedStart: string) => {
+    setShowSuccess(true);
+    setJustLoggedStartYmd(loggedStart);
+    if (data.current_period) setOptimisticCurrentPeriod(data.current_period);
+    if ("predicted_next_start" in data) setOptimisticNextPeriod(data.predicted_next_start ?? null);
+    window.setTimeout(() => setShowSuccess(false), 5500);
+    window.setTimeout(() => refreshData(), 3000);
+  };
 
   const saveCycleSettings = React.useCallback(async () => {
     const c = Math.min(45, Math.max(21, Math.round(cycleLength)));
@@ -172,15 +214,12 @@ export function ModelPeriodTrackerWidget({
         credentials: "include",
         body: JSON.stringify({ start_date: today, notes: t("periodTracker.confirmedFromWidget") }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
+      const data = (await res.json().catch(() => ({}))) as PeriodLogResponse;
       if (!res.ok || data.success === false) {
         console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
-      setShowSuccess(true);
-      setJustLoggedStartYmd(today);
-      refreshData();
-      window.setTimeout(() => setShowSuccess(false), 5500);
+      applySuccessfulLog(data, today);
     } catch (e) {
       console.error("[period] handleConfirmToday error:", e);
       setError(e instanceof Error ? e.message : t("periodTracker.couldNotConfirm"));
@@ -218,17 +257,15 @@ export function ModelPeriodTrackerWidget({
         credentials: "include",
         body: JSON.stringify({ start_date: startDate, notes: notes.trim() || undefined }),
       });
-      const data = (await res.json().catch(() => ({}))) as { error?: string; success?: boolean };
+      const data = (await res.json().catch(() => ({}))) as PeriodLogResponse;
       if (!res.ok || data.success === false) {
         console.error("[period/log] error:", data);
         throw new Error(data.error || "Failed");
       }
-      setShowSuccess(true);
-      setJustLoggedStartYmd(startDate);
+      const loggedStart = startDate.trim().slice(0, 10);
+      applySuccessfulLog(data, loggedStart);
       setCustomDateOpen(false);
       setNotes("");
-      refreshData();
-      window.setTimeout(() => setShowSuccess(false), 5500);
     } catch (e2) {
       setError(e2 instanceof Error ? e2.message : t("periodTracker.couldNotSavePeriod"));
     } finally {
@@ -270,7 +307,7 @@ export function ModelPeriodTrackerWidget({
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
             <p className="text-xs uppercase tracking-wide text-white/45">{t("periodTracker.nextExpected")}</p>
             <p className="mt-1 text-sm font-semibold text-white">
-              {predictedNextStart ? formatDateLong(predictedNextStart, locale) : "—"}
+              {displayNextPeriod ? formatDateLong(displayNextPeriod, locale) : "—"}
             </p>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/[0.04] p-3">
@@ -318,7 +355,7 @@ export function ModelPeriodTrackerWidget({
             {timelineDays.map((d) => {
               const isToday = d === today;
               const isPeriod = inPeriod(d, sorted);
-              const isPredicted = predictedNextStart && d === predictedNextStart;
+              const isPredicted = displayNextPeriod && d === displayNextPeriod;
               return (
                 <motion.div
                   key={d}
