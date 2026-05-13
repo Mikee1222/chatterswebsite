@@ -309,10 +309,10 @@ export function MobileAppShell({
         <ChatterRebillTipFabHost enabled={role === "chatter"} />
       <div className="flex min-h-[100dvh] flex-col bg-transparent md:min-h-0">
         <header
-          className="sticky top-0 z-30 shrink-0 overflow-hidden border-b border-white/10 bg-zinc-900/80 backdrop-blur-xl md:hidden"
+          className="sticky top-0 z-30 shrink-0 md:hidden"
           style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
         >
-          <div className="flex h-[56px] min-h-[56px] max-h-[56px] w-full min-w-0 items-center justify-between gap-2 px-4">
+          <div className="flex h-[56px] min-h-[56px] max-h-[56px] w-full min-w-0 items-center justify-between gap-2 px-4 overflow-hidden border-b border-white/10 bg-zinc-900/80 backdrop-blur-xl">
             <div className="flex min-w-0 flex-1 items-center gap-2">
               <h1 className="min-w-0 flex-1 truncate text-lg font-semibold tracking-tight text-white">{title}</h1>
               {activeBadge ? (
