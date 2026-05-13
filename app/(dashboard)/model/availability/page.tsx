@@ -41,6 +41,10 @@ export default async function ModelAvailabilityPage({
   const weekStart = normalizeWeekStart(rawWeek || getThisWeekMonday());
   if (rawWeek && rawWeek !== weekStart) redirect(modelWeeklyAvailabilityUrl(weekStart));
 
+  if (process.env.NODE_ENV === "development") {
+    console.log("[model/availability] linkedModelId", linkedModelId);
+  }
+
   const weekEnd = addDays(weekStart, 6);
   const [requests, periodDatesThisWeek] = await Promise.all([
     getModelAvailabilityRequestsForWeek(weekStart, linkedModelId).catch((error) => {
