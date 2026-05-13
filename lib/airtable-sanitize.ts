@@ -313,6 +313,13 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   mass_lists: {
     type: new Set(["include", "exclude"]),
   },
+  model_tiers: {
+    tier: new Set(["high", "medium", "low"]),
+  },
+  pricing_rows: {
+    model_tier: new Set(["high", "medium", "low"]),
+    spender_tier: new Set(["high", "medium", "low", "medium_low"]),
+  },
 };
 
 function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: string): Set<string> | null {
