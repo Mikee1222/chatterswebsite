@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useAnimation } from "framer-motion";
@@ -279,7 +280,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
       </AnimatePresence>
 
       <AnimatePresence>
-        {open && (
+        {open && mounted && typeof document !== "undefined" && createPortal(
           <>
             <motion.div
               key="notif-mobile-backdrop"
@@ -364,7 +365,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
               </div>
             </motion.div>
           </>
-        )}
+        , document.body)}
       </AnimatePresence>
     </div>
   );
