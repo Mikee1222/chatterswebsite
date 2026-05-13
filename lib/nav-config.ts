@@ -71,7 +71,8 @@ export type NavIconKey =
   | "AlertCircle"
   | "Settings2"
   | "Coins"
-  | "TrendingUp";
+  | "TrendingUp"
+  | "Info";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -128,6 +129,7 @@ const chatterNav: NavItem[] = [
     isShiftButton: true,
   },
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
+  { href: ROUTES.chatter.informations, label: "Informations", iconKey: "Info", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
@@ -173,6 +175,7 @@ const adminNav: NavItem[] = [
 
   // ── MARKETING ──
   { href: ROUTES.admin.marketing, label: "Marketing", iconKey: "TrendingUp", navSection: "MARKETING" },
+  { href: ROUTES.admin.informations, label: "Informations", iconKey: "Info", navSection: undefined },
   { href: ROUTES.admin.vaContentAssignments, label: "VA Content", iconKey: "FileText" },
   { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
 

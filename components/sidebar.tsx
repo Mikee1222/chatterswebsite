@@ -34,6 +34,7 @@ import {
   Settings2,
   Coins,
   TrendingUp,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -81,6 +82,7 @@ const ICON_MAP: Record<NavIconKey, ComponentType<{ className?: string }>> = {
   Settings2,
   Coins,
   TrendingUp,
+  Info,
 };
 
 const BETA_BADGE_CLASS =

@@ -38,6 +38,7 @@ import {
   Settings2,
   Coins,
   TrendingUp,
+  Info,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -124,6 +125,7 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   Settings2,
   Coins,
   TrendingUp,
+  Info,
 };
 
 function getMobileTitle(pathname: string): string {
@@ -142,6 +144,8 @@ function getMobileTitle(pathname: string): string {
   if (pathname.startsWith(`${ROUTES.admin.models}/`)) return "Model";
   if (pathname === ROUTES.admin.customRequests) return "Custom requests";
   if (pathname === ROUTES.admin.marketing || pathname.startsWith(`${ROUTES.admin.marketing}/`)) return "Marketing";
+  if (pathname === ROUTES.chatter.informations) return "Informations";
+  if (pathname === ROUTES.admin.informations) return "Informations";
   if (pathname === ROUTES.va.contentAssignments) return "Content assignments";
   if (pathname === ROUTES.va.scheduleOverview) return "Schedule overview";
   if (pathname === "/admin/schedule-overview" || pathname.startsWith("/admin/schedule-overview/")) return "Schedule overview";

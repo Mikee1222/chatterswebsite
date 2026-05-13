@@ -40,6 +40,7 @@ export const ROUTES = {
     spinWheel: "/spin-wheel",
     challenges: "/challenges",
     mistakes: "/mistakes",
+    informations: "/informations",
   },
 
   /** Virtual assistant (role: virtual_assistant) */
@@ -101,6 +102,7 @@ export const ROUTES = {
     modelContentRequests: "/admin/model-content-requests",
     expenseRequests: "/admin/expense-requests",
     marketing: "/admin/marketing",
+    informations: "/admin/informations",
     vaTasks: "/admin/va-tasks",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
