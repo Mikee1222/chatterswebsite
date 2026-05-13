@@ -294,7 +294,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
             />
             <motion.div
               key="notif-mobile-sheet"
-              className="fixed bottom-0 left-0 right-0 z-[60] flex max-h-[80vh] w-full max-w-[100vw] flex-col overflow-hidden rounded-t-2xl border border-white/[0.12] border-b-0 bg-[#0c0c0c] shadow-2xl md:hidden"
+              className="fixed bottom-0 left-0 right-0 z-[60] flex h-[80vh] max-h-[80vh] w-full max-w-[100vw] flex-col overflow-hidden rounded-t-2xl border border-white/[0.12] border-b-0 bg-[#0c0c0c] shadow-2xl md:hidden"
               role="dialog"
               aria-modal="true"
               aria-label="Notification center"
