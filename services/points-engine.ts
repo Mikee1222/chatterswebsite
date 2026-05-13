@@ -254,7 +254,7 @@ export async function awardPoints(
   if (!row) {
     const newTotal = Math.max(0, Math.floor(points));
     const finalLevel = calculateLevelFromConfig(newTotal, config);
-    const spinBump = points > 0 && points >= spinThreshold ? 1 : 0;
+    const spinBump = Math.max(0, Math.floor(newTotal / spinThreshold));
     const created = await createRecord<ChatterPointsFields>(CHATTER_POINTS, {
       user_id: userId,
       total_points: newTotal,
@@ -287,7 +287,9 @@ export async function awardPoints(
     typeof row.fields.level === "string" && row.fields.level.trim() ? String(row.fields.level).trim() : "Bronze";
   const finalLevel = calculateLevelFromConfig(newTotal, config);
   const prevSpins = Math.max(0, Math.floor(Number(row.fields.spins_available ?? 0)));
-  const spinBump = points > 0 && points >= spinThreshold ? 1 : 0;
+  const prevSpinCredits = Math.floor(prev / spinThreshold);
+  const nextSpinCredits = Math.floor(newTotal / spinThreshold);
+  const spinBump = Math.max(0, nextSpinCredits - prevSpinCredits);
 
   await updateRecord<ChatterPointsFields>(CHATTER_POINTS, row.id, {
     total_points: newTotal,

@@ -192,6 +192,7 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.mistakes, label: "Mistakes", iconKey: "AlertTriangle", navSection: "PERFORMANCE" },
   { href: ROUTES.admin.mistakeReasons, label: "Mistake reasons", iconKey: "Settings2", adminOnly: true },
   { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
+  { href: ROUTES.admin.spinResults, label: "Spin results", iconKey: "Sparkles" },
   { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
   { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
 
