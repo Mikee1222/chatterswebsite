@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSWRConfig } from "swr";
 import { BellOff, Check, Loader2, Trash2 } from "lucide-react";
 import type { AppNotification } from "@/types";
 import type { UserRole } from "@/types";
 import { ROUTES } from "@/lib/routes";
+import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
 import { getEntityUrl, isAdminPriorityEvent } from "@/lib/notification-routes";
 import {
   formatNotificationTime,
@@ -84,7 +86,7 @@ export function NotificationCenterContent({
   list,
   unreadCount,
   onMarkRead,
-  onMarkAllRead,
+  onMarkAllRead: _onMarkAllRead,
   onDelete,
   onNavigate,
   role,
@@ -96,6 +98,12 @@ export function NotificationCenterContent({
   retention = "all",
   onRetentionChange,
 }: NotificationCenterContentProps) {
+  const { mutate } = useSWRConfig();
+  const [localList, setLocalList] = React.useState<AppNotification[]>(list);
+  React.useEffect(() => {
+    setLocalList(list);
+  }, [list]);
+  const [markAllReadLoading, setMarkAllReadLoading] = React.useState(false);
   const [tab, setTab] = React.useState<TabId>("all");
   const [localRetention, setLocalRetention] = React.useState<RetentionId>("all");
   const retentionState = retention ?? localRetention;
@@ -108,7 +116,7 @@ export function NotificationCenterContent({
     return d.toISOString();
   }, [retentionState]);
   const filteredList = React.useMemo(() => {
-    let base = list;
+    let base = localList;
     if (since) base = base.filter((n) => n.created_at >= since);
     if (tab === "unread") return base.filter((n) => !n.read_at);
     if (tab === "important") return base.filter((n) => isAdmin && isAdminPriorityEvent(n.event_type));
@@ -116,8 +124,30 @@ export function NotificationCenterContent({
       return base.filter((n) => n.category === tab);
     }
     return base;
-  }, [list, tab, isAdmin, since]);
+  }, [localList, tab, isAdmin, since]);
   const timeGroups = React.useMemo(() => groupNotifications(filteredList), [filteredList]);
+
+  const handleMarkAllReadClick = React.useCallback(async () => {
+    if (markAllReadLoading) return;
+    setMarkAllReadLoading(true);
+    try {
+      const res = await fetch("/api/notifications/mark-all-read", {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        console.error("mark-all-read failed", res.status);
+        return;
+      }
+      const readTs = new Date().toISOString();
+      setLocalList((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || readTs })));
+      await mutate(dashboardSwrKeys.notificationsUnreadCount);
+    } catch (e) {
+      console.error("mark-all-read", e);
+    } finally {
+      setMarkAllReadLoading(false);
+    }
+  }, [markAllReadLoading, mutate]);
 
   const handleItemClick = React.useCallback(
     async (n: AppNotification) => {
@@ -132,7 +162,7 @@ export function NotificationCenterContent({
   const listContainer = compact
     ? "min-h-0 flex-1 overflow-y-auto overscroll-contain"
     : isMobile && omitSettingsFooter
-      ? "w-full overflow-visible"
+      ? "min-h-0 flex-1 overflow-y-auto overscroll-contain"
       : "min-h-0 flex-1 overflow-y-auto overscroll-contain";
   const emptyPadding = compact ? "py-8 px-4 text-sm" : isMobile ? "py-16 px-4 text-base" : "py-12 px-4 text-base";
   const itemPadding = compact ? "px-3 py-2.5" : isMobile ? "px-4 py-3.5" : "px-4 py-3";
@@ -141,7 +171,7 @@ export function NotificationCenterContent({
 
   const rootClass =
     isMobile && omitSettingsFooter
-      ? "flex w-full min-w-0 flex-col"
+      ? "flex w-full min-w-0 min-h-0 flex-1 flex-col"
       : "flex min-h-0 flex-1 flex-col overflow-hidden";
 
   return (
@@ -150,28 +180,45 @@ export function NotificationCenterContent({
         {!omitTitleAndMarkAll && (
           <div className="flex items-center justify-between gap-3">
             <span className="font-semibold text-white">{isMobile ? "" : "Notifications"}</span>
-            {unreadCount > 0 && (
+            {unreadCount > 0 ? (
               <button
                 type="button"
-                onClick={onMarkAllRead}
-                className={`rounded-xl px-3 py-2 text-sm font-medium text-[hsl(330,90%,65%)] hover:bg-[hsl(330,80%,55%)]/15 hover:text-[hsl(330,92%,75%)] active:opacity-80 transition-colors ${isMobile ? "ml-auto" : ""}`}
+                onClick={() => void handleMarkAllReadClick()}
+                disabled={markAllReadLoading}
+                className="inline-flex items-center gap-1.5 text-xs text-white/40 transition-colors hover:text-white/70 disabled:opacity-40"
               >
-                Mark all as read
+                {markAllReadLoading ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden /> : null}
+                Mark all read
               </button>
-            )}
+            ) : null}
           </div>
         )}
-        <div className={`flex items-center gap-2 ${omitTitleAndMarkAll ? "" : "mt-2"}`}>
-          <span className="text-xs text-white/50">Show:</span>
-          <select
-            value={retentionState}
-            onChange={(e) => handleRetentionChange(e.target.value as RetentionId)}
-            className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white focus:border-white/20 focus:outline-none"
-          >
-            <option value="all">All time</option>
-            <option value="30">Last 30 days</option>
-            <option value="7">Last 7 days</option>
-          </select>
+        <div
+          className={`flex flex-wrap items-center justify-between gap-2 ${omitTitleAndMarkAll ? "" : "mt-2"}`}
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-white/50">Show:</span>
+            <select
+              value={retentionState}
+              onChange={(e) => handleRetentionChange(e.target.value as RetentionId)}
+              className="rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-xs text-white focus:border-white/20 focus:outline-none"
+            >
+              <option value="all">All time</option>
+              <option value="30">Last 30 days</option>
+              <option value="7">Last 7 days</option>
+            </select>
+          </div>
+          {omitTitleAndMarkAll && unreadCount > 0 ? (
+            <button
+              type="button"
+              onClick={() => void handleMarkAllReadClick()}
+              disabled={markAllReadLoading}
+              className="inline-flex items-center gap-1.5 text-xs text-white/40 transition-colors hover:text-white/70 disabled:opacity-40"
+            >
+              {markAllReadLoading ? <Loader2 className="h-3 w-3 shrink-0 animate-spin" aria-hidden /> : null}
+              Mark all read
+            </button>
+          ) : null}
         </div>
         {(isMobile || !compact) && (
           <div className="mt-3 flex flex-wrap gap-1 rounded-xl bg-white/5 p-1">
