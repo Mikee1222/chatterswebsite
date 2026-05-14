@@ -49,6 +49,8 @@ function parseToolResponseToPayload(toolRaw: string): CachedPayload | null {
     };
 
     const rawSubs = payload.subscribers ?? [];
+    console.log("[of-sub] parsed subscribers count:", rawSubs.length);
+    console.log("[of-sub] THE_ONLY_API_KEY present:", !!process.env.THE_ONLY_API_KEY);
     const subscribers = buildSubscriberRows(rawSubs);
     const has_more = payload.page?.has_more ?? false;
     return { subscribers, has_more };
@@ -93,6 +95,8 @@ async function fetchSubscribersFromMcp(
 
   await initRes.text();
 
+  console.log("[of-sub] init status:", initRes.status, "session:", sessionId);
+
   if (sessionId) {
     await fetch(MCP_URL, {
       method: "POST",
@@ -134,6 +138,8 @@ async function fetchSubscribersFromMcp(
   });
 
   const toolRaw = await toolRes.text();
+  console.log("[of-sub] tool status:", toolRes.status);
+  console.log("[of-sub] tool raw:", toolRaw.slice(0, 500));
   if (!toolRes.ok) {
     return { ok: false, status: toolRes.status, payload: null };
   }
