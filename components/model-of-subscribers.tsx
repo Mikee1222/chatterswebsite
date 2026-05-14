@@ -181,24 +181,26 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
           <span aria-hidden>👥 </span>Subscribers
         </h2>
         <div className="flex flex-wrap items-center gap-2">
-          {loading && subscribers.length === 0 ? (
-            <span className="h-7 w-16 animate-pulse rounded-full bg-white/10" />
-          ) : (
-            <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-3 py-1 text-xs font-semibold text-pink-100">
-              {subscribers.length} total
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              bustThisRunRef.current = true;
-              setReloadTick((n) => n + 1);
-            }}
-            disabled={loading || !ofUserId.trim()}
-            className="h-7 rounded-md px-2 text-xs font-medium text-white/50 transition hover:bg-white/[0.06] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            ↻ Refresh
-          </button>
+          <span className="inline-flex items-center gap-1.5">
+            {loading && subscribers.length === 0 ? (
+              <span className="h-7 w-16 animate-pulse rounded-full bg-white/10" />
+            ) : (
+              <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-3 py-1 text-xs font-semibold text-pink-100">
+                {subscribers.length} total
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                bustThisRunRef.current = true;
+                setReloadTick((n) => n + 1);
+              }}
+              disabled={loading || !ofUserId.trim()}
+              className="h-7 shrink-0 rounded-md px-1.5 text-[11px] font-medium text-white/35 transition hover:bg-white/[0.06] hover:text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              ↻ Refresh
+            </button>
+          </span>
         </div>
       </div>
 

@@ -4,13 +4,8 @@ import { categorizeSubscriber, parseSubscriber } from "@/services/of-subscribers
 
 type SubscriberCacheData = { subscribers: unknown[]; has_more: boolean };
 
-type CachedPayload = {
-  subscribers: ReturnType<typeof buildSubscriberRows>;
-  has_more: boolean;
-};
-
 const subscriberCache = new Map<string, { data: SubscriberCacheData; fetchedAt: number }>();
-const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+const CACHE_TTL_MS = 30 * 60 * 1000;
 
 const CACHE_CONTROL = "private, max-age=1800, stale-while-revalidate=300";
 
@@ -26,6 +21,11 @@ function buildSubscriberRows(rawSubs: unknown[]) {
     return { ...sub, category: categorizeSubscriber(sub) };
   });
 }
+
+type CachedPayload = {
+  subscribers: ReturnType<typeof buildSubscriberRows>;
+  has_more: boolean;
+};
 
 function parseToolResponseToPayload(toolRaw: string): CachedPayload | null {
   try {
