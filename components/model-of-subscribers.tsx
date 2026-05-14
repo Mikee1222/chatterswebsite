@@ -129,14 +129,20 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
             offset: String(offset),
           });
           if (useBust && offset === 0) qs.set("bust", "1");
-          const res = await fetch(`/api/of-subscribers?${qs.toString()}`, {
+          const url = new URL(`/api/of-subscribers?${qs.toString()}`, window.location.origin);
+          const res = await fetch(url, {
             credentials: "include",
             signal: ac.signal,
           });
-          const json = (await res.json()) as ApiResponse & { error?: string };
+          console.log("[of-subscribers] fetch url:", url.toString());
+          console.log("[of-subscribers] fetch status:", res.status);
           if (!res.ok) {
-            throw new Error(json.error ?? `Request failed (${res.status})`);
+            const errText = await res.text();
+            console.error("[of-subscribers] fetch error:", errText);
+            break;
           }
+          const json = (await res.json()) as ApiResponse & { error?: string };
+          console.log("[of-subscribers] fetch result:", json);
 
           const batch = json.subscribers ?? [];
           acc.push(...batch);
@@ -150,6 +156,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         }
       } catch (e) {
         if (cancelled || (e instanceof Error && e.name === "AbortError")) return;
+        console.error("[of-subscribers] load failed:", e);
         setError(e instanceof Error ? e.message : "Failed to load subscribers.");
         if (!cancelled) setSubscribers([]);
       } finally {
