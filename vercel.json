@@ -6,7 +6,7 @@
     },
     {
       "path": "/api/cron/sync-of-subscribers",
-      "schedule": "0 */2 * * *"
+      "schedule": "0 2 * * *"
     }
   ]
 }
