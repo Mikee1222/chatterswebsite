@@ -89,6 +89,8 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [subscribers, setSubscribers] = React.useState<SubscriberRow[]>([]);
+  const [reloadTick, setReloadTick] = React.useState(0);
+  const bustThisRunRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!ofUserId.trim()) {
@@ -100,6 +102,9 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
 
     let cancelled = false;
     const ac = new AbortController();
+
+    const useBust = bustThisRunRef.current;
+    bustThisRunRef.current = false;
 
     async function loadAllPages() {
       setLoading(true);
@@ -118,6 +123,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
             limit: String(PAGE_LIMIT),
             offset: String(offset),
           });
+          if (useBust) qs.set("bust", "1");
           const res = await fetch(`/api/of-subscribers?${qs.toString()}`, {
             credentials: "include",
             signal: ac.signal,
@@ -151,7 +157,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
       cancelled = true;
       ac.abort();
     };
-  }, [ofUserId]);
+  }, [ofUserId, reloadTick]);
 
   if (!ofUserId.trim()) {
     return <p className="text-sm text-white/45">No OF account linked for {modelName}.</p>;
@@ -174,13 +180,26 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         <h2 className="text-lg font-semibold tracking-tight text-white">
           <span aria-hidden>👥 </span>Subscribers
         </h2>
-        {loading && subscribers.length === 0 ? (
-          <span className="h-7 w-16 animate-pulse rounded-full bg-white/10" />
-        ) : (
-          <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-3 py-1 text-xs font-semibold text-pink-100">
-            {subscribers.length} total
-          </span>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+          {loading && subscribers.length === 0 ? (
+            <span className="h-7 w-16 animate-pulse rounded-full bg-white/10" />
+          ) : (
+            <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-3 py-1 text-xs font-semibold text-pink-100">
+              {subscribers.length} total
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              bustThisRunRef.current = true;
+              setReloadTick((n) => n + 1);
+            }}
+            disabled={loading || !ofUserId.trim()}
+            className="rounded-lg border border-white/10 bg-transparent px-2.5 py-1 text-xs font-medium text-white/55 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Refresh
+          </button>
+        </div>
       </div>
 
       {error ? <p className="mt-3 text-sm text-red-400/90">{error}</p> : null}
