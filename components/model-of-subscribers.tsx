@@ -86,16 +86,11 @@ const listItem = {
 };
 
 export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; modelName: string }) {
-  console.log("[of-subscribers] ofUserId prop:", ofUserId, "modelName:", modelName);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [subscribers, setSubscribers] = React.useState<SubscriberRow[]>([]);
   const [reloadTick, setReloadTick] = React.useState(0);
   const bustThisRunRef = React.useRef(false);
-
-  React.useEffect(() => {
-    console.log("[of-subscribers CLIENT] ofUserId:", ofUserId);
-  }, [ofUserId]);
 
   React.useEffect(() => {
     if (!ofUserId.trim()) {
@@ -116,7 +111,6 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
       setError(null);
       setSubscribers([]);
 
-      const acc: SubscriberRow[] = [];
       let offset = 0;
 
       try {
@@ -134,19 +128,20 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
             credentials: "include",
             signal: ac.signal,
           });
-          console.log("[of-subscribers] fetch url:", url.toString());
-          console.log("[of-subscribers] fetch status:", res.status);
           if (!res.ok) {
-            const errText = await res.text();
-            console.error("[of-subscribers] fetch error:", errText);
+            await res.text();
             break;
           }
           const json = (await res.json()) as ApiResponse & { error?: string };
-          console.log("[of-subscribers] fetch result:", json);
 
           const batch = json.subscribers ?? [];
-          acc.push(...batch);
-          if (!cancelled) setSubscribers([...acc]);
+          if (!cancelled) {
+            setSubscribers((prev) => {
+              const seen = new Set(prev.map((s) => s.of_user_id));
+              const unique = batch.filter((s) => !seen.has(s.of_user_id));
+              return [...prev, ...unique];
+            });
+          }
 
           const hasMore = Boolean(json.has_more);
           if (!hasMore) break;
@@ -156,7 +151,6 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         }
       } catch (e) {
         if (cancelled || (e instanceof Error && e.name === "AbortError")) return;
-        console.error("[of-subscribers] load failed:", e);
         setError(e instanceof Error ? e.message : "Failed to load subscribers.");
         if (!cancelled) setSubscribers([]);
       } finally {
