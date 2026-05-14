@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { categorizeSubscriber, parseSubscriber, type OFSubscriber } from "@/services/of-subscribers";
 
-const SUBSCRIBERS_REST_URL = "https://theonlyapi.com/api/subscribers";
-// If this 404s, try: /api/v1/subscribers, /api/of/subscribers, /v1/subscribers
-
-type UpstreamBody = {
-  subscribers?: Record<string, unknown>[];
-  page?: { has_more?: boolean };
-};
+const MCP_URL = "https://theonlyapi.com/mcp";
 
 export async function GET(req: Request) {
   const user = await getSessionFromCookies();
@@ -33,45 +26,35 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "THE_ONLY_API_KEY is not configured." }, { status: 503 });
   }
 
-  const url = new URL(SUBSCRIBERS_REST_URL);
-  url.searchParams.set("of_user_id", ofUserId);
-  url.searchParams.set("limit", String(limit));
-  url.searchParams.set("offset", String(offset));
-  url.searchParams.set("type", "all");
-
-  const res = await fetch(url.toString(), {
+  const res = await fetch(MCP_URL, {
+    method: "POST",
     headers: {
       Authorization: `Bearer ${THE_ONLY_API_KEY}`,
-      Accept: "application/json",
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
     },
-    next: { revalidate: 300 },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "of_list_subscribers",
+        arguments: {
+          of_user_id: ofUserId,
+          limit,
+          offset,
+          type: "all",
+        },
+      },
+    }),
+    next: { revalidate: 0 },
   });
 
   console.log("[of-subscribers] status:", res.status);
+  console.log("[of-subscribers] headers:", Object.fromEntries(res.headers.entries()));
   const raw = await res.text();
-  console.log("[of-subscribers] raw:", raw.slice(0, 2000));
+  console.log("[of-subscribers] raw:", raw.slice(0, 3000));
 
-  if (!res.ok) {
-    return NextResponse.json(
-      { error: `TheOnlyAPI HTTP ${res.status}`, detail: raw.slice(0, 500) },
-      { status: 502 }
-    );
-  }
-
-  let subscribers: OFSubscriber[] = [];
-  let has_more = false;
-  try {
-    const data = JSON.parse(raw) as UpstreamBody;
-    subscribers = (data.subscribers ?? []).map((row) => parseSubscriber(row));
-    has_more = Boolean(data.page?.has_more);
-  } catch {
-    /* logged raw above */
-  }
-
-  const withCategory = subscribers.map((sub) => ({
-    ...sub,
-    category: categorizeSubscriber(sub),
-  }));
-
-  return NextResponse.json({ subscribers: withCategory, has_more });
+  // Parsing disabled until response shape is confirmed in logs.
+  return NextResponse.json({ subscribers: [], has_more: false });
 }
