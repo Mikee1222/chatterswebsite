@@ -312,15 +312,15 @@ export function ModelScheduleClient({
       </div>
 
       {showProgramGrid ? (
-        <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {weekDates.map((date, idx) => {
-            const dayItems = itemsByDate.get(date) ?? [];
+          const dayItems = itemsByDate.get(date) ?? [];
             const weekday = WEEKLY_PROGRAM_DAY_OPTIONS[idx] ?? "Monday";
             const availRows = availabilityByDay.get(weekday) ?? [];
             const offRows = dateInTimeOff(date);
             const predictedDay = predictedPeriodStart && date === predictedPeriodStart;
             const activePeriodDay = periodDateSet.has(date);
-            return (
+          return (
               <div
                 key={date}
                 className={cn(
@@ -354,8 +354,8 @@ export function ModelScheduleClient({
                         {o.reason.length > 80 ? "…" : ""}
                       </p>
                     ))}
-                  </div>
-                )}
+                </div>
+              )}
                 {availRows.length > 0 && (
                   <ul className="mb-3 space-y-1.5 border-b border-white/10 pb-3">
                     {availRows.map((r) => (
@@ -371,39 +371,39 @@ export function ModelScheduleClient({
                     ))}
                   </ul>
                 )}
-                {dayItems.length === 0 ? (
+              {dayItems.length === 0 ? (
                   <p className="py-4 text-sm text-white/40">{t("schedule.noScheduleItems")}</p>
-                ) : (
-                  <ul className="space-y-2">
-                    {dayItems.map((item) => (
-                      <li key={item.id}>
-                        <button
-                          type="button"
-                          onClick={() => setSelectedItem(item)}
+              ) : (
+                <ul className="space-y-2">
+                  {dayItems.map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedItem(item)}
                           className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-4 py-3 text-left transition-colors hover:border-white/20 hover:bg-white/[0.1]"
-                        >
+                      >
                           <div className="flex items-start justify-between gap-2">
                             <span className="min-w-0 flex-1 font-semibold capitalize text-white">
                               {item.title?.trim() || itemTypeLabel(item.item_type)}
                             </span>
-                            {(item.start_time || item.end_time) && (
+                        {(item.start_time || item.end_time) && (
                               <span className="shrink-0 whitespace-nowrap text-xs tabular-nums text-white/50">
-                                {formatTimeRange(item.start_time, item.end_time)}
-                              </span>
-                            )}
+                            {formatTimeRange(item.start_time, item.end_time)}
+                          </span>
+                        )}
                           </div>
-                          {item.duration_minutes != null && (
+                        {item.duration_minutes != null && (
                             <p className="mt-1 text-xs text-white/50">{item.duration_minutes} min</p>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            );
-          })}
-        </div>
+                        )}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
       ) : null}
 
       <div ref={availabilityFormRef} className="scroll-mt-24 space-y-4 rounded-2xl border border-white/10 bg-black/40 p-6 backdrop-blur-xl">

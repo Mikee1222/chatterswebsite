@@ -4,6 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getModelById } from "@/services/modelss";
 import { AdminModelPeriodTrackingToggle } from "@/components/admin-model-period-tracking-toggle";
+import { ModelOFSubscribers } from "@/components/model-of-subscribers";
 
 export default async function AdminModelDetailPage({ params }: { params: { id: string } }) {
   const user = await getSessionFromCookies();
@@ -52,6 +53,8 @@ export default async function AdminModelDetailPage({ params }: { params: { id: s
         </Link>
         .
       </p>
+
+      <ModelOFSubscribers ofUserId={model.of_user_id ?? ""} modelName={model.model_name} />
     </div>
   );
 }

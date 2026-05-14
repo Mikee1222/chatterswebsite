@@ -153,6 +153,8 @@ export interface Whale {
 export interface ModelRecord {
   id: string;
   model_id: string;
+  /** TheOnlyAPI OF user ID — links this model to the connected OF account. */
+  of_user_id?: string;
   model_name: string;
   platform: Platform;
   status: string;

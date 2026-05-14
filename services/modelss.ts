@@ -9,6 +9,7 @@ const TABLE = "modelss";
 
 type Fields = {
   model_id?: string;
+  of_user_id?: string;
   model_name?: string;
   platform?: string;
   status?: string;
@@ -35,6 +36,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
   return {
     id: rec.id,
     model_id: f.model_id ?? "",
+    of_user_id: f.of_user_id ?? "",
     model_name: f.model_name ?? "",
     platform: (f.platform as ModelRecord["platform"]) ?? "other",
     status: f.status ?? "",
@@ -59,6 +61,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
 
 /** Fields we can write for modelss; linked fields as arrays, snapshots as strings. */
 export type ModelssWriteFields = {
+  of_user_id?: string;
   current_status?: string;
   current_chatter?: string[];
   current_chatter_name?: string;
