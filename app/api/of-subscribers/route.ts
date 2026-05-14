@@ -60,7 +60,7 @@ function parseToolResponseToPayload(toolRaw: string): CachedPayload | null {
 }
 
 async function fetchSubscribersFromMcp(
-  ofUserIdNum: number,
+  ofUserId: string,
   limit: number,
   offset: number,
   THE_ONLY_API_KEY: string
@@ -128,7 +128,7 @@ async function fetchSubscribersFromMcp(
       params: {
         name: "of_list_subscribers",
         arguments: {
-          of_user_id: ofUserIdNum,
+          of_user_id: ofUserId,
           limit,
           offset,
           type: "all",
@@ -170,8 +170,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Invalid of_user_id." }, { status: 400 });
   }
 
-  const ofUserIdNum = parseInt(ofUserId, 10);
-
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 100));
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
 
@@ -191,7 +189,7 @@ export async function GET(req: Request) {
     }
   }
 
-  const mcp = await fetchSubscribersFromMcp(ofUserIdNum, limit, offset, THE_ONLY_API_KEY);
+  const mcp = await fetchSubscribersFromMcp(ofUserId, limit, offset, THE_ONLY_API_KEY);
 
   if (!mcp.ok) {
     return NextResponse.json({ error: `TheOnlyAPI HTTP ${mcp.status}` }, { status: 502 });
