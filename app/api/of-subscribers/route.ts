@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { categorizeSubscriber, parseSubscriber, type OFSubscriber } from "@/services/of-subscribers";
 
 const SUBSCRIBERS_REST_URL = "https://theonlyapi.com/api/subscribers";
+// If this 404s, try: /api/v1/subscribers, /api/of/subscribers, /v1/subscribers
 
 type UpstreamBody = {
   subscribers?: Record<string, unknown>[];
