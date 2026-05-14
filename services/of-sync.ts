@@ -363,7 +363,12 @@ export async function syncSubscribersForAccount(
     return { synced: 0, checked: 0, errors: 1 };
   }
 
-  const checked = all.length;
+  // One `checked` per subscriber row returned by the API (regardless of spend filter).
+  let checked = 0;
+  for (const _ of all) {
+    checked += 1;
+  }
+
   const minSpend = 10;
   const subscribers = all.filter((s) => roundMoney(s.total_spent) >= minSpend);
 
@@ -428,7 +433,7 @@ export async function syncSubscribersForAccount(
     const chunk = creates.slice(i, i + 10);
     try {
       await batchCreateRecords(TABLE, chunk);
-      synced += chunk.length;
+      synced += chunk.length; // only on successful upsert to Airtable
     } catch (e) {
       console.error("[of-sync] batchCreateRecords failed", e);
       errors += chunk.length;
@@ -440,7 +445,7 @@ export async function syncSubscribersForAccount(
     const chunk = updates.slice(i, i + 10);
     try {
       await batchUpdateRecords(TABLE, chunk);
-      synced += chunk.length;
+      synced += chunk.length; // only on successful upsert to Airtable
     } catch (e) {
       console.error("[of-sync] batchUpdateRecords failed", e);
       errors += chunk.length;
