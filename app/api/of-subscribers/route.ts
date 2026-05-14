@@ -2,18 +2,14 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { categorizeSubscriber, parseSubscriber } from "@/services/of-subscribers";
 
-type SubscriberCacheData = { subscribers: unknown[]; has_more: boolean };
+export const runtime = "nodejs";
+export const revalidate = 1800; // 30 minutes
 
-const subscriberCache = new Map<string, { data: SubscriberCacheData; fetchedAt: number }>();
-const CACHE_TTL_MS = 30 * 60 * 1000;
+const MCP_BASE_URL = "https://theonlyapi.com/mcp";
 
 const CACHE_CONTROL = "private, max-age=1800, stale-while-revalidate=300";
 
-function jsonWithCache(body: SubscriberCacheData): NextResponse {
-  return NextResponse.json(body, {
-    headers: { "Cache-Control": CACHE_CONTROL },
-  });
-}
+const NEXT_FETCH_REVALIDATE = { next: { revalidate: 1800 } } as const;
 
 function buildSubscriberRows(rawSubs: unknown[]) {
   return rawSubs.map((s) => {
@@ -22,12 +18,12 @@ function buildSubscriberRows(rawSubs: unknown[]) {
   });
 }
 
-type CachedPayload = {
+type SubscriberPayload = {
   subscribers: ReturnType<typeof buildSubscriberRows>;
   has_more: boolean;
 };
 
-function parseToolResponseToPayload(toolRaw: string): CachedPayload | null {
+function parseToolResponseToPayload(toolRaw: string): SubscriberPayload | null {
   try {
     const dataLine = toolRaw.split("\n").find((line) => line.startsWith("data:"));
     if (!dataLine) return null;
@@ -58,15 +54,15 @@ function parseToolResponseToPayload(toolRaw: string): CachedPayload | null {
 }
 
 async function fetchSubscribersFromMcp(
+  mcpUrl: string,
   ofUserId: string,
   limit: number,
   offset: number,
   THE_ONLY_API_KEY: string
-): Promise<{ ok: boolean; status: number; payload: CachedPayload | null }> {
-  const MCP_URL = "https://theonlyapi.com/mcp";
+): Promise<{ ok: boolean; status: number; payload: SubscriberPayload | null }> {
   const authHeader = `Bearer ${THE_ONLY_API_KEY}`;
 
-  const initRes = await fetch(MCP_URL, {
+  const initRes = await fetch(mcpUrl, {
     method: "POST",
     headers: {
       Authorization: authHeader,
@@ -83,6 +79,7 @@ async function fetchSubscribersFromMcp(
         clientInfo: { name: "gunzo-dashboard", version: "1.0.0" },
       },
     }),
+    ...NEXT_FETCH_REVALIDATE,
   });
 
   const sessionId =
@@ -94,7 +91,7 @@ async function fetchSubscribersFromMcp(
   await initRes.text();
 
   if (sessionId) {
-    await fetch(MCP_URL, {
+    await fetch(mcpUrl, {
       method: "POST",
       headers: {
         Authorization: authHeader,
@@ -106,10 +103,11 @@ async function fetchSubscribersFromMcp(
         jsonrpc: "2.0",
         method: "notifications/initialized",
       }),
+      ...NEXT_FETCH_REVALIDATE,
     }).catch(() => {});
   }
 
-  const toolRes = await fetch(MCP_URL, {
+  const toolRes = await fetch(mcpUrl, {
     method: "POST",
     headers: {
       Authorization: authHeader,
@@ -131,6 +129,7 @@ async function fetchSubscribersFromMcp(
         },
       },
     }),
+    ...NEXT_FETCH_REVALIDATE,
   });
 
   const toolRaw = await toolRes.text();
@@ -167,30 +166,26 @@ export async function GET(req: Request) {
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 100));
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
 
-  const bust = searchParams.get("bust") === "1";
+  const bust = searchParams.get("bust");
+  const mcpUrl =
+    bust === "1"
+      ? `${MCP_BASE_URL}${MCP_BASE_URL.includes("?") ? "&" : "?"}_=${Date.now()}`
+      : MCP_BASE_URL;
 
   const THE_ONLY_API_KEY = process.env.THE_ONLY_API_KEY ?? "";
   if (!THE_ONLY_API_KEY) {
     return NextResponse.json({ error: "THE_ONLY_API_KEY is not configured." }, { status: 503 });
   }
 
-  const cacheKey = `${ofUserId}:${offset}`;
-
-  if (!bust) {
-    const hit = subscriberCache.get(cacheKey);
-    if (hit && Date.now() - hit.fetchedAt < CACHE_TTL_MS) {
-      return jsonWithCache(hit.data);
-    }
-  }
-
-  const mcp = await fetchSubscribersFromMcp(ofUserId, limit, offset, THE_ONLY_API_KEY);
+  const mcp = await fetchSubscribersFromMcp(mcpUrl, ofUserId, limit, offset, THE_ONLY_API_KEY);
 
   if (!mcp.ok) {
     return NextResponse.json({ error: `TheOnlyAPI HTTP ${mcp.status}` }, { status: 502 });
   }
 
-  const body: CachedPayload = mcp.payload ?? { subscribers: [], has_more: false };
-  subscriberCache.set(cacheKey, { data: body, fetchedAt: Date.now() });
+  const body: SubscriberPayload = mcp.payload ?? { subscribers: [], has_more: false };
 
-  return jsonWithCache(body);
+  return NextResponse.json(body, {
+    headers: { "Cache-Control": CACHE_CONTROL },
+  });
 }
