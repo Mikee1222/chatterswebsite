@@ -20,6 +20,9 @@ type ApiResponse = {
   has_more: boolean;
 };
 
+const PAGE_LIMIT = 100;
+const MAX_PAGES = 500;
+
 function stripUntrusted(label: string): string {
   return label.replace(/<\/?UNTRUSTED>/gi, "").trim();
 }
@@ -85,11 +88,11 @@ const listItem = {
 export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; modelName: string }) {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [data, setData] = React.useState<ApiResponse | null>(null);
+  const [subscribers, setSubscribers] = React.useState<SubscriberRow[]>([]);
 
   React.useEffect(() => {
     if (!ofUserId.trim()) {
-      setData(null);
+      setSubscribers([]);
       setError(null);
       setLoading(false);
       return;
@@ -98,30 +101,52 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
     let cancelled = false;
     const ac = new AbortController();
 
-    async function load() {
+    async function loadAllPages() {
       setLoading(true);
       setError(null);
+      setSubscribers([]);
+
+      const acc: SubscriberRow[] = [];
+      let offset = 0;
+
       try {
-        const qs = new URLSearchParams({ of_user_id: ofUserId.trim(), limit: "100", offset: "0" });
-        const res = await fetch(`/api/of-subscribers?${qs.toString()}`, {
-          credentials: "include",
-          signal: ac.signal,
-        });
-        const json = (await res.json()) as ApiResponse & { error?: string };
-        if (!res.ok) {
-          throw new Error(json.error ?? `Request failed (${res.status})`);
+        for (let page = 0; page < MAX_PAGES; page += 1) {
+          if (cancelled) return;
+
+          const qs = new URLSearchParams({
+            of_user_id: ofUserId.trim(),
+            limit: String(PAGE_LIMIT),
+            offset: String(offset),
+          });
+          const res = await fetch(`/api/of-subscribers?${qs.toString()}`, {
+            credentials: "include",
+            signal: ac.signal,
+          });
+          const json = (await res.json()) as ApiResponse & { error?: string };
+          if (!res.ok) {
+            throw new Error(json.error ?? `Request failed (${res.status})`);
+          }
+
+          const batch = json.subscribers ?? [];
+          acc.push(...batch);
+          if (!cancelled) setSubscribers([...acc]);
+
+          const hasMore = Boolean(json.has_more);
+          if (!hasMore) break;
+          if (batch.length === 0) break;
+
+          offset += PAGE_LIMIT;
         }
-        if (!cancelled) setData({ subscribers: json.subscribers ?? [], has_more: Boolean(json.has_more) });
       } catch (e) {
         if (cancelled || (e instanceof Error && e.name === "AbortError")) return;
         setError(e instanceof Error ? e.message : "Failed to load subscribers.");
-        setData(null);
+        if (!cancelled) setSubscribers([]);
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    void load();
+    void loadAllPages();
     return () => {
       cancelled = true;
       ac.abort();
@@ -129,17 +154,15 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
   }, [ofUserId]);
 
   if (!ofUserId.trim()) {
-    return (
-      <p className="text-sm text-white/45">No OF account linked for {modelName}.</p>
-    );
+    return <p className="text-sm text-white/45">No OF account linked for {modelName}.</p>;
   }
 
-  const rows = data?.subscribers ?? [];
-  const sorted = [...rows].sort((a, b) => b.total_spent - a.total_spent);
-  const whales = countWhales(rows);
-  const vip = countVip(rows);
-  const high = countHigh(rows);
-  const freeloaders = countFreeloaders(rows);
+  const sorted = [...subscribers].sort((a, b) => b.total_spent - a.total_spent);
+  const whales = countWhales(subscribers);
+  const vip = countVip(subscribers);
+  const high = countHigh(subscribers);
+  const freeloaders = countFreeloaders(subscribers);
+  const showPartialProgress = loading && subscribers.length > 0;
 
   return (
     <section
@@ -151,21 +174,24 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         <h2 className="text-lg font-semibold tracking-tight text-white">
           <span aria-hidden>👥 </span>Subscribers
         </h2>
-        {loading ? (
+        {loading && subscribers.length === 0 ? (
           <span className="h-7 w-16 animate-pulse rounded-full bg-white/10" />
         ) : (
           <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-3 py-1 text-xs font-semibold text-pink-100">
-            {rows.length}
-            {data?.has_more ? "+" : ""} total
+            {subscribers.length} total
           </span>
         )}
       </div>
 
-      {error ? (
-        <p className="mt-3 text-sm text-red-400/90">{error}</p>
+      {error ? <p className="mt-3 text-sm text-red-400/90">{error}</p> : null}
+
+      {showPartialProgress ? (
+        <p className="mt-3 text-sm text-white/55" aria-live="polite">
+          Loading... ({subscribers.length} subscribers so far)
+        </p>
       ) : null}
 
-      {loading ? (
+      {loading && subscribers.length === 0 ? (
         <div className="mt-5 space-y-3">
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {Array.from({ length: 4 }).map((_, i) => (
@@ -193,9 +219,15 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
             initial="hidden"
             animate="show"
           >
-            {sorted.map((sub) => (
-              <motion.li key={`${sub.of_user_id}-${sub.username}`} variants={listItem} className="flex flex-wrap items-center gap-3 py-3 text-sm">
-                <span className="min-w-0 flex-1 font-medium text-white/90">{stripUntrusted(sub.display_name) || stripUntrusted(sub.username) || "—"}</span>
+            {sorted.map((sub, idx) => (
+              <motion.li
+                key={`${sub.of_user_id}-${sub.username}-${idx}`}
+                variants={listItem}
+                className="flex flex-wrap items-center gap-3 py-3 text-sm"
+              >
+                <span className="min-w-0 flex-1 font-medium text-white/90">
+                  {stripUntrusted(sub.display_name) || stripUntrusted(sub.username) || "—"}
+                </span>
                 <span className="shrink-0 text-white/50 tabular-nums">{formatSubscribedAt(sub.subscribed_at)}</span>
                 <span className="shrink-0 font-semibold tabular-nums text-pink-200/95">{formatUsd(sub.total_spent)}</span>
                 <span
@@ -208,7 +240,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
           </motion.ul>
 
           {sorted.length === 0 && !loading && !error ? (
-            <p className="mt-4 text-sm text-white/45">No subscribers returned for this page.</p>
+            <p className="mt-4 text-sm text-white/45">No subscribers returned.</p>
           ) : null}
         </>
       )}

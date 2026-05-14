@@ -16,6 +16,11 @@ export async function GET(req: Request) {
   if (!ofUserId) {
     return NextResponse.json({ error: "Missing of_user_id query parameter." }, { status: 400 });
   }
+  if (!/^\d+$/.test(ofUserId)) {
+    return NextResponse.json({ error: "Invalid of_user_id." }, { status: 400 });
+  }
+
+  const ofUserIdNum = parseInt(ofUserId, 10);
 
   const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 100));
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
@@ -89,7 +94,7 @@ export async function GET(req: Request) {
       params: {
         name: "of_list_subscribers",
         arguments: {
-          of_user_id: ofUserId,
+          of_user_id: ofUserIdNum,
           limit,
           offset,
           type: "all",
