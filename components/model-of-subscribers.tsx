@@ -94,6 +94,10 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
   const bustThisRunRef = React.useRef(false);
 
   React.useEffect(() => {
+    console.log("[of-subscribers CLIENT] ofUserId:", ofUserId);
+  }, [ofUserId]);
+
+  React.useEffect(() => {
     if (!ofUserId.trim()) {
       setSubscribers([]);
       setError(null);

@@ -36,7 +36,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
   return {
     id: rec.id,
     model_id: f.model_id ?? "",
-    of_user_id: f.of_user_id ?? "",
+    of_user_id: typeof f.of_user_id === "string" ? f.of_user_id.trim() : "",
     model_name: f.model_name ?? "",
     platform: (f.platform as ModelRecord["platform"]) ?? "other",
     status: f.status ?? "",

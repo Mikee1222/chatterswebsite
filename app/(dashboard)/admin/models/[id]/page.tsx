@@ -56,7 +56,10 @@ export default async function AdminModelDetailPage({ params }: { params: { id: s
         .
       </p>
 
-      <ModelOFSubscribers ofUserId={model.of_user_id ?? ""} modelName={model.model_name} />
+      <ModelOFSubscribers
+        ofUserId={String(model.of_user_id ?? "")}
+        modelName={String(model.model_name ?? "")}
+      />
     </div>
   );
 }
