@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { categorizeSubscriber, parseSubscriber } from "@/services/of-subscribers";
 
 export async function GET(req: Request) {
   const user = await getSessionFromCookies();
@@ -53,10 +54,7 @@ export async function GET(req: Request) {
     initRes.headers.get("MCP-Session-Id") ??
     "";
 
-  const initRaw = await initRes.text();
-  console.log("[of-subscribers] init status:", initRes.status);
-  console.log("[of-subscribers] session:", sessionId);
-  console.log("[of-subscribers] init raw:", initRaw.slice(0, 500));
+  await initRes.text();
 
   // STEP 2: notifications/initialized (no id, fire and forget)
   if (sessionId) {
@@ -101,9 +99,45 @@ export async function GET(req: Request) {
   });
 
   const toolRaw = await toolRes.text();
-  console.log("[of-subscribers] tool status:", toolRes.status);
-  console.log("[of-subscribers] tool raw:", toolRaw.slice(0, 3000));
 
-  // Return empty for now until we confirm the shape
-  return NextResponse.json({ subscribers: [], has_more: false });
+  if (!toolRes.ok) {
+    return NextResponse.json({ error: `TheOnlyAPI HTTP ${toolRes.status}` }, { status: 502 });
+  }
+
+  try {
+    const dataLine = toolRaw.split("\n").find((line) => line.startsWith("data:"));
+    if (!dataLine) {
+      return NextResponse.json({ subscribers: [], has_more: false });
+    }
+
+    const jsonStr = dataLine.slice(5).trim();
+    const mcpResult = JSON.parse(jsonStr) as {
+      result?: {
+        content?: Array<{ type: string; text?: string }>;
+        structuredContent?: unknown;
+      };
+    };
+
+    const textBlock = mcpResult.result?.content?.find((c) => c.type === "text");
+    if (!textBlock?.text) {
+      return NextResponse.json({ subscribers: [], has_more: false });
+    }
+
+    const payload = JSON.parse(textBlock.text) as {
+      subscribers?: unknown[];
+      page?: { has_more?: boolean };
+    };
+
+    const rawSubs = payload.subscribers ?? [];
+    const subscribers = rawSubs.map((s) => {
+      const sub = parseSubscriber(s as Record<string, unknown>);
+      return { ...sub, category: categorizeSubscriber(sub) };
+    });
+
+    const hasMore = payload.page?.has_more ?? false;
+
+    return NextResponse.json({ subscribers, has_more: hasMore });
+  } catch {
+    return NextResponse.json({ subscribers: [], has_more: false });
+  }
 }
