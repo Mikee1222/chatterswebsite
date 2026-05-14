@@ -2,10 +2,7 @@
 /**
  * Sets `of_user_id` on modelss rows where model_name matches known creators (case-insensitive).
  *
- * Rules:
- *   - model_name contains "frost" → of_user_id = 399109015
- *   - model_name contains "lydia" → of_user_id = 449136713
- * If both match (unlikely), Frost wins (checked first).
+ * Rules: first matching needle in MAPPINGS wins (order matters if names overlap).
  *
  * Requires: AIRTABLE_TOKEN, AIRTABLE_BASE_ID (or wrangler.jsonc)
  *
@@ -24,7 +21,10 @@ const DATA_BASE = "https://api.airtable.com/v0";
 
 const MAPPINGS: { needle: string; of_user_id: string; label: string }[] = [
   { needle: "frost", of_user_id: "399109015", label: "Frost" },
+  { needle: "frika", of_user_id: "431318509", label: "Frika" },
   { needle: "lydia", of_user_id: "449136713", label: "Lydia" },
+  { needle: "silia", of_user_id: "455807617", label: "Silia" },
+  { needle: "lina", of_user_id: "487507689", label: "Lina" },
 ];
 
 function loadBaseIdFromWrangler(): string | null {
@@ -117,7 +117,7 @@ async function main(): Promise<void> {
     const target = name ? resolveOfUserId(name) : null;
 
     if (!target) {
-      skipped.push(`${r.id}\t${name || "(empty name)"}\t(no Frost/Lydia match)`);
+      skipped.push(`${r.id}\t${name || "(empty name)"}\t(no OF account mapping match)`);
       continue;
     }
     if (current === target) {
