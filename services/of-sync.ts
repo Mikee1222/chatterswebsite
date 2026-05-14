@@ -206,16 +206,19 @@ async function sleep(ms: number) {
 }
 
 /**
- * Fetch one MCP page (limit PAGE) and upsert those rows to Airtable.
+ * Fetch one MCP page (limit PAGE) and upsert rows at or above spend threshold to Airtable.
+ * Still walks every MCP page (`has_more` from full page); only rows with total_spent >= minSpend are written.
  * For large accounts the client calls this repeatedly with increasing `offset`.
  */
 export async function syncSubscribersChunkForAccount(
   ofAccountId: string,
   modelName: string,
-  offset: number
+  offset: number,
+  options?: { highValueOnly?: boolean }
 ): Promise<{ synced: number; errors: number; has_more: boolean; next_offset: number }> {
   const id = ofAccountId.trim();
   const safeOffset = Math.max(0, Math.floor(offset));
+  const minSpend = options?.highValueOnly === true ? 500 : 10;
 
   if (!id || !/^\d+$/.test(id)) {
     console.warn("[of-sync] Invalid of_account_id:", ofAccountId);
@@ -235,12 +238,18 @@ export async function syncSubscribersChunkForAccount(
     return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
   }
 
-  const batch = mcp.payload.subscribers;
+  const rawBatch = mcp.payload.subscribers;
   const has_more = Boolean(mcp.payload.has_more);
   const next_offset = safeOffset + PAGE;
 
-  if (batch.length === 0) {
+  if (rawBatch.length === 0) {
     invalidateListRecordsReadCacheForTable(TABLE);
+    return { synced: 0, errors: 0, has_more, next_offset };
+  }
+
+  const batch = rawBatch.filter((s) => roundMoney(s.total_spent) >= minSpend);
+
+  if (batch.length === 0) {
     return { synced: 0, errors: 0, has_more, next_offset };
   }
 
@@ -347,7 +356,9 @@ export async function syncSubscribersForAccount(
 
   let subscribers: OFSubscriber[];
   try {
-    subscribers = await fetchAllSubscribersFromMcp(id, apiKey);
+    const all = await fetchAllSubscribersFromMcp(id, apiKey);
+    const minSpend = 10;
+    subscribers = all.filter((s) => roundMoney(s.total_spent) >= minSpend);
   } catch (e) {
     console.error("[of-sync] MCP fetch failed for", id, e);
     return { synced: 0, errors: 1 };

@@ -8,7 +8,7 @@ export const maxDuration = 30;
 
 /**
  * POST /api/admin/sync-of-subscribers
- * - With `{ ofAccountId, modelName, offset? }`: sync one MCP page (100 rows) at `offset`, upsert to Airtable.
+ * - With `{ ofAccountId, modelName, offset?, highValueOnly? }`: one MCP page; upsert only rows with total_spent ≥ 10 (or ≥ 500 if highValueOnly).
  * - Without `ofAccountId`: sync all models (full sync per account; cron-style).
  */
 export async function POST(req: Request) {
@@ -23,9 +23,10 @@ export async function POST(req: Request) {
   } catch {
     body = {};
   }
-  const b = body as { ofAccountId?: string; modelName?: string; offset?: number };
+  const b = body as { ofAccountId?: string; modelName?: string; offset?: number; highValueOnly?: boolean };
   const ofAccountId = b.ofAccountId?.trim();
   const modelName = b.modelName?.trim();
+  const highValueOnly = b.highValueOnly === true;
   const offsetRaw = b.offset;
   const offset =
     typeof offsetRaw === "number" && Number.isFinite(offsetRaw) && offsetRaw >= 0
@@ -36,7 +37,7 @@ export async function POST(req: Request) {
     if (!/^\d+$/.test(ofAccountId)) {
       return NextResponse.json({ error: "ofAccountId must be numeric OF account id." }, { status: 400 });
     }
-    const r = await syncSubscribersChunkForAccount(ofAccountId, modelName ?? "", offset);
+    const r = await syncSubscribersChunkForAccount(ofAccountId, modelName ?? "", offset, { highValueOnly });
     return NextResponse.json({
       success: true,
       synced: r.synced,

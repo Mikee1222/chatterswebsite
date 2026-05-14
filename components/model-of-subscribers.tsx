@@ -193,6 +193,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
             ofAccountId: ofUserId.trim(),
             modelName: modelName.trim(),
             offset,
+            highValueOnly: false,
           }),
         });
 
@@ -219,7 +220,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         }
       }
 
-      setSyncMessage(`✅ Sync complete — ${totalSynced} subscribers synced`);
+      setSyncMessage(`✅ Sync complete — ${totalSynced} subscribers synced ($10+)`);
       setReloadTick((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");

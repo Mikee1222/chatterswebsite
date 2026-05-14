@@ -16,15 +16,20 @@ type ChunkJson = {
   next_offset?: number;
 };
 
+type SyncMode = "vip" | "all";
+
 export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscribersButtonProps) {
-  const [loading, setLoading] = React.useState(false);
+  const [loadingMode, setLoadingMode] = React.useState<SyncMode | null>(null);
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  async function onSync() {
-    if (!ofAccountId.trim()) return;
+  const loading = loadingMode !== null;
 
-    setLoading(true);
+  async function runChunkedSync(mode: SyncMode) {
+    if (!ofAccountId.trim()) return;
+    const highValueOnly = mode === "vip";
+
+    setLoadingMode(mode);
     setMessage(null);
     setError(null);
 
@@ -43,6 +48,7 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
             ofAccountId: ofAccountId.trim(),
             modelName: modelName.trim(),
             offset,
+            highValueOnly,
           }),
         });
 
@@ -61,24 +67,38 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
         }
       }
 
-      setMessage(`✅ Sync complete — ${totalSynced} subscribers synced`);
+      if (mode === "vip") {
+        setMessage(`✅ VIP sync complete — ${totalSynced} subscribers synced ($500+)`);
+      } else {
+        setMessage(`✅ Sync complete — ${totalSynced} subscribers synced ($10+)`);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");
     } finally {
-      setLoading(false);
+      setLoadingMode(null);
     }
   }
 
   return (
     <div className="space-y-2">
-      <button
-        type="button"
-        onClick={() => void onSync()}
-        disabled={loading || !ofAccountId.trim()}
-        className="inline-flex items-center justify-center rounded-lg border border-pink-400/40 bg-gradient-to-r from-pink-500 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.45)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
-      >
-        {loading ? "Syncing…" : "Sync OF subscribers"}
-      </button>
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          onClick={() => void runChunkedSync("vip")}
+          disabled={loading || !ofAccountId.trim()}
+          className="inline-flex items-center justify-center rounded-lg border border-amber-400/45 bg-gradient-to-r from-amber-500/90 to-rose-600 px-3 py-2 text-sm font-semibold text-white shadow-[0_0_20px_-8px_rgba(245,158,11,0.4)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {loadingMode === "vip" ? "Syncing…" : "Sync VIP (>$500)"}
+        </button>
+        <button
+          type="button"
+          onClick={() => void runChunkedSync("all")}
+          disabled={loading || !ofAccountId.trim()}
+          className="inline-flex items-center justify-center rounded-lg border border-pink-400/40 bg-gradient-to-r from-pink-500 to-fuchsia-600 px-3 py-2 text-sm font-semibold text-white shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.45)] transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+        >
+          {loadingMode === "all" ? "Syncing…" : "Sync all"}
+        </button>
+      </div>
       {message ? <p className="text-sm text-emerald-200/90">{message}</p> : null}
       {error ? <p className="text-sm text-red-400/90">{error}</p> : null}
     </div>
