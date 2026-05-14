@@ -7,43 +7,61 @@ type SyncOFSubscribersButtonProps = {
   modelName: string;
 };
 
+type ChunkJson = {
+  success?: boolean;
+  error?: string;
+  synced?: number;
+  errors?: number;
+  has_more?: boolean;
+  next_offset?: number;
+};
+
 export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscribersButtonProps) {
   const [loading, setLoading] = React.useState(false);
   const [message, setMessage] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
   async function onSync() {
-    console.log("[sync-button] ofAccountId:", ofAccountId, "modelName:", modelName);
-    if (!ofAccountId.trim()) {
-      console.log("[sync-button] BLOCKED: ofAccountId is empty");
-      return;
-    }
+    if (!ofAccountId.trim()) return;
+
     setLoading(true);
     setMessage(null);
     setError(null);
+
+    let offset = 0;
+    let totalSynced = 0;
+    let hasMore = true;
+
     try {
-      const res = await fetch("/api/admin/sync-of-subscribers", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ofAccountId: ofAccountId.trim(),
-          modelName: modelName.trim(),
-        }),
-      });
-      const json = (await res.json().catch(() => ({}))) as {
-        success?: boolean;
-        error?: string;
-        synced?: number;
-        errors?: number;
-      };
-      if (!res.ok || !json.success) {
-        throw new Error(json.error ?? `Sync failed (${res.status})`);
+      setMessage("Syncing... (0 synced so far)");
+      while (hasMore) {
+        const res = await fetch("/api/admin/sync-of-subscribers", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ofAccountId: ofAccountId.trim(),
+            modelName: modelName.trim(),
+            offset,
+          }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as ChunkJson;
+        if (!res.ok || !json.success) {
+          throw new Error(json.error ?? "Sync failed");
+        }
+
+        totalSynced += typeof json.synced === "number" ? json.synced : 0;
+        setMessage(`Syncing... (${totalSynced} synced so far)`);
+        hasMore = Boolean(json.has_more);
+        offset = typeof json.next_offset === "number" ? json.next_offset : offset + 100;
+
+        if (hasMore) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
       }
-      const parts: string[] = [];
-      if (typeof json.synced === "number") parts.push(`${json.synced} synced`);
-      if (typeof json.errors === "number" && json.errors > 0) parts.push(`${json.errors} errors`);
-      setMessage(parts.length ? parts.join(" · ") : "Sync completed.");
+
+      setMessage(`✅ Sync complete — ${totalSynced} subscribers synced`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");
     } finally {

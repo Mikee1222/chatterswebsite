@@ -177,24 +177,49 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
     setSyncing(true);
     setSyncMessage(null);
     setError(null);
+
+    let offset = 0;
+    let totalSynced = 0;
+    let hasMore = true;
+
     try {
-      const res = await fetch("/api/admin/sync-of-subscribers", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ofAccountId: ofUserId.trim(),
-          modelName: modelName.trim(),
-        }),
-      });
-      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; synced?: number; errors?: number };
-      if (!res.ok || !json.success) {
-        throw new Error(json.error ?? `Sync failed (${res.status})`);
+      setSyncMessage("Syncing... (0 synced so far)");
+      while (hasMore) {
+        const res = await fetch("/api/admin/sync-of-subscribers", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ofAccountId: ofUserId.trim(),
+            modelName: modelName.trim(),
+            offset,
+          }),
+        });
+
+        const json = (await res.json().catch(() => ({}))) as {
+          success?: boolean;
+          error?: string;
+          synced?: number;
+          errors?: number;
+          has_more?: boolean;
+          next_offset?: number;
+        };
+
+        if (!res.ok || !json.success) {
+          throw new Error(json.error ?? `Sync failed (${res.status})`);
+        }
+
+        totalSynced += typeof json.synced === "number" ? json.synced : 0;
+        setSyncMessage(`Syncing... (${totalSynced} synced so far)`);
+        hasMore = Boolean(json.has_more);
+        offset = typeof json.next_offset === "number" ? json.next_offset : offset + 100;
+
+        if (hasMore) {
+          await new Promise((r) => setTimeout(r, 500));
+        }
       }
-      const parts: string[] = [];
-      if (typeof json.synced === "number") parts.push(`${json.synced} updated`);
-      if (typeof json.errors === "number" && json.errors > 0) parts.push(`${json.errors} errors`);
-      setSyncMessage(parts.length ? parts.join(" · ") : "Sync complete.");
+
+      setSyncMessage(`✅ Sync complete — ${totalSynced} subscribers synced`);
       setReloadTick((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");

@@ -190,9 +190,143 @@ function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
 }
 
+/** Airtable formula: account + OR of fan ids (one MCP page, max PAGE ids). */
+function filterFormulaForFanChunk(accountEsc: string, fanIds: number[]): string {
+  const uniq = [...new Set(fanIds.filter((n) => Number.isFinite(n)))];
+  if (uniq.length === 0) {
+    return `AND({of_account_id}="${accountEsc}", FALSE())`;
+  }
+  const orPart = uniq.map((id) => `{of_user_id}=${id}`).join(", ");
+  return `AND({of_account_id}="${accountEsc}", OR(${orPart}))`;
+}
+
 /** Small delay between Airtable batches to reduce 429s (queue + retries handle the rest). */
 async function sleep(ms: number) {
   await new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Fetch one MCP page (limit PAGE) and upsert those rows to Airtable.
+ * For large accounts the client calls this repeatedly with increasing `offset`.
+ */
+export async function syncSubscribersChunkForAccount(
+  ofAccountId: string,
+  modelName: string,
+  offset: number
+): Promise<{ synced: number; errors: number; has_more: boolean; next_offset: number }> {
+  const id = ofAccountId.trim();
+  const safeOffset = Math.max(0, Math.floor(offset));
+
+  if (!id || !/^\d+$/.test(id)) {
+    console.warn("[of-sync] Invalid of_account_id:", ofAccountId);
+    return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
+  }
+
+  const apiKey = process.env.THE_ONLY_API_KEY ?? "";
+  if (!apiKey) {
+    console.error("[of-sync] THE_ONLY_API_KEY is not set");
+    return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
+  }
+
+  const sessionId = await mcpOpenSession(apiKey);
+  const mcp = await fetchSubscribersPageFromMcp(id, safeOffset, apiKey, sessionId);
+  if (!mcp.ok || !mcp.payload) {
+    console.warn("[of-sync] MCP page failed", id, safeOffset, mcp.status);
+    return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
+  }
+
+  const batch = mcp.payload.subscribers;
+  const has_more = Boolean(mcp.payload.has_more);
+  const next_offset = safeOffset + PAGE;
+
+  if (batch.length === 0) {
+    invalidateListRecordsReadCacheForTable(TABLE);
+    return { synced: 0, errors: 0, has_more, next_offset };
+  }
+
+  const esc = escapeFormulaString(id);
+  const fanIds = batch.map((s) => s.of_user_id);
+  let existing: AirtableRecord<SubscriberFields>[] = [];
+  try {
+    existing = await listAllRecords<SubscriberFields>(TABLE, {
+      filterByFormula: filterFormulaForFanChunk(esc, fanIds),
+      _caller: "of-sync-chunk",
+    });
+  } catch (e) {
+    console.error("[of-sync] Airtable list failed for chunk", id, safeOffset, e);
+    return { synced: 0, errors: batch.length, has_more, next_offset };
+  }
+
+  const byFan = new Map<number, string>();
+  for (const rec of existing) {
+    const uid = rec.fields.of_user_id;
+    if (typeof uid === "number" && Number.isFinite(uid)) {
+      byFan.set(uid, rec.id);
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const creates: Record<string, unknown>[] = [];
+  const updates: { id: string; fields: Record<string, unknown> }[] = [];
+
+  for (const sub of batch) {
+    const category = categorizeSubscriber(sub);
+    const total_spent = roundMoney(sub.total_spent);
+    const airtableId = byFan.get(sub.of_user_id);
+    if (airtableId) {
+      updates.push({
+        id: airtableId,
+        fields: {
+          total_spent,
+          category,
+          last_synced_at: nowIso,
+        },
+      });
+    } else {
+      creates.push({
+        of_user_id: sub.of_user_id,
+        of_account_id: id,
+        model_name: modelName.trim() || id,
+        display_name: sub.display_name,
+        username: sub.username,
+        subscribed_at: sub.subscribed_at || undefined,
+        expires_at: sub.expires_at || undefined,
+        last_synced_at: nowIso,
+        total_spent,
+        category,
+      });
+    }
+  }
+
+  let synced = 0;
+  let errors = 0;
+
+  for (let i = 0; i < creates.length; i += 10) {
+    const chunk = creates.slice(i, i + 10);
+    try {
+      await batchCreateRecords(TABLE, chunk);
+      synced += chunk.length;
+    } catch (e) {
+      console.error("[of-sync] batchCreateRecords failed", e);
+      errors += chunk.length;
+    }
+    await sleep(150);
+  }
+
+  for (let i = 0; i < updates.length; i += 10) {
+    const chunk = updates.slice(i, i + 10);
+    try {
+      await batchUpdateRecords(TABLE, chunk);
+      synced += chunk.length;
+    } catch (e) {
+      console.error("[of-sync] batchUpdateRecords failed", e);
+      errors += chunk.length;
+    }
+    await sleep(150);
+  }
+
+  invalidateListRecordsReadCacheForTable(TABLE);
+  return { synced, errors, has_more, next_offset };
 }
 
 export async function syncSubscribersForAccount(
