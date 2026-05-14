@@ -35,6 +35,9 @@ export function invalidateListRecordsReadCacheForTable(tableName: string): void 
       listRecordsReadCache.delete(key);
     }
   }
+  if (tableName === "users") {
+    usersCache = null;
+  }
 }
 
 function listRecordsCacheKey(tableName: string, params: ListParams): string {
@@ -175,6 +178,31 @@ export type ListParams = {
   _caller?: string;
   fields?: string[];
 };
+
+/** Full `users` table list (all pages); longer TTL than per-page listRecords cache to cut rate limits on hot paths. */
+const USERS_CACHE_TTL_MS = 5 * 60 * 1000;
+let usersCache: { data: AirtableRecord<unknown>[]; fetchedAt: number } | null = null;
+
+function isUsersTableFullListParams(
+  tableName: string,
+  params: Omit<ListParams, "offset">
+): boolean {
+  if (tableName !== "users") return false;
+  return (
+    !params.filterByFormula &&
+    !(params.sort?.length) &&
+    !(params.fields?.length) &&
+    params.pageSize === undefined
+  );
+}
+
+function cloneAirtableRecordArray<T>(records: AirtableRecord<T>[]): AirtableRecord<T>[] {
+  return records.map((r) => ({
+    id: r.id,
+    createdTime: r.createdTime,
+    fields: { ...(r.fields as object) } as T,
+  }));
+}
 
 async function airtableFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   return airtableQueue.add(() => airtableHttpJsonWithRetry<T>(path, options));

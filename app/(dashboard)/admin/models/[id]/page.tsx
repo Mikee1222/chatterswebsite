@@ -16,6 +16,8 @@ export default async function AdminModelDetailPage({ params }: { params: { id: s
   const model = await getModelById(id);
   if (!model) notFound();
 
+  console.log("[model-page] model.of_user_id:", model.of_user_id, "model.model_name:", model.model_name);
+
   const isAdmin = user.role === "admin";
 
   return (

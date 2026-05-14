@@ -86,6 +86,7 @@ const listItem = {
 };
 
 export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; modelName: string }) {
+  console.log("[of-subscribers] ofUserId prop:", ofUserId, "modelName:", modelName);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [subscribers, setSubscribers] = React.useState<SubscriberRow[]>([]);
