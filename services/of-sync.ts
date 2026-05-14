@@ -215,42 +215,43 @@ export async function syncSubscribersChunkForAccount(
   modelName: string,
   offset: number,
   options?: { highValueOnly?: boolean }
-): Promise<{ synced: number; errors: number; has_more: boolean; next_offset: number }> {
+): Promise<{ synced: number; checked: number; errors: number; has_more: boolean; next_offset: number }> {
   const id = ofAccountId.trim();
   const safeOffset = Math.max(0, Math.floor(offset));
   const minSpend = options?.highValueOnly === true ? 500 : 10;
 
   if (!id || !/^\d+$/.test(id)) {
     console.warn("[of-sync] Invalid of_account_id:", ofAccountId);
-    return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
+    return { synced: 0, checked: 0, errors: 1, has_more: false, next_offset: safeOffset };
   }
 
   const apiKey = process.env.THE_ONLY_API_KEY ?? "";
   if (!apiKey) {
     console.error("[of-sync] THE_ONLY_API_KEY is not set");
-    return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
+    return { synced: 0, checked: 0, errors: 1, has_more: false, next_offset: safeOffset };
   }
 
   const sessionId = await mcpOpenSession(apiKey);
   const mcp = await fetchSubscribersPageFromMcp(id, safeOffset, apiKey, sessionId);
   if (!mcp.ok || !mcp.payload) {
     console.warn("[of-sync] MCP page failed", id, safeOffset, mcp.status);
-    return { synced: 0, errors: 1, has_more: false, next_offset: safeOffset };
+    return { synced: 0, checked: 0, errors: 1, has_more: false, next_offset: safeOffset };
   }
 
   const rawBatch = mcp.payload.subscribers;
+  const checked = rawBatch.length;
   const has_more = Boolean(mcp.payload.has_more);
   const next_offset = safeOffset + PAGE;
 
   if (rawBatch.length === 0) {
     invalidateListRecordsReadCacheForTable(TABLE);
-    return { synced: 0, errors: 0, has_more, next_offset };
+    return { synced: 0, checked: 0, errors: 0, has_more, next_offset };
   }
 
   const batch = rawBatch.filter((s) => roundMoney(s.total_spent) >= minSpend);
 
   if (batch.length === 0) {
-    return { synced: 0, errors: 0, has_more, next_offset };
+    return { synced: 0, checked, errors: 0, has_more, next_offset };
   }
 
   const esc = escapeFormulaString(id);
@@ -263,7 +264,7 @@ export async function syncSubscribersChunkForAccount(
     });
   } catch (e) {
     console.error("[of-sync] Airtable list failed for chunk", id, safeOffset, e);
-    return { synced: 0, errors: batch.length, has_more, next_offset };
+    return { synced: 0, checked, errors: batch.length, has_more, next_offset };
   }
 
   const byFan = new Map<number, string>();
@@ -335,34 +336,36 @@ export async function syncSubscribersChunkForAccount(
   }
 
   invalidateListRecordsReadCacheForTable(TABLE);
-  return { synced, errors, has_more, next_offset };
+  return { synced, checked, errors, has_more, next_offset };
 }
 
 export async function syncSubscribersForAccount(
   ofAccountId: string,
   modelName: string
-): Promise<{ synced: number; errors: number }> {
+): Promise<{ synced: number; checked: number; errors: number }> {
   const id = ofAccountId.trim();
   if (!id || !/^\d+$/.test(id)) {
     console.warn("[of-sync] Invalid of_account_id:", ofAccountId);
-    return { synced: 0, errors: 1 };
+    return { synced: 0, checked: 0, errors: 1 };
   }
 
   const apiKey = process.env.THE_ONLY_API_KEY ?? "";
   if (!apiKey) {
     console.error("[of-sync] THE_ONLY_API_KEY is not set");
-    return { synced: 0, errors: 1 };
+    return { synced: 0, checked: 0, errors: 1 };
   }
 
-  let subscribers: OFSubscriber[];
+  let all: OFSubscriber[] = [];
   try {
-    const all = await fetchAllSubscribersFromMcp(id, apiKey);
-    const minSpend = 10;
-    subscribers = all.filter((s) => roundMoney(s.total_spent) >= minSpend);
+    all = await fetchAllSubscribersFromMcp(id, apiKey);
   } catch (e) {
     console.error("[of-sync] MCP fetch failed for", id, e);
-    return { synced: 0, errors: 1 };
+    return { synced: 0, checked: 0, errors: 1 };
   }
+
+  const checked = all.length;
+  const minSpend = 10;
+  const subscribers = all.filter((s) => roundMoney(s.total_spent) >= minSpend);
 
   const esc = escapeFormulaString(id);
   const filterByFormula = `{of_account_id} = "${esc}"`;
@@ -374,7 +377,7 @@ export async function syncSubscribersForAccount(
     });
   } catch (e) {
     console.error("[of-sync] Airtable list failed for", id, e);
-    return { synced: 0, errors: 1 };
+    return { synced: 0, checked, errors: 1 };
   }
 
   const byFan = new Map<number, string>();
@@ -446,7 +449,7 @@ export async function syncSubscribersForAccount(
   }
 
   invalidateListRecordsReadCacheForTable(TABLE);
-  return { synced, errors };
+  return { synced, checked, errors };
 }
 
 export async function syncAllAccounts(): Promise<void> {
@@ -456,7 +459,7 @@ export async function syncAllAccounts(): Promise<void> {
     const ofId = (m.of_user_id ?? "").trim();
     try {
       const r = await syncSubscribersForAccount(ofId, m.model_name);
-      console.log(`[of-sync] ${m.model_name} (${ofId}): synced=${r.synced} errors=${r.errors}`);
+      console.log(`[of-sync] ${m.model_name} (${ofId}): synced=${r.synced} checked=${r.checked} errors=${r.errors}`);
     } catch (e) {
       console.error(`[of-sync] ${m.model_name} (${ofId}) failed`, e);
     }

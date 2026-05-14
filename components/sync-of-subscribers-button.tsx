@@ -11,6 +11,7 @@ type ChunkJson = {
   success?: boolean;
   error?: string;
   synced?: number;
+  checked?: number;
   errors?: number;
   has_more?: boolean;
   next_offset?: number;
@@ -21,12 +22,14 @@ type SyncMode = "vip" | "all";
 type StoredProgress = {
   offset: number;
   totalSynced: number;
+  totalChecked: number;
   highValueOnly: boolean;
 };
 
 type PausedSnapshot = {
   offset: number;
   totalSynced: number;
+  totalChecked: number;
   mode: SyncMode;
 };
 
@@ -54,9 +57,14 @@ function loadStoredProgress(ofAccountId: string): StoredProgress | null {
       return null;
     }
     if (p.highValueOnly !== true && p.highValueOnly !== false) return null;
+    const totalChecked =
+      typeof p.totalChecked === "number" && Number.isFinite(p.totalChecked) && p.totalChecked >= 0
+        ? Math.floor(p.totalChecked)
+        : 0;
     return {
       offset: Math.floor(p.offset),
       totalSynced: Math.floor(p.totalSynced),
+      totalChecked,
       highValueOnly: p.highValueOnly,
     };
   } catch {
@@ -174,7 +182,7 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
 
   async function runChunkedSync(
     mode: SyncMode,
-    resume?: { offset: number; totalSynced: number }
+    resume?: { offset: number; totalSynced: number; totalChecked: number }
   ): Promise<void> {
     if (!ofAccountId.trim()) return;
     const highValueOnly = mode === "vip";
@@ -192,28 +200,30 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
 
     let offset = resume?.offset ?? 0;
     let totalSynced = resume?.totalSynced ?? 0;
+    let totalChecked = resume?.totalChecked ?? 0;
     let hasMore = true;
 
     try {
-      setMessage(`Syncing... (${totalSynced} synced so far)`);
+      setMessage(`Syncing... (${totalSynced} saved, ${totalChecked} checked so far)`);
       while (hasMore) {
         let json: ChunkJson;
         try {
           json = await fetchSyncChunkWithRetries(ofAccountId, modelName, offset, highValueOnly);
         } catch (e) {
-          setPausedSnapshot({ offset, totalSynced, mode });
+          setPausedSnapshot({ offset, totalSynced, totalChecked, mode });
           setError(null);
           setMessage(`Sync paused at ${totalSynced} synced — tap to resume`);
           return;
         }
 
         totalSynced += typeof json.synced === "number" ? json.synced : 0;
+        totalChecked += typeof json.checked === "number" ? json.checked : 0;
         hasMore = Boolean(json.has_more);
         offset = typeof json.next_offset === "number" ? json.next_offset : offset + 100;
 
-        saveProgress(ofAccountId, { offset, totalSynced, highValueOnly });
-        setStorageResume({ offset, totalSynced, highValueOnly });
-        setMessage(`Syncing... (${totalSynced} synced so far)`);
+        saveProgress(ofAccountId, { offset, totalSynced, totalChecked, highValueOnly });
+        setStorageResume({ offset, totalSynced, totalChecked, highValueOnly });
+        setMessage(`Syncing... (${totalSynced} saved, ${totalChecked} checked so far)`);
 
         if (hasMore) {
           await sleep(500);
@@ -225,9 +235,9 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
       setPausedSnapshot(null);
 
       if (mode === "vip") {
-        setMessage(`✅ VIP sync complete — ${totalSynced} subscribers synced ($500+)`);
+        setMessage(`✅ VIP sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
       } else {
-        setMessage(`✅ Sync complete — ${totalSynced} subscribers synced ($10+)`);
+        setMessage(`✅ Sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");
@@ -241,6 +251,7 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
     void runChunkedSync(pausedSnapshot.mode, {
       offset: pausedSnapshot.offset,
       totalSynced: pausedSnapshot.totalSynced,
+      totalChecked: pausedSnapshot.totalChecked,
     });
   }
 
@@ -248,12 +259,16 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
     const p = storageResume;
     if (!p || !ofAccountId.trim()) return;
     const mode: SyncMode = p.highValueOnly ? "vip" : "all";
-    void runChunkedSync(mode, { offset: p.offset, totalSynced: p.totalSynced });
+    void runChunkedSync(mode, {
+      offset: p.offset,
+      totalSynced: p.totalSynced,
+      totalChecked: p.totalChecked,
+    });
   }
 
   const showStorageResume =
     storageResume != null &&
-    (storageResume.totalSynced > 0 || storageResume.offset > 0) &&
+    (storageResume.totalSynced > 0 || storageResume.totalChecked > 0 || storageResume.offset > 0) &&
     pausedSnapshot === null &&
     !loading;
 
@@ -262,7 +277,7 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
       {showStorageResume ? (
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-sky-500/30 bg-sky-500/10 px-3 py-2">
           <p className="text-xs text-sky-100/90">
-            Resume sync ({storageResume.totalSynced} synced so far)
+            Resume sync ({storageResume.totalSynced} saved, {storageResume.totalChecked} checked)
           </p>
           <button
             type="button"

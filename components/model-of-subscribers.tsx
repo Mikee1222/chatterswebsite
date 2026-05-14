@@ -180,10 +180,11 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
 
     let offset = 0;
     let totalSynced = 0;
+    let totalChecked = 0;
     let hasMore = true;
 
     try {
-      setSyncMessage("Syncing... (0 synced so far)");
+      setSyncMessage("Syncing... (0 saved, 0 checked so far)");
       while (hasMore) {
         const res = await fetch("/api/admin/sync-of-subscribers", {
           method: "POST",
@@ -201,6 +202,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
           success?: boolean;
           error?: string;
           synced?: number;
+          checked?: number;
           errors?: number;
           has_more?: boolean;
           next_offset?: number;
@@ -211,7 +213,8 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         }
 
         totalSynced += typeof json.synced === "number" ? json.synced : 0;
-        setSyncMessage(`Syncing... (${totalSynced} synced so far)`);
+        totalChecked += typeof json.checked === "number" ? json.checked : 0;
+        setSyncMessage(`Syncing... (${totalSynced} saved, ${totalChecked} checked so far)`);
         hasMore = Boolean(json.has_more);
         offset = typeof json.next_offset === "number" ? json.next_offset : offset + 100;
 
@@ -220,7 +223,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         }
       }
 
-      setSyncMessage(`✅ Sync complete — ${totalSynced} subscribers synced ($10+)`);
+      setSyncMessage(`✅ Sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
       setReloadTick((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");

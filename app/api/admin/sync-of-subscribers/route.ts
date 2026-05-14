@@ -37,13 +37,14 @@ export async function POST(req: Request) {
     if (!/^\d+$/.test(ofAccountId)) {
       return NextResponse.json({ error: "ofAccountId must be numeric OF account id." }, { status: 400 });
     }
-    const r = await syncSubscribersChunkForAccount(ofAccountId, modelName ?? "", offset, { highValueOnly });
+    const result = await syncSubscribersChunkForAccount(ofAccountId, modelName ?? "", offset, { highValueOnly });
     return NextResponse.json({
       success: true,
-      synced: r.synced,
-      errors: r.errors,
-      has_more: r.has_more,
-      next_offset: r.next_offset,
+      synced: result.synced,
+      checked: result.checked,
+      errors: result.errors,
+      has_more: result.has_more,
+      next_offset: result.next_offset,
     });
   }
 
