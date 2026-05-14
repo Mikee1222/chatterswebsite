@@ -53,6 +53,9 @@ const DATE_TIME_FIELD_NORMALIZED = new Set([
   "reviewed_at",
   "scheduled_time",
   "last_updated",
+  "subscribed_at",
+  "expires_at",
+  "last_synced_at",
 ]);
 
 function isDateTimeField(key: string): boolean {
@@ -315,6 +318,9 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   model_tiers: {
     tier: new Set(["high", "medium", "low"]),
+  },
+  of_subscribers: {
+    category: new Set(["whale", "vip", "high_spender", "medium", "freeloader", "new"]),
   },
   pricing_rows: {
     model_tier: new Set(["high", "medium", "low"]),

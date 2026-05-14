@@ -48,6 +48,9 @@ export function getRequestedFieldType(def: FieldDef): string {
   return def.type;
 }
 
+/** Airtable table name for cached OF subscribers (see `scripts/create-of-subscribers-table.ts`). */
+export const OF_SUBSCRIBERS_TABLE = "of_subscribers" as const;
+
 /** Table definitions for sync script. Add your base tables here. */
 export const AIRTABLE_TABLES: TableDef[] = [
   {
@@ -80,6 +83,36 @@ export const AIRTABLE_TABLES: TableDef[] = [
     fields: [
       { name: "model_id", def: { type: "singleLineText" } },
       { name: "agency_cut_percent", def: { type: "number" } },
+    ],
+  },
+  {
+    name: OF_SUBSCRIBERS_TABLE,
+    fields: [
+      { name: "of_user_id", def: { type: "number" } },
+      { name: "of_account_id", def: { type: "singleLineText" } },
+      { name: "model_name", def: { type: "singleLineText" } },
+      { name: "display_name", def: { type: "singleLineText" } },
+      { name: "username", def: { type: "singleLineText" } },
+      { name: "subscribed_at", def: { type: "dateTime" } },
+      { name: "expires_at", def: { type: "dateTime" } },
+      { name: "last_synced_at", def: { type: "dateTime" } },
+      { name: "total_spent", def: { type: "number" } },
+      {
+        name: "category",
+        def: {
+          type: "singleSelect",
+          options: {
+            choices: [
+              { name: "whale" },
+              { name: "vip" },
+              { name: "high_spender" },
+              { name: "medium" },
+              { name: "freeloader" },
+              { name: "new" },
+            ],
+          },
+        },
+      },
     ],
   },
 ];

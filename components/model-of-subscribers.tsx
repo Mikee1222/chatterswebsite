@@ -18,10 +18,11 @@ type SubscriberRow = {
 type ApiResponse = {
   subscribers: SubscriberRow[];
   has_more: boolean;
+  total: number;
+  lastSyncedAt: string | null;
 };
 
-const PAGE_LIMIT = 100;
-const MAX_PAGES = 500;
+const FETCH_LIMIT = 500;
 
 function stripUntrusted(label: string): string {
   return label.replace(/<\/?UNTRUSTED>/gi, "").trim();
@@ -38,6 +39,20 @@ function formatSubscribedAt(iso: string): string {
 
 function formatUsd(n: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
+}
+
+function formatLastSynced(iso: string | null): string {
+  if (!iso) return "Never synced";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return "Never synced";
+  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (sec < 60) return "Just now";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} minute${min === 1 ? "" : "s"} ago`;
+  const hr = Math.floor(min / 60);
+  if (hr < 48) return `${hr} hour${hr === 1 ? "" : "s"} ago`;
+  const day = Math.floor(hr / 24);
+  return `${day} day${day === 1 ? "" : "s"} ago`;
 }
 
 function categoryBadgeClass(cat: OFSubscriberCategory): string {
@@ -87,14 +102,21 @@ const listItem = {
 
 export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; modelName: string }) {
   const [loading, setLoading] = React.useState(false);
+  const [syncing, setSyncing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [syncMessage, setSyncMessage] = React.useState<string | null>(null);
   const [subscribers, setSubscribers] = React.useState<SubscriberRow[]>([]);
+  const [total, setTotal] = React.useState<number | null>(null);
+  const [hasMore, setHasMore] = React.useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = React.useState<string | null>(null);
   const [reloadTick, setReloadTick] = React.useState(0);
-  const bustThisRunRef = React.useRef(false);
 
   React.useEffect(() => {
     if (!ofUserId.trim()) {
       setSubscribers([]);
+      setTotal(null);
+      setHasMore(false);
+      setLastSyncedAt(null);
       setError(null);
       setLoading(false);
       return;
@@ -103,67 +125,83 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
     let cancelled = false;
     const ac = new AbortController();
 
-    const useBust = bustThisRunRef.current;
-    bustThisRunRef.current = false;
-
-    async function loadAllPages() {
+    async function load() {
       setLoading(true);
       setError(null);
-      setSubscribers([]);
-
-      let offset = 0;
 
       try {
-        for (let page = 0; page < MAX_PAGES; page += 1) {
-          if (cancelled) return;
-
-          const qs = new URLSearchParams({
-            of_user_id: ofUserId.trim(),
-            limit: String(PAGE_LIMIT),
-            offset: String(offset),
-          });
-          if (useBust && offset === 0) qs.set("bust", "1");
-          const url = new URL(`/api/of-subscribers?${qs.toString()}`, window.location.origin);
-          const res = await fetch(url, {
-            credentials: "include",
-            signal: ac.signal,
-          });
-          if (!res.ok) {
-            await res.text();
-            break;
-          }
-          const json = (await res.json()) as ApiResponse & { error?: string };
-
-          const batch = json.subscribers ?? [];
-          if (!cancelled) {
-            setSubscribers((prev) => {
-              const seen = new Set(prev.map((s) => s.of_user_id));
-              const unique = batch.filter((s) => !seen.has(s.of_user_id));
-              return [...prev, ...unique];
-            });
-          }
-
-          const hasMore = Boolean(json.has_more);
-          if (!hasMore) break;
-          if (batch.length === 0) break;
-
-          offset += PAGE_LIMIT;
+        const qs = new URLSearchParams({
+          of_user_id: ofUserId.trim(),
+          limit: String(FETCH_LIMIT),
+          offset: "0",
+        });
+        const url = new URL(`/api/of-subscribers?${qs.toString()}`, window.location.origin);
+        const res = await fetch(url, {
+          credentials: "include",
+          signal: ac.signal,
+        });
+        if (!res.ok) {
+          const t = await res.text();
+          throw new Error(t || `HTTP ${res.status}`);
         }
+        const json = (await res.json()) as ApiResponse & { error?: string };
+        if (json.error) throw new Error(json.error);
+        if (cancelled) return;
+        setSubscribers(json.subscribers ?? []);
+        setTotal(typeof json.total === "number" ? json.total : (json.subscribers ?? []).length);
+        setHasMore(Boolean(json.has_more));
+        setLastSyncedAt(json.lastSyncedAt ?? null);
       } catch (e) {
         if (cancelled || (e instanceof Error && e.name === "AbortError")) return;
         setError(e instanceof Error ? e.message : "Failed to load subscribers.");
-        if (!cancelled) setSubscribers([]);
+        if (!cancelled) {
+          setSubscribers([]);
+          setTotal(null);
+          setHasMore(false);
+          setLastSyncedAt(null);
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
-    void loadAllPages();
+    void load();
     return () => {
       cancelled = true;
       ac.abort();
     };
   }, [ofUserId, reloadTick]);
+
+  async function syncNow() {
+    if (!ofUserId.trim()) return;
+    setSyncing(true);
+    setSyncMessage(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/sync-of-subscribers", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ofAccountId: ofUserId.trim(),
+          modelName: modelName.trim(),
+        }),
+      });
+      const json = (await res.json().catch(() => ({}))) as { success?: boolean; error?: string; synced?: number; errors?: number };
+      if (!res.ok || !json.success) {
+        throw new Error(json.error ?? `Sync failed (${res.status})`);
+      }
+      const parts: string[] = [];
+      if (typeof json.synced === "number") parts.push(`${json.synced} updated`);
+      if (typeof json.errors === "number" && json.errors > 0) parts.push(`${json.errors} errors`);
+      setSyncMessage(parts.length ? parts.join(" · ") : "Sync complete.");
+      setReloadTick((n) => n + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sync failed.");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   if (!ofUserId.trim()) {
     return <p className="text-sm text-white/45">No OF account linked for {modelName}.</p>;
@@ -175,6 +213,10 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
   const high = countHigh(subscribers);
   const freeloaders = countFreeloaders(subscribers);
   const showPartialProgress = loading && subscribers.length > 0;
+  const totalLabel =
+    total != null && total > subscribers.length
+      ? `${subscribers.length} shown · ${total} total`
+      : `${subscribers.length} total`;
 
   return (
     <section
@@ -186,30 +228,42 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         <h2 className="text-lg font-semibold tracking-tight text-white">
           <span aria-hidden>👥 </span>Subscribers
         </h2>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex items-center gap-1.5">
+        <div className="flex flex-col items-end gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+          <p className="text-[11px] text-white/45">
+            Last synced: <span className="text-white/70">{formatLastSynced(lastSyncedAt)}</span>
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
             {loading && subscribers.length === 0 ? (
               <span className="h-7 w-16 animate-pulse rounded-full bg-white/10" />
             ) : (
               <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-3 py-1 text-xs font-semibold text-pink-100">
-                {subscribers.length} total
+                {totalLabel}
               </span>
             )}
+            {hasMore ? (
+              <span className="text-[10px] text-amber-200/80">More rows in Airtable — increase limit or filter later.</span>
+            ) : null}
             <button
               type="button"
-              onClick={() => {
-                bustThisRunRef.current = true;
-                setReloadTick((n) => n + 1);
-              }}
+              onClick={() => setReloadTick((n) => n + 1)}
               disabled={loading || !ofUserId.trim()}
               className="h-7 shrink-0 rounded-md px-1.5 text-[11px] font-medium text-white/35 transition hover:bg-white/[0.06] hover:text-white/75 disabled:cursor-not-allowed disabled:opacity-40"
             >
               ↻ Refresh
             </button>
-          </span>
+            <button
+              type="button"
+              onClick={() => void syncNow()}
+              disabled={syncing || loading || !ofUserId.trim()}
+              className="h-7 shrink-0 rounded-md border border-pink-500/35 bg-pink-500/15 px-2.5 text-[11px] font-semibold text-pink-100 transition hover:bg-pink-500/25 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              {syncing ? "Syncing…" : "Sync now"}
+            </button>
+          </div>
         </div>
       </div>
 
+      {syncMessage ? <p className="mt-2 text-xs text-emerald-200/90">{syncMessage}</p> : null}
       {error ? <p className="mt-3 text-sm text-red-400/90">{error}</p> : null}
 
       {showPartialProgress ? (
@@ -267,7 +321,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
           </motion.ul>
 
           {sorted.length === 0 && !loading && !error ? (
-            <p className="mt-4 text-sm text-white/45">No subscribers returned.</p>
+            <p className="mt-4 text-sm text-white/45">No subscribers in Airtable yet. Use Sync now to pull from OnlyFans.</p>
           ) : null}
         </>
       )}

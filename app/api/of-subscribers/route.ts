@@ -1,148 +1,56 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { categorizeSubscriber, parseSubscriber } from "@/services/of-subscribers";
+import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import { OF_SUBSCRIBERS_TABLE } from "@/lib/airtable-schema";
+import {
+  categorizeSubscriber,
+  parseSubscriber,
+  type OFSubscriberCategory,
+} from "@/services/of-subscribers";
 
 export const runtime = "nodejs";
-export const revalidate = 1800; // 30 minutes
 
-const MCP_BASE_URL = "https://theonlyapi.com/mcp";
+const CACHE_CONTROL = "private, max-age=60, stale-while-revalidate=120";
 
-const CACHE_CONTROL = "private, max-age=1800, stale-while-revalidate=300";
-
-const NEXT_FETCH_REVALIDATE = { next: { revalidate: 1800 } } as const;
-
-function buildSubscriberRows(rawSubs: unknown[]) {
-  return rawSubs.map((s) => {
-    const sub = parseSubscriber(s as Record<string, unknown>);
-    return { ...sub, category: categorizeSubscriber(sub) };
-  });
-}
-
-type SubscriberPayload = {
-  subscribers: ReturnType<typeof buildSubscriberRows>;
-  has_more: boolean;
+type RowFields = {
+  of_user_id?: number;
+  of_account_id?: string;
+  display_name?: string;
+  username?: string;
+  subscribed_at?: string;
+  expires_at?: string;
+  total_spent?: number;
+  category?: string;
+  last_synced_at?: string;
 };
 
-function parseToolResponseToPayload(toolRaw: string): SubscriberPayload | null {
-  try {
-    const dataLine = toolRaw.split("\n").find((line) => line.startsWith("data:"));
-    if (!dataLine) return null;
-
-    const jsonStr = dataLine.slice(5).trim();
-    const mcpResult = JSON.parse(jsonStr) as {
-      result?: {
-        content?: Array<{ type: string; text?: string }>;
-        structuredContent?: unknown;
-      };
-    };
-
-    const textBlock = mcpResult.result?.content?.find((c) => c.type === "text");
-    if (!textBlock?.text) return null;
-
-    const payload = JSON.parse(textBlock.text) as {
-      subscribers?: unknown[];
-      page?: { has_more?: boolean };
-    };
-
-    const rawSubs = payload.subscribers ?? [];
-    const subscribers = buildSubscriberRows(rawSubs);
-    const has_more = payload.page?.has_more ?? false;
-    return { subscribers, has_more };
-  } catch {
-    return null;
-  }
+function escapeFormulaString(s: string): string {
+  return s.replace(/"/g, '""');
 }
 
-async function fetchSubscribersFromMcp(
-  mcpUrl: string,
-  ofUserId: string,
-  limit: number,
-  offset: number,
-  THE_ONLY_API_KEY: string
-): Promise<{ ok: boolean; status: number; payload: SubscriberPayload | null }> {
-  const authHeader = `Bearer ${THE_ONLY_API_KEY}`;
-
-  const initRes = await fetch(mcpUrl, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "initialize",
-      params: {
-        protocolVersion: "2024-11-05",
-        capabilities: {},
-        clientInfo: { name: "gunzo-dashboard", version: "1.0.0" },
-      },
-    }),
-    ...NEXT_FETCH_REVALIDATE,
+function mapRecord(rec: AirtableRecord<RowFields>) {
+  const f = rec.fields;
+  const sub = parseSubscriber({
+    of_user_id: f.of_user_id,
+    username: f.username,
+    display_name: f.display_name,
+    subscribed_at: f.subscribed_at,
+    expires_at: f.expires_at,
+    total_spent: f.total_spent,
   });
+  const cat = (f.category as OFSubscriberCategory | undefined) ?? categorizeSubscriber(sub);
+  return { ...sub, category: cat };
+}
 
-  const sessionId =
-    initRes.headers.get("mcp-session-id") ??
-    initRes.headers.get("Mcp-Session-Id") ??
-    initRes.headers.get("MCP-Session-Id") ??
-    "";
-
-  await initRes.text();
-
-  if (sessionId) {
-    await fetch(mcpUrl, {
-      method: "POST",
-      headers: {
-        Authorization: authHeader,
-        "Content-Type": "application/json",
-        Accept: "application/json, text/event-stream",
-        "mcp-session-id": sessionId,
-      },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        method: "notifications/initialized",
-      }),
-      ...NEXT_FETCH_REVALIDATE,
-    }).catch(() => {});
+function maxIso(dates: (string | undefined)[]): string | null {
+  let best: number | null = null;
+  for (const d of dates) {
+    if (!d || typeof d !== "string") continue;
+    const t = new Date(d).getTime();
+    if (Number.isNaN(t)) continue;
+    if (best === null || t > best) best = t;
   }
-
-  const toolRes = await fetch(mcpUrl, {
-    method: "POST",
-    headers: {
-      Authorization: authHeader,
-      "Content-Type": "application/json",
-      Accept: "application/json, text/event-stream",
-      ...(sessionId ? { "mcp-session-id": sessionId } : {}),
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 2,
-      method: "tools/call",
-      params: {
-        name: "of_list_subscribers",
-        arguments: {
-          of_user_id: ofUserId,
-          limit,
-          offset,
-          type: "all",
-        },
-      },
-    }),
-    ...NEXT_FETCH_REVALIDATE,
-  });
-
-  const toolRaw = await toolRes.text();
-  if (!toolRes.ok) {
-    return { ok: false, status: toolRes.status, payload: null };
-  }
-
-  const payload = parseToolResponseToPayload(toolRaw);
-  return {
-    ok: true,
-    status: toolRes.status,
-    payload: payload ?? { subscribers: [], has_more: false },
-  };
+  return best === null ? null : new Date(best).toISOString();
 }
 
 export async function GET(req: Request) {
@@ -163,29 +71,32 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Invalid of_user_id." }, { status: 400 });
   }
 
-  const limit = Math.min(100, Math.max(1, Number(searchParams.get("limit")) || 100));
+  const limit = Math.min(1000, Math.max(1, Number(searchParams.get("limit")) || 100));
   const offset = Math.max(0, Number(searchParams.get("offset")) || 0);
 
-  const bust = searchParams.get("bust");
-  const mcpUrl =
-    bust === "1"
-      ? `${MCP_BASE_URL}${MCP_BASE_URL.includes("?") ? "&" : "?"}_=${Date.now()}`
-      : MCP_BASE_URL;
+  const esc = escapeFormulaString(ofUserId);
+  const filterByFormula = `{of_account_id} = "${esc}"`;
 
-  const THE_ONLY_API_KEY = process.env.THE_ONLY_API_KEY ?? "";
-  if (!THE_ONLY_API_KEY) {
-    return NextResponse.json({ error: "THE_ONLY_API_KEY is not configured." }, { status: 503 });
+  let records: AirtableRecord<RowFields>[] = [];
+  try {
+    records = await listAllRecords<RowFields>(OF_SUBSCRIBERS_TABLE, {
+      filterByFormula,
+      sort: [{ field: "total_spent", direction: "desc" }],
+      _caller: "of-subscribers-get",
+    });
+  } catch (e) {
+    console.error("[of-subscribers]", e);
+    return NextResponse.json({ error: "Failed to load subscribers from Airtable." }, { status: 500 });
   }
 
-  const mcp = await fetchSubscribersFromMcp(mcpUrl, ofUserId, limit, offset, THE_ONLY_API_KEY);
+  const total = records.length;
+  const page = records.slice(offset, offset + limit);
+  const subscribers = page.map(mapRecord);
+  const has_more = offset + limit < total;
+  const lastSyncedAt = maxIso(records.map((r) => r.fields.last_synced_at));
 
-  if (!mcp.ok) {
-    return NextResponse.json({ error: `TheOnlyAPI HTTP ${mcp.status}` }, { status: 502 });
-  }
-
-  const body: SubscriberPayload = mcp.payload ?? { subscribers: [], has_more: false };
-
-  return NextResponse.json(body, {
-    headers: { "Cache-Control": CACHE_CONTROL },
-  });
+  return NextResponse.json(
+    { subscribers, has_more, total, lastSyncedAt },
+    { headers: { "Cache-Control": CACHE_CONTROL } }
+  );
 }
