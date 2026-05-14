@@ -123,7 +123,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
             limit: String(PAGE_LIMIT),
             offset: String(offset),
           });
-          if (useBust) qs.set("bust", "1");
+          if (useBust && offset === 0) qs.set("bust", "1");
           const res = await fetch(`/api/of-subscribers?${qs.toString()}`, {
             credentials: "include",
             signal: ac.signal,
@@ -195,9 +195,9 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
               setReloadTick((n) => n + 1);
             }}
             disabled={loading || !ofUserId.trim()}
-            className="rounded-lg border border-white/10 bg-transparent px-2.5 py-1 text-xs font-medium text-white/55 transition hover:border-white/20 hover:bg-white/[0.06] hover:text-white/80 disabled:cursor-not-allowed disabled:opacity-40"
+            className="h-7 rounded-md px-2 text-xs font-medium text-white/50 transition hover:bg-white/[0.06] hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Refresh
+            ↻ Refresh
           </button>
         </div>
       </div>

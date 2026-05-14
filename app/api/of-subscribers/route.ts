@@ -2,17 +2,19 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { categorizeSubscriber, parseSubscriber } from "@/services/of-subscribers";
 
+type SubscriberCacheData = { subscribers: unknown[]; has_more: boolean };
+
 type CachedPayload = {
   subscribers: ReturnType<typeof buildSubscriberRows>;
   has_more: boolean;
 };
 
-const subscriberCache = new Map<string, { data: CachedPayload; fetchedAt: number }>();
+const subscriberCache = new Map<string, { data: SubscriberCacheData; fetchedAt: number }>();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
 const CACHE_CONTROL = "private, max-age=1800, stale-while-revalidate=300";
 
-function jsonWithCache(body: CachedPayload): NextResponse {
+function jsonWithCache(body: SubscriberCacheData): NextResponse {
   return NextResponse.json(body, {
     headers: { "Cache-Control": CACHE_CONTROL },
   });
