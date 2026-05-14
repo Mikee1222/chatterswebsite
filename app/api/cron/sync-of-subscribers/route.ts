@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { syncAllAccounts } from "@/services/of-sync";
 import { listAllModelss } from "@/services/modelss";
 
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 function isCronAuthorized(request: Request): boolean {

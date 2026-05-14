@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { syncAllAccounts, syncSubscribersForAccount } from "@/services/of-sync";
 
+export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 /**
