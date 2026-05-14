@@ -13,7 +13,11 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
   const [error, setError] = React.useState<string | null>(null);
 
   async function onSync() {
-    if (!ofAccountId.trim()) return;
+    console.log("[sync-button] ofAccountId:", ofAccountId, "modelName:", modelName);
+    if (!ofAccountId.trim()) {
+      console.log("[sync-button] BLOCKED: ofAccountId is empty");
+      return;
+    }
     setLoading(true);
     setMessage(null);
     setError(null);
