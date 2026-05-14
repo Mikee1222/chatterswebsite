@@ -389,11 +389,19 @@ export async function deleteRecord(tableName: string, recordId: string): Promise
   invalidateListRecordsReadCacheForTable(tableName);
 }
 
-/** Fetch all pages of records. */
+/** Fetch all pages of records. For table `users` with no filter/sort/field slice, results are cached 5 minutes (see USERS_CACHE_TTL_MS). */
 export async function listAllRecords<T = Record<string, unknown>>(
   tableName: string,
   params: Omit<ListParams, "offset"> = {}
 ): Promise<AirtableRecord<T>[]> {
+  const cacheUsersFullList = isUsersTableFullListParams(tableName, params);
+  if (cacheUsersFullList && usersCache) {
+    const age = Date.now() - usersCache.fetchedAt;
+    if (age < USERS_CACHE_TTL_MS) {
+      return cloneAirtableRecordArray<T>(usersCache.data as AirtableRecord<T>[]);
+    }
+  }
+
   const all: AirtableRecord<T>[] = [];
   let offset: string | undefined;
   do {
@@ -404,5 +412,13 @@ export async function listAllRecords<T = Record<string, unknown>>(
       await new Promise((r) => setTimeout(r, 100));
     }
   } while (offset);
+
+  if (cacheUsersFullList) {
+    usersCache = {
+      data: cloneAirtableRecordArray(all) as AirtableRecord<unknown>[],
+      fetchedAt: Date.now(),
+    };
+  }
+
   return all;
 }

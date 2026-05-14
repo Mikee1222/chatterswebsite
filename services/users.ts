@@ -68,6 +68,7 @@ export async function listUsers(params: ListParams = {}) {
   return { users: records.map((r) => mapRecord(r)), offset };
 }
 
+/** All users (full table). Uses a 5-minute in-memory cache in `listAllRecords` for the `users` table — see `lib/airtable-server.ts`. */
 export async function listAllUsers(): Promise<UserRecord[]> {
   const records = await listAllRecords<Fields>(TABLE, {});
   return records.map((r) => mapRecord(r));
