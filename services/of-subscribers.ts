@@ -28,7 +28,7 @@ export function categorizeSubscriber(sub: OFSubscriber): OFSubscriberCategory {
   return "freeloader";
 }
 
-function parseSubscriber(raw: Record<string, unknown>): OFSubscriber {
+export function parseSubscriber(raw: Record<string, unknown>): OFSubscriber {
   const spent = Number(raw.total_spent);
   return {
     of_user_id: typeof raw.of_user_id === "number" ? raw.of_user_id : Number(raw.of_user_id),
