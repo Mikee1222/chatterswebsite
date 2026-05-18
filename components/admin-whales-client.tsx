@@ -4,7 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   Activity,
   Check,
@@ -1196,8 +1196,6 @@ function buildWhalesSearchParams(filters: AdminWhalesInitialFilters, offset?: st
 
 export function AdminWhalesClient({
   whales: initialWhales,
-  nextOffset,
-  pageSize,
   statusCounts,
   chatters,
   modelOptions,
@@ -1208,7 +1206,6 @@ export function AdminWhalesClient({
   headerVariant = "admin",
 }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   const [localWhales, setLocalWhales] = React.useState<Whale[]>(initialWhales);
   const [filterChatter, setFilterChatter] = React.useState(initialFilters.chatter ?? "");
@@ -1308,26 +1305,8 @@ export function AdminWhalesClient({
     [scheduleUrlUpdate]
   );
 
-  const currentOffset = searchParams.get("offset");
-  const hasNext = !!nextOffset;
-  const hasPrev = !!currentOffset;
   const clientPageCount = Math.max(1, Math.ceil(localWhales.length / CLIENT_PAGE_SIZE));
   const visibleWhales = localWhales.slice(cardPage * CLIENT_PAGE_SIZE, (cardPage + 1) * CLIENT_PAGE_SIZE);
-
-  const goToFirst = React.useCallback(() => {
-    pushFiltersToUrl(
-      { chatter: filterChatter, model: filterModel, relationship: filterRelationship, status: filterStatus, q: filterSearch },
-      null
-    );
-  }, [pushFiltersToUrl, filterChatter, filterModel, filterRelationship, filterStatus, filterSearch]);
-
-  const goToNext = React.useCallback(() => {
-    if (!nextOffset) return;
-    pushFiltersToUrl(
-      { chatter: filterChatter, model: filterModel, relationship: filterRelationship, status: filterStatus, q: filterSearch },
-      nextOffset
-    );
-  }, [nextOffset, pushFiltersToUrl, filterChatter, filterModel, filterRelationship, filterStatus, filterSearch]);
 
   const maxModelRev = Math.max(1, ...revenueByModel.map(([, v]) => v));
   const maxChatterRev = Math.max(1, ...revenueByChatter.map(([, v]) => v));
@@ -1939,47 +1918,26 @@ export function AdminWhalesClient({
           )}
         </div>
 
-        <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+        <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4">
           <p className="text-sm text-white/60">
             Page {cardPage + 1} of {clientPageCount}
-            {hasNext ? " · more available" : ""}
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {clientPageCount > 1 ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setCardPage((p) => Math.max(0, p - 1))}
-                  disabled={cardPage <= 0}
-                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  ← Prev
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCardPage((p) => Math.min(clientPageCount - 1, p + 1))}
-                  disabled={cardPage >= clientPageCount - 1}
-                  className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
-                >
-                  Next →
-                </button>
-              </>
-            ) : null}
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={goToFirst}
-              disabled={!hasPrev}
-              className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
+              onClick={() => setCardPage((p) => Math.max(0, p - 1))}
+              disabled={cardPage <= 0}
+              className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
             >
-              First
+              ← Prev
             </button>
             <button
               type="button"
-              onClick={goToNext}
-              disabled={!hasNext}
-              className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
+              onClick={() => setCardPage((p) => Math.min(clientPageCount - 1, p + 1))}
+              disabled={cardPage >= clientPageCount - 1}
+              className="rounded-lg border border-white/15 bg-white/5 px-4 py-2 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-40"
             >
-              Next load
+              Next →
             </button>
           </div>
         </div>
