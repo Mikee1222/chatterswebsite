@@ -149,9 +149,11 @@ function InlinePopover({
 
   return (
     <div
-      className={`absolute left-0 top-full z-[9999] mt-1 max-h-[min(360px,70vh)] min-w-full overflow-y-auto rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl transition-opacity duration-150 ${className}`}
+      className={`absolute left-0 top-full z-[9999] mt-1 max-h-[min(400px,80vh)] min-w-full overflow-y-auto rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl transition-opacity duration-150 ${className}`}
       style={{
         boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 12px 32px -8px rgba(0,0,0,0.6)",
+        position: "absolute",
+        zIndex: 9999,
       }}
     >
       {children}
@@ -216,7 +218,7 @@ function ModelCell({
           onChange={(e) => setSearch(e.target.value)}
           className="!min-h-10 py-2 text-sm"
         />
-        <div className="max-h-52 overflow-y-auto">
+        <div className="max-h-[200px] overflow-y-auto overscroll-contain">
           <button
             type="button"
             onClick={() => handleSelect(null)}
@@ -305,7 +307,7 @@ function ChatterCell({
           {saving ? <span className="text-[10px] text-white/40">Saving…</span> : <span className="text-white/40">▾</span>}
         </button>
       )}
-      <InlinePopover open={open} onClose={() => setOpen(false)} wrapperRef={wrapperRef} className="min-w-[200px] p-2">
+      <InlinePopover open={open} onClose={() => setOpen(false)} wrapperRef={wrapperRef} className="min-w-[220px] p-2 z-[9999]">
         <FormInput
           type="text"
           placeholder="Search chatters…"
@@ -313,7 +315,7 @@ function ChatterCell({
           onChange={(e) => setSearch(e.target.value)}
           className="!min-h-10 py-2 text-sm"
         />
-        <div className="max-h-52 overflow-y-auto">
+        <div className="max-h-[200px] overflow-y-auto overscroll-contain">
           <button
             type="button"
             onClick={() => handleSelect(null)}
