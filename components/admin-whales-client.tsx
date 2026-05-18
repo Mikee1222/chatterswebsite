@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -121,43 +122,67 @@ function Badge({
   );
 }
 
-/** Inline popover anchored to trigger – stays in table cell, no portal. Use for table dropdowns. */
+/** Inline popover portaled to document.body – avoids overflow clipping in table cards. */
 function InlinePopover({
   open,
   onClose,
   wrapperRef,
   children,
   className = "",
+  openUpward = false,
 }: {
   open: boolean;
   onClose: () => void;
   wrapperRef: React.RefObject<HTMLDivElement | null>;
   children: React.ReactNode;
   className?: string;
+  openUpward?: boolean;
 }) {
+  const [pos, setPos] = React.useState<{ top?: number; bottom?: number; left: number; width: number } | null>(null);
+  const popoverRef = React.useRef<HTMLDivElement>(null);
+
+  React.useLayoutEffect(() => {
+    if (!open || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const goUp = openUpward || spaceBelow < 200;
+    if (goUp) {
+      setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 200) });
+    } else {
+      setPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 200) });
+    }
+  }, [open, wrapperRef, openUpward]);
+
   React.useEffect(() => {
     if (!open) return;
     const onOutside = (e: MouseEvent) => {
-      if (wrapperRef.current?.contains(e.target as Node)) return;
+      const target = e.target as Node;
+      if (wrapperRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
       onClose();
     };
     document.addEventListener("mousedown", onOutside);
     return () => document.removeEventListener("mousedown", onOutside);
   }, [open, onClose, wrapperRef]);
 
-  if (!open) return null;
+  if (!open || !pos) return null;
 
-  return (
+  return createPortal(
     <div
-      className={`absolute left-0 top-full z-[9999] mt-1 max-h-[min(400px,80vh)] min-w-full overflow-y-auto rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl transition-opacity duration-150 ${className}`}
+      ref={popoverRef}
+      className={`fixed z-[10050] overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl ${className}`}
       style={{
-        boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 12px 32px -8px rgba(0,0,0,0.6)",
-        position: "absolute",
-        zIndex: 9999,
+        top: pos.top,
+        bottom: pos.bottom,
+        left: pos.left,
+        minWidth: pos.width,
+        maxHeight: "min(360px, 70vh)",
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 12px 32px -8px rgba(0,0,0,0.8)",
       }}
     >
       {children}
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -1088,7 +1113,8 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                   open={quickActionsOpen}
                   onClose={() => setQuickActionsOpen(false)}
                   wrapperRef={quickActionsRef}
-                  className="w-52 py-1 bottom-full mb-1 top-auto"
+                  openUpward
+                  className="w-52 py-1"
                 >
                   <button
                     type="button"
