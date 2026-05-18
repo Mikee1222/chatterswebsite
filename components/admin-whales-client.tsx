@@ -989,7 +989,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
           <span className={`shrink-0 rounded-lg px-2 py-1 text-xs font-medium ${statusChipClass}`}>{whale.status}</span>
         </div>
 
-        <div className="mb-4 grid grid-cols-3 gap-2">
+        <div className="mb-4 grid grid-cols-3 gap-2 items-end">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Model</p>
             <div className="mt-1.5">
@@ -1035,7 +1035,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                   value={whale.relationship_status || ""}
                   disabled={relSaving}
                   placeholder="—"
-                  className="!min-h-0 !py-1.5 !px-2.5 !text-sm"
+                  triggerClassName="!h-auto !min-h-0 !py-1.5 !px-2.5 !text-sm !rounded-lg !w-full"
                   options={[
                     { value: "", label: "—" },
                     ...RELATIONSHIP_STATUS_OPTIONS.map((o) => ({ value: o, label: label(o) })),
