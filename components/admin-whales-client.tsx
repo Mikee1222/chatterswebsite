@@ -989,12 +989,13 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
           <span className={`shrink-0 rounded-lg px-2 py-1 text-xs font-medium ${statusChipClass}`}>{whale.status}</span>
         </div>
 
-        <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="mb-4 grid grid-cols-3 gap-2">
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Model</p>
-            <p className="mt-1 truncate text-sm font-medium text-white">{whale.assigned_model_name?.trim() || "—"}</p>
-            {!readOnly ? (
-              <div className="mt-2">
+            <div className="mt-1.5">
+              {readOnly ? (
+                <p className="text-sm font-medium text-white">{whale.assigned_model_name?.trim() || "—"}</p>
+              ) : (
                 <ModelCell
                   whale={whale}
                   modelOptions={modelOptions}
@@ -1002,14 +1003,15 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                   onClear={onClearModel}
                   unassignedLabel="Assign model"
                 />
-              </div>
-            ) : null}
+              )}
+            </div>
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Chatter</p>
-            <p className="mt-1 truncate text-sm font-medium text-white">{whale.assigned_chatter_name?.trim() || "—"}</p>
-            {!readOnly ? (
-              <div className="mt-2">
+            <div className="mt-1.5">
+              {readOnly ? (
+                <p className="text-sm font-medium text-white">{whale.assigned_chatter_name?.trim() || "—"}</p>
+              ) : (
                 <ChatterCell
                   whale={whale}
                   chatters={chatters}
@@ -1017,8 +1019,8 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                   onClear={onClearChatter}
                   unassignedLabel="Assign chatter"
                 />
-              </div>
-            ) : null}
+              )}
+            </div>
           </div>
           <div>
             <p className="text-xs font-medium uppercase tracking-wider text-white/40">Relationship</p>
