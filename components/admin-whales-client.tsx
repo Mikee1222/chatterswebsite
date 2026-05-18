@@ -1226,7 +1226,7 @@ export function AdminWhalesClient({
   const [whalePendingDelete, setWhalePendingDelete] = React.useState<Whale | null>(null);
   const [confirmingWhaleDelete, setConfirmingWhaleDelete] = React.useState(false);
 
-  const CLIENT_PAGE_SIZE = 24;
+  const CLIENT_PAGE_SIZE = 25;
 
   const closeHistorySheet = React.useCallback(() => {
     setHistoryWhale(null);
@@ -1943,9 +1943,9 @@ export function AdminWhalesClient({
 
         <div className="mt-6 flex flex-col gap-3 border-t border-white/10 pt-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
           <p className="text-sm text-white/60">
-            Cards {cardRangeStart}–{cardRangeEnd} of {localWhales.length} on this load (up to {pageSize} from server)
-            {clientPageCount > 1 ? ` · page ${cardPage + 1} / ${clientPageCount}` : ""}
-            {hasNext ? " · more available (Next)" : ""}
+            Σελίδα {cardPage + 1} / {clientPageCount}
+            {" · "}whales {cardRangeStart}–{cardRangeEnd} από {localWhales.length}
+            {hasNext ? " · υπάρχουν κι άλλα →" : ""}
           </p>
           <div className="flex flex-wrap items-center gap-2">
             {clientPageCount > 1 ? (
@@ -1956,7 +1956,7 @@ export function AdminWhalesClient({
                   disabled={cardPage <= 0}
                   className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  Prev cards
+                  ← Προηγούμενη
                 </button>
                 <button
                   type="button"
@@ -1964,7 +1964,7 @@ export function AdminWhalesClient({
                   disabled={cardPage >= clientPageCount - 1}
                   className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
                 >
-                  Next cards
+                  Επόμενη →
                 </button>
               </>
             ) : null}
@@ -1974,7 +1974,7 @@ export function AdminWhalesClient({
               disabled={!hasPrev}
               className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
             >
-              First
+              ⟪ Αρχή
             </button>
             <button
               type="button"
@@ -1982,7 +1982,7 @@ export function AdminWhalesClient({
               disabled={!hasNext}
               className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 disabled:pointer-events-none disabled:opacity-50"
             >
-              Next load
+              Φόρτωσε περισσότερα ⟫
             </button>
           </div>
         </div>
