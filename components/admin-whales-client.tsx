@@ -6,6 +6,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Activity,
+  Check,
+  Copy,
   DollarSign,
   Filter,
   Heart,
@@ -147,7 +149,7 @@ function InlinePopover({
 
   return (
     <div
-      className={`absolute left-0 top-full z-[9999] mt-1 max-h-[min(280px,70vh)] min-w-full overflow-y-auto rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl transition-opacity duration-150 ${className}`}
+      className={`absolute left-0 top-full z-[9999] mt-1 max-h-[min(360px,70vh)] min-w-full overflow-y-auto rounded-xl border border-white/10 bg-black/95 shadow-xl backdrop-blur-xl transition-opacity duration-150 ${className}`}
       style={{
         boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 12px 32px -8px rgba(0,0,0,0.6)",
       }}
@@ -177,8 +179,8 @@ function ModelCell({
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return modelOptions.slice(0, 30);
-    return modelOptions.filter((m) => m.name.toLowerCase().includes(q)).slice(0, 30);
+    if (!q) return modelOptions;
+    return modelOptions.filter((m) => m.name.toLowerCase().includes(q));
   }, [modelOptions, search]);
 
   const hasModel = !!(whale.assigned_model_id?.trim() || whale.assigned_model_name?.trim());
@@ -262,8 +264,8 @@ function ChatterCell({
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return chatters.slice(0, 50);
-    return chatters.filter((c) => (c.full_name || c.id).toLowerCase().includes(q)).slice(0, 50);
+    if (!q) return chatters;
+    return chatters.filter((c) => (c.full_name || c.id).toLowerCase().includes(q));
   }, [chatters, search]);
 
   const hasChatter = !!(whale.assigned_chatter_id?.trim() || whale.assigned_chatter_name?.trim());
@@ -857,6 +859,31 @@ function AdminEditWhaleModal({
   );
 }
 
+function CopyUsernameButton({ username }: { username: string }) {
+  const [copied, setCopied] = React.useState(false);
+  function handleCopy(e: React.MouseEvent) {
+    e.stopPropagation();
+    void navigator.clipboard.writeText(username).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      title="Copy username"
+      className="shrink-0 rounded-md p-0.5 text-white/30 transition-colors hover:bg-white/10 hover:text-white/70"
+    >
+      {copied ? (
+        <Check className="h-3.5 w-3.5 text-emerald-400" />
+      ) : (
+        <Copy className="h-3.5 w-3.5" />
+      )}
+    </button>
+  );
+}
+
 const WhaleAdminCard = React.memo(function WhaleAdminCard({
   whale,
   rowIndex,
@@ -916,7 +943,12 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                 {avatarLetter}
               </div>
               <div className="min-w-0">
-                <h3 className="truncate text-base font-semibold text-white">{whale.username || "—"}</h3>
+                <div className="flex min-w-0 items-center gap-1.5">
+                  <h3 className="truncate text-base font-semibold text-white">{whale.username || "—"}</h3>
+                  {whale.username?.trim() ? (
+                    <CopyUsernameButton username={whale.username} />
+                  ) : null}
+                </div>
                 <p className="truncate font-mono text-xs text-white/30">{whale.whale_id || "—"}</p>
                 {whale.created_by?.trim() ? (
                   <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-white/20">
@@ -973,6 +1005,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                   value={whale.relationship_status || ""}
                   disabled={relSaving}
                   placeholder="—"
+                  className="!min-h-0 !py-1.5 !px-2.5 !text-sm"
                   options={[
                     { value: "", label: "—" },
                     ...RELATIONSHIP_STATUS_OPTIONS.map((o) => ({ value: o, label: label(o) })),
