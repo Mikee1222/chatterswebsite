@@ -8,7 +8,7 @@ import { listAllModelss } from "@/services/modelss";
 import { AdminWhalesClient } from "@/components/admin-whales-client";
 import type { Whale } from "@/types";
 
-const PAGE_SIZE = 50;
+const PAGE_SIZE = 200;
 
 function aggregateRevenueByModel(transactions: { model_name?: string; amount?: number }[]) {
   const byModel: Record<string, number> = {};

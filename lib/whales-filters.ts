@@ -17,7 +17,7 @@ export type WhalesListFilters = {
   usernameSearch?: string;
 };
 
-export const WHALES_DEFAULT_PAGE_SIZE = 50;
+export const WHALES_DEFAULT_PAGE_SIZE = 200;
 
 /**
  * Build Airtable filterByFormula for whales table.
