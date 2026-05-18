@@ -1004,6 +1004,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                 </Badge>
               ) : (
                 <CustomSelect
+                  portaled={true}
                   value={whale.relationship_status || ""}
                   disabled={relSaving}
                   placeholder="—"
@@ -1087,7 +1088,7 @@ const WhaleAdminCard = React.memo(function WhaleAdminCard({
                   open={quickActionsOpen}
                   onClose={() => setQuickActionsOpen(false)}
                   wrapperRef={quickActionsRef}
-                  className="w-52 py-1"
+                  className="w-52 py-1 bottom-full mb-1 top-auto"
                 >
                   <button
                     type="button"
@@ -1466,6 +1467,7 @@ export function AdminWhalesClient({
       <div className="min-w-0 flex-1 md:min-w-[160px]">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Chatter</p>
         <CustomSelect
+          portaled={true}
           value={filterChatter}
           onChange={(v) => onFilterChange({ chatter: v })}
           options={chatterFilterOptions}
@@ -1475,6 +1477,7 @@ export function AdminWhalesClient({
       <div className="min-w-0 flex-1 md:min-w-[160px]">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Model</p>
         <CustomSelect
+          portaled={true}
           value={filterModel}
           onChange={(v) => onFilterChange({ model: v })}
           options={modelFilterOptionsSelect}
@@ -1484,6 +1487,7 @@ export function AdminWhalesClient({
       <div className="min-w-0 flex-1 md:min-w-[150px]">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Relationship</p>
         <CustomSelect
+          portaled={true}
           value={filterRelationship}
           onChange={(v) => onFilterChange({ relationship: v })}
           options={relationshipFilterOptions}
@@ -1493,6 +1497,7 @@ export function AdminWhalesClient({
       <div className="min-w-0 flex-1 md:min-w-[150px]">
         <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Status</p>
         <CustomSelect
+          portaled={true}
           value={filterStatus}
           onChange={(v) => onFilterChange({ status: v })}
           options={statusFilterOptions}
