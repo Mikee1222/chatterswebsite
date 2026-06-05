@@ -23,7 +23,6 @@ import { canSubmitPayment } from "@/lib/billing-status";
 import { SUPPORTED_SOLANA_TOKENS, type SolanaToken } from "@/lib/currency";
 import { ROUTES } from "@/lib/routes";
 import { ClientPaymentMethodCard } from "./payment-method-card";
-import { uploadClientPaymentProof } from "@/lib/client-proof-upload";
 
 type ProofFilePickerProps = {
   value: File | null;
@@ -41,7 +40,7 @@ function ProofFilePicker({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const isAllowedType = (file: File) =>
-    file.type === "application/pdf" || file.type.startsWith("image/");
+    ["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(file.type);
 
   const openPicker = () => inputRef.current?.click();
 
@@ -275,6 +274,9 @@ export function PaymentForm({
   const [manualAmountEdit, setManualAmountEdit] = useState(false);
   const [manualAmountValue, setManualAmountValue] = useState<string>("");
   const [proofFile, setProofFile] = useState<File | null>(null);
+  const [proofUrl, setProofUrl] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   const dueAmount = billingCycle ? getCycleAmountDue(billingCycle) : 0;
   const cycleCurrency = (billingCycle?.currency ?? "USD").toString().toUpperCase();
@@ -648,6 +650,7 @@ export function PaymentForm({
           const hasData =
             !!selectedPaymentMethodId ||
             !!proofFile ||
+            !!proofUrl ||
             (typeof notes === "string" && notes.trim().length > 0);
           setHasUnsavedData(hasData);
         }
@@ -667,7 +670,37 @@ export function PaymentForm({
         };
       }
     }
-  }, [proofFile, selectedPaymentMethodId]);
+  }, [proofFile, proofUrl, selectedPaymentMethodId]);
+
+  const handleProofFileChange = useCallback(async (file: File | null) => {
+    setProofFile(file);
+    setUploadError("");
+    setProofUrl("");
+
+    if (!file) return;
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/client/upload-proof", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Upload failed");
+      }
+      setProofUrl(data.url);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+      setProofFile(null);
+    } finally {
+      setUploading(false);
+    }
+  }, []);
+
+  const proofReady = Boolean(proofUrl);
 
   useEffect(() => {
     if (!hasUnsavedData || success) return;
@@ -738,24 +771,21 @@ export function PaymentForm({
     const notesValue = formData.get("notes");
     const note = typeof notesValue === "string" && notesValue.trim() ? notesValue.trim() : undefined;
 
-    let proofUrl: string | undefined;
-    let proofAttachment: Array<{ url: string; filename?: string }> | undefined;
-
-    if (proofFile) {
-      try {
-        const uploadResult = await uploadClientPaymentProof(proofFile);
-        proofUrl = uploadResult.url;
-        proofAttachment = [{ url: uploadResult.url, filename: uploadResult.filename }];
-      } catch (uploadError) {
-        setError(
-          uploadError instanceof Error
-            ? uploadError.message
-            : "Failed to upload proof. Please try again."
-        );
-        setLoading(false);
-        return;
-      }
+    if (!proofFile && !proofUrl) {
+      setError("Please upload a proof file");
+      setLoading(false);
+      return;
     }
+
+    if (uploading) {
+      setError("Please wait for the proof file to finish uploading");
+      setLoading(false);
+      return;
+    }
+
+    const proofAttachment = proofUrl
+      ? [{ url: proofUrl, filename: proofFile?.name }]
+      : undefined;
 
     try {
       const res = await fetch("/api/client/submit-payment", {
@@ -820,6 +850,8 @@ export function PaymentForm({
       setSuccess(true);
       setHasUnsavedData(false);
       setProofFile(null);
+      setProofUrl("");
+      setUploadError("");
       e.currentTarget.reset();
     } catch (err) {
       console.error("[payment-form] Submit error:", err);
@@ -1574,14 +1606,32 @@ export function PaymentForm({
 
         <div className="group">
           <label className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-violet-400">
-            Proof File (optional)
+            Proof File *
           </label>
           <ProofFilePicker
             value={proofFile}
-            onChange={setProofFile}
-            accept="image/*,.pdf"
+            onChange={(file) => void handleProofFileChange(file)}
+            accept="image/jpeg,image/png,image/webp,.pdf"
             maxMb={10}
           />
+          {uploading && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-violet-300">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Uploading proof file...</span>
+            </div>
+          )}
+          {proofReady && proofFile && !uploading && (
+            <div className="mt-2 flex items-center gap-2 text-sm text-emerald-300">
+              <CheckCircle2 className="h-4 w-4 shrink-0" />
+              <span className="truncate">{proofFile.name}</span>
+            </div>
+          )}
+          {uploadError && (
+            <p className="mt-2 flex items-center gap-1 text-xs text-red-400">
+              <AlertCircle className="h-3 w-3 shrink-0" />
+              <span>{uploadError}</span>
+            </p>
+          )}
         </div>
 
         <div className="flex justify-end space-x-3 pt-4">
@@ -1597,7 +1647,7 @@ export function PaymentForm({
           </button>
           <button
             type="submit"
-            disabled={loading || isLocked}
+            disabled={loading || isLocked || uploading || !proofReady}
             className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/30 transition-all hover:from-violet-500 hover:to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
