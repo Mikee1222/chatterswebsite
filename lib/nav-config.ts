@@ -73,7 +73,8 @@ export type NavIconKey =
   | "Settings2"
   | "Coins"
   | "TrendingUp"
-  | "Info";
+  | "Info"
+  | "CreditCard";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -184,6 +185,7 @@ const adminNav: NavItem[] = [
 
   // ── FINANCE ──
   { href: ROUTES.admin.billing, label: "Billing", iconKey: "Receipt", navSection: "FINANCE" },
+  { href: ROUTES.admin.paymentMethods, label: "Payment Methods", iconKey: "CreditCard" },
   { href: ROUTES.admin.submissions, label: "Submissions", iconKey: "FileText" },
   { href: ROUTES.admin.partnership, label: "Partnership", iconKey: "TrendingUp" },
   { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },

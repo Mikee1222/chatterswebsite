@@ -236,6 +236,9 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   payment_submissions: {
     status: new Set(["pending_review", "approved", "rejected"]),
   },
+  payment_methods: {
+    type: new Set(["Bank", "Crypto"]),
+  },
   billing_cycles: {
     status: new Set(["draft", "announced", "pending_review", "confirmed_paid", "overdue"]),
     kind: new Set(["chatting_weekly", "crm_monthly"]),
@@ -385,6 +388,7 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   spin_wheel_prizes: new Set(["created_at", "updated_at"]),
   spin_wheel_spins: new Set(["updated_at"]),
   model_personal_events: new Set(["created_at"]),
+  payment_methods: new Set(["payment_submissions", "invoices"]),
 };
 
 /** Tables where a normally global-stripped field is a normal writable column. */

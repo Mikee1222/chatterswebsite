@@ -40,6 +40,7 @@ import {
   Coins,
   TrendingUp,
   Info,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
@@ -128,6 +129,7 @@ const ICON_MAP: Partial<Record<NavIconKey, React.ComponentType<{ className?: str
   Coins,
   TrendingUp,
   Info,
+  CreditCard,
 };
 
 function getMobileTitle(pathname: string): string {

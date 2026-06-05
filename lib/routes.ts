@@ -92,6 +92,7 @@ export const ROUTES = {
     accounts: "/admin/accounts",
     clients: "/admin/clients",
     billing: "/admin/billing",
+    paymentMethods: "/admin/payment-methods",
     submissions: "/admin/submissions",
     partnership: "/admin/partnership",
     /** Model operations (modelss) */
