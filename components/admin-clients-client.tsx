@@ -15,6 +15,7 @@ import {
   Loader2,
   Plus,
   Search,
+  Send,
   Users,
   X,
 } from "lucide-react";
@@ -582,6 +583,15 @@ function ClientDetailSheet({
   const [portalPending, setPortalPending] = React.useState(false);
   const [portalAccess, setPortalAccess] = React.useState(client.portal_access);
   const [editingClient, setEditingClient] = React.useState(false);
+  const [editingTelegram, setEditingTelegram] = React.useState(false);
+  const [telegramGroupLink, setTelegramGroupLink] = React.useState(
+    client.telegram_group_link ?? ""
+  );
+  const [telegramGroupName, setTelegramGroupName] = React.useState(
+    client.telegram_group_name ?? ""
+  );
+  const [telegramPending, setTelegramPending] = React.useState(false);
+  const [telegramError, setTelegramError] = React.useState<string | null>(null);
   const [reviewingId, setReviewingId] = React.useState("");
   const [reviewingAction, setReviewingAction] = React.useState<"approved" | "rejected" | "">("");
   const [activeNoteId, setActiveNoteId] = React.useState("");
@@ -635,6 +645,14 @@ function ClientDetailSheet({
   }, [client.portal_access]);
 
   React.useEffect(() => {
+    if (!editingTelegram) {
+      setTelegramGroupLink(client.telegram_group_link ?? "");
+      setTelegramGroupName(client.telegram_group_name ?? "");
+      setTelegramError(null);
+    }
+  }, [client.telegram_group_link, client.telegram_group_name, editingTelegram]);
+
+  React.useEffect(() => {
     const body = document.body;
     const html = document.documentElement;
     const prevOverflow = body.style.overflow;
@@ -675,6 +693,53 @@ function ClientDetailSheet({
       }
     } finally {
       setPortalPending(false);
+    }
+  }
+
+  function handleTelegramCancel() {
+    setTelegramGroupLink(client.telegram_group_link ?? "");
+    setTelegramGroupName(client.telegram_group_name ?? "");
+    setTelegramError(null);
+    setEditingTelegram(false);
+  }
+
+  async function handleTelegramSave(e: React.FormEvent) {
+    e.preventDefault();
+    setTelegramError(null);
+
+    const link = telegramGroupLink.trim();
+    const name = telegramGroupName.trim();
+
+    if (link) {
+      try {
+        new URL(link);
+      } catch {
+        setTelegramError("Enter a valid Telegram group URL.");
+        return;
+      }
+    }
+
+    setTelegramPending(true);
+    try {
+      const res = await fetch(`/api/admin/clients/${client.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telegram_group_link: link,
+          telegram_group_name: name,
+        }),
+      });
+      const data = (await res.json()) as { client?: AdminClientRecord; error?: string };
+      if (!res.ok) {
+        setTelegramError(data.error ?? "Failed to save Telegram details.");
+        return;
+      }
+      if (data.client) onClientUpdated(data.client);
+      setEditingTelegram(false);
+    } catch {
+      setTelegramError("Network error. Try again.");
+    } finally {
+      setTelegramPending(false);
     }
   }
 
@@ -868,6 +933,109 @@ function ClientDetailSheet({
                       </div>
                     ) : null}
                   </div>
+                </section>
+
+                <section>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+                      <Send className="h-3.5 w-3.5" />
+                      Telegram
+                    </div>
+                    {!editingTelegram ? (
+                      <button
+                        type="button"
+                        onClick={() => setEditingTelegram(true)}
+                        className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                  </div>
+                  {editingTelegram ? (
+                    <form
+                      onSubmit={handleTelegramSave}
+                      className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
+                    >
+                      <div>
+                        <Label htmlFor="telegram-group-name">Group name</Label>
+                        <FormInput
+                          id="telegram-group-name"
+                          value={telegramGroupName}
+                          onChange={(e) => setTelegramGroupName(e.target.value)}
+                          placeholder="e.g. Acme Agency Chat"
+                          maxLength={200}
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="telegram-group-link">Group link</Label>
+                        <FormInput
+                          id="telegram-group-link"
+                          type="url"
+                          value={telegramGroupLink}
+                          onChange={(e) => setTelegramGroupLink(e.target.value)}
+                          placeholder="https://t.me/..."
+                        />
+                      </div>
+                      {telegramError ? (
+                        <p className="text-sm text-rose-300">{telegramError}</p>
+                      ) : null}
+                      <div className="flex gap-2 pt-1">
+                        <ButtonSecondary
+                          type="button"
+                          className="flex-1"
+                          onClick={handleTelegramCancel}
+                          disabled={telegramPending}
+                        >
+                          Cancel
+                        </ButtonSecondary>
+                        <FormSubmitButton
+                          className="flex-1"
+                          loading={telegramPending}
+                          disabled={telegramPending}
+                        >
+                          Save
+                        </FormSubmitButton>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm">
+                      <div className="flex justify-between gap-4">
+                        <span className="text-white/45">Group name</span>
+                        <span className="text-right text-white">
+                          {client.telegram_group_name?.trim() || "—"}
+                        </span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-white/45">Group link</span>
+                        {client.telegram_group_link?.trim() ? (
+                          <a
+                            href={client.telegram_group_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-right text-pink-300 hover:text-pink-200"
+                          >
+                            <span className="max-w-[200px] truncate">
+                              {client.telegram_group_link}
+                            </span>
+                            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                          </a>
+                        ) : (
+                          <span className="text-right text-white">—</span>
+                        )}
+                      </div>
+                      {client.telegram_group_link?.trim() ? (
+                        <a
+                          href={client.telegram_group_link}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-gradient-to-r from-rose-600 via-pink-600 to-pink-500 px-3 py-1.5 text-xs font-medium text-white shadow-[0_2px_12px_-2px_rgba(236,72,153,0.45)] transition-opacity hover:opacity-90"
+                        >
+                          <Send className="h-3 w-3 shrink-0 opacity-95" aria-hidden />
+                          Open in Telegram
+                        </a>
+                      ) : null}
+                    </div>
+                  )}
                 </section>
 
                 <section>

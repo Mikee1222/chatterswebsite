@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { listAllRecords } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getClientBillingCycles, updateAdminClient } from "@/services/client-portal";
+import {
+  getAdminClientById,
+  getClientBillingCycles,
+  updateAdminClient,
+} from "@/services/client-portal";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -16,7 +20,8 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
 
-  const [clientModelsRecords, billingCycles, revenues] = await Promise.all([
+  const [client, clientModelsRecords, billingCycles, revenues] = await Promise.all([
+    getAdminClientById(id),
     listAllRecords<Record<string, unknown>>("client_models", {
       _caller: "admin/clients/[id]:GET:client_models",
     }).then(records => records.filter(r => {
@@ -72,7 +77,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       modelNameMap[Array.isArray(r.fields.model) ? r.fields.model[0] : ""] ?? "Unnamed",
   }));
 
-  return NextResponse.json({ models, billingCycles: cyclesWithStatus });
+  return NextResponse.json({ client, models, billingCycles: cyclesWithStatus });
 }
 
 const patchSchema = z
@@ -84,6 +89,8 @@ const patchSchema = z
     client_percentage: z.number().min(0).max(1).optional(),
     status: z.enum(["active", "inactive", "suspended"]).optional(),
     password: z.string().min(8).optional(),
+    telegram_group_link: z.string().url().optional().or(z.literal("")),
+    telegram_group_name: z.string().max(200).optional(),
   })
   .refine(
     (data) =>
@@ -93,7 +100,9 @@ const patchSchema = z
       data.email !== undefined ||
       data.client_percentage !== undefined ||
       data.status !== undefined ||
-      data.password !== undefined,
+      data.password !== undefined ||
+      data.telegram_group_link !== undefined ||
+      data.telegram_group_name !== undefined,
     { message: "At least one field is required." }
   );
 

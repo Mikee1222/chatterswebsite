@@ -33,6 +33,8 @@ export type CreateAdminClientInput = {
 /** Client row for admin management (includes portal access toggle). */
 export type AdminClientRecord = ClientRecord & {
   portal_access: boolean;
+  telegram_group_link?: string;
+  telegram_group_name?: string;
 };
 
 export type UpdateAdminClientInput = {
@@ -45,6 +47,8 @@ export type UpdateAdminClientInput = {
   status?: ClientStatus;
   /** Bcrypt hash stored in Airtable `password` field. */
   passwordHash?: string;
+  telegram_group_link?: string;
+  telegram_group_name?: string;
 };
 
 export type BillingCycleKind = "chatting_weekly" | "crm_monthly";

@@ -100,6 +100,10 @@ function mapAdminClient(rec: AirtableRecord<Record<string, unknown>>): AdminClie
   return {
     ...mapClient(rec),
     portal_access: f.portal_access !== false,
+    telegram_group_link:
+      typeof f.telegram_group_link === "string" ? f.telegram_group_link : undefined,
+    telegram_group_name:
+      typeof f.telegram_group_name === "string" ? f.telegram_group_name : undefined,
   };
 }
 
@@ -221,6 +225,11 @@ export async function getClientById(clientId: string): Promise<ClientRecord> {
   return mapClient(rec);
 }
 
+export async function getAdminClientById(clientId: string): Promise<AdminClientRecord> {
+  const rec = await getRecord<Record<string, unknown>>(TABLES.clients, clientId);
+  return mapAdminClient(rec);
+}
+
 export async function listAllClients(activeOnly = false): Promise<AdminClientRecord[]> {
   const records = await listAllRecords<Record<string, unknown>>(TABLES.clients, {
     filterByFormula: activeOnly ? '{status} = "active"' : undefined,
@@ -278,6 +287,8 @@ export async function updateAdminClient(
   }
   if (data.status !== undefined) fields.status = data.status;
   if (data.passwordHash) fields.password = data.passwordHash;
+  if (data.telegram_group_link !== undefined) fields.telegram_group_link = data.telegram_group_link;
+  if (data.telegram_group_name !== undefined) fields.telegram_group_name = data.telegram_group_name;
 
   const rec = await updateRecord<Record<string, unknown>>(TABLES.clients, clientId, fields);
   return mapAdminClient(rec);
