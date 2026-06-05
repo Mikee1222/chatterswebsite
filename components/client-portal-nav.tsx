@@ -4,7 +4,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
-  FileText,
   BarChart3,
   History,
   Home,
@@ -24,7 +23,6 @@ const NAV_ITEMS = [
   { href: ROUTES.client.paymentHistory, label: "Payment History", icon: History },
   { href: ROUTES.client.payChatting, label: "Pay Chatting", icon: Wallet },
   { href: ROUTES.client.payCrm, label: "Pay CRM", icon: Building2 },
-  { href: ROUTES.client.invoices, label: "Invoices", icon: FileText },
   { href: ROUTES.client.gunzoPartnership, label: "Gunzo Partnership", icon: BarChart3 },
 ] as const;
 
