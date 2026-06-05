@@ -25,6 +25,10 @@ export default async function DashboardLayout({
   const user = await getSessionFromCookies();
   if (!user) return <ClientRedirect to={ROUTES.login} />;
 
+  if (user.role === "client") {
+    return <>{children}</>;
+  }
+
   let activeShift: Awaited<ReturnType<typeof getActiveShiftByChatter>> = null;
   let activeShiftModelsCount: number | null = null;
   const staffMode = getEffectiveStaffRole(user);

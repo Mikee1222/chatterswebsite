@@ -111,6 +111,57 @@ export async function login(formData: FormData) {
     // Airtable not configured or error; fall back to demo
   }
 
+  // 1b. Try clients table (B2B client portal users)
+  try {
+    const { listRecords } = await import("@/lib/airtable-server");
+    const normalized = submittedEmail.trim().toLowerCase();
+    const { records } = await listRecords<{
+      email?: string;
+      password?: string;
+      status?: string;
+      company_name?: string;
+      display_name?: string;
+    }>("clients", {
+      filterByFormula: `{email} = "${normalized.replace(/"/g, '""')}"`,
+      pageSize: 1,
+    });
+    const clientRecord = records[0];
+    if (clientRecord?.fields?.email && clientRecord.fields.password) {
+      const isActive = clientRecord.fields.status === "active";
+      if (isActive) {
+        const cleanHash = String(clientRecord.fields.password).replace(/\s+/g, "").trim();
+        const valid = await verifyPassword(submittedPassword, cleanHash);
+        if (valid) {
+          const token = await setSession(
+            {
+              id: clientRecord.id,
+              email: String(clientRecord.fields.email),
+              role: "client",
+              airtableUserId: clientRecord.id,
+              fullName: String(clientRecord.fields.display_name ?? clientRecord.fields.company_name ?? ""),
+            },
+            jwtMaxAgeSec
+          );
+          const cookieStore = await cookies();
+          cookieStore.set(AUTH_COOKIE_NAME, token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            sameSite: "lax",
+            path: "/",
+            ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
+          });
+          console.log(`${logPrefix} login success (client)`, { email: obfuscatedEmail });
+          redirect(ROUTES.client.home);
+        }
+      }
+    }
+  } catch (err) {
+    if (isRedirectError(err)) throw err;
+    console.error(`${logPrefix} client auth error`, {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
   // 2. Demo fallback (env vars)
   const { email: demoEmail, password: demoPassword, role: demoRole } = getDemoCredentials();
   if (submittedEmail === demoEmail && submittedPassword === demoPassword) {

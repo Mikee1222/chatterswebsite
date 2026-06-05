@@ -11,5 +11,6 @@ export default async function Home() {
   if (navRole === "chatter") redirect(ROUTES.chatter.home);
   if (navRole === "virtual_assistant") redirect(ROUTES.va.home);
   if (user.role === "admin" || user.role === "manager") redirect(ROUTES.admin.home);
+  if (user.role === "client") redirect(ROUTES.client.home);
   redirect(ROUTES.dashboard);
 }
