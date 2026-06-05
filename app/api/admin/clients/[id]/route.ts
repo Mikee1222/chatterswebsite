@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getRecord, listAllRecords } from "@/lib/airtable-server";
-import { formulaLinkedContains } from "@/lib/airtable-linked";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getClientBillingCycles, updateAdminClient } from "@/services/client-portal";
 
@@ -19,7 +18,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const [clientModelsRecords, billingCycles] = await Promise.all([
     listAllRecords<Record<string, unknown>>("client_models", {
-      filterByFormula: formulaLinkedContains("client", id),
+      filterByFormula: `FIND("${id}", ARRAYJOIN({client}, ",")) > 0`,
       _caller: "admin/clients/[id]:GET:client_models",
     }),
     getClientBillingCycles(id).then((cycles) => cycles.slice(0, 5)),
