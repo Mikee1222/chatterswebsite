@@ -26,6 +26,10 @@ function monthEnd(d: Date): Date {
   return end;
 }
 
+function toDateString(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 function parseRange(range: "daily" | "weekly" | "monthly" | "custom", from?: string, to?: string): { start: Date; end: Date } {
   const now = new Date();
 
@@ -87,9 +91,11 @@ export default async function AdminShiftActivityPage({
 
   const allShifts = await listAllShifts().catch(() => []);
   const completed = allShifts.filter((s) => s.status === "completed" && s.start_time && s.end_time);
+  const rangeStartDate = toDateString(rangeStart);
+  const rangeEndDate = toDateString(rangeEnd);
   const inRange = completed.filter((s) => {
-    const t = new Date(s.start_time!).getTime();
-    return t >= rangeStart.getTime() && t <= rangeEnd.getTime();
+    const shiftDate = toDateString(new Date(s.start_time!));
+    return shiftDate >= rangeStartDate && shiftDate <= rangeEndDate;
   });
 
   const byPerson: Record<string, { name: string; role: string; totalMinutes: number; shifts: number; breakMinutes: number }> = {};
@@ -132,8 +138,10 @@ export default async function AdminShiftActivityPage({
 
   const totalChatterMinutes = rows.filter((r) => r.role === "Chatter").reduce((s, r) => s + r.totalMinutes, 0);
   const totalVaMinutes = rows.filter((r) => r.role === "Virtual assistant").reduce((s, r) => s + r.totalMinutes, 0);
+  const totalMinutes = rows.reduce((s, r) => s + r.totalMinutes, 0);
   const totalShifts = rows.reduce((s, r) => s + r.shifts, 0);
   const totalBreakMinutes = rows.reduce((s, r) => s + r.breakMinutes, 0);
+  const avgShiftDurationMinutes = totalShifts > 0 ? totalMinutes / totalShifts : 0;
 
   return (
     <AdminShiftActivityClient
@@ -141,10 +149,13 @@ export default async function AdminShiftActivityPage({
       from={params.from}
       to={params.to}
       rows={rows}
+      chatterRows={rows.filter((r) => r.role === "Chatter")}
+      vaRows={rows.filter((r) => r.role === "Virtual assistant")}
       totalChatterHours={totalChatterMinutes / 60}
       totalVaHours={totalVaMinutes / 60}
       totalShifts={totalShifts}
       totalBreakMinutes={totalBreakMinutes}
+      avgShiftDurationMinutes={avgShiftDurationMinutes}
     />
   );
 }
