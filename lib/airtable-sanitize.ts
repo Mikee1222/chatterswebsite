@@ -232,6 +232,9 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   tips: {
     status: new Set(["pending", "verified", "rejected"]),
   },
+  payment_submissions: {
+    status: new Set(["pending_review", "approved", "rejected"]),
+  },
   model_content_requests: {
     type: new Set(["script", "mass", "photo_set", "video", "other"]),
     status: new Set(["pending", "approved", "rejected", "in_progress", "completed"]),
