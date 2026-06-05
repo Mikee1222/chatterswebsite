@@ -1,6 +1,6 @@
 /**
- * USD ↔ EUR conversion. Isolated so live exchange API can be plugged in later.
- * Do not use for production pricing; placeholder only.
+ * Fallback only — live rate fetched from /api/client/fx
+ * USD ↔ EUR conversion for server-side use when the FX API is unavailable.
  * Whale session currency is usd/eur only.
  */
 
