@@ -630,7 +630,7 @@ function filterPayableRevenues(
   const result: BillingCycleRevenueRecord[] = [];
   for (const r of revenues) {
     const s = r.status ?? "draft";
-    if (s === "announced" || s === "overdue") {
+    if (s === "announced" || s === "overdue" || s === "pending_review") {
       result.push(r);
       if (s === "announced" && pastDeadline) {
         updateRecord<Record<string, unknown>>(TABLES.billing_cycle_revenues, r.id, {
@@ -659,7 +659,7 @@ async function listPayableRevenuesForClient(clientId: string): Promise<BillingCy
     .filter(
       (r) =>
         r.client.includes(clientId) &&
-        (r.status === "announced" || r.status === "overdue")
+        (r.status === "announced" || r.status === "overdue" || r.status === "pending_review")
     );
 }
 
