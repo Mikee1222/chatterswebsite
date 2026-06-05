@@ -626,7 +626,7 @@ export async function updatePaymentSubmission(
       await updateRevenuesStatusForClientAndCycle(
         clientId,
         finalCycleId,
-        ["pending_review"],
+        ["pending_review", "announced", "overdue"],
         "confirmed_paid"
       );
     } else if (cycle?.kind === "crm_monthly") {

@@ -1119,9 +1119,9 @@ export async function submitClientPaymentProof(
       billingCycleId,
       ["announced", "overdue"],
       "pending_review"
-    ).catch(() => {});
+    );
   } else if (cycle?.kind === "crm_monthly") {
-    await updateBillingCycleRecord(billingCycleId, { status: "pending_review" }).catch(() => {});
+    await updateBillingCycleRecord(billingCycleId, { status: "pending_review" });
   }
 
   return { submissionId: submission.id, alreadySubmitted: false };
