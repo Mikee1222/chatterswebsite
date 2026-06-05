@@ -6,8 +6,6 @@ import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
-const SUB_TYPES = new Set(["paid", "free", "free_trial"]);
-
 function normalizeSubUsername(raw: string): string {
   let s = raw.trim();
   while (s.startsWith("@")) s = s.slice(1).trim();
@@ -24,12 +22,13 @@ export async function POST(req: Request) {
   const model_id = String(formData.get("model_id") ?? "").trim();
   const model_name = String(formData.get("model_name") ?? "").trim();
   const sub_username = normalizeSubUsername(String(formData.get("sub_username") ?? ""));
-  const sub_type = String(formData.get("sub_type") ?? "").trim();
   const screenshot = formData.get("screenshot");
 
-  if (!model_id || !sub_username || !sub_type || !SUB_TYPES.has(sub_type)) {
+  if (!model_id || !sub_username) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
+
+  const sub_type = "paid";
 
   const rebillId = `reb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 

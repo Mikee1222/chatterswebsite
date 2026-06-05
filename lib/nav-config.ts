@@ -131,6 +131,7 @@ const chatterNav: NavItem[] = [
     isShiftButton: true,
   },
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
+  { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.informations, label: "Informations", iconKey: "Info", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },

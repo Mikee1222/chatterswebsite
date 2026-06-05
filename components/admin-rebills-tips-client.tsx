@@ -70,11 +70,13 @@ export function AdminRebillsTipsClient({
   initialTips: AdminTipRow[];
 }) {
   const [rebills, setRebills] = React.useState(
-    initialRebills.map((r) => ({
-      ...r,
-      sub_type: normalizeRebillSubType(r.sub_type),
-      status: normalizeRowStatus(r.status),
-    }))
+    initialRebills
+      .map((r) => ({
+        ...r,
+        sub_type: normalizeRebillSubType(r.sub_type),
+        status: normalizeRowStatus(r.status),
+      }))
+      .filter((r) => r.sub_type === "paid")
   );
   const [tips, setTips] = React.useState(
     initialTips.map((r) => ({

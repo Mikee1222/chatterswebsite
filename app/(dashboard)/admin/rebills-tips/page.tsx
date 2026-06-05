@@ -92,7 +92,9 @@ export default async function AdminRebillsTipsPage() {
     listAllRecords<TipFields>("tips", { sort, _caller: "admin.rebills-tips.page" }).catch(() => []),
   ]);
 
-  const initialRebills = rebillRecs.map((r) => mapRebill(r as AirtableRecord<RebillFields>));
+  const initialRebills = rebillRecs
+    .map((r) => mapRebill(r as AirtableRecord<RebillFields>))
+    .filter((r) => r.sub_type === "paid");
   const initialTips = tipRecs.map((r) => mapTip(r as AirtableRecord<TipFields>));
 
   return (

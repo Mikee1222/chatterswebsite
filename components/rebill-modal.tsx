@@ -2,12 +2,9 @@
 
 import * as React from "react";
 import { CheckCircle2, Upload, X } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { CHATTER_ATTACHMENT_MAX_BYTES } from "@/lib/chatter-attachment-constants";
 
 export type ChatterModalModelOption = { id: string; name: string };
-
-type SubType = "paid" | "free" | "free_trial";
 
 export function RebillModal({
   open,
@@ -19,7 +16,6 @@ export function RebillModal({
   models: ChatterModalModelOption[];
 }) {
   const [modelId, setModelId] = React.useState("");
-  const [subType, setSubType] = React.useState<SubType>("paid");
   const [subUsername, setSubUsername] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -37,7 +33,6 @@ export function RebillModal({
     const t = window.setTimeout(() => {
       setSuccess(false);
       setModelId("");
-      setSubType("paid");
       setSubUsername("");
       setFile(null);
       onClose();
@@ -72,7 +67,7 @@ export function RebillModal({
       fd.append("model_id", modelId);
       fd.append("model_name", selectedModel?.name ?? "");
       fd.append("sub_username", subUsername.trim());
-      fd.append("sub_type", subType);
+      fd.append("sub_type", "paid");
       if (file) fd.append("screenshot", file);
       const res = await fetch("/api/chatter/rebills", {
         method: "POST",
@@ -142,34 +137,6 @@ export function RebillModal({
                 ))}
               </select>
             </label>
-
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-white/45">Sub type</p>
-              <div className="mt-2 grid grid-cols-3 gap-2">
-                {(
-                  [
-                    ["paid", "Paid", "text-green-400 bg-green-500/20 border-green-500/30"],
-                    ["free", "Free", "text-blue-400 bg-blue-500/20 border-blue-500/30"],
-                    ["free_trial", "Free trial", "text-amber-400 bg-amber-500/20 border-amber-500/30"],
-                  ] as const
-                ).map(([value, label, activeCls]) => {
-                  const active = subType === value;
-                  return (
-                    <button
-                      key={value}
-                      type="button"
-                      onClick={() => setSubType(value)}
-                      className={cn(
-                        "rounded-xl border px-3 py-2 text-sm transition",
-                        active ? activeCls : "border-white/10 bg-white/5 text-white/50"
-                      )}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
 
             <label className="block text-xs font-medium uppercase tracking-wide text-white/45">
               Subscriber username
