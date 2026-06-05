@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getClientAirtableId } from "@/lib/client-session";
 import { ROUTES } from "@/lib/routes";
 import { getClientModels } from "@/services/client-portal";
 import { Users } from "lucide-react";
@@ -10,7 +11,7 @@ export default async function ClientModelsPage() {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "client") redirect(ROUTES.login);
 
-  const models = await getClientModels(user.id);
+  const models = await getClientModels(getClientAirtableId(user));
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">

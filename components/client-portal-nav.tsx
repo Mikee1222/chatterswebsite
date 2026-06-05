@@ -3,71 +3,101 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  Calendar,
-  CreditCard,
+  Building2,
+  CalendarDays,
   FileText,
+  BarChart3,
   History,
   Home,
   Menu,
-  Users,
+  Wallet,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { logout } from "@/app/actions/auth";
 
 const NAV_ITEMS = [
   { href: ROUTES.client.home, label: "Home", icon: Home },
-  { href: ROUTES.client.payments, label: "Payments", icon: CreditCard },
-  { href: ROUTES.client.paymentHistory, label: "History", icon: History },
+  { href: ROUTES.client.paymentHistory, label: "Payment History", icon: History },
+  { href: ROUTES.client.weeklyPayments, label: "Weekly Payments", icon: CalendarDays },
+  { href: ROUTES.client.payChatting, label: "Pay Chatting", icon: Wallet },
+  { href: ROUTES.client.payCrm, label: "Pay CRM", icon: Building2 },
   { href: ROUTES.client.invoices, label: "Invoices", icon: FileText },
-  { href: ROUTES.client.models, label: "Models", icon: Users },
-  { href: ROUTES.client.calendar, label: "Calendar", icon: Calendar },
+  { href: ROUTES.client.gunzoPartnership, label: "Gunzo Partnership", icon: BarChart3 },
 ] as const;
 
 export function ClientPortalNav() {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  useEffect(() => {
+    if (mobileOpen) {
+      const prev = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prev;
+      };
+    }
+  }, [mobileOpen]);
+
   const isActive = (href: string) =>
     href === ROUTES.client.home ? pathname === href : pathname.startsWith(href);
 
   const linkClass = (href: string) =>
     cn(
-      "flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-colors",
+      "relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
       isActive(href)
-        ? "bg-pink-500/15 text-pink-300 border border-pink-400/25"
-        : "text-white/60 hover:text-white hover:bg-white/[0.06]"
+        ? "border border-violet-400/25 bg-gradient-to-r from-violet-500/10 to-purple-500/10 text-white"
+        : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-200"
     );
+
+  const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
+    <>
+      {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
+        <Link key={href} href={href} onClick={onNavigate} className={linkClass(href)}>
+          {isActive(href) && (
+            <span className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-violet-400 to-purple-500" />
+          )}
+          <Icon className={cn("h-5 w-5 shrink-0", isActive(href) ? "text-violet-300" : "text-gray-500")} />
+          <span className={isActive(href) ? "font-semibold text-white" : ""}>{label}</span>
+        </Link>
+      ))}
+    </>
+  );
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden md:flex md:w-56 md:flex-col md:gap-1 md:border-r md:border-white/10 md:bg-black/30 md:px-4 md:py-6 md:backdrop-blur-xl">
-        <p className="mb-4 px-3 text-xs font-semibold uppercase tracking-wider text-white/40">
-          Client Portal
-        </p>
-        <nav className="flex flex-col gap-1">
-          {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-            <Link key={href} href={href} className={linkClass(href)}>
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-            </Link>
-          ))}
+      <aside className="relative z-[5] hidden h-[100dvh] min-h-[100dvh] max-h-[100dvh] w-72 shrink-0 flex-col overflow-hidden border-r border-white/10 bg-gradient-to-br from-[#14101f]/95 via-[#120a1f]/90 to-[#0d0818]/95 backdrop-blur-xl md:flex">
+        <div className="border-b border-white/10 px-5 py-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-violet-300/60">Gunzo Agency</p>
+          <p className="mt-1 text-lg font-semibold text-white">Client Portal</p>
+        </div>
+        <nav className="flex-1 space-y-1.5 overflow-y-auto px-4 py-4">
+          <NavLinks />
         </nav>
+        <div className="border-t border-white/10 px-4 py-4">
+          <form action={logout}>
+            <button
+              type="submit"
+              className="w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white"
+            >
+              Log out
+            </button>
+          </form>
+        </div>
       </aside>
 
-      {/* Mobile header toggle — fixed top-left */}
       <button
         type="button"
         onClick={() => setMobileOpen(true)}
-        className="fixed left-4 top-3 z-40 rounded-lg border border-white/10 bg-black/60 p-2 text-white/70 backdrop-blur-md hover:text-white md:hidden"
+        className="fixed left-4 top-3 z-40 rounded-lg border border-white/10 bg-[#120a1f]/80 p-2 text-white/70 backdrop-blur-md hover:text-white md:hidden"
         aria-label="Open menu"
       >
         <Menu className="h-5 w-5" />
       </button>
 
-      {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <div
@@ -75,51 +105,24 @@ export function ClientPortalNav() {
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <div className="absolute left-0 top-0 flex h-full w-72 flex-col border-r border-white/10 bg-[#121218]/95 p-5 backdrop-blur-xl">
-            <div className="mb-6 flex items-center justify-between">
-              <span className="text-sm font-semibold text-white">Menu</span>
+          <div className="absolute left-0 top-0 flex h-[100dvh] w-80 flex-col border-r border-white/10 bg-[#120a1f]/95 backdrop-blur-xl">
+            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
+              <span className="text-lg font-semibold text-white">Menu</span>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-1.5 text-white/60 hover:text-white"
+                className="rounded-lg p-2 text-gray-400 hover:text-white"
                 aria-label="Close menu"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex flex-col gap-1">
-              {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
-                <Link
-                  key={href}
-                  href={href}
-                  onClick={() => setMobileOpen(false)}
-                  className={linkClass(href)}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  {label}
-                </Link>
-              ))}
+            <nav className="flex-1 space-y-1.5 overflow-y-auto px-4 py-4">
+              <NavLinks onNavigate={() => setMobileOpen(false)} />
             </nav>
           </div>
         </div>
       )}
-
-      {/* Mobile bottom nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex border-t border-white/10 bg-black/80 px-1 py-2 backdrop-blur-xl md:hidden">
-        {NAV_ITEMS.slice(0, 5).map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            className={cn(
-              "flex flex-1 flex-col items-center gap-0.5 rounded-lg px-1 py-1.5 text-[10px] font-medium transition-colors",
-              isActive(href) ? "text-pink-400" : "text-white/50"
-            )}
-          >
-            <Icon className="h-4 w-4" />
-            <span className="truncate">{label}</span>
-          </Link>
-        ))}
-      </nav>
     </>
   );
 }

@@ -139,6 +139,10 @@ export const ROUTES = {
 
   client: {
     home: "/client",
+    payChatting: "/client/pay-chatting",
+    payCrm: "/client/pay-crm",
+    gunzoPartnership: "/client/gunzo-partnership",
+    weeklyPayments: "/client/weekly-payments",
     payments: "/client/payments",
     paymentHistory: "/client/payment-history",
     invoices: "/client/invoices",

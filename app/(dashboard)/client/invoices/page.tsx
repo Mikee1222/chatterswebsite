@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { getClientAirtableId } from "@/lib/client-session";
 import { ROUTES } from "@/lib/routes";
 import { ClientInvoicesClient } from "@/components/client-invoices-client";
 import { getClientInvoicesEnriched } from "@/services/client-portal";
@@ -10,7 +11,7 @@ export default async function ClientInvoicesPage() {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "client") redirect(ROUTES.login);
 
-  const invoices = await getClientInvoicesEnriched(user.id);
+  const invoices = await getClientInvoicesEnriched(getClientAirtableId(user));
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">

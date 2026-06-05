@@ -11,12 +11,27 @@ import {
   formulaLinkedContains,
   linkedRecordIds,
 } from "@/lib/airtable-linked";
-import { getCycleAmountDue } from "@/lib/client-portal-utils";
+import { formatDateEuropean } from "@/lib/format";
+import { getCycleAmountDue, isBillingOverdue } from "@/lib/client-portal-utils";
+import {
+  getAllBillingCycles,
+  getBillingCycleById as getBillingCycleByIdFromBilling,
+  getBillingCycleRevenues,
+  getBillingCycleRevenuesForCycles,
+  listAllBillingModels,
+  updateBillingCycle as updateBillingCycleRecord,
+  updateRevenuesStatusForClientAndCycle,
+} from "@/services/client-billing";
 import type {
   AdminClientRecord,
+  BillingCycleKind,
   BillingCycleRecord,
+  BillingCycleRevenueRecord,
+  BillingCycleRevenueStatus,
   BillingCycleStatus,
   CalendarEventRecord,
+  ChattingCycleResult,
+  ClientAttentionItem,
   ClientModelRecord,
   ClientRecord,
   ClientStatus,
@@ -26,6 +41,7 @@ import type {
   CreateBillingCycleInput,
   CreatePaymentSubmissionInput,
   EnrichedInvoice,
+  GunzoPartnershipData,
   InvoiceRecord,
   ModelRecord,
   PaymentMethodRecord,
@@ -44,7 +60,8 @@ const TABLES = {
   payment_methods: "payment_methods",
   invoices: "invoices",
   client_models: "client_models",
-  models: "modelss",
+  /** Client billing models (B2B portal) — not chatter ops `modelss`. */
+  billing_models: "models",
   calendar_events: "calendar_events",
 } as const;
 
@@ -287,7 +304,7 @@ export async function createClientModelAssignment(
 
   let modelName: string | undefined;
   try {
-    const modelRec = await getRecord<Record<string, unknown>>(TABLES.models, modelId);
+    const modelRec = await getRecord<Record<string, unknown>>(TABLES.billing_models, modelId);
     modelName = String(modelRec.fields.model_name ?? "");
   } catch {
     /* model row may be missing */
@@ -434,7 +451,7 @@ export async function getClientModels(clientId: string): Promise<ClientModelReco
     listAllRecords<Record<string, unknown>>(TABLES.client_models, {
       _caller: "getClientModels:assignments",
     }),
-    listAllRecords<Record<string, unknown>>(TABLES.models, {
+    listAllRecords<Record<string, unknown>>(TABLES.billing_models, {
       _caller: "getClientModels:models",
     }),
   ]);
@@ -492,7 +509,7 @@ export async function getPaymentSubmissionsForClient(
 export async function createPaymentSubmission(
   data: CreatePaymentSubmissionInput
 ): Promise<PaymentSubmissionRecord> {
-  const rec = await createRecord<Record<string, unknown>>(TABLES.payment_submissions, {
+  const fields: Record<string, unknown> = {
     billing_cycle: data.billing_cycle,
     client: data.client,
     selected_payment_method: data.selected_payment_method,
@@ -503,7 +520,14 @@ export async function createPaymentSubmission(
     note: data.note,
     proof_url: data.proof_url,
     status: data.status,
-  });
+  };
+  if (data.proof_attachment?.length) {
+    fields.proof_attachment = data.proof_attachment.map((a) => ({
+      url: a.url,
+      filename: a.filename,
+    }));
+  }
+  const rec = await createRecord<Record<string, unknown>>(TABLES.payment_submissions, fields);
   return mapPaymentSubmission(rec);
 }
 
@@ -559,9 +583,510 @@ export function filterPayableCycles(cycles: BillingCycleRecord[]): BillingCycleR
 
 export async function getModelById(modelId: string): Promise<ModelRecord | null> {
   try {
-    const rec = await getRecord<Record<string, unknown>>(TABLES.models, modelId);
+    const rec = await getRecord<Record<string, unknown>>(TABLES.billing_models, modelId);
     return mapModel(rec);
   } catch {
     return null;
   }
 }
+
+function mapBillingCycleRevenue(rec: AirtableRecord<Record<string, unknown>>): BillingCycleRevenueRecord {
+  const f = rec.fields;
+  return {
+    id: rec.id,
+    billing_cycle: linkedRecordIds(f.billing_cycle),
+    client: linkedRecordIds(f.client),
+    model: linkedRecordIds(f.model),
+    turnover_usd: typeof f.turnover_usd === "number" ? f.turnover_usd : 0,
+    fee_percent: typeof f.fee_percent === "number" ? f.fee_percent : 0,
+    fee_usd: typeof f.fee_usd === "number" ? f.fee_usd : undefined,
+    status: typeof f.status === "string" ? (f.status as BillingCycleRevenueStatus) : undefined,
+    created_at: typeof f.created_at === "string" ? f.created_at : undefined,
+  };
+}
+
+function feeFromRevenue(r: BillingCycleRevenueRecord): number {
+  return r.fee_usd ?? (r.turnover_usd ?? 0) * ((r.fee_percent ?? 0) / 100);
+}
+
+function filterPayableRevenues(
+  revenues: BillingCycleRevenueRecord[],
+  periodEnd: string
+): BillingCycleRevenueRecord[] {
+  const pastDeadline = isBillingOverdue(periodEnd);
+  const result: BillingCycleRevenueRecord[] = [];
+  for (const r of revenues) {
+    const s = r.status ?? "draft";
+    if (s === "announced" || s === "overdue") {
+      result.push(r);
+      if (s === "announced" && pastDeadline) {
+        updateRecord<Record<string, unknown>>(TABLES.billing_cycle_revenues, r.id, {
+          status: "overdue",
+        }).catch(() => {});
+      }
+    }
+  }
+  return result;
+}
+
+async function listBillingCycleRevenuesForClientAndCycle(
+  clientId: string,
+  cycleId: string
+): Promise<BillingCycleRevenueRecord[]> {
+  const revenues = await getBillingCycleRevenues(cycleId);
+  return revenues.filter((r) => r.client.includes(clientId));
+}
+
+async function listPayableRevenuesForClient(clientId: string): Promise<BillingCycleRevenueRecord[]> {
+  const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
+    _caller: "listPayableRevenuesForClient",
+  });
+  return records
+    .map(mapBillingCycleRevenue)
+    .filter(
+      (r) =>
+        r.client.includes(clientId) &&
+        (r.status === "announced" || r.status === "overdue")
+    );
+}
+
+export async function getBillingCycleById(cycleId: string): Promise<BillingCycleRecord | null> {
+  return getBillingCycleByIdFromBilling(cycleId);
+}
+
+export async function getClientCurrentBillingCycle(
+  clientId: string,
+  kind: BillingCycleKind
+): Promise<BillingCycleRecord | null> {
+  const cycles = await getClientBillingCycles(clientId);
+  const matching = cycles
+    .filter((c) => c.kind === kind && c.status !== "draft")
+    .sort((a, b) => (b.period_end || b.due_date).localeCompare(a.period_end || a.due_date));
+
+  const cycle = matching[0] ?? null;
+  if (!cycle || kind !== "chatting_weekly" || !cycle.period_end) return cycle;
+
+  const revenues = await listBillingCycleRevenuesForClientAndCycle(clientId, cycle.id);
+  const payable = filterPayableRevenues(revenues, cycle.period_end);
+  const amountDue = payable.reduce((sum, r) => sum + feeFromRevenue(r), 0);
+  return { ...cycle, amount_due: amountDue };
+}
+
+export async function getClientCurrentChattingCycleFromRevenues(
+  clientId: string,
+  cycleIdHint?: string
+): Promise<ChattingCycleResult | null> {
+  const revenues = await listPayableRevenuesForClient(clientId);
+  if (revenues.length === 0) return null;
+
+  const cycleIdToRevenues = new Map<string, BillingCycleRevenueRecord[]>();
+  for (const r of revenues) {
+    const cid = r.billing_cycle[0];
+    if (!cid) continue;
+    const list = cycleIdToRevenues.get(cid) ?? [];
+    list.push(r);
+    cycleIdToRevenues.set(cid, list);
+  }
+
+  const cycleIds = Array.from(cycleIdToRevenues.keys());
+  const cycleRecords = await Promise.all(cycleIds.map((id) => getBillingCycleByIdFromBilling(id)));
+  const validCycles = cycleRecords.filter(
+    (c): c is NonNullable<typeof c> => c != null && c.kind === "chatting_weekly"
+  );
+  if (validCycles.length === 0) return null;
+
+  validCycles.sort((a, b) => (b.period_end || "").localeCompare(a.period_end || ""));
+  let chosen = validCycles[0];
+  if (cycleIdHint && cycleIdToRevenues.has(cycleIdHint)) {
+    const hinted = validCycles.find((c) => c.id === cycleIdHint);
+    if (hinted) chosen = hinted;
+  }
+
+  const payableRevenues = cycleIdToRevenues.get(chosen.id) ?? [];
+  const amountDue = payableRevenues.reduce((sum, r) => sum + feeFromRevenue(r), 0);
+  return {
+    cycle: { ...chosen, amount_due: amountDue },
+    payableRevenues,
+  };
+}
+
+export async function getAllClientBillingModels(): Promise<ModelRecord[]> {
+  return listAllBillingModels();
+}
+
+function getMonthKeyFromDate(dateString?: string): string | null {
+  if (!dateString) return null;
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return null;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function lastDayOfMonth(year: number, month: number): string {
+  const d = new Date(year, month, 0);
+  return `${year}-${String(month).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export async function getClientPartnershipAnalytics(
+  clientId: string,
+  monthKey: string
+): Promise<GunzoPartnershipData> {
+  const empty: GunzoPartnershipData = {
+    weeks: [],
+    weeklyPerModel: [],
+    monthlyTotals: { turnoverUsd: 0, feeUsd: 0, crmUsd: 0 },
+    monthlyPerModel: [],
+    availableMonths2026: [],
+    modelsForClient: [],
+    bestModelOfMonthId: null,
+    bestModelOfMonthName: null,
+  };
+
+  const [chattingCyclesAll, clientCycles, assignments, allModelsList] = await Promise.all([
+    getAllBillingCycles(),
+    getClientBillingCycles(clientId),
+    getClientModels(clientId),
+    listAllBillingModels(),
+  ]);
+
+  const modelMap = new Map(allModelsList.map((m) => [m.id, m.model_name]));
+  const cycles2026 = chattingCyclesAll.filter((c) => {
+    const key = getMonthKeyFromDate(c.period_start || c.due_date);
+    return key != null && key.startsWith("2026");
+  });
+  const availableMonths2026 = Array.from(
+    new Set(cycles2026.map((c) => getMonthKeyFromDate(c.period_start || c.due_date)).filter(Boolean))
+  ) as string[];
+  availableMonths2026.sort();
+
+  const [y, m] = monthKey.split("-").map(Number);
+  if (Number.isNaN(y) || Number.isNaN(m)) return { ...empty, availableMonths2026 };
+
+  const lastDay = lastDayOfMonth(y, m);
+  const weekRanges: [string, string][] = [
+    [`${monthKey}-01`, `${monthKey}-07`],
+    [`${monthKey}-08`, `${monthKey}-14`],
+    [`${monthKey}-15`, `${monthKey}-21`],
+    [`${monthKey}-22`, lastDay],
+  ];
+
+  const chattingCyclesInMonth = chattingCyclesAll.filter((c) => {
+    if (c.kind !== "chatting_weekly") return false;
+    const key = getMonthKeyFromDate(c.period_start || c.due_date);
+    return key === monthKey;
+  });
+  const cycleIdsForMonth = chattingCyclesInMonth.map((c) => c.id).filter(Boolean);
+  const allRevenuesRaw =
+    cycleIdsForMonth.length > 0
+      ? await getBillingCycleRevenuesForCycles(cycleIdsForMonth)
+      : [];
+  const allRevenues = allRevenuesRaw.filter((r) => r.client.includes(clientId));
+
+  const cycleIdByKey = new Map<string, string>();
+  chattingCyclesInMonth.forEach((c) => {
+    if (c.period_start && c.period_end) cycleIdByKey.set(`${c.period_start}|${c.period_end}`, c.id);
+  });
+
+  const revenuesByCycleId = new Map<string, BillingCycleRevenueRecord[]>();
+  for (const r of allRevenues) {
+    const cid = r.billing_cycle[0];
+    if (!cid) continue;
+    const list = revenuesByCycleId.get(cid) ?? [];
+    list.push(r);
+    revenuesByCycleId.set(cid, list);
+  }
+
+  const weeks = weekRanges.map(([start, end]) => {
+    const cycleId = cycleIdByKey.get(`${start}|${end}`);
+    const revs = cycleId ? (revenuesByCycleId.get(cycleId) ?? []) : [];
+    const turnoverUsd = revs.reduce((s, r) => s + (r.turnover_usd ?? 0), 0);
+    const feeUsd = revs.reduce((s, r) => s + feeFromRevenue(r), 0);
+    let bestModelId: string | null = null;
+    let bestTurnover = 0;
+    revs.forEach((r) => {
+      const t = r.turnover_usd ?? 0;
+      if (t > bestTurnover) {
+        bestTurnover = t;
+        bestModelId = r.model[0] ?? null;
+      }
+    });
+    return {
+      start,
+      end,
+      turnoverUsd,
+      feeUsd,
+      bestModelId,
+      bestModelName: bestModelId ? (modelMap.get(bestModelId) ?? null) : null,
+    };
+  });
+
+  const assignedModelIds = assignments.flatMap((a) => a.model).filter(Boolean);
+  const modelIdsFromRevenues = new Set(allRevenues.flatMap((r) => r.model).filter(Boolean));
+  const uniqueModelIds = Array.from(
+    new Set(assignedModelIds.length > 0 ? assignedModelIds : modelIdsFromRevenues)
+  );
+
+  const weeklyPerModel = uniqueModelIds.map((modelId) => {
+    let w1 = 0,
+      w2 = 0,
+      w3 = 0,
+      w4 = 0,
+      monthTurnover = 0,
+      monthFee = 0;
+    weekRanges.forEach(([start, end], idx) => {
+      const cycleId = cycleIdByKey.get(`${start}|${end}`);
+      const revs = cycleId
+        ? (revenuesByCycleId.get(cycleId) ?? []).filter((r) => r.model[0] === modelId)
+        : [];
+      const t = revs.reduce((s, r) => s + (r.turnover_usd ?? 0), 0);
+      const f = revs.reduce((s, r) => s + feeFromRevenue(r), 0);
+      if (idx === 0) w1 = t;
+      else if (idx === 1) w2 = t;
+      else if (idx === 2) w3 = t;
+      else w4 = t;
+      monthTurnover += t;
+      monthFee += f;
+    });
+    return {
+      modelId,
+      modelName: modelMap.get(modelId) ?? "Unknown",
+      week1TurnoverUsd: w1,
+      week2TurnoverUsd: w2,
+      week3TurnoverUsd: w3,
+      week4TurnoverUsd: w4,
+      monthTotalTurnoverUsd: monthTurnover,
+      monthTotalFeeUsd: monthFee,
+    };
+  });
+  weeklyPerModel.sort((a, b) => b.monthTotalTurnoverUsd - a.monthTotalTurnoverUsd);
+
+  const turnoverUsd = weeks.reduce((s, w) => s + w.turnoverUsd, 0);
+  const feeUsd = weeks.reduce((s, w) => s + w.feeUsd, 0);
+
+  const crmCyclesInMonth = clientCycles.filter((c) => {
+    if (c.kind !== "crm_monthly") return false;
+    const key = getMonthKeyFromDate(c.period_start || c.due_date);
+    return key === monthKey;
+  });
+  const crmUsd = crmCyclesInMonth.reduce((s, c) => s + getCycleAmountDue(c), 0);
+
+  const monthlyPerModel = uniqueModelIds.map((modelId) => {
+    let turnoverTotalUsd = 0;
+    let feeTotalUsd = 0;
+    let bestWeekStart: string | null = null;
+    let bestWeekEnd: string | null = null;
+    let bestWeekTurnoverUsd = 0;
+    weekRanges.forEach(([start, end]) => {
+      const cycleId = cycleIdByKey.get(`${start}|${end}`);
+      const revs = cycleId
+        ? (revenuesByCycleId.get(cycleId) ?? []).filter((r) => r.model[0] === modelId)
+        : [];
+      const t = revs.reduce((s, r) => s + (r.turnover_usd ?? 0), 0);
+      const f = revs.reduce((s, r) => s + feeFromRevenue(r), 0);
+      turnoverTotalUsd += t;
+      feeTotalUsd += f;
+      if (t > bestWeekTurnoverUsd) {
+        bestWeekTurnoverUsd = t;
+        bestWeekStart = start;
+        bestWeekEnd = end;
+      }
+    });
+    return {
+      modelId,
+      modelName: modelMap.get(modelId) ?? "Unknown",
+      turnoverTotalUsd,
+      feeTotalUsd,
+      bestWeekStart,
+      bestWeekEnd,
+      bestWeekTurnoverUsd,
+    };
+  });
+  monthlyPerModel.sort((a, b) => b.turnoverTotalUsd - a.turnoverTotalUsd);
+
+  const bestModelOfMonth = monthlyPerModel[0] ?? null;
+
+  return {
+    weeks,
+    weeklyPerModel,
+    monthlyTotals: { turnoverUsd, feeUsd, crmUsd },
+    monthlyPerModel,
+    availableMonths2026,
+    modelsForClient: uniqueModelIds.map((id) => ({ id, name: modelMap.get(id) ?? "Unknown" })),
+    bestModelOfMonthId: bestModelOfMonth?.modelId ?? null,
+    bestModelOfMonthName: bestModelOfMonth?.modelName ?? null,
+  };
+}
+
+export async function getClientAttentionItems(clientId: string): Promise<ClientAttentionItem[]> {
+  const [invoices, billingCycles, submissions] = await Promise.all([
+    getClientInvoices(clientId),
+    getClientBillingCycles(clientId),
+    getPaymentSubmissionsForClient(clientId),
+  ]);
+
+  const items: ClientAttentionItem[] = [];
+  const now = new Date();
+  const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+  const fourteenDaysAgo = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
+
+  billingCycles
+    .filter((cycle) => {
+      const dueDate = new Date(cycle.due_date);
+      return (
+        dueDate >= now &&
+        dueDate <= threeDaysFromNow &&
+        ["announced", "overdue", "pending_review"].includes(cycle.status) &&
+        !cycle.client_notified_at
+      );
+    })
+    .forEach((cycle) => {
+      items.push({
+        id: `due-${cycle.id}`,
+        type: "payment_due",
+        recordId: cycle.id,
+        severity: cycle.status === "overdue" ? "high" : "medium",
+        title: "Payment due soon",
+        description: `${cycle.kind === "chatting_weekly" ? "Chatting" : "CRM"} payment due ${formatDateEuropean(cycle.due_date)}`,
+        link:
+          cycle.kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
+      });
+    });
+
+  submissions
+    .filter((s) => s.status === "rejected")
+    .forEach((submission) => {
+      const kind =
+        billingCycles.find((c) => c.id === submission.billing_cycle[0])?.kind ?? "chatting_weekly";
+      items.push({
+        id: `rejected-${submission.id}`,
+        type: "proof_rejected",
+        recordId: submission.id,
+        severity: "high",
+        title: "Payment proof rejected",
+        description: "Your payment proof needs attention. Please review and resubmit.",
+        link: kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
+      });
+    });
+
+  submissions
+    .filter((s) => s.status === "pending_review")
+    .forEach((submission) => {
+      const kind =
+        billingCycles.find((c) => c.id === submission.billing_cycle[0])?.kind ?? "chatting_weekly";
+      items.push({
+        id: `pending-${submission.id}`,
+        type: "proof_pending",
+        recordId: submission.id,
+        severity: "low",
+        title: "Payment proof pending review",
+        description: "Your payment proof is being reviewed.",
+        link: kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
+      });
+    });
+
+  invoices
+    .filter((invoice) => {
+      const sentDate = invoice.sent_at ? new Date(invoice.sent_at) : null;
+      if (!sentDate) return false;
+      return sentDate >= fourteenDaysAgo && !invoice.viewed_at;
+    })
+    .slice(0, 3)
+    .forEach((invoice) => {
+      items.push({
+        id: `invoice-${invoice.id}`,
+        type: "invoice",
+        recordId: invoice.id,
+        severity: "low",
+        title: "New invoice available",
+        description: `Invoice #${invoice.invoice_number || invoice.id.slice(0, 8)}`,
+        link: "/client/invoices",
+      });
+    });
+
+  const severityOrder = { high: 0, medium: 1, low: 2 };
+  items.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+  return items.slice(0, 5);
+}
+
+export async function getClientUnreadCounts(clientId: string): Promise<{ invoices: number }> {
+  const invoices = await getClientInvoices(clientId);
+  const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
+  const unreadInvoices = invoices.filter((invoice) => {
+    const sentDate = invoice.sent_at ? new Date(invoice.sent_at) : null;
+    if (!sentDate) return false;
+    return sentDate >= fourteenDaysAgo && !invoice.viewed_at;
+  });
+  return { invoices: unreadInvoices.length };
+}
+
+export async function markInvoiceAsViewed(invoiceId: string): Promise<void> {
+  await updateRecord<Record<string, unknown>>(TABLES.invoices, invoiceId, {
+    viewed_at: new Date().toISOString(),
+  });
+}
+
+export async function markSubmissionAsSeen(_submissionId: string): Promise<void> {
+  /* client_seen_at field optional — no-op if absent */
+}
+
+export async function markBillingCycleAsNotified(cycleId: string): Promise<void> {
+  await updateRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId, {
+    client_notified_at: new Date().toISOString(),
+  }).catch(() => {});
+}
+
+export async function submitClientPaymentProof(
+  clientId: string,
+  data: {
+    billing_cycle_id: string;
+    payment_method_id: string;
+    amount: number;
+    currency: string;
+    datetime: string;
+    notes?: string;
+    proof_url?: string;
+    proof_attachment?: Array<{ url: string; filename?: string }>;
+  }
+): Promise<{ submissionId: string; alreadySubmitted: boolean }> {
+  const billingCycleId = data.billing_cycle_id;
+  const existing = await getLatestSubmissionForCycle(billingCycleId, clientId);
+  if (existing && existing.status !== "rejected") {
+    return { submissionId: existing.id, alreadySubmitted: true };
+  }
+
+  const cycle = await getBillingCycleByIdFromBilling(billingCycleId);
+  if (cycle) {
+    const hasPending =
+      cycle.status === "pending_review" || cycle.status === "confirmed_paid";
+    if (hasPending) {
+      return { submissionId: existing?.id ?? billingCycleId, alreadySubmitted: true };
+    }
+  }
+
+  const submission = await createPaymentSubmission({
+    billing_cycle: [billingCycleId],
+    client: [clientId],
+    selected_payment_method: [data.payment_method_id],
+    submitted_amount: data.amount,
+    submitted_currency: data.currency,
+    submitted_datetime: data.datetime,
+    note: data.notes,
+    proof_url: data.proof_url,
+    proof_attachment: data.proof_attachment,
+    status: "pending_review",
+  });
+
+  if (cycle?.kind === "chatting_weekly") {
+    await updateRevenuesStatusForClientAndCycle(
+      clientId,
+      billingCycleId,
+      ["announced", "overdue"],
+      "pending_review"
+    ).catch(() => {});
+  } else if (cycle?.kind === "crm_monthly") {
+    await updateBillingCycleRecord(billingCycleId, { status: "pending_review" }).catch(() => {});
+  }
+
+  return { submissionId: submission.id, alreadySubmitted: false };
+}
+
+export type { GunzoPartnershipData, ClientAttentionItem, ChattingCycleResult };

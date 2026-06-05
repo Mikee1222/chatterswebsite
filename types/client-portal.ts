@@ -179,6 +179,7 @@ export type CreatePaymentSubmissionInput = {
   reference_id?: string;
   note?: string;
   proof_url?: string;
+  proof_attachment?: Array<{ url: string; filename?: string }>;
   status: PaymentSubmissionStatus;
 };
 
@@ -207,4 +208,60 @@ export type CreateBillingCycleInput = {
 export type UpdatePaymentSubmissionInput = {
   status: "approved" | "rejected";
   admin_note?: string;
+};
+
+export type ClientAttentionItem = {
+  id: string;
+  type: "invoice" | "payment_due" | "proof_rejected" | "proof_pending";
+  recordId: string;
+  severity: "high" | "medium" | "low";
+  title: string;
+  description: string;
+  link: string;
+};
+
+export type GunzoWeekSlot = {
+  start: string;
+  end: string;
+  turnoverUsd: number;
+  feeUsd: number;
+  bestModelId: string | null;
+  bestModelName: string | null;
+};
+
+export type GunzoWeeklyPerModelRow = {
+  modelId: string;
+  modelName: string;
+  week1TurnoverUsd: number;
+  week2TurnoverUsd: number;
+  week3TurnoverUsd: number;
+  week4TurnoverUsd: number;
+  monthTotalTurnoverUsd: number;
+  monthTotalFeeUsd: number;
+};
+
+export type GunzoMonthlyPerModelRow = {
+  modelId: string;
+  modelName: string;
+  turnoverTotalUsd: number;
+  feeTotalUsd: number;
+  bestWeekStart: string | null;
+  bestWeekEnd: string | null;
+  bestWeekTurnoverUsd: number;
+};
+
+export type GunzoPartnershipData = {
+  weeks: GunzoWeekSlot[];
+  weeklyPerModel: GunzoWeeklyPerModelRow[];
+  monthlyTotals: { turnoverUsd: number; feeUsd: number; crmUsd: number };
+  monthlyPerModel: GunzoMonthlyPerModelRow[];
+  availableMonths2026: string[];
+  modelsForClient: { id: string; name: string }[];
+  bestModelOfMonthId: string | null;
+  bestModelOfMonthName: string | null;
+};
+
+export type ChattingCycleResult = {
+  cycle: BillingCycleRecord & { amount_due: number };
+  payableRevenues: BillingCycleRevenueRecord[];
 };
