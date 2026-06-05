@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { getClientModelAssignmentsForModel } from "@/services/client-portal";
 import { getModelById } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
@@ -15,9 +16,12 @@ export default async function EditModelPage({
   if (user?.role !== "admin") redirect(ROUTES.dashboard);
 
   const { id } = await params;
-  const model = await getModelById(id);
+  const [model, clientAssignments, allUsers] = await Promise.all([
+    getModelById(id),
+    getClientModelAssignmentsForModel(id),
+    listAllUsers(),
+  ]);
   if (!model) notFound();
-  const allUsers = await listAllUsers();
   const modelUsers = allUsers.filter((u) => u.role === "model");
   const currentLinkedUser = modelUsers.find((u) => u.linked_model_id === model.id) ?? null;
   const userOptions = modelUsers
@@ -46,6 +50,7 @@ export default async function EditModelPage({
           model={model}
           userOptions={userOptions}
           currentLinkedUserId={currentLinkedUser?.id ?? ""}
+          clientAssignments={clientAssignments}
         />
       </div>
     </div>

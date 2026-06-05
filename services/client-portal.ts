@@ -317,6 +317,23 @@ export async function deleteClientModelAssignment(assignmentId: string): Promise
   await deleteRecord(TABLES.client_models, assignmentId);
 }
 
+export async function getClientModelAssignmentsForModel(modelId: string): Promise<ClientModelRecord[]> {
+  const [assignments, models] = await Promise.all([
+    listAllRecords<Record<string, unknown>>(TABLES.client_models, {
+      _caller: "getClientModelAssignmentsForModel:assignments",
+    }),
+    listAllRecords<Record<string, unknown>>(TABLES.billing_models, {
+      _caller: "getClientModelAssignmentsForModel:models",
+    }),
+  ]);
+
+  const modelNameById = new Map(models.map((m) => [m.id, String(m.fields.model_name ?? "")]));
+
+  return assignments
+    .map((rec) => mapClientModelAssignment(rec, modelNameById))
+    .filter((row) => row.model.includes(modelId));
+}
+
 export async function createBillingCycleForClient(
   clientId: string,
   data: CreateBillingCycleInput
