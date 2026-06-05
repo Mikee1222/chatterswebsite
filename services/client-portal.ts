@@ -318,20 +318,16 @@ export async function deleteClientModelAssignment(assignmentId: string): Promise
 }
 
 export async function getClientModelAssignmentsForModel(modelId: string): Promise<ClientModelRecord[]> {
-  const [assignments, models] = await Promise.all([
-    listAllRecords<Record<string, unknown>>(TABLES.client_models, {
-      _caller: "getClientModelAssignmentsForModel:assignments",
-    }),
-    listAllRecords<Record<string, unknown>>(TABLES.billing_models, {
-      _caller: "getClientModelAssignmentsForModel:models",
-    }),
-  ]);
-
-  const modelNameById = new Map(models.map((m) => [m.id, String(m.fields.model_name ?? "")]));
-
-  return assignments
-    .map((rec) => mapClientModelAssignment(rec, modelNameById))
-    .filter((row) => row.model.includes(modelId));
+  const records = await listAllRecords<Record<string, unknown>>("client_models", {
+    filterByFormula: `FIND("${modelId}", ARRAYJOIN({model})) > 0`,
+    _caller: "getClientModelAssignmentsForModel",
+  });
+  return records.map((r) => ({
+    id: r.id,
+    client: Array.isArray(r.fields.client) ? (r.fields.client as string[]) : [],
+    model: Array.isArray(r.fields.model) ? (r.fields.model as string[]) : [],
+    model_name: String(r.fields.model_name ?? ""),
+  }));
 }
 
 export async function createBillingCycleForClient(

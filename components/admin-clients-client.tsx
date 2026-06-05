@@ -707,12 +707,6 @@ function ClientDetailSheet({
   const [portalAccess, setPortalAccess] = React.useState(client.portal_access);
   const [showCreateCycle, setShowCreateCycle] = React.useState(false);
   const [editingClient, setEditingClient] = React.useState(false);
-  const [assigningModel, setAssigningModel] = React.useState(false);
-  const [selectedModelToAssign, setSelectedModelToAssign] = React.useState("");
-  const [availableModels, setAvailableModels] = React.useState<
-    { id: string; model_name: string }[]
-  >([]);
-  const [modelActionPending, setModelActionPending] = React.useState(false);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
   const [adminNote, setAdminNote] = React.useState("");
 
@@ -752,26 +746,6 @@ function ClientDetailSheet({
   React.useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
-
-  React.useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const res = await fetch("/api/admin/models");
-        const data = (await res.json()) as {
-          models?: { id: string; model_name: string }[];
-        };
-        if (!cancelled && res.ok && data.models) {
-          setAvailableModels(data.models);
-        }
-      } catch {
-        /* ignore — assign dropdown stays empty */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   React.useEffect(() => {
     setPortalAccess(client.portal_access);
@@ -818,39 +792,6 @@ function ClientDetailSheet({
       }
     } finally {
       setPortalPending(false);
-    }
-  }
-
-  async function handleAssignModel(modelId: string) {
-    if (!modelId) return;
-    setModelActionPending(true);
-    try {
-      const res = await fetch(`/api/admin/clients/${client.id}/models`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ modelId }),
-      });
-      if (res.ok) {
-        setAssigningModel(false);
-        setSelectedModelToAssign("");
-        await loadDetail();
-      }
-    } finally {
-      setModelActionPending(false);
-    }
-  }
-
-  async function handleRemoveModel(assignmentId: string) {
-    setModelActionPending(true);
-    try {
-      const res = await fetch(`/api/admin/clients/${client.id}/models/${assignmentId}`, {
-        method: "DELETE",
-      });
-      if (res.ok) {
-        await loadDetail();
-      }
-    } finally {
-      setModelActionPending(false);
     }
   }
 
@@ -997,61 +938,10 @@ function ClientDetailSheet({
                 </section>
 
                 <section>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                      <Users className="h-3.5 w-3.5" />
-                      Models ({detail.models.length})
-                    </div>
-                    {!assigningModel ? (
-                      <button
-                        type="button"
-                        onClick={() => setAssigningModel(true)}
-                        disabled={modelActionPending}
-                        className="inline-flex items-center gap-1 text-xs text-pink-300 hover:text-pink-200 disabled:opacity-50"
-                      >
-                        <Plus className="h-3 w-3" />
-                        Assign
-                      </button>
-                    ) : null}
+                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+                    <Users className="h-3.5 w-3.5" />
+                    Models ({detail.models.length})
                   </div>
-                  {assigningModel ? (
-                    <div className="mt-3 flex items-center gap-2">
-                      <select
-                        value={selectedModelToAssign}
-                        onChange={(e) => setSelectedModelToAssign(e.target.value)}
-                        disabled={modelActionPending}
-                        className="flex-1 h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white"
-                      >
-                        <option value="">Select model...</option>
-                        {availableModels
-                          .filter((m) => !detail.models.some((dm) => dm.model.includes(m.id)))
-                          .map((m) => (
-                            <option key={m.id} value={m.id}>
-                              {m.model_name?.trim() || "Unnamed model"}
-                            </option>
-                          ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void handleAssignModel(selectedModelToAssign)}
-                        disabled={!selectedModelToAssign || modelActionPending}
-                        className="h-9 px-3 rounded-lg bg-pink-500/80 text-xs font-medium text-white hover:bg-pink-500 disabled:opacity-40"
-                      >
-                        Assign
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setAssigningModel(false);
-                          setSelectedModelToAssign("");
-                        }}
-                        disabled={modelActionPending}
-                        className="h-9 px-3 rounded-lg border border-white/10 text-xs text-white/60 hover:bg-white/5"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  ) : null}
                   {detail.models.length === 0 ? (
                     <p className="text-sm text-white/45">No models assigned.</p>
                   ) : (
@@ -1059,23 +949,19 @@ function ClientDetailSheet({
                       {detail.models.map((row) => (
                         <li
                           key={row.id}
-                          className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm"
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm"
                         >
                           <span className="font-medium text-white">
                             {row.model_name?.trim() || "Unnamed model"}
                           </span>
-                          <button
-                            type="button"
-                            disabled={modelActionPending}
-                            onClick={() => void handleRemoveModel(row.id)}
-                            className="rounded-lg border border-rose-500/30 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
-                          >
-                            Remove
-                          </button>
+                          <Badge variant="pink">Chatting Agency</Badge>
                         </li>
                       ))}
                     </ul>
                   )}
+                  <p className="mt-3 text-xs text-white/40">
+                    Manage model assignments from the Models page.
+                  </p>
                 </section>
 
                 <section>

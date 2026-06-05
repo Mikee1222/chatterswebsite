@@ -1,11 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getRecord, listAllRecords } from "@/lib/airtable-server";
+import { formulaLinkedContains } from "@/lib/airtable-linked";
 import { getSessionFromCookies } from "@/lib/auth";
-import {
-  getClientBillingCycles,
-  getClientModels,
-  updateAdminClient,
-} from "@/services/client-portal";
+import { getClientBillingCycles, updateAdminClient } from "@/services/client-portal";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -18,10 +16,38 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   const { id } = await ctx.params;
-  const [models, billingCycles] = await Promise.all([
-    getClientModels(id),
+
+  const [clientModelsRecords, billingCycles] = await Promise.all([
+    listAllRecords<Record<string, unknown>>("client_models", {
+      filterByFormula: formulaLinkedContains("client", id),
+      _caller: "admin/clients/[id]:GET:client_models",
+    }),
     getClientBillingCycles(id).then((cycles) => cycles.slice(0, 5)),
   ]);
+
+  const modelIds = clientModelsRecords.flatMap((r) =>
+    Array.isArray(r.fields.model) ? r.fields.model : []
+  );
+
+  const modelNames = await Promise.all(
+    modelIds.map(async (modelId) => {
+      try {
+        const rec = await getRecord<Record<string, unknown>>("modelss", modelId);
+        return { id: modelId, name: String(rec.fields.model_name ?? "Unnamed") };
+      } catch {
+        return { id: modelId, name: "Unnamed" };
+      }
+    })
+  );
+  const modelNameMap = Object.fromEntries(modelNames.map((m) => [m.id, m.name]));
+
+  const models = clientModelsRecords.map((r) => ({
+    id: r.id,
+    client: Array.isArray(r.fields.client) ? r.fields.client : [],
+    model: Array.isArray(r.fields.model) ? r.fields.model : [],
+    model_name:
+      modelNameMap[Array.isArray(r.fields.model) ? r.fields.model[0] : ""] ?? "Unnamed",
+  }));
 
   return NextResponse.json({ models, billingCycles });
 }
