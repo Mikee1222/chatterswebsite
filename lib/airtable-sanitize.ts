@@ -15,6 +15,7 @@ import {
   MODEL_TASK_TYPE_OPTIONS,
   TRANSACTION_CURRENCY_OPTIONS,
   TRANSACTION_TYPES,
+  WHALE_STATUS_OPTIONS,
 } from "@/lib/airtable-options";
 
 /** Normalize field name for comparison: lowercase, spaces -> underscore. Airtable may use "Created At" or "created_at". */
@@ -135,7 +136,7 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
     "active",
     "completed",
     "Active",
-    "Inactive",
+    "inactive",
     "Dead",
     "Deleted Account",
     "scheduled",
@@ -335,6 +336,12 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   pricing_rows: {
     model_tier: new Set(["high", "medium", "low"]),
     spender_tier: new Set(["high", "medium", "low", "medium_low"]),
+  },
+  clients: {
+    status: new Set(["active", "inactive"]),
+  },
+  whales: {
+    status: new Set(WHALE_STATUS_OPTIONS as unknown as string[]),
   },
 };
 
