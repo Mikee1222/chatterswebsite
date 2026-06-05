@@ -146,6 +146,7 @@ export const ROUTES = {
     payments: "/client/payments",
     paymentHistory: "/client/payment-history",
     invoices: "/client/invoices",
+    content: "/client/content",
     models: "/client/models",
     calendar: "/client/calendar",
   },

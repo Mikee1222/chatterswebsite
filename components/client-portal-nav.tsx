@@ -4,11 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
-  CalendarDays,
   FileText,
   BarChart3,
   History,
   Home,
+  LayoutGrid,
   Menu,
   Wallet,
   X,
@@ -20,8 +20,8 @@ import { logout } from "@/app/actions/auth";
 
 const NAV_ITEMS = [
   { href: ROUTES.client.home, label: "Home", icon: Home },
+  { href: ROUTES.client.content, label: "Content", icon: LayoutGrid },
   { href: ROUTES.client.paymentHistory, label: "Payment History", icon: History },
-  { href: ROUTES.client.weeklyPayments, label: "Weekly Payments", icon: CalendarDays },
   { href: ROUTES.client.payChatting, label: "Pay Chatting", icon: Wallet },
   { href: ROUTES.client.payCrm, label: "Pay CRM", icon: Building2 },
   { href: ROUTES.client.invoices, label: "Invoices", icon: FileText },
