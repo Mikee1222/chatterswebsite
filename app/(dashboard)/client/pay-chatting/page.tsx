@@ -28,11 +28,14 @@ export default async function ClientPayChattingPage({
   const cycle = result?.cycle ?? null;
   const cycleRevenues = result?.payableRevenues ?? [];
 
-  const [methods, allModels, latestSubmission] = await Promise.all([
+  const [methods, allModels] = await Promise.all([
     getClientPaymentMethods(clientId),
     getAllClientBillingModels(),
-    cycle?.id ? getLatestSubmissionForCycle(cycle.id, clientId) : Promise.resolve(null),
   ]);
+
+  const latestSubmission = cycle?.id
+    ? await getLatestSubmissionForCycle(cycle.id, clientId)
+    : null;
 
   const modelIdToName = Object.fromEntries(allModels.map((m) => [m.id, m.model_name]));
   const now = new Date();
