@@ -118,6 +118,14 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_model_only",
     description: "The model user when a VA creates a content assignment for them.",
   },
+  va_content_scheduled: {
+    rule: "assigned_user_only",
+    description: "Assigned VA when a client or model schedules VA-delivered content.",
+  },
+  va_content_completed: {
+    rule: "assigned_user_only",
+    description: "Assigned VA when a client or model marks VA-delivered content complete.",
+  },
   period_3_day_reminder: {
     rule: "assigned_model_only",
     description: "The linked model user (period tracking reminder ~3 days before expected start).",
@@ -175,6 +183,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   custom_uploaded: {
     rule: "assigned_party_only",
     description: "Chatter (if requester), admins, linked model user, assigned VA when model uploads (see model/custom/uploaded + notify-vas).",
+  },
+  custom_request_uploaded: {
+    rule: "assigned_user_only",
+    description: "Assigned VA when a client or model marks a custom request as uploaded.",
   },
   custom_scheduled: {
     rule: "assigned_party_only",
@@ -277,4 +289,6 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "challenge_completed",
   "model_content_scheduled",
   "va_content_assigned",
+  "va_content_scheduled",
+  "va_content_completed",
 ];

@@ -3,8 +3,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireClientModelAccess } from "@/lib/client-content-auth";
 import { ROUTES } from "@/lib/routes";
-import { NOTIFICATION_EVENT } from "@/lib/notification-types";
-import { notify } from "@/services/notification-service";
+import { NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { createNotification } from "@/services/notifications";
+import { sendPushToUser } from "@/services/push-subscriptions";
 import { getModelById } from "@/services/modelss";
 import {
   getVAContentAssignmentForModel,
@@ -62,17 +63,24 @@ export async function POST(request: Request) {
 
   const modelName = modelRecord?.model_name?.trim() || "Model";
   const dateLabel = scheduled_date;
-  if (before.va_id) {
-    await notify({
-      user_id: before.va_id,
-      event_type: NOTIFICATION_EVENT.MODEL_CONTENT_SCHEDULED,
-      title: "Content delivery scheduled",
-      body: `${access.actorName} scheduled “${updated.title}” for ${modelName} on ${dateLabel}.`,
+  const vaId = before.va_id?.trim();
+  if (vaId) {
+    const title = "Content delivery scheduled";
+    const body = `${access.actorName} scheduled “${updated.title}” for ${modelName} on ${dateLabel}.`;
+    await createNotification({
+      user_id: vaId,
+      category: "task",
+      event_type: "va_content_scheduled",
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
       entity_type: "va_content_assignment",
       entity_id: assignment_id,
-      actor_user_id: access.actorUserId,
-      actor_name: access.actorName,
-      _triggerSource: "client_va_content_schedule",
+    }).catch(() => {});
+    await sendPushToUser(vaId, {
+      title,
+      body,
+      url: ROUTES.va.contentAssignments,
     }).catch(() => {});
   }
 

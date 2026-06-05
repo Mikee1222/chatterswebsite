@@ -123,6 +123,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "custom_declined":
     case "custom_edited":
     case "custom_uploaded":
+    case "custom_request_uploaded":
     case "custom_scheduled":
     case "custom_deadline_approaching":
     case "custom_overdue":
@@ -138,6 +139,8 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "model_content_completed":
     case "model_content_scheduled":
     case "va_content_assigned":
+    case "va_content_scheduled":
+    case "va_content_completed":
     case "phase_task_completed":
     case "phase_completed":
     case "phase_overdue":

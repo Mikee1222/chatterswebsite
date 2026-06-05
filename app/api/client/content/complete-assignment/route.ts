@@ -3,8 +3,9 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireClientModelAccess } from "@/lib/client-content-auth";
 import { ROUTES } from "@/lib/routes";
-import { NOTIFICATION_EVENT } from "@/lib/notification-types";
-import { notify } from "@/services/notification-service";
+import { NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { createNotification } from "@/services/notifications";
+import { sendPushToUser } from "@/services/push-subscriptions";
 import { getModelById } from "@/services/modelss";
 import {
   completeVAContentAssignmentForModel,
@@ -55,17 +56,24 @@ export async function POST(request: Request) {
   }
 
   const modelName = modelRecord?.model_name?.trim() || "Model";
-  if (before.va_id) {
-    await notify({
-      user_id: before.va_id,
-      event_type: NOTIFICATION_EVENT.MODEL_CONTENT_COMPLETED,
-      title: "Content marked complete",
-      body: `${access.actorName} marked the delivery “${updated.title}” as complete for ${modelName}.`,
+  const vaId = before.va_id?.trim();
+  if (vaId) {
+    const title = "Content Marked Complete";
+    const body = `${access.actorName} marked “${updated.title}” as complete for ${modelName}.`;
+    await createNotification({
+      user_id: vaId,
+      category: "task",
+      event_type: "va_content_completed",
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title,
+      body,
       entity_type: "va_content_assignment",
       entity_id: assignment_id,
-      actor_user_id: access.actorUserId,
-      actor_name: access.actorName,
-      _triggerSource: "client_va_content_complete",
+    }).catch(() => {});
+    await sendPushToUser(vaId, {
+      title,
+      body,
+      url: ROUTES.va.contentAssignments,
     }).catch(() => {});
   }
 

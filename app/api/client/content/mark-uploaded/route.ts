@@ -116,6 +116,7 @@ export async function POST(request: Request) {
       assigned_va_id: existing.assigned_va_id ?? "",
       request_title: customTitle,
       custom_request_id: record_id,
+      actor_name: access.actorName,
     });
 
     const { broadcastRealtimeToAll } = await import("@/lib/realtime-broadcast");

@@ -89,8 +89,10 @@ export function getTitleEmoji(eventType: NotificationEventType): string {
       return "📅";
     case "model_content_scheduled":
     case "va_content_assigned":
+    case "va_content_scheduled":
       return "📅";
     case "model_content_completed":
+    case "va_content_completed":
     case "task_completed":
     case "task_finished":
     case "task_shift_ended":
@@ -106,6 +108,7 @@ export function getTitleEmoji(eventType: NotificationEventType): string {
     case "custom_edited":
       return "✏️";
     case "custom_uploaded":
+    case "custom_request_uploaded":
       return "📤";
     case "custom_scheduled":
       return "📅";

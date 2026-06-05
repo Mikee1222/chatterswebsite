@@ -51,6 +51,9 @@ export const NOTIFICATION_EVENT_TYPES = [
   "task_shift_ended",
   "billing_cycle_announced",
   "billing_due_reminder",
+  "va_content_scheduled",
+  "va_content_completed",
+  "custom_request_uploaded",
 ] as const;
 
 export type NotificationEventTypeAirtable = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -90,6 +93,9 @@ export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtabl
   model_content_completed: "task_shift_ended",
   model_content_scheduled: "task_shift_started",
   va_content_assigned: "task_shift_started",
+  va_content_scheduled: "va_content_scheduled",
+  va_content_completed: "va_content_completed",
+  custom_request_uploaded: "custom_request_uploaded",
   whale_registered: "whale_registered",
   whale_assigned: "whale_assigned",
   whale_followup: "whale_assigned",
