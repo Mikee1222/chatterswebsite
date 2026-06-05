@@ -72,6 +72,7 @@ export function UserRoleBadge({ role }: { role: UserRole }) {
     admin: "border-amber-500/30 bg-amber-500/12 text-amber-100",
     manager: "border-orange-500/30 bg-orange-500/12 text-orange-100",
     model: "border-emerald-500/30 bg-emerald-500/12 text-emerald-100",
+    client: "border-violet-500/30 bg-violet-500/12 text-violet-200",
   };
   return (
     <span
