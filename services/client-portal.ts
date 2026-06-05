@@ -398,7 +398,7 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
   const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycles, {
     sort: [{ field: "period_start", direction: "desc" }],
     fields: ["client", "period_start", "period_end", "due_date", "status", "kind",
-             "amount_due", "currency", "client_notified_at", "notes"],
+             "amount_due", "currency", "client_notified_at"],
     _caller: "getClientBillingCycles",
   });
   console.log("[getClientBillingCycles] total records fetched:", records.length, "clientId:", clientId);
