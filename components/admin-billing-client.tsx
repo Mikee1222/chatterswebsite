@@ -35,6 +35,37 @@ const REVENUE_STATUSES: BillingCycleRevenueStatus[] = [
 const fmtUsd = (n: number) =>
   n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+const CYCLE_STATUSES = [
+  "draft",
+  "announced",
+  "pending_review",
+  "confirmed_paid",
+  "overdue",
+] as const;
+
+function StatusBadge({ status }: { status: string }) {
+  const variant =
+    status === "confirmed_paid"
+      ? "border-emerald-500/25 bg-emerald-500/15 text-emerald-300"
+      : status === "overdue"
+        ? "border-rose-500/25 bg-rose-500/15 text-rose-300"
+        : status === "announced"
+          ? "border-blue-500/25 bg-blue-500/15 text-blue-300"
+          : status === "pending_review"
+            ? "border-amber-500/25 bg-amber-500/15 text-amber-300"
+            : "border-white/15 bg-white/10 text-white/80";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-medium capitalize",
+        variant
+      )}
+    >
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
 async function parseJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
@@ -92,6 +123,17 @@ export function AdminBillingClient({
     type: "success" | "error";
     message: string;
   } | null>(null);
+  const [showAddCrmModal, setShowAddCrmModal] = React.useState(false);
+  const [editCrmCycle, setEditCrmCycle] = React.useState<BillingCycleRecord | null>(null);
+  const [crmClientId, setCrmClientId] = React.useState("");
+  const [crmPeriodStart, setCrmPeriodStart] = React.useState("");
+  const [crmPeriodEnd, setCrmPeriodEnd] = React.useState("");
+  const [crmDueDate, setCrmDueDate] = React.useState("");
+  const [crmAmount, setCrmAmount] = React.useState("");
+  const [crmCurrency, setCrmCurrency] = React.useState("USD");
+  const [crmStatus, setCrmStatus] = React.useState("draft");
+  const [crmLoading, setCrmLoading] = React.useState(false);
+  const [crmError, setCrmError] = React.useState<string | null>(null);
 
   const monthOptions = React.useMemo(() => {
     const year = new Date().getFullYear();
@@ -102,6 +144,16 @@ export function AdminBillingClient({
     if (!monthFilter) return initialCycles;
     return initialCycles.filter((c) => c.period_start.slice(0, 7) === monthFilter);
   }, [initialCycles, monthFilter]);
+
+  const chattingCycles = React.useMemo(
+    () => cycles.filter((c) => c.kind === "chatting_weekly"),
+    [cycles]
+  );
+
+  const crmCycles = React.useMemo(
+    () => cycles.filter((c) => c.kind === "crm_monthly"),
+    [cycles]
+  );
 
   const fetchRevenues = React.useCallback(async (cycleId: string) => {
     setLoadingRevenuesForCycleId(cycleId);
@@ -183,6 +235,36 @@ export function AdminBillingClient({
     }
   }, [showGenerateModal, generateMode, generateMonth]);
 
+  React.useEffect(() => {
+    if (editCrmCycle) {
+      setCrmClientId(editCrmCycle.client[0] ?? "");
+      setCrmPeriodStart(editCrmCycle.period_start);
+      setCrmPeriodEnd(editCrmCycle.period_end);
+      setCrmDueDate(editCrmCycle.due_date);
+      setCrmAmount(String(editCrmCycle.amount_crm ?? editCrmCycle.amount ?? ""));
+      setCrmCurrency(editCrmCycle.currency ?? "USD");
+      setCrmStatus(editCrmCycle.status);
+      setCrmError(null);
+    }
+  }, [editCrmCycle]);
+
+  const resetCrmForm = React.useCallback(() => {
+    setCrmClientId("");
+    setCrmPeriodStart("");
+    setCrmPeriodEnd("");
+    setCrmDueDate("");
+    setCrmAmount("");
+    setCrmCurrency("USD");
+    setCrmStatus("draft");
+    setCrmError(null);
+  }, []);
+
+  const openAddCrmModal = React.useCallback(() => {
+    resetCrmForm();
+    setEditCrmCycle(null);
+    setShowAddCrmModal(true);
+  }, [resetCrmForm]);
+
   const revenueFilteredModels = React.useMemo(() => {
     if (revenueAssignedModelIds.length === 0) return models;
     return models.filter((m) => revenueAssignedModelIds.includes(m.id));
@@ -224,7 +306,7 @@ export function AdminBillingClient({
         </div>
 
         <p className="mb-4 text-sm text-gray-400">
-          {cycles.length} period{cycles.length === 1 ? "" : "s"}
+          {chattingCycles.length} period{chattingCycles.length === 1 ? "" : "s"}
         </p>
 
         <div className="overflow-x-auto">
@@ -243,7 +325,7 @@ export function AdminBillingClient({
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {cycles.map((cycle) => {
+              {chattingCycles.map((cycle) => {
                 const isExpanded = expandedCycleId === cycle.id;
                 const revenues = revenuesByCycleId[cycle.id] ?? [];
                 const weekTurnover = revenues.reduce((s, r) => s + (r.turnover_usd ?? 0), 0);
@@ -436,11 +518,13 @@ export function AdminBillingClient({
                                     <p className="py-4 text-sm text-white/50">No revenue entries yet.</p>
                                   ) : null}
                                 </div>
-                                <div className="border-t border-white/10 pt-4">
-                                  <h4 className="mb-3 text-sm font-medium text-white/80">Add revenue</h4>
-                                  <div className="flex flex-wrap items-end gap-4">
-                                    <div>
-                                      <Label>Client</Label>
+                                <div className="mt-4 border-t border-white/10 pt-4">
+                                  <p className="mb-3 text-xs font-medium uppercase tracking-wider text-white/40">
+                                    Add Revenue
+                                  </p>
+                                  <div className="flex flex-wrap items-end gap-3">
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-xs text-white/50">Client</label>
                                       <FormSelect
                                         value={addRevenueClientId}
                                         onChange={(e) => {
@@ -453,7 +537,7 @@ export function AdminBillingClient({
                                               : 20
                                           );
                                         }}
-                                        className="min-w-[140px]"
+                                        className="h-8 min-w-[120px] rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
                                       >
                                         <option value="">Select client</option>
                                         {clients.map((c) => (
@@ -463,12 +547,12 @@ export function AdminBillingClient({
                                         ))}
                                       </FormSelect>
                                     </div>
-                                    <div>
-                                      <Label>Model</Label>
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-xs text-white/50">Model</label>
                                       <FormSelect
                                         value={addRevenueModelId}
                                         onChange={(e) => setAddRevenueModelId(e.target.value)}
-                                        className="min-w-[140px]"
+                                        className="h-8 min-w-[120px] rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
                                       >
                                         <option value="">Select model</option>
                                         {revenueFilteredModels.map((m) => (
@@ -478,26 +562,36 @@ export function AdminBillingClient({
                                         ))}
                                       </FormSelect>
                                     </div>
-                                    <div>
-                                      <Label>Turnover (USD)</Label>
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-xs text-white/50">Turnover (USD)</label>
                                       <FormInput
                                         type="number"
                                         step="0.01"
                                         min="0.01"
                                         value={addRevenueTurnover}
                                         onChange={(e) => setAddRevenueTurnover(e.target.value)}
-                                        className="w-28"
+                                        className="h-8 w-28 rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
                                       />
                                     </div>
-                                    <div>
-                                      <Label>Fee %</Label>
-                                      <p className="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white">
-                                        {addRevenueFeePercent}
-                                      </p>
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-xs text-white/50">Fee %</label>
+                                      <div className="flex h-8 items-center px-2 text-sm text-white/70">
+                                        {addRevenueFeePercent}%
+                                      </div>
                                     </div>
-                                    <FormSubmitButton
+                                    <div className="flex flex-col gap-1">
+                                      <label className="text-xs text-white/50">Fee</label>
+                                      <div className="flex h-8 items-center text-sm text-pink-300">
+                                        $
+                                        {fmtUsd(
+                                          (parseFloat(addRevenueTurnover) || 0) *
+                                            (addRevenueFeePercent / 100)
+                                        )}
+                                      </div>
+                                    </div>
+                                    <button
                                       type="button"
-                                      loading={addRevenueLoading}
+                                      className="h-8 rounded-lg bg-pink-500/80 px-4 text-sm font-medium text-white transition-colors hover:bg-pink-500 disabled:opacity-40"
                                       disabled={
                                         addRevenueLoading ||
                                         !addRevenueClientId ||
@@ -534,8 +628,8 @@ export function AdminBillingClient({
                                         }
                                       }}
                                     >
-                                      Add revenue
-                                    </FormSubmitButton>
+                                      {addRevenueLoading ? "Adding..." : "+ Add"}
+                                    </button>
                                   </div>
                                   {addRevenueError ? (
                                     <p className="mt-2 text-sm text-red-400">{addRevenueError}</p>
@@ -552,6 +646,88 @@ export function AdminBillingClient({
               })}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/[0.02] p-6 backdrop-blur-xl">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-xl font-bold text-white">CRM Expenses</h2>
+            <p className="text-sm text-gray-400">Monthly CRM costs per client.</p>
+          </div>
+          <ButtonSecondary type="button" onClick={openAddCrmModal}>
+            Add CRM Expense
+          </ButtonSecondary>
+        </div>
+
+        <p className="mb-4 text-sm text-gray-400">
+          {crmCycles.length} expense{crmCycles.length === 1 ? "" : "s"}
+        </p>
+
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="sticky top-0 z-10 border-b border-white/10 bg-white/5">
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-400">
+                <th className="px-4 py-3">Client</th>
+                <th className="px-4 py-3">Period</th>
+                <th className="px-4 py-3">Amount</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/10">
+              {crmCycles.map((cycle) => {
+                const amount = cycle.amount_crm ?? cycle.amount ?? 0;
+                return (
+                  <tr key={cycle.id} className="hover:bg-white/[0.03]">
+                    <td className="px-4 py-3 text-sm text-white">
+                      {getClientName(cycle.client[0])}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-400">
+                      {formatDateEuropean(cycle.period_start)} –{" "}
+                      {formatDateEuropean(cycle.period_end)}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-white">
+                      ${fmtUsd(amount)} {cycle.currency}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={cycle.status} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => setEditCrmCycle(cycle)}
+                        className="mr-3 text-sm font-medium text-pink-400 hover:text-pink-300"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          if (!confirm("Delete this CRM expense?")) return;
+                          const res = await fetch(`/api/admin/billing/cycles/${cycle.id}`, {
+                            method: "DELETE",
+                          });
+                          if (res.ok) {
+                            router.refresh();
+                          } else {
+                            const data = await parseJson<{ userMessage?: string }>(res);
+                            alert(data.userMessage ?? "Failed to delete");
+                          }
+                        }}
+                        className="text-sm font-medium text-red-400 hover:text-red-300"
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {crmCycles.length === 0 ? (
+            <p className="py-8 text-center text-sm text-white/50">No CRM expenses for this month.</p>
+          ) : null}
         </div>
       </div>
 
@@ -698,6 +874,173 @@ export function AdminBillingClient({
                 }}
               >
                 Save
+              </FormSubmitButton>
+            </div>
+          </div>
+        </GlassModal>
+      ) : null}
+
+      {showAddCrmModal || editCrmCycle ? (
+        <GlassModal
+          title={editCrmCycle ? "Edit CRM expense" : "Add CRM expense"}
+          subtitle="Monthly CRM billing per client"
+          onClose={() => {
+            setShowAddCrmModal(false);
+            setEditCrmCycle(null);
+            resetCrmForm();
+          }}
+        >
+          <div className="space-y-4 p-4 md:p-5">
+            <div>
+              <Label>Client</Label>
+              <FormSelect
+                value={crmClientId}
+                onChange={(e) => setCrmClientId(e.target.value)}
+              >
+                <option value="">Select client</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.display_name}
+                  </option>
+                ))}
+              </FormSelect>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Period start</Label>
+                <FormInput
+                  type="date"
+                  value={crmPeriodStart}
+                  onChange={(e) => setCrmPeriodStart(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Period end</Label>
+                <FormInput
+                  type="date"
+                  value={crmPeriodEnd}
+                  onChange={(e) => setCrmPeriodEnd(e.target.value)}
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Due date</Label>
+              <FormInput
+                type="date"
+                value={crmDueDate}
+                onChange={(e) => setCrmDueDate(e.target.value)}
+              />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <Label>Amount</Label>
+                <FormInput
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={crmAmount}
+                  onChange={(e) => setCrmAmount(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Currency</Label>
+                <FormInput
+                  value={crmCurrency}
+                  onChange={(e) => setCrmCurrency(e.target.value.toUpperCase())}
+                  maxLength={8}
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <FormSelect value={crmStatus} onChange={(e) => setCrmStatus(e.target.value)}>
+                {CYCLE_STATUSES.map((s) => (
+                  <option key={s} value={s}>
+                    {s.replace(/_/g, " ")}
+                  </option>
+                ))}
+              </FormSelect>
+            </div>
+            {crmError ? (
+              <div className="flex items-start gap-2 rounded-xl border border-red-500/30 bg-red-500/20 p-3 text-sm text-red-400">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                {crmError}
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-3">
+              <ButtonSecondary
+                type="button"
+                onClick={() => {
+                  setShowAddCrmModal(false);
+                  setEditCrmCycle(null);
+                  resetCrmForm();
+                }}
+              >
+                Cancel
+              </ButtonSecondary>
+              <FormSubmitButton
+                type="button"
+                loading={crmLoading}
+                disabled={
+                  crmLoading ||
+                  !crmClientId ||
+                  !crmPeriodStart ||
+                  !crmPeriodEnd ||
+                  !crmDueDate ||
+                  !crmAmount ||
+                  parseFloat(crmAmount) < 0
+                }
+                onClick={async () => {
+                  if (new Date(crmPeriodEnd) <= new Date(crmPeriodStart)) {
+                    setCrmError("Period end must be after period start.");
+                    return;
+                  }
+                  setCrmLoading(true);
+                  setCrmError(null);
+                  const amount = parseFloat(crmAmount);
+                  const payload = {
+                    client: [crmClientId],
+                    kind: "crm_monthly" as const,
+                    period_start: crmPeriodStart,
+                    period_end: crmPeriodEnd,
+                    due_date: crmDueDate,
+                    amount_crm: amount,
+                    currency: crmCurrency,
+                    status: crmStatus,
+                  };
+                  const res = editCrmCycle
+                    ? await fetch(`/api/admin/billing/cycles/${editCrmCycle.id}`, {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          client: payload.client,
+                          period_start: payload.period_start,
+                          period_end: payload.period_end,
+                          due_date: payload.due_date,
+                          amount_crm: payload.amount_crm,
+                          amount: amount,
+                          currency: payload.currency,
+                          status: payload.status,
+                        }),
+                      })
+                    : await fetch("/api/admin/billing/cycles", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify(payload),
+                      });
+                  setCrmLoading(false);
+                  if (res.ok) {
+                    setShowAddCrmModal(false);
+                    setEditCrmCycle(null);
+                    resetCrmForm();
+                    router.refresh();
+                  } else {
+                    const data = await parseJson<{ error?: string; userMessage?: string }>(res);
+                    setCrmError(data.userMessage ?? data.error ?? "Failed to save");
+                  }
+                }}
+              >
+                {editCrmCycle ? "Save" : "Add expense"}
               </FormSubmitButton>
             </div>
           </div>

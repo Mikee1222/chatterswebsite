@@ -30,7 +30,7 @@ export default async function AdminBillingPage() {
         <p className="mt-2 text-gray-400">Manage weekly chatting billing periods and revenue.</p>
       </div>
       <AdminBillingClient
-        initialCycles={weeklyCycles}
+        initialCycles={cycles}
         clients={clients}
         models={models}
         initialClientCounts={clientCounts}
