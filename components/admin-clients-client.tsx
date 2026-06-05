@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Loader2,
   Plus,
   Search,
   Users,
@@ -776,7 +777,9 @@ function ClientDetailSheet({
   const [portalAccess, setPortalAccess] = React.useState(client.portal_access);
   const [showCreateCycle, setShowCreateCycle] = React.useState(false);
   const [editingClient, setEditingClient] = React.useState(false);
-  const [reviewingId, setReviewingId] = React.useState<string | null>(null);
+  const [reviewingId, setReviewingId] = React.useState("");
+  const [reviewingAction, setReviewingAction] = React.useState<"approved" | "rejected" | "">("");
+  const [activeNoteId, setActiveNoteId] = React.useState("");
   const [adminNote, setAdminNote] = React.useState("");
   const { addToast } = useToast();
 
@@ -875,6 +878,7 @@ function ClientDetailSheet({
     status: "approved" | "rejected"
   ) {
     setReviewingId(submissionId);
+    setReviewingAction(status);
     const note = adminNote.trim() || undefined;
     try {
       const res = await fetch(`/api/admin/submissions/${submissionId}`, {
@@ -898,15 +902,8 @@ function ClientDetailSheet({
         return;
       }
 
-      setDetail((prev) =>
-        prev
-          ? {
-              ...prev,
-              submissions: prev.submissions.filter((s) => s.id !== submissionId),
-            }
-          : prev
-      );
       setAdminNote("");
+      setActiveNoteId("");
       addToast(
         localToast(
           `submission-review-${submissionId}-${status}`,
@@ -918,9 +915,8 @@ function ClientDetailSheet({
         )
       );
 
-      if (status === "approved") {
-        await loadDetail();
-      }
+      await new Promise((r) => setTimeout(r, 1500));
+      await loadDetail();
     } catch {
       addToast(
         localToast(
@@ -931,7 +927,8 @@ function ClientDetailSheet({
         )
       );
     } finally {
-      setReviewingId(null);
+      setReviewingId("");
+      setReviewingAction("");
     }
   }
 
@@ -1197,31 +1194,40 @@ function ClientDetailSheet({
                           <div className="mt-3">
                             <FormInput
                               placeholder="Admin note (optional)"
-                              value={reviewingId === sub.id ? adminNote : ""}
+                              value={activeNoteId === sub.id ? adminNote : ""}
                               onChange={(e) => {
-                                setReviewingId(sub.id);
+                                setActiveNoteId(sub.id);
                                 setAdminNote(e.target.value);
                               }}
-                              onFocus={() => setReviewingId(sub.id)}
+                              onFocus={() => setActiveNoteId(sub.id)}
+                              disabled={!!reviewingId}
                             />
                           </div>
                           <div className="mt-3 flex gap-2">
                             <button
                               type="button"
-                              disabled={reviewingId === sub.id}
+                              disabled={!!reviewingId}
                               onClick={() => void handleSubmissionReview(sub.id, "approved")}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              <Check className="h-3.5 w-3.5" />
+                              {reviewingId === sub.id && reviewingAction === "approved" ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                              ) : (
+                                <Check className="h-3.5 w-3.5" />
+                              )}
                               Approve
                             </button>
                             <button
                               type="button"
-                              disabled={reviewingId === sub.id}
+                              disabled={!!reviewingId}
                               onClick={() => void handleSubmissionReview(sub.id, "rejected")}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
                             >
-                              <X className="h-3.5 w-3.5" />
+                              {reviewingId === sub.id && reviewingAction === "rejected" ? (
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                              ) : (
+                                <X className="h-3.5 w-3.5" />
+                              )}
                               Reject
                             </button>
                           </div>
