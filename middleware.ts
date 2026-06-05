@@ -62,6 +62,12 @@ export async function middleware(request: NextRequest) {
     }
   }
 
+  if (pathname === "/client" || pathname.startsWith("/client/")) {
+    if (user.role !== "client") {
+      return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
+    }
+  }
+
   if (getEffectiveStaffRole(user) === "virtual_assistant" && pathname.startsWith("/admin")) {
     if (!isVaReadableAdminSchedulePath(pathname)) {
       return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));

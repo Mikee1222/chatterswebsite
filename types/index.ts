@@ -1,7 +1,7 @@
 import type { TransactionTypeOption } from "@/lib/airtable-options";
 
 /** Role from Airtable users table; auth must match. */
-export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "model";
+export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "model" | "client";
 
 /** whales.status – must match Airtable single-select options exactly. */
 export type WhaleStatus =

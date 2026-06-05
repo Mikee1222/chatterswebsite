@@ -133,6 +133,15 @@ export const ROUTES = {
     settings: "/settings",
   },
 
+  client: {
+    home: "/client",
+    payments: "/client/payments",
+    paymentHistory: "/client/payment-history",
+    invoices: "/client/invoices",
+    models: "/client/models",
+    calendar: "/client/calendar",
+  },
+
   /** Shared: accounts (admin-only UI) */
   accounts: "/accounts",
   accountsNew: "/accounts/new",
