@@ -399,6 +399,7 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
     sort: [{ field: "period_start", direction: "desc" }],
     _caller: "getClientBillingCycles",
   });
+  console.log("[getClientBillingCycles] total records fetched:", records.length, "clientId:", clientId);
 
   return records
     .map(mapBillingCycle)
