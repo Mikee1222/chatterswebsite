@@ -384,19 +384,19 @@ export async function updatePaymentSubmissionReview(
   if (data.admin_note !== undefined) {
     fields.admin_note = data.admin_note;
   }
-  await updateRecord<Record<string, unknown>>(
+  const rec = await updateRecord<Record<string, unknown>>(
     TABLES.payment_submissions,
     submissionId,
     fields
   );
-  // Wait for Airtable to propagate
-  await new Promise(r => setTimeout(r, 800));
-  // Fetch fresh record
-  const fresh = await getRecord<Record<string, unknown>>(
-    TABLES.payment_submissions,
-    submissionId
-  );
-  return mapPaymentSubmission(fresh);
+
+  // Airtable PATCH returns the full updated record — use it directly
+  // but override with our known values since Airtable may cache old values
+  const mapped = mapPaymentSubmission(rec);
+  return {
+    ...mapped,
+    status: data.status as PaymentSubmissionRecord["status"],
+  };
 }
 
 export async function updateBillingCycleStatus(
