@@ -90,6 +90,7 @@ export const ROUTES = {
     accountDetail: (id: string) => `/admin/accounts/${encodeURIComponent(id)}`,
     customs: "/admin/customs",
     accounts: "/admin/accounts",
+    clients: "/admin/clients",
     /** Model operations (modelss) */
     modelAvailability: "/admin/model-availability",
     modelSchedules: "/admin/model-schedules",

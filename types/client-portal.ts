@@ -12,6 +12,11 @@ export type ClientRecord = {
   net_profit_goal?: number;
 };
 
+/** Client row for admin management (includes portal access toggle). */
+export type AdminClientRecord = ClientRecord & {
+  portal_access: boolean;
+};
+
 export type BillingCycleKind = "chatting_weekly" | "crm_monthly";
 
 export type BillingCycleStatus =
@@ -135,4 +140,18 @@ export type EnrichedInvoice = InvoiceRecord & {
     period_end: string;
     due_date: string;
   } | null;
+};
+
+export type CreateBillingCycleInput = {
+  kind: BillingCycleKind;
+  period_start: string;
+  period_end: string;
+  due_date: string;
+  amount: number;
+  currency: string;
+};
+
+export type UpdatePaymentSubmissionInput = {
+  status: "approved" | "rejected";
+  admin_note?: string;
 };

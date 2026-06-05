@@ -168,6 +168,7 @@ const adminNav: NavItem[] = [
 
   // ── CREATORS & CLIENTS ──
   { href: ROUTES.admin.models, label: "Models", iconKey: "UserCheck", navSection: "CREATORS & CLIENTS" },
+  { href: ROUTES.admin.clients, label: "Clients", iconKey: "Users" },
   { href: ROUTES.admin.whales, label: "Whales", iconKey: "Users" },
   { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
   { href: ROUTES.admin.modelLiveStreams, label: "Model live streams", iconKey: "Radio", beta: true },

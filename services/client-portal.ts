@@ -3,6 +3,7 @@ import {
   listAllRecords,
   getRecord,
   createRecord,
+  updateRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import {
@@ -11,17 +12,20 @@ import {
 } from "@/lib/airtable-linked";
 import { getCycleAmountDue } from "@/lib/client-portal-utils";
 import type {
+  AdminClientRecord,
   BillingCycleRecord,
   BillingCycleStatus,
   CalendarEventRecord,
   ClientModelRecord,
   ClientRecord,
+  CreateBillingCycleInput,
   CreatePaymentSubmissionInput,
   EnrichedInvoice,
   InvoiceRecord,
   ModelRecord,
   PaymentMethodRecord,
   PaymentSubmissionRecord,
+  UpdatePaymentSubmissionInput,
 } from "@/types/client-portal";
 
 export { getCycleAmountDue } from "@/lib/client-portal-utils";
@@ -48,6 +52,14 @@ function mapClient(rec: AirtableRecord<Record<string, unknown>>): ClientRecord {
     status: (f.status as ClientRecord["status"]) ?? "inactive",
     client_percentage: typeof f.client_percentage === "number" ? f.client_percentage : undefined,
     net_profit_goal: typeof f.net_profit_goal === "number" ? f.net_profit_goal : undefined,
+  };
+}
+
+function mapAdminClient(rec: AirtableRecord<Record<string, unknown>>): AdminClientRecord {
+  const f = rec.fields;
+  return {
+    ...mapClient(rec),
+    portal_access: f.portal_access !== false,
   };
 }
 
@@ -167,6 +179,88 @@ function recordIncludesClient(clientField: unknown, clientId: string): boolean {
 export async function getClientById(clientId: string): Promise<ClientRecord> {
   const rec = await getRecord<Record<string, unknown>>(TABLES.clients, clientId);
   return mapClient(rec);
+}
+
+export async function listAllClients(): Promise<AdminClientRecord[]> {
+  const records = await listAllRecords<Record<string, unknown>>(TABLES.clients, {
+    sort: [{ field: "company_name", direction: "asc" }],
+    _caller: "listAllClients",
+  });
+  return records.map(mapAdminClient);
+}
+
+export async function updateClientPortalAccess(
+  clientId: string,
+  portalAccess: boolean
+): Promise<AdminClientRecord> {
+  const rec = await updateRecord<Record<string, unknown>>(TABLES.clients, clientId, {
+    portal_access: portalAccess,
+  });
+  return mapAdminClient(rec);
+}
+
+export async function createBillingCycleForClient(
+  clientId: string,
+  data: CreateBillingCycleInput
+): Promise<BillingCycleRecord> {
+  const fields: Record<string, unknown> = {
+    client: [clientId],
+    kind: data.kind,
+    period_start: data.period_start,
+    period_end: data.period_end,
+    due_date: data.due_date,
+    amount: data.amount,
+    currency: data.currency,
+    status: "draft",
+  };
+  if (data.kind === "crm_monthly") {
+    fields.amount_crm = data.amount;
+  }
+  const rec = await createRecord<Record<string, unknown>>(TABLES.billing_cycles, fields);
+  return mapBillingCycle(rec);
+}
+
+export async function getPendingPaymentSubmissionsForClient(
+  clientId: string
+): Promise<PaymentSubmissionRecord[]> {
+  const filterByFormula = `AND(${formulaLinkedContains("client", clientId)}, {status} = "pending_review")`;
+  const { records } = await listRecords<Record<string, unknown>>(TABLES.payment_submissions, {
+    filterByFormula,
+    sort: [{ field: "submitted_datetime", direction: "desc" }],
+    _caller: "getPendingPaymentSubmissionsForClient",
+  });
+  return records.map(mapPaymentSubmission);
+}
+
+export async function getPaymentSubmissionById(
+  submissionId: string
+): Promise<PaymentSubmissionRecord> {
+  const rec = await getRecord<Record<string, unknown>>(TABLES.payment_submissions, submissionId);
+  return mapPaymentSubmission(rec);
+}
+
+export async function updatePaymentSubmissionReview(
+  submissionId: string,
+  data: UpdatePaymentSubmissionInput
+): Promise<PaymentSubmissionRecord> {
+  const fields: Record<string, unknown> = { status: data.status };
+  if (data.admin_note !== undefined) {
+    fields.admin_note = data.admin_note;
+  }
+  const rec = await updateRecord<Record<string, unknown>>(
+    TABLES.payment_submissions,
+    submissionId,
+    fields
+  );
+  return mapPaymentSubmission(rec);
+}
+
+export async function updateBillingCycleStatus(
+  cycleId: string,
+  status: BillingCycleStatus
+): Promise<BillingCycleRecord> {
+  const rec = await updateRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId, { status });
+  return mapBillingCycle(rec);
 }
 
 export async function getClientBillingCycles(clientId: string): Promise<BillingCycleRecord[]> {

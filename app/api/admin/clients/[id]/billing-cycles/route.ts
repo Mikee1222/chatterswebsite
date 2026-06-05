@@ -1,0 +1,51 @@
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { getSessionFromCookies } from "@/lib/auth";
+import { createBillingCycleForClient, getClientBillingCycles } from "@/services/client-portal";
+
+function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
+  return session != null && (session.role === "admin" || session.role === "manager");
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await getSessionFromCookies();
+  if (!isAdminOrManager(session)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await ctx.params;
+  const billingCycles = (await getClientBillingCycles(id)).slice(0, 5);
+  return NextResponse.json({ billingCycles });
+}
+
+const postSchema = z.object({
+  kind: z.enum(["chatting_weekly", "crm_monthly"]),
+  period_start: z.string().min(1),
+  period_end: z.string().min(1),
+  due_date: z.string().min(1),
+  amount: z.number().nonnegative(),
+  currency: z.string().min(1).max(8),
+});
+
+export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await getSessionFromCookies();
+  if (!isAdminOrManager(session)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await ctx.params;
+  let json: unknown;
+  try {
+    json = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const parsed = postSchema.safeParse(json);
+  if (!parsed.success) {
+    return NextResponse.json({ error: parsed.error.issues.map((i) => i.message).join(" ") }, { status: 400 });
+  }
+
+  const billingCycle = await createBillingCycleForClient(id, parsed.data);
+  return NextResponse.json({ billingCycle });
+}
