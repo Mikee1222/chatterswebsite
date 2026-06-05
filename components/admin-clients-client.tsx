@@ -28,6 +28,8 @@ import type {
   BillingCycleRecord,
   BillingCycleStatus,
   ClientModelRecord,
+  ClientTeamRole,
+  ClientUserType,
   PaymentSubmissionRecord,
 } from "@/types/client-portal";
 
@@ -134,6 +136,220 @@ function PortalAccessSwitch({
         )}
       />
     </button>
+  );
+}
+
+function formatFeePercent(clientPercentage: number | undefined): string {
+  if (typeof clientPercentage !== "number") return "—";
+  return `${(clientPercentage * 100).toFixed(1)}%`;
+}
+
+const TEAM_ROLES: ClientTeamRole[] = ["admin", "manager", "chatter", "virtual_assistant"];
+
+function AddClientModal({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated: (client: AdminClientRecord) => void;
+}) {
+  const [userType, setUserType] = React.useState<ClientUserType>("client");
+  const [companyName, setCompanyName] = React.useState("");
+  const [displayName, setDisplayName] = React.useState("");
+  const [email, setEmail] = React.useState("");
+  const [password, setPassword] = React.useState("");
+  const [feePercent, setFeePercent] = React.useState("");
+  const [role, setRole] = React.useState<ClientTeamRole>("chatter");
+  const [status, setStatus] = React.useState<"active" | "inactive">("active");
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!displayName.trim() || !email.trim() || !password) {
+      setError("Display name, email, and password are required.");
+      return;
+    }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+    if (userType === "client" && !companyName.trim()) {
+      setError("Company name is required for clients.");
+      return;
+    }
+
+    let clientPercentage: number | undefined;
+    if (userType === "client" && feePercent.trim()) {
+      const parsed = Number(feePercent);
+      if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
+        setError("Fee % must be between 0 and 100.");
+        return;
+      }
+      clientPercentage = parsed / 100;
+    }
+
+    setPending(true);
+    try {
+      const res = await fetch("/api/admin/clients", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_type: userType,
+          company_name: userType === "client" ? companyName.trim() : undefined,
+          display_name: displayName.trim(),
+          email: email.trim(),
+          password,
+          client_percentage: clientPercentage,
+          role: userType === "team_member" ? role : undefined,
+          status,
+        }),
+      });
+      const data = (await res.json()) as { client?: AdminClientRecord; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to create user.");
+        return;
+      }
+      if (data.client) onCreated(data.client);
+      onClose();
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <GlassModal title="Add user" subtitle="Create a client or team member account" onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+        <div>
+          <Label>User type</Label>
+          <div className="mt-2 flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
+            <button
+              type="button"
+              onClick={() => setUserType("client")}
+              className={cn(
+                "flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                userType === "client"
+                  ? "bg-pink-500/20 text-pink-300"
+                  : "text-white/50 hover:text-white"
+              )}
+            >
+              Client
+            </button>
+            <button
+              type="button"
+              onClick={() => setUserType("team_member")}
+              className={cn(
+                "flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition",
+                userType === "team_member"
+                  ? "bg-pink-500/20 text-pink-300"
+                  : "text-white/50 hover:text-white"
+              )}
+            >
+              Team member
+            </button>
+          </div>
+        </div>
+
+        {userType === "client" ? (
+          <div>
+            <Label htmlFor="add-company">Company name</Label>
+            <FormInput
+              id="add-company"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              required
+            />
+          </div>
+        ) : null}
+
+        <div>
+          <Label htmlFor="add-display">Display name</Label>
+          <FormInput
+            id="add-display"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="add-email">Email</Label>
+          <FormInput
+            id="add-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+
+        <div>
+          <Label htmlFor="add-password">Password</Label>
+          <FormInput
+            id="add-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            required
+          />
+        </div>
+
+        {userType === "client" ? (
+          <div>
+            <Label htmlFor="add-fee">Fee % (0–100)</Label>
+            <FormInput
+              id="add-fee"
+              type="number"
+              min="0"
+              max="100"
+              step="0.1"
+              value={feePercent}
+              onChange={(e) => setFeePercent(e.target.value)}
+              placeholder="e.g. 20"
+            />
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="add-role">Role</Label>
+            <FormSelect id="add-role" value={role} onChange={(e) => setRole(e.target.value as ClientTeamRole)}>
+              {TEAM_ROLES.map((r) => (
+                <option key={r} value={r}>
+                  {r.replace(/_/g, " ")}
+                </option>
+              ))}
+            </FormSelect>
+          </div>
+        )}
+
+        <div>
+          <Label htmlFor="add-status">Status</Label>
+          <FormSelect
+            id="add-status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as "active" | "inactive")}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </FormSelect>
+        </div>
+
+        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+
+        <div className="flex gap-3 pt-2">
+          <ButtonSecondary type="button" className="flex-1" onClick={onClose}>
+            Cancel
+          </ButtonSecondary>
+          <FormSubmitButton className="flex-1" loading={pending} disabled={pending}>
+            Create user
+          </FormSubmitButton>
+        </div>
+      </form>
+    </GlassModal>
   );
 }
 
@@ -691,24 +907,32 @@ function ClientDetailSheet({
 
 export function AdminClientsClient({ clients: initialClients }: Props) {
   const [clients, setClients] = React.useState(initialClients);
+  const [tab, setTab] = React.useState<"clients" | "team_members">("clients");
   const [search, setSearch] = React.useState("");
   const [selectedClient, setSelectedClient] = React.useState<AdminClientRecord | null>(null);
   const [portalPendingId, setPortalPendingId] = React.useState<string | null>(null);
+  const [showAddClient, setShowAddClient] = React.useState(false);
 
   React.useEffect(() => {
     setClients(initialClients);
   }, [initialClients]);
 
+  const tabFiltered = React.useMemo(() => {
+    return clients.filter((c) =>
+      tab === "team_members" ? c.user_type === "team_member" : c.user_type !== "team_member"
+    );
+  }, [clients, tab]);
+
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return clients;
-    return clients.filter(
+    if (!q) return tabFiltered;
+    return tabFiltered.filter(
       (c) =>
         c.company_name.toLowerCase().includes(q) ||
         c.display_name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q)
     );
-  }, [clients, search]);
+  }, [tabFiltered, search]);
 
   function handlePortalAccessChange(clientId: string, portalAccess: boolean) {
     setClients((prev) =>
@@ -738,11 +962,44 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6 md:py-8">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Clients</h1>
-        <p className="mt-1 text-sm text-white/55">
-          B2B client accounts, portal access, billing cycles, and payment review.
-        </p>
+      <div className="flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Users</h1>
+          <p className="mt-1 text-sm text-white/55">Manage clients and internal team members</p>
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowAddClient(true)}
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-pink-400/40 bg-gradient-to-r from-pink-500 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.45)] transition hover:brightness-110"
+        >
+          <Plus className="h-4 w-4" />
+          Add user
+        </button>
+      </div>
+
+      <div className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1 w-fit">
+        <button
+          type="button"
+          onClick={() => setTab("clients")}
+          className={
+            tab === "clients"
+              ? "rounded-lg bg-pink-500/20 px-4 py-1.5 text-sm font-medium text-pink-300"
+              : "px-4 py-1.5 text-sm text-white/50 hover:text-white"
+          }
+        >
+          Clients
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("team_members")}
+          className={
+            tab === "team_members"
+              ? "rounded-lg bg-pink-500/20 px-4 py-1.5 text-sm font-medium text-pink-300"
+              : "px-4 py-1.5 text-sm text-white/50 hover:text-white"
+          }
+        >
+          Team members
+        </button>
       </div>
 
       <div className="relative max-w-md">
@@ -766,9 +1023,12 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-white/40">
-                <th className="px-4 py-3 font-medium">Company</th>
+                <th className="px-4 py-3 font-medium">{tab === "team_members" ? "Name" : "Company"}</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Status</th>
+                {tab === "clients" ? (
+                  <th className="px-4 py-3 font-medium">Fee %</th>
+                ) : null}
                 <th className="px-4 py-3 font-medium">Portal</th>
                 <th className="w-10 px-4 py-3" aria-hidden />
               </tr>
@@ -776,8 +1036,13 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-10 text-center text-white/45">
-                    No clients match your search.
+                  <td
+                    colSpan={tab === "clients" ? 6 : 5}
+                    className="px-4 py-10 text-center text-white/45"
+                  >
+                    {search.trim()
+                      ? `No ${tab === "team_members" ? "team members" : "clients"} match your search.`
+                      : `No ${tab === "team_members" ? "team members" : "clients"} yet.`}
                   </td>
                 </tr>
               ) : (
@@ -788,15 +1053,33 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                     onClick={() => setSelectedClient(client)}
                   >
                     <td className="px-4 py-3">
-                      <p className="font-medium text-white">{client.company_name || "—"}</p>
-                      {client.display_name ? (
-                        <p className="text-xs text-white/45">{client.display_name}</p>
-                      ) : null}
+                      {tab === "team_members" ? (
+                        <>
+                          <p className="font-medium text-white">{client.display_name || "—"}</p>
+                          {client.role ? (
+                            <p className="text-xs capitalize text-white/45">
+                              {client.role.replace(/_/g, " ")}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium text-white">{client.company_name || "—"}</p>
+                          {client.display_name ? (
+                            <p className="text-xs text-white/45">{client.display_name}</p>
+                          ) : null}
+                        </>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-white/70">{client.email || "—"}</td>
                     <td className="px-4 py-3">
                       <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
                     </td>
+                    {tab === "clients" ? (
+                      <td className="px-4 py-3 text-white/70">
+                        {formatFeePercent(client.client_percentage)}
+                      </td>
+                    ) : null}
                     <td className="px-4 py-3">
                       <PortalAccessSwitch
                         checked={client.portal_access}
@@ -816,7 +1099,11 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
 
         <div className="divide-y divide-white/10 md:hidden">
           {filtered.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-white/45">No clients match your search.</p>
+            <p className="px-4 py-10 text-center text-sm text-white/45">
+              {search.trim()
+                ? `No ${tab === "team_members" ? "team members" : "clients"} match your search.`
+                : `No ${tab === "team_members" ? "team members" : "clients"} yet.`}
+            </p>
           ) : (
             filtered.map((client) => (
               <button
@@ -826,10 +1113,23 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                 onClick={() => setSelectedClient(client)}
               >
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-white">{client.company_name || "—"}</p>
+                  <p className="truncate font-medium text-white">
+                    {tab === "team_members"
+                      ? client.display_name || "—"
+                      : client.company_name || "—"}
+                  </p>
                   <p className="truncate text-xs text-white/45">{client.email || "—"}</p>
-                  <div className="mt-2 flex items-center gap-2">
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
+                    {tab === "clients" ? (
+                      <span className="text-xs text-white/45">
+                        Fee {formatFeePercent(client.client_percentage)}
+                      </span>
+                    ) : client.role ? (
+                      <span className="text-xs capitalize text-white/45">
+                        {client.role.replace(/_/g, " ")}
+                      </span>
+                    ) : null}
                   </div>
                 </div>
                 <div
@@ -851,9 +1151,19 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
       </div>
 
       <p className="text-xs text-white/35">
-        {filtered.length} client{filtered.length === 1 ? "" : "s"}
+        {filtered.length} {tab === "team_members" ? "team member" : "client"}
+        {filtered.length === 1 ? "" : "s"}
         {search.trim() ? ` matching “${search.trim()}”` : ""}
       </p>
+
+      <AnimatePresence>
+        {showAddClient ? (
+          <AddClientModal
+            onClose={() => setShowAddClient(false)}
+            onCreated={(client) => setClients((prev) => [client, ...prev])}
+          />
+        ) : null}
+      </AnimatePresence>
 
       <AnimatePresence>
         {selectedClient ? (

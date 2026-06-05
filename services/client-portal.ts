@@ -18,6 +18,9 @@ import type {
   CalendarEventRecord,
   ClientModelRecord,
   ClientRecord,
+  ClientTeamRole,
+  ClientUserType,
+  CreateAdminClientInput,
   CreateBillingCycleInput,
   CreatePaymentSubmissionInput,
   EnrichedInvoice,
@@ -42,6 +45,21 @@ const TABLES = {
   calendar_events: "calendar_events",
 } as const;
 
+const TEAM_ROLES: ClientTeamRole[] = ["admin", "manager", "chatter", "virtual_assistant"];
+
+function mapUserType(raw: unknown): ClientUserType | undefined {
+  if (raw === "team_member") return "team_member";
+  if (raw === "client") return "client";
+  return undefined;
+}
+
+function mapTeamRole(raw: unknown): ClientTeamRole | undefined {
+  if (typeof raw === "string" && TEAM_ROLES.includes(raw as ClientTeamRole)) {
+    return raw as ClientTeamRole;
+  }
+  return undefined;
+}
+
 function mapClient(rec: AirtableRecord<Record<string, unknown>>): ClientRecord {
   const f = rec.fields;
   return {
@@ -50,6 +68,8 @@ function mapClient(rec: AirtableRecord<Record<string, unknown>>): ClientRecord {
     display_name: String(f.display_name ?? ""),
     email: String(f.email ?? ""),
     status: (f.status as ClientRecord["status"]) ?? "inactive",
+    user_type: mapUserType(f.user_type),
+    role: mapTeamRole(f.role),
     client_percentage: typeof f.client_percentage === "number" ? f.client_percentage : undefined,
     net_profit_goal: typeof f.net_profit_goal === "number" ? f.net_profit_goal : undefined,
   };
@@ -187,6 +207,29 @@ export async function listAllClients(): Promise<AdminClientRecord[]> {
     _caller: "listAllClients",
   });
   return records.map(mapAdminClient);
+}
+
+export async function createAdminClient(data: CreateAdminClientInput): Promise<AdminClientRecord> {
+  const fields: Record<string, unknown> = {
+    display_name: data.display_name.trim(),
+    email: data.email.trim().toLowerCase(),
+    password: data.passwordHash,
+    user_type: data.user_type,
+    status: data.status,
+    portal_access: data.user_type === "client",
+  };
+
+  if (data.user_type === "client") {
+    if (data.company_name?.trim()) fields.company_name = data.company_name.trim();
+    if (typeof data.client_percentage === "number") {
+      fields.client_percentage = data.client_percentage;
+    }
+  } else if (data.role) {
+    fields.role = data.role;
+  }
+
+  const rec = await createRecord<Record<string, unknown>>(TABLES.clients, fields);
+  return mapAdminClient(rec);
 }
 
 export async function updateClientPortalAccess(

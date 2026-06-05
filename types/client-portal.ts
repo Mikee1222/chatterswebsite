@@ -2,14 +2,32 @@
 
 export type ClientStatus = "active" | "inactive" | "suspended";
 
+export type ClientUserType = "client" | "team_member";
+
+export type ClientTeamRole = "admin" | "manager" | "chatter" | "virtual_assistant";
+
 export type ClientRecord = {
   id: string;
   company_name: string;
   display_name: string;
   email: string;
   status: ClientStatus;
+  user_type?: ClientUserType;
+  role?: ClientTeamRole;
   client_percentage?: number;
   net_profit_goal?: number;
+};
+
+export type CreateAdminClientInput = {
+  company_name?: string;
+  display_name: string;
+  email: string;
+  /** Bcrypt hash stored in Airtable `password` field. */
+  passwordHash: string;
+  client_percentage?: number;
+  user_type: ClientUserType;
+  role?: ClientTeamRole;
+  status: "active" | "inactive";
 };
 
 /** Client row for admin management (includes portal access toggle). */
