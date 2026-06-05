@@ -91,6 +91,9 @@ export const ROUTES = {
     customs: "/admin/customs",
     accounts: "/admin/accounts",
     clients: "/admin/clients",
+    billing: "/admin/billing",
+    submissions: "/admin/submissions",
+    partnership: "/admin/partnership",
     /** Model operations (modelss) */
     modelAvailability: "/admin/model-availability",
     modelSchedules: "/admin/model-schedules",

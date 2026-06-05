@@ -181,7 +181,10 @@ const adminNav: NavItem[] = [
   { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
 
   // ── FINANCE ──
-  { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt", navSection: "FINANCE" },
+  { href: ROUTES.admin.billing, label: "Billing", iconKey: "Receipt", navSection: "FINANCE" },
+  { href: ROUTES.admin.submissions, label: "Submissions", iconKey: "FileText" },
+  { href: ROUTES.admin.partnership, label: "Partnership", iconKey: "TrendingUp" },
+  { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
   { href: ROUTES.admin.rebillsTips, label: "Rebills & Tips", iconKey: "Receipt" },
   { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
   { href: ROUTES.admin.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins" },

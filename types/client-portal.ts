@@ -26,6 +26,25 @@ export type BillingCycleStatus =
   | "confirmed_paid"
   | "overdue";
 
+export type BillingCycleRevenueStatus =
+  | "draft"
+  | "announced"
+  | "pending_review"
+  | "confirmed_paid"
+  | "overdue";
+
+export type BillingCycleRevenueRecord = {
+  id: string;
+  billing_cycle: string[];
+  client: string[];
+  model: string[];
+  turnover_usd: number;
+  fee_percent: number;
+  fee_usd?: number;
+  status?: BillingCycleRevenueStatus;
+  created_at?: string;
+};
+
 export type BillingCycleRecord = {
   id: string;
   client: string[];
@@ -36,8 +55,12 @@ export type BillingCycleRecord = {
   amount: number;
   currency: string;
   status: BillingCycleStatus;
+  model?: string[];
+  model_turnover?: number;
+  client_percentage_snapshot?: number;
   amount_due?: number;
   amount_crm?: number;
+  amount_paid?: number;
   total_fee_usd?: number;
   total_turnover_usd?: number;
   client_notified_at?: string;
