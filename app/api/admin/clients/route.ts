@@ -5,13 +5,16 @@ import type { ClientTeamRole, ClientUserType } from "@/types/client-portal";
 
 const TEAM_ROLES: ClientTeamRole[] = ["admin", "manager", "chatter", "virtual_assistant"];
 
-export async function GET() {
+export async function GET(request: Request) {
   const session = await getSessionFromCookies();
   if (!session || (session.role !== "admin" && session.role !== "manager")) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const clients = await listAllClients();
+  const { searchParams } = new URL(request.url);
+  const activeOnly =
+    searchParams.get("activeOnly") === "true" || searchParams.get("activeOnly") === "1";
+  const clients = await listAllClients(activeOnly);
   return NextResponse.json({ clients });
 }
 

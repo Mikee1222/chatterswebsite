@@ -10,6 +10,8 @@ import {
   ChevronRight,
   CreditCard,
   ExternalLink,
+  Eye,
+  EyeOff,
   Plus,
   Search,
   Users,
@@ -20,9 +22,11 @@ import { ButtonSecondary, Label } from "@/components/ui/form";
 import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { useToast } from "@/contexts/toast-context";
 import { getCycleAmountDue } from "@/lib/client-portal-utils";
 import { formatDateEuropean } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import type { AppNotification } from "@/types";
 import type {
   AdminClientRecord,
   BillingCycleKind,
@@ -38,11 +42,39 @@ type Props = {
   clients: AdminClientRecord[];
 };
 
+type EnrichedSubmission = PaymentSubmissionRecord & {
+  payment_method_label?: string;
+  payment_method_type?: string;
+};
+
 type ClientDetail = {
   models: ClientModelRecord[];
   billingCycles: BillingCycleRecord[];
-  submissions: PaymentSubmissionRecord[];
+  submissions: EnrichedSubmission[];
 };
+
+function sortRecentBillingCycles(cycles: BillingCycleRecord[]): BillingCycleRecord[] {
+  return [...cycles]
+    .sort((a, b) => b.period_start.localeCompare(a.period_start))
+    .slice(0, 5);
+}
+
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
 
 const badgeVariants = {
   default: "bg-white/10 text-white/80 border-white/15",
@@ -50,8 +82,11 @@ const badgeVariants = {
   amber: "bg-amber-500/15 text-amber-300 border-amber-500/25",
   pink: "bg-[hsl(330,80%,55%)]/15 text-[hsl(330,90%,75%)] border-[hsl(330,80%,55%)]/25",
   slate: "bg-white/5 text-white/60 border-white/10",
+  gray: "bg-gray-500/15 text-gray-300 border-gray-500/25",
+  blue: "bg-blue-500/15 text-blue-300 border-blue-500/25",
   yellow: "bg-yellow-500/15 text-yellow-300 border-yellow-500/25",
   rose: "bg-rose-500/15 text-rose-300 border-rose-500/25",
+  red: "bg-red-500/15 text-red-300 border-red-500/25",
 } as const;
 
 function Badge({
@@ -81,10 +116,22 @@ function clientStatusVariant(status: AdminClientRecord["status"]): keyof typeof 
 
 function cycleStatusVariant(status: BillingCycleStatus): keyof typeof badgeVariants {
   if (status === "confirmed_paid") return "emerald";
-  if (status === "overdue") return "rose";
+  if (status === "overdue") return "red";
   if (status === "pending_review") return "yellow";
-  if (status === "announced") return "pink";
+  if (status === "announced") return "blue";
+  if (status === "draft") return "gray";
   return "slate";
+}
+
+function submissionProofUrl(sub: PaymentSubmissionRecord): string | undefined {
+  if (sub.proof_url) return sub.proof_url;
+  return sub.proof_attachment?.[0]?.url;
+}
+
+function formatPaymentMethod(sub: EnrichedSubmission): string {
+  if (sub.payment_method_label?.trim()) return sub.payment_method_label.trim();
+  if (sub.payment_method_type?.trim()) return sub.payment_method_type.trim();
+  return "—";
 }
 
 function formatKind(kind: BillingCycleKind): string {
@@ -107,36 +154,54 @@ function PortalAccessSwitch({
   checked,
   disabled,
   onChange,
+  tooltip,
 }: {
   checked: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
+  tooltip?: string;
 }) {
   return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      disabled={disabled}
-      onClick={(e) => {
-        e.stopPropagation();
-        if (!disabled) onChange(!checked);
-      }}
-      className={cn(
-        "relative h-7 w-12 shrink-0 rounded-full border-2 transition-colors duration-200",
-        disabled && "cursor-not-allowed opacity-50",
-        checked
-          ? "border-pink-300/45 bg-gradient-to-r from-pink-500 to-fuchsia-600"
-          : "border-white/18 bg-[#262626]"
-      )}
+    <div
+      className="inline-flex items-center gap-2"
+      title={tooltip}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     >
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={tooltip ?? (checked ? "Portal enabled" : "Portal disabled")}
+        title={tooltip}
+        disabled={disabled}
+        onClick={() => {
+          if (!disabled) onChange(!checked);
+        }}
+        className={cn(
+          "relative h-8 w-14 shrink-0 rounded-full border-2 transition-all duration-200",
+          disabled && "cursor-not-allowed opacity-50",
+          checked
+            ? "border-pink-300/55 bg-gradient-to-r from-pink-500 to-fuchsia-600 shadow-[0_0_12px_-2px_hsl(330_80%_55%/0.55)]"
+            : "border-white/22 bg-[#262626] hover:border-white/35"
+        )}
+      >
+        <span
+          className={cn(
+            "absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white shadow-md transition-transform duration-200",
+            checked ? "translate-x-[26px]" : "translate-x-[3px]"
+          )}
+        />
+      </button>
       <span
         className={cn(
-          "absolute top-[3px] h-4 w-4 rounded-full bg-white shadow transition-transform duration-200",
-          checked ? "translate-x-[22px]" : "translate-x-[3px]"
+          "hidden text-xs font-medium sm:inline",
+          checked ? "text-pink-300" : "text-white/40"
         )}
-      />
-    </button>
+      >
+        {checked ? "On" : "Off"}
+      </span>
+    </div>
   );
 }
 
@@ -694,13 +759,15 @@ function ClientDetailSheet({
   onClose,
   onPortalAccessChange,
   onClientUpdated,
-  onStatusChange,
+  onToggleStatus,
+  statusPending,
 }: {
   client: AdminClientRecord;
   onClose: () => void;
   onPortalAccessChange: (clientId: string, portalAccess: boolean) => void;
   onClientUpdated: (client: AdminClientRecord) => void;
-  onStatusChange: (clientId: string, status: string) => void;
+  onToggleStatus: (client: AdminClientRecord) => void;
+  statusPending: boolean;
 }) {
   const [detail, setDetail] = React.useState<ClientDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -711,6 +778,12 @@ function ClientDetailSheet({
   const [editingClient, setEditingClient] = React.useState(false);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
   const [adminNote, setAdminNote] = React.useState("");
+  const { addToast } = useToast();
+
+  const recentBillingCycles = React.useMemo(
+    () => (detail ? sortRecentBillingCycles(detail.billingCycles) : []),
+    [detail]
+  );
 
   const loadDetail = React.useCallback(async () => {
     setLoading(true);
@@ -726,7 +799,7 @@ function ClientDetailSheet({
         error?: string;
       };
       const submissionsJson = (await submissionsRes.json()) as {
-        submissions?: PaymentSubmissionRecord[];
+        submissions?: EnrichedSubmission[];
         error?: string;
       };
       if (!detailRes.ok || !submissionsRes.ok) {
@@ -735,7 +808,7 @@ function ClientDetailSheet({
       }
       setDetail({
         models: detailJson.models ?? [],
-        billingCycles: detailJson.billingCycles ?? [],
+        billingCycles: sortRecentBillingCycles(detailJson.billingCycles ?? []),
         submissions: submissionsJson.submissions ?? [],
       });
     } catch {
@@ -802,19 +875,61 @@ function ClientDetailSheet({
     status: "approved" | "rejected"
   ) {
     setReviewingId(submissionId);
+    const note = adminNote.trim() || undefined;
     try {
       const res = await fetch(`/api/admin/submissions/${submissionId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status,
-          admin_note: adminNote.trim() || undefined,
+          admin_note: note,
         }),
       });
-      if (res.ok) {
-        setAdminNote("");
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          localToast(
+            `submission-review-error-${submissionId}`,
+            "Review failed",
+            data.error ?? "Could not update submission.",
+            "high"
+          )
+        );
+        return;
+      }
+
+      setDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              submissions: prev.submissions.filter((s) => s.id !== submissionId),
+            }
+          : prev
+      );
+      setAdminNote("");
+      addToast(
+        localToast(
+          `submission-review-${submissionId}-${status}`,
+          status === "approved" ? "Payment approved" : "Payment rejected",
+          status === "approved"
+            ? "The submission was approved and billing was updated."
+            : "The submission was rejected.",
+          "normal"
+        )
+      );
+
+      if (status === "approved") {
         await loadDetail();
       }
+    } catch {
+      addToast(
+        localToast(
+          `submission-review-network-${submissionId}`,
+          "Network error",
+          "Could not reach the server. Try again.",
+          "high"
+        )
+      );
     } finally {
       setReviewingId(null);
     }
@@ -862,23 +977,14 @@ function ClientDetailSheet({
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={async () => {
-                    const newStatus = client.status === "active" ? "inactive" : "active";
-                    const res = await fetch(`/api/admin/clients/${client.id}`, {
-                      method: "PATCH",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ status: newStatus }),
-                    });
-                    if (res.ok) {
-                      onStatusChange(client.id, newStatus);
-                      onClose();
-                    }
-                  }}
+                  disabled={statusPending}
+                  onClick={() => onToggleStatus(client)}
                   className={cn(
                     "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
                     client.status === "active"
                       ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
+                    statusPending && "cursor-not-allowed opacity-50"
                   )}
                 >
                   {client.status === "active" ? "Mark inactive" : "Mark active"}
@@ -1004,11 +1110,11 @@ function ClientDetailSheet({
                       Create cycle
                     </button>
                   </div>
-                  {detail.billingCycles.length === 0 ? (
+                  {recentBillingCycles.length === 0 ? (
                     <p className="text-sm text-white/45">No billing cycles yet.</p>
                   ) : (
                     <ul className="space-y-2">
-                      {detail.billingCycles.map((cycle) => (
+                      {recentBillingCycles.map((cycle) => (
                         <li
                           key={cycle.id}
                           className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm"
@@ -1050,7 +1156,9 @@ function ClientDetailSheet({
                     <p className="text-sm text-white/45">No payments awaiting review.</p>
                   ) : (
                     <ul className="space-y-3">
-                      {detail.submissions.map((sub) => (
+                      {detail.submissions.map((sub) => {
+                        const proofUrl = submissionProofUrl(sub);
+                        return (
                         <li
                           key={sub.id}
                           className="rounded-xl border border-yellow-500/20 bg-yellow-500/[0.06] p-4 text-sm"
@@ -1063,6 +1171,9 @@ function ClientDetailSheet({
                               <p className="mt-0.5 text-xs text-white/45">
                                 {formatDateEuropean(sub.submitted_datetime)}
                               </p>
+                              <p className="mt-1 text-xs text-white/45">
+                                Payment method: {formatPaymentMethod(sub)}
+                              </p>
                               {sub.reference_id ? (
                                 <p className="mt-1 text-xs text-white/40">Ref: {sub.reference_id}</p>
                               ) : null}
@@ -1070,15 +1181,15 @@ function ClientDetailSheet({
                                 <p className="mt-2 text-xs text-white/55">{sub.note}</p>
                               ) : null}
                             </div>
-                            {sub.proof_url ? (
+                            {proofUrl ? (
                               <a
-                                href={sub.proof_url}
+                                href={proofUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center gap-1 text-xs text-[hsl(330,90%,75%)] hover:underline"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                Proof
+                                View proof
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             ) : null}
@@ -1097,7 +1208,7 @@ function ClientDetailSheet({
                           <div className="mt-3 flex gap-2">
                             <button
                               type="button"
-                              disabled={reviewingId !== null}
+                              disabled={reviewingId === sub.id}
                               onClick={() => void handleSubmissionReview(sub.id, "approved")}
                               className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25 disabled:opacity-50"
                             >
@@ -1106,7 +1217,7 @@ function ClientDetailSheet({
                             </button>
                             <button
                               type="button"
-                              disabled={reviewingId !== null}
+                              disabled={reviewingId === sub.id}
                               onClick={() => void handleSubmissionReview(sub.id, "rejected")}
                               className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:opacity-50"
                             >
@@ -1115,7 +1226,8 @@ function ClientDetailSheet({
                             </button>
                           </div>
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                   )}
                 </section>
@@ -1141,7 +1253,7 @@ function ClientDetailSheet({
                 prev
                   ? {
                       ...prev,
-                      billingCycles: [cycle, ...prev.billingCycles].slice(0, 5),
+                      billingCycles: sortRecentBillingCycles([cycle, ...prev.billingCycles]),
                     }
                   : prev
               );
@@ -1167,11 +1279,13 @@ function ClientDetailSheet({
 }
 
 export function AdminClientsClient({ clients: initialClients }: Props) {
+  const { addToast } = useToast();
   const [clients, setClients] = React.useState(initialClients);
   const [search, setSearch] = React.useState("");
   const [showInactive, setShowInactive] = React.useState(false);
   const [selectedClient, setSelectedClient] = React.useState<AdminClientRecord | null>(null);
   const [portalPendingId, setPortalPendingId] = React.useState<string | null>(null);
+  const [statusPendingId, setStatusPendingId] = React.useState<string | null>(null);
   const [showAddClient, setShowAddClient] = React.useState(false);
 
   React.useEffect(() => {
@@ -1213,10 +1327,68 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         c.id === clientId ? { ...c, status: status as AdminClientRecord["status"] } : c
       )
     );
+    setSelectedClient((prev) =>
+      prev?.id === clientId ? { ...prev, status: status as AdminClientRecord["status"] } : prev
+    );
   }
+
+  const handleToggleStatus = React.useCallback(
+    async (client: AdminClientRecord) => {
+      if (statusPendingId) return;
+
+      const newStatus = client.status === "active" ? "inactive" : "active";
+      const prevStatus = client.status;
+      const label = client.company_name || client.display_name || "User";
+
+      handleStatusChange(client.id, newStatus);
+      setStatusPendingId(client.id);
+
+      try {
+        const res = await fetch(`/api/admin/clients/${client.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: newStatus }),
+        });
+        if (!res.ok) {
+          handleStatusChange(client.id, prevStatus);
+          addToast(
+            localToast(
+              `client-status-err-${client.id}-${Date.now()}`,
+              "Could not update status",
+              "Please try again.",
+              "high"
+            )
+          );
+          return;
+        }
+        addToast(
+          localToast(
+            `client-status-ok-${client.id}-${Date.now()}`,
+            newStatus === "active" ? "Marked active" : "Marked inactive",
+            `${label} is now ${newStatus}.`,
+            "normal"
+          )
+        );
+      } catch {
+        handleStatusChange(client.id, prevStatus);
+        addToast(
+          localToast(
+            `client-status-net-${client.id}-${Date.now()}`,
+            "Network error",
+            "Could not update client status.",
+            "high"
+          )
+        );
+      } finally {
+        setStatusPendingId(null);
+      }
+    },
+    [statusPendingId, addToast]
+  );
 
   async function handleListPortalToggle(client: AdminClientRecord, next: boolean) {
     setPortalPendingId(client.id);
+    const label = client.company_name || client.display_name || "User";
     try {
       const res = await fetch(`/api/admin/clients/${client.id}`, {
         method: "PATCH",
@@ -1226,6 +1398,14 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
       const data = (await res.json()) as { client?: AdminClientRecord };
       if (res.ok && data.client) {
         handlePortalAccessChange(client.id, data.client.portal_access);
+        addToast(
+          localToast(
+            `portal-${client.id}-${Date.now()}`,
+            next ? "Portal enabled" : "Portal disabled",
+            `${label} portal access is now ${next ? "on" : "off"}.`,
+            "normal"
+          )
+        );
       }
     } finally {
       setPortalPendingId(null);
@@ -1249,7 +1429,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         </button>
       </div>
 
-      <div className="flex max-w-xl flex-wrap items-center gap-3">
+      <div className="flex max-w-3xl flex-wrap items-center gap-3">
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
           <FormInput
@@ -1262,14 +1442,16 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         <button
           type="button"
           onClick={() => setShowInactive((v) => !v)}
+          title={showInactive ? "Hide inactive users from the list" : "Include inactive users in the list"}
           className={cn(
-            "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+            "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all",
             showInactive
-              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-              : "border-white/10 bg-white/5 text-white/50 hover:text-white"
+              ? "border-amber-500/45 bg-amber-500/15 text-amber-200 shadow-[0_0_20px_-8px_hsl(38_92%_50%/0.45)] ring-1 ring-amber-500/25"
+              : "border-white/15 bg-white/[0.06] text-white/65 hover:border-white/25 hover:bg-white/[0.09] hover:text-white"
           )}
         >
-          {showInactive ? "Showing all" : "Show inactive"}
+          {showInactive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          {showInactive ? "Showing inactive" : "Show inactive"}
         </button>
       </div>
 
@@ -1281,7 +1463,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         }}
       >
         <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[640px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-white/40">
                 <th className="px-4 py-3 font-medium">Company</th>
@@ -1289,21 +1471,28 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                 <th className="px-4 py-3 font-medium">Status</th>
                 <th className="px-4 py-3 font-medium">Fee %</th>
                 <th className="px-4 py-3 font-medium">Portal</th>
+                <th className="px-4 py-3 font-medium">Actions</th>
                 <th className="w-10 px-4 py-3" aria-hidden />
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-white/45">
+                  <td colSpan={7} className="px-4 py-10 text-center text-white/45">
                     {search.trim() ? "No users match your search." : "No users yet."}
                   </td>
                 </tr>
               ) : (
-                filtered.map((client) => (
+                filtered.map((client) => {
+                  const isInactive = client.status === "inactive";
+                  const statusBusy = statusPendingId === client.id;
+                  return (
                   <tr
                     key={client.id}
-                    className="cursor-pointer border-b border-white/5 transition-colors hover:bg-white/[0.04]"
+                    className={cn(
+                      "cursor-pointer border-b border-white/5 transition-colors hover:bg-white/[0.06]",
+                      isInactive && "opacity-50"
+                    )}
                     onClick={() => setSelectedClient(client)}
                   >
                     <td className="px-4 py-3">
@@ -1320,23 +1509,56 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                     </td>
                     <td className="px-4 py-3 text-white/70">{client.email || "—"}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {isInactive ? (
+                          <Badge variant="slate">Inactive</Badge>
+                        ) : (
+                          <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 text-white/70">
                       {formatFeePercent(client.client_percentage)}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                       <PortalAccessSwitch
                         checked={client.portal_access}
                         disabled={portalPendingId === client.id}
+                        tooltip={
+                          client.portal_access
+                            ? "Portal access enabled — click to disable"
+                            : "Portal access disabled — click to enable"
+                        }
                         onChange={(next) => void handleListPortalToggle(client, next)}
                       />
+                    </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        disabled={statusBusy}
+                        title={
+                          client.status === "active"
+                            ? "Mark this user inactive"
+                            : "Mark this user active"
+                        }
+                        onClick={() => void handleToggleStatus(client)}
+                        className={cn(
+                          "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap",
+                          client.status === "active"
+                            ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
+                          statusBusy && "cursor-not-allowed opacity-50"
+                        )}
+                      >
+                        {client.status === "active" ? "Mark inactive" : "Mark active"}
+                      </button>
                     </td>
                     <td className="px-4 py-3 text-white/30">
                       <ChevronRight className="h-4 w-4" />
                     </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -1348,11 +1570,17 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
               {search.trim() ? "No users match your search." : "No users yet."}
             </p>
           ) : (
-            filtered.map((client) => (
+            filtered.map((client) => {
+              const isInactive = client.status === "inactive";
+              const statusBusy = statusPendingId === client.id;
+              return (
               <button
                 key={client.id}
                 type="button"
-                className="flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.04]"
+                className={cn(
+                  "flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.06]",
+                  isInactive && "opacity-50"
+                )}
                 onClick={() => setSelectedClient(client)}
               >
                 <div className="min-w-0 flex-1">
@@ -1361,26 +1589,59 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                   </p>
                   <p className="truncate text-xs text-white/45">{client.email || "—"}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
+                    {isInactive ? (
+                      <Badge variant="slate">Inactive</Badge>
+                    ) : (
+                      <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
+                    )}
                     <span className="text-xs text-white/45">
                       Fee {formatFeePercent(client.client_percentage)}
                     </span>
                   </div>
                 </div>
-                <div
-                  className="shrink-0"
-                  onClick={(e) => e.stopPropagation()}
-                  onKeyDown={(e) => e.stopPropagation()}
-                >
-                  <PortalAccessSwitch
-                    checked={client.portal_access}
-                    disabled={portalPendingId === client.id}
-                    onChange={(next) => void handleListPortalToggle(client, next)}
-                  />
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  <div
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <PortalAccessSwitch
+                      checked={client.portal_access}
+                      disabled={portalPendingId === client.id}
+                      tooltip={
+                        client.portal_access
+                          ? "Portal access enabled — click to disable"
+                          : "Portal access disabled — click to enable"
+                      }
+                      onChange={(next) => void handleListPortalToggle(client, next)}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={statusBusy}
+                    title={
+                      client.status === "active"
+                        ? "Mark this user inactive"
+                        : "Mark this user active"
+                    }
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void handleToggleStatus(client);
+                    }}
+                    className={cn(
+                      "rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors whitespace-nowrap",
+                      client.status === "active"
+                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
+                      statusBusy && "cursor-not-allowed opacity-50"
+                    )}
+                  >
+                    {client.status === "active" ? "Mark inactive" : "Mark active"}
+                  </button>
                 </div>
                 <ChevronRight className="h-4 w-4 shrink-0 text-white/30" />
               </button>
-            ))
+              );
+            })
           )}
         </div>
       </div>
@@ -1407,7 +1668,8 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
             onClose={() => setSelectedClient(null)}
             onPortalAccessChange={handlePortalAccessChange}
             onClientUpdated={handleClientUpdated}
-            onStatusChange={handleStatusChange}
+            onToggleStatus={(c) => void handleToggleStatus(c)}
+            statusPending={statusPendingId === selectedClient.id}
           />
         ) : null}
       </AnimatePresence>

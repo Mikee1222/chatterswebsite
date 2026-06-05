@@ -67,12 +67,12 @@ export function EditModelForm({
     if (team !== "chatting_agency") return;
     let cancelled = false;
     setClientsLoading(true);
-    fetch("/api/admin/clients")
+    fetch("/api/admin/clients?activeOnly=true")
       .then((res) => res.json())
-      .then((data: { clients?: { id: string; display_name?: string; company_name?: string; user_type?: string }[] }) => {
+      .then((data: { clients?: { id: string; display_name?: string; company_name?: string; user_type?: string; status?: string }[] }) => {
         if (cancelled) return;
         const options = (data.clients ?? [])
-          .filter((c) => c.user_type !== "team_member")
+          .filter((c) => c.user_type !== "team_member" && c.status === "active")
           .map((c) => ({
             id: c.id,
             label: c.display_name?.trim() || c.company_name?.trim() || c.id,

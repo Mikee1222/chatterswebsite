@@ -23,7 +23,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       const clients = Array.isArray(r.fields.client) ? r.fields.client : [];
       return clients.includes(id);
     })),
-    getClientBillingCycles(id).then((cycles) => cycles.slice(0, 5)),
+    getClientBillingCycles(id).then((cycles) =>
+      [...cycles]
+        .sort((a, b) => b.period_start.localeCompare(a.period_start))
+        .slice(0, 5)
+    ),
   ]);
 
   const modelIds = clientModelsRecords.flatMap((r) =>

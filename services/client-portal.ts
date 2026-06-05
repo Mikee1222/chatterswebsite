@@ -221,13 +221,17 @@ export async function getClientById(clientId: string): Promise<ClientRecord> {
   return mapClient(rec);
 }
 
-export async function listAllClients(): Promise<AdminClientRecord[]> {
+export async function listAllClients(activeOnly = false): Promise<AdminClientRecord[]> {
   const records = await listAllRecords<Record<string, unknown>>(TABLES.clients, {
+    filterByFormula: activeOnly ? '{status} = "active"' : undefined,
     sort: [{ field: "company_name", direction: "asc" }],
     _caller: "listAllClients",
   });
   return records.map(mapAdminClient);
 }
+
+/** @deprecated Prefer `listAllClients` — alias kept for callers using the older name. */
+export const getAllClients = listAllClients;
 
 export async function createAdminClient(data: CreateAdminClientInput): Promise<AdminClientRecord> {
   const fields: Record<string, unknown> = {
@@ -398,7 +402,7 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
   const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycles, {
     sort: [{ field: "period_start", direction: "desc" }],
     fields: ["client", "period_start", "period_end", "due_date", "status", "kind",
-             "amount_due", "currency", "client_notified_at"],
+             "amount_due", "total_fee_usd", "currency", "client_notified_at"],
     _caller: "getClientBillingCycles",
   });
 
@@ -436,7 +440,7 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
     })),
   });
 
-  return filtered;
+  return filtered.sort((a, b) => b.period_start.localeCompare(a.period_start));
 }
 
 export async function getClientPaymentMethods(clientId: string): Promise<PaymentMethodRecord[]> {
