@@ -45,21 +45,26 @@ export function ClientPortalNav() {
 
   const linkClass = (href: string) =>
     cn(
-      "relative flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition-all duration-200",
+      "group relative flex items-center gap-3.5 rounded-xl border-l-[3px] px-3.5 py-3 text-[15px] font-medium transition-[background,box-shadow,color,border-color,transform] duration-200 ease-out",
       isActive(href)
-        ? "border border-white/15 bg-white/[0.08] text-white"
-        : "text-gray-500 hover:bg-white/[0.04] hover:text-gray-200"
+        ? "border-pink-400 bg-gradient-to-r from-pink-500/22 via-pink-500/10 to-white/[0.03] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.07),0_0_28px_-12px_rgba(236,72,153,0.35)]"
+        : "border-transparent text-white/65 hover:border-white/[0.12] hover:bg-white/[0.06] hover:text-white/95 active:scale-[0.99]"
+    );
+
+  const iconClass = (href: string) =>
+    cn(
+      "relative z-10 h-[1.35rem] w-[1.35rem] shrink-0 transition-colors duration-200",
+      isActive(href)
+        ? "text-pink-200 drop-shadow-[0_0_10px_rgba(236,72,153,0.35)]"
+        : "text-white/45 group-hover:text-pink-200/85"
     );
 
   const NavLinks = ({ onNavigate }: { onNavigate?: () => void }) => (
     <>
       {NAV_ITEMS.map(({ href, label, icon: Icon }) => (
         <Link key={href} href={href} onClick={onNavigate} className={linkClass(href)}>
-          {isActive(href) && (
-            <span className="absolute left-0 top-1/2 h-8 w-1 -translate-y-1/2 rounded-r-full bg-white/60" />
-          )}
-          <Icon className={cn("h-5 w-5 shrink-0", isActive(href) ? "text-white" : "text-gray-500")} />
-          <span className={isActive(href) ? "font-semibold text-white" : ""}>{label}</span>
+          <Icon className={iconClass(href)} aria-hidden />
+          <span className="relative z-10 min-w-0 flex-1 truncate leading-snug">{label}</span>
         </Link>
       ))}
     </>
@@ -67,19 +72,18 @@ export function ClientPortalNav() {
 
   return (
     <>
-      <aside className="hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-black/40 md:flex">
-        <div className="border-b border-white/10 px-5 py-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.35em] text-white/50">Gunzo Agency</p>
-          <p className="mt-1 text-lg font-semibold text-white">Client Portal</p>
+      <aside className="glass-panel hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-black/50 shadow-[4px_0_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl md:flex">
+        <div className="flex h-[3.25rem] items-center border-b border-white/10 px-5">
+          <p className="text-[15px] font-semibold tracking-tight text-white">Client Portal</p>
         </div>
-        <nav className="flex-1 space-y-1.5 px-4 py-4">
+        <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           <NavLinks />
         </nav>
         <div className="border-t border-white/10 px-4 py-4">
           <form action={logout}>
             <button
               type="submit"
-              className="w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white"
+              className="w-full rounded-xl px-3.5 py-3 text-left text-sm font-medium text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white/95"
             >
               Log out
             </button>
@@ -103,26 +107,26 @@ export function ClientPortalNav() {
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <div className="absolute left-0 top-0 flex h-screen w-64 flex-col overflow-y-auto border-r border-white/10 bg-black/90">
-            <div className="flex items-center justify-between border-b border-white/10 px-4 py-4">
-              <span className="text-lg font-semibold text-white">Menu</span>
+          <div className="absolute left-0 top-0 flex h-screen w-64 flex-col overflow-y-auto border-r border-white/10 bg-black/90 backdrop-blur-xl">
+            <div className="flex h-[3.25rem] items-center justify-between border-b border-white/10 px-4">
+              <span className="text-[15px] font-semibold text-white">Menu</span>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="rounded-lg p-2 text-gray-400 hover:text-white"
+                className="rounded-lg p-2 text-white/45 transition-colors hover:text-white/95"
                 aria-label="Close menu"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <nav className="flex-1 space-y-1.5 px-4 py-4">
+            <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
               <NavLinks onNavigate={() => setMobileOpen(false)} />
             </nav>
             <div className="border-t border-white/10 px-4 py-4">
               <form action={logout}>
                 <button
                   type="submit"
-                  className="w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white"
+                  className="w-full rounded-xl px-3.5 py-3 text-left text-sm font-medium text-white/65 transition-colors hover:bg-white/[0.06] hover:text-white/95"
                 >
                   Log out
                 </button>

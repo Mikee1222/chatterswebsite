@@ -24,7 +24,7 @@ export function ClientAttentionItemsBox({ items: initialItems }: Props) {
       case "medium":
         return "bg-amber-500/15 text-amber-300 border-amber-500/30";
       default:
-        return "bg-violet-500/15 text-violet-300 border-violet-500/30";
+        return "bg-pink-500/15 text-pink-300 border-pink-500/30";
     }
   };
 
@@ -59,7 +59,7 @@ export function ClientAttentionItemsBox({ items: initialItems }: Props) {
   return (
     <div className="glass-card rounded-2xl p-6">
       <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold text-white">
-        <AlertCircle className="h-5 w-5 text-violet-400" />
+        <AlertCircle className="h-5 w-5 text-pink-400" />
         What needs your attention
       </h2>
       <div className="space-y-3">
@@ -68,7 +68,7 @@ export function ClientAttentionItemsBox({ items: initialItems }: Props) {
             key={item.id}
             href={item.link}
             onClick={(e) => handleClick(item, e)}
-            className="group flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] p-4 transition-all hover:border-violet-400/40"
+            className="group flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] p-4 transition-all hover:border-pink-400/40"
           >
             <div className="flex flex-1 items-start gap-3">
               <span
@@ -81,7 +81,7 @@ export function ClientAttentionItemsBox({ items: initialItems }: Props) {
                 <p className="text-sm text-gray-400">{item.description}</p>
               </div>
             </div>
-            <ArrowRight className="ml-4 h-5 w-5 shrink-0 text-gray-500 transition-colors group-hover:text-violet-300" />
+            <ArrowRight className="ml-4 h-5 w-5 shrink-0 text-gray-500 transition-colors group-hover:text-pink-300" />
           </Link>
         ))}
       </div>

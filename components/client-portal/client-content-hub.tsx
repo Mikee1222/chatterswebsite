@@ -62,7 +62,7 @@ function priorityClass(p: string): string {
   if (x === "urgent") return "border-rose-500/40 bg-rose-500/15 text-rose-200";
   if (x === "high") return "border-amber-500/35 bg-amber-500/12 text-amber-200";
   if (x === "low") return "border-white/15 bg-white/[0.06] text-white/65";
-  return "border-violet-400/30 bg-violet-500/12 text-violet-200";
+  return "border-pink-400/30 bg-pink-500/12 text-pink-200";
 }
 
 function assignmentInTab(status: string, tab: StatusTab): boolean {
@@ -221,7 +221,7 @@ function calEventBorderClass(status: string): string {
 
 function calEventKindClass(kind: CalEvent["kind"]): string {
   if (kind === "va") return "bg-pink-500/20 text-pink-100";
-  return "bg-violet-500/20 text-violet-100";
+  return "bg-pink-500/20 text-pink-100";
 }
 
 function weekRangeLabel(mondayYmd: string): string {
@@ -527,7 +527,7 @@ export function ClientContentHub({ models }: Props) {
   if (models.length === 0) {
     return (
       <div className={cn(glassCard, "p-10 text-center")}>
-        <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-violet-300/40" aria-hidden />
+        <LayoutGrid className="mx-auto mb-3 h-10 w-10 text-pink-300/40" aria-hidden />
         <p className="font-medium text-white">No models assigned yet</p>
         <p className="mt-1 text-sm text-white/50">Content for your models will appear here.</p>
       </div>
@@ -549,7 +549,7 @@ export function ClientContentHub({ models }: Props) {
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition",
             view === "list"
-              ? "border-violet-400/50 bg-violet-500/20 text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              ? "border-pink-400/50 bg-pink-500/20 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
               : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
           )}
         >
@@ -562,7 +562,7 @@ export function ClientContentHub({ models }: Props) {
           className={cn(
             "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition",
             view === "calendar"
-              ? "border-violet-400/50 bg-violet-500/20 text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              ? "border-pink-400/50 bg-pink-500/20 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
               : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
           )}
         >
@@ -578,7 +578,7 @@ export function ClientContentHub({ models }: Props) {
           className={cn(
             "rounded-full border px-4 py-2 text-sm font-medium transition",
             modelTab === "all"
-              ? "border-violet-400/50 bg-violet-500/20 text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              ? "border-pink-400/50 bg-pink-500/20 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
               : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
           )}
         >
@@ -592,7 +592,7 @@ export function ClientContentHub({ models }: Props) {
             className={cn(
               "rounded-full border px-4 py-2 text-sm font-medium transition",
               modelTab === m.modelRecordId
-                ? "border-violet-400/50 bg-violet-500/20 text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                ? "border-pink-400/50 bg-pink-500/20 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                 : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
             )}
           >
@@ -611,7 +611,7 @@ export function ClientContentHub({ models }: Props) {
             className={cn(
               "rounded-full border px-4 py-2 text-sm font-medium transition",
               statusTab === id
-                ? "border-purple-400/50 bg-purple-500/20 text-purple-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                ? "border-pink-400/50 bg-pink-500/20 text-pink-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
                 : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
             )}
           >
@@ -633,7 +633,7 @@ export function ClientContentHub({ models }: Props) {
                   className={cn(
                     "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                     calView === "month"
-                      ? "border border-violet-400/50 bg-violet-500/20 text-violet-100"
+                      ? "border border-pink-400/50 bg-pink-500/20 text-pink-100"
                       : "text-white/50 hover:text-white/85",
                   )}
                 >
@@ -645,7 +645,7 @@ export function ClientContentHub({ models }: Props) {
                   className={cn(
                     "rounded-full px-3 py-1.5 text-xs font-semibold transition",
                     calView === "week"
-                      ? "border border-violet-400/50 bg-violet-500/20 text-violet-100"
+                      ? "border border-pink-400/50 bg-pink-500/20 text-pink-100"
                       : "text-white/50 hover:text-white/85",
                   )}
                 >
@@ -668,7 +668,7 @@ export function ClientContentHub({ models }: Props) {
               <button
                 type="button"
                 onClick={goCalToday}
-                className="rounded-full border border-violet-400/35 bg-violet-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-violet-100 transition hover:bg-violet-500/18"
+                className="rounded-full border border-pink-400/35 bg-pink-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-pink-100 transition hover:bg-pink-500/18"
               >
                 Today
               </button>
@@ -711,7 +711,7 @@ export function ClientContentHub({ models }: Props) {
                               "mb-1 flex items-center justify-end text-xs font-medium tabular-nums",
                               cell.inMonth ? "text-white/70" : "text-white/25",
                               todayYmd === cell.ymd &&
-                                "mx-auto w-fit rounded-full bg-violet-500 px-2 py-0.5 font-bold text-white",
+                                "mx-auto w-fit rounded-full bg-pink-500 px-2 py-0.5 font-bold text-white",
                             )}
                           >
                             {day.getDate()}
@@ -755,7 +755,7 @@ export function ClientContentHub({ models }: Props) {
                         <div
                           className={cn(
                             "mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold tabular-nums",
-                            isTodayDay ? "bg-violet-500 text-white" : "text-white",
+                            isTodayDay ? "bg-pink-500 text-white" : "text-white",
                           )}
                         >
                           {d.getDate()}
@@ -811,7 +811,7 @@ export function ClientContentHub({ models }: Props) {
                   className={cn(
                     glassCard,
                     "relative flex flex-col p-5",
-                    urgent || overdue ? "border-violet-500/35" : "border-white/10",
+                    urgent || overdue ? "border-pink-500/35" : "border-white/10",
                   )}
                 >
                   {(urgent || overdue) && (
@@ -834,7 +834,7 @@ export function ClientContentHub({ models }: Props) {
 
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-violet-300/70">
+                      <p className="text-xs font-medium uppercase tracking-wide text-pink-300/70">
                         {a.modelName}
                       </p>
                       <h3 className="mt-1 text-lg font-semibold leading-snug text-white">
@@ -861,9 +861,9 @@ export function ClientContentHub({ models }: Props) {
 
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/45">
                     <span className="inline-flex items-center gap-1">
-                      <CalendarClock className="h-3.5 w-3.5 text-violet-300/80" aria-hidden />
+                      <CalendarClock className="h-3.5 w-3.5 text-pink-300/80" aria-hidden />
                       Deadline:{" "}
-                      <span className={cn("font-medium text-white/70", urgent && "text-violet-200")}>
+                      <span className={cn("font-medium text-white/70", urgent && "text-pink-200")}>
                         {formatDateTimeUk(a.deadline)}
                       </span>
                     </span>
@@ -878,7 +878,7 @@ export function ClientContentHub({ models }: Props) {
                   {st === "scheduled" && a.scheduled_date ? (
                     <p className="mt-2 text-xs text-white/50">
                       Scheduled for{" "}
-                      <span className="font-medium text-violet-200/95">
+                      <span className="font-medium text-pink-200/95">
                         {formatDateTimeUk(a.scheduled_date)}
                       </span>
                     </p>
@@ -897,7 +897,7 @@ export function ClientContentHub({ models }: Props) {
                         href={downloadInfo.href}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-violet-400/40 transition hover:from-violet-500 hover:to-purple-500"
+                        className="inline-flex min-h-[44px] items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg ring-1 ring-pink-400/40 transition hover:from-pink-500 hover:to-pink-500"
                       >
                         <Download className="h-4 w-4 shrink-0" aria-hidden />
                         {downloadInfo.label}
@@ -909,7 +909,7 @@ export function ClientContentHub({ models }: Props) {
                         type="button"
                         disabled={busy}
                         onClick={() => setScheduleAssignment(a)}
-                        className="inline-flex min-h-[44px] items-center rounded-xl border border-violet-400/35 bg-violet-500/10 px-4 py-2.5 text-sm font-semibold text-violet-100 transition hover:bg-violet-500/18 disabled:cursor-not-allowed disabled:opacity-45"
+                        className="inline-flex min-h-[44px] items-center rounded-xl border border-pink-400/35 bg-pink-500/10 px-4 py-2.5 text-sm font-semibold text-pink-100 transition hover:bg-pink-500/18 disabled:cursor-not-allowed disabled:opacity-45"
                       >
                         Schedule
                       </button>
@@ -967,15 +967,15 @@ export function ClientContentHub({ models }: Props) {
                           setDetailCustom(r);
                         }
                       }}
-                      className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-violet-500/[0.06]"
+                      className="cursor-pointer border-b border-white/[0.06] transition-colors hover:bg-pink-500/[0.06]"
                     >
-                      <td className="px-4 py-3 text-violet-200/90">{r.modelName}</td>
+                      <td className="px-4 py-3 text-pink-200/90">{r.modelName}</td>
                       <td className="px-4 py-3 font-medium text-white">{r.fan_username?.trim() || "—"}</td>
                       <td className="max-w-[200px] truncate px-4 py-3 text-white/80">{displayType(r)}</td>
-                      <td className="px-4 py-3 text-violet-200/95">{r.price?.trim() || "—"}</td>
+                      <td className="px-4 py-3 text-pink-200/95">{r.price?.trim() || "—"}</td>
                       <td className="px-4 py-3 text-white/60">{displayRequestedDate(r)}</td>
                       <td className="px-4 py-3">
-                        <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-400/20 bg-violet-500/10 px-2.5 py-1 text-xs font-medium text-violet-100/95">
+                        <span className="inline-flex items-center gap-1.5 rounded-full border border-pink-400/20 bg-pink-500/10 px-2.5 py-1 text-xs font-medium text-pink-100/95">
                           <Sparkles className="h-3.5 w-3.5 opacity-80" aria-hidden />
                           {modelStatusLabel(r.model_status)}
                         </span>
@@ -1065,7 +1065,7 @@ export function ClientContentHub({ models }: Props) {
                 type="button"
                 disabled={busy || !scheduleDate}
                 onClick={() => void submitScheduleAssignment()}
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
+                className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-40"
               >
                 {busy ? (
                   <>
@@ -1158,7 +1158,7 @@ export function ClientContentHub({ models }: Props) {
                   required
                   value={customDate}
                   onChange={(e) => setCustomDate(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-violet-400/30 focus:ring-2"
+                  className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-pink-400/30 focus:ring-2"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1172,7 +1172,7 @@ export function ClientContentHub({ models }: Props) {
                     required
                     value={customStart}
                     onChange={(e) => setCustomStart(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-violet-400/30 focus:ring-2"
+                    className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-pink-400/30 focus:ring-2"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1185,7 +1185,7 @@ export function ClientContentHub({ models }: Props) {
                     required
                     value={customEnd}
                     onChange={(e) => setCustomEnd(e.target.value)}
-                    className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-violet-400/30 focus:ring-2"
+                    className="w-full rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-pink-400/30 focus:ring-2"
                   />
                 </div>
               </div>
@@ -1199,7 +1199,7 @@ export function ClientContentHub({ models }: Props) {
                   onChange={(e) => setCustomNotes(e.target.value)}
                   rows={3}
                   placeholder="Optional…"
-                  className="w-full resize-none rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-violet-400/30 focus:ring-2"
+                  className="w-full resize-none rounded-xl border border-white/10 bg-black/50 px-3 py-2.5 text-sm text-white outline-none ring-pink-400/30 focus:ring-2"
                 />
               </div>
               <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
@@ -1214,7 +1214,7 @@ export function ClientContentHub({ models }: Props) {
                 <button
                   type="submit"
                   disabled={busy}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy ? (
                     <>
@@ -1260,7 +1260,7 @@ export function ClientContentHub({ models }: Props) {
                   type="button"
                   disabled={busy}
                   onClick={() => void submitMarkUploaded()}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-pink-600 to-pink-500 px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
                 >
                   {busy ? (
                     <>

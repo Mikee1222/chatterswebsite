@@ -122,7 +122,7 @@ export function ClientWeeklyPaymentsCalendar({
           <button
             type="button"
             onClick={() => setCurrentDate(subMonths(currentDate, 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-300 transition-colors hover:border-violet-400/40 hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-300 transition-colors hover:border-pink-400/40 hover:text-white"
             aria-label="Previous month"
           >
             <ChevronLeft className="h-4 w-4" />
@@ -133,7 +133,7 @@ export function ClientWeeklyPaymentsCalendar({
           <button
             type="button"
             onClick={() => setCurrentDate(addMonths(currentDate, 1))}
-            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-300 transition-colors hover:border-violet-400/40 hover:text-white"
+            className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-300 transition-colors hover:border-pink-400/40 hover:text-white"
             aria-label="Next month"
           >
             <ChevronRight className="h-4 w-4" />
@@ -149,8 +149,8 @@ export function ClientWeeklyPaymentsCalendar({
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition-all",
                 statusFilter === status
-                  ? "border-violet-400/30 bg-violet-500/15 text-violet-200"
-                  : "border-white/10 bg-white/5 text-gray-400 hover:border-violet-400/30 hover:text-gray-200"
+                  ? "border-pink-400/30 bg-pink-500/15 text-pink-200"
+                  : "border-white/10 bg-white/5 text-gray-400 hover:border-pink-400/30 hover:text-gray-200"
               )}
             >
               {status.replace("_", " ")}
@@ -163,7 +163,7 @@ export function ClientWeeklyPaymentsCalendar({
             {webcalUrl && (
               <a
                 href={webcalUrl}
-                className="rounded-full bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-900/30"
+                className="rounded-full bg-gradient-to-r from-pink-600 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-900/30"
               >
                 Add to Apple Calendar
               </a>
@@ -205,15 +205,15 @@ export function ClientWeeklyPaymentsCalendar({
                   className={cn(
                     "h-20 rounded-xl border p-2 text-left transition-all md:h-28",
                     isSelected
-                      ? "border-violet-400/50 bg-white/15 ring-1 ring-violet-400/30"
-                      : "border-white/10 bg-white/5 hover:border-violet-400/30 hover:bg-white/10",
-                    isToday && !isSelected ? "border-violet-400/30 ring-1 ring-violet-400/20" : ""
+                      ? "border-pink-400/50 bg-white/15 ring-1 ring-pink-400/30"
+                      : "border-white/10 bg-white/5 hover:border-pink-400/30 hover:bg-white/10",
+                    isToday && !isSelected ? "border-pink-400/30 ring-1 ring-pink-400/20" : ""
                   )}
                 >
                   <div
                     className={cn(
                       "text-sm font-semibold tabular-nums",
-                      isSelected ? "text-violet-200" : isToday ? "text-violet-300" : "text-white"
+                      isSelected ? "text-pink-200" : isToday ? "text-pink-300" : "text-white"
                     )}
                   >
                     {format(day, "d")}
@@ -222,7 +222,7 @@ export function ClientWeeklyPaymentsCalendar({
                     {dayEvents.slice(0, 2).map((event) => (
                       <div
                         key={event.id}
-                        className="w-full truncate rounded-lg border border-violet-400/20 bg-violet-500/10 px-2 py-1 text-left text-[10px] font-medium text-violet-100 md:text-xs"
+                        className="w-full truncate rounded-lg border border-pink-400/20 bg-pink-500/10 px-2 py-1 text-left text-[10px] font-medium text-pink-100 md:text-xs"
                         title={event.title}
                       >
                         {event.title}
@@ -247,7 +247,7 @@ export function ClientWeeklyPaymentsCalendar({
               </h3>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5">
-              <Calendar className="h-5 w-5 text-violet-300" />
+              <Calendar className="h-5 w-5 text-pink-300" />
             </div>
           </div>
 
@@ -265,8 +265,8 @@ export function ClientWeeklyPaymentsCalendar({
                   className={cn(
                     "w-full rounded-xl border border-white/10 bg-white/5 p-4 text-left transition-all",
                     selectedEvent?.id === event.id
-                      ? "border-violet-400/30 bg-white/10"
-                      : "hover:border-violet-400/20 hover:bg-white/10"
+                      ? "border-pink-400/30 bg-white/10"
+                      : "hover:border-pink-400/20 hover:bg-white/10"
                   )}
                 >
                   <p className="text-sm text-gray-400">

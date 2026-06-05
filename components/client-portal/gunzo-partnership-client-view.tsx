@@ -63,7 +63,7 @@ export function ClientGunzoPartnershipView({
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.3em] text-violet-300/80">Client dashboard</p>
+          <p className="text-xs uppercase tracking-[0.3em] text-pink-300/80">Client dashboard</p>
           <h2 className="mt-2 text-2xl font-semibold text-white">Performance Overview</h2>
           <p className="mt-1 text-sm text-gray-400">Selected month: {formatMonthLabel(selectedMonth)}</p>
         </div>
@@ -73,7 +73,7 @@ export function ClientGunzoPartnershipView({
             <select
               value={selectedMonth}
               onChange={(e) => setMonth(e.target.value)}
-              className="min-w-[160px] cursor-pointer appearance-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-10 text-white outline-none focus:ring-2 focus:ring-violet-400/40 [color-scheme:dark]"
+              className="min-w-[160px] cursor-pointer appearance-none rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-10 text-white outline-none focus:ring-2 focus:ring-pink-400/40 [color-scheme:dark]"
               aria-label="Select month"
             >
               {monthsForDropdown.map((m) => (

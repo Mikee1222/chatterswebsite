@@ -33,10 +33,10 @@ export function ClientPaymentMethodCard({ method }: Props) {
   const showOpenInApp = !!method.open_url && !isZen;
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3 transition-colors hover:border-violet-400/25">
+    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3 transition-colors hover:border-pink-400/25">
       <div className="mb-1 flex items-center gap-2">
-        <div className="h-2 w-2 rounded-full bg-gradient-to-r from-violet-400 to-purple-500" />
-        <strong className="font-semibold text-violet-200">{method.label}</strong>
+        <div className="h-2 w-2 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
+        <strong className="font-semibold text-pink-200">{method.label}</strong>
         <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-gray-400">
           {method.type}
         </span>
@@ -95,7 +95,7 @@ export function ClientPaymentMethodCard({ method }: Props) {
             const url = method.open_url!;
             window.open(url, "_blank", "noopener,noreferrer");
           }}
-          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-900/30"
+          className="mt-3 inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-pink-600 to-pink-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-900/30"
         >
           <ExternalLink className="h-4 w-4" />
           Open in App
@@ -103,7 +103,7 @@ export function ClientPaymentMethodCard({ method }: Props) {
       )}
 
       {toast && (
-        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full border border-violet-400/30 bg-[#1a1228] px-4 py-2 text-sm text-white shadow-xl md:bottom-8">
+        <div className="fixed bottom-24 left-1/2 z-50 -translate-x-1/2 rounded-full border border-pink-400/30 bg-[#1a1228] px-4 py-2 text-sm text-white shadow-xl md:bottom-8">
           {toast}
         </div>
       )}
@@ -134,7 +134,7 @@ function CopyRow({
         <button
           type="button"
           onClick={() => onCopy(value, field, label)}
-          className="rounded p-1 text-gray-400 hover:text-violet-300"
+          className="rounded p-1 text-gray-400 hover:text-pink-300"
           aria-label={`Copy ${label}`}
         >
           {copiedField === field ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}

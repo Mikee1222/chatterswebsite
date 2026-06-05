@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileText,
   BarChart3,
+  LayoutGrid,
   UserCog,
   Wallet,
 } from "lucide-react";
@@ -245,7 +246,7 @@ export default async function ClientHomePage() {
       <div>
         <h2 className="mb-4 text-xl font-semibold text-white">Quick actions</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <QuickAction href={ROUTES.client.weeklyPayments} icon={CalendarDays} title="Weekly Payments" subtitle="View calendar and schedule" gradient="from-violet-500/80 to-purple-500/80" />
+          <QuickAction href={ROUTES.client.content} icon={LayoutGrid} title="Content Hub" subtitle="Schedule and manage content for your models" gradient="from-violet-500/80 to-purple-500/80" />
           <QuickAction href={chattingCanSubmit ? chattingPayHref : ROUTES.client.paymentHistory} icon={Wallet} title={chattingCanSubmit ? "Pay Chatting" : "View Chatting"} subtitle={chattingCanSubmit ? "Submit payment proof" : "Review status"} gradient="from-purple-500/80 to-indigo-500/80" />
           <QuickAction href={crmCanSubmit ? ROUTES.client.payCrm : ROUTES.client.paymentHistory} icon={Building2} title={crmCanSubmit ? "Pay CRM" : "View CRM"} subtitle={crmCanSubmit ? "Submit payment proof" : "Review status"} gradient="from-indigo-500/80 to-blue-500/80" />
           <QuickAction href={ROUTES.client.gunzoPartnership} icon={BarChart3} title="Gunzo Partnership" subtitle="Performance overview" gradient="from-fuchsia-500/80 to-violet-500/80" />

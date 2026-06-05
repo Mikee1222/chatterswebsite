@@ -100,8 +100,8 @@ function ProofFilePicker({
           "min-h-[56px] flex items-center justify-between gap-3",
           "transition-all duration-200",
           isDragging
-            ? "border-violet-500/50 ring-2 ring-violet-500/20"
-            : "border-[#2f2f2f] hover:border-violet-500/50 focus-within:border-violet-500/50 focus-within:ring-1 focus-within:ring-violet-500/20",
+            ? "border-pink-500/50 ring-2 ring-pink-500/20"
+            : "border-[#2f2f2f] hover:border-pink-500/50 focus-within:border-pink-500/50 focus-within:ring-1 focus-within:ring-pink-500/20",
         ].join(" ")}
       >
         <div className="min-w-0 flex-1">
@@ -135,7 +135,7 @@ function ProofFilePicker({
                 e.stopPropagation();
                 openPicker();
               }}
-              className="rounded-lg border border-[#2f2f2f] bg-white/5 px-3 py-1.5 text-xs font-semibold text-violet-400 transition-colors hover:bg-white/10"
+              className="rounded-lg border border-[#2f2f2f] bg-white/5 px-3 py-1.5 text-xs font-semibold text-pink-400 transition-colors hover:bg-white/10"
             >
               Choose file
             </button>
@@ -935,7 +935,7 @@ export function PaymentForm({
                     <span>Our team will review it.</span>
                   </li>
                   <li className="flex items-start gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-violet-300/80" />
+                    <span className="mt-2 h-1.5 w-1.5 rounded-full bg-pink-300/80" />
                     <span>You&apos;ll receive an invoice by email within 48 hours.</span>
                   </li>
                 </ul>
@@ -980,7 +980,7 @@ export function PaymentForm({
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
                 <Link
                   href={historyHref}
-                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(124,58,237,0.35)] transition-all hover:from-violet-500 hover:to-purple-500"
+                  className="inline-flex items-center justify-center rounded-full bg-gradient-to-r from-pink-600 to-pink-500 px-5 py-3 text-sm font-semibold text-white shadow-[0_12px_30px_rgba(236,72,153,0.35)] transition-all hover:from-pink-500 hover:to-pink-500"
                 >
                   View Submission
                 </Link>
@@ -1191,19 +1191,19 @@ export function PaymentForm({
         <div className="group">
           <label
             htmlFor="payment_method"
-            className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-violet-400"
+            className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-pink-400"
           >
             Payment Method *
           </label>
           <div className="relative">
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-violet-500/10 to-purple-500/10 opacity-0 blur-xl transition-opacity group-focus-within:opacity-100" />
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-pink-500/10 to-pink-500/10 opacity-0 blur-xl transition-opacity group-focus-within:opacity-100" />
             <select
               id="payment_method"
               name="payment_method_id"
               required
               value={selectedPaymentMethodId}
               onChange={(e) => setSelectedPaymentMethodId(e.target.value)}
-              className="relative w-full cursor-pointer appearance-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-3 text-white transition-all duration-200 hover:border-[#3f3f3f] focus:border-violet-500/50 focus:outline-none focus:ring-2 focus:ring-violet-500/20"
+              className="relative w-full cursor-pointer appearance-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-3 text-white transition-all duration-200 hover:border-[#3f3f3f] focus:border-pink-500/50 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
               style={{
                 backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b5cf6' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
                 backgroundRepeat: "no-repeat",
@@ -1221,11 +1221,11 @@ export function PaymentForm({
           </div>
 
           {selectedPaymentMethod && (
-            <div className="mt-4 rounded-lg border border-violet-500/20 bg-gradient-to-br from-violet-500/10 to-purple-500/10 p-4">
+            <div className="mt-4 rounded-lg border border-pink-500/20 bg-gradient-to-br from-pink-500/10 to-pink-500/10 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <p className="text-sm font-medium text-gray-300">You will pay</p>
                 {youWillPay?.loading && (
-                  <Loader2 className="h-4 w-4 animate-spin text-violet-400" />
+                  <Loader2 className="h-4 w-4 animate-spin text-pink-400" />
                 )}
               </div>
 
@@ -1235,7 +1235,7 @@ export function PaymentForm({
                     <label htmlFor="crypto_token" className="block text-xs font-medium text-gray-400">
                       Select Token
                     </label>
-                    <span className="rounded border border-purple-500/30 bg-purple-500/20 px-2 py-0.5 text-xs font-medium text-purple-400">
+                    <span className="rounded border border-pink-500/30 bg-pink-500/20 px-2 py-0.5 text-xs font-medium text-pink-400">
                       Solana Network
                     </span>
                   </div>
@@ -1244,7 +1244,7 @@ export function PaymentForm({
                       id="crypto_token"
                       value={selectedCryptoToken}
                       onChange={(e) => setSelectedCryptoToken(e.target.value as SolanaToken)}
-                      className="relative w-full cursor-pointer appearance-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-3 py-2 text-sm text-white transition-all duration-200 hover:border-[#3f3f3f] focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+                      className="relative w-full cursor-pointer appearance-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-3 py-2 text-sm text-white transition-all duration-200 hover:border-[#3f3f3f] focus:border-pink-500/50 focus:outline-none focus:ring-1 focus:ring-pink-500/20"
                       style={{
                         backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'%3E%3Cpath fill='%238b5cf6' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
                         backgroundRepeat: "no-repeat",
@@ -1297,7 +1297,7 @@ export function PaymentForm({
                     )}
 
                   {youWillPay.eurEstimate && (
-                    <div className="mt-2 border-t border-violet-500/20 pt-2">
+                    <div className="mt-2 border-t border-pink-500/20 pt-2">
                       <div className="flex items-baseline gap-2">
                         <span className="text-sm text-gray-400">≈</span>
                         <span className="text-lg font-semibold text-white">
@@ -1314,7 +1314,7 @@ export function PaymentForm({
                   )}
 
                   {youWillPay.solPrice && (
-                    <div className="mt-2 border-t border-violet-500/20 pt-2">
+                    <div className="mt-2 border-t border-pink-500/20 pt-2">
                       <p className="text-xs text-gray-500">
                         1 SOL = ${youWillPay.solPrice.toFixed(2)}
                       </p>
@@ -1328,12 +1328,12 @@ export function PaymentForm({
                     </div>
                   )}
 
-                  <div className="mt-3 border-t border-violet-500/20 pt-2">
+                  <div className="mt-3 border-t border-pink-500/20 pt-2">
                     <button
                       type="button"
                       onClick={() => void calculateYouWillPay()}
                       disabled={youWillPay.loading}
-                      className="flex items-center gap-1 text-xs text-violet-400 transition-colors hover:text-violet-300 disabled:opacity-50"
+                      className="flex items-center gap-1 text-xs text-pink-400 transition-colors hover:text-pink-300 disabled:opacity-50"
                     >
                       <RefreshCw className={`h-3 w-3 ${youWillPay.loading ? "animate-spin" : ""}`} />
                       Refresh
@@ -1354,7 +1354,7 @@ export function PaymentForm({
           )}
 
           {paymentMethods.length > 0 && (
-            <div className="mt-4 rounded-xl border border-[#2f2f2f] bg-gradient-to-br from-[#1a1a1a] to-[#151515] p-5 transition-all duration-200 hover:border-violet-500/30">
+            <div className="mt-4 rounded-xl border border-[#2f2f2f] bg-gradient-to-br from-[#1a1a1a] to-[#151515] p-5 transition-all duration-200 hover:border-pink-500/30">
               <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-400">
                 Available Payment Methods
               </p>
@@ -1405,7 +1405,7 @@ export function PaymentForm({
           <div className="mb-2 flex items-center justify-between">
             <label
               htmlFor="amount"
-              className="block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-violet-400"
+              className="block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-pink-400"
             >
               Amount *
             </label>
@@ -1416,7 +1416,7 @@ export function PaymentForm({
             )}
           </div>
           <div className="relative">
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-violet-500/10 to-purple-500/10 opacity-0 blur-xl transition-opacity duration-300 group-focus-within:opacity-100" />
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-pink-500/10 to-pink-500/10 opacity-0 blur-xl transition-opacity duration-300 group-focus-within:opacity-100" />
             <input
               type="number"
               id="amount"
@@ -1438,7 +1438,7 @@ export function PaymentForm({
               }}
               readOnly={!manualAmountEdit}
               disabled={dueAmount <= 0}
-              className={`relative w-full rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white placeholder-gray-500 transition-all duration-200 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/20 ${
+              className={`relative w-full rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white placeholder-gray-500 transition-all duration-200 focus:border-pink-500/50 focus:outline-none focus:ring-1 focus:ring-pink-500/20 ${
                 manualAmountEdit
                   ? "cursor-text hover:border-[#3f3f3f]"
                   : "cursor-not-allowed opacity-80"
@@ -1446,7 +1446,7 @@ export function PaymentForm({
             />
             {amountLoading && !manualAmountEdit && (
               <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                <Loader2 className="h-4 w-4 animate-spin text-violet-400" />
+                <Loader2 className="h-4 w-4 animate-spin text-pink-400" />
               </div>
             )}
           </div>
@@ -1468,7 +1468,7 @@ export function PaymentForm({
                 }
               }}
               disabled={dueAmount <= 0}
-              className="h-4 w-4 rounded border-[#2f2f2f] bg-[#1a1a1a] text-violet-500 focus:ring-1 focus:ring-violet-500/20 focus:ring-offset-0"
+              className="h-4 w-4 rounded border-[#2f2f2f] bg-[#1a1a1a] text-pink-500 focus:ring-1 focus:ring-pink-500/20 focus:ring-offset-0"
             />
             <label htmlFor="manual_amount_edit" className="cursor-pointer text-xs text-gray-400">
               Edit amount manually
@@ -1503,12 +1503,12 @@ export function PaymentForm({
         <div className="group">
           <label
             htmlFor="currency"
-            className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-violet-400"
+            className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-pink-400"
           >
             Currency *
           </label>
           <div className="relative">
-            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-violet-500/10 to-purple-500/10 opacity-0 blur-xl transition-opacity duration-300 group-focus-within:opacity-100" />
+            <div className="absolute inset-0 rounded-lg bg-gradient-to-r from-pink-500/10 to-pink-500/10 opacity-0 blur-xl transition-opacity duration-300 group-focus-within:opacity-100" />
             <select
               id="currency"
               name="currency"
@@ -1520,7 +1520,7 @@ export function PaymentForm({
                   setSelectedBankCurrency(e.target.value);
                 }
               }}
-              className={`relative w-full appearance-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white transition-all duration-200 focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/20 ${
+              className={`relative w-full appearance-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white transition-all duration-200 focus:border-pink-500/50 focus:outline-none focus:ring-1 focus:ring-pink-500/20 ${
                 isBankPayment
                   ? "cursor-pointer hover:border-[#3f3f3f]"
                   : "cursor-not-allowed opacity-70"
@@ -1567,13 +1567,13 @@ export function PaymentForm({
         <div className="group min-w-0 max-w-full">
           <label
             htmlFor="datetime"
-            className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-violet-400"
+            className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-pink-400"
           >
             Payment Date *
           </label>
           <div className="relative max-w-full min-w-0 overflow-hidden">
             <div
-              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-gradient-to-r from-violet-500/10 to-purple-500/10 opacity-0 blur-xl transition-opacity duration-300 group-focus-within:opacity-100"
+              className="pointer-events-none absolute inset-0 z-0 rounded-lg bg-gradient-to-r from-pink-500/10 to-pink-500/10 opacity-0 blur-xl transition-opacity duration-300 group-focus-within:opacity-100"
               aria-hidden
             />
             <input
@@ -1584,7 +1584,7 @@ export function PaymentForm({
               defaultValue={serverDateStrings.today}
               min={serverDateStrings.min}
               max={serverDateStrings.max}
-              className="relative z-10 box-border w-full max-w-full min-w-0 cursor-pointer rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white transition-all duration-200 hover:border-[#3f3f3f] focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/20 max-[390px]:px-3 max-[390px]:py-2 max-[390px]:text-base"
+              className="relative z-10 box-border w-full max-w-full min-w-0 cursor-pointer rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white transition-all duration-200 hover:border-[#3f3f3f] focus:border-pink-500/50 focus:outline-none focus:ring-1 focus:ring-pink-500/20 max-[390px]:px-3 max-[390px]:py-2 max-[390px]:text-base"
             />
           </div>
           <p className="mt-1 text-xs text-gray-500">
@@ -1600,12 +1600,12 @@ export function PaymentForm({
             id="notes"
             name="notes"
             rows={3}
-            className="w-full resize-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white placeholder-gray-500 transition-colors focus:border-violet-500/50 focus:outline-none focus:ring-1 focus:ring-violet-500/20"
+            className="w-full resize-none rounded-lg border border-[#2f2f2f] bg-[#1a1a1a] px-4 py-2.5 text-white placeholder-gray-500 transition-colors focus:border-pink-500/50 focus:outline-none focus:ring-1 focus:ring-pink-500/20"
           />
         </div>
 
         <div className="group">
-          <label className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-violet-400">
+          <label className="mb-2 block text-sm font-medium text-gray-400 transition-colors group-focus-within:text-pink-400">
             Proof File *
           </label>
           <ProofFilePicker
@@ -1615,7 +1615,7 @@ export function PaymentForm({
             maxMb={10}
           />
           {uploading && (
-            <div className="mt-2 flex items-center gap-2 text-sm text-violet-300">
+            <div className="mt-2 flex items-center gap-2 text-sm text-pink-300">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span>Uploading proof file...</span>
             </div>
@@ -1648,7 +1648,7 @@ export function PaymentForm({
           <button
             type="submit"
             disabled={loading || isLocked || uploading || !proofReady}
-            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-violet-600 to-purple-600 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-900/30 transition-all hover:from-violet-500 hover:to-purple-500 disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-pink-600 to-pink-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-900/30 transition-all hover:from-pink-500 hover:to-pink-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading ? (
               <>
