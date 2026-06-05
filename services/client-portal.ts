@@ -358,13 +358,15 @@ export async function createBillingCycleForClient(
 export async function getPendingPaymentSubmissionsForClient(
   clientId: string
 ): Promise<PaymentSubmissionRecord[]> {
-  const filterByFormula = `AND(${formulaLinkedContains("client", clientId)}, {status} = "pending_review")`;
-  const { records } = await listRecords<Record<string, unknown>>(TABLES.payment_submissions, {
-    filterByFormula,
+  const records = await listAllRecords<Record<string, unknown>>(TABLES.payment_submissions, {
     sort: [{ field: "submitted_datetime", direction: "desc" }],
     _caller: "getPendingPaymentSubmissionsForClient",
   });
-  return records.map(mapPaymentSubmission);
+  return records
+    .map(mapPaymentSubmission)
+    .filter(
+      (s) => s.client.includes(clientId) && s.status === "pending_review"
+    );
 }
 
 export async function getPaymentSubmissionById(
