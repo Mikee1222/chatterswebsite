@@ -16,7 +16,6 @@ type SubmitBody = {
   amount?: number;
   currency?: string;
   datetime?: string;
-  reference_id?: string;
   note?: string;
   proof_url?: string;
   proof_attachment?: Array<{ url: string; filename?: string }>;
@@ -52,6 +51,15 @@ export async function POST(req: Request) {
   const allowedCurrencies = ["USD", "EUR", "USDT", "USDC", "SOL"];
   if (!allowedCurrencies.includes(currency)) {
     return NextResponse.json({ error: "Invalid currency" }, { status: 400 });
+  }
+
+  const hasProofUrl = Boolean(body.proof_url?.trim());
+  const hasProofAttachment =
+    Array.isArray(body.proof_attachment) &&
+    body.proof_attachment.length > 0 &&
+    body.proof_attachment.some((a) => a?.url);
+  if (!hasProofUrl && !hasProofAttachment) {
+    return NextResponse.json({ error: "Proof of payment is required" }, { status: 400 });
   }
 
   const clientId = getClientAirtableId(user);

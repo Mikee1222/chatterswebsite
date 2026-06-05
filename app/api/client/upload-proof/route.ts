@@ -17,6 +17,10 @@ export async function POST(req: Request) {
   if (file.size > 10 * 1024 * 1024) {
     return NextResponse.json({ error: "File too large (max 10MB)" }, { status: 400 });
   }
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    return NextResponse.json({ error: "File upload not configured" }, { status: 503 });
+  }
+
   const clientId = session.airtableUserId ?? session.id;
   const filename = `proofs/${clientId}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.-]/g, "_")}`;
   const blob = await put(filename, file, {
