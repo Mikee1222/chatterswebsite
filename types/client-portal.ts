@@ -35,6 +35,18 @@ export type AdminClientRecord = ClientRecord & {
   portal_access: boolean;
 };
 
+export type UpdateAdminClientInput = {
+  portal_access?: boolean;
+  company_name?: string;
+  display_name?: string;
+  email?: string;
+  /** Stored as decimal 0–1 in Airtable. */
+  client_percentage?: number;
+  status?: ClientStatus;
+  /** Bcrypt hash stored in Airtable `password` field. */
+  passwordHash?: string;
+};
+
 export type BillingCycleKind = "chatting_weekly" | "crm_monthly";
 
 export type BillingCycleStatus =

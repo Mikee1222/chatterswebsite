@@ -4,6 +4,7 @@ import {
   getRecord,
   createRecord,
   updateRecord,
+  deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import {
@@ -18,6 +19,7 @@ import type {
   CalendarEventRecord,
   ClientModelRecord,
   ClientRecord,
+  ClientStatus,
   ClientTeamRole,
   ClientUserType,
   CreateAdminClientInput,
@@ -28,6 +30,7 @@ import type {
   ModelRecord,
   PaymentMethodRecord,
   PaymentSubmissionRecord,
+  UpdateAdminClientInput,
   UpdatePaymentSubmissionInput,
 } from "@/types/client-portal";
 
@@ -236,10 +239,65 @@ export async function updateClientPortalAccess(
   clientId: string,
   portalAccess: boolean
 ): Promise<AdminClientRecord> {
-  const rec = await updateRecord<Record<string, unknown>>(TABLES.clients, clientId, {
-    portal_access: portalAccess,
-  });
+  return updateAdminClient(clientId, { portal_access: portalAccess });
+}
+
+export async function updateAdminClient(
+  clientId: string,
+  data: UpdateAdminClientInput
+): Promise<AdminClientRecord> {
+  const fields: Record<string, unknown> = {};
+
+  if (data.portal_access !== undefined) fields.portal_access = data.portal_access;
+  if (data.company_name !== undefined) fields.company_name = data.company_name.trim();
+  if (data.display_name !== undefined) fields.display_name = data.display_name.trim();
+  if (data.email !== undefined) fields.email = data.email.trim().toLowerCase();
+  if (typeof data.client_percentage === "number") {
+    fields.client_percentage = data.client_percentage;
+  }
+  if (data.status !== undefined) fields.status = data.status;
+  if (data.passwordHash) fields.password = data.passwordHash;
+
+  const rec = await updateRecord<Record<string, unknown>>(TABLES.clients, clientId, fields);
   return mapAdminClient(rec);
+}
+
+function mapClientModelAssignment(
+  rec: AirtableRecord<Record<string, unknown>>,
+  modelNameById?: Map<string, string>
+): ClientModelRecord {
+  const model = linkedRecordIds(rec.fields.model);
+  const modelId = model[0];
+  return {
+    id: rec.id,
+    client: linkedRecordIds(rec.fields.client),
+    model,
+    model_name: modelId ? modelNameById?.get(modelId) : undefined,
+  };
+}
+
+export async function createClientModelAssignment(
+  clientId: string,
+  modelId: string
+): Promise<ClientModelRecord> {
+  const rec = await createRecord<Record<string, unknown>>(TABLES.client_models, {
+    client: [clientId],
+    model: [modelId],
+  });
+
+  let modelName: string | undefined;
+  try {
+    const modelRec = await getRecord<Record<string, unknown>>(TABLES.models, modelId);
+    modelName = String(modelRec.fields.model_name ?? "");
+  } catch {
+    /* model row may be missing */
+  }
+
+  return mapClientModelAssignment(rec, modelName ? new Map([[modelId, modelName]]) : undefined);
+}
+
+export async function deleteClientModelAssignment(assignmentId: string): Promise<void> {
+  await deleteRecord(TABLES.client_models, assignmentId);
 }
 
 export async function createBillingCycleForClient(

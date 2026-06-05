@@ -4,7 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import {
   getClientBillingCycles,
   getClientModels,
-  updateClientPortalAccess,
+  updateAdminClient,
 } from "@/services/client-portal";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
@@ -26,9 +26,27 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   return NextResponse.json({ models, billingCycles });
 }
 
-const patchSchema = z.object({
-  portal_access: z.boolean(),
-});
+const patchSchema = z
+  .object({
+    portal_access: z.boolean().optional(),
+    company_name: z.string().optional(),
+    display_name: z.string().min(1).optional(),
+    email: z.string().email().optional(),
+    client_percentage: z.number().min(0).max(1).optional(),
+    status: z.enum(["active", "inactive", "suspended"]).optional(),
+    password: z.string().min(8).optional(),
+  })
+  .refine(
+    (data) =>
+      data.portal_access !== undefined ||
+      data.company_name !== undefined ||
+      data.display_name !== undefined ||
+      data.email !== undefined ||
+      data.client_percentage !== undefined ||
+      data.status !== undefined ||
+      data.password !== undefined,
+    { message: "At least one field is required." }
+  );
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -46,9 +64,27 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const parsed = patchSchema.safeParse(json);
   if (!parsed.success) {
-    return NextResponse.json({ error: parsed.error.issues.map((i) => i.message).join(" ") }, { status: 400 });
+    return NextResponse.json(
+      { error: parsed.error.issues.map((i) => i.message).join(" ") },
+      { status: 400 }
+    );
   }
 
-  const client = await updateClientPortalAccess(id, parsed.data.portal_access);
-  return NextResponse.json({ client });
+  const { password, ...rest } = parsed.data;
+  let passwordHash: string | undefined;
+  if (password) {
+    const bcryptjs = await import("bcryptjs");
+    passwordHash = await bcryptjs.hash(password, 10);
+  }
+
+  try {
+    const client = await updateAdminClient(id, {
+      ...rest,
+      passwordHash,
+    });
+    return NextResponse.json({ client });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Failed to update client.";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

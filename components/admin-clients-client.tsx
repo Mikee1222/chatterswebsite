@@ -495,14 +495,169 @@ function CreateBillingCycleModal({
   );
 }
 
+function EditClientModal({
+  client,
+  onClose,
+  onUpdated,
+}: {
+  client: AdminClientRecord;
+  onClose: () => void;
+  onUpdated: (client: AdminClientRecord) => void;
+}) {
+  const [companyName, setCompanyName] = React.useState(client.company_name ?? "");
+  const [displayName, setDisplayName] = React.useState(client.display_name ?? "");
+  const [email, setEmail] = React.useState(client.email ?? "");
+  const [feePercent, setFeePercent] = React.useState(
+    typeof client.client_percentage === "number"
+      ? String((client.client_percentage * 100).toFixed(1))
+      : ""
+  );
+  const [status, setStatus] = React.useState<AdminClientRecord["status"]>(client.status);
+  const [password, setPassword] = React.useState("");
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+
+    if (!displayName.trim() || !email.trim()) {
+      setError("Display name and email are required.");
+      return;
+    }
+    if (password && password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
+
+    let clientPercentage: number | undefined;
+    if (feePercent.trim()) {
+      const parsed = Number(feePercent);
+      if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
+        setError("Fee % must be between 0 and 100.");
+        return;
+      }
+      clientPercentage = parsed / 100;
+    }
+
+    setPending(true);
+    try {
+      const res = await fetch(`/api/admin/clients/${client.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: companyName.trim(),
+          display_name: displayName.trim(),
+          email: email.trim(),
+          client_percentage: clientPercentage,
+          status,
+          ...(password ? { password } : {}),
+        }),
+      });
+      const data = (await res.json()) as { client?: AdminClientRecord; error?: string };
+      if (!res.ok) {
+        setError(data.error ?? "Failed to update client.");
+        return;
+      }
+      if (data.client) onUpdated(data.client);
+      onClose();
+    } catch {
+      setError("Network error. Try again.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <GlassModal title="Edit client" subtitle={client.company_name || client.display_name} onClose={onClose}>
+      <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+        <div>
+          <Label htmlFor="edit-company">Company name</Label>
+          <FormInput
+            id="edit-company"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+          />
+        </div>
+        <div>
+          <Label htmlFor="edit-display">Display name</Label>
+          <FormInput
+            id="edit-display"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="edit-email">Email</Label>
+          <FormInput
+            id="edit-email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+        </div>
+        <div>
+          <Label htmlFor="edit-fee">Fee % (0–100)</Label>
+          <FormInput
+            id="edit-fee"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={feePercent}
+            onChange={(e) => setFeePercent(e.target.value)}
+            placeholder="e.g. 20"
+          />
+        </div>
+        <div>
+          <Label htmlFor="edit-status">Status</Label>
+          <FormSelect
+            id="edit-status"
+            value={status}
+            onChange={(e) => setStatus(e.target.value as AdminClientRecord["status"])}
+          >
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="suspended">Suspended</option>
+          </FormSelect>
+        </div>
+        <div>
+          <Label htmlFor="edit-password">New password (optional)</Label>
+          <FormInput
+            id="edit-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            minLength={8}
+            placeholder="Leave blank to keep current"
+          />
+        </div>
+        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+        <div className="flex gap-3 pt-2">
+          <ButtonSecondary type="button" className="flex-1" onClick={onClose}>
+            Cancel
+          </ButtonSecondary>
+          <FormSubmitButton className="flex-1" loading={pending} disabled={pending}>
+            Save changes
+          </FormSubmitButton>
+        </div>
+      </form>
+    </GlassModal>
+  );
+}
+
 function ClientDetailSheet({
   client,
   onClose,
   onPortalAccessChange,
+  onClientUpdated,
 }: {
   client: AdminClientRecord;
   onClose: () => void;
   onPortalAccessChange: (clientId: string, portalAccess: boolean) => void;
+  onClientUpdated: (client: AdminClientRecord) => void;
 }) {
   const [detail, setDetail] = React.useState<ClientDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -510,6 +665,12 @@ function ClientDetailSheet({
   const [portalPending, setPortalPending] = React.useState(false);
   const [portalAccess, setPortalAccess] = React.useState(client.portal_access);
   const [showCreateCycle, setShowCreateCycle] = React.useState(false);
+  const [editingClient, setEditingClient] = React.useState(false);
+  const [assigningModel, setAssigningModel] = React.useState(false);
+  const [availableModels, setAvailableModels] = React.useState<
+    { id: string; model_name: string }[]
+  >([]);
+  const [modelActionPending, setModelActionPending] = React.useState(false);
   const [reviewingId, setReviewingId] = React.useState<string | null>(null);
   const [adminNote, setAdminNote] = React.useState("");
 
@@ -549,6 +710,26 @@ function ClientDetailSheet({
   React.useEffect(() => {
     void loadDetail();
   }, [loadDetail]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/models");
+        const data = (await res.json()) as {
+          models?: { id: string; model_name: string }[];
+        };
+        if (!cancelled && res.ok && data.models) {
+          setAvailableModels(data.models);
+        }
+      } catch {
+        /* ignore — assign dropdown stays empty */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   React.useEffect(() => {
     setPortalAccess(client.portal_access);
@@ -597,6 +778,48 @@ function ClientDetailSheet({
       setPortalPending(false);
     }
   }
+
+  async function handleAssignModel(modelId: string) {
+    if (!modelId) return;
+    setModelActionPending(true);
+    try {
+      const res = await fetch(`/api/admin/clients/${client.id}/models`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ modelId }),
+      });
+      if (res.ok) {
+        setAssigningModel(false);
+        await loadDetail();
+      }
+    } finally {
+      setModelActionPending(false);
+    }
+  }
+
+  async function handleRemoveModel(assignmentId: string) {
+    setModelActionPending(true);
+    try {
+      const res = await fetch(`/api/admin/clients/${client.id}/models/${assignmentId}`, {
+        method: "DELETE",
+      });
+      if (res.ok) {
+        await loadDetail();
+      }
+    } finally {
+      setModelActionPending(false);
+    }
+  }
+
+  const assignedModelIds = React.useMemo(
+    () => new Set((detail?.models ?? []).flatMap((row) => row.model)),
+    [detail?.models]
+  );
+
+  const unassignedModels = React.useMemo(
+    () => availableModels.filter((m) => !assignedModelIds.has(m.id)),
+    [availableModels, assignedModelIds]
+  );
 
   async function handleSubmissionReview(
     submissionId: string,
@@ -660,25 +883,47 @@ function ClientDetailSheet({
                 ) : null}
                 <p className="mt-1 text-sm text-white/45">{client.email || "—"}</p>
               </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingClient(true)}
+                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="rounded-lg border border-white/10 p-2 text-white/60 hover:bg-white/5 hover:text-white"
+                  aria-label="Close panel"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
               <button
                 type="button"
-                onClick={onClose}
-                className="rounded-lg border border-white/10 p-2 text-white/60 hover:bg-white/5 hover:text-white"
-                aria-label="Close panel"
+                onClick={() => void handlePortalToggle(!portalAccess)}
+                disabled={portalPending}
+                className={cn(
+                  "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                  portalAccess
+                    ? "border-pink-400/30 bg-pink-500/15 text-pink-300 hover:bg-pink-500/25"
+                    : "border-white/15 bg-white/5 text-white/50 hover:bg-white/10",
+                  portalPending && "cursor-not-allowed opacity-50"
+                )}
               >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
-              <div className="flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1">
-                <span className="text-xs text-white/50">Portal</span>
-                <PortalAccessSwitch
-                  checked={portalAccess}
-                  disabled={portalPending}
-                  onChange={handlePortalToggle}
+                <span
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    portalAccess ? "bg-pink-400" : "bg-white/30"
+                  )}
                 />
-              </div>
+                Portal {portalAccess ? "enabled" : "disabled"}
+                {portalPending ? " …" : null}
+              </button>
             </div>
           </div>
 
@@ -719,10 +964,51 @@ function ClientDetailSheet({
                 </section>
 
                 <section>
-                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                    <Users className="h-3.5 w-3.5" />
-                    Models ({detail.models.length})
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+                      <Users className="h-3.5 w-3.5" />
+                      Models ({detail.models.length})
+                    </div>
+                    {!assigningModel ? (
+                      <button
+                        type="button"
+                        onClick={() => setAssigningModel(true)}
+                        disabled={modelActionPending}
+                        className="inline-flex items-center gap-1 text-xs text-pink-300 hover:text-pink-200 disabled:opacity-50"
+                      >
+                        <Plus className="h-3 w-3" />
+                        Assign
+                      </button>
+                    ) : null}
                   </div>
+                  {assigningModel ? (
+                    <div className="mb-3 flex items-center gap-2">
+                      <FormSelect
+                        className="flex-1"
+                        defaultValue=""
+                        disabled={modelActionPending}
+                        onChange={(e) => {
+                          const modelId = e.target.value;
+                          if (modelId) void handleAssignModel(modelId);
+                        }}
+                      >
+                        <option value="">Select a model…</option>
+                        {unassignedModels.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.model_name?.trim() || "Unnamed model"}
+                          </option>
+                        ))}
+                      </FormSelect>
+                      <button
+                        type="button"
+                        onClick={() => setAssigningModel(false)}
+                        disabled={modelActionPending}
+                        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/60 hover:bg-white/5"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : null}
                   {detail.models.length === 0 ? (
                     <p className="text-sm text-white/45">No models assigned.</p>
                   ) : (
@@ -735,6 +1021,14 @@ function ClientDetailSheet({
                           <span className="font-medium text-white">
                             {row.model_name?.trim() || "Unnamed model"}
                           </span>
+                          <button
+                            type="button"
+                            disabled={modelActionPending}
+                            onClick={() => void handleRemoveModel(row.id)}
+                            className="rounded-lg border border-rose-500/30 px-2.5 py-1 text-xs text-rose-300 hover:bg-rose-500/10 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -901,13 +1195,25 @@ function ClientDetailSheet({
           />
         ) : null}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {editingClient ? (
+          <EditClientModal
+            client={client}
+            onClose={() => setEditingClient(false)}
+            onUpdated={(updated) => {
+              onClientUpdated(updated);
+              setEditingClient(false);
+            }}
+          />
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }
 
 export function AdminClientsClient({ clients: initialClients }: Props) {
   const [clients, setClients] = React.useState(initialClients);
-  const [tab, setTab] = React.useState<"clients" | "team_members">("clients");
   const [search, setSearch] = React.useState("");
   const [selectedClient, setSelectedClient] = React.useState<AdminClientRecord | null>(null);
   const [portalPendingId, setPortalPendingId] = React.useState<string | null>(null);
@@ -917,22 +1223,16 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
     setClients(initialClients);
   }, [initialClients]);
 
-  const tabFiltered = React.useMemo(() => {
-    return clients.filter((c) =>
-      tab === "team_members" ? c.user_type === "team_member" : c.user_type !== "team_member"
-    );
-  }, [clients, tab]);
-
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return tabFiltered;
-    return tabFiltered.filter(
+    if (!q) return clients;
+    return clients.filter(
       (c) =>
         c.company_name.toLowerCase().includes(q) ||
         c.display_name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q)
     );
-  }, [tabFiltered, search]);
+  }, [clients, search]);
 
   function handlePortalAccessChange(clientId: string, portalAccess: boolean) {
     setClients((prev) =>
@@ -941,6 +1241,11 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
     setSelectedClient((prev) =>
       prev?.id === clientId ? { ...prev, portal_access: portalAccess } : prev
     );
+  }
+
+  function handleClientUpdated(updated: AdminClientRecord) {
+    setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
+    setSelectedClient((prev) => (prev?.id === updated.id ? updated : prev));
   }
 
   async function handleListPortalToggle(client: AdminClientRecord, next: boolean) {
@@ -977,31 +1282,6 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         </button>
       </div>
 
-      <div className="flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1 w-fit">
-        <button
-          type="button"
-          onClick={() => setTab("clients")}
-          className={
-            tab === "clients"
-              ? "rounded-lg bg-pink-500/20 px-4 py-1.5 text-sm font-medium text-pink-300"
-              : "px-4 py-1.5 text-sm text-white/50 hover:text-white"
-          }
-        >
-          Clients
-        </button>
-        <button
-          type="button"
-          onClick={() => setTab("team_members")}
-          className={
-            tab === "team_members"
-              ? "rounded-lg bg-pink-500/20 px-4 py-1.5 text-sm font-medium text-pink-300"
-              : "px-4 py-1.5 text-sm text-white/50 hover:text-white"
-          }
-        >
-          Team members
-        </button>
-      </div>
-
       <div className="relative max-w-md">
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
         <FormInput
@@ -1023,12 +1303,10 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-white/40">
-                <th className="px-4 py-3 font-medium">{tab === "team_members" ? "Name" : "Company"}</th>
+                <th className="px-4 py-3 font-medium">Company</th>
                 <th className="px-4 py-3 font-medium">Email</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                {tab === "clients" ? (
-                  <th className="px-4 py-3 font-medium">Fee %</th>
-                ) : null}
+                <th className="px-4 py-3 font-medium">Fee %</th>
                 <th className="px-4 py-3 font-medium">Portal</th>
                 <th className="w-10 px-4 py-3" aria-hidden />
               </tr>
@@ -1036,13 +1314,8 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
             <tbody>
               {filtered.length === 0 ? (
                 <tr>
-                  <td
-                    colSpan={tab === "clients" ? 6 : 5}
-                    className="px-4 py-10 text-center text-white/45"
-                  >
-                    {search.trim()
-                      ? `No ${tab === "team_members" ? "team members" : "clients"} match your search.`
-                      : `No ${tab === "team_members" ? "team members" : "clients"} yet.`}
+                  <td colSpan={6} className="px-4 py-10 text-center text-white/45">
+                    {search.trim() ? "No users match your search." : "No users yet."}
                   </td>
                 </tr>
               ) : (
@@ -1053,33 +1326,24 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                     onClick={() => setSelectedClient(client)}
                   >
                     <td className="px-4 py-3">
-                      {tab === "team_members" ? (
-                        <>
-                          <p className="font-medium text-white">{client.display_name || "—"}</p>
-                          {client.role ? (
-                            <p className="text-xs capitalize text-white/45">
-                              {client.role.replace(/_/g, " ")}
-                            </p>
-                          ) : null}
-                        </>
-                      ) : (
-                        <>
-                          <p className="font-medium text-white">{client.company_name || "—"}</p>
-                          {client.display_name ? (
-                            <p className="text-xs text-white/45">{client.display_name}</p>
-                          ) : null}
-                        </>
-                      )}
+                      <p className="font-medium text-white">
+                        {client.company_name || client.display_name || "—"}
+                      </p>
+                      {client.display_name && client.company_name ? (
+                        <p className="text-xs text-white/45">{client.display_name}</p>
+                      ) : client.user_type === "team_member" && client.role ? (
+                        <p className="text-xs capitalize text-white/45">
+                          {client.role.replace(/_/g, " ")}
+                        </p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-3 text-white/70">{client.email || "—"}</td>
                     <td className="px-4 py-3">
                       <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
                     </td>
-                    {tab === "clients" ? (
-                      <td className="px-4 py-3 text-white/70">
-                        {formatFeePercent(client.client_percentage)}
-                      </td>
-                    ) : null}
+                    <td className="px-4 py-3 text-white/70">
+                      {formatFeePercent(client.client_percentage)}
+                    </td>
                     <td className="px-4 py-3">
                       <PortalAccessSwitch
                         checked={client.portal_access}
@@ -1100,9 +1364,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         <div className="divide-y divide-white/10 md:hidden">
           {filtered.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-white/45">
-              {search.trim()
-                ? `No ${tab === "team_members" ? "team members" : "clients"} match your search.`
-                : `No ${tab === "team_members" ? "team members" : "clients"} yet.`}
+              {search.trim() ? "No users match your search." : "No users yet."}
             </p>
           ) : (
             filtered.map((client) => (
@@ -1114,22 +1376,14 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
               >
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-white">
-                    {tab === "team_members"
-                      ? client.display_name || "—"
-                      : client.company_name || "—"}
+                    {client.company_name || client.display_name || "—"}
                   </p>
                   <p className="truncate text-xs text-white/45">{client.email || "—"}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
-                    {tab === "clients" ? (
-                      <span className="text-xs text-white/45">
-                        Fee {formatFeePercent(client.client_percentage)}
-                      </span>
-                    ) : client.role ? (
-                      <span className="text-xs capitalize text-white/45">
-                        {client.role.replace(/_/g, " ")}
-                      </span>
-                    ) : null}
+                    <span className="text-xs text-white/45">
+                      Fee {formatFeePercent(client.client_percentage)}
+                    </span>
                   </div>
                 </div>
                 <div
@@ -1151,8 +1405,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
       </div>
 
       <p className="text-xs text-white/35">
-        {filtered.length} {tab === "team_members" ? "team member" : "client"}
-        {filtered.length === 1 ? "" : "s"}
+        {filtered.length} user{filtered.length === 1 ? "" : "s"}
         {search.trim() ? ` matching “${search.trim()}”` : ""}
       </p>
 
@@ -1172,6 +1425,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
             client={selectedClient}
             onClose={() => setSelectedClient(null)}
             onPortalAccessChange={handlePortalAccessChange}
+            onClientUpdated={handleClientUpdated}
           />
         ) : null}
       </AnimatePresence>
