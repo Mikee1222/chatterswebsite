@@ -13,7 +13,6 @@ import {
   startOfMonth,
   subMonths,
 } from "date-fns";
-import { enGB } from "date-fns/locale";
 import type { CalendarEventRecord } from "@/types/client-portal";
 import { ChevronLeft, ChevronRight, Calendar, Clock, CheckCircle2, AlertCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -244,7 +243,7 @@ export function ClientWeeklyPaymentsCalendar({
             <div>
               <p className="text-xs uppercase tracking-[0.3em] text-gray-400">Selected day</p>
               <h3 className="text-xl font-semibold text-white">
-                {format(selectedDay, "EEEE, d MMM", { locale: enGB })}
+                {format(selectedDay, "EEEE, dd/MM/yyyy")}
               </h3>
             </div>
             <div className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5">
@@ -271,7 +270,7 @@ export function ClientWeeklyPaymentsCalendar({
                   )}
                 >
                   <p className="text-sm text-gray-400">
-                    {format(new Date(event.start_datetime), "PPp", { locale: enGB })}
+                    {format(new Date(event.start_datetime), "dd/MM/yyyy HH:mm")}
                   </p>
                   <p className="mt-1 text-base font-semibold text-white">{event.title}</p>
                 </button>
@@ -299,13 +298,13 @@ export function ClientWeeklyPaymentsCalendar({
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-gray-400">Start</span>
                   <span className="text-white">
-                    {format(new Date(selectedEvent.start_datetime), "PPp", { locale: enGB })}
+                    {format(new Date(selectedEvent.start_datetime), "dd/MM/yyyy HH:mm")}
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-4">
                   <span className="text-gray-400">End</span>
                   <span className="text-white">
-                    {format(new Date(selectedEvent.end_datetime), "PPp", { locale: enGB })}
+                    {format(new Date(selectedEvent.end_datetime), "dd/MM/yyyy HH:mm")}
                   </span>
                 </div>
                 {selectedEvent.notes && (
