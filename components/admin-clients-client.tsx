@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Building2,
@@ -516,6 +517,9 @@ function EditClientModal({
   const [password, setPassword] = React.useState("");
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => setMounted(true), []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -568,83 +572,120 @@ function EditClientModal({
     }
   }
 
-  return (
-    <GlassModal title="Edit client" subtitle={client.company_name || client.display_name} onClose={onClose}>
-      <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
-        <div>
-          <Label htmlFor="edit-company">Company name</Label>
-          <FormInput
-            id="edit-company"
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-          />
+  if (!mounted) return null;
+
+  return createPortal(
+    <motion.div
+      className="fixed inset-0 z-[200] flex items-end justify-center md:items-center md:p-6"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.1, ease: "easeOut" }}
+    >
+      <div
+        className="absolute inset-0 bg-black/70 backdrop-blur-md"
+        aria-hidden
+        onClick={onClose}
+      />
+      <motion.div
+        className="relative flex max-h-[95dvh] w-full flex-col rounded-t-2xl border border-white/10 border-b-0 bg-black/95 shadow-2xl shadow-black/50 backdrop-blur-xl md:max-h-[calc(100vh-3rem)] md:max-w-md md:rounded-2xl md:border"
+        style={{
+          boxShadow:
+            "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)",
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96, transition: { duration: 0.1, ease: "easeIn" } }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="shrink-0 border-b border-white/10 px-4 py-4 md:px-5">
+          <h2 className="text-lg font-semibold tracking-tight text-white">Edit client</h2>
+          <p className="mt-1 text-sm text-white/55">
+            {client.company_name || client.display_name}
+          </p>
+          <div className="mt-2 h-px w-12 rounded-full bg-pink-500/40" />
         </div>
-        <div>
-          <Label htmlFor="edit-display">Display name</Label>
-          <FormInput
-            id="edit-display"
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
-            required
-          />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
+            <div>
+              <Label htmlFor="edit-company">Company name</Label>
+              <FormInput
+                id="edit-company"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-display">Display name</Label>
+              <FormInput
+                id="edit-display"
+                value={displayName}
+                onChange={(e) => setDisplayName(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-email">Email</Label>
+              <FormInput
+                id="edit-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-fee">Fee % (0–100)</Label>
+              <FormInput
+                id="edit-fee"
+                type="number"
+                min="0"
+                max="100"
+                step="0.1"
+                value={feePercent}
+                onChange={(e) => setFeePercent(e.target.value)}
+                placeholder="e.g. 20"
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-status">Status</Label>
+              <FormSelect
+                id="edit-status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value as AdminClientRecord["status"])}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+                <option value="suspended">Suspended</option>
+              </FormSelect>
+            </div>
+            <div>
+              <Label htmlFor="edit-password">New password (optional)</Label>
+              <FormInput
+                id="edit-password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                minLength={8}
+                placeholder="Leave blank to keep current"
+              />
+            </div>
+            {error ? <p className="text-sm text-rose-300">{error}</p> : null}
+            <div className="flex gap-3 pt-2">
+              <ButtonSecondary type="button" className="flex-1" onClick={onClose}>
+                Cancel
+              </ButtonSecondary>
+              <FormSubmitButton className="flex-1" loading={pending} disabled={pending}>
+                Save changes
+              </FormSubmitButton>
+            </div>
+          </form>
         </div>
-        <div>
-          <Label htmlFor="edit-email">Email</Label>
-          <FormInput
-            id="edit-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-          />
-        </div>
-        <div>
-          <Label htmlFor="edit-fee">Fee % (0–100)</Label>
-          <FormInput
-            id="edit-fee"
-            type="number"
-            min="0"
-            max="100"
-            step="0.1"
-            value={feePercent}
-            onChange={(e) => setFeePercent(e.target.value)}
-            placeholder="e.g. 20"
-          />
-        </div>
-        <div>
-          <Label htmlFor="edit-status">Status</Label>
-          <FormSelect
-            id="edit-status"
-            value={status}
-            onChange={(e) => setStatus(e.target.value as AdminClientRecord["status"])}
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="suspended">Suspended</option>
-          </FormSelect>
-        </div>
-        <div>
-          <Label htmlFor="edit-password">New password (optional)</Label>
-          <FormInput
-            id="edit-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            minLength={8}
-            placeholder="Leave blank to keep current"
-          />
-        </div>
-        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-        <div className="flex gap-3 pt-2">
-          <ButtonSecondary type="button" className="flex-1" onClick={onClose}>
-            Cancel
-          </ButtonSecondary>
-          <FormSubmitButton className="flex-1" loading={pending} disabled={pending}>
-            Save changes
-          </FormSubmitButton>
-        </div>
-      </form>
-    </GlassModal>
+      </motion.div>
+    </motion.div>,
+    document.body
   );
 }
 
@@ -667,6 +708,7 @@ function ClientDetailSheet({
   const [showCreateCycle, setShowCreateCycle] = React.useState(false);
   const [editingClient, setEditingClient] = React.useState(false);
   const [assigningModel, setAssigningModel] = React.useState(false);
+  const [selectedModelToAssign, setSelectedModelToAssign] = React.useState("");
   const [availableModels, setAvailableModels] = React.useState<
     { id: string; model_name: string }[]
   >([]);
@@ -790,6 +832,7 @@ function ClientDetailSheet({
       });
       if (res.ok) {
         setAssigningModel(false);
+        setSelectedModelToAssign("");
         await loadDetail();
       }
     } finally {
@@ -810,16 +853,6 @@ function ClientDetailSheet({
       setModelActionPending(false);
     }
   }
-
-  const assignedModelIds = React.useMemo(
-    () => new Set((detail?.models ?? []).flatMap((row) => row.model)),
-    [detail?.models]
-  );
-
-  const unassignedModels = React.useMemo(
-    () => availableModels.filter((m) => !assignedModelIds.has(m.id)),
-    [availableModels, assignedModelIds]
-  );
 
   async function handleSubmissionReview(
     submissionId: string,
@@ -866,7 +899,7 @@ function ClientDetailSheet({
         />
         <motion.aside
           layout={false}
-          className="relative z-[1] flex h-full w-full max-w-lg flex-col border-l border-white/10 bg-black/95 shadow-2xl"
+          className="relative z-[1] flex h-full w-full max-w-lg flex-col border-l border-white/10 bg-black/95 shadow-2xl overflow-hidden"
           initial={{ x: 48 }}
           animate={{ x: 0 }}
           exit={{ x: 48 }}
@@ -982,28 +1015,38 @@ function ClientDetailSheet({
                     ) : null}
                   </div>
                   {assigningModel ? (
-                    <div className="mb-3 flex items-center gap-2">
-                      <FormSelect
-                        className="flex-1"
-                        defaultValue=""
+                    <div className="mt-3 flex items-center gap-2">
+                      <select
+                        value={selectedModelToAssign}
+                        onChange={(e) => setSelectedModelToAssign(e.target.value)}
                         disabled={modelActionPending}
-                        onChange={(e) => {
-                          const modelId = e.target.value;
-                          if (modelId) void handleAssignModel(modelId);
-                        }}
+                        className="flex-1 h-9 rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white"
                       >
-                        <option value="">Select a model…</option>
-                        {unassignedModels.map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.model_name?.trim() || "Unnamed model"}
-                          </option>
-                        ))}
-                      </FormSelect>
+                        <option value="">Select model...</option>
+                        {availableModels
+                          .filter((m) => !detail.models.some((dm) => dm.model.includes(m.id)))
+                          .map((m) => (
+                            <option key={m.id} value={m.id}>
+                              {m.model_name?.trim() || "Unnamed model"}
+                            </option>
+                          ))}
+                      </select>
                       <button
                         type="button"
-                        onClick={() => setAssigningModel(false)}
+                        onClick={() => void handleAssignModel(selectedModelToAssign)}
+                        disabled={!selectedModelToAssign || modelActionPending}
+                        className="h-9 px-3 rounded-lg bg-pink-500/80 text-xs font-medium text-white hover:bg-pink-500 disabled:opacity-40"
+                      >
+                        Assign
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAssigningModel(false);
+                          setSelectedModelToAssign("");
+                        }}
                         disabled={modelActionPending}
-                        className="rounded-lg border border-white/10 px-3 py-2 text-xs text-white/60 hover:bg-white/5"
+                        className="h-9 px-3 rounded-lg border border-white/10 text-xs text-white/60 hover:bg-white/5"
                       >
                         Cancel
                       </button>
