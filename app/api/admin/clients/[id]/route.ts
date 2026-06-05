@@ -16,7 +16,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
 
-  const [clientModelsRecords, billingCycles] = await Promise.all([
+  const [clientModelsRecords, billingCycles, revenues] = await Promise.all([
     listAllRecords<Record<string, unknown>>("client_models", {
       _caller: "admin/clients/[id]:GET:client_models",
     }).then(records => records.filter(r => {
@@ -28,7 +28,26 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
         .sort((a, b) => b.period_start.localeCompare(a.period_start))
         .slice(0, 5)
     ),
+    listAllRecords<Record<string, unknown>>("billing_cycle_revenues", {
+      _caller: "admin/clients/[id]:cycle_revenues",
+    }),
   ]);
+
+  const cyclesWithStatus = billingCycles.map((cycle) => {
+    if (cycle.kind === "chatting_weekly") {
+      const cycleRevenues = revenues.filter((r) => {
+        const bc = Array.isArray(r.fields.billing_cycle) ? r.fields.billing_cycle : [];
+        return bc.includes(cycle.id);
+      });
+      if (cycleRevenues.length > 0) {
+        const statuses = cycleRevenues.map((r) => String(r.fields.status ?? "draft"));
+        const statusPriority = ["confirmed_paid", "pending_review", "announced", "overdue", "draft"];
+        const resolvedStatus = statusPriority.find((s) => statuses.includes(s)) ?? "draft";
+        return { ...cycle, status: resolvedStatus as typeof cycle.status };
+      }
+    }
+    return cycle;
+  });
 
   const modelIds = clientModelsRecords.flatMap((r) =>
     Array.isArray(r.fields.model) ? r.fields.model as string[] : []
@@ -53,7 +72,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       modelNameMap[Array.isArray(r.fields.model) ? r.fields.model[0] : ""] ?? "Unnamed",
   }));
 
-  return NextResponse.json({ models, billingCycles });
+  return NextResponse.json({ models, billingCycles: cyclesWithStatus });
 }
 
 const patchSchema = z

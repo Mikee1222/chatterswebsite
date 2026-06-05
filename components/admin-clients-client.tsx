@@ -34,8 +34,6 @@ import type {
   BillingCycleRecord,
   BillingCycleStatus,
   ClientModelRecord,
-  ClientTeamRole,
-  ClientUserType,
   PaymentSubmissionRecord,
 } from "@/types/client-portal";
 
@@ -211,8 +209,6 @@ function formatFeePercent(clientPercentage: number | undefined): string {
   return `${(clientPercentage * 100).toFixed(1)}%`;
 }
 
-const TEAM_ROLES: ClientTeamRole[] = ["admin", "manager", "chatter", "virtual_assistant"];
-
 function AddClientModal({
   onClose,
   onCreated,
@@ -220,13 +216,11 @@ function AddClientModal({
   onClose: () => void;
   onCreated: (client: AdminClientRecord) => void;
 }) {
-  const [userType, setUserType] = React.useState<ClientUserType>("client");
   const [companyName, setCompanyName] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [feePercent, setFeePercent] = React.useState("");
-  const [role, setRole] = React.useState<ClientTeamRole>("chatter");
   const [status, setStatus] = React.useState<"active" | "inactive">("active");
   const [pending, setPending] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -243,13 +237,13 @@ function AddClientModal({
       setError("Password must be at least 8 characters.");
       return;
     }
-    if (userType === "client" && !companyName.trim()) {
-      setError("Company name is required for clients.");
+    if (!companyName.trim()) {
+      setError("Company name is required.");
       return;
     }
 
     let clientPercentage: number | undefined;
-    if (userType === "client" && feePercent.trim()) {
+    if (feePercent.trim()) {
       const parsed = Number(feePercent);
       if (Number.isNaN(parsed) || parsed < 0 || parsed > 100) {
         setError("Fee % must be between 0 and 100.");
@@ -264,13 +258,12 @@ function AddClientModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          user_type: userType,
-          company_name: userType === "client" ? companyName.trim() : undefined,
+          user_type: "client",
+          company_name: companyName.trim(),
           display_name: displayName.trim(),
           email: email.trim(),
           password,
           client_percentage: clientPercentage,
-          role: userType === "team_member" ? role : undefined,
           status,
         }),
       });
@@ -289,49 +282,17 @@ function AddClientModal({
   }
 
   return (
-    <GlassModal title="Add user" subtitle="Create a client or team member account" onClose={onClose}>
+    <GlassModal title="Add user" subtitle="Create a client account" onClose={onClose}>
       <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
         <div>
-          <Label>User type</Label>
-          <div className="mt-2 flex gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
-            <button
-              type="button"
-              onClick={() => setUserType("client")}
-              className={cn(
-                "flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                userType === "client"
-                  ? "bg-pink-500/20 text-pink-300"
-                  : "text-white/50 hover:text-white"
-              )}
-            >
-              Client
-            </button>
-            <button
-              type="button"
-              onClick={() => setUserType("team_member")}
-              className={cn(
-                "flex-1 rounded-lg px-3 py-1.5 text-sm font-medium transition",
-                userType === "team_member"
-                  ? "bg-pink-500/20 text-pink-300"
-                  : "text-white/50 hover:text-white"
-              )}
-            >
-              Team member
-            </button>
-          </div>
+          <Label htmlFor="add-company">Company name</Label>
+          <FormInput
+            id="add-company"
+            value={companyName}
+            onChange={(e) => setCompanyName(e.target.value)}
+            required
+          />
         </div>
-
-        {userType === "client" ? (
-          <div>
-            <Label htmlFor="add-company">Company name</Label>
-            <FormInput
-              id="add-company"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              required
-            />
-          </div>
-        ) : null}
 
         <div>
           <Label htmlFor="add-display">Display name</Label>
@@ -366,32 +327,19 @@ function AddClientModal({
           />
         </div>
 
-        {userType === "client" ? (
-          <div>
-            <Label htmlFor="add-fee">Fee % (0–100)</Label>
-            <FormInput
-              id="add-fee"
-              type="number"
-              min="0"
-              max="100"
-              step="0.1"
-              value={feePercent}
-              onChange={(e) => setFeePercent(e.target.value)}
-              placeholder="e.g. 20"
-            />
-          </div>
-        ) : (
-          <div>
-            <Label htmlFor="add-role">Role</Label>
-            <FormSelect id="add-role" value={role} onChange={(e) => setRole(e.target.value as ClientTeamRole)}>
-              {TEAM_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {r.replace(/_/g, " ")}
-                </option>
-              ))}
-            </FormSelect>
-          </div>
-        )}
+        <div>
+          <Label htmlFor="add-fee">Fee % (0–100)</Label>
+          <FormInput
+            id="add-fee"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            value={feePercent}
+            onChange={(e) => setFeePercent(e.target.value)}
+            placeholder="e.g. 20"
+          />
+        </div>
 
         <div>
           <Label htmlFor="add-status">Status</Label>
@@ -413,148 +361,6 @@ function AddClientModal({
           </ButtonSecondary>
           <FormSubmitButton className="flex-1" loading={pending} disabled={pending}>
             Create user
-          </FormSubmitButton>
-        </div>
-      </form>
-    </GlassModal>
-  );
-}
-
-function CreateBillingCycleModal({
-  client,
-  onClose,
-  onCreated,
-}: {
-  client: AdminClientRecord;
-  onClose: () => void;
-  onCreated: (cycle: BillingCycleRecord) => void;
-}) {
-  const [kind, setKind] = React.useState<BillingCycleKind>("chatting_weekly");
-  const [periodStart, setPeriodStart] = React.useState("");
-  const [periodEnd, setPeriodEnd] = React.useState("");
-  const [dueDate, setDueDate] = React.useState("");
-  const [amount, setAmount] = React.useState("");
-  const [currency, setCurrency] = React.useState("USD");
-  const [pending, setPending] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    const parsedAmount = Number(amount);
-    if (!periodStart || !periodEnd || !dueDate || Number.isNaN(parsedAmount)) {
-      setError("Fill in all required fields.");
-      return;
-    }
-    setPending(true);
-    try {
-      const res = await fetch(`/api/admin/clients/${client.id}/billing-cycles`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          kind,
-          period_start: periodStart,
-          period_end: periodEnd,
-          due_date: dueDate,
-          amount: parsedAmount,
-          currency,
-        }),
-      });
-      const data = (await res.json()) as { billingCycle?: BillingCycleRecord; error?: string };
-      if (!res.ok) {
-        setError(data.error ?? "Failed to create billing cycle.");
-        return;
-      }
-      if (data.billingCycle) onCreated(data.billingCycle);
-      onClose();
-    } catch {
-      setError("Network error. Try again.");
-    } finally {
-      setPending(false);
-    }
-  }
-
-  return (
-    <GlassModal
-      title="Create billing cycle"
-      subtitle={client.company_name || client.display_name}
-      onClose={onClose}
-    >
-      <form onSubmit={handleSubmit} className="space-y-4 p-4 md:p-5">
-        <div>
-          <Label htmlFor="bc-kind">Kind</Label>
-          <FormSelect
-            id="bc-kind"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as BillingCycleKind)}
-          >
-            <option value="chatting_weekly">Chatting weekly</option>
-            <option value="crm_monthly">CRM monthly</option>
-          </FormSelect>
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="bc-start">Period start</Label>
-            <FormInput
-              id="bc-start"
-              type="date"
-              value={periodStart}
-              onChange={(e) => setPeriodStart(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="bc-end">Period end</Label>
-            <FormInput
-              id="bc-end"
-              type="date"
-              value={periodEnd}
-              onChange={(e) => setPeriodEnd(e.target.value)}
-              required
-            />
-          </div>
-        </div>
-        <div>
-          <Label htmlFor="bc-due">Due date</Label>
-          <FormInput
-            id="bc-due"
-            type="date"
-            value={dueDate}
-            onChange={(e) => setDueDate(e.target.value)}
-            required
-          />
-        </div>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="bc-amount">Amount</Label>
-            <FormInput
-              id="bc-amount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-            />
-          </div>
-          <div>
-            <Label htmlFor="bc-currency">Currency</Label>
-            <FormInput
-              id="bc-currency"
-              value={currency}
-              onChange={(e) => setCurrency(e.target.value.toUpperCase())}
-              maxLength={8}
-              required
-            />
-          </div>
-        </div>
-        {error ? <p className="text-sm text-rose-300">{error}</p> : null}
-        <div className="flex gap-3 pt-2">
-          <ButtonSecondary type="button" className="flex-1" onClick={onClose}>
-            Cancel
-          </ButtonSecondary>
-          <FormSubmitButton className="flex-1" loading={pending} disabled={pending}>
-            Create cycle
           </FormSubmitButton>
         </div>
       </form>
@@ -775,7 +581,6 @@ function ClientDetailSheet({
   const [loadError, setLoadError] = React.useState<string | null>(null);
   const [portalPending, setPortalPending] = React.useState(false);
   const [portalAccess, setPortalAccess] = React.useState(client.portal_access);
-  const [showCreateCycle, setShowCreateCycle] = React.useState(false);
   const [editingClient, setEditingClient] = React.useState(false);
   const [reviewingId, setReviewingId] = React.useState("");
   const [reviewingAction, setReviewingAction] = React.useState<"approved" | "rejected" | "">("");
@@ -1093,19 +898,9 @@ function ClientDetailSheet({
                 </section>
 
                 <section>
-                  <div className="mb-3 flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                      <Calendar className="h-3.5 w-3.5" />
-                      Recent billing cycles
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowCreateCycle(true)}
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/15 px-3 py-1.5 text-xs font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/25"
-                    >
-                      <Plus className="h-3.5 w-3.5" />
-                      Create cycle
-                    </button>
+                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
+                    <Calendar className="h-3.5 w-3.5" />
+                    Recent billing cycles
                   </div>
                   {recentBillingCycles.length === 0 ? (
                     <p className="text-sm text-white/45">No billing cycles yet.</p>
@@ -1248,25 +1043,6 @@ function ClientDetailSheet({
           </div>
         </motion.aside>
       </motion.div>
-
-      <AnimatePresence>
-        {showCreateCycle ? (
-          <CreateBillingCycleModal
-            client={client}
-            onClose={() => setShowCreateCycle(false)}
-            onCreated={(cycle) => {
-              setDetail((prev) =>
-                prev
-                  ? {
-                      ...prev,
-                      billingCycles: sortRecentBillingCycles([cycle, ...prev.billingCycles]),
-                    }
-                  : prev
-              );
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
 
       <AnimatePresence>
         {editingClient ? (
