@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getRecord, listAllRecords } from "@/lib/airtable-server";
+import { listAllRecords } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getClientBillingCycles, updateAdminClient } from "@/services/client-portal";
 
@@ -27,20 +27,19 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
   ]);
 
   const modelIds = clientModelsRecords.flatMap((r) =>
-    Array.isArray(r.fields.model) ? r.fields.model : []
+    Array.isArray(r.fields.model) ? r.fields.model as string[] : []
   );
 
-  const modelNames = await Promise.all(
-    modelIds.map(async (modelId) => {
-      try {
-        const rec = await getRecord<Record<string, unknown>>("modelss", modelId);
-        return { id: modelId, name: String(rec.fields.model_name ?? "Unnamed") };
-      } catch {
-        return { id: modelId, name: "Unnamed" };
-      }
-    })
+  // Fetch all modelss in one call instead of N individual calls
+  const allModelss = modelIds.length > 0
+    ? await listAllRecords<Record<string, unknown>>("modelss", {
+        _caller: "admin/clients/[id]:GET:modelss",
+      })
+    : [];
+
+  const modelNameMap = Object.fromEntries(
+    allModelss.map(r => [r.id, String(r.fields.model_name ?? "Unnamed")])
   );
-  const modelNameMap = Object.fromEntries(modelNames.map((m) => [m.id, m.name]));
 
   const models = clientModelsRecords.map((r) => ({
     id: r.id,
