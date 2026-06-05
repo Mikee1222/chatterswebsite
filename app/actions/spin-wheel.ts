@@ -175,7 +175,7 @@ export async function markSpinClaimedAction(
     }
     const prizeId = String(spinRec.fields?.prize_id ?? "").trim();
     if (!prizeId) return { success: false, error: "Spin has no prize linked." };
-    const prizeRec = await getRecord<{ prize_type?: string }>(PRIZES_TABLE, prizeId);
+    const prizeRec = await getRecord<{ prize_type?: string; prize_value?: string }>(PRIZES_TABLE, prizeId);
     const pt = String(prizeRec.fields?.prize_type ?? "").toLowerCase();
     const markableTypes = new Set(["cash", "extra_break", "custom", "mystery", "bonus", "break"]);
     if (!markableTypes.has(pt)) {
@@ -189,6 +189,40 @@ export async function markSpinClaimedAction(
     const paidIso = new Date().toISOString();
     const claimNote = `Marked paid ${paidIso}`;
     await updateRecord(SPINS_TABLE, spinId, { claimed: true, claim_note: claimNote });
+
+    // Auto-create bonus in fines_and_bonuses
+    if (chatterId && (pt === "cash" || pt === "bonus")) {
+      try {
+        const { createFineBonus } = await import("@/services/fines-bonuses");
+        const { getUserByAirtableId } = await import("@/services/users");
+
+        const chatterUser = await getUserByAirtableId(chatterId).catch(() => null);
+        const chatterName = chatterUser?.full_name?.trim() || chatterId;
+
+        const prizeAmount = Math.max(0, parseFloat(String(prizeRec.fields?.prize_value ?? "0")) || 0);
+
+        // Month = YYYY-MM of when the spin was claimed
+        const now = new Date();
+        const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+        await createFineBonus({
+          user_id: chatterId,
+          user_name: chatterName,
+          user_role: "chatter",
+          type: "bonus",
+          amount: prizeAmount,
+          reason: `🎰 Spin wheel prize: ${prizeLabel}`,
+          notes: `Auto-created from spin wheel. Spin ID: ${spinId}`,
+          month,
+          admin_id: user.airtableUserId ?? user.id,
+          admin_name: user.fullName?.trim() || user.email?.trim() || "Admin",
+        });
+      } catch (e) {
+        console.error("[spin-wheel] auto-create bonus failed", e);
+        // Non-blocking — spin is still marked claimed
+      }
+    }
+
     revalidatePath(ROUTES.admin.spinResults);
     revalidatePath(ROUTES.chatter.rewards);
 
