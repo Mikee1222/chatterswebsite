@@ -94,6 +94,7 @@ export function ClientPaymentHistoryClient({ cycles }: Props) {
             className="w-full rounded-xl border border-white/10 bg-white/[0.06] px-3 py-2 text-sm text-white focus:border-pink-400/40 focus:outline-none"
           >
             <option value="all" className="bg-[#1a1a1a]">All statuses</option>
+            <option value="draft" className="bg-[#1a1a1a]">Draft</option>
             <option value="confirmed_paid" className="bg-[#1a1a1a]">Paid</option>
             <option value="pending_review" className="bg-[#1a1a1a]">Pending Review</option>
             <option value="overdue" className="bg-[#1a1a1a]">Overdue</option>

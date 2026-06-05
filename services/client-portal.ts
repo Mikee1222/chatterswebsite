@@ -401,7 +401,6 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
              "amount_due", "currency", "client_notified_at"],
     _caller: "getClientBillingCycles",
   });
-  console.log("[getClientBillingCycles] total records fetched:", records.length, "clientId:", clientId);
 
   return records
     .map(mapBillingCycle)
