@@ -93,6 +93,9 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   level_up: "system",
   spin_available: "system",
   challenge_completed: "system",
+  billing_cycle_announced: "billing",
+  billing_due_reminder: "billing",
+  billing_payment_submitted: "system",
 };
 
 /** Service-layer defaults (merges lib/notification-types + model session events). */
@@ -132,6 +135,7 @@ const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceG
   custom_request: "system_alerts",
   system: "system_alerts",
   task: "task_alerts",
+  billing: "system_alerts",
 };
 
 const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {

@@ -8,6 +8,7 @@ import {
 } from "@/lib/airtable-server";
 import type { PushSubscriptionRecord } from "@/types";
 import { devLog } from "@/lib/dev-log";
+import { sendWebPush } from "@/lib/web-push-server";
 
 const TABLE = "push_subscriptions";
 
@@ -130,4 +131,35 @@ export async function updatePushSubscription(
 export async function deactivateSubscription(recordId: string) {
   const rec = await updateRecord<Fields>(TABLE, recordId, {});
   return mapRecord(rec);
+}
+
+/** Send web push to a user's active subscriptions (newest first, capped at 2). */
+export async function sendPushToUser(
+  userId: string,
+  notification: { title: string; body: string; url?: string }
+): Promise<void> {
+  const subscriptions = await getActiveSubscriptionsForUser(userId);
+  for (const sub of subscriptions) {
+    try {
+      await sendWebPush(
+        { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
+        {
+          title: notification.title,
+          body: notification.body,
+          url: notification.url ?? "/notifications",
+          tag: "billing",
+        }
+      );
+    } catch (err) {
+      devLog(
+        PUSH_DEBUG,
+        "push failure with exact error",
+        JSON.stringify({
+          stage: "sendPushToUser",
+          recipient_user_id: userId,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      );
+    }
+  }
 }

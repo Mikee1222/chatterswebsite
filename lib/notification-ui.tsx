@@ -179,6 +179,12 @@ const CATEGORY_CONFIG: Record<
     bg: "hsla(0, 0%, 58%, 0.12)",
     label: "System",
   },
+  billing: {
+    Icon: DollarSign,
+    accent: "hsl(142, 55%, 45%)",
+    bg: "hsla(142, 55%, 45%, 0.14)",
+    label: "Billing",
+  },
 };
 
 /** Overrides by event type (e.g. break, form) for clearer identity. */

@@ -697,7 +697,8 @@ export type NotificationCategory =
   | "whale"
   | "custom_request"
   | "system"
-  | "task";
+  | "task"
+  | "billing";
 
 export type NotificationPriority = "low" | "normal" | "high" | "critical";
 
@@ -780,7 +781,11 @@ export type NotificationEventType =
   | "points_awarded"
   | "level_up"
   | "spin_available"
-  | "challenge_completed";
+  | "challenge_completed"
+  // Billing
+  | "billing_cycle_announced"
+  | "billing_due_reminder"
+  | "billing_payment_submitted";
 
 /** Optional structured metadata for richer display (e.g. models, shift type, deadline). */
 export type NotificationMetadataItem = { label: string; value: string };

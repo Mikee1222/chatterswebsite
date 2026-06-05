@@ -49,6 +49,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   "system_alert",
   "task_shift_started",
   "task_shift_ended",
+  "billing_cycle_announced",
+  "billing_due_reminder",
 ] as const;
 
 export type NotificationEventTypeAirtable = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -61,6 +63,7 @@ export const NOTIFICATION_CATEGORIES = [
   "custom_request",
   "system",
   "task",
+  "billing",
 ] as const;
 
 export type NotificationCategoryAirtable = (typeof NOTIFICATION_CATEGORIES)[number];
@@ -136,6 +139,9 @@ export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtabl
   level_up: "system_alert",
   spin_available: "system_alert",
   challenge_completed: "system_alert",
+  billing_cycle_announced: "billing_cycle_announced",
+  billing_due_reminder: "billing_due_reminder",
+  billing_payment_submitted: "system_alert",
 };
 
 /** Map legacy category to Airtable category (task_shift -> task, account -> system). */
@@ -147,6 +153,7 @@ export const CATEGORY_TO_AIRTABLE: Record<string, NotificationCategoryAirtable> 
   custom_request: "custom_request",
   system: "system",
   account: "system",
+  billing: "billing",
 };
 
 export type NotificationCreatePayload = {

@@ -218,6 +218,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_user_only",
     description: "The chatter who completed a live challenge.",
   },
+  billing_cycle_announced: {
+    rule: "assigned_user_only",
+    description: "The B2B client when a billing cycle is announced.",
+  },
+  billing_due_reminder: {
+    rule: "assigned_user_only",
+    description: "The B2B client two days before payment due date.",
+  },
+  billing_payment_submitted: {
+    rule: "admin_only",
+    description: "Admins when a client submits payment proof.",
+  },
 };
 
 /**

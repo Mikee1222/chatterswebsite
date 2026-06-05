@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getClientAirtableId } from "@/lib/client-session";
+import { getAdminNotificationIds } from "@/services/admin-notification-settings";
+import { createNotification } from "@/services/notifications";
 import {
   markBillingCycleAsNotified,
   markInvoiceAsViewed,
@@ -72,6 +74,22 @@ export async function POST(req: Request) {
         { status: 409 }
       );
     }
+
+    const adminIds = await getAdminNotificationIds();
+    await Promise.all(
+      adminIds.map((adminId) =>
+        createNotification({
+          user_id: adminId,
+          category: "system",
+          event_type: "system_alert",
+          priority: "high",
+          title: "Payment proof submitted",
+          body: "Client submitted payment proof for review",
+          entity_type: "payment_submission",
+          entity_id: result.submissionId ?? billingCycleId,
+        })
+      )
+    );
 
     return NextResponse.json({ success: true, submissionId: result.submissionId });
   } catch (err) {
