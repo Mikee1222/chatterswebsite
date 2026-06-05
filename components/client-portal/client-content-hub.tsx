@@ -116,12 +116,12 @@ type CalEvent = {
 
 const WEEKDAYS_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 
+function toYmd(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function todayLocalYmd(): string {
-  const n = new Date();
-  const y = n.getFullYear();
-  const m = String(n.getMonth() + 1).padStart(2, "0");
-  const d = String(n.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return toYmd(new Date());
 }
 
 function parseLocalYmd(ymd: string): Date {
@@ -129,27 +129,50 @@ function parseLocalYmd(ymd: string): Date {
   return new Date(y, mo - 1, d);
 }
 
+function eventDateFromIso(raw: string | null | undefined): string {
+  if (raw == null) return "";
+  const t = String(raw).trim();
+  if (!t) return "";
+  if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return "";
+  return toYmd(d);
+}
+
 function monthMatrixMondayFirst(
   year: number,
   monthIndex0: number,
-): { ymd: string | null; inMonth: boolean }[][] {
+): { ymd: string; inMonth: boolean }[][] {
   const first = new Date(year, monthIndex0, 1);
   const day = first.getDay();
   const startPad = day === 0 ? 6 : day - 1;
   const daysInMonth = new Date(year, monthIndex0 + 1, 0).getDate();
-  const cells: { ymd: string | null; inMonth: boolean }[] = [];
-  for (let i = 0; i < startPad; i++) {
-    cells.push({ ymd: null, inMonth: false });
+  const cells: { ymd: string; inMonth: boolean }[] = [];
+
+  const prevMonthIndex = monthIndex0 === 0 ? 11 : monthIndex0 - 1;
+  const prevYear = monthIndex0 === 0 ? year - 1 : year;
+  const daysInPrevMonth = new Date(prevYear, prevMonthIndex + 1, 0).getDate();
+  for (let i = startPad - 1; i >= 0; i--) {
+    const d = daysInPrevMonth - i;
+    const dayDate = new Date(prevYear, prevMonthIndex, d);
+    cells.push({ ymd: toYmd(dayDate), inMonth: false });
   }
+
   for (let d = 1; d <= daysInMonth; d++) {
-    const m = String(monthIndex0 + 1).padStart(2, "0");
-    const dayNum = String(d).padStart(2, "0");
-    cells.push({ ymd: `${year}-${m}-${dayNum}`, inMonth: true });
+    const dayDate = new Date(year, monthIndex0, d);
+    cells.push({ ymd: toYmd(dayDate), inMonth: true });
   }
+
+  let nextDay = 1;
+  const nextMonthIndex = monthIndex0 === 11 ? 0 : monthIndex0 + 1;
+  const nextYear = monthIndex0 === 11 ? year + 1 : year;
   while (cells.length % 7 !== 0) {
-    cells.push({ ymd: null, inMonth: false });
+    const dayDate = new Date(nextYear, nextMonthIndex, nextDay);
+    cells.push({ ymd: toYmd(dayDate), inMonth: false });
+    nextDay += 1;
   }
-  const rows: { ymd: string | null; inMonth: boolean }[][] = [];
+
+  const rows: { ymd: string; inMonth: boolean }[][] = [];
   for (let i = 0; i < cells.length; i += 7) {
     rows.push(cells.slice(i, i + 7));
   }
@@ -162,30 +185,30 @@ function buildCalEvents(models: ClientContentModelData[]): CalEvent[] {
       ...m.assignments
         .filter((a) => {
           const s = (a.status || "").toLowerCase();
-          return s !== "completed" && s !== "cancelled";
+          return s !== "cancelled" && s !== "canceled";
         })
         .map((a) => ({
           id: `va-${a.id}`,
           title: a.title || "VA assignment",
           modelName: m.modelName,
-          date: a.scheduled_date?.slice(0, 10) ?? a.deadline?.slice(0, 10) ?? "",
+          date: eventDateFromIso(a.scheduled_date) || eventDateFromIso(a.deadline),
           kind: "va" as const,
           status: a.status,
           priority: a.priority,
         })),
       ...m.customRequests
-        .filter((c) => c.model_status !== "uploaded" && c.model_status !== "completed")
+        .filter((c) => c.model_status !== "declined")
         .map((c) => ({
           id: `custom-${c.id}`,
           title: c.request_title || "Custom request",
           modelName: m.modelName,
           date:
-            c.model_scheduled_date?.slice(0, 10) ?? c.deadline_requested?.slice(0, 10) ?? "",
+            eventDateFromIso(c.model_scheduled_date) || eventDateFromIso(c.deadline_requested),
           kind: "custom" as const,
           status: c.model_status,
         })),
     ])
-    .filter((e) => e.date);
+    .filter((e) => e.date.length > 0);
 }
 
 function calEventBorderClass(status: string): string {
@@ -308,22 +331,14 @@ export function ClientContentHub({ models }: Props) {
 
   const allEvents = React.useMemo(() => buildCalEvents(filteredModels), [filteredModels]);
 
-  const eventsByDay = React.useMemo(() => {
-    const m = new Map<string, CalEvent[]>();
-    for (const e of allEvents) {
-      const list = m.get(e.date) ?? [];
-      list.push(e);
-      m.set(e.date, list);
-    }
-    return m;
+  React.useEffect(() => {
+    console.log("Calendar events:", allEvents.length, allEvents.slice(0, 3));
   }, [allEvents]);
 
-  const weekStartYmd = React.useMemo(() => {
-    const y = currentDate.getFullYear();
-    const mo = String(currentDate.getMonth() + 1).padStart(2, "0");
-    const d = String(currentDate.getDate()).padStart(2, "0");
-    return getMondayOfWeek(`${y}-${mo}-${d}`);
-  }, [currentDate]);
+  const weekStartYmd = React.useMemo(
+    () => getMondayOfWeek(toYmd(currentDate)),
+    [currentDate],
+  );
 
   const weekDaysYmd = React.useMemo(
     () => Array.from({ length: 7 }, (_, i) => addDays(weekStartYmd, i)),
@@ -681,7 +696,8 @@ export function ClientContentHub({ models }: Props) {
                 {monthMatrix.map((row, ri) => (
                   <div key={ri} className="grid grid-cols-7 divide-x divide-white/10">
                     {row.map((cell, ci) => {
-                      const dayEvents = cell.ymd ? (eventsByDay.get(cell.ymd) ?? []) : [];
+                      const day = parseLocalYmd(cell.ymd);
+                      const dayEvents = allEvents.filter((e) => e.date === toYmd(day));
                       return (
                         <div
                           key={ci}
@@ -690,36 +706,32 @@ export function ClientContentHub({ models }: Props) {
                             !cell.inMonth && "bg-black/25",
                           )}
                         >
-                          {cell.ymd ? (
-                            <>
+                          <div
+                            className={cn(
+                              "mb-1 flex items-center justify-end text-xs font-medium tabular-nums",
+                              cell.inMonth ? "text-white/70" : "text-white/25",
+                              todayYmd === cell.ymd &&
+                                "mx-auto w-fit rounded-full bg-violet-500 px-2 py-0.5 font-bold text-white",
+                            )}
+                          >
+                            {day.getDate()}
+                          </div>
+                          <div className="flex max-h-[5.5rem] flex-col gap-1 overflow-y-auto">
+                            {dayEvents.map((ev) => (
                               <div
+                                key={ev.id}
+                                title={`${ev.title} · ${ev.modelName}`}
                                 className={cn(
-                                  "mb-1 flex items-center justify-end text-xs font-medium tabular-nums",
-                                  cell.inMonth ? "text-white/70" : "text-white/25",
-                                  todayYmd === cell.ymd &&
-                                    "mx-auto w-fit rounded-full bg-violet-500 px-2 py-0.5 font-bold text-white",
+                                  "truncate rounded-lg border px-1.5 py-0.5 text-[10px] leading-tight",
+                                  calEventBorderClass(ev.status),
+                                  calEventKindClass(ev.kind),
                                 )}
                               >
-                                {Number(cell.ymd.slice(8, 10))}
+                                <span className="block truncate font-medium">{ev.title}</span>
+                                <span className="block truncate opacity-65">{ev.modelName}</span>
                               </div>
-                              <div className="flex max-h-[5.5rem] flex-col gap-1 overflow-y-auto">
-                                {dayEvents.map((ev) => (
-                                  <div
-                                    key={ev.id}
-                                    title={`${ev.title} · ${ev.modelName}`}
-                                    className={cn(
-                                      "truncate rounded-lg border px-1.5 py-0.5 text-[10px] leading-tight",
-                                      calEventBorderClass(ev.status),
-                                      calEventKindClass(ev.kind),
-                                    )}
-                                  >
-                                    <span className="block truncate font-medium">{ev.title}</span>
-                                    <span className="block truncate opacity-65">{ev.modelName}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            </>
-                          ) : null}
+                            ))}
+                          </div>
                         </div>
                       );
                     })}
@@ -733,7 +745,7 @@ export function ClientContentHub({ models }: Props) {
                 {weekDaysYmd.map((ymd, i) => {
                   const d = parseLocalYmd(ymd);
                   const isTodayDay = todayYmd === ymd;
-                  const dayEvents = eventsByDay.get(ymd) ?? [];
+                  const dayEvents = allEvents.filter((e) => e.date === toYmd(d));
                   return (
                     <div key={ymd} className="flex min-w-0 flex-col gap-1">
                       <div className="text-center">
