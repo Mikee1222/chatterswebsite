@@ -694,11 +694,13 @@ function ClientDetailSheet({
   onClose,
   onPortalAccessChange,
   onClientUpdated,
+  onStatusChange,
 }: {
   client: AdminClientRecord;
   onClose: () => void;
   onPortalAccessChange: (clientId: string, portalAccess: boolean) => void;
   onClientUpdated: (client: AdminClientRecord) => void;
+  onStatusChange: (clientId: string, status: string) => void;
 }) {
   const [detail, setDetail] = React.useState<ClientDetail | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -858,6 +860,29 @@ function ClientDetailSheet({
                 <p className="mt-1 text-sm text-white/45">{client.email || "—"}</p>
               </div>
               <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const newStatus = client.status === "active" ? "inactive" : "active";
+                    const res = await fetch(`/api/admin/clients/${client.id}`, {
+                      method: "PATCH",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ status: newStatus }),
+                    });
+                    if (res.ok) {
+                      onStatusChange(client.id, newStatus);
+                      onClose();
+                    }
+                  }}
+                  className={cn(
+                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+                    client.status === "active"
+                      ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20"
+                  )}
+                >
+                  {client.status === "active" ? "Mark inactive" : "Mark active"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setEditingClient(true)}
@@ -1144,6 +1169,7 @@ function ClientDetailSheet({
 export function AdminClientsClient({ clients: initialClients }: Props) {
   const [clients, setClients] = React.useState(initialClients);
   const [search, setSearch] = React.useState("");
+  const [showInactive, setShowInactive] = React.useState(false);
   const [selectedClient, setSelectedClient] = React.useState<AdminClientRecord | null>(null);
   const [portalPendingId, setPortalPendingId] = React.useState<string | null>(null);
   const [showAddClient, setShowAddClient] = React.useState(false);
@@ -1153,15 +1179,19 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
   }, [initialClients]);
 
   const filtered = React.useMemo(() => {
+    let list = clients;
+    if (!showInactive) {
+      list = list.filter((c) => c.status === "active");
+    }
     const q = search.trim().toLowerCase();
-    if (!q) return clients;
-    return clients.filter(
+    if (!q) return list;
+    return list.filter(
       (c) =>
         c.company_name.toLowerCase().includes(q) ||
         c.display_name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q)
     );
-  }, [clients, search]);
+  }, [clients, search, showInactive]);
 
   function handlePortalAccessChange(clientId: string, portalAccess: boolean) {
     setClients((prev) =>
@@ -1175,6 +1205,14 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
   function handleClientUpdated(updated: AdminClientRecord) {
     setClients((prev) => prev.map((c) => (c.id === updated.id ? updated : c)));
     setSelectedClient((prev) => (prev?.id === updated.id ? updated : prev));
+  }
+
+  function handleStatusChange(clientId: string, status: string) {
+    setClients((prev) =>
+      prev.map((c) =>
+        c.id === clientId ? { ...c, status: status as AdminClientRecord["status"] } : c
+      )
+    );
   }
 
   async function handleListPortalToggle(client: AdminClientRecord, next: boolean) {
@@ -1211,14 +1249,28 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         </button>
       </div>
 
-      <div className="relative max-w-md">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-        <FormInput
-          className="pl-10"
-          placeholder="Search company, name, or email…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <div className="flex max-w-xl flex-wrap items-center gap-3">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+          <FormInput
+            className="pl-10"
+            placeholder="Search company, name, or email…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+          />
+        </div>
+        <button
+          type="button"
+          onClick={() => setShowInactive((v) => !v)}
+          className={cn(
+            "inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors",
+            showInactive
+              ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+              : "border-white/10 bg-white/5 text-white/50 hover:text-white"
+          )}
+        >
+          {showInactive ? "Showing all" : "Show inactive"}
+        </button>
       </div>
 
       <div
@@ -1355,6 +1407,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
             onClose={() => setSelectedClient(null)}
             onPortalAccessChange={handlePortalAccessChange}
             onClientUpdated={handleClientUpdated}
+            onStatusChange={handleStatusChange}
           />
         ) : null}
       </AnimatePresence>

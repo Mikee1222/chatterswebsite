@@ -658,6 +658,7 @@ export type BillingClientRecord = Pick<
 
 export async function listBillingClients(): Promise<BillingClientRecord[]> {
   const records = await listAllRecords<Record<string, unknown>>(TABLES.clients, {
+    filterByFormula: '{status} = "active"',
     sort: [{ field: "company_name", direction: "asc" }],
     _caller: "listBillingClients",
   });

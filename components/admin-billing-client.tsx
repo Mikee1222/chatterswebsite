@@ -77,6 +77,10 @@ export function AdminBillingClient({
   initialClientCounts,
 }: Props) {
   const router = useRouter();
+  const activeClients = React.useMemo(
+    () => clients.filter((c) => c.status === "active"),
+    [clients]
+  );
   const [monthFilter, setMonthFilter] = React.useState(() => {
     const n = new Date();
     return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}`;
@@ -540,7 +544,7 @@ export function AdminBillingClient({
                                         className="h-8 min-w-[120px] rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
                                       >
                                         <option value="">Select client</option>
-                                        {clients.map((c) => (
+                                        {activeClients.map((c) => (
                                           <option key={c.id} value={c.id}>
                                             {c.display_name}
                                           </option>
@@ -898,7 +902,7 @@ export function AdminBillingClient({
                 onChange={(e) => setCrmClientId(e.target.value)}
               >
                 <option value="">Select client</option>
-                {clients.map((c) => (
+                {activeClients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.display_name}
                   </option>
