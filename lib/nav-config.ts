@@ -65,6 +65,7 @@ export type NavIconKey =
   | "LineChart"
   | "CalendarDays"
   | "CalendarClock"
+  | "Clock"
   | "MessageSquarePlus"
   | "ImageOff"
   | "AlertTriangle"
@@ -156,6 +157,7 @@ const adminNav: NavItem[] = [
   // ── OVERVIEW ──
   { href: ROUTES.admin.home, label: "Home", iconKey: "Home", navSection: "OVERVIEW" },
   { href: ROUTES.admin.liveShifts, label: "Live shifts", iconKey: "Radio" },
+  { href: ROUTES.admin.shiftActivity, label: "Shift activity", iconKey: "Clock" },
   { href: ROUTES.admin.modelSchedulesOverview, label: "Schedule overview", iconKey: "CalendarDays" },
 
   // ── PROGRAMS ──
