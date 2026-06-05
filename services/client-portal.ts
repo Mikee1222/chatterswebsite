@@ -384,12 +384,19 @@ export async function updatePaymentSubmissionReview(
   if (data.admin_note !== undefined) {
     fields.admin_note = data.admin_note;
   }
-  const rec = await updateRecord<Record<string, unknown>>(
+  await updateRecord<Record<string, unknown>>(
     TABLES.payment_submissions,
     submissionId,
     fields
   );
-  return mapPaymentSubmission(rec);
+  // Wait for Airtable to propagate
+  await new Promise(r => setTimeout(r, 800));
+  // Fetch fresh record
+  const fresh = await getRecord<Record<string, unknown>>(
+    TABLES.payment_submissions,
+    submissionId
+  );
+  return mapPaymentSubmission(fresh);
 }
 
 export async function updateBillingCycleStatus(

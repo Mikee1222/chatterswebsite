@@ -915,7 +915,7 @@ function ClientDetailSheet({
         )
       );
 
-      await new Promise((r) => setTimeout(r, 1500));
+      await new Promise((r) => setTimeout(r, 2500));
       await loadDetail();
     } catch {
       addToast(
