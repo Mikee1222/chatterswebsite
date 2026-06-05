@@ -1014,22 +1014,6 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
       });
     });
 
-  submissions
-    .filter((s) => s.status === "pending_review")
-    .forEach((submission) => {
-      const kind =
-        billingCycles.find((c) => c.id === submission.billing_cycle[0])?.kind ?? "chatting_weekly";
-      items.push({
-        id: `pending-${submission.id}`,
-        type: "proof_pending",
-        recordId: submission.id,
-        severity: "low",
-        title: "Payment proof pending review",
-        description: "Your payment proof is being reviewed.",
-        link: kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
-      });
-    });
-
   invoices
     .filter((invoice) => {
       const sentDate = invoice.sent_at ? new Date(invoice.sent_at) : null;
