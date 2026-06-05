@@ -1,4 +1,8 @@
-import type { BillingCycleRecord, PaymentSubmissionRecord } from "@/types/client-portal";
+import type {
+  BillingCycleRecord,
+  BillingCycleRevenueRecord,
+  PaymentSubmissionRecord,
+} from "@/types/client-portal";
 
 export type CrmFeesScope = {
   monthMode: "selected" | "all";
@@ -81,6 +85,74 @@ export const getMonthKeyFromDate = (dateString?: string): string | null => {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
 };
 
+/** Month key from cycle period_start (YYYY-MM), matching admin billing filters. */
+export const getMonthKeyFromCycle = (cycle: BillingCycleRecord): string | null => {
+  const periodStart = cycle.period_start;
+  if (!periodStart || periodStart.length < 7) return null;
+  return periodStart.slice(0, 7);
+};
+
+export const cycleMatchesMonthKey = (
+  cycle: BillingCycleRecord,
+  monthKey: string
+): boolean => getMonthKeyFromCycle(cycle) === monthKey;
+
+export const feeFromRevenue = (revenue: BillingCycleRevenueRecord): number => {
+  if (typeof revenue.fee_usd === "number" && Number.isFinite(revenue.fee_usd)) {
+    return revenue.fee_usd;
+  }
+  return toSafeNumber(revenue.turnover_usd, 0) * (toSafeNumber(revenue.fee_percent, 0) / 100);
+};
+
+export const groupRevenuesByCycleId = (
+  revenues: BillingCycleRevenueRecord[]
+): Map<string, BillingCycleRevenueRecord[]> => {
+  const map = new Map<string, BillingCycleRevenueRecord[]>();
+  revenues.forEach((revenue) => {
+    revenue.billing_cycle.forEach((cycleId) => {
+      const current = map.get(cycleId) ?? [];
+      current.push(revenue);
+      map.set(cycleId, current);
+    });
+  });
+  return map;
+};
+
+export const sumTurnoverFromRevenues = (
+  revenues: BillingCycleRevenueRecord[]
+): Map<string, number> => {
+  const total = revenues.reduce((sum, revenue) => sum + toSafeNumber(revenue.turnover_usd, 0), 0);
+  return total ? new Map([["USD", total]]) : new Map();
+};
+
+export const sumChattingFeesFromRevenues = (
+  revenues: BillingCycleRevenueRecord[]
+): Map<string, number> => {
+  const total = revenues.reduce((sum, revenue) => sum + feeFromRevenue(revenue), 0);
+  return total ? new Map([["USD", total]]) : new Map();
+};
+
+export const getCycleTurnoverUsd = (
+  cycle: BillingCycleRecord,
+  revenuesForCycle: BillingCycleRevenueRecord[]
+): number => {
+  if (revenuesForCycle.length > 0) {
+    return revenuesForCycle.reduce((sum, revenue) => sum + toSafeNumber(revenue.turnover_usd, 0), 0);
+  }
+  return toSafeNumber(cycle.total_turnover_usd ?? cycle.model_turnover ?? 0, 0);
+};
+
+export const getCycleChattingFeeUsd = (
+  cycle: BillingCycleRecord,
+  revenuesForCycle: BillingCycleRevenueRecord[]
+): number => {
+  if (getCycleType(cycle) !== "chatting") return 0;
+  if (revenuesForCycle.length > 0) {
+    return revenuesForCycle.reduce((sum, revenue) => sum + feeFromRevenue(revenue), 0);
+  }
+  return getCycleAmountDue(cycle);
+};
+
 export const getLatestSubmissionForCycle = (
   submissions: PaymentSubmissionRecord[],
   cycleId: string
@@ -106,10 +178,7 @@ export function getCrmFeesTotal(
     filtered = filtered.filter((cycle) => cycle.client.includes(scope.clientId!));
   }
   if (scope.monthMode === "selected" && scope.monthKey) {
-    filtered = filtered.filter((cycle) => {
-      const key = getMonthKeyFromDate(cycle.period_start || cycle.due_date);
-      return key === scope.monthKey;
-    });
+    filtered = filtered.filter((cycle) => cycleMatchesMonthKey(cycle, scope.monthKey!));
   }
   return sumByCurrency(filtered, (cycle) =>
     toSafeNumber(cycle.amount_crm ?? cycle.amount_due ?? cycle.amount ?? 0, 0)

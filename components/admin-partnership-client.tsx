@@ -14,13 +14,19 @@ import {
   X,
 } from "lucide-react";
 import {
+  cycleMatchesMonthKey,
   filterCyclesByClientModel,
   getCycleAmountDue,
   getCycleAmountPaid,
   getCycleType,
+  getMonthKeyFromCycle,
   getMonthKeyFromDate,
+  groupRevenuesByCycleId,
   resolveCycleCurrency,
   sumByCurrency,
+  sumChattingFeesFromRevenues,
+  sumTurnoverFromRevenues,
+  feeFromRevenue,
   toSafeNumber,
 } from "@/lib/gunzo-partnership-admin";
 import { formatDateEuropean } from "@/lib/format";
@@ -29,6 +35,7 @@ import { cn } from "@/lib/utils";
 import type {
   BillingClientRecord,
   BillingCycleRecord,
+  BillingCycleRevenueRecord,
   PaymentSubmissionRecord,
 } from "@/services/client-billing";
 import type { ModelRecord } from "@/types/client-portal";
@@ -39,6 +46,7 @@ type RollupMode = "weekly" | "monthly";
 
 type Props = {
   initialCycles: BillingCycleRecord[];
+  revenues: BillingCycleRevenueRecord[];
   clients: BillingClientRecord[];
   models: ModelRecord[];
   submissions: PaymentSubmissionRecord[];
@@ -53,6 +61,7 @@ type Props = {
 
 export function AdminPartnershipClient({
   initialCycles,
+  revenues,
   clients,
   models,
   submissions,
@@ -135,10 +144,7 @@ export function AdminPartnershipClient({
   const baseCycles = React.useMemo(() => {
     let scoped = filterCyclesByClientModel(initialCycles, clientFilter, modelFilter);
     if (viewMode === "selected") {
-      scoped = scoped.filter((cycle) => {
-        const monthKey = getMonthKeyFromDate(cycle.period_start || cycle.due_date || cycle.period_end);
-        return monthKey === selectedMonth;
-      });
+      scoped = scoped.filter((cycle) => cycleMatchesMonthKey(cycle, selectedMonth));
     } else if (viewMode === "ytd") {
       const [year] = selectedMonth.split("-").map(Number);
       const now = new Date();
@@ -160,17 +166,38 @@ export function AdminPartnershipClient({
     return baseCycles.filter((c) => !["confirmed_paid", "overdue"].includes(c.status));
   }, [baseCycles, statusFilter]);
 
-  const turnoverTotals = React.useMemo(
-    () => sumByCurrency(filteredCycles, (c) => toSafeNumber(c.model_turnover ?? 0, 0)),
+  const filteredCycleIds = React.useMemo(
+    () => new Set(filteredCycles.map((cycle) => cycle.id)),
     [filteredCycles]
   );
+
+  const revenuesByCycleId = React.useMemo(() => groupRevenuesByCycleId(revenues), [revenues]);
+
+  const scopedRevenues = React.useMemo(() => {
+    let scoped = revenues.filter((revenue) =>
+      revenue.billing_cycle.some((cycleId) => filteredCycleIds.has(cycleId))
+    );
+    if (clientFilter !== "all") {
+      scoped = scoped.filter((revenue) => revenue.client.includes(clientFilter));
+    }
+    if (modelFilter !== "all") {
+      scoped = scoped.filter((revenue) => revenue.model.includes(modelFilter));
+    }
+    if (statusFilter === "overdue") {
+      scoped = scoped.filter((revenue) => revenue.status === "overdue");
+    } else if (statusFilter === "active") {
+      scoped = scoped.filter((revenue) => revenue.status !== "confirmed_paid");
+    }
+    return scoped;
+  }, [revenues, filteredCycleIds, clientFilter, modelFilter, statusFilter]);
+
+  const turnoverTotals = React.useMemo(
+    () => sumTurnoverFromRevenues(scopedRevenues),
+    [scopedRevenues]
+  );
   const chattingTotals = React.useMemo(
-    () =>
-      sumByCurrency(
-        filteredCycles.filter((c) => getCycleType(c) === "chatting"),
-        getCycleAmountDue
-      ),
-    [filteredCycles]
+    () => sumChattingFeesFromRevenues(scopedRevenues),
+    [scopedRevenues]
   );
   const crmTotals = React.useMemo(
     () =>
@@ -195,35 +222,55 @@ export function AdminPartnershipClient({
   );
 
   const clientRollups = React.useMemo(() => {
-    const map = new Map<string, BillingCycleRecord[]>();
-    filteredCycles.forEach((cycle) => {
-      cycle.client.forEach((clientId) => {
-        const current = map.get(clientId) ?? [];
-        current.push(cycle);
-        map.set(clientId, current);
-      });
+    const activeClients = clients.filter((client) => {
+      if (client.status !== "active") return false;
+      if (clientFilter !== "all" && client.id !== clientFilter) return false;
+      return true;
     });
-    return Array.from(map.entries())
-      .map(([clientId, cyclesForClient]) => ({
-        clientId,
-        clientName: clients.find((c) => c.id === clientId)?.display_name ?? "Unknown",
-        chatting: sumByCurrency(
-          cyclesForClient.filter((c) => getCycleType(c) === "chatting"),
+
+    return activeClients
+      .map((client) => {
+        const clientRevenues = scopedRevenues.filter((revenue) => revenue.client.includes(client.id));
+        const cyclesForClient = filteredCycles.filter((cycle) => cycle.client.includes(client.id));
+
+        const chatting = sumChattingFeesFromRevenues(clientRevenues);
+        const crm = sumByCurrency(
+          cyclesForClient.filter((cycle) => getCycleType(cycle) === "crm"),
           getCycleAmountDue
-        ),
-        crm: sumByCurrency(
-          cyclesForClient.filter((c) => getCycleType(c) === "crm"),
-          getCycleAmountDue
-        ),
-        turnover: sumByCurrency(cyclesForClient, (c) => toSafeNumber(c.model_turnover ?? 0, 0)),
-        receivables: sumByCurrency(
-          cyclesForClient.filter((c) => c.status !== "confirmed_paid"),
-          (c) => Math.max(0, getCycleAmountDue(c) - getPaidAmountForCycle(c))
-        ),
-        cycles: cyclesForClient,
-      }))
+        );
+        const turnover = sumTurnoverFromRevenues(clientRevenues);
+        const chattingReceivables = sumChattingFeesFromRevenues(
+          clientRevenues.filter((revenue) => revenue.status !== "confirmed_paid")
+        );
+        const crmReceivables = sumByCurrency(
+          cyclesForClient.filter((cycle) => getCycleType(cycle) === "crm" && cycle.status !== "confirmed_paid"),
+          (cycle) => Math.max(0, getCycleAmountDue(cycle) - getPaidAmountForCycle(cycle))
+        );
+        const receivables = new Map<string, number>();
+        for (const [currency, amount] of chattingReceivables) {
+          receivables.set(currency, (receivables.get(currency) || 0) + amount);
+        }
+        for (const [currency, amount] of crmReceivables) {
+          receivables.set(currency, (receivables.get(currency) || 0) + amount);
+        }
+
+        const cycleIdsFromRevenues = new Set(clientRevenues.flatMap((revenue) => revenue.billing_cycle));
+        const relatedCycles = filteredCycles.filter(
+          (cycle) => cyclesForClient.includes(cycle) || cycleIdsFromRevenues.has(cycle.id)
+        );
+
+        return {
+          clientId: client.id,
+          clientName: client.display_name || client.company_name || "Unknown",
+          chatting,
+          crm,
+          turnover,
+          receivables,
+          cycles: relatedCycles,
+        };
+      })
       .sort((a, b) => a.clientName.localeCompare(b.clientName));
-  }, [filteredCycles, clients, getPaidAmountForCycle]);
+  }, [clients, clientFilter, scopedRevenues, filteredCycles, getPaidAmountForCycle]);
 
   const formatCurrencyInline = (totals: Map<string, number>) => {
     if (totals.size === 0) return "0.00";
@@ -258,8 +305,16 @@ export function AdminPartnershipClient({
 
   const selectedClientCycles = React.useMemo(() => {
     if (!selectedClient) return [];
-    return baseCycles.filter((c) => c.client.includes(selectedClient.clientId));
-  }, [selectedClient, baseCycles]);
+    const cycleIds = new Set(selectedClient.cycles.map((cycle) => cycle.id));
+    return baseCycles
+      .filter((cycle) => cycleIds.has(cycle.id))
+      .map((cycle) => ({
+        cycle,
+        revenues: (revenuesByCycleId.get(cycle.id) ?? []).filter((revenue) =>
+          revenue.client.includes(selectedClient.clientId)
+        ),
+      }));
+  }, [selectedClient, baseCycles, revenuesByCycleId]);
 
   return (
     <div className="space-y-8">
@@ -380,10 +435,10 @@ export function AdminPartnershipClient({
             Error code: <span className="text-pink-300">{errorCode}</span>
           </p>
         </div>
-      ) : filteredCycles.length === 0 ? (
+      ) : clientRollups.length === 0 ? (
         <div className={cn(glassCard, "p-10 text-center")}>
           <CircleDot className="mx-auto mb-4 h-12 w-12 text-white/50" />
-          <h2 className="mb-2 text-xl font-semibold text-white">No data for selected filters</h2>
+          <h2 className="mb-2 text-xl font-semibold text-white">No active clients</h2>
           <Link
             href={ROUTES.admin.billing}
             className="mt-6 inline-flex rounded-lg border border-pink-500/30 bg-pink-500/20 px-4 py-2 text-pink-200 hover:bg-pink-500/30"
@@ -458,7 +513,17 @@ export function AdminPartnershipClient({
               </button>
             </div>
             <div className="space-y-3">
-              {selectedClientCycles.map((cycle) => (
+              {selectedClientCycles.map(({ cycle, revenues: cycleRevenues }) => {
+                const chattingFee =
+                  cycleRevenues.length > 0
+                    ? cycleRevenues.reduce((sum, revenue) => sum + feeFromRevenue(revenue), 0)
+                    : getCycleAmountDue(cycle);
+                const turnover =
+                  cycleRevenues.length > 0
+                    ? cycleRevenues.reduce((sum, revenue) => sum + toSafeNumber(revenue.turnover_usd, 0), 0)
+                    : toSafeNumber(cycle.total_turnover_usd ?? cycle.model_turnover ?? 0, 0);
+
+                return (
                 <div
                   key={cycle.id}
                   className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-3 text-sm"
@@ -467,21 +532,27 @@ export function AdminPartnershipClient({
                     <p className="text-white">
                       {rollupMode === "monthly"
                         ? formatMonthLabel(
-                            getMonthKeyFromDate(cycle.period_start) ?? selectedMonth
+                            getMonthKeyFromCycle(cycle) ?? selectedMonth
                           )
                         : `${formatDateEuropean(cycle.period_start)} – ${formatDateEuropean(cycle.period_end)}`}
                     </p>
                     <p className="text-xs capitalize text-gray-400">{cycle.status.replace(/_/g, " ")}</p>
+                    {turnover > 0 ? (
+                      <p className="text-xs text-gray-500">
+                        Turnover {turnover.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
+                      </p>
+                    ) : null}
                   </div>
                   <p className="text-white">
-                    {getCycleAmountDue(cycle).toLocaleString("en-US", {
+                    {chattingFee.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
                     })}{" "}
-                    {resolveCycleCurrency(cycle)}
+                    {resolveCycleCurrency(cycle) ?? "USD"}
                   </p>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>

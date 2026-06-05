@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { AdminPartnershipClient } from "@/components/admin-partnership-client";
 import {
   getAllPaymentSubmissions,
+  getBillingCycleRevenuesForCycles,
   getPartnerBillingCycles,
   listAllBillingModels,
   listBillingClients,
@@ -11,6 +12,7 @@ import {
 import type {
   BillingClientRecord,
   BillingCycleRecord,
+  BillingCycleRevenueRecord,
   PaymentSubmissionRecord,
 } from "@/services/client-billing";
 import type { ModelRecord } from "@/types/client-portal";
@@ -40,6 +42,7 @@ export default async function AdminPartnershipPage({ searchParams }: { searchPar
     params.status === "active" || params.status === "overdue" ? params.status : "all";
 
   let cycles: BillingCycleRecord[] = [];
+  let revenues: BillingCycleRevenueRecord[] = [];
   let clients: BillingClientRecord[] = [];
   let models: ModelRecord[] = [];
   let submissions: PaymentSubmissionRecord[] = [];
@@ -52,6 +55,10 @@ export default async function AdminPartnershipPage({ searchParams }: { searchPar
       listAllBillingModels(),
       getAllPaymentSubmissions(),
     ]);
+    revenues =
+      cycles.length > 0
+        ? await getBillingCycleRevenuesForCycles(cycles.map((cycle) => cycle.id))
+        : [];
   } catch {
     errorCode = "PARTNERSHIP_DATA_FETCH_FAILED";
   }
@@ -63,6 +70,7 @@ export default async function AdminPartnershipPage({ searchParams }: { searchPar
   return (
     <AdminPartnershipClient
       initialCycles={normalizedCycles}
+      revenues={revenues}
       clients={clients}
       models={models}
       submissions={submissions}

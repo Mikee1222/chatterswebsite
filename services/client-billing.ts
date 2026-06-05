@@ -642,12 +642,10 @@ export async function getPartnerBillingCycles(month?: string): Promise<BillingCy
   const all = await getAllBillingCycles();
   if (!month) return all;
 
-  const [year, monthNum] = month.split("-").map(Number);
-  const startMonth = `${year}-${String(monthNum).padStart(2, "0")}`;
   return all.filter((cycle) => {
-    const dateValue = cycle.period_start || cycle.due_date || cycle.period_end;
-    if (!dateValue) return false;
-    return dateValue.slice(0, 7) === startMonth;
+    const periodStart = cycle.period_start;
+    if (!periodStart || periodStart.length < 7) return false;
+    return periodStart.slice(0, 7) === month;
   });
 }
 
