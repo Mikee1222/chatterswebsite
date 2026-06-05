@@ -3,6 +3,7 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getLiveShifts, getActiveShiftModels } from "@/services/shifts";
 import { listAllShiftQueueWaiting } from "@/services/shift-queue";
+import { listAllUsers } from "@/services/users";
 import { AdminLiveShiftsClient } from "@/components/admin-live-shifts-client";
 import type { AdminShiftQueueRow } from "@/types";
 
@@ -11,6 +12,12 @@ export default async function AdminLiveShiftsPage() {
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
   const shifts = await getLiveShifts().catch(() => []);
+  const users = await listAllUsers().catch(() => []);
+  const telegramByUserId = Object.fromEntries(
+    users
+      .filter((u) => u.telegram_username)
+      .map((u) => [u.id, u.telegram_username!.replace(/^@/, "")])
+  );
   const withModelNames = await Promise.all(
     shifts.map(async (s) => {
       const models = await getActiveShiftModels(s.id).catch(() => []);
@@ -28,5 +35,11 @@ export default async function AdminLiveShiftsPage() {
     queue_type: e.queue_type ?? "full_start",
   }));
 
-  return <AdminLiveShiftsClient shiftsWithModels={withModelNames} shiftQueue={shiftQueue} />;
+  return (
+    <AdminLiveShiftsClient
+      shiftsWithModels={withModelNames}
+      shiftQueue={shiftQueue}
+      telegramByUserId={telegramByUserId}
+    />
+  );
 }

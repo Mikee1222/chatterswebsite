@@ -12,14 +12,6 @@ import { adminForceEndShift } from "@/app/actions/shift";
 
 export type LiveShiftWithModels = Shift & { modelNames: string[] };
 
-const CHATTER_TELEGRAM: Record<string, string> = {
-  "Hlias Zarifes": "elias_drag",
-  "Edgar": "Edgar200055",
-  "Giannis Katsikas": "giannhskts",
-  "Apostolis": "apo_dl",
-  "Anastasis Haroupas": "Anastasiss99",
-};
-
 const MAX_BREAK_MINUTES = 45;
 
 /** Minutes elapsed since break_started_at (live tick for badge). */
@@ -109,17 +101,19 @@ function ShiftCard({
   subtitle,
   index = 0,
   adminForceEnd,
+  telegramByUserId,
 }: {
   shift: LiveShiftWithModels;
   subtitle?: string;
   index?: number;
   adminForceEnd?: { onRequest: () => void; busy: boolean };
+  telegramByUserId: Record<string, string>;
 }) {
   const isOnBreak = shift.status === "on_break" || Boolean(shift.break_started_at);
   const hasBreakStart = Boolean(shift.break_started_at);
   const running = !isOnBreak;
   const chatterName = shift.chatter_name || "—";
-  const telegramUsername = chatterName !== "—" ? CHATTER_TELEGRAM[chatterName] : undefined;
+  const telegramUsername = shift.chatter_id ? telegramByUserId[shift.chatter_id] : undefined;
 
   return (
     <motion.div
@@ -237,9 +231,14 @@ function EmptyState({ message, sub, icon: Icon }: { message: string; sub?: strin
 type Props = {
   shiftsWithModels: LiveShiftWithModels[];
   shiftQueue?: AdminShiftQueueRow[];
+  telegramByUserId?: Record<string, string>;
 };
 
-export function AdminLiveShiftsClient({ shiftsWithModels, shiftQueue = [] }: Props) {
+export function AdminLiveShiftsClient({
+  shiftsWithModels,
+  shiftQueue = [],
+  telegramByUserId = {},
+}: Props) {
   const router = useRouter();
   const [refreshing, setRefreshing] = React.useState(false);
   const [forceEndFor, setForceEndFor] = React.useState<LiveShiftWithModels | null>(null);
@@ -312,7 +311,9 @@ export function AdminLiveShiftsClient({ shiftsWithModels, shiftQueue = [] }: Pro
                 icon={Calendar}
               />
             ) : (
-              chatterShifts.map((s, i) => <ShiftCard key={s.id} shift={s} index={i} />)
+              chatterShifts.map((s, i) => (
+                <ShiftCard key={s.id} shift={s} index={i} telegramByUserId={telegramByUserId} />
+              ))
             )}
             {shiftQueue.length > 0 && (
               <div className="mt-4">
@@ -372,6 +373,7 @@ export function AdminLiveShiftsClient({ shiftsWithModels, shiftQueue = [] }: Pro
                   shift={s}
                   subtitle="Mistake check"
                   index={i}
+                  telegramByUserId={telegramByUserId}
                   adminForceEnd={{
                     onRequest: () => setForceEndFor(s),
                     busy: endingId === s.id,

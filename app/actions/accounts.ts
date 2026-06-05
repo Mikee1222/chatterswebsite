@@ -40,6 +40,7 @@ export async function createAccount(formData: FormData) {
   const notes = (formData.get("notes") as string)?.trim() ?? "";
   const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || undefined;
   const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
+  const telegram_username = (formData.get("telegram_username") as string)?.trim() || undefined;
 
   if (!full_name || !email) {
     redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Name and email are required"));
@@ -58,6 +59,7 @@ export async function createAccount(formData: FormData) {
   }
   if (role === "model" && linked_model_id) input.linked_model_id = linked_model_id;
   if (role === "model" && language_preference) input.language_preference = language_preference;
+  if (telegram_username) input.telegram_username = telegram_username;
   try {
     await createUser(input);
     redirect(ROUTES.accounts + "?success=created");
@@ -83,6 +85,11 @@ export async function updateAccount(formData: FormData) {
   const notes = (formData.get("notes") as string)?.trim();
   const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || null;
   const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
+  const telegram_username_raw = formData.get("telegram_username");
+  const telegram_username =
+    telegram_username_raw === null
+      ? undefined
+      : (telegram_username_raw as string).trim().replace(/^@/, "") || null;
 
   const input: UpdateUserInput = {};
   if (full_name !== undefined) input.full_name = full_name;
@@ -113,6 +120,7 @@ export async function updateAccount(formData: FormData) {
   } else {
     input.secondary_role = null;
   }
+  if (telegram_username !== undefined) input.telegram_username = telegram_username;
   try {
     await updateUser(recordId, input);
     redirect(ROUTES.accounts + "?success=updated");

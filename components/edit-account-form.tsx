@@ -9,6 +9,7 @@ import {
   Languages,
   Link2,
   Mail,
+  Send,
   StickyNote,
   User,
   UserCog,
@@ -99,6 +100,23 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
               Chatter
             </option>
           </FormSelect>
+        </FormField>
+      )}
+      {(role === "chatter" || role === "virtual_assistant") && (
+        <FormField
+          label="Telegram username"
+          icon={<Send />}
+          htmlFor="telegram_username"
+          description="Without @ — used for Message links on live shifts."
+        >
+          <FormInput
+            id="telegram_username"
+            name="telegram_username"
+            type="text"
+            defaultValue={user.telegram_username ?? ""}
+            placeholder="username"
+            autoComplete="off"
+          />
         </FormField>
       )}
       {role === "model" && (

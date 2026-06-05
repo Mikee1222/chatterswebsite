@@ -595,6 +595,7 @@ export interface UserRecord {
   password_hash?: string;
   /** Airtable `secondary_role`: chatter or va (mapped to virtual_assistant in app). */
   secondary_role?: "chatter" | "virtual_assistant" | null;
+  telegram_username?: string;
 }
 
 export interface ActivityLog {

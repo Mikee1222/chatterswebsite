@@ -29,6 +29,7 @@ type Fields = {
   password_hash?: string;
   linked_model?: string | string[];
   language_preference?: string;
+  telegram_username?: string;
 };
 
 function mapSecondaryRoleField(raw: unknown): "chatter" | "virtual_assistant" | null {
@@ -60,6 +61,9 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   }
   const sec = mapSecondaryRoleField(f.secondary_role);
   if (sec) out.secondary_role = sec;
+  if (typeof f.telegram_username === "string" && f.telegram_username.trim()) {
+    out.telegram_username = f.telegram_username.trim();
+  }
   return out;
 }
 
@@ -136,6 +140,7 @@ export type CreateUserInput = {
   password_hash?: string;
   linked_model_id?: string;
   language_preference?: string;
+  telegram_username?: string;
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
@@ -151,6 +156,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   if (input.password_hash) fields.password_hash = input.password_hash;
   if (input.linked_model_id) fields.linked_model = [input.linked_model_id];
   if (input.language_preference) fields.language_preference = input.language_preference;
+  if (input.telegram_username?.trim()) fields.telegram_username = input.telegram_username.trim();
   const rec = await createRecord<Fields>(TABLE, fields as Fields);
   return mapRecord(rec);
 }
@@ -166,6 +172,7 @@ export type UpdateUserInput = Partial<{
   language_preference: string | null;
   /** Persists Airtable values `chatter` or `va` (null clears). */
   secondary_role: "chatter" | "virtual_assistant" | null;
+  telegram_username: string | null;
 }>;
 
 export async function updateUser(recordId: string, input: UpdateUserInput): Promise<UserRecord> {
@@ -188,6 +195,9 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
     } else {
       fields.secondary_role = input.secondary_role === "virtual_assistant" ? "va" : "chatter";
     }
+  }
+  if (input.telegram_username !== undefined) {
+    fields.telegram_username = input.telegram_username?.trim() ?? "";
   }
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   return mapRecord(rec);

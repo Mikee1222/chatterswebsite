@@ -10,6 +10,7 @@ import {
   Link2,
   Lock,
   Mail,
+  Send,
   StickyNote,
   User,
   Users,
@@ -76,6 +77,23 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
           ))}
         </FormSelect>
       </FormField>
+      {(role === "chatter" || role === "virtual_assistant") && (
+        <FormField
+          label="Telegram username"
+          icon={<Send />}
+          htmlFor="telegram_username"
+          description="Without @ — used for Message links on live shifts."
+          staggerIndex={3}
+        >
+          <FormInput
+            id="telegram_username"
+            name="telegram_username"
+            type="text"
+            placeholder="username"
+            autoComplete="off"
+          />
+        </FormField>
+      )}
       {role === "model" && (
         <>
           <FormField
