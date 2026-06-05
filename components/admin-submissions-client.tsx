@@ -56,6 +56,7 @@ function Badge({
 
 export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles }: Props) {
   const router = useRouter();
+  const [submissions, setSubmissions] = React.useState(allSubmissions);
   const [filter, setFilter] = React.useState<StatusFilter>("pending_review");
   const [typeFilter, setTypeFilter] = React.useState<TypeFilter>("all");
   const [clientFilter, setClientFilter] = React.useState("all");
@@ -67,6 +68,10 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [adminNote, setAdminNote] = React.useState("");
+
+  React.useEffect(() => {
+    setSubmissions(allSubmissions);
+  }, [allSubmissions]);
 
   const activeAttachment = React.useMemo(() => {
     if (!selectedSubmission) return null;
@@ -106,8 +111,8 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
     return kind === "chatting_weekly" ? "Chatting" : kind === "crm_monthly" ? "CRM" : kind;
   };
 
-  const submissions = React.useMemo(() => {
-    let filtered = allSubmissions;
+  const filteredSubmissions = React.useMemo(() => {
+    let filtered = submissions;
     if (filter !== "all") filtered = filtered.filter((s) => s.status === filter);
     if (typeFilter !== "all") {
       filtered = filtered.filter((s) => getBillingCycleKind(s.billing_cycle[0]) === typeFilter);
@@ -126,7 +131,7 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
       filtered = filtered.filter((s) => new Date(s.submitted_datetime) <= toDate);
     }
     return filtered;
-  }, [allSubmissions, filter, typeFilter, clientFilter, dateFrom, dateTo, cycleKindById]);
+  }, [submissions, filter, typeFilter, clientFilter, dateFrom, dateTo, cycleKindById]);
 
   const hasActiveFilters =
     typeFilter !== "all" || clientFilter !== "all" || Boolean(dateFrom) || Boolean(dateTo);
@@ -140,10 +145,18 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, admin_note: adminNote || undefined }),
       });
-      const data = (await res.json()) as { error?: string };
+      const data = (await res.json()) as {
+        error?: string;
+        submission?: PaymentSubmissionRecord;
+      };
       if (!res.ok) {
         setError(data.error ?? "Failed to update submission");
         return;
+      }
+      if (data.submission) {
+        setSubmissions((prev) =>
+          prev.map((s) => (s.id === submissionId ? data.submission! : s))
+        );
       }
       setSelectedSubmission(null);
       setAdminNote("");
@@ -205,8 +218,8 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
             >
               {label} (
               {key === "all"
-                ? allSubmissions.length
-                : allSubmissions.filter((s) => s.status === key).length}
+                ? submissions.length
+                : submissions.filter((s) => s.status === key).length}
               )
             </button>
           ))}
@@ -279,7 +292,7 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-white">Submissions</h2>
           <p className="text-sm text-gray-400">
-            Showing {submissions.length} of {allSubmissions.length}
+            Showing {filteredSubmissions.length} of {submissions.length}
           </p>
         </div>
 
@@ -296,7 +309,7 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
-              {submissions.map((submission) => {
+              {filteredSubmissions.map((submission) => {
                 const kind = getBillingCycleKind(submission.billing_cycle[0]);
                 return (
                   <tr key={submission.id} className="hover:bg-white/[0.04]">

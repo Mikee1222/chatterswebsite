@@ -9,6 +9,7 @@ import {
 } from "@/services/client-billing";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 export default async function AdminSubmissionsPage() {
   const user = await getSessionFromCookies();
