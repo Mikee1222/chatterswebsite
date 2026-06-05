@@ -10,20 +10,19 @@ if (!TOKEN || !BASE_ID) { console.error("Missing env vars"); process.exit(1); }
 const API = `https://api.airtable.com/v0/${BASE_ID}`;
 const H = { Authorization: `Bearer ${TOKEN}`, "Content-Type": "application/json" };
 
-// Old models ID → New modelss ID
 const ID_MAP: Record<string, string> = {
-  "rec1V2Aal3PcNDOi7": "rec3LzkuHyMkUgb4m", // Stella
-  "rec3JLkQ9JNO17ITN": "recG1jdOuQAE5UV2Y", // Elisavet
-  "rec6iQfOQNQ8kA6Yu": "rec7jwVGwQZ5uYXKl", // Eirini
-  "rec712WdB8YDYhmKX": "recRYzE3HViBXRl0k", // Stefania
-  "recEakQudtDu2mAXh": "recOzM1qmbUIzWUiR", // Dianna
-  "recXyCWkn7DJdwJww": "recq7xz385YNmqqE2", // Chrysa
-  "recdpfsdMj23DUjtP": "rec0IuyyDDK9AgmAd", // Gavriela
-  "recjPl9hZUUSY9tiM": "rec2LJI8PmRlHE9q5", // Katerina
-  "recpkcwVp3WbmhQuS": "recxGew2CD6UlBoPf", // Ariandi
-  "recsKwb77cVRaaeh2": "recgmObP5ezDeEPDs", // Marilia
-  "rectOlVIdPaHzdyXK": "rec4xhKEJllCmeDjC", // Antigoni
-  // Erina, Eva, Theano — stopped, no mapping needed
+  "rec1Te7nvNrq1VFy5": "recgmObP5ezDeEPDs", // Marilia
+  "rec1zI0RuHbCHl8my": "rec7jwVGwQZ5uYXKl", // Eirini
+  "rec3HiWWclCq5kNBF": "rec3LzkuHyMkUgb4m", // Stella
+  "recB843IJ5V6FiNNc": "recq7xz385YNmqqE2", // Chrysa
+  "recBxhkuICFMDci1C": "rec2LJI8PmRlHE9q5", // Katerina
+  "recGdy20cPvzpLj2X": "recG1jdOuQAE5UV2Y", // Elisavet
+  "recJC46Utg4ZVmSBK": "recOzM1qmbUIzWUiR", // Dianna
+  "recO8vmyTKGZNfHjI": "recRYzE3HViBXRl0k", // Stefania
+  "recZf6iLU4ndzldG4": "rec0IuyyDDK9AgmAd", // Gavriela
+  "recqDX1GkBUlvB15a": "rec4xhKEJllCmeDjC", // Antigoni
+  "recr9ASQaRAY2Bo0p": "recxGew2CD6UlBoPf", // Ariandi
+  // Inactive models (Eva, Theano, Erina) — no mapping, skip
 };
 
 async function listAll(table: string): Promise<any[]> {
