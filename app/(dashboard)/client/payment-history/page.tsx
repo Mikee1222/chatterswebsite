@@ -13,5 +13,8 @@ export default async function ClientPaymentHistoryPage() {
 
   const cycles = await getClientBillingCyclesWithSubmissions(getClientAirtableId(user));
 
+  // eslint-disable-next-line no-console -- temporary debug logging
+  console.log("[ClientPaymentHistoryPage] cycles count:", cycles.length);
+
   return <ClientPaymentHistoryClient cycles={cycles} />;
 }

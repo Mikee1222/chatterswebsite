@@ -402,9 +402,41 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
     _caller: "getClientBillingCycles",
   });
 
-  return records
-    .map(mapBillingCycle)
-    .filter((cycle) => recordIncludesClient(cycle.client, clientId));
+  const withClientField = records.filter((r) => linkedRecordIds(r.fields.client).length > 0);
+  const matchingByClientField = records.filter((r) => recordIncludesClient(r.fields.client, clientId));
+
+  const revenueRecords = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
+    fields: ["billing_cycle", "client"],
+    _caller: "getClientBillingCycles:revenues",
+  });
+  const cycleIdsFromRevenues = new Set<string>();
+  for (const r of revenueRecords) {
+    if (!recordIncludesClient(r.fields.client, clientId)) continue;
+    for (const cycleId of linkedRecordIds(r.fields.billing_cycle)) {
+      cycleIdsFromRevenues.add(cycleId);
+    }
+  }
+
+  const cycles = records.map(mapBillingCycle);
+  const filtered = cycles.filter(
+    (cycle) => recordIncludesClient(cycle.client, clientId) || cycleIdsFromRevenues.has(cycle.id)
+  );
+
+  // eslint-disable-next-line no-console -- temporary debug logging
+  console.log("[getClientBillingCycles]", {
+    clientId,
+    totalRecords: records.length,
+    withClientField: withClientField.length,
+    matchingByClientField: matchingByClientField.length,
+    matchingByRevenues: cycleIdsFromRevenues.size,
+    filteredCount: filtered.length,
+    firstThreeMatches: matchingByClientField.slice(0, 3).map((r) => ({
+      id: r.id,
+      client: r.fields.client,
+    })),
+  });
+
+  return filtered;
 }
 
 export async function getClientPaymentMethods(clientId: string): Promise<PaymentMethodRecord[]> {
