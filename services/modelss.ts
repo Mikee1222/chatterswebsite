@@ -29,6 +29,7 @@ type Fields = {
   avg_period_length?: number | null;
   period_notes?: string;
   period_tracking_enabled?: boolean;
+  team?: string;
 };
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
@@ -56,6 +57,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
     avg_period_length: typeof f.avg_period_length === "number" ? f.avg_period_length : null,
     period_notes: typeof f.period_notes === "string" ? f.period_notes : "",
     period_tracking_enabled: f.period_tracking_enabled === true,
+    team: (f.team === "chatting_agency" ? "chatting_agency" : "gunzo_team") as ModelRecord["team"],
   };
 }
 
@@ -75,6 +77,7 @@ export type ModelssWriteFields = {
   period_notes?: string;
   /** Airtable checkbox on modelss — add via scripts/setup-period-tracking.ts if missing. */
   period_tracking_enabled?: boolean | null;
+  team?: "gunzo_team" | "chatting_agency";
 };
 
 export async function listModelss(params: ListParams = {}) {
@@ -138,6 +141,7 @@ export type CreateModelFields = {
   status?: string;
   priority?: string;
   notes?: string;
+  team?: "gunzo_team" | "chatting_agency";
 };
 
 export async function createModel(fields: CreateModelFields): Promise<ModelRecord> {
@@ -150,6 +154,7 @@ export async function createModel(fields: CreateModelFields): Promise<ModelRecor
     current_status: "free",
     priority: fields.priority ?? "medium",
     notes: fields.notes ?? "",
+    team: fields.team ?? "gunzo_team",
   });
   return mapRecord(rec as AirtableRecord<Fields>);
 }

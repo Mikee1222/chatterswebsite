@@ -33,7 +33,7 @@ export type {
 
 const TABLES = {
   clients: "clients",
-  models: "models",
+  models: "modelss",
   client_models: "client_models",
   billing_cycles: "billing_cycles",
   billing_cycle_revenues: "billing_cycle_revenues",

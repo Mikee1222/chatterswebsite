@@ -55,6 +55,7 @@ function mapSlimModelToModelRecord(rec: AirtableRecord<SlimModelFields>): ModelR
     avg_cycle_length: null,
     avg_period_length: null,
     period_notes: "",
+    team: "gunzo_team",
   };
 }
 

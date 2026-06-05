@@ -179,6 +179,7 @@ export interface ModelRecord {
   period_notes?: string;
   /** When true, model sees period tracking tools (e.g. Settings). Checkbox on modelss. */
   period_tracking_enabled?: boolean | null;
+  team: "gunzo_team" | "chatting_agency";
 }
 
 /** Logged period row in Airtable table model_periods. */

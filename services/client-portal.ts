@@ -60,8 +60,8 @@ const TABLES = {
   payment_methods: "payment_methods",
   invoices: "invoices",
   client_models: "client_models",
-  /** Client billing models (B2B portal) — not chatter ops `modelss`. */
-  billing_models: "models",
+  /** Client billing models (B2B portal) — Airtable `modelss` table. */
+  billing_models: "modelss",
   calendar_events: "calendar_events",
 } as const;
 
