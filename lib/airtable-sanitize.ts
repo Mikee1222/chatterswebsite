@@ -235,6 +235,13 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   payment_submissions: {
     status: new Set(["pending_review", "approved", "rejected"]),
   },
+  billing_cycles: {
+    status: new Set(["draft", "announced", "pending_review", "confirmed_paid", "overdue"]),
+    kind: new Set(["chatting_weekly", "crm_monthly"]),
+  },
+  billing_cycle_revenues: {
+    status: new Set(["draft", "announced", "pending_review", "confirmed_paid", "overdue"]),
+  },
   model_content_requests: {
     type: new Set(["script", "mass", "photo_set", "video", "other"]),
     status: new Set(["pending", "approved", "rejected", "in_progress", "completed"]),

@@ -415,9 +415,6 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
     _caller: "getClientBillingCycles",
   });
 
-  const withClientField = records.filter((r) => linkedRecordIds(r.fields.client).length > 0);
-  const matchingByClientField = records.filter((r) => recordIncludesClient(r.fields.client, clientId));
-
   const revenueRecords = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
     fields: ["billing_cycle", "client"],
     _caller: "getClientBillingCycles:revenues",
@@ -434,20 +431,6 @@ export async function getClientBillingCycles(clientId: string): Promise<BillingC
   const filtered = cycles.filter(
     (cycle) => recordIncludesClient(cycle.client, clientId) || cycleIdsFromRevenues.has(cycle.id)
   );
-
-  // eslint-disable-next-line no-console -- temporary debug logging
-  console.log("[getClientBillingCycles]", {
-    clientId,
-    totalRecords: records.length,
-    withClientField: withClientField.length,
-    matchingByClientField: matchingByClientField.length,
-    matchingByRevenues: cycleIdsFromRevenues.size,
-    filteredCount: filtered.length,
-    firstThreeMatches: matchingByClientField.slice(0, 3).map((r) => ({
-      id: r.id,
-      client: r.fields.client,
-    })),
-  });
 
   return filtered.sort((a, b) => b.period_start.localeCompare(a.period_start));
 }
