@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AlertCircle, ChevronDown, ChevronRight } from "lucide-react";
 import { GlassModal } from "@/components/ui/glass-modal";
@@ -8,6 +9,7 @@ import { ButtonSecondary, Label } from "@/components/ui/form";
 import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { CustomSelect } from "@/components/ui/custom-select";
 import { formatDateEuropean } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type {
@@ -17,10 +19,16 @@ import type {
 } from "@/services/client-billing";
 import type { BillingCycleRevenueStatus, ModelRecord } from "@/types/client-portal";
 
+type ModelAssignment = {
+  client: string[];
+  model: string[];
+};
+
 type Props = {
   initialCycles: BillingCycleRecord[];
   clients: BillingClientRecord[];
   models: ModelRecord[];
+  modelAssignments: ModelAssignment[];
   initialClientCounts: Record<string, number>;
 };
 
@@ -70,16 +78,175 @@ async function parseJson<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+function feePercentFromClient(client?: BillingClientRecord): number {
+  if (client?.client_percentage == null) return 20;
+  return client.client_percentage * 100;
+}
+
+function teamBadgeLabel(team?: ModelRecord["team"]): string {
+  return team === "chatting_agency" ? "Agency" : "Gunzo";
+}
+
+function InlinePopover({
+  open,
+  onClose,
+  wrapperRef,
+  children,
+  className = "",
+}: {
+  open: boolean;
+  onClose: () => void;
+  wrapperRef: React.RefObject<HTMLDivElement | null>;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  const [pos, setPos] = React.useState<{ top?: number; bottom?: number; left: number; width: number } | null>(
+    null
+  );
+  const popoverRef = React.useRef<HTMLDivElement>(null);
+
+  React.useLayoutEffect(() => {
+    if (!open || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const goUp = spaceBelow < 200;
+    if (goUp) {
+      setPos({ bottom: window.innerHeight - rect.top + 4, left: rect.left, width: Math.max(rect.width, 200) });
+    } else {
+      setPos({ top: rect.bottom + 4, left: rect.left, width: Math.max(rect.width, 200) });
+    }
+  }, [open, wrapperRef]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onOutside = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (wrapperRef.current?.contains(target)) return;
+      if (popoverRef.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", onOutside);
+    return () => document.removeEventListener("mousedown", onOutside);
+  }, [open, onClose, wrapperRef]);
+
+  if (!open || !pos) return null;
+
+  return createPortal(
+    <div
+      ref={popoverRef}
+      className={cn(
+        "fixed z-[10050] overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl",
+        className
+      )}
+      style={{
+        top: pos.top,
+        bottom: pos.bottom,
+        left: pos.left,
+        minWidth: pos.width,
+        maxHeight: "min(360px, 70vh)",
+        boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 12px 32px -8px rgba(0,0,0,0.8)",
+      }}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+function BillingModelSelect({
+  value,
+  onChange,
+  models,
+  disabled,
+}: {
+  value: string;
+  onChange: (modelId: string) => void;
+  models: ModelRecord[];
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [search, setSearch] = React.useState("");
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+
+  const filtered = React.useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => m.model_name.toLowerCase().includes(q));
+  }, [models, search]);
+
+  const selected = models.find((m) => m.id === value);
+
+  return (
+    <div ref={wrapperRef} className="relative min-w-[160px]">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setOpen(!open)}
+        className="flex h-8 w-full min-w-[160px] items-center justify-between gap-2 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-sm text-white transition-all hover:border-white/20 hover:bg-white/8 disabled:pointer-events-none disabled:opacity-50"
+      >
+        <span className={cn("truncate", value ? "text-white" : "text-white/40")}>
+          {selected ? selected.model_name : "Select model"}
+        </span>
+        <ChevronDown className={cn("h-4 w-4 shrink-0 text-white/40 transition-transform", open && "rotate-180")} />
+      </button>
+      <InlinePopover
+        open={open}
+        onClose={() => setOpen(false)}
+        wrapperRef={wrapperRef}
+        className="w-64 p-2"
+      >
+        <FormInput
+          type="text"
+          placeholder="Search models…"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="!min-h-8 py-1.5 text-sm"
+        />
+        <div className="mt-2 max-h-[200px] overflow-y-auto overscroll-contain">
+          {filtered.length === 0 ? (
+            <p className="py-3 text-center text-sm text-white/50">No models match</p>
+          ) : (
+            filtered.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  onChange(m.id);
+                  setOpen(false);
+                  setSearch("");
+                }}
+                className="flex w-full items-center justify-between gap-2 rounded-lg px-3 py-2 text-left text-sm text-white/90 hover:bg-white/10"
+              >
+                <span className={cn("truncate", value === m.id && "font-medium text-pink-400")}>
+                  {m.model_name}
+                </span>
+                <span className="shrink-0 rounded border border-purple-500/25 bg-purple-500/15 px-1.5 py-0.5 text-[10px] font-medium text-purple-300">
+                  {teamBadgeLabel(m.team)}
+                </span>
+              </button>
+            ))
+          )}
+        </div>
+      </InlinePopover>
+    </div>
+  );
+}
+
 export function AdminBillingClient({
   initialCycles,
   clients,
   models,
+  modelAssignments,
   initialClientCounts,
 }: Props) {
   const router = useRouter();
-  const activeClients = React.useMemo(
-    () => clients.filter((c) => c.status === "active"),
+  const billingClients = React.useMemo(
+    () => clients.filter((c) => c.status === "active" && (c.client_percentage ?? 0) > 0),
     [clients]
+  );
+  const clientModels = React.useMemo(
+    () => models.filter((m) => m.team === "chatting_agency"),
+    [models]
   );
   const [monthFilter, setMonthFilter] = React.useState(() => {
     const n = new Date();
@@ -122,7 +289,6 @@ export function AdminBillingClient({
   const [addRevenueFeePercent, setAddRevenueFeePercent] = React.useState(20);
   const [addRevenueLoading, setAddRevenueLoading] = React.useState(false);
   const [addRevenueError, setAddRevenueError] = React.useState<string | null>(null);
-  const [revenueAssignedModelIds, setRevenueAssignedModelIds] = React.useState<string[]>([]);
   const [announceToast, setAnnounceToast] = React.useState<{
     type: "success" | "error";
     message: string;
@@ -181,9 +347,7 @@ export function AdminBillingClient({
       if (clientId) {
         setAddRevenueClientId(clientId);
         const client = clients.find((c) => c.id === clientId);
-        setAddRevenueFeePercent(
-          client?.client_percentage != null ? client.client_percentage * 100 : 20
-        );
+        setAddRevenueFeePercent(feePercentFromClient(client));
       } else {
         setAddRevenueClientId("");
         setAddRevenueFeePercent(20);
@@ -195,23 +359,6 @@ export function AdminBillingClient({
     setEditingRevenue(null);
     setAnnounceToast(null);
   }, [expandedCycleId, initialCycles, clients, fetchRevenues]);
-
-  React.useEffect(() => {
-    if (!addRevenueClientId) {
-      setRevenueAssignedModelIds([]);
-      return;
-    }
-    void (async () => {
-      try {
-        const res = await fetch(`/api/admin/clients/${addRevenueClientId}`);
-        const data = await parseJson<{ models?: Array<{ model: string[] }> }>(res);
-        const ids = (data.models ?? []).flatMap((a) => a.model);
-        setRevenueAssignedModelIds(ids);
-      } catch {
-        setRevenueAssignedModelIds([]);
-      }
-    })();
-  }, [addRevenueClientId]);
 
   React.useEffect(() => {
     if (editDatesCycle) {
@@ -270,9 +417,18 @@ export function AdminBillingClient({
   }, [resetCrmForm]);
 
   const revenueFilteredModels = React.useMemo(() => {
-    if (revenueAssignedModelIds.length === 0) return models;
-    return models.filter((m) => revenueAssignedModelIds.includes(m.id));
-  }, [models, revenueAssignedModelIds]);
+    if (!addRevenueClientId) return clientModels;
+    return clientModels.filter((m) =>
+      modelAssignments.some(
+        (a) => a.client.includes(addRevenueClientId) && a.model.includes(m.id)
+      )
+    );
+  }, [clientModels, addRevenueClientId, modelAssignments]);
+
+  const billingClientOptions = React.useMemo(
+    () => billingClients.map((c) => ({ value: c.id, label: c.display_name })),
+    [billingClients]
+  );
 
   const getClientName = (clientId?: string) =>
     clients.find((c) => c.id === clientId)?.display_name ?? "Unknown";
@@ -529,42 +685,29 @@ export function AdminBillingClient({
                                   <div className="flex flex-wrap items-end gap-3">
                                     <div className="flex flex-col gap-1">
                                       <label className="text-xs text-white/50">Client</label>
-                                      <FormSelect
+                                      <CustomSelect
                                         value={addRevenueClientId}
-                                        onChange={(e) => {
-                                          setAddRevenueClientId(e.target.value);
+                                        onChange={(clientId) => {
+                                          setAddRevenueClientId(clientId);
                                           setAddRevenueModelId("");
-                                          const c = clients.find((x) => x.id === e.target.value);
-                                          setAddRevenueFeePercent(
-                                            c?.client_percentage != null
-                                              ? c.client_percentage * 100
-                                              : 20
-                                          );
+                                          const selectedClient = clients.find((c) => c.id === clientId);
+                                          setAddRevenueFeePercent(feePercentFromClient(selectedClient));
                                         }}
-                                        className="h-8 min-w-[120px] rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
-                                      >
-                                        <option value="">Select client</option>
-                                        {activeClients.map((c) => (
-                                          <option key={c.id} value={c.id}>
-                                            {c.display_name}
-                                          </option>
-                                        ))}
-                                      </FormSelect>
+                                        options={billingClientOptions}
+                                        placeholder="Select client"
+                                        portaled
+                                        triggerClassName="h-8 min-h-0 rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
+                                        className="min-w-[160px]"
+                                      />
                                     </div>
                                     <div className="flex flex-col gap-1">
                                       <label className="text-xs text-white/50">Model</label>
-                                      <FormSelect
+                                      <BillingModelSelect
                                         value={addRevenueModelId}
-                                        onChange={(e) => setAddRevenueModelId(e.target.value)}
-                                        className="h-8 min-w-[120px] rounded-lg border-white/10 bg-white/5 px-2 py-1 text-sm"
-                                      >
-                                        <option value="">Select model</option>
-                                        {revenueFilteredModels.map((m) => (
-                                          <option key={m.id} value={m.id}>
-                                            {m.model_name}
-                                          </option>
-                                        ))}
-                                      </FormSelect>
+                                        onChange={setAddRevenueModelId}
+                                        models={revenueFilteredModels}
+                                        disabled={!addRevenueClientId}
+                                      />
                                     </div>
                                     <div className="flex flex-col gap-1">
                                       <label className="text-xs text-white/50">Turnover (USD)</label>
@@ -902,7 +1045,7 @@ export function AdminBillingClient({
                 onChange={(e) => setCrmClientId(e.target.value)}
               >
                 <option value="">Select client</option>
-                {activeClients.map((c) => (
+                {billingClients.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.display_name}
                   </option>

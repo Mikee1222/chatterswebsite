@@ -148,6 +148,7 @@ function mapBillingModel(rec: AirtableRecord<Record<string, unknown>>): ModelRec
     model_name: String(f.model_name ?? ""),
     status: String(f.status ?? "active"),
     platform: typeof f.platform === "string" ? f.platform : undefined,
+    team: f.team === "chatting_agency" ? "chatting_agency" : "gunzo_team",
   };
 }
 

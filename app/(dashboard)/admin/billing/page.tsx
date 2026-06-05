@@ -1,4 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { listAllRecords } from "@/lib/airtable-server";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { AdminBillingClient } from "@/components/admin-billing-client";
@@ -13,11 +14,17 @@ export default async function AdminBillingPage() {
   const user = await getSessionFromCookies();
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
-  const [cycles, clients, models] = await Promise.all([
+  const [cycles, clients, models, clientModelsRecs] = await Promise.all([
     getAllBillingCycles(),
     listBillingClients(),
     listAllBillingModels(),
+    listAllRecords("client_models", { _caller: "admin/billing:client_models" }),
   ]);
+
+  const modelAssignments = clientModelsRecs.map((r) => ({
+    client: Array.isArray(r.fields.client) ? (r.fields.client as string[]) : [],
+    model: Array.isArray(r.fields.model) ? (r.fields.model as string[]) : [],
+  }));
 
   const weeklyCycles = cycles.filter((c) => c.kind === "chatting_weekly");
   const clientCounts = await getBillingCycleClientCounts(weeklyCycles.map((c) => c.id));
@@ -33,6 +40,7 @@ export default async function AdminBillingPage() {
         initialCycles={cycles}
         clients={clients}
         models={models}
+        modelAssignments={modelAssignments}
         initialClientCounts={clientCounts}
       />
     </div>

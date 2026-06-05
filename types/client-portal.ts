@@ -154,6 +154,7 @@ export type ModelRecord = {
   model_name: string;
   status: "active" | "inactive" | string;
   platform?: string;
+  team?: "gunzo_team" | "chatting_agency";
 };
 
 export type ClientModelRecord = {
