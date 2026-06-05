@@ -18,9 +18,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const [clientModelsRecords, billingCycles] = await Promise.all([
     listAllRecords<Record<string, unknown>>("client_models", {
-      filterByFormula: `FIND("${id}", ARRAYJOIN({client}, ",")) > 0`,
       _caller: "admin/clients/[id]:GET:client_models",
-    }),
+    }).then(records => records.filter(r => {
+      const clients = Array.isArray(r.fields.client) ? r.fields.client : [];
+      return clients.includes(id);
+    })),
     getClientBillingCycles(id).then((cycles) => cycles.slice(0, 5)),
   ]);
 
