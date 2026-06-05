@@ -5,11 +5,15 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence } from "framer-motion";
 import {
   AlertTriangle,
+  Calendar,
   CalendarClock,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Download,
   LayoutGrid,
+  List,
   Loader2,
   Package,
   Sparkles,
@@ -19,6 +23,7 @@ import { GlassModal } from "@/components/ui/glass-modal";
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
 import { formatDateEuropean } from "@/lib/format";
 import { formatDate, formatDateTime as formatDateTimeUk } from "@/lib/format-date";
+import { addDays, addWeeks, getMondayOfWeek } from "@/lib/weekly-program";
 import { cn } from "@/lib/utils";
 import type { CustomRequest, CustomRequestModelStatus, ModelContentAssignmentCardDTO } from "@/types";
 
@@ -99,8 +104,121 @@ function displayRequestedDate(req: CustomRequest): string {
 const glassCard =
   "rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/[0.02] backdrop-blur-xl shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)]";
 
+type CalEvent = {
+  id: string;
+  title: string;
+  modelName: string;
+  date: string;
+  kind: "va" | "custom";
+  status: string;
+  priority?: string;
+};
+
+const WEEKDAYS_MON = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+
+function todayLocalYmd(): string {
+  const n = new Date();
+  const y = n.getFullYear();
+  const m = String(n.getMonth() + 1).padStart(2, "0");
+  const d = String(n.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function parseLocalYmd(ymd: string): Date {
+  const [y, mo, d] = ymd.slice(0, 10).split("-").map(Number);
+  return new Date(y, mo - 1, d);
+}
+
+function monthMatrixMondayFirst(
+  year: number,
+  monthIndex0: number,
+): { ymd: string | null; inMonth: boolean }[][] {
+  const first = new Date(year, monthIndex0, 1);
+  const day = first.getDay();
+  const startPad = day === 0 ? 6 : day - 1;
+  const daysInMonth = new Date(year, monthIndex0 + 1, 0).getDate();
+  const cells: { ymd: string | null; inMonth: boolean }[] = [];
+  for (let i = 0; i < startPad; i++) {
+    cells.push({ ymd: null, inMonth: false });
+  }
+  for (let d = 1; d <= daysInMonth; d++) {
+    const m = String(monthIndex0 + 1).padStart(2, "0");
+    const dayNum = String(d).padStart(2, "0");
+    cells.push({ ymd: `${year}-${m}-${dayNum}`, inMonth: true });
+  }
+  while (cells.length % 7 !== 0) {
+    cells.push({ ymd: null, inMonth: false });
+  }
+  const rows: { ymd: string | null; inMonth: boolean }[][] = [];
+  for (let i = 0; i < cells.length; i += 7) {
+    rows.push(cells.slice(i, i + 7));
+  }
+  return rows;
+}
+
+function buildCalEvents(models: ClientContentModelData[]): CalEvent[] {
+  return models
+    .flatMap((m) => [
+      ...m.assignments
+        .filter((a) => {
+          const s = (a.status || "").toLowerCase();
+          return s !== "completed" && s !== "cancelled";
+        })
+        .map((a) => ({
+          id: `va-${a.id}`,
+          title: a.title || "VA assignment",
+          modelName: m.modelName,
+          date: a.scheduled_date?.slice(0, 10) ?? a.deadline?.slice(0, 10) ?? "",
+          kind: "va" as const,
+          status: a.status,
+          priority: a.priority,
+        })),
+      ...m.customRequests
+        .filter((c) => c.model_status !== "uploaded" && c.model_status !== "completed")
+        .map((c) => ({
+          id: `custom-${c.id}`,
+          title: c.request_title || "Custom request",
+          modelName: m.modelName,
+          date:
+            c.model_scheduled_date?.slice(0, 10) ?? c.deadline_requested?.slice(0, 10) ?? "",
+          kind: "custom" as const,
+          status: c.model_status,
+        })),
+    ])
+    .filter((e) => e.date);
+}
+
+function calEventBorderClass(status: string): string {
+  const s = (status || "").toLowerCase().replace(/\s+/g, "_");
+  if (s === "pending") return "border-yellow-400/50";
+  if (s === "scheduled" || s === "in_progress") return "border-cyan-400/50";
+  if (s === "waiting_schedule") return "border-amber-400/50";
+  return "border-white/20";
+}
+
+function calEventKindClass(kind: CalEvent["kind"]): string {
+  if (kind === "va") return "bg-pink-500/20 text-pink-100";
+  return "bg-violet-500/20 text-violet-100";
+}
+
+function weekRangeLabel(mondayYmd: string): string {
+  const sun = addDays(mondayYmd, 6);
+  const a = parseLocalYmd(mondayYmd);
+  const b = parseLocalYmd(sun);
+  const moA = a.toLocaleString(undefined, { month: "long" });
+  const moB = b.toLocaleString(undefined, { month: "long" });
+  const yA = a.getFullYear();
+  const yB = b.getFullYear();
+  if (moA === moB && yA === yB) return `${moA} ${yA}`;
+  if (yA === yB) return `${moA} – ${moB} ${yA}`;
+  return `${moA} ${yA} – ${moB} ${yB}`;
+}
+
 export function ClientContentHub({ models }: Props) {
   const router = useRouter();
+  const [view, setView] = React.useState<"list" | "calendar">("list");
+  const [calView, setCalView] = React.useState<"month" | "week">("month");
+  const [currentDate, setCurrentDate] = React.useState(() => new Date());
   const [modelTab, setModelTab] = React.useState<string>("all");
   const [statusTab, setStatusTab] = React.useState<StatusTab>("pending");
 
@@ -182,6 +300,64 @@ export function ClientContentHub({ models }: Props) {
         byModelCustoms.filter((r) => customInTab(r, "completed")).length,
     };
   }, [allAssignments, allCustoms, modelTab]);
+
+  const filteredModels = React.useMemo(
+    () => (modelTab === "all" ? models : models.filter((m) => m.modelRecordId === modelTab)),
+    [models, modelTab],
+  );
+
+  const allEvents = React.useMemo(() => buildCalEvents(filteredModels), [filteredModels]);
+
+  const eventsByDay = React.useMemo(() => {
+    const m = new Map<string, CalEvent[]>();
+    for (const e of allEvents) {
+      const list = m.get(e.date) ?? [];
+      list.push(e);
+      m.set(e.date, list);
+    }
+    return m;
+  }, [allEvents]);
+
+  const weekStartYmd = React.useMemo(() => {
+    const y = currentDate.getFullYear();
+    const mo = String(currentDate.getMonth() + 1).padStart(2, "0");
+    const d = String(currentDate.getDate()).padStart(2, "0");
+    return getMondayOfWeek(`${y}-${mo}-${d}`);
+  }, [currentDate]);
+
+  const weekDaysYmd = React.useMemo(
+    () => Array.from({ length: 7 }, (_, i) => addDays(weekStartYmd, i)),
+    [weekStartYmd],
+  );
+
+  const monthYear = currentDate.getFullYear();
+  const monthIndex0 = currentDate.getMonth();
+  const monthMatrix = React.useMemo(
+    () => monthMatrixMondayFirst(monthYear, monthIndex0),
+    [monthYear, monthIndex0],
+  );
+  const monthLabel = currentDate.toLocaleString(undefined, { month: "long", year: "numeric" });
+  const todayYmd = todayLocalYmd();
+
+  function goCalPrev() {
+    if (calView === "week") {
+      setCurrentDate(parseLocalYmd(addWeeks(weekStartYmd, -1)));
+    } else {
+      setCurrentDate((d) => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    }
+  }
+
+  function goCalNext() {
+    if (calView === "week") {
+      setCurrentDate(parseLocalYmd(addWeeks(weekStartYmd, 1)));
+    } else {
+      setCurrentDate((d) => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    }
+  }
+
+  function goCalToday() {
+    setCurrentDate(new Date());
+  }
 
   React.useEffect(() => {
     if (scheduleAssignment) {
@@ -354,6 +530,35 @@ export function ClientContentHub({ models }: Props) {
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
+          onClick={() => setView("list")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition",
+            view === "list"
+              ? "border-violet-400/50 bg-violet-500/20 text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
+          )}
+        >
+          <List className="h-4 w-4 shrink-0" aria-hidden />
+          List
+        </button>
+        <button
+          type="button"
+          onClick={() => setView("calendar")}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-full border px-4 py-2 text-sm font-medium transition",
+            view === "calendar"
+              ? "border-violet-400/50 bg-violet-500/20 text-violet-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+              : "border-white/10 bg-black/30 text-white/60 hover:border-white/20 hover:text-white/85",
+          )}
+        >
+          <Calendar className="h-4 w-4 shrink-0" aria-hidden />
+          Calendar
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <button
+          type="button"
           onClick={() => setModelTab("all")}
           className={cn(
             "rounded-full border px-4 py-2 text-sm font-medium transition",
@@ -381,7 +586,8 @@ export function ClientContentHub({ models }: Props) {
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2">
+      {view === "list" ? (
+        <div className="flex flex-wrap gap-2">
         {statusTabs.map(({ id, label }) => (
           <button
             key={id}
@@ -398,8 +604,180 @@ export function ClientContentHub({ models }: Props) {
             <span className="ml-1.5 tabular-nums text-white/40">({counts[id]})</span>
           </button>
         ))}
-      </div>
+        </div>
+      ) : null}
 
+      {view === "calendar" ? (
+        <div className={cn(glassCard, "overflow-hidden p-0")}>
+          <div className="flex flex-col gap-4 border-b border-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex rounded-full border border-white/10 bg-black/30 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setCalView("month")}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                    calView === "month"
+                      ? "border border-violet-400/50 bg-violet-500/20 text-violet-100"
+                      : "text-white/50 hover:text-white/85",
+                  )}
+                >
+                  Month
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCalView("week")}
+                  className={cn(
+                    "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+                    calView === "week"
+                      ? "border border-violet-400/50 bg-violet-500/20 text-violet-100"
+                      : "text-white/50 hover:text-white/85",
+                  )}
+                >
+                  Week
+                </button>
+              </div>
+              <p className="text-sm font-semibold capitalize text-white">
+                {calView === "month" ? monthLabel : weekRangeLabel(weekStartYmd)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                aria-label={calView === "week" ? "Previous week" : "Previous month"}
+                onClick={goCalPrev}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-white/75 transition hover:border-white/20 hover:text-white"
+              >
+                <ChevronLeft className="h-5 w-5" />
+              </button>
+              <button
+                type="button"
+                onClick={goCalToday}
+                className="rounded-full border border-violet-400/35 bg-violet-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-violet-100 transition hover:bg-violet-500/18"
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                aria-label={calView === "week" ? "Next week" : "Next month"}
+                onClick={goCalNext}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-black/30 text-white/75 transition hover:border-white/20 hover:text-white"
+              >
+                <ChevronRight className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {calView === "month" ? (
+            <>
+              <div className="grid grid-cols-7 border-b border-white/10 text-center text-[11px] font-semibold uppercase tracking-wider text-white/40">
+                {WEEKDAYS_MON.map((d) => (
+                  <div key={d} className="border-r border-white/5 py-2 last:border-r-0">
+                    {d}
+                  </div>
+                ))}
+              </div>
+              <div className="divide-y divide-white/10">
+                {monthMatrix.map((row, ri) => (
+                  <div key={ri} className="grid grid-cols-7 divide-x divide-white/10">
+                    {row.map((cell, ci) => {
+                      const dayEvents = cell.ymd ? (eventsByDay.get(cell.ymd) ?? []) : [];
+                      return (
+                        <div
+                          key={ci}
+                          className={cn(
+                            "min-h-[112px] p-1.5 sm:min-h-[132px] sm:p-2",
+                            !cell.inMonth && "bg-black/25",
+                          )}
+                        >
+                          {cell.ymd ? (
+                            <>
+                              <div
+                                className={cn(
+                                  "mb-1 flex items-center justify-end text-xs font-medium tabular-nums",
+                                  cell.inMonth ? "text-white/70" : "text-white/25",
+                                  todayYmd === cell.ymd &&
+                                    "mx-auto w-fit rounded-full bg-violet-500 px-2 py-0.5 font-bold text-white",
+                                )}
+                              >
+                                {Number(cell.ymd.slice(8, 10))}
+                              </div>
+                              <div className="flex max-h-[5.5rem] flex-col gap-1 overflow-y-auto">
+                                {dayEvents.map((ev) => (
+                                  <div
+                                    key={ev.id}
+                                    title={`${ev.title} · ${ev.modelName}`}
+                                    className={cn(
+                                      "truncate rounded-lg border px-1.5 py-0.5 text-[10px] leading-tight",
+                                      calEventBorderClass(ev.status),
+                                      calEventKindClass(ev.kind),
+                                    )}
+                                  >
+                                    <span className="block truncate font-medium">{ev.title}</span>
+                                    <span className="block truncate opacity-65">{ev.modelName}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="overflow-x-auto p-4 pb-6 [-webkit-overflow-scrolling:touch]">
+              <div className="grid min-w-[44rem] grid-cols-7 gap-2 md:min-w-0">
+                {weekDaysYmd.map((ymd, i) => {
+                  const d = parseLocalYmd(ymd);
+                  const isTodayDay = todayYmd === ymd;
+                  const dayEvents = eventsByDay.get(ymd) ?? [];
+                  return (
+                    <div key={ymd} className="flex min-w-0 flex-col gap-1">
+                      <div className="text-center">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                          {WEEKDAYS_MON[i]}
+                        </div>
+                        <div
+                          className={cn(
+                            "mx-auto mt-1 flex h-8 w-8 items-center justify-center rounded-full text-lg font-bold tabular-nums",
+                            isTodayDay ? "bg-violet-500 text-white" : "text-white",
+                          )}
+                        >
+                          {d.getDate()}
+                        </div>
+                      </div>
+                      <div className="min-h-[8rem] flex-1 space-y-2 rounded-xl border border-white/[0.08] bg-white/[0.03] p-2">
+                        {dayEvents.length === 0 ? (
+                          <p className="pt-4 text-center text-[10px] text-white/20">—</p>
+                        ) : (
+                          dayEvents.map((ev) => (
+                            <div
+                              key={ev.id}
+                              title={`${ev.title} · ${ev.modelName}`}
+                              className={cn(
+                                "rounded-lg border p-2 text-xs",
+                                calEventBorderClass(ev.status),
+                                calEventKindClass(ev.kind),
+                              )}
+                            >
+                              <p className="truncate font-semibold">{ev.title}</p>
+                              <p className="mt-0.5 truncate text-[10px] opacity-70">{ev.modelName}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
       <section className="space-y-4">
         <h2 className="text-lg font-semibold text-white">VA Assignments</h2>
         {filteredAssignments.length === 0 ? (
@@ -598,6 +976,8 @@ export function ClientContentHub({ models }: Props) {
           </div>
         )}
       </section>
+        </>
+      )}
 
       <CustomRequestDetailModal
         open={detailCustom != null}
