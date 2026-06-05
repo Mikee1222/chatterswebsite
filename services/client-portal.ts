@@ -38,7 +38,7 @@ const TABLES = {
   payment_methods: "payment_methods",
   invoices: "invoices",
   client_models: "client_models",
-  models: "models",
+  models: "modelss",
   calendar_events: "calendar_events",
 } as const;
 
