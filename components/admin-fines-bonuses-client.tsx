@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { Search } from "lucide-react";
-import { formatMonthYyyyMm } from "@/lib/format";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { formatDateTimeEuropean, formatMonthYyyyMm, formatRelativeTime } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
 import { FormInput } from "@/components/ui/form-input";
 import {
   isSpinWheelFineBonus,
@@ -17,18 +19,6 @@ type Props = {
   initialEntries: FineBonusRecord[];
   userOptions: UserOpt[];
 };
-
-function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
-  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
 
 function RoleBadge({ role }: { role: FineBonusUserRole }) {
   const isVa = role === "va";
@@ -63,7 +53,35 @@ function SpinWheelBadge() {
   );
 }
 
+function ManualBadge() {
+  return (
+    <span className="inline-flex rounded-full border border-white/15 bg-white/5 px-2 py-0.5 text-xs font-medium text-white/50">
+      Manual
+    </span>
+  );
+}
+
 type SourceFilter = "all" | "manual" | "spin_wheel";
+
+type MonthGroup = {
+  month: string;
+  entries: FineBonusRecord[];
+};
+
+function groupByMonth(entries: FineBonusRecord[]): MonthGroup[] {
+  const map = new Map<string, FineBonusRecord[]>();
+  for (const e of entries) {
+    const m = e.month && /^\d{4}-\d{2}$/.test(e.month) ? e.month : "unknown";
+    if (!map.has(m)) map.set(m, []);
+    map.get(m)!.push(e);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([month, items]) => ({
+      month,
+      entries: items.sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    }));
+}
 
 export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) {
   const [rows] = React.useState(initialEntries);
@@ -84,17 +102,33 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
 
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    return rows.filter((r) => {
-      if (userFilter !== "all" && r.user_id !== userFilter) return false;
-      if (roleFilter !== "all" && r.user_role !== roleFilter) return false;
-      if (typeFilter !== "all" && r.type !== typeFilter) return false;
-      if (sourceFilter === "spin_wheel" && !isSpinWheelFineBonus(r)) return false;
-      if (sourceFilter === "manual" && isSpinWheelFineBonus(r)) return false;
-      if (monthFilter && r.month !== monthFilter) return false;
-      if (q && !r.reason.toLowerCase().includes(q)) return false;
-      return true;
-    });
+    return rows
+      .filter((r) => {
+        if (userFilter !== "all" && r.user_id !== userFilter) return false;
+        if (roleFilter !== "all" && r.user_role !== roleFilter) return false;
+        if (typeFilter !== "all" && r.type !== typeFilter) return false;
+        if (sourceFilter === "spin_wheel" && !isSpinWheelFineBonus(r)) return false;
+        if (sourceFilter === "manual" && isSpinWheelFineBonus(r)) return false;
+        if (monthFilter && r.month !== monthFilter) return false;
+        if (q && !r.reason.toLowerCase().includes(q)) return false;
+        return true;
+      })
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
   }, [rows, userFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search]);
+
+  const {
+    page,
+    setPage,
+    totalPages,
+    paginated: paginatedEntries,
+    reset,
+  } = usePagination(filtered, 20);
+
+  React.useEffect(() => {
+    reset();
+  }, [userFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search, reset]);
+
+  const groupedPage = React.useMemo(() => groupByMonth(paginatedEntries), [paginatedEntries]);
 
   const stats = React.useMemo(() => {
     let bonuses = 0;
@@ -127,14 +161,14 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           { label: "Net (filtered)", v: `€${stats.net.toFixed(2)}`, cls: stats.net >= 0 ? "text-green-400" : "text-red-400" },
           { label: "People affected", v: String(stats.people), cls: "text-white" },
         ].map((s) => (
-          <div key={s.label} className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <div key={s.label} className="glass-card p-4">
             <p className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{s.label}</p>
             <p className={`mt-1 text-xl font-bold ${s.cls}`}>{s.v}</p>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
+      <div className="glass-card flex flex-wrap gap-2 p-3">
         <select
           value={userFilter}
           onChange={(e) => setUserFilter(e.target.value)}
@@ -186,69 +220,90 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
             </option>
           ))}
         </select>
-        <div className="relative min-w-[180px] flex-1">
+        <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
           <FormInput
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search reason…"
-            className="!pl-9"
+            className="!h-10 !pl-9"
           />
         </div>
       </div>
 
-      <div className="overflow-x-auto rounded-2xl border border-white/10">
-        <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-          <thead>
-            <tr className="border-b border-white/10 bg-white/[0.04] text-xs uppercase tracking-wider text-white/45">
-              <th className="px-4 py-3 font-semibold">User</th>
-              <th className="px-4 py-3 font-semibold">Role</th>
-              <th className="px-4 py-3 font-semibold">Type</th>
-              <th className="px-4 py-3 font-semibold">Amount</th>
-              <th className="px-4 py-3 font-semibold">Reason</th>
-              <th className="px-4 py-3 font-semibold">Source</th>
-              <th className="px-4 py-3 font-semibold">Month</th>
-              <th className="px-4 py-3 font-semibold">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={8} className="px-4 py-10 text-center text-white/40">
-                  No entries match filters.
-                </td>
-              </tr>
-            ) : (
-              filtered.map((e) => (
-                <tr key={e.id} className="border-b border-white/5 hover:bg-white/[0.03]">
-                  <td className="px-4 py-3 font-medium text-white">{e.user_name}</td>
-                  <td className="px-4 py-3">
-                    <RoleBadge role={e.user_role} />
-                  </td>
-                  <td className="px-4 py-3">
-                    <TypeBadge type={e.type} />
-                  </td>
-                  <td className={`px-4 py-3 font-semibold ${e.type === "bonus" ? "text-green-400" : "text-red-400"}`}>
-                    {e.type === "bonus" ? "+" : "-"}€{e.amount.toFixed(2)}
-                  </td>
-                  <td className="max-w-[220px] truncate px-4 py-3 text-white/80" title={e.reason}>
-                    {e.reason}
-                  </td>
-                  <td className="px-4 py-3">
-                    {isSpinWheelFineBonus(e) ? (
-                      <SpinWheelBadge />
-                    ) : (
-                      <span className="text-xs text-white/40">Manual</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-white/60">{formatMonthYyyyMm(e.month)}</td>
-                  <td className="px-4 py-3 text-xs text-white/40">{timeAgo(e.created_at)}</td>
+      {filtered.length === 0 ? (
+        <p className="glass-card border-dashed py-12 text-center text-sm text-white/40">No entries match filters.</p>
+      ) : (
+        <>
+          <div className="glass-card overflow-x-auto">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 backdrop-blur-md">
+                <tr className="text-xs uppercase tracking-wider text-white/45">
+                  <th className="px-4 py-3.5 font-semibold">User</th>
+                  <th className="px-4 py-3.5 font-semibold">Role</th>
+                  <th className="px-4 py-3.5 font-semibold">Type</th>
+                  <th className="px-4 py-3.5 text-right font-semibold">Amount</th>
+                  <th className="px-4 py-3.5 font-semibold">Reason</th>
+                  <th className="px-4 py-3.5 font-semibold">Source</th>
+                  <th className="px-4 py-3.5 font-semibold">Date</th>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+              </thead>
+              <tbody>
+                {groupedPage.map(({ month, entries }) => (
+                  <React.Fragment key={month}>
+                    <tr className="sticky top-[41px] z-[5] bg-zinc-900/95 backdrop-blur-sm">
+                      <td colSpan={7} className="border-b border-pink-500/20 px-4 py-2">
+                        <span className="text-xs font-semibold uppercase tracking-widest text-pink-300/80">
+                          {month === "unknown" ? "Unknown month" : formatMonthYyyyMm(month)}
+                        </span>
+                      </td>
+                    </tr>
+                    {entries.map((e, idx) => (
+                      <tr
+                        key={e.id}
+                        className={`border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04] ${
+                          idx % 2 === 1 ? "bg-white/[0.02]" : ""
+                        }`}
+                      >
+                        <td className="px-4 py-3 font-medium text-white">{e.user_name}</td>
+                        <td className="px-4 py-3">
+                          <RoleBadge role={e.user_role} />
+                        </td>
+                        <td className="px-4 py-3">
+                          <TypeBadge type={e.type} />
+                        </td>
+                        <td
+                          className={`px-4 py-3 text-right font-bold tabular-nums ${
+                            e.type === "bonus" ? "text-green-400" : "text-red-400"
+                          }`}
+                        >
+                          {e.type === "bonus" ? "+" : "-"}€{e.amount.toFixed(2)}
+                        </td>
+                        <td className="max-w-[220px] truncate px-4 py-3 text-white/80" title={e.reason}>
+                          {e.reason}
+                        </td>
+                        <td className="px-4 py-3">
+                          {isSpinWheelFineBonus(e) ? <SpinWheelBadge /> : <ManualBadge />}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span
+                            className="text-xs text-white/40"
+                            title={formatDateTimeEuropean(e.created_at) || undefined}
+                          >
+                            {formatRelativeTime(e.created_at)}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <PaginationControls page={page} totalPages={totalPages} onPage={setPage} totalItems={filtered.length} />
+        </>
+      )}
     </div>
   );
 }

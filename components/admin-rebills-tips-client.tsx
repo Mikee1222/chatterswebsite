@@ -3,7 +3,6 @@
 import * as React from "react";
 import {
   CheckCircle2,
-  Clock,
   CreditCard,
   DollarSign,
   FileText,
@@ -13,7 +12,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { RankBadge } from "@/components/rank-badge";
-import { formatDateTimeEuropean } from "@/lib/format";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { formatDateTimeEuropean, formatRelativeTime } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
 
 export type AdminRebillRow = {
   id: string;
@@ -153,26 +154,104 @@ function standingsRowHighlight(rank: number): string {
   return "";
 }
 
-function statusBadgeIcon(status: AdminRebillRow["status"]) {
-  if (status === "verified") return <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />;
-  if (status === "rejected") return <XCircle className="h-3.5 w-3.5" aria-hidden />;
-  return <Clock className="h-3.5 w-3.5" aria-hidden />;
+function statusDisplayLabel(status: AdminRebillRow["status"]): string {
+  if (status === "verified") return "Approved";
+  if (status === "rejected") return "Rejected";
+  return "Pending";
+}
+
+function StatusDotBadge({ status }: { status: AdminRebillRow["status"] }) {
+  const label = statusDisplayLabel(status);
+  const dotClass =
+    status === "verified" ? "bg-emerald-400" : status === "rejected" ? "bg-red-400" : "bg-yellow-400";
+  const badgeClass =
+    status === "verified"
+      ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-400"
+      : status === "rejected"
+        ? "border-red-500/25 bg-red-500/10 text-red-400"
+        : "border-yellow-500/25 bg-yellow-500/10 text-yellow-400";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${badgeClass}`}>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+function ScreenshotThumb({ url }: { url?: string }) {
+  if (!url) {
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+        <ImageIcon className="h-4 w-4 text-white/25" aria-hidden />
+      </div>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="block shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 transition hover:ring-pink-500/40"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Screenshot" className="h-10 w-10 object-cover" />
+    </a>
+  );
+}
+
+function RelativeDate({ iso }: { iso: string }) {
+  const full = formatDateTimeEuropean(iso);
+  return (
+    <span className="text-xs text-white/40" title={full || undefined}>
+      {formatRelativeTime(iso)}
+    </span>
+  );
+}
+
+type ListFilterOpts = {
+  search: string;
+  modelFilter: string;
+  chatterFilter: string;
+  fromDate: string;
+  toDate: string;
+  statusFilter: "all" | "pending" | "verified" | "rejected";
+};
+
+function filterRows<T extends AdminRebillRow | AdminTipRow>(
+  rows: T[],
+  opts: ListFilterOpts & { kind: "rebills" | "tips" }
+): T[] {
+  let list = [...rows];
+  const q = opts.search.trim().toLowerCase();
+  if (q) {
+    list = list.filter((r) => {
+      const blob = `${r.sub_username} ${r.chatter_name} ${r.model_name}`.toLowerCase();
+      const extra =
+        opts.kind === "rebills"
+          ? (r as AdminRebillRow).sub_type
+          : String((r as AdminTipRow).amount_usd);
+      return blob.includes(q) || extra.includes(q);
+    });
+  }
+  if (opts.modelFilter !== "all") list = list.filter((r) => r.model_id === opts.modelFilter);
+  if (opts.chatterFilter !== "all") list = list.filter((r) => r.chatter_name === opts.chatterFilter);
+  if (opts.fromDate) {
+    list = list.filter((r) => (r.created_at || "").slice(0, 10) >= opts.fromDate);
+  }
+  if (opts.toDate) {
+    list = list.filter((r) => {
+      const d = (r.created_at || "").slice(0, 10);
+      return d && d <= opts.toDate;
+    });
+  }
+  if (opts.statusFilter !== "all") {
+    list = list.filter((r) => r.status === opts.statusFilter);
+  }
+  return list;
 }
 
 function rankMedal(rank: number): React.ReactNode {
   return <RankBadge rank={rank} />;
-}
-
-function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
-  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
 }
 
 function normalizeRebillSubType(raw: string): AdminRebillRow["sub_type"] {
@@ -250,40 +329,24 @@ export function AdminRebillsTipsClient({
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [baseList]);
 
+  const listFilterOpts = React.useMemo(
+    (): ListFilterOpts => ({
+      search,
+      modelFilter,
+      chatterFilter,
+      fromDate,
+      toDate,
+      statusFilter,
+    }),
+    [search, modelFilter, chatterFilter, fromDate, toDate, statusFilter]
+  );
+
   const summarySource = React.useMemo(() => {
-    const rows = activeTab === "rebills" ? rebills : tips;
-    let list = [...rows];
-
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter((r) => {
-        const blob = `${r.sub_username} ${r.chatter_name} ${r.model_name}`.toLowerCase();
-        const extra =
-          activeTab === "rebills"
-            ? (r as AdminRebillRow).sub_type
-            : String((r as AdminTipRow).amount_usd);
-        return blob.includes(q) || extra.includes(q);
-      });
+    if (activeTab === "rebills") {
+      return filterRows(rebills, { ...listFilterOpts, statusFilter: "all", kind: "rebills" });
     }
-
-    if (modelFilter !== "all") list = list.filter((r) => r.model_id === modelFilter);
-    if (chatterFilter !== "all") list = list.filter((r) => r.chatter_name === chatterFilter);
-
-    if (fromDate) {
-      list = list.filter((r) => {
-        const d = (r.created_at || "").slice(0, 10);
-        return d >= fromDate;
-      });
-    }
-    if (toDate) {
-      list = list.filter((r) => {
-        const d = (r.created_at || "").slice(0, 10);
-        return d && d <= toDate;
-      });
-    }
-
-    return list;
-  }, [activeTab, rebills, tips, search, modelFilter, chatterFilter, fromDate, toDate]);
+    return filterRows(tips, { ...listFilterOpts, statusFilter: "all", kind: "tips" });
+  }, [activeTab, rebills, tips, listFilterOpts]);
 
   const summaries = React.useMemo(() => {
     const pending = summarySource.filter((r) => r.status === "pending").length;
@@ -292,10 +355,41 @@ export function AdminRebillsTipsClient({
     return { total: summarySource.length, pending, verified, rejected };
   }, [summarySource]);
 
-  const filtered = React.useMemo(() => {
-    if (statusFilter === "all") return summarySource;
-    return summarySource.filter((r) => r.status === statusFilter);
-  }, [summarySource, statusFilter]);
+  const filteredRebills = React.useMemo(
+    () => filterRows(rebills, { ...listFilterOpts, kind: "rebills" }),
+    [rebills, listFilterOpts]
+  );
+
+  const filteredTips = React.useMemo(
+    () => filterRows(tips, { ...listFilterOpts, kind: "tips" }),
+    [tips, listFilterOpts]
+  );
+
+  const filtered = activeTab === "rebills" ? filteredRebills : filteredTips;
+
+  const {
+    page: rebillPage,
+    setPage: setRebillPage,
+    totalPages: rebillTotalPages,
+    paginated: paginatedRebills,
+    reset: resetRebillPage,
+  } = usePagination(filteredRebills, 20);
+
+  const {
+    page: tipPage,
+    setPage: setTipPage,
+    totalPages: tipTotalPages,
+    paginated: paginatedTips,
+    reset: resetTipPage,
+  } = usePagination(filteredTips, 20);
+
+  React.useEffect(() => {
+    resetRebillPage();
+  }, [search, modelFilter, chatterFilter, statusFilter, fromDate, toDate, resetRebillPage]);
+
+  React.useEffect(() => {
+    resetTipPage();
+  }, [search, modelFilter, chatterFilter, statusFilter, fromDate, toDate, resetTipPage]);
 
   const standingsModelOptions = React.useMemo(() => {
     const names = new Map<string, string>();
@@ -908,248 +1002,393 @@ export function AdminRebillsTipsClient({
       </section>
 
       <p className="text-sm text-white/50">
-        Results: Showing {filtered.length} of{""}
-        {activeTab === "rebills" ? rebills.length : tips.length} total in{""}
+        Results: {filtered.length} of {activeTab === "rebills" ? rebills.length : tips.length} total{" "}
         {activeTab === "rebills" ? "rebills" : "tips"}
       </p>
 
       {filtered.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-white/15 py-12 text-center text-sm text-white/45">
+        <p className="glass-card border-dashed py-12 text-center text-sm text-white/45">
           No records match your filters.
         </p>
       ) : (
-        <ul className="space-y-3">
-        {activeTab === "rebills"
-          ? filtered.map((item) => {
-              const r = item as AdminRebillRow;
-              const shot = r.screenshot?.[0]?.url;
-              const dt = formatDateTimeEuropean(r.created_at);
-              const subLabel = r.sub_type.replace(/_/g, "").toUpperCase();
-              return (
-                <li
-                  key={r.id}
-                  className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 transition hover:bg-white/[0.08]"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
-                          r.sub_type === "paid"
-                            ? "border-green-500/25 bg-green-500/15 text-green-400"
-                            : r.sub_type === "free"
-                              ? "border-blue-500/25 bg-blue-500/15 text-blue-400"
-                              : "border-amber-500/25 bg-amber-500/15 text-amber-400"
-                        }`}
-                      >
-                        <span className="inline-flex items-center gap-1">
-                          <CreditCard className="h-3.5 w-3.5" aria-hidden />
-                          {subLabel}
-                        </span>
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
-                          r.status === "verified"
-                            ? "border-green-500/25 bg-green-500/15 text-green-400"
-                            : r.status === "rejected"
-                              ? "border-red-500/25 bg-red-500/15 text-red-400"
-                              : "border-amber-500/25 bg-amber-500/15 text-amber-400"
-                        }`}
-                      >
-                        {statusBadgeIcon(r.status)} {r.status}
-                      </span>
-                    </div>
-                    <span className="text-xs text-white/30">{timeAgo(r.created_at)}</span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-semibold text-white">@{r.sub_username}</span>
-                    <span className="text-white/30">•</span>
-                    <span className="text-white/60">{r.chatter_name}</span>
-                    <span className="text-white/30">→</span>
-                    <span className="text-white/60">{r.model_name}</span>
-                  </div>
-                  {dt ? <p className="mt-1 text-xs text-white/35">{dt}</p> : null}
-
-                  {shot ? (
-                    <a
-                      href={shot}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
+        <>
+          {/* Mobile cards */}
+          <ul className="space-y-3 md:hidden">
+            {activeTab === "rebills"
+              ? paginatedRebills.map((r) => {
+                  const subLabel = r.sub_type.replace(/_/g, " ").toUpperCase();
+                  return (
+                    <li
+                      key={r.id}
+                      className="glass-card space-y-3 p-4 transition hover:bg-white/[0.07]"
                     >
-                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                      View screenshot
-                    </a>
-                  ) : null}
-
-                  {r.status === "pending" ? (
-                    <div className="mt-3 flex gap-2">
+                      <div className="flex items-start gap-3">
+                        <ScreenshotThumb url={r.screenshot?.[0]?.url} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <StatusDotBadge status={r.status} />
+                            <RelativeDate iso={r.created_at} />
+                          </div>
+                          <p className="mt-2 font-semibold text-white">@{r.sub_username}</p>
+                          <p className="text-sm text-white/55">
+                            {r.chatter_name} → {r.model_name}
+                          </p>
+                          <span
+                            className={`mt-2 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                              r.sub_type === "paid"
+                                ? "border-green-500/25 bg-green-500/10 text-green-400"
+                                : "border-blue-500/25 bg-blue-500/10 text-blue-400"
+                            }`}
+                          >
+                            <CreditCard className="h-3 w-3" aria-hidden />
+                            {subLabel}
+                          </span>
+                        </div>
+                      </div>
+                      {r.status === "pending" ? (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={patchingId === r.id}
+                            onClick={() => void updateStatus(r.id, "verified", "rebills")}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/20 py-2 text-sm font-medium text-green-400 disabled:opacity-50"
+                          >
+                            <CheckCircle2 className="h-4 w-4" aria-hidden />
+                            Verify
+                          </button>
+                          <button
+                            type="button"
+                            disabled={patchingId === r.id}
+                            onClick={() => void updateStatus(r.id, "rejected", "rebills")}
+                            className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 disabled:opacity-50"
+                          >
+                            <XCircle className="h-4 w-4" aria-hidden />
+                            Reject
+                          </button>
+                        </div>
+                      ) : null}
                       <button
                         type="button"
-                        disabled={patchingId === r.id}
-                        onClick={() => void updateStatus(r.id, "verified", "rebills")}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/20 py-2 text-sm font-medium text-green-400 hover:bg-green-500/30 disabled:opacity-50"
+                        onClick={() => openNotes(r)}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70"
                       >
-                        <CheckCircle2 className="h-4 w-4" aria-hidden />
-                        Verify
+                        <FileText className="h-3.5 w-3.5" aria-hidden />
+                        Notes
                       </button>
-                      <button
-                        type="button"
-                        disabled={patchingId === r.id}
-                        onClick={() => void updateStatus(r.id, "rejected", "rebills")}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 disabled:opacity-50"
-                      >
-                        <XCircle className="h-4 w-4" aria-hidden />
-                        Reject
-                      </button>
+                      {notesOpenId === r.id ? (
+                        <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                          <textarea
+                            value={noteDraft}
+                            onChange={(e) => setNoteDraft(e.target.value)}
+                            placeholder="Add note..."
+                            rows={3}
+                            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35"
+                          />
+                          <button
+                            type="button"
+                            disabled={patchingId === r.id}
+                            onClick={() => void saveNotes(r.id, "rebills")}
+                            className="mt-2 text-xs font-medium text-pink-400 disabled:opacity-50"
+                          >
+                            Save note
+                          </button>
+                        </div>
+                      ) : r.admin_notes ? (
+                        <p className="whitespace-pre-wrap text-xs text-white/50">{r.admin_notes}</p>
+                      ) : null}
+                    </li>
+                  );
+                })
+              : paginatedTips.map((t) => (
+                  <li key={t.id} className="glass-card space-y-3 p-4 transition hover:bg-white/[0.07]">
+                    <div className="flex items-start gap-3">
+                      <ScreenshotThumb url={t.screenshot?.[0]?.url} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <StatusDotBadge status={t.status} />
+                          <RelativeDate iso={t.created_at} />
+                        </div>
+                        <p className="mt-2 text-right text-lg font-bold text-amber-400">{usdFmt.format(t.amount_usd)}</p>
+                        <p className="font-semibold text-white">@{t.sub_username}</p>
+                        <p className="text-sm text-white/55">
+                          {t.chatter_name} → {t.model_name}
+                        </p>
+                      </div>
                     </div>
-                  ) : null}
-
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => openNotes(r)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10"
-                    >
-                      <FileText className="h-3.5 w-3.5" aria-hidden />
-                      Notes
-                    </button>
-                  </div>
-
-                  {notesOpenId === r.id ? (
-                    <div className="mt-2 rounded-xl border border-white/10 bg-black/30 p-3">
-                      <textarea
-                        value={noteDraft}
-                        onChange={(e) => setNoteDraft(e.target.value)}
-                        placeholder="Add note..."
-                        rows={3}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35"
-                      />
-                      <button
-                        type="button"
-                        disabled={patchingId === r.id}
-                        onClick={() => void saveNotes(r.id, "rebills")}
-                        className="mt-2 text-xs font-medium text-pink-400 hover:text-pink-300 disabled:opacity-50"
-                      >
-                        Save note
-                      </button>
-                    </div>
-                  ) : r.admin_notes ? (
-                    <p className="mt-2 whitespace-pre-wrap text-xs text-white/50">{r.admin_notes}</p>
-                  ) : null}
-                </li>
-              );
-            })
-          : filtered.map((item) => {
-              const t = item as AdminTipRow;
-              const shot = t.screenshot?.[0]?.url;
-              const dt = formatDateTimeEuropean(t.created_at);
-              return (
-                <li
-                  key={t.id}
-                  className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 transition hover:bg-white/[0.08]"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1 text-lg font-bold text-amber-400">
-                        <DollarSign className="h-5 w-5" aria-hidden />
-                        {usdFmt.format(t.amount_usd)}
-                      </span>
-                      <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs ${
-                          t.status === "verified"
-                            ? "border-green-500/25 bg-green-500/15 text-green-400"
-                            : t.status === "rejected"
-                              ? "border-red-500/25 bg-red-500/15 text-red-400"
-                              : "border-amber-500/25 bg-amber-500/15 text-amber-400"
-                        }`}
-                      >
-                        {statusBadgeIcon(t.status)} {t.status}
-                      </span>
-                    </div>
-                    <span className="text-xs text-white/30">{timeAgo(t.created_at)}</span>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
-                    <span className="font-semibold text-white">@{t.sub_username}</span>
-                    <span className="text-white/30">•</span>
-                    <span className="text-white/60">{t.chatter_name}</span>
-                    <span className="text-white/30">→</span>
-                    <span className="text-white/60">{t.model_name}</span>
-                  </div>
-                  {dt ? <p className="mt-1 text-xs text-white/35">{dt}</p> : null}
-
-                  {shot ? (
-                    <a
-                      href={shot}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="mt-2 inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
-                    >
-                      <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                      View screenshot
-                    </a>
-                  ) : null}
-
-                  {t.status === "pending" ? (
-                    <div className="mt-3 flex gap-2">
-                      <button
-                        type="button"
-                        disabled={patchingId === t.id}
-                        onClick={() => void updateStatus(t.id, "verified", "tips")}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/20 py-2 text-sm font-medium text-green-400 hover:bg-green-500/30 disabled:opacity-50"
-                      >
-                        <CheckCircle2 className="h-4 w-4" aria-hidden />
-                        Verify
-                      </button>
-                      <button
-                        type="button"
-                        disabled={patchingId === t.id}
-                        onClick={() => void updateStatus(t.id, "rejected", "tips")}
-                        className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 hover:bg-red-500/30 disabled:opacity-50"
-                      >
-                        <XCircle className="h-4 w-4" aria-hidden />
-                        Reject
-                      </button>
-                    </div>
-                  ) : null}
-
-                  <div className="mt-3 flex flex-wrap gap-2">
+                    {t.status === "pending" ? (
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={patchingId === t.id}
+                          onClick={() => void updateStatus(t.id, "verified", "tips")}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-green-500/30 bg-green-500/20 py-2 text-sm font-medium text-green-400 disabled:opacity-50"
+                        >
+                          <CheckCircle2 className="h-4 w-4" aria-hidden />
+                          Verify
+                        </button>
+                        <button
+                          type="button"
+                          disabled={patchingId === t.id}
+                          onClick={() => void updateStatus(t.id, "rejected", "tips")}
+                          className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-medium text-red-400 disabled:opacity-50"
+                        >
+                          <XCircle className="h-4 w-4" aria-hidden />
+                          Reject
+                        </button>
+                      </div>
+                    ) : null}
                     <button
                       type="button"
                       onClick={() => openNotes(t)}
-                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10"
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/70"
                     >
                       <FileText className="h-3.5 w-3.5" aria-hidden />
                       Notes
                     </button>
-                  </div>
+                    {notesOpenId === t.id ? (
+                      <div className="rounded-xl border border-white/10 bg-black/30 p-3">
+                        <textarea
+                          value={noteDraft}
+                          onChange={(e) => setNoteDraft(e.target.value)}
+                          placeholder="Add note..."
+                          rows={3}
+                          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35"
+                        />
+                        <button
+                          type="button"
+                          disabled={patchingId === t.id}
+                          onClick={() => void saveNotes(t.id, "tips")}
+                          className="mt-2 text-xs font-medium text-pink-400 disabled:opacity-50"
+                        >
+                          Save note
+                        </button>
+                      </div>
+                    ) : t.admin_notes ? (
+                      <p className="whitespace-pre-wrap text-xs text-white/50">{t.admin_notes}</p>
+                    ) : null}
+                  </li>
+                ))}
+          </ul>
 
-                  {notesOpenId === t.id ? (
-                    <div className="mt-2 rounded-xl border border-white/10 bg-black/30 p-3">
-                      <textarea
-                        value={noteDraft}
-                        onChange={(e) => setNoteDraft(e.target.value)}
-                        placeholder="Add note..."
-                        rows={3}
-                        className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35"
-                      />
-                      <button
-                        type="button"
-                        disabled={patchingId === t.id}
-                        onClick={() => void saveNotes(t.id, "tips")}
-                        className="mt-2 text-xs font-medium text-pink-400 hover:text-pink-300 disabled:opacity-50"
-                      >
-                        Save note
-                      </button>
-                    </div>
-                  ) : t.admin_notes ? (
-                    <p className="mt-2 whitespace-pre-wrap text-xs text-white/50">{t.admin_notes}</p>
-                  ) : null}
-                </li>
-              );
-            })}
-        </ul>
+          {/* Desktop table */}
+          <div className="glass-card hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 backdrop-blur-md">
+                <tr className="text-xs uppercase tracking-wider text-white/45">
+                  <th className="w-14 px-4 py-3.5 font-semibold">Shot</th>
+                  <th className="px-4 py-3.5 font-semibold">Subscriber</th>
+                  <th className="px-4 py-3.5 font-semibold">Chatter</th>
+                  <th className="px-4 py-3.5 font-semibold">Model</th>
+                  {activeTab === "rebills" ? (
+                    <th className="px-4 py-3.5 font-semibold">Type</th>
+                  ) : (
+                    <th className="px-4 py-3.5 text-right font-semibold">Amount</th>
+                  )}
+                  <th className="px-4 py-3.5 font-semibold">Status</th>
+                  <th className="px-4 py-3.5 font-semibold">Date</th>
+                  <th className="px-4 py-3.5 font-semibold">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activeTab === "rebills"
+                  ? paginatedRebills.map((r, idx) => {
+                      const subLabel = r.sub_type.replace(/_/g, " ").toUpperCase();
+                      return (
+                        <React.Fragment key={r.id}>
+                          <tr
+                            className={`border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04] ${
+                              idx % 2 === 1 ? "bg-white/[0.02]" : ""
+                            }`}
+                          >
+                            <td className="px-4 py-3 align-middle">
+                              <ScreenshotThumb url={r.screenshot?.[0]?.url} />
+                            </td>
+                            <td className="px-4 py-3 align-middle font-medium text-white">@{r.sub_username}</td>
+                            <td className="px-4 py-3 align-middle text-white/70">{r.chatter_name}</td>
+                            <td className="px-4 py-3 align-middle text-white/70">{r.model_name}</td>
+                            <td className="px-4 py-3 align-middle">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                                  r.sub_type === "paid"
+                                    ? "border-green-500/25 bg-green-500/10 text-green-400"
+                                    : "border-blue-500/25 bg-blue-500/10 text-blue-400"
+                                }`}
+                              >
+                                <CreditCard className="h-3 w-3" aria-hidden />
+                                {subLabel}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 align-middle">
+                              <StatusDotBadge status={r.status} />
+                            </td>
+                            <td className="px-4 py-3 align-middle whitespace-nowrap">
+                              <RelativeDate iso={r.created_at} />
+                            </td>
+                            <td className="px-4 py-3 align-middle">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                {r.status === "pending" ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      disabled={patchingId === r.id}
+                                      onClick={() => void updateStatus(r.id, "verified", "rebills")}
+                                      className="rounded-lg border border-green-500/30 bg-green-500/15 px-2 py-1 text-xs font-medium text-green-400 hover:bg-green-500/25 disabled:opacity-50"
+                                    >
+                                      Verify
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={patchingId === r.id}
+                                      onClick={() => void updateStatus(r.id, "rejected", "rebills")}
+                                      className="rounded-lg border border-red-500/30 bg-red-500/15 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50"
+                                    >
+                                      Reject
+                                    </button>
+                                  </>
+                                ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => openNotes(r)}
+                                  className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-medium text-white/60 hover:bg-white/10"
+                                >
+                                  Notes
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                          {notesOpenId === r.id ? (
+                            <tr className="border-b border-white/[0.06] bg-black/20">
+                              <td colSpan={8} className="px-4 py-3">
+                                <textarea
+                                  value={noteDraft}
+                                  onChange={(e) => setNoteDraft(e.target.value)}
+                                  placeholder="Add note..."
+                                  rows={2}
+                                  className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={patchingId === r.id}
+                                  onClick={() => void saveNotes(r.id, "rebills")}
+                                  className="mt-2 text-xs font-medium text-pink-400 disabled:opacity-50"
+                                >
+                                  Save note
+                                </button>
+                              </td>
+                            </tr>
+                          ) : r.admin_notes ? (
+                            <tr className="border-b border-white/[0.06] bg-black/10">
+                              <td colSpan={8} className="px-4 py-2 text-xs text-white/45">
+                                {r.admin_notes}
+                              </td>
+                            </tr>
+                          ) : null}
+                        </React.Fragment>
+                      );
+                    })
+                  : paginatedTips.map((t, idx) => (
+                      <React.Fragment key={t.id}>
+                        <tr
+                          className={`border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04] ${
+                            idx % 2 === 1 ? "bg-white/[0.02]" : ""
+                          }`}
+                        >
+                          <td className="px-4 py-3 align-middle">
+                            <ScreenshotThumb url={t.screenshot?.[0]?.url} />
+                          </td>
+                          <td className="px-4 py-3 align-middle font-medium text-white">@{t.sub_username}</td>
+                          <td className="px-4 py-3 align-middle text-white/70">{t.chatter_name}</td>
+                          <td className="px-4 py-3 align-middle text-white/70">{t.model_name}</td>
+                          <td className="px-4 py-3 align-middle text-right font-bold tabular-nums text-amber-400">
+                            {usdFmt.format(t.amount_usd)}
+                          </td>
+                          <td className="px-4 py-3 align-middle">
+                            <StatusDotBadge status={t.status} />
+                          </td>
+                          <td className="px-4 py-3 align-middle whitespace-nowrap">
+                            <RelativeDate iso={t.created_at} />
+                          </td>
+                          <td className="px-4 py-3 align-middle">
+                            <div className="flex flex-wrap items-center gap-1.5">
+                              {t.status === "pending" ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={patchingId === t.id}
+                                    onClick={() => void updateStatus(t.id, "verified", "tips")}
+                                    className="rounded-lg border border-green-500/30 bg-green-500/15 px-2 py-1 text-xs font-medium text-green-400 hover:bg-green-500/25 disabled:opacity-50"
+                                  >
+                                    Verify
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={patchingId === t.id}
+                                    onClick={() => void updateStatus(t.id, "rejected", "tips")}
+                                    className="rounded-lg border border-red-500/30 bg-red-500/15 px-2 py-1 text-xs font-medium text-red-400 hover:bg-red-500/25 disabled:opacity-50"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() => openNotes(t)}
+                                className="rounded-lg border border-white/15 bg-white/5 px-2 py-1 text-xs font-medium text-white/60 hover:bg-white/10"
+                              >
+                                Notes
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                        {notesOpenId === t.id ? (
+                          <tr className="border-b border-white/[0.06] bg-black/20">
+                            <td colSpan={8} className="px-4 py-3">
+                              <textarea
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                placeholder="Add note..."
+                                rows={2}
+                                className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white placeholder:text-white/35"
+                              />
+                              <button
+                                type="button"
+                                disabled={patchingId === t.id}
+                                onClick={() => void saveNotes(t.id, "tips")}
+                                className="mt-2 text-xs font-medium text-pink-400 disabled:opacity-50"
+                              >
+                                Save note
+                              </button>
+                            </td>
+                          </tr>
+                        ) : t.admin_notes ? (
+                          <tr className="border-b border-white/[0.06] bg-black/10">
+                            <td colSpan={8} className="px-4 py-2 text-xs text-white/45">
+                              {t.admin_notes}
+                            </td>
+                          </tr>
+                        ) : null}
+                      </React.Fragment>
+                    ))}
+              </tbody>
+            </table>
+          </div>
+
+          {activeTab === "rebills" ? (
+            <PaginationControls
+              page={rebillPage}
+              totalPages={rebillTotalPages}
+              onPage={setRebillPage}
+              totalItems={filteredRebills.length}
+            />
+          ) : (
+            <PaginationControls
+              page={tipPage}
+              totalPages={tipTotalPages}
+              onPage={setTipPage}
+              totalItems={filteredTips.length}
+            />
+          )}
+        </>
       )}
         </>
       )}
