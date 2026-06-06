@@ -5,6 +5,7 @@ import { listAllShifts } from "@/services/shifts";
 import { AdminShiftActivityClient } from "@/components/admin-shift-activity-client";
 import type { Shift } from "@/types";
 import { devLog } from "@/lib/dev-log";
+import { formatDateEuropean } from "@/lib/format";
 
 /** Week starts Monday; returns Monday 00:00 and Sunday 23:59:59 for the week containing d. */
 function weekBounds(d: Date): { start: Date; end: Date } {
@@ -136,26 +137,16 @@ export default async function AdminShiftActivityPage({
     });
   }
 
-  const totalChatterMinutes = rows.filter((r) => r.role === "Chatter").reduce((s, r) => s + r.totalMinutes, 0);
-  const totalVaMinutes = rows.filter((r) => r.role === "Virtual assistant").reduce((s, r) => s + r.totalMinutes, 0);
-  const totalMinutes = rows.reduce((s, r) => s + r.totalMinutes, 0);
-  const totalShifts = rows.reduce((s, r) => s + r.shifts, 0);
-  const totalBreakMinutes = rows.reduce((s, r) => s + r.breakMinutes, 0);
-  const avgShiftDurationMinutes = totalShifts > 0 ? totalMinutes / totalShifts : 0;
-
   return (
     <AdminShiftActivityClient
       range={range}
       from={params.from}
       to={params.to}
+      rangeStartFormatted={formatDateEuropean(rangeStart)}
+      rangeEndFormatted={formatDateEuropean(rangeEnd)}
       rows={rows}
       chatterRows={rows.filter((r) => r.role === "Chatter")}
       vaRows={rows.filter((r) => r.role === "Virtual assistant")}
-      totalChatterHours={totalChatterMinutes / 60}
-      totalVaHours={totalVaMinutes / 60}
-      totalShifts={totalShifts}
-      totalBreakMinutes={totalBreakMinutes}
-      avgShiftDurationMinutes={avgShiftDurationMinutes}
     />
   );
 }
