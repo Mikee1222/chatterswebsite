@@ -2,7 +2,21 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { CalendarClock, Gauge, ListChecks, Search, Timer } from "lucide-react";
+import {
+  CalendarClock,
+  CheckCircle2,
+  Clock,
+  Gauge,
+  ListChecks,
+  Pencil,
+  Plus,
+  Search,
+  Timer,
+  Trash2,
+  X,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
 import { VaContentAssignmentForm } from "@/components/va-content-assignment-form";
 import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
 import { MobileCard } from "@/components/mobile-card";
@@ -10,8 +24,10 @@ import { FormInput } from "@/components/ui/form-input";
 import { Label } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { GlassModal } from "@/components/ui/glass-modal";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import { gradientClassForContentType } from "@/lib/detail-modal-gradients";
 import { formatDateEuropean } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
 import { cn } from "@/lib/utils";
 import type { ModelRecord, VaContentAssignmentRecord } from "@/types";
 
@@ -42,12 +58,155 @@ function priorityClass(p: string): string {
   return "border-sky-400/30 bg-sky-500/12 text-sky-200";
 }
 
+function StatusBadge({ status }: { status: string }) {
+  const k = statusKey(status);
+  const label = statusLabelForList(status);
+  const variant =
+    k === "completed"
+      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+      : k === "pending" || k === "pending_approval"
+        ? "border-amber-500/30 bg-amber-500/15 text-amber-300"
+        : k === "scheduled"
+          ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
+          : k === "rejected"
+            ? "border-rose-500/35 bg-rose-500/15 text-rose-300"
+            : "border-white/15 bg-white/[0.06] text-white/70";
+
+  return (
+    <span className={cn("inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize", variant)}>
+      {label}
+    </span>
+  );
+}
+
 const PRIORITIES = ["urgent", "high", "normal", "low"] as const;
 
 export type VaContentAssignmentsClientProps = {
   models: Pick<ModelRecord, "id" | "model_name">[];
   rows: VaAssignmentWithModel[];
 };
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accentClass,
+}: {
+  label: string;
+  value: number;
+  icon: LucideIcon;
+  accentClass: string;
+}) {
+  return (
+    <MobileCard
+      padding="md"
+      className={cn("min-w-[140px] shrink-0 snap-start border-white/10 bg-white/[0.04]", accentClass)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/55">
+          <Icon className="h-4 w-4" aria-hidden />
+        </div>
+      </div>
+    </MobileCard>
+  );
+}
+
+function AssignmentCard({
+  row,
+  onSelect,
+  onEdit,
+  onDelete,
+}: {
+  row: VaAssignmentWithModel;
+  onSelect: () => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const k = statusKey(row.status);
+  const canEdit = k === "pending" || k === "pending_approval";
+
+  return (
+    <MobileCard
+      onClick={onSelect}
+      padding="none"
+      className="flex overflow-hidden border-white/10 bg-zinc-950/80 ring-white/[0.06] transition hover:bg-white/[0.03]"
+    >
+      <div
+        className={cn("w-1 shrink-0 bg-gradient-to-b", gradientClassForContentType(row.content_type))}
+        aria-hidden
+      />
+      <div className="min-w-0 flex-1 p-4 text-left">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate font-medium text-white" title={row.title}>
+              {row.title || "—"}
+            </p>
+            <p className="mt-0.5 text-xs text-white/55">{row.model_name}</p>
+          </div>
+          <StatusBadge status={row.status} />
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/70">
+            {row.content_type || "Type"}
+          </span>
+          <span
+            className={cn(
+              "inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
+              priorityClass(row.priority)
+            )}
+          >
+            {row.priority || "normal"}
+          </span>
+          <span className="inline-flex items-center gap-1 text-[11px] text-white/45">
+            <CalendarClock className="h-3 w-3" aria-hidden />
+            Due {formatDateEuropean(row.deadline)}
+          </span>
+        </div>
+
+        {k === "rejected" ? (
+          <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
+            <p className="text-[11px] font-semibold text-rose-300">Rejected by admin</p>
+            {(row.rejection_reason ?? "").trim() ? (
+              <p className="mt-0.5 text-[11px] text-white/55">{row.rejection_reason}</p>
+            ) : null}
+          </div>
+        ) : null}
+
+        {k === "pending_approval" ? (
+          <div className="mt-3 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+            <p className="text-[11px] font-semibold text-sky-300">Waiting for admin approval</p>
+          </div>
+        ) : null}
+
+        {canEdit ? (
+          <div className="mt-3 flex gap-2 border-t border-white/10 pt-3" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-red-500/35 bg-red-500/15 py-2 text-xs font-medium text-red-200 hover:bg-red-500/25"
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              Delete
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </MobileCard>
+  );
+}
 
 export function VaContentAssignmentsClient({ models, rows }: VaContentAssignmentsClientProps) {
   const router = useRouter();
@@ -57,6 +216,7 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
   const [search, setSearch] = React.useState("");
   const [modelId, setModelId] = React.useState<string>("all");
   const [prioritySet, setPrioritySet] = React.useState<Set<string>>(() => new Set());
+  const [createOpen, setCreateOpen] = React.useState(false);
 
   const [editFor, setEditFor] = React.useState<VaAssignmentWithModel | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
@@ -119,6 +279,12 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
     const createdMs = (r: VaAssignmentWithModel) => Date.parse(r.created_at || "") || 0;
     return [...list].sort((a, b) => createdMs(b) - createdMs(a));
   }, [visible, filter, modelId, prioritySet, search]);
+
+  const { page, setPage, totalPages, paginated, reset } = usePagination(filtered, 20);
+
+  React.useEffect(() => {
+    reset();
+  }, [filter, search, modelId, prioritySet, reset]);
 
   const togglePriority = (p: string) => {
     setPrioritySet((prev) => {
@@ -191,308 +357,225 @@ export function VaContentAssignmentsClient({ models, rows }: VaContentAssignment
   }
 
   return (
-    <div className="space-y-8">
-      <section className="rounded-3xl border border-sky-400/25 bg-gradient-to-br from-zinc-950 via-zinc-950 to-sky-950/25 p-6 shadow-[0_10px_40px_rgba(56,189,248,0.1)]">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Virtual assistant</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Content assignments</h1>
-        <p className="mt-2 max-w-2xl text-sm text-white/60">
-          Create work for models and track progress. Rows here are linked to your VA user in Airtable; models schedule and
-          complete them from their dashboard.
-        </p>
-
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MobileCard padding="md" className="border-sky-500/20 bg-white/[0.04] ring-sky-500/10">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Active total</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{counts.total}</p>
-            <p className="text-xs text-white/50">excl. cancelled</p>
-          </MobileCard>
-          <MobileCard padding="md" className="border-amber-500/25 bg-amber-500/5 ring-amber-500/10">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Awaiting action</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{counts.pendingAction}</p>
-            <p className="text-xs text-white/50">admin approval or model</p>
-          </MobileCard>
-          <MobileCard padding="md" className="border-sky-500/25 bg-sky-500/5 ring-sky-500/10">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Scheduled</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{counts.scheduled}</p>
-            <p className="text-xs text-white/50">on calendar</p>
-          </MobileCard>
-          <MobileCard padding="md" className="border-emerald-500/25 bg-emerald-500/5 ring-emerald-500/10">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">Completed</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{counts.completed}</p>
-            <p className="text-xs text-white/50">delivered</p>
-          </MobileCard>
+    <div className="space-y-6">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Virtual assistant</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">Content assignments</h1>
+          <p className="mt-2 max-w-2xl text-sm text-white/60">
+            Create work for models and track progress. Rows here are linked to your VA user in Airtable; models schedule
+            and complete them from their dashboard.
+          </p>
         </div>
-      </section>
+        <button
+          type="button"
+          onClick={() => setCreateOpen(true)}
+          className={cn(
+            "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-sky-400/35 px-4 py-2.5 text-sm font-semibold text-sky-50 shadow-[0_0_24px_-8px_hsl(199_89%_48%/0.35)] transition hover:brightness-110",
+            "bg-gradient-to-r from-sky-500/25 to-blue-600/20"
+          )}
+        >
+          <Plus className="h-4 w-4" aria-hidden />
+          New Assignment
+        </button>
+      </header>
 
-      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(320px,400px)]">
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
-            <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
-              <span className="text-xs font-semibold uppercase tracking-wide text-white/45">Status</span>
-              {(
-                [
-                  ["pending", "Pending", counts.pendingAction],
-                  ["scheduled", "Scheduled", counts.scheduled],
-                  ["completed", "Completed", counts.completed],
-                  ["rejected", "Rejected", counts.rejected],
-                ] as const
-              ).map(([key, label, n]) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setFilter(key)}
-                  className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                    filter === key
-                      ? "border-sky-400/55 bg-sky-500/20 text-sky-100"
-                      : "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
-                  )}
-                >
-                  {label}
-                  <span className="ml-1 text-white/45">{n}</span>
-                </button>
+      <div className="-mx-1 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
+        <div className="flex min-w-min gap-3">
+          <StatCard
+            label="Total"
+            value={counts.total}
+            icon={ListChecks}
+            accentClass="border-white/10 ring-white/[0.06]"
+          />
+          <StatCard
+            label="Pending"
+            value={counts.pendingAction}
+            icon={Clock}
+            accentClass="border-amber-500/25 bg-amber-500/5 ring-amber-500/10"
+          />
+          <StatCard
+            label="Scheduled"
+            value={counts.scheduled}
+            icon={CalendarClock}
+            accentClass="border-sky-500/25 bg-sky-500/5 ring-sky-500/10"
+          />
+          <StatCard
+            label="Completed"
+            value={counts.completed}
+            icon={CheckCircle2}
+            accentClass="border-emerald-500/25 bg-emerald-500/5 ring-emerald-500/10"
+          />
+          <StatCard
+            label="Rejected"
+            value={counts.rejected}
+            icon={XCircle}
+            accentClass="border-rose-500/25 bg-rose-500/5 ring-rose-500/10"
+          />
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-white/45">Status</span>
+          {(
+            [
+              ["pending", "Pending", counts.pendingAction],
+              ["scheduled", "Scheduled", counts.scheduled],
+              ["completed", "Completed", counts.completed],
+              ["rejected", "Rejected", counts.rejected],
+            ] as const
+          ).map(([key, label, n]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilter(key)}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                filter === key
+                  ? "border-sky-400/55 bg-sky-500/20 text-sky-100"
+                  : "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+              )}
+            >
+              {label}
+              <span className="ml-1 text-white/45">{n}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="relative md:col-span-2">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <FormInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search title, model, description, type…"
+              className="border-white/10 bg-zinc-950/80 pl-9"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-white/50">Model</label>
+            <select
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
+            >
+              <option value="all">All models</option>
+              {modelOptions.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {(m.model_name || "").trim() || "Model"}
+                </option>
               ))}
-            </div>
-
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div className="relative md:col-span-2">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-                <FormInput
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search title, model, description, type…"
-                  className="border-white/10 bg-zinc-950/80 pl-9"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-white/50">Model</label>
-                <select
-                  value={modelId}
-                  onChange={(e) => setModelId(e.target.value)}
-                  className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
-                >
-                  <option value="all">All models</option>
-                  {modelOptions.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {(m.model_name || "").trim() || "Model"}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-[11px] font-medium text-white/50">Priority</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {PRIORITIES.map((p) => {
-                    const on = prioritySet.has(p);
-                    return (
-                      <button
-                        key={p}
-                        type="button"
-                        onClick={() => togglePriority(p)}
-                        className={cn(
-                          "rounded-lg border px-2 py-1 text-xs capitalize transition",
-                          on ? "border-sky-400/50 bg-sky-500/15 text-sky-100" : "border-white/12 bg-white/[0.04] text-white/65 hover:bg-white/[0.08]"
-                        )}
-                      >
-                        {p}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              {activeFilterCount > 0 ? (
-                <span className="rounded-full border border-sky-500/35 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-100">
-                  {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={clearFilters}
-                disabled={activeFilterCount === 0}
-                className="text-xs font-medium text-sky-300/90 underline-offset-4 hover:text-sky-200 hover:underline disabled:opacity-40"
-              >
-                Clear filters
-              </button>
-              <span className="ml-auto text-xs text-white/45">
-                {filtered.length} shown
-              </span>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-white/50">Priority</label>
+            <div className="flex flex-wrap gap-1.5">
+              {PRIORITIES.map((p) => {
+                const on = prioritySet.has(p);
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => togglePriority(p)}
+                    className={cn(
+                      "rounded-lg border px-2 py-1 text-xs capitalize transition",
+                      on
+                        ? "border-sky-400/50 bg-sky-500/15 text-sky-100"
+                        : "border-white/12 bg-white/[0.04] text-white/65 hover:bg-white/[0.08]"
+                    )}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
             </div>
           </div>
-
-          {filtered.length === 0 ? (
-            <p className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-8 text-center text-sm text-white/55">
-              No matching assignments for this filter.
-            </p>
-          ) : (
-            <>
-              <div className="hidden overflow-hidden rounded-2xl border border-white/10 md:block">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-white/10 bg-white/[0.04] text-white/65">
-                    <tr>
-                      <th className="w-1 p-0" aria-hidden />
-                      <th className="px-4 py-3 font-medium">Model</th>
-                      <th className="px-4 py-3 font-medium">Title</th>
-                      <th className="px-4 py-3 font-medium">Type</th>
-                      <th className="px-4 py-3 font-medium">Deadline</th>
-                      <th className="px-4 py-3 font-medium">Status</th>
-                      <th className="px-4 py-3 font-medium">Priority</th>
-                      <th className="px-4 py-3 font-medium text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filtered.map((r) => (
-                      <tr
-                        key={r.id}
-                        className="cursor-pointer border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
-                        onClick={() => setSelected(r)}
-                      >
-                        <td className="p-0 align-stretch">
-                          <div className={cn("h-full min-h-[48px] w-1 bg-gradient-to-b", gradientClassForContentType(r.content_type))} />
-                        </td>
-                        <td className="px-4 py-3 text-white/90">{r.model_name}</td>
-                        <td className="max-w-[260px] px-4 py-3 text-white/85">
-                          <div className="truncate font-medium" title={r.title}>
-                            {r.title || "—"}
-                          </div>
-                          {statusKey(r.status) === "rejected" ? (
-                            <div className="mt-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
-                              <p className="text-[11px] font-semibold text-rose-300">Rejected by admin</p>
-                              {(r.rejection_reason ?? "").trim() ? (
-                                <p className="mt-0.5 text-[11px] text-white/55">{r.rejection_reason}</p>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          {statusKey(r.status) === "pending_approval" ? (
-                            <div className="mt-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-                              <p className="text-[11px] font-semibold text-sky-300">Waiting for admin approval</p>
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 text-white/65">{r.content_type || "—"}</td>
-                        <td className="whitespace-nowrap px-4 py-3 text-white/70">{formatDateEuropean(r.deadline)}</td>
-                        <td className="px-4 py-3 capitalize text-white/80">{statusLabelForList(r.status)}</td>
-                        <td className="px-4 py-3">
-                          <span
-                            className={cn(
-                              "inline-block rounded-full border px-2 py-0.5 text-xs font-medium capitalize",
-                              priorityClass(r.priority)
-                            )}
-                          >
-                            {r.priority || "normal"}
-                          </span>
-                        </td>
-                        <td
-                          className="px-4 py-3 text-right"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {statusKey(r.status) === "pending" || statusKey(r.status) === "pending_approval" ? (
-                            <div className="flex flex-wrap justify-end gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setEditFor(r)}
-                                className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-3 py-1 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setDeleteFor(r)}
-                                className="rounded-lg border border-red-500/35 bg-red-500/15 px-3 py-1 text-xs font-medium text-red-200 hover:bg-red-500/25"
-                              >
-                                Delete
-                              </button>
-                            </div>
-                          ) : (
-                            <span className="text-white/30">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="space-y-3 md:hidden">
-                {filtered.map((r) => (
-                  <MobileCard
-                    key={r.id}
-                    onClick={() => setSelected(r)}
-                    padding="none"
-                    className="flex overflow-hidden border-white/10 bg-zinc-950/80 ring-white/[0.06]"
-                  >
-                    <div
-                      className={cn("w-1 shrink-0 bg-gradient-to-b", gradientClassForContentType(r.content_type))}
-                      aria-hidden
-                    />
-                    <div className="min-w-0 flex-1 space-y-1 p-4 text-left">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="truncate font-medium text-white">{r.title || "—"}</p>
-                        <span className="shrink-0 text-[10px] uppercase text-white/40">
-                          {statusLabelForList(r.status)}
-                        </span>
-                      </div>
-                      <p className="text-xs text-white/55">{r.model_name}</p>
-                      <div className="flex flex-wrap items-center gap-2 pt-1">
-                        <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/70">
-                          {r.content_type || "Type"}
-                        </span>
-                        <span
-                          className={cn(
-                            "inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
-                            priorityClass(r.priority)
-                          )}
-                        >
-                          {r.priority || "normal"}
-                        </span>
-                        <span className="text-[11px] text-white/45">Due {formatDateEuropean(r.deadline)}</span>
-                      </div>
-                      {statusKey(r.status) === "rejected" ? (
-                        <div className="mt-2 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
-                          <p className="text-[11px] font-semibold text-rose-300">Rejected by admin</p>
-                          {(r.rejection_reason ?? "").trim() ? (
-                            <p className="mt-0.5 text-[11px] text-white/55">{r.rejection_reason}</p>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {statusKey(r.status) === "pending_approval" ? (
-                        <div className="mt-2 rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
-                          <p className="text-[11px] font-semibold text-sky-300">Waiting for admin approval</p>
-                        </div>
-                      ) : null}
-                      {statusKey(r.status) === "pending" || statusKey(r.status) === "pending_approval" ? (
-                        <div
-                          className="flex gap-2 border-t border-white/10 p-3"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => setEditFor(r)}
-                            className="flex-1 rounded-lg border border-sky-500/35 bg-sky-500/15 py-2 text-xs font-medium text-sky-200"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setDeleteFor(r)}
-                            className="flex-1 rounded-lg border border-red-500/35 bg-red-500/15 py-2 text-xs font-medium text-red-200"
-                          >
-                            Delete
-                          </button>
-                        </div>
-                      ) : null}
-                    </div>
-                  </MobileCard>
-                ))}
-              </div>
-            </>
-          )}
         </div>
 
-        <VaContentAssignmentForm models={models} />
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {activeFilterCount > 0 ? (
+            <span className="rounded-full border border-sky-500/35 bg-sky-500/10 px-2 py-0.5 text-[11px] font-medium text-sky-100">
+              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={activeFilterCount === 0}
+            className="inline-flex items-center gap-1 text-xs font-medium text-sky-300/90 underline-offset-4 hover:text-sky-200 hover:underline disabled:opacity-40"
+          >
+            <X className="h-3 w-3" aria-hidden />
+            Clear filters
+          </button>
+          <span className="ml-auto text-xs text-white/45">{filtered.length} shown</span>
+        </div>
       </div>
+
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-12 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
+            <ListChecks className="h-7 w-7" aria-hidden />
+          </div>
+          <p className="mt-4 text-sm font-medium text-white/75">No matching assignments</p>
+          <p className="mt-1 text-xs text-white/45">Try a different status tab or clear your filters.</p>
+          {activeFilterCount > 0 ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-sky-500/35 bg-sky-500/15 px-4 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-500/25"
+            >
+              <X className="h-3.5 w-3.5" aria-hidden />
+              Clear filters
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setCreateOpen(true)}
+              className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-sky-500/35 bg-sky-500/15 px-4 py-2 text-xs font-semibold text-sky-200 hover:bg-sky-500/25"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden />
+              New Assignment
+            </button>
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {paginated.map((r) => (
+              <AssignmentCard
+                key={r.id}
+                row={r}
+                onSelect={() => setSelected(r)}
+                onEdit={() => setEditFor(r)}
+                onDelete={() => setDeleteFor(r)}
+              />
+            ))}
+          </div>
+
+          <PaginationControls
+            page={page}
+            totalPages={totalPages}
+            onPage={setPage}
+            totalItems={filtered.length}
+          />
+        </>
+      )}
+
+      {createOpen ? (
+        <GlassModal
+          onClose={() => setCreateOpen(false)}
+          title="New assignment"
+          subtitle="Create work for a model to schedule and complete"
+          className="md:max-w-lg"
+        >
+          <VaContentAssignmentForm
+            models={models}
+            embedded
+            onSuccess={() => setCreateOpen(false)}
+          />
+        </GlassModal>
+      ) : null}
 
       {editFor ? (
         <GlassModal

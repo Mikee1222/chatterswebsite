@@ -13,9 +13,11 @@ const PRIORITIES = ["low", "normal", "high", "urgent"] as const;
 
 export type VaContentAssignmentFormProps = {
   models: Pick<ModelRecord, "id" | "model_name">[];
+  onSuccess?: () => void;
+  embedded?: boolean;
 };
 
-export function VaContentAssignmentForm({ models }: VaContentAssignmentFormProps) {
+export function VaContentAssignmentForm({ models, onSuccess, embedded = false }: VaContentAssignmentFormProps) {
   const router = useRouter();
   const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -35,6 +37,7 @@ export function VaContentAssignmentForm({ models }: VaContentAssignmentFormProps
       }
       form.reset();
       router.refresh();
+      onSuccess?.();
     } finally {
       setSubmitting(false);
     }
@@ -43,10 +46,14 @@ export function VaContentAssignmentForm({ models }: VaContentAssignmentFormProps
   return (
     <form
       onSubmit={(ev) => void onSubmit(ev)}
-      className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.06] p-6"
-      style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
+      className={
+        embedded
+          ? "space-y-4 p-5"
+          : "space-y-4 rounded-2xl border border-white/10 bg-white/[0.06] p-6"
+      }
+      style={embedded ? undefined : { boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
     >
-      <h2 className="text-lg font-semibold text-white">New assignment</h2>
+      {!embedded ? <h2 className="text-lg font-semibold text-white">New assignment</h2> : null}
       {error ? <p className="text-sm text-rose-300">{error}</p> : null}
 
       <div>
