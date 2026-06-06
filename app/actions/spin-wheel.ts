@@ -190,41 +190,33 @@ export async function markSpinClaimedAction(
     const claimNote = `Marked paid ${paidIso}`;
     await updateRecord(SPINS_TABLE, spinId, { claimed: true, claim_note: claimNote });
 
-    // Auto-create bonus in fines_and_bonuses
-    if (chatterId && (pt === "cash" || pt === "bonus")) {
+    if (chatterId && pt === "cash") {
       try {
-        const { createFineBonus } = await import("@/services/fines-bonuses");
+        const { createSpinWheelCashBonus } = await import("@/services/fines-bonuses");
         const { getUserByAirtableId } = await import("@/services/users");
 
         const chatterUser = await getUserByAirtableId(chatterId).catch(() => null);
         const chatterName = chatterUser?.full_name?.trim() || chatterId;
-
         const prizeAmount = Math.max(0, parseFloat(String(prizeRec.fields?.prize_value ?? "0")) || 0);
 
-        // Month = YYYY-MM of when the spin was claimed
-        const now = new Date();
-        const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-
-        await createFineBonus({
+        await createSpinWheelCashBonus({
+          spinId,
           user_id: chatterId,
           user_name: chatterName,
-          user_role: "chatter",
-          type: "bonus",
+          prize_label: prizeLabel,
           amount: prizeAmount,
-          reason: ` Spin wheel prize: ${prizeLabel}`,
-          notes: `Auto-created from spin wheel. Spin ID: ${spinId}`,
-          month,
           admin_id: user.airtableUserId ?? user.id,
           admin_name: user.fullName?.trim() || user.email?.trim() || "Admin",
         });
       } catch (e) {
         console.error("[spin-wheel] auto-create bonus failed", e);
-        // Non-blocking — spin is still marked claimed
       }
     }
 
     revalidatePath(ROUTES.admin.spinResults);
     revalidatePath(ROUTES.chatter.rewards);
+    revalidatePath(ROUTES.finesBonuses);
+    revalidatePath(ROUTES.admin.finesBonuses);
 
     if (chatterId) {
       try {

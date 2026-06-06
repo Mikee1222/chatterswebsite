@@ -4,7 +4,12 @@ import * as React from "react";
 import { Search } from "lucide-react";
 import { formatMonthYyyyMm } from "@/lib/format";
 import { FormInput } from "@/components/ui/form-input";
-import type { FineBonusRecord, FineBonusType, FineBonusUserRole } from "@/services/fines-bonuses";
+import {
+  isSpinWheelFineBonus,
+  type FineBonusRecord,
+  type FineBonusType,
+  type FineBonusUserRole,
+} from "@/services/fines-bonuses";
 
 type UserOpt = { id: string; name: string; user_role: FineBonusUserRole };
 
@@ -50,11 +55,22 @@ function TypeBadge({ type }: { type: FineBonusType }) {
   );
 }
 
+function SpinWheelBadge() {
+  return (
+    <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+      Spin Wheel
+    </span>
+  );
+}
+
+type SourceFilter = "all" | "manual" | "spin_wheel";
+
 export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) {
   const [rows] = React.useState(initialEntries);
   const [userFilter, setUserFilter] = React.useState("all");
   const [roleFilter, setRoleFilter] = React.useState<"all" | FineBonusUserRole>("all");
   const [typeFilter, setTypeFilter] = React.useState<"all" | FineBonusType>("all");
+  const [sourceFilter, setSourceFilter] = React.useState<SourceFilter>("all");
   const [monthFilter, setMonthFilter] = React.useState("");
   const [search, setSearch] = React.useState("");
 
@@ -72,11 +88,13 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
       if (userFilter !== "all" && r.user_id !== userFilter) return false;
       if (roleFilter !== "all" && r.user_role !== roleFilter) return false;
       if (typeFilter !== "all" && r.type !== typeFilter) return false;
+      if (sourceFilter === "spin_wheel" && !isSpinWheelFineBonus(r)) return false;
+      if (sourceFilter === "manual" && isSpinWheelFineBonus(r)) return false;
       if (monthFilter && r.month !== monthFilter) return false;
       if (q && !r.reason.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [rows, userFilter, roleFilter, typeFilter, monthFilter, search]);
+  }, [rows, userFilter, roleFilter, typeFilter, sourceFilter, monthFilter, search]);
 
   const stats = React.useMemo(() => {
     let bonuses = 0;
@@ -148,6 +166,15 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           <option value="fine">Fine</option>
         </select>
         <select
+          value={sourceFilter}
+          onChange={(e) => setSourceFilter(e.target.value as SourceFilter)}
+          className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
+        >
+          <option value="all">All sources</option>
+          <option value="manual">Manual</option>
+          <option value="spin_wheel">Spin Wheel</option>
+        </select>
+        <select
           value={monthFilter}
           onChange={(e) => setMonthFilter(e.target.value)}
           className="min-h-10 min-w-[140px] rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
@@ -179,6 +206,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
               <th className="px-4 py-3 font-semibold">Type</th>
               <th className="px-4 py-3 font-semibold">Amount</th>
               <th className="px-4 py-3 font-semibold">Reason</th>
+              <th className="px-4 py-3 font-semibold">Source</th>
               <th className="px-4 py-3 font-semibold">Month</th>
               <th className="px-4 py-3 font-semibold">Date</th>
             </tr>
@@ -186,7 +214,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           <tbody>
             {filtered.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-white/40">
+                <td colSpan={8} className="px-4 py-10 text-center text-white/40">
                   No entries match filters.
                 </td>
               </tr>
@@ -205,6 +233,13 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
                   </td>
                   <td className="max-w-[220px] truncate px-4 py-3 text-white/80" title={e.reason}>
                     {e.reason}
+                  </td>
+                  <td className="px-4 py-3">
+                    {isSpinWheelFineBonus(e) ? (
+                      <SpinWheelBadge />
+                    ) : (
+                      <span className="text-xs text-white/40">Manual</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-white/60">{formatMonthYyyyMm(e.month)}</td>
                   <td className="px-4 py-3 text-xs text-white/40">{timeAgo(e.created_at)}</td>

@@ -1,10 +1,14 @@
 import {
   listAllRecords,
+  listRecords,
   createRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 
 const TABLE = "fines_and_bonuses";
+
+export const SPIN_WHEEL_REASON_PREFIX = "Spin wheel reward:";
+const SPIN_WHEEL_NOTES_SPIN_ID_MARKER = "Spin ID:";
 
 export type FineBonusUserRole = "chatter" | "va";
 export type FineBonusType = "bonus" | "fine";
@@ -109,6 +113,53 @@ export type CreateFineBonusInput = {
   admin_id: string;
   admin_name: string;
 };
+
+export function isSpinWheelFineBonus(entry: Pick<FineBonusRecord, "reason" | "notes">): boolean {
+  if (entry.reason.toLowerCase().includes("spin wheel")) return true;
+  return entry.notes.includes(SPIN_WHEEL_NOTES_SPIN_ID_MARKER);
+}
+
+export async function hasFineBonusForSpin(spinId: string): Promise<boolean> {
+  const id = spinId.trim();
+  if (!id) return false;
+  const { records } = await listRecords<Record<string, unknown>>(TABLE, {
+    filterByFormula: `FIND("${escapeFormulaString(id)}", {notes})`,
+    pageSize: 1,
+    _caller: "hasFineBonusForSpin",
+  });
+  return records.length > 0;
+}
+
+export type CreateSpinWheelCashBonusInput = {
+  spinId: string;
+  user_id: string;
+  user_name: string;
+  prize_label: string;
+  amount: number;
+  admin_id: string;
+  admin_name: string;
+};
+
+/** Creates a fines_and_bonuses row for a paid cash spin; skips if one already exists for this spin. */
+export async function createSpinWheelCashBonus(
+  data: CreateSpinWheelCashBonusInput
+): Promise<{ id: string; record: FineBonusRecord } | null> {
+  if (await hasFineBonusForSpin(data.spinId)) return null;
+  const now = new Date();
+  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return createFineBonus({
+    user_id: data.user_id,
+    user_name: data.user_name,
+    user_role: "chatter",
+    type: "bonus",
+    amount: data.amount,
+    reason: `${SPIN_WHEEL_REASON_PREFIX} ${data.prize_label.trim() || "prize"}`,
+    notes: `Auto-created from spin wheel. ${SPIN_WHEEL_NOTES_SPIN_ID_MARKER} ${data.spinId.trim()}`,
+    month,
+    admin_id: data.admin_id,
+    admin_name: data.admin_name,
+  });
+}
 
 export async function createFineBonus(data: CreateFineBonusInput): Promise<{ id: string; record: FineBonusRecord }> {
   const entry_id = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

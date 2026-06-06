@@ -4,7 +4,7 @@ import * as React from "react";
 import { DollarSign } from "lucide-react";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatDateTimeAthens, formatMonthYyyyMm } from "@/lib/format";
-import type { FineBonusRecord, FineBonusType } from "@/services/fines-bonuses";
+import { isSpinWheelFineBonus, type FineBonusRecord, type FineBonusType } from "@/services/fines-bonuses";
 
 type Props = {
   initialEntries: FineBonusRecord[];
@@ -20,6 +20,14 @@ function monthFineTotal(rows: FineBonusRecord[]): number {
 
 function currentMonthYyyyMm(): string {
   return getTodayYmdAthens().slice(0, 7);
+}
+
+function SpinWheelBadge() {
+  return (
+    <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
+      Spin Wheel
+    </span>
+  );
 }
 
 export function FinesBonusesClient({ initialEntries }: Props) {
@@ -150,7 +158,10 @@ export function FinesBonusesClient({ initialEntries }: Props) {
                     <span className="text-lg">{entry.type === "bonus" ? "" : ""}</span>
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-white">{entry.reason}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-white">{entry.reason}</p>
+                      {isSpinWheelFineBonus(entry) ? <SpinWheelBadge /> : null}
+                    </div>
                     {entry.notes ? <p className="mt-0.5 text-xs text-white/50">{entry.notes}</p> : null}
                     <p className="mt-1 text-xs text-white/30">
                       {formatDateTimeAthens(entry.created_at)} · by {entry.admin_name || "Admin"}
