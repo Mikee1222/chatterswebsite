@@ -30,3 +30,23 @@ export function getChallengeStatus(
   if (c.start_date > today) return "upcoming";
   return "active";
 }
+
+/** Format hour values for challenge progress (e.g. 2.5 → "2.5h", 10 → "10h"). */
+export function formatChallengeHours(hours: number): string {
+  const v = Math.round(hours * 100) / 100;
+  if (Number.isInteger(v)) return `${v}h`;
+  const fixed = v.toFixed(1);
+  return `${fixed.endsWith(".0") ? String(Math.floor(v)) : fixed}h`;
+}
+
+/** Format current/target progress; shift_hours uses "Xh / Yh". */
+export function formatChallengeProgress(
+  metric: ChallengeMetric,
+  current: number,
+  target: number
+): string {
+  if (metric === "shift_hours") {
+    return `${formatChallengeHours(current)} / ${formatChallengeHours(target)}`;
+  }
+  return `${current} / ${target}`;
+}

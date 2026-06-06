@@ -9,7 +9,13 @@ import { useToast } from "@/contexts/toast-context";
 import { createChallengeAction, deleteChallengeAction, updateChallengeAction, type ChallengeData } from "@/app/actions/challenges";
 import type { AppNotification } from "@/types";
 import type { ChallengeRow } from "@/services/challenges";
-import { CHALLENGE_METRICS, type ChallengeMetric, getChallengeStatus, daysRemainingYmd } from "@/lib/challenges";
+import {
+  CHALLENGE_METRICS,
+  type ChallengeMetric,
+  formatChallengeHours,
+  getChallengeStatus,
+  daysRemainingYmd,
+} from "@/lib/challenges";
 import { cn } from "@/lib/utils";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
@@ -417,8 +423,10 @@ export function AdminChallengesClient({
                       </div>
                       {c.description ? <p className="mt-2 text-sm text-white/60">{c.description}</p> : null}
                       <p className="mt-2 text-xs text-white/40">
-                        {c.start_date} → {c.end_date} · Metric: {c.target_metric.replace(/_/g, "")} · Target:{""}
-                        {c.target_value}
+                        {c.start_date} → {c.end_date} · Metric: {METRIC_LABELS[c.target_metric]} · Target:{" "}
+                        {c.target_metric === "shift_hours"
+                          ? formatChallengeHours(c.target_value)
+                          : c.target_value}
                       </p>
                       <p className="mt-1 text-xs text-pink-200/70">
                         <span className="text-white/35">Assigned:</span> {assignedLabel}

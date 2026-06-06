@@ -5,7 +5,7 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
-import { daysRemainingYmd } from "@/lib/challenges";
+import { daysRemainingYmd, formatChallengeProgress } from "@/lib/challenges";
 import { getAllChallengesWithProgress } from "@/services/challenges";
 
 const METRIC_ICON: Record<string, ReactNode> = {
@@ -76,7 +76,7 @@ export default async function ChallengesPage() {
                     <div className="mb-2 flex items-center justify-between">
                       <span className="text-sm text-white/60">Your progress</span>
                       <span className="text-sm font-medium text-white">
-                        {current} / {target}
+                        {formatChallengeProgress(c.target_metric, current, target)}
                       </span>
                     </div>
 
