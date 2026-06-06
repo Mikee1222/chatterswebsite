@@ -33,10 +33,12 @@ export function MyRebillsClient({
   rebills,
   standings,
   currentChatterId,
+  rebillPointsById = {},
 }: {
   rebills: Rebill[];
   standings: Standing[];
   currentChatterId: string;
+  rebillPointsById?: Record<string, number>;
 }) {
   const [tab, setTab] = React.useState<"rebills" | "standings">("rebills");
   const [filter, setFilter] = React.useState<StatusFilter>("all");
@@ -148,7 +150,12 @@ export function MyRebillsClient({
                         </p>
                       </div>
                     </div>
-                    <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 text-right">
+                      {rebill.status === "verified" && rebillPointsById[rebill.id] ? (
+                        <p className="mb-1 text-xs font-semibold tabular-nums text-emerald-400">
+                          +{rebillPointsById[rebill.id]} pts
+                        </p>
+                      ) : null}
                       {rebill.status === "verified" && (
                         <span className="flex items-center gap-1 text-xs font-medium text-emerald-400">
                           <CheckCircle2 className="h-4 w-4" /> Approved
@@ -264,6 +271,14 @@ export function MyRebillsClient({
                   {statusLabel(selectedRebill.status)}
                 </span>
               </div>
+              {selectedRebill.status === "verified" && rebillPointsById[selectedRebill.id] ? (
+                <div className="flex justify-between">
+                  <span className="text-white/50">Points earned</span>
+                  <span className="font-semibold tabular-nums text-emerald-400">
+                    +{rebillPointsById[selectedRebill.id]} pts
+                  </span>
+                </div>
+              ) : null}
               {selectedRebill.admin_notes ? (
                 <div className="border-t border-white/10 pt-2">
                   <p className="text-xs text-white/50">Admin note</p>

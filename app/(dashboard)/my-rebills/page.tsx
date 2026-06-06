@@ -1,7 +1,8 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/routes";
-import { listAllRecords } from "@/lib/airtable-server";
+import { listAllRecords, listRecords } from "@/lib/airtable-server";
+import { escapeAirtableString } from "@/lib/airtable-linked";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { MyRebillsClient } from "@/components/my-rebills-client";
 
@@ -65,9 +66,36 @@ export default async function MyRebillsPage() {
     .sort((a, b) => b.count - a.count)
     .map((s, i) => ({ ...s, rank: i + 1 }));
 
+  const rebillPointsById: Record<string, number> = {};
+  try {
+    const { records: rebillTxs } = await listRecords<{
+      points?: number;
+      reference_id?: string;
+      category?: string;
+    }>("points_transactions", {
+      filterByFormula: `AND({user_id} = "${escapeAirtableString(chatterId)}", {category} = "rebill")`,
+      pageSize: 100,
+      _caller: "my-rebills.rebillPoints",
+    });
+    for (const tx of rebillTxs) {
+      const ref = String(tx.fields?.reference_id ?? "").trim();
+      const pts = Number(tx.fields?.points ?? 0);
+      if (ref && Number.isFinite(pts) && pts > 0) {
+        rebillPointsById[ref] = pts;
+      }
+    }
+  } catch {
+    // Non-fatal: rebill list still works without points badges
+  }
+
   return (
     <div className="space-y-8 pb-20">
-      <MyRebillsClient rebills={myRebills} standings={standings} currentChatterId={chatterId} />
+      <MyRebillsClient
+        rebills={myRebills}
+        standings={standings}
+        currentChatterId={chatterId}
+        rebillPointsById={rebillPointsById}
+      />
     </div>
   );
 }

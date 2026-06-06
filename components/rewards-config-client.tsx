@@ -127,6 +127,7 @@ export function RewardsConfigClient({
       <SectionCard title="Custom & Other">
         <ConfigRow label="Custom completed" value={config.CUSTOM_COMPLETED} onChange={set("CUSTOM_COMPLETED")} />
         <ConfigRow label="Availability submitted" value={config.AVAILABILITY_SUBMITTED} onChange={set("AVAILABILITY_SUBMITTED")} />
+        <ConfigRow label="Rebill verified" value={config.REBILL_VERIFIED} onChange={set("REBILL_VERIFIED")} />
       </SectionCard>
 
       <SectionCard title="Streak Bonuses">

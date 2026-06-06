@@ -6,6 +6,7 @@ export const CHALLENGE_METRICS = [
   "shift_hours",
   "customs_completed",
   "whale_status_upgrades",
+  "rebills_verified",
 ] as const;
 
 export type ChallengeMetric = (typeof CHALLENGE_METRICS)[number];

@@ -197,7 +197,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     level: new Set(["Bronze", "Silver", "Gold", "Diamond"]),
   },
   points_transactions: {
-    category: new Set(["shift", "whale", "custom", "streak", "challenge", "manual", "penalty", "spin", "mistake"]),
+    category: new Set(["shift", "whale", "custom", "streak", "challenge", "manual", "penalty", "spin", "mistake", "rebill"]),
   },
   challenges: {
     target_metric: new Set([
@@ -206,6 +206,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
       "shift_hours",
       "customs_completed",
       "whale_status_upgrades",
+      "rebills_verified",
     ]),
   },
   spin_wheel_prizes: {

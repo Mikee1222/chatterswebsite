@@ -15,6 +15,8 @@ import { RankBadge } from "@/components/rank-badge";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { formatDateTimeEuropean, formatRelativeTime } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
+import { useToast } from "@/contexts/toast-context";
+import type { AppNotification } from "@/types";
 
 export type AdminRebillRow = {
   id: string;
@@ -268,6 +270,23 @@ function normalizeRowStatus(raw: string): AdminRebillRow["status"] {
 
 const usdFmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2 });
 
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
 export function AdminRebillsTipsClient({
   initialRebills,
   initialTips,
@@ -309,6 +328,7 @@ export function AdminRebillsTipsClient({
   const [notesOpenId, setNotesOpenId] = React.useState<string | null>(null);
   const [noteDraft, setNoteDraft] = React.useState("");
   const [patchingId, setPatchingId] = React.useState<string | null>(null);
+  const { addToast } = useToast();
 
   const baseList: (AdminRebillRow | AdminTipRow)[] = activeTab === "rebills" ? rebills : tips;
 
@@ -503,7 +523,7 @@ export function AdminRebillsTipsClient({
     table: "rebill" | "tip",
     id: string,
     body: { status?: AdminRebillRow["status"]; admin_notes?: string }
-  ) {
+  ): Promise<{ points_awarded?: number; chatter_name?: string }> {
     const path =
       table === "rebill" ? `/api/admin/rebills/${encodeURIComponent(id)}` : `/api/admin/tips/${encodeURIComponent(id)}`;
     const res = await fetch(path, {
@@ -515,19 +535,35 @@ export function AdminRebillsTipsClient({
       const j = (await res.json().catch(() => ({}))) as { error?: string };
       throw new Error(j.error || "Update failed");
     }
+    return (await res.json().catch(() => ({}))) as { points_awarded?: number; chatter_name?: string };
   }
 
   async function updateStatus(id: string, status: AdminRebillRow["status"], kind: "rebills" | "tips") {
     setPatchingId(id);
     const prevR = rebills;
     const prevT = tips;
+    const row = kind === "rebills" ? rebills.find((r) => r.id === id) : tips.find((t) => t.id === id);
     if (kind === "rebills") {
       setRebills((rs) => rs.map((r) => (r.id === id ? { ...r, status } : r)));
     } else {
       setTips((ts) => ts.map((t) => (t.id === id ? { ...t, status } : t)));
     }
     try {
-      await patchRecord(kind === "rebills" ? "rebill" : "tip", id, { status });
+      const data = await patchRecord(kind === "rebills" ? "rebill" : "tip", id, { status });
+      if (kind === "rebills" && status === "verified") {
+        const pts = Math.max(0, Math.floor(data.points_awarded ?? 0));
+        const name = data.chatter_name?.trim() || row?.chatter_name?.trim() || "chatter";
+        if (pts > 0) {
+          addToast(
+            localToast(
+              `rebill-verified-${id}-${Date.now()}`,
+              `Verified — ${pts} points awarded to ${name}`,
+              "",
+              "normal"
+            )
+          );
+        }
+      }
     } catch {
       setRebills(prevR);
       setTips(prevT);

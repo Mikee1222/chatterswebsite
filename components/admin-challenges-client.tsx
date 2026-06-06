@@ -29,9 +29,18 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
   };
 }
 
+const METRIC_LABELS: Record<ChallengeMetric, string> = {
+  transactions: "Transactions",
+  whales_added: "Whales Added",
+  shift_hours: "Shift Hours",
+  customs_completed: "Customs Completed",
+  whale_status_upgrades: "Whale Status Upgrades",
+  rebills_verified: "Rebills Verified",
+};
+
 const METRIC_OPTIONS = CHALLENGE_METRICS.map((m) => ({
   value: m,
-  label: m.replace(/_/g, "").replace(/\b\w/g, (c) => c.toUpperCase()),
+  label: METRIC_LABELS[m],
 }));
 
 function statusStyles(status: ReturnType<typeof getChallengeStatus>) {
