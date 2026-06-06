@@ -25,8 +25,7 @@ function parseCreateBody(json: unknown): Omit<MassListRecord, "id" | "created_at
   const sort_order =
     typeof sortRaw === "number" && Number.isFinite(sortRaw)
       ? sortRaw
-      : typeof sortRaw === "string"
-        ? Number.parseInt(sortRaw, 10)
+      : typeof sortRaw === "string"? Number.parseInt(sortRaw, 10)
         : 0;
   return {
     emoji: typeof o.emoji === "string" ? o.emoji : "",

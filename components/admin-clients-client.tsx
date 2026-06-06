@@ -894,7 +894,7 @@ function ClientDetailSheet({
                   )}
                 />
                 Portal {portalAccess ? "enabled" : "disabled"}
-                {portalPending ? " …" : null}
+                {portalPending ? "…" : null}
               </button>
             </div>
           </div>
@@ -1083,7 +1083,7 @@ function ClientDetailSheet({
                             <div>
                               <p className="font-medium text-white">{formatKind(cycle.kind)}</p>
                               <p className="mt-0.5 text-xs text-white/45">
-                                {formatDateEuropean(cycle.period_start)} –{" "}
+                                {formatDateEuropean(cycle.period_start)} –{""}
                                 {formatDateEuropean(cycle.period_end)}
                               </p>
                               <p className="mt-1 text-xs text-white/40">
@@ -1096,7 +1096,7 @@ function ClientDetailSheet({
                               </p>
                               <div className="mt-1">
                                 <Badge variant={cycleStatusVariant(cycle.status)}>
-                                  {cycle.status.replace(/_/g, " ")}
+                                  {cycle.status.replace(/_/g, "")}
                                 </Badge>
                               </div>
                             </div>
@@ -1453,7 +1453,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
                         <p className="text-xs text-white/45">{client.display_name}</p>
                       ) : client.user_type === "team_member" && client.role ? (
                         <p className="text-xs capitalize text-white/45">
-                          {client.role.replace(/_/g, " ")}
+                          {client.role.replace(/_/g, "")}
                         </p>
                       ) : null}
                     </td>

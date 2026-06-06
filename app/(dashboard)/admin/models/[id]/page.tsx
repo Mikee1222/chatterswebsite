@@ -48,7 +48,7 @@ export default async function AdminModelDetailPage({ params }: { params: { id: s
       </div>
 
       <p className="text-sm text-white/50">
-        Edit account-linked fields in{" "}
+        Edit account-linked fields in{""}
         <Link href={ROUTES.modelEdit(model.id)} className="text-pink-300/90 underline-offset-2 hover:underline">
           Accounts → model
         </Link>

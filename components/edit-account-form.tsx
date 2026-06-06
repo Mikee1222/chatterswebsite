@@ -72,7 +72,7 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
         >
           {ROLES.map((r) => (
             <option key={r} value={r} className={selectOptionClass}>
-              {r.replace("_", " ")}
+              {r.replace("_", "")}
             </option>
           ))}
         </FormSelect>
@@ -144,7 +144,7 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
                   className={selectOptionClass}
                 >
                   {m.model_name}
-                  {m.alreadyLinked && m.id !== linkedModelId ? " (already linked)" : ""}
+                  {m.alreadyLinked && m.id !== linkedModelId ? "(already linked)" : ""}
                 </option>
               ))}
             </FormSelect>

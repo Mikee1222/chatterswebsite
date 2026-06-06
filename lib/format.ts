@@ -58,8 +58,7 @@ export function formatDateEuropean(dateInput: string | Date | null | undefined):
     return formatDateYmd(dateInput);
   }
   const s =
-    typeof dateInput === "string"
-      ? dateInput
+    typeof dateInput === "string"? dateInput
       : typeof dateInput === "object" && dateInput instanceof Date && !Number.isNaN(dateInput.getTime())
         ? dateInput.toISOString()
         : "";
@@ -165,8 +164,7 @@ export function formatTimeRange(
 export function formatDateTimeEuropean(dateInput: string | Date | null | undefined): string {
   if (dateInput == null || dateInput === "") return "—";
   const s =
-    typeof dateInput === "string"
-      ? dateInput
+    typeof dateInput === "string"? dateInput
       : dateInput instanceof Date && !Number.isNaN(dateInput.getTime())
         ? dateInput.toISOString()
         : "";

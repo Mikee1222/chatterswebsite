@@ -241,7 +241,7 @@ export function AdminCustomsClient({ requests: initialRequests }: Props) {
         description={
           pendingDelete ? (
             <>
-              Delete the request for{" "}
+              Delete the request for{""}
               <span className="font-medium text-white">{pendingDelete.model_name || "—"}</span>? This action cannot be
               undone.
             </>

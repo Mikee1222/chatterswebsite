@@ -186,7 +186,7 @@ export function AdminSpinWheelPrizesSection({ initialPrizes }: { initialPrizes: 
     <section className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-white/50">
-          Manage segments and odds. Ordering is mirrored on the wheel (set sort order via drag handles). Add a numeric{" "}
+          Manage segments and odds. Ordering is mirrored on the wheel (set sort order via drag handles). Add a numeric{""}
           <code className="text-white/65">sort_order</code> field in Airtable if order does not persist.
         </p>
         <button

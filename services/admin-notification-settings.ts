@@ -33,6 +33,5 @@ export async function setAdminNotificationIds(ids: string[]): Promise<void> {
   await setSystemSetting(
     SETTING_KEY,
     JSON.stringify(unique),
-    "JSON array of Airtable users table record IDs who receive admin-wide notifications (notifyAdmins)."
-  );
+    "JSON array of Airtable users table record IDs who receive admin-wide notifications (notifyAdmins).");
 }

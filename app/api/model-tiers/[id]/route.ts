@@ -18,8 +18,7 @@ function parsePatch(json: unknown): Partial<Omit<ModelTierRecord, "id">> | null 
     const n =
       typeof s === "number" && Number.isFinite(s)
         ? s
-        : typeof s === "string"
-          ? Number.parseInt(s, 10)
+        : typeof s === "string"? Number.parseInt(s, 10)
           : undefined;
     if (n !== undefined && Number.isFinite(n)) out.sort_order = n;
   }

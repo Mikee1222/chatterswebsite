@@ -75,7 +75,7 @@ export async function runModelLiveScheduledReminders(): Promise<ModelLiveSchedul
       user_id: uid,
       event_type: NOTIFICATION_EVENT.MODEL_LIVE_SCHEDULED,
       priority: NOTIFICATION_PRIORITY.HIGH,
-      title: "🎥 Live stream starting soon",
+      title: " Live stream starting soon",
       body: "Your scheduled live stream starts in 30 minutes. Get ready!",
       entity_type: "model_live_stream",
       entity_id: entityId,

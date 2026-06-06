@@ -72,7 +72,7 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
         >
           {ROLES.map((r) => (
             <option key={r} value={r} className={selectOptionClass}>
-              {r.replace("_", " ")}
+              {r.replace("_", "")}
             </option>
           ))}
         </FormSelect>
@@ -120,7 +120,7 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
                   className={selectOptionClass}
                 >
                   {m.model_name}
-                  {m.alreadyLinked ? " (already linked)" : ""}
+                  {m.alreadyLinked ? "(already linked)" : ""}
                 </option>
               ))}
             </FormSelect>

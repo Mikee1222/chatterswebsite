@@ -43,7 +43,7 @@ export default async function AdminEarningsPage() {
         <h1 className="mt-6 text-2xl font-bold text-white">Earnings dashboard</h1>
         <p className="mt-2 text-sm text-white/50">This section is under construction and will be available soon.</p>
         <p className="mt-6 text-xs text-white/40">
-          In the meantime, use{" "}
+          In the meantime, use{""}
           <Link
             href="https://infloww.com"
             target="_blank"

@@ -71,8 +71,7 @@ async function discoverWeekStartFieldName(): Promise<string> {
       (t) =>
         t.name === "weekly_availability_requests_va" ||
         t.name === "Weekly availability requests VA" ||
-        t.name === "Weekly Availability Requests VA"
-    );
+        t.name === "Weekly Availability Requests VA");
     const field = table?.fields?.find((f) => /^week[-_\s]?start$/i.test(f.name));
     if (field?.name) return field.name;
   } catch (_) {
@@ -185,8 +184,7 @@ export async function getRequestsForWeekVa(
       const all = await listAllRecords<Fields>(TABLE, { _caller: "weekly-availability-requests-va.getRequestsForWeekVa_fetchAll" });
       const mappedAll = all.map((r) => mapRecord(r as AirtableRecord<Fields>));
       const forWeek = mappedAll.filter((r) => r.week_start === weekYmd);
-      return vaRecordId != null && vaRecordId !== ""
-        ? forWeek.filter((r) => r.chatter_id === vaRecordId)
+      return vaRecordId != null && vaRecordId !== ""? forWeek.filter((r) => r.chatter_id === vaRecordId)
         : forWeek;
     } catch (_) {
       return [];
@@ -194,8 +192,7 @@ export async function getRequestsForWeekVa(
   }
 
   const mapped = records.map((r) => mapRecord(r as AirtableRecord<Fields>));
-  return vaRecordId != null && vaRecordId !== ""
-    ? mapped.filter((r) => r.chatter_id === vaRecordId)
+  return vaRecordId != null && vaRecordId !== ""? mapped.filter((r) => r.chatter_id === vaRecordId)
     : mapped;
 }
 

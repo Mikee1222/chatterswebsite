@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: `📅 Time off: ${modelName}`,
+      title: ` Time off: ${modelName}`,
       body: `${modelName} requested time off ${parsed.data.start_date}–${parsed.data.end_date}. ${parsed.data.reason.slice(0, 500)}`,
       entity_type: NOTIFICATION_ENTITY.ACCOUNT,
       entity_id: ctx.linkedModelId,

@@ -469,7 +469,7 @@ export function AdminEarningsDashboard({
                       <div className="rounded-xl border border-white/10 px-3 py-2 text-sm shadow-lg" style={chartTooltipStyle}>
                         <p className="text-white/70">{row.labelPretty}</p>
                         <p className="mt-1 font-semibold text-white">
-                          {money(row.value)}{" "}
+                          {money(row.value)}{""}
                           <span className="font-normal text-white/55">{suffix}</span>
                         </p>
                       </div>
@@ -541,9 +541,9 @@ export function AdminEarningsDashboard({
               <p className="text-sm font-medium text-white/80">No earnings in this range</p>
               <p className="mt-2 max-w-md text-sm text-white/55">
                 Try widening the dates (e.g. last month), pick <strong className="text-white/70">All creators</strong>, or confirm
-                Infloww has transactions for these days.                 If the API expects ISO datetimes instead of unix ms, set{" "}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-[hsl(330,80%,70%)]">INFLOWW_TX_TIME_FORMAT=iso</code>{" "}
-                on the worker. Enable{" "}
+                Infloww has transactions for these days.                 If the API expects ISO datetimes instead of unix ms, set{""}
+                <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-[hsl(330,80%,70%)]">INFLOWW_TX_TIME_FORMAT=iso</code>{""}
+                on the worker. Enable{""}
                 <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-[hsl(330,80%,70%)]">INFLOWW_DEBUG=1</code> for server logs.
               </p>
               {txCount > 0 ? (

@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: `📝 New content request from ${modelName}: ${row.title}`,
+    title: ` New content request from ${modelName}: ${row.title}`,
     body: `${modelName} submitted a ${row.type} request.`,
     entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
     entity_id: row.id,

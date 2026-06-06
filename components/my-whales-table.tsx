@@ -29,7 +29,7 @@ function notesSummary(notes: string | undefined, maxLen = 50): string {
 }
 
 function label(value: string): string {
-  return value.replace(/_/g, " ");
+  return value.replace(/_/g, "");
 }
 
 function looksLikeRecordId(value: string | undefined): boolean {

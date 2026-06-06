@@ -31,7 +31,7 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 
 const METRIC_OPTIONS = CHALLENGE_METRICS.map((m) => ({
   value: m,
-  label: m.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()),
+  label: m.replace(/_/g, "").replace(/\b\w/g, (c) => c.toUpperCase()),
 }));
 
 function statusStyles(status: ReturnType<typeof getChallengeStatus>) {
@@ -408,7 +408,7 @@ export function AdminChallengesClient({
                       </div>
                       {c.description ? <p className="mt-2 text-sm text-white/60">{c.description}</p> : null}
                       <p className="mt-2 text-xs text-white/40">
-                        {c.start_date} → {c.end_date} · Metric: {c.target_metric.replace(/_/g, " ")} · Target:{" "}
+                        {c.start_date} → {c.end_date} · Metric: {c.target_metric.replace(/_/g, "")} · Target:{""}
                         {c.target_value}
                       </p>
                       <p className="mt-1 text-xs text-pink-200/70">

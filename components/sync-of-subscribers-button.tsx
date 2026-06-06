@@ -235,9 +235,9 @@ export function SyncOFSubscribersButton({ ofAccountId, modelName }: SyncOFSubscr
       setPausedSnapshot(null);
 
       if (mode === "vip") {
-        setMessage(`✅ VIP sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
+        setMessage(`VIP sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
       } else {
-        setMessage(`✅ Sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
+        setMessage(`Sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");

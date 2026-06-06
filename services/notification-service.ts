@@ -118,17 +118,7 @@ function resolveNotifyPriority(
 
 type NotificationPreferenceGateKey = keyof Pick<
   NotificationPreference,
-  | "whale_alerts"
-  | "shift_alerts"
-  | "model_alerts"
-  | "system_alerts"
-  | "task_alerts"
-  | "mistake_alerts"
-  | "fine_bonus_alerts"
-  | "period_alerts"
-  | "marketing_alerts"
-  | "phase_alerts"
-  | "reward_alerts"
+  | "whale_alerts"| "shift_alerts"| "model_alerts"| "system_alerts"| "task_alerts"| "mistake_alerts"| "fine_bonus_alerts"| "period_alerts"| "marketing_alerts"| "phase_alerts"| "reward_alerts"
 >;
 
 const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceGateKey> = {

@@ -215,6 +215,5 @@ export function isAdminPriorityEvent(eventType: AppNotification["event_type"]): 
     eventType === "availability_submitted" ||
     eventType === "user_created" ||
     eventType === "role_changed" ||
-    eventType === "account_deleted"
-  );
+    eventType === "account_deleted");
 }

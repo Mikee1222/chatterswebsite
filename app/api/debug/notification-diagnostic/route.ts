@@ -123,8 +123,7 @@ export async function GET(req: Request) {
         count: subs.length,
         fix:
           subs.length === 0
-            ? "User must open the app and allow notifications in the browser (push prompt / Settings)."
-            : null,
+            ? "User must open the app and allow notifications in the browser (push prompt / Settings).": null,
       };
     } catch (err) {
       checks.has_push_subscriptions = {
@@ -137,7 +136,7 @@ export async function GET(req: Request) {
       const notifyResult = await notify({
         user_id: userId,
         event_type: "system_alert",
-        title: "🧪 Diagnostic test",
+        title: " Diagnostic test",
         body: `Pipeline test for ${name} — ${new Date().toISOString()}`,
         entity_type: "system",
         entity_id: `diagnostic:${userId}:${Date.now()}`,
@@ -147,8 +146,7 @@ export async function GET(req: Request) {
         pass: !!notifyResult.notification,
         push_sent: notifyResult.pushSent,
         fix: !notifyResult.notification
-          ? "notify() did not create a notifications row (validation or Airtable error)."
-          : null,
+          ? "notify() did not create a notifications row (validation or Airtable error).": null,
       };
     } catch (err) {
       checks.notify_pipeline = {
@@ -172,7 +170,7 @@ export async function GET(req: Request) {
         for (const sub of subs) {
           try {
             const ok = await sendWebPush(sub, {
-              title: "🧪 Push delivery test",
+              title: " Push delivery test",
               body: `Direct push test for ${name}`,
               url: path,
               tag: "diagnostic",
@@ -199,15 +197,15 @@ export async function GET(req: Request) {
 
     const allChecks = Object.values(checks);
     const allPassed = allChecks.every((c) => checkValuePassed(c));
-    userResult.overall = allPassed ? "✅ ALL PASSED" : "❌ ISSUES FOUND";
+    userResult.overall = allPassed ? " ALL PASSED" : " ISSUES FOUND";
     userRows.push(userResult);
   }
 
   results.users = userRows;
   results.summary = {
     total_users: userRows.length,
-    fully_working: userRows.filter((u) => String(u.overall).startsWith("✅")).length,
-    has_issues: userRows.filter((u) => String(u.overall).startsWith("❌")).length,
+    fully_working: userRows.filter((u) => String(u.overall).startsWith("")).length,
+    has_issues: userRows.filter((u) => String(u.overall).startsWith("")).length,
   };
 
   return NextResponse.json(results);

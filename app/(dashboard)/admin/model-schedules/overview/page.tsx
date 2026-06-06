@@ -43,19 +43,19 @@ export default async function AdminModelSchedulesOverviewPage({
           {isVa ? (
             <>
               Read-only view of model schedules, accepted customs (
-              <span className="font-mono text-white/80">admin_status = accepted</span>), VA assignments, and live streams. Loads{" "}
+              <span className="font-mono text-white/80">admin_status = accepted</span>), VA assignments, and live streams. Loads{""}
               <span className="text-white/80">{WEEKS_PAD} weeks before and after</span> the selected week (
-              <span className="font-mono text-white/80">{data.windowStart}</span> –{" "}
+              <span className="font-mono text-white/80">{data.windowStart}</span> –{""}
               <span className="font-mono text-white/80">{data.windowEnd}</span>
               ).
             </>
           ) : (
             <>
-              Read-only view of model schedule rows, agency-approved customs (Airtable{" "}
+              Read-only view of model schedule rows, agency-approved customs (Airtable{""}
               <span className="font-mono text-white/80">admin_status = accepted</span>
-              ), VA content assignments, and live streams. Data loads{" "}
+              ), VA content assignments, and live streams. Data loads{""}
               <span className="text-white/80">{WEEKS_PAD} weeks before and after</span> the week in the URL (
-              <span className="font-mono text-white/80">{data.windowStart}</span> –{" "}
+              <span className="font-mono text-white/80">{data.windowStart}</span> –{""}
               <span className="font-mono text-white/80">{data.windowEnd}</span>
               ).
             </>

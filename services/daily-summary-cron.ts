@@ -90,7 +90,7 @@ Pending customs: ${pendingCustoms}`;
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.DAILY_SUMMARY,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: `📊 Daily Summary — ${dateLabel}`,
+      title: ` Daily Summary — ${dateLabel}`,
       body,
       entity_type: "system",
       entity_id: entityId,

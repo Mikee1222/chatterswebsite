@@ -28,11 +28,9 @@ export async function POST(req: Request) {
   const reportTypeRaw = String(formData.get("report_type") ?? "").trim();
   const report_type: "shadowbanned" | "banned" = reportTypeRaw === "banned" ? "banned" : "shadowbanned";
   const notes =
-    report_type === "banned"
-      ? rawNotes
+    report_type === "banned"? rawNotes
         ? `[Ban reported] ${rawNotes}`
-        : "[Ban reported]"
-      : rawNotes
+        : "[Ban reported]": rawNotes
         ? `[Shadowban reported] ${rawNotes}`
         : "[Shadowban reported]";
   const screenshot = formData.get("screenshot");
@@ -79,7 +77,7 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.HIGH,
-    title: `${isBan ? "🚫" : "⚠️"} ${isBan ? "Ban" : "Shadowban"} reported: @${username}`,
+    title: `${isBan ? "" : ""} ${isBan ? "Ban" : "Shadowban"} reported: @${username}`,
     body: `${who} reported ${report_type} on ${platform} for ${model_name || "model"} (@${username})`,
     entity_type: NOTIFICATION_ENTITY.ACCOUNT,
     entity_id: report.report_id,

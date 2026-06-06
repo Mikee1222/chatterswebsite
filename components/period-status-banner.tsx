@@ -1,3 +1,4 @@
+import { Droplet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatDateOnlyEuropean } from "@/lib/format";
 
@@ -25,7 +26,7 @@ export function PeriodStatusBanner({
     <div className="mb-4 flex flex-wrap gap-3">
       {currentlyInPeriod ? (
         <div className="flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/15 px-4 py-2">
-          <span className="text-sm text-rose-400">🩸</span>
+          <Droplet className="h-4 w-4 text-rose-400" aria-hidden />
           <span className="text-sm font-medium text-rose-400">Period active</span>
           {currentPeriodDay != null ? (
             <span className="text-xs text-rose-300/60">Day {currentPeriodDay}</span>

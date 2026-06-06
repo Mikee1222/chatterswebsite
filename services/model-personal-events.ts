@@ -48,11 +48,11 @@ export function personalEventLabel(event: Pick<ModelPersonalEvent, "event_type" 
 }
 
 export function personalEventEmoji(eventType: ModelPersonalEventType): string {
-  if (eventType === "nails") return "💅";
-  if (eventType === "lashes") return "👁️";
-  if (eventType === "hairdresser") return "💇";
-  if (eventType === "surgery") return "🔪";
-  if (eventType === "fillers") return "💉";
+  if (eventType === "nails") return "";
+  if (eventType === "lashes") return "";
+  if (eventType === "hairdresser") return "";
+  if (eventType === "surgery") return "";
+  if (eventType === "fillers") return "";
   return "⭐";
 }
 

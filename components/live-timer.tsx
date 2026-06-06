@@ -73,8 +73,8 @@ export function LiveTimer({
     pulse && (mode === "break" ? "live-timer-break-pulse" : "live-timer-hero-pulse");
   const merged =
     variant === "hero"
-      ? [heroClass, pulseClass, className].filter(Boolean).join(" ")
-      : [className].filter(Boolean).join(" ");
+      ? [heroClass, pulseClass, className].filter(Boolean).join("")
+      : [className].filter(Boolean).join("");
 
   return (
     <>

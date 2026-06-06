@@ -116,8 +116,8 @@ export function AdminNotificationsSettings({
     <section className="border-t border-white/10 pt-8">
       <h2 className="mb-2 text-lg font-semibold text-white">Admin Notifications</h2>
       <p className="mb-6 max-w-2xl text-sm text-white/60">
-        Manage who receives admin notifications (shift alerts, whales, customs, etc.). Stored in Airtable{" "}
-        <code className="text-white/80">system_settings.admin_notification_ids</code>; if unset,{" "}
+        Manage who receives admin notifications (shift alerts, whales, customs, etc.). Stored in Airtable{""}
+        <code className="text-white/80">system_settings.admin_notification_ids</code>; if unset,{""}
         <code className="text-white/80">ADMIN_AIRTABLE_USER_IDS</code> is used.
       </p>
 

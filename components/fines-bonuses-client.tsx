@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DollarSign } from "lucide-react";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatDateTimeAthens, formatMonthYyyyMm } from "@/lib/format";
 import type { FineBonusRecord, FineBonusType } from "@/services/fines-bonuses";
@@ -102,15 +103,15 @@ export function FinesBonusesClient({ initialEntries }: Props) {
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <div className="rounded-2xl border border-green-500/20 bg-green-500/[0.06] p-4">
-          <p className="text-xs text-white/50">💰 Total bonuses</p>
+          <p className="text-xs text-white/50">Total bonuses</p>
           <p className="mt-1 text-xl font-bold text-green-400">+€{summary.bonuses.toFixed(2)}</p>
         </div>
         <div className="rounded-2xl border border-red-500/20 bg-red-500/[0.06] p-4">
-          <p className="text-xs text-white/50">⚠️ Total fines</p>
+          <p className="text-xs text-white/50">Total fines</p>
           <p className="mt-1 text-xl font-bold text-red-400">-€{summary.fines.toFixed(2)}</p>
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
-          <p className="text-xs text-white/50">📊 Net</p>
+          <p className="text-xs text-white/50">Net</p>
           <p className={`mt-1 text-xl font-bold ${summary.net >= 0 ? "text-green-400" : "text-red-400"}`}>
             {summary.net >= 0 ? "+" : ""}€{summary.net.toFixed(2)}
           </p>
@@ -119,7 +120,7 @@ export function FinesBonusesClient({ initialEntries }: Props) {
 
       {showEmpty ? (
         <div className="py-16 text-center text-white/30">
-          <p className="mb-2 text-3xl">💰</p>
+          <p className="mb-2 text-3xl"><DollarSign className="mx-auto h-8 w-8 text-emerald-400" aria-hidden /></p>
           <p>{hasAnyEntries ? "No fines or bonuses for this filter." : "No fines or bonuses yet."}</p>
         </div>
       ) : (
@@ -146,7 +147,7 @@ export function FinesBonusesClient({ initialEntries }: Props) {
                       entry.type === "bonus" ? "bg-green-500/20" : "bg-red-500/20"
                     }`}
                   >
-                    <span className="text-lg">{entry.type === "bonus" ? "🎉" : "⚠️"}</span>
+                    <span className="text-lg">{entry.type === "bonus" ? "" : ""}</span>
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-white">{entry.reason}</p>

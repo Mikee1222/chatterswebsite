@@ -145,7 +145,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
         return;
       }
       const extra =
-        res.errors.length > 0 ? ` Warnings: ${res.errors.slice(0, 3).join(" · ")}${res.errors.length > 3 ? "…" : ""}` : "";
+        res.errors.length > 0 ? ` Warnings: ${res.errors.slice(0, 3).join("· ")}${res.errors.length > 3 ? "…" : ""}` : "";
       addToast(
         localToast(
           `rd-fix-ok-${Date.now()}`,
@@ -245,17 +245,17 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
           {simResult ? (
             <div className="rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white/85">
               <p>
-                <span className="text-white/50">Points awarded:</span>{" "}
+                <span className="text-white/50">Points awarded:</span>{""}
                 <span className="font-semibold tabular-nums text-emerald-300">{simResult.pointsAwarded}</span>
               </p>
               <p className="mt-1">
-                <span className="text-white/50">Total:</span>{" "}
+                <span className="text-white/50">Total:</span>{""}
                 <span className="tabular-nums">
                   {simResult.previousTotal} → {simResult.newTotal}
                 </span>
               </p>
               <p className="mt-1">
-                <span className="text-white/50">Level:</span>{" "}
+                <span className="text-white/50">Level:</span>{""}
                 <span>
                   {simResult.previousLevel} → {simResult.newLevel}
                   {simResult.levelChanged ? (
@@ -303,7 +303,7 @@ export function RewardsDebugTools({ chatters }: { chatters: { id: string; name: 
                 auditIssues.map((issue) => (
                   <li key={issue.id} className="rounded-lg border border-white/[0.06] bg-white/[0.03] p-3">
                     <span className={cn("inline-block rounded px-2 py-0.5 text-[10px] font-bold uppercase", kindStyles(issue.kind))}>
-                      {issue.kind.replace(/_/g, " ")}
+                      {issue.kind.replace(/_/g, "")}
                     </span>
                     <p className="mt-2 text-white/80">{issue.message}</p>
                     {issue.duplicateRecordIds != null && issue.duplicateRecordIds.length > 0 ? (

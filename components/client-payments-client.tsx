@@ -237,7 +237,7 @@ export function ClientPaymentsClient({ cycles, paymentMethods }: Props) {
             ) : (
               <div className="space-y-4">
                 <p className="text-sm text-white/55">
-                  {kindLabel(selectedCycle.kind)} · {formatDateYmd(selectedCycle.period_start)} –{" "}
+                  {kindLabel(selectedCycle.kind)} · {formatDateYmd(selectedCycle.period_start)} –{""}
                   {formatDateYmd(selectedCycle.period_end)}
                 </p>
 

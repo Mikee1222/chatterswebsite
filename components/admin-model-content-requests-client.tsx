@@ -38,7 +38,7 @@ function readOnlyStatusClass(status: ModelContentRequestStatus): string {
 }
 
 function typeLabel(type: ModelContentRequestType): string {
-  return type.replace(/_/g, " ");
+  return type.replace(/_/g, "");
 }
 
 export function AdminModelContentRequestsClient({ initialRows, modelNameById }: Props) {
@@ -246,7 +246,7 @@ export function AdminModelContentRequestsClient({ initialRows, modelNameById }: 
                     {typeLabel(r.type)}
                   </span>
                   <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${listStatusBadge(r.status)}`}>
-                    {r.status.replace(/_/g, " ")}
+                    {r.status.replace(/_/g, "")}
                   </span>
                 </div>
                 <span className="shrink-0 text-xs text-white/30">{timeAgo(r.created_at)}</span>
@@ -271,7 +271,7 @@ export function AdminModelContentRequestsClient({ initialRows, modelNameById }: 
                   {typeLabel(selected.type)}
                 </span>
                 <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${listStatusBadge(selected.status)}`}>
-                  {selected.status.replace(/_/g, " ")}
+                  {selected.status.replace(/_/g, "")}
                 </span>
               </div>
               <button
@@ -359,7 +359,7 @@ export function AdminModelContentRequestsClient({ initialRows, modelNameById }: 
               <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                 <span className="text-xs text-white/40">Status:</span>
                 <span className={`text-sm font-semibold capitalize ${readOnlyStatusClass(selected.status)}`}>
-                  {selected.status.replace(/_/g, " ")}
+                  {selected.status.replace(/_/g, "")}
                 </span>
               </div>
             )}

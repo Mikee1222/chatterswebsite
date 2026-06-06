@@ -60,13 +60,13 @@ export function getEventTag(eventType: NotificationEventType): string {
 export function getTitleEmoji(eventType: NotificationEventType): string {
   switch (eventType) {
     case "shift_started":
-      return "⚡";
+      return "";
     case "shift_ended":
-      return "✅";
+      return "";
     case "break_started":
-      return "☕";
+      return "";
     case "break_ended":
-      return "✅";
+      return "";
     case "shift_late":
     case "shift_starting_soon":
     case "shift_no_show":
@@ -80,58 +80,58 @@ export function getTitleEmoji(eventType: NotificationEventType): string {
     case "tasks_not_started":
     case "custom_deadline_approaching":
     case "custom_overdue":
-      return "⚠️";
+      return "";
     case "model_live_started":
-      return "🔴";
+      return "";
     case "model_live_ended":
-      return "⏹️";
+      return "⏹";
     case "model_live_scheduled":
-      return "📅";
+      return "";
     case "model_content_scheduled":
     case "va_content_assigned":
     case "va_content_scheduled":
-      return "📅";
+      return "";
     case "model_content_completed":
     case "va_content_completed":
     case "task_completed":
     case "task_finished":
     case "task_shift_ended":
-      return "✔️";
+      return "";
     case "custom_request_created":
     case "custom_request_submitted":
-      return "💎";
+      return "";
     case "custom_approved":
-      return "🎬";
+      return "";
     case "custom_rejected":
     case "custom_declined":
-      return "❌";
+      return "";
     case "custom_edited":
-      return "✏️";
+      return "";
     case "custom_uploaded":
     case "custom_request_uploaded":
-      return "📤";
+      return "";
     case "custom_scheduled":
-      return "📅";
+      return "";
     case "form_submitted":
     case "availability_submitted":
-      return "📝";
+      return "";
     case "schedule_updated":
     case "weekly_availability_friday_reminder":
-      return "📅";
+      return "";
     case "whale_session_submitted":
     case "whale_registered":
     case "whale_assigned":
     case "whale_followup":
     case "whale_spent":
-      return "💰";
+      return "";
     case "user_created":
     case "role_changed":
     case "account_deleted":
     case "system_alert":
     case "account_update":
-      return "⚙️";
+      return "";
     case "daily_summary":
-      return "📊";
+      return "";
     default:
       return "";
   }

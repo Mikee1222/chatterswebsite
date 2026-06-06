@@ -1,5 +1,6 @@
 "use client";
 
+import { Calendar, Droplet } from "lucide-react";
 import Link from "next/link";
 import { ROUTES } from "@/lib/routes";
 import { formatDateLong } from "@/lib/format";
@@ -25,12 +26,12 @@ export function ModelPeriodHomeStatusCard({ periodTrackingEnabled, isInPeriod, d
     <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
       {isInPeriod ? (
         <p className="text-sm text-rose-400">
-          🩸 {t("periodTracker.homePeriodActive")}
+          <><Droplet className="inline h-3.5 w-3.5 text-rose-400" aria-hidden /> {t("periodTracker.homePeriodActive")}</>
           {dayNumber != null ? ` · ${t("periodTracker.homeDay", { day: dayNumber })}` : ""}
         </p>
       ) : nextExpected ? (
         <p className="text-sm text-white/50">
-          🗓 {t("periodTracker.homeNextPeriod")}{" "}
+          <><Calendar className="inline h-3.5 w-3.5 text-amber-300" aria-hidden /> {t("periodTracker.homeNextPeriod")}</>
           <span className="text-white/70">{formatDateLong(nextExpected, locale)}</span>
         </p>
       ) : (

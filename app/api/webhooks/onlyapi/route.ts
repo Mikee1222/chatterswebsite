@@ -10,13 +10,7 @@ export const runtime = "nodejs";
 const TABLE = OF_SUBSCRIBERS_TABLE;
 
 type OnlyApiWebhookEvent =
-  | "new_tip"
-  | "new_purchase"
-  | "renewed_subscriber"
-  | "expired_subscriber"
-  | "balance_increased"
-  | "new_message"
-  | "payout_completed";
+  | "new_tip"| "new_purchase"| "renewed_subscriber"| "expired_subscriber"| "balance_increased"| "new_message"| "payout_completed";
 
 type WebhookBody = {
   event?: string;

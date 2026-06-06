@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Clock3, Droplets, Loader2, Trash2 } from "lucide-react";
+import { Clock3, Droplets, Loader2, Trash2, Droplet } from "lucide-react";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { formatDateLong } from "@/lib/format";
 import type { ModelPeriodRecord } from "@/types";
@@ -611,14 +611,14 @@ export function ModelPeriodTrackerWidget({
                 {t("common.saving")}
               </span>
             ) : (
-              <>🩸 {t("periodTracker.myPeriodStartedToday")}</>
+              <><Droplet className="inline h-3.5 w-3.5 text-rose-400" aria-hidden /> {t("periodTracker.myPeriodStartedToday")}</>
             )}
           </button>
         )}
 
         {showSuccess ? (
           <div className="mt-2 flex items-center gap-2 rounded-xl border border-rose-500/25 bg-rose-500/15 px-4 py-3">
-            <span aria-hidden>🩸</span>
+<Droplet className="h-3.5 w-3.5 text-rose-400" aria-hidden />
             <p className="text-sm font-medium text-rose-400">{t("periodTracker.periodLoggedSuccessBanner")}</p>
           </div>
         ) : null}
@@ -630,7 +630,7 @@ export function ModelPeriodTrackerWidget({
               onClick={() => setHistoryOpen(true)}
               className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-medium text-white/85 hover:bg-white/[0.1]"
             >
-              📋 {t("periodTracker.history")}
+              {t("periodTracker.history")}
             </button>
             <button
               type="button"
@@ -640,7 +640,7 @@ export function ModelPeriodTrackerWidget({
               }}
               className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-medium text-white/85 hover:bg-white/[0.1]"
             >
-              📅 {t("periodTracker.differentDate")}
+              {t("periodTracker.differentDate")}
             </button>
           </div>
         ) : null}
@@ -705,7 +705,7 @@ export function ModelPeriodTrackerWidget({
         <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">📋 {t("periodTracker.history")}</h3>
+              <h3 className="text-lg font-semibold text-white">{t("periodTracker.history")}</h3>
               <button
                 type="button"
                 className="rounded-lg border border-white/15 px-3 py-1 text-sm text-white/70 hover:bg-white/5"

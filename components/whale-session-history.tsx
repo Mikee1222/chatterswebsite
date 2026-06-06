@@ -314,7 +314,7 @@ export function WhaleSessionHistory({ transactions }: { transactions: WhaleTrans
                   <td className="px-4 py-3.5 pl-5 font-semibold text-white/95">{displayName(tx.whale_username)}</td>
                   <td className="px-4 py-3.5 text-[13px] text-white/80">{displayName(tx.model_name)}</td>
                   <td className="px-4 py-3.5 text-right font-medium tabular-nums text-white/95">
-                    {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
+                    {tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{""}
                     <span className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
                       {tx.currency}
                     </span>

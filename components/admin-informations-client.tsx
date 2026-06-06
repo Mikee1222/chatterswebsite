@@ -818,19 +818,19 @@ export function AdminInformationsClient({
   > = {
     high: {
       title: "High",
-      emoji: "🔺",
+      emoji: "",
       border: "border-amber-500/25 bg-amber-500/[0.06]",
       header: "text-amber-200",
     },
     medium: {
       title: "Medium",
-      emoji: "◼️",
+      emoji: "◼",
       border: "border-sky-500/25 bg-sky-500/[0.06]",
       header: "text-sky-200",
     },
     low: {
       title: "Low",
-      emoji: "🔻",
+      emoji: "",
       border: "border-white/15 bg-white/[0.04]",
       header: "text-white/80",
     },
@@ -860,9 +860,9 @@ export function AdminInformationsClient({
             Manage mass message lists, model tiers, and pricing tables for chatters.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            {tabBtn("lists", "📋 Mass Lists")}
-            {tabBtn("tiers", "🎯 Model Tiers")}
-            {tabBtn("pricing", "💰 Pricing")}
+            {tabBtn("lists", "Mass Lists")}
+            {tabBtn("tiers", "Model Tiers")}
+            {tabBtn("pricing", "Pricing")}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 self-start">
@@ -894,7 +894,7 @@ export function AdminInformationsClient({
       {tab === "lists" ? (
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           <AdminSection
-            title="✅ Include"
+            title="Include"
             accent="include"
             lists={include}
             onEdit={openEdit}
@@ -902,7 +902,7 @@ export function AdminInformationsClient({
             onDelete={handleDelete}
           />
           <AdminSection
-            title="❌ Exclude"
+            title="Exclude"
             accent="exclude"
             lists={exclude}
             onEdit={openEdit}
@@ -992,7 +992,7 @@ export function AdminInformationsClient({
                     : "border-white/10 bg-white/5 text-white/55 hover:text-white/80"
                 }`}
               >
-                {v === "all" ? "All" : v === "high" ? "🔺 High" : v === "medium" ? "◼️ Medium" : "🔻 Low"}
+                {v === "all" ? "All" : v === "high" ? "High" : v === "medium" ? "◼ Medium" : "Low"}
               </button>
             ))}
             <span className="mx-2 hidden h-4 w-px self-center bg-white/15 sm:inline" />
@@ -1022,7 +1022,7 @@ export function AdminInformationsClient({
               return (
                 <div key={mt}>
                   <h3 className="mb-3 text-sm font-bold uppercase tracking-wide text-white/70">
-                    {mt === "high" ? "🔺 High" : mt === "medium" ? "◼️ Medium" : "🔻 Low"} tier models
+                    {mt === "high" ? "High" : mt === "medium" ? "◼ Medium" : "Low"} tier models
                   </h3>
                   <div className="space-y-6">
                     {SPENDER_ORDER.map((st) => {
@@ -1091,7 +1091,7 @@ export function AdminInformationsClient({
           </div>
 
           <section>
-            <h3 className="mb-3 text-lg font-bold text-white">⚡ Special Prices</h3>
+            <h3 className="mb-3 text-lg font-bold text-white">Special Prices</h3>
             <div className="grid gap-3 md:grid-cols-2">
               {pricingSpecials.length === 0 ? (
                 <p className="text-sm text-white/40">No specials.</p>
@@ -1153,7 +1153,7 @@ export function AdminInformationsClient({
                 <FormInput
                   value={form.emoji}
                   onChange={(e) => setForm((f) => ({ ...f, emoji: e.target.value }))}
-                  placeholder="🐋"
+                  placeholder=""
                   className="max-w-[4.5rem] text-center text-lg"
                 />
               </div>

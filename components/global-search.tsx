@@ -161,7 +161,7 @@ export function GlobalSearch() {
                 {data && data.models.length > 0 ? (
                   <section>
                     <h3 className="flex items-center gap-2 px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      <span aria-hidden>👤</span> Models
+                      <UserRound className="h-4 w-4" aria-hidden /> Models
                     </h3>
                     <ul className="space-y-1">
                       {data.models.map((r) => (
@@ -190,7 +190,7 @@ export function GlobalSearch() {
                 {data && data.whales.length > 0 ? (
                   <section>
                     <h3 className="flex items-center gap-2 px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      <span aria-hidden>🐋</span> Whales
+                      <Fish className="h-4 w-4" aria-hidden /> Whales
                     </h3>
                     <ul className="space-y-1">
                       {data.whales.map((r) => (
@@ -219,7 +219,7 @@ export function GlobalSearch() {
                 {data && data.customs.length > 0 ? (
                   <section>
                     <h3 className="flex items-center gap-2 px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      <span aria-hidden>📝</span> Custom requests
+                      <FileText className="h-4 w-4" aria-hidden /> Custom requests
                     </h3>
                     <ul className="space-y-1">
                       {data.customs.map((r) => (
@@ -250,7 +250,7 @@ export function GlobalSearch() {
                 {data && data.users.length > 0 ? (
                   <section>
                     <h3 className="flex items-center gap-2 px-2 pb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      <span aria-hidden>👥</span> Users
+                      <Users className="h-4 w-4" aria-hidden /> Users
                     </h3>
                     <ul className="space-y-1">
                       {data.users.map((r) => (

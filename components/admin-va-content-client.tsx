@@ -317,8 +317,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               <div className="min-w-0 flex-1">
                 <Dialog.Title className="text-lg font-semibold text-white">Create new assignments</Dialog.Title>
                 <Dialog.Description className="mt-2 text-sm leading-relaxed text-white/55">
-                  In the app, new VA content rows are created by accounts with the{" "}
-                  <span className="font-medium text-white/75">Virtual Assistant</span> role from their{" "}
+                  In the app, new VA content rows are created by accounts with the{""}
+                  <span className="font-medium text-white/75">Virtual Assistant</span> role from their{""}
                   <span className="font-medium text-white/75">Content assignments</span> workspace (the form posts as
                   that VA user). Admins and managers can still add or edit rows in Airtable if needed.
                 </Dialog.Description>
@@ -334,7 +334,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               </Dialog.Close>
             </div>
             <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/45">
-              VA path (sign in as a VA):{" "}
+              VA path (sign in as a VA):{""}
               <span className="font-mono text-white/65">{ROUTES.va.contentAssignments}</span>
             </p>
             <div className="mt-5 flex justify-end">
@@ -585,7 +585,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
 
         <div className="mt-4 flex flex-col gap-3 border-t border-white/[0.08] pt-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-sm text-white/55">
-            Showing <span className="font-semibold text-white/90">{filteredRows.length}</span> of{" "}
+            Showing <span className="font-semibold text-white/90">{filteredRows.length}</span> of{""}
             <span className="font-semibold text-white/90">{rows.length}</span> assignments
           </p>
           {filtersActive ? (

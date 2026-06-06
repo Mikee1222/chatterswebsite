@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Search } from "lucide-react";
+import { Search, Users, UserRound } from "lucide-react";
 import { formatDateTimeAthens } from "@/lib/format";
 import type { MistakeReasonCategory, MistakeRecord } from "@/services/chatter-mistakes";
 
@@ -14,7 +14,7 @@ const filterFieldClass =
 
 const SEVERITY_CONFIG = {
   High: {
-    emoji: "🔴",
+    emoji: "",
     label: "High severity",
     weight: "Major mistake",
     description: "Serious impact on performance and client experience",
@@ -22,7 +22,7 @@ const SEVERITY_CONFIG = {
     barWidth: "w-full",
   },
   Medium: {
-    emoji: "🟠",
+    emoji: "",
     label: "Medium severity",
     weight: "Moderate mistake",
     description: "Notable impact on quality and client satisfaction",
@@ -30,7 +30,7 @@ const SEVERITY_CONFIG = {
     barWidth: "w-2/3",
   },
   Low: {
-    emoji: "🟡",
+    emoji: "",
     label: "Low severity",
     weight: "Minor mistake",
     description: "Small impact, easy to improve",
@@ -43,9 +43,9 @@ const SEVERITY_CONFIG = {
 >;
 
 const SEVERITY_LEGEND_ITEMS = [
-  { cat: "Low" as const, emoji: "🟡", pts: "5 pts", bar: "w-1/3 bg-yellow-500" },
-  { cat: "Medium" as const, emoji: "🟠", pts: "10 pts", bar: "w-2/3 bg-amber-500" },
-  { cat: "High" as const, emoji: "🔴", pts: "20 pts", bar: "w-full bg-red-500" },
+  { cat: "Low" as const, emoji: "", pts: "5 pts", bar: "w-1/3 bg-yellow-500" },
+  { cat: "Medium" as const, emoji: "", pts: "10 pts", bar: "w-2/3 bg-amber-500" },
+  { cat: "High" as const, emoji: "", pts: "20 pts", bar: "w-full bg-red-500" },
 ];
 
 export function ChatterMistakesClient({ initialMistakes }: Props) {
@@ -241,7 +241,7 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
                           : "border-yellow-500/25 bg-yellow-500/15 text-yellow-400"
                     }`}
                   >
-                    {m.reason_category === "High" ? "🔴" : m.reason_category === "Medium" ? "🟠" : "🟡"}
+                    {m.reason_category === "High" ? "" : m.reason_category === "Medium" ? "" : ""}
                     {m.reason_category}
                   </span>
 
@@ -281,9 +281,9 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
                   })()}
 
                   <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/40">
-                    <span>📅 {formatDateTimeAthens(m.mistake_date)}</span>
-                    <span>🎭 {m.model_name}</span>
-                    <span>👤 @{m.sub_username}</span>
+                    <span>{formatDateTimeAthens(m.mistake_date)}</span>
+                    <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" aria-hidden />{m.model_name}</span>
+                    <span className="inline-flex items-center gap-1"><UserRound className="h-3.5 w-3.5" aria-hidden />@{m.sub_username}</span>
                   </div>
 
                   {m.admin_notes ? (

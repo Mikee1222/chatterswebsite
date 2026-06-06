@@ -23,8 +23,7 @@ export async function GET(req: Request) {
       const pick = users
         .filter(
           (u) =>
-            (u.role === "chatter" || u.role === "virtual_assistant") && (u.status ?? "").toLowerCase() === "active"
-        )
+            (u.role === "chatter" || u.role === "virtual_assistant") && (u.status ?? "").toLowerCase() === "active")
         .map((u) => ({
           id: u.id,
           name: (u.full_name ?? "").trim() || u.email || u.id,
@@ -94,10 +93,9 @@ export async function POST(req: Request) {
   try {
     const { id, record } = await createFineBonus(input);
     const amt = record.amount.toFixed(2);
-    const title = parsed.data.type === "bonus" ? "🎉 Bonus added!" : "⚠️ Fine issued";
+    const title = parsed.data.type === "bonus" ? " Bonus added!" : " Fine issued";
     const bodyText =
-      parsed.data.type === "bonus"
-        ? `You received a €${amt} bonus: ${parsed.data.reason}`
+      parsed.data.type === "bonus"? `You received a €${amt} bonus: ${parsed.data.reason}`
         : `A €${amt} fine was applied: ${parsed.data.reason}`;
 
     await notify({

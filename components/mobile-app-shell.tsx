@@ -451,7 +451,7 @@ export function MobileAppShell({
                 ) : (
                   <span className="sr-only">
                     {item.label}
-                    {item.beta ? " (beta)" : ""}
+                    {item.beta ? "(beta)" : ""}
                   </span>
                 )}
               </>

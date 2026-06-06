@@ -29,8 +29,7 @@ function parseMetadata(raw: unknown): NotificationMetadataItem[] | undefined {
     if (!Array.isArray(parsed)) return undefined;
     return parsed.filter(
       (x): x is NotificationMetadataItem =>
-        x != null && typeof x === "object" && typeof (x as NotificationMetadataItem).label === "string" && typeof (x as NotificationMetadataItem).value === "string"
-    );
+        x != null && typeof x === "object" && typeof (x as NotificationMetadataItem).label === "string" && typeof (x as NotificationMetadataItem).value === "string");
   } catch {
     return undefined;
   }
@@ -86,8 +85,7 @@ export async function createNotification(fields: {
   }
 
   const notificationId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  // Only include fields that exist in the Airtable notifications table. Do not send "metadata"
-  // unless the table has a Long text column named "metadata" (Airtable returns Unknown field name otherwise).
+  // Only include fields that exist in the Airtable notifications table. Do not send "metadata"// unless the table has a Long text column named "metadata" (Airtable returns Unknown field name otherwise).
   const payload: Record<string, unknown> = {
     [NOTIFICATION_FIELDS.notification_id]: notificationId,
     [NOTIFICATION_FIELDS.user_id]: fields.user_id,
@@ -245,8 +243,7 @@ export async function findExistingNotification(
     {${NOTIFICATION_FIELDS.user_id}} = "${escapedUser}",
     {${NOTIFICATION_FIELDS.entity_type}} = "${escapedEntityType}",
     {${NOTIFICATION_FIELDS.entity_id}} = "${escapedEntityId}",
-    {${NOTIFICATION_FIELDS.event_type}} = "${escapedEvent}"
-  )`;
+    {${NOTIFICATION_FIELDS.event_type}} = "${escapedEvent}")`;
   const { records } = await listRecords<Fields>(NOTIFICATIONS_TABLE, {
     filterByFormula: formula,
     pageSize: 1,

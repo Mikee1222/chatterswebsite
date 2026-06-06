@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bell, Check, ClipboardList, Clock, Pencil, Plus, Trash2, Users, X } from "lucide-react";
+import { Bell, Check, ClipboardList, Clock, Pencil, Plus, Trash2, Users, X, ImageIcon, Camera, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
@@ -227,7 +227,7 @@ function StatusBadge({ status }: { status: VaTaskStatus }) {
           : "border border-white/15 bg-white/10 text-white/65";
   return (
     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
-      {status.replace(/_/g, " ")}
+      {status.replace(/_/g, "")}
     </span>
   );
 }
@@ -944,12 +944,12 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         >
                           <Clock className="h-3 w-3 shrink-0" aria-hidden />
                           {formatDateTimeAthens(task.due_date)}
-                          {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
+                          {isPastDue(task.due_date) && task.status !== "done" ? "· Overdue" : ""}
                         </span>
                       ) : null}
                       <span>{assignedLabel(task)}</span>
                       {(task.assigned_model_names ?? []).length > 0 ? (
-                        <span className="text-rose-400/70">🎭 {(task.assigned_model_names ?? []).join(", ")}</span>
+                        <span className="inline-flex items-center gap-1 text-rose-400/70"><Users className="h-3.5 w-3.5" aria-hidden />{(task.assigned_model_names ?? []).join(", ")}</span>
                       ) : null}
                       {task.reminder_minutes_before != null ? (
                         <span>{formatReminderLabel(task.reminder_minutes_before)}</span>
@@ -1073,7 +1073,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   <div className="flex flex-wrap items-center gap-2 px-5 pb-2 text-xs text-white/30">
                                     {phase.start_time ? (
                                       <span className="flex items-center gap-1">
-                                        ▶{" "}
+                                        ▶{""}
                                         {new Date(phase.start_time).toLocaleString("el-GR", {
                                           timeZone: "Europe/Athens",
                                           day: "numeric",
@@ -1086,7 +1086,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                     {phase.start_time && phase.end_time ? <span>→</span> : null}
                                     {phase.end_time ? (
                                       <span className="flex items-center gap-1">
-                                        ⏹{" "}
+                                        ⏹{""}
                                         {new Date(phase.end_time).toLocaleString("el-GR", {
                                           timeZone: "Europe/Athens",
                                           day: "numeric",
@@ -1195,7 +1195,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   </div>
                                   <div className="flex min-w-[7rem] max-w-[10rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                     <span className="shrink-0 text-xs" aria-hidden>
-                                      🎭
+<Users className="h-4 w-4 text-rose-400/70" aria-hidden />
                                     </span>
                                     <select
                                       value={phase.assigned_model_id ?? ""}
@@ -1228,7 +1228,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                     >
                                       <option value="Greek">🇬🇷 Greek</option>
                                       <option value="USA">🇺🇸 USA</option>
-                                      <option value="Global">🌍 Global</option>
+                                      <option value="Global">Global</option>
                                     </select>
                                   </div>
                                 </div>
@@ -1280,7 +1280,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                                 rel="noreferrer"
                                                 className="flex items-center gap-1.5 text-xs text-blue-400 transition-colors hover:text-blue-300"
                                               >
-                                                🖼 View proof
+                                                <span className="inline-flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" aria-hidden />View proof</span>
                                               </a>
                                               <a href={item.screenshot[0].url} target="_blank" rel="noreferrer">
                                                 <img
@@ -1293,12 +1293,12 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                           ) : null}
                                           {item.requires_screenshot && item.status !== "completed" ? (
                                             <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/50">
-                                              📸 Requires proof
+                                              <span className="inline-flex items-center gap-1"><Camera className="h-3.5 w-3.5" aria-hidden />Requires proof</span>
                                             </p>
                                           ) : null}
                                           {item.status === "completed" && item.completed_by_va_name ? (
                                             <p className="mt-0.5 text-xs text-white/20">
-                                              ✓ {item.completed_by_va_name}
+                                              {item.completed_by_va_name}
                                               {item.completed_at
                                                 ? ` · ${new Date(item.completed_at).toLocaleString("el-GR", {
                                                     timeZone: "Europe/Athens",
@@ -1313,7 +1313,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                         </div>
                                         <div className="flex shrink-0 items-center gap-2 self-center">
                                           <label className="flex cursor-pointer items-center gap-2 opacity-0 transition-opacity group-hover:opacity-100">
-                                            <span className="text-xs text-white/30">📸</span>
+                                            <Camera className="h-3.5 w-3.5 text-white/30" aria-hidden />
                                             <button
                                               type="button"
                                               onClick={() =>
@@ -1435,7 +1435,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s.replace(/_/g, " ")}
+              {s.replace(/_/g, "")}
             </option>
           ))}
         </select>
@@ -1476,7 +1476,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                     <div className="h-2 w-2 rounded-full bg-purple-400/50" />
                     <span className="text-sm font-semibold text-white/50">{group.title}</span>
                     <span className="rounded-full border border-purple-500/20 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
-                      🔄 Recurring
+                       Recurring
                     </span>
                     <span className="ml-auto text-xs text-white/25">Waiting for next spawn...</span>
                   </div>
@@ -1528,7 +1528,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         ) : null}
                         {histTask.completed_at ? (
                           <p className="text-xs text-green-400/50">
-                            ✓{" "}
+                            {""}
                             {new Date(histTask.completed_at).toLocaleString("el-GR", {
                               timeZone: "Europe/Athens",
                               day: "numeric",
@@ -1571,7 +1571,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
               <div>
-                <SectionLabel icon="👥" label="Assignment" />
+                <SectionLabel icon="" label="Assignment" />
                 <div className="mb-3 flex items-center gap-3">
                   <ModalToggle
                     value={assignAll}
@@ -1633,7 +1633,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                               : "border-white/10 bg-white/5 text-white/40 hover:bg-white/8",
                           )}
                         >
-                          <span className="text-base">🎭</span>
+                          <Users className="h-4 w-4 text-rose-400/70" aria-hidden />
                           {m.model_name}
                           {on ? <Check className="h-3 w-3" /> : null}
                         </button>
@@ -1646,7 +1646,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               <Divider />
 
               <div>
-                <SectionLabel icon="📋" label="Details" />
+                <SectionLabel icon="" label="Details" />
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">
@@ -1678,8 +1678,8 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
                       >
                         <option value="pending">⏳ Pending</option>
-                        <option value="in_progress">🔵 In Progress</option>
-                        <option value="done">✅ Done</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="done">Done</option>
                         <option value="skipped">⏭ Skipped</option>
                       </select>
                     </div>
@@ -1690,10 +1690,10 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         onChange={(e) => setPriority(e.target.value as VaTaskPriority)}
                         className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
                       >
-                        <option value="low">🟢 Low</option>
-                        <option value="normal">🔵 Normal</option>
-                        <option value="high">🟠 High</option>
-                        <option value="urgent">🔴 Urgent</option>
+                        <option value="low">Low</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">High</option>
+                        <option value="urgent">Urgent</option>
                       </select>
                     </div>
                   </div>
@@ -1703,7 +1703,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               <Divider />
 
               <div>
-                <SectionLabel icon="📅" label="Schedule" />
+                <SectionLabel icon="" label="Schedule" />
                 <div className="space-y-3">
                   <div>
                     <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">Due date &amp; time</label>
@@ -1815,7 +1815,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               <Divider />
 
               <div>
-                <SectionLabel icon="🔔" label="Reminder" />
+                <SectionLabel icon="" label="Reminder" />
                 <div className="flex flex-wrap gap-2">
                   {REMINDER_CHIPS.map((min) => (
                     <button
@@ -1840,7 +1840,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               <div>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <span className="text-base">⚡</span>
+                    <Zap className="h-4 w-4 text-amber-400" aria-hidden />
                     <p className="text-xs font-bold uppercase tracking-widest text-white/60">Phases</p>
                     {draftPhases.length > 0 ? (
                       <span className="flex h-5 w-5 items-center justify-center rounded-full border border-pink-500/30 bg-pink-500/20 text-xs font-bold text-pink-400">
@@ -1863,7 +1863,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                     onClick={addDraftPhase}
                     className="flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed border-white/10 py-5 text-sm text-white/20 transition-all hover:border-pink-500/30 hover:text-pink-400/50"
                   >
-                    <span className="text-2xl">⚡</span>
+                    <Zap className="h-6 w-6 text-amber-400" aria-hidden />
                     <span>Add phases to this task</span>
                     <span className="text-xs text-white/15">Optional — break task into steps with deadlines</span>
                   </button>
@@ -1983,7 +1983,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                             >
                               <option value="Greek">🇬🇷 Greek</option>
                               <option value="USA">🇺🇸 USA</option>
-                              <option value="Global">🌍 Global</option>
+                              <option value="Global">Global</option>
                             </select>
                           </div>
                         </div>
@@ -2022,7 +2022,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   )}
                                 />
                               </button>
-                              <span className="shrink-0 text-xs text-white/25">📸</span>
+                              <Camera className="h-3.5 w-3.5 shrink-0 text-white/25" aria-hidden />
                               <button
                                 type="button"
                                 onClick={() => removeDraftPhaseItem(phase.tempId, item.tempId)}

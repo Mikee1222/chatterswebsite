@@ -337,7 +337,7 @@ export function AdminSubmissionsClient({ allSubmissions, clients, billingCycles 
                               : "yellow"
                         }
                       >
-                        {submission.status.replace("_", " ")}
+                        {submission.status.replace("_", "")}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">

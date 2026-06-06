@@ -82,13 +82,9 @@ export async function runFridayWeeklyAvailabilityReminders(): Promise<FridayAvai
   }
   const slot: "morning" | "evening" = isMorning ? "morning" : "evening";
   const title =
-    slot === "morning"
-      ? "📅 Submit your weekly availability"
-      : "⏰ Last chance: Weekly availability";
+    slot === "morning"? " Submit your weekly availability": "⏰ Last chance: Weekly availability";
   const body =
-    slot === "morning"
-      ? "Don't forget to submit your availability for next week. Deadline is tonight."
-      : "Tonight is the deadline. Please submit your availability for next week now.";
+    slot === "morning"? "Don't forget to submit your availability for next week. Deadline is tonight.": "Tonight is the deadline. Please submit your availability for next week now.";
 
   const nextWeekMonday = addWeeks(getWeekStartYmdInAthens(0), 1);
   let reminders_sent = 0;
@@ -99,8 +95,7 @@ export async function runFridayWeeklyAvailabilityReminders(): Promise<FridayAvai
     const uid = u.id;
     if (!uid) continue;
     const requests =
-      u.role === "chatter"
-        ? await getRequestsForWeek(nextWeekMonday, uid)
+      u.role === "chatter"? await getRequestsForWeek(nextWeekMonday, uid)
         : await getRequestsForWeekVa(nextWeekMonday, uid);
     if (requests.length > 0) continue;
     const entityId = `friday_avail_${slot}:${nextWeekMonday}:${uid}`;
@@ -137,8 +132,7 @@ export async function runSundayAvailabilityReminders(): Promise<SundayAvailabili
     const uid = u.id;
     if (!uid) continue;
     const requests =
-      u.role === "chatter"
-        ? await getRequestsForWeek(availabilityWeekStartMonday, uid)
+      u.role === "chatter"? await getRequestsForWeek(availabilityWeekStartMonday, uid)
         : await getRequestsForWeekVa(availabilityWeekStartMonday, uid);
     if (requests.length > 0) continue;
     const entityId = `availability_remind:${availabilityWeekStartMonday}:${uid}`;
@@ -313,7 +307,7 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⚠️ Task overdue",
+        title: " Task overdue",
         body: `Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
@@ -326,7 +320,7 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: `⚠️ VA task overdue: ${task.title}`,
+        title: ` VA task overdue: ${task.title}`,
         body: `${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue_admin:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
@@ -456,7 +450,7 @@ export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestA
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.CUSTOM_OVERDUE,
       priority: NOTIFICATION_PRIORITY.HIGH,
-      title: `⚠️ Custom request stuck: ${request.request_title}`,
+      title: ` Custom request stuck: ${request.request_title}`,
       body: `Request from ${request.chatter_name || "Unknown chatter"} has been in "${request.model_status}" status for 2+ days. Fan: ${request.fan_username || "Unknown fan"}.`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: `custom_stuck_admin:${request.id}`,

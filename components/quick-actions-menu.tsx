@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { DollarSign, Fish, Target } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 type QuickActionsMenuProps = {
@@ -26,7 +27,9 @@ export function QuickActionsMenu({ onClose, openAddWhale, openTransactionForm }:
           <div className="grid gap-3">
             <button onClick={() => { onClose(); openAddWhale(); }} className="group">
               <div className="flex items-center gap-4 rounded-2xl border border-pink-500/20 bg-gradient-to-br from-pink-500/10 to-pink-600/5 p-4 transition-all hover:border-pink-500/40 hover:from-pink-500/15">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-pink-500/20 text-2xl">🐋</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-pink-500/20">
+                  <Fish className="h-6 w-6 text-pink-300" aria-hidden />
+                </div>
                 <div className="flex-1 text-left">
                   <p className="font-medium text-white">Add new whale</p>
                   <p className="text-sm text-white/40">Track a new subscriber</p>
@@ -39,7 +42,9 @@ export function QuickActionsMenu({ onClose, openAddWhale, openTransactionForm }:
 
             <button onClick={() => { onClose(); openTransactionForm(); }} className="group">
               <div className="flex items-center gap-4 rounded-2xl border border-green-500/20 bg-gradient-to-br from-green-500/10 to-green-600/5 p-4 transition-all hover:border-green-500/40 hover:from-green-500/15">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/20 text-2xl">💰</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/20">
+                  <DollarSign className="h-6 w-6 text-green-300" aria-hidden />
+                </div>
                 <div className="flex-1 text-left">
                   <p className="font-medium text-white">Log transaction</p>
                   <p className="text-sm text-white/40">Record whale spending</p>
@@ -52,7 +57,9 @@ export function QuickActionsMenu({ onClose, openAddWhale, openTransactionForm }:
 
             <button onClick={() => { onClose(); router.push("/request-custom"); }} className="group">
               <div className="flex items-center gap-4 rounded-2xl border border-purple-500/20 bg-gradient-to-br from-purple-500/10 to-purple-600/5 p-4 transition-all hover:border-purple-500/40 hover:from-purple-500/15">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/20 text-2xl">🎯</div>
+                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-purple-500/20">
+                  <Target className="h-6 w-6 text-purple-300" aria-hidden />
+                </div>
                 <div className="flex-1 text-left">
                   <p className="font-medium text-white">Request custom</p>
                   <p className="text-sm text-white/40">Submit custom content request</p>

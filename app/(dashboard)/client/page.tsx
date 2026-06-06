@@ -175,7 +175,7 @@ export default async function ClientHomePage() {
             <div className="mt-5 space-y-3 text-sm text-gray-300">
               {chattingCycle.period_start && chattingCycle.period_end && (
                 <p className="text-xs text-gray-500">
-                  Week {formatDateEuropean(chattingCycle.period_start)} –{" "}
+                  Week {formatDateEuropean(chattingCycle.period_start)} –{""}
                   {formatDateEuropean(chattingCycle.period_end)}
                 </p>
               )}
@@ -183,7 +183,7 @@ export default async function ClientHomePage() {
                 const dueWindow = getChattingWeeklyDueWindow(chattingCycle.period_end);
                 return dueWindow ? (
                   <p className="text-xs text-gray-500">
-                    Due window: {formatDateEuropean(dueWindow.dueStart)} –{" "}
+                    Due window: {formatDateEuropean(dueWindow.dueStart)} –{""}
                     {formatDateEuropean(dueWindow.dueEnd)}
                   </p>
                 ) : null;

@@ -49,7 +49,7 @@ export async function updateCustomStatusAction(
           user_id: updated.requested_by_chatter_id,
           event_type: "custom_status_changed",
           priority: "normal",
-          title: "📩 Custom updated",
+          title: " Custom updated",
           body: `Status: ${admin_status}.`,
           entity_type: "custom_request",
           entity_id: recordId,
@@ -62,7 +62,7 @@ export async function updateCustomStatusAction(
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.CUSTOM_REQUEST_UPDATED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "📝 Custom request updated",
+        title: " Custom request updated",
         body: `${customTitle} status changed to ${admin_status}.`,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: recordId,

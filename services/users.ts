@@ -92,8 +92,7 @@ export async function getActiveModelUserAirtableIdByLinkedModelRecordId(
     (x) =>
       x.role === "model" &&
       x.linked_model_id === id &&
-      (x.status ?? "").toLowerCase() === "active"
-  );
+      (x.status ?? "").toLowerCase() === "active");
   return found?.id ?? null;
 }
 

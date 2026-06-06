@@ -26,8 +26,7 @@ export function getSessionJwtSecret(): string {
   if (secret && secret.length >= 32) return secret;
   if (process.env.NODE_ENV === "production") {
     throw new Error(
-      "SESSION_JWT_SECRET must be set in production (min 32 characters). Set it in your environment or Cloudflare Pages vars."
-    );
+      "SESSION_JWT_SECRET must be set in production (min 32 characters). Set it in your environment or Cloudflare Pages vars.");
   }
   return DEV_FALLBACK_SECRET;
 }

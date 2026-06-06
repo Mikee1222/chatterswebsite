@@ -19,8 +19,7 @@ function isModelStatus(v: string): v is CustomRequestModelStatus {
     v === "in_progress" ||
     v === "completed" ||
     v === "uploaded" ||
-    v === "declined"
-  );
+    v === "declined");
 }
 
 async function linkedModelIdForModelSession(): Promise<string | null> {

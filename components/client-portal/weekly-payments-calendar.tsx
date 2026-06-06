@@ -153,7 +153,7 @@ export function ClientWeeklyPaymentsCalendar({
                   : "border-white/10 bg-white/5 text-gray-400 hover:border-pink-400/30 hover:text-gray-200"
               )}
             >
-              {status.replace("_", " ")}
+              {status.replace("_", "")}
             </button>
           ))}
         </div>

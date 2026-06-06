@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Check, Clock, ExternalLink, ListChecks, StickyNote, X } from "lucide-react";
+import { Check, Clock, ExternalLink, ListChecks, StickyNote, X, Smartphone, Camera, ImageIcon, ClipboardList } from "lucide-react";
 import { formatDateTimeAthens } from "@/lib/format";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { selectOptionClass } from "@/components/ui/form";
@@ -63,7 +63,7 @@ function StatusBadge({ status }: { status: VaTaskStatus }) {
           : "border border-sky-500/30 bg-sky-500/15 text-sky-200";
   return (
     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
-      {status.replace(/_/g, " ")}
+      {status.replace(/_/g, "")}
     </span>
   );
 }
@@ -86,14 +86,14 @@ const SOCIAL_COLORS: Record<string, string> = {
 };
 
 const SOCIAL_ICONS: Record<string, string> = {
-  Instagram: "📸",
-  Facebook: "👥",
-  TikTok: "🎵",
-  Twitter: "🐦",
-  YouTube: "▶️",
-  Snapchat: "👻",
-  Telegram: "✈️",
-  GetMyLinks: "🔗",
+  Instagram: "",
+  Facebook: "",
+  TikTok: "",
+  Twitter: "",
+  YouTube: "▶",
+  Snapchat: "",
+  Telegram: "",
+  GetMyLinks: "",
 };
 
 export function VaTasksClient({ tasks: initialTasks }: Props) {
@@ -357,7 +357,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                         <PriorityBadge priority={task.priority} />
                         {task.is_recurring ? (
                           <span className="inline-flex items-center rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
-                            🔄{" "}
+                            {""}
                             {task.recurrence_interval != null && task.recurrence_interval > 1
                               ? `Every ${task.recurrence_interval} ${
                                   task.recurrence_type === "daily"
@@ -388,7 +388,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                         {task.due_date ? (
                           <span className={isPastDue(task.due_date) && task.status !== "done" ? "text-red-400" : ""}>
                             {formatDateTimeAthens(task.due_date)}
-                            {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
+                            {isPastDue(task.due_date) && task.status !== "done" ? "· Overdue" : ""}
                           </span>
                         ) : (
                           <span>No due date</span>
@@ -452,7 +452,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                             {accs.length > 0 ? (
                               <div className="mb-5">
                                 <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/25">
-                                  <span aria-hidden>📱</span>
+                                  <Smartphone className="h-4 w-4" aria-hidden />
                                   {phase.assigned_model_name?.trim() || "Creator"} — Quick links
                                 </p>
                                 <div className="flex flex-wrap gap-2">
@@ -476,13 +476,13 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                             if (!acc.account_link?.trim()) e.preventDefault();
                                           }}
                                         >
-                                          <span className="text-2xl">{SOCIAL_ICONS[plat] ?? "📱"}</span>
+                                          <span className="text-2xl">{SOCIAL_ICONS[plat] ?? ""}</span>
                                           <div className="min-w-0">
                                             <p className="text-xs font-bold text-white">@{acc.username}</p>
                                             <p className="text-[10px]" style={{ color: `${color}aa` }}>
                                               {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
-                                              {" · "}
-                                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"}
+                                              {"· "}
+                                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : ""}
                                             </p>
                                           </div>
                                           <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
@@ -494,7 +494,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                               st === "shadowbanned" ? "bg-amber-500" : "bg-red-500",
                                             )}
                                           >
-                                            {st === "shadowbanned" ? "⚠️" : "🚫"}
+                                            {st === "shadowbanned" ? "" : ""}
                                           </div>
                                         ) : null}
                                         {st === "active" ? (
@@ -509,7 +509,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                             }}
                                             className="absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 opacity-0 transition-all hover:bg-amber-500/30 group-hover/acc:opacity-100"
                                           >
-                                            ⚠️ Report
+                                            Report
                                           </button>
                                         ) : null}
                                       </div>
@@ -561,7 +561,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                         <Clock className="h-3 w-3 shrink-0" aria-hidden />
                                         {schedStart ? (
                                           <span className="flex items-center gap-1">
-                                            ▶{" "}
+                                            ▶{""}
                                             {new Date(schedStart).toLocaleString("el-GR", {
                                               timeZone: "Europe/Athens",
                                               day: "numeric",
@@ -574,7 +574,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                         {schedStart && schedEnd ? <span className="text-white/20">→</span> : null}
                                         {schedEnd ? (
                                           <span className="flex items-center gap-1">
-                                            ⏹{" "}
+                                            ⏹{""}
                                             {new Date(schedEnd).toLocaleString("el-GR", {
                                               timeZone: "Europe/Athens",
                                               day: "numeric",
@@ -588,7 +588,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                     ) : null}
                                     {phase.region ? (
                                       <span className="text-xs text-white/25">
-                                        {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : "🌍"}{" "}
+                                        {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : ""}{""}
                                         {phase.region}
                                       </span>
                                     ) : null}
@@ -668,7 +668,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                       </p>
                                       {item.requires_screenshot && item.status !== "completed" ? (
                                         <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/60">
-                                          <span aria-hidden>📸</span>
+                                          <Camera className="h-4 w-4" aria-hidden />
                                           Screenshot required
                                         </p>
                                       ) : null}
@@ -679,11 +679,11 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                                           rel="noreferrer"
                                           className="mt-0.5 flex items-center gap-1 text-xs text-blue-400/70 hover:text-blue-400"
                                         >
-                                          🖼 View proof
+                                          <span className="inline-flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" aria-hidden />View proof</span>
                                         </a>
                                       ) : null}
                                       {item.status === "completed" && item.completed_by_va_name ? (
-                                        <p className="mt-0.5 text-xs text-white/20">✓ {item.completed_by_va_name}</p>
+                                        <p className="mt-0.5 text-xs text-white/20">{item.completed_by_va_name}</p>
                                       ) : null}
                                     </div>
                                     {item.status === "completed" ? (
@@ -768,7 +768,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                 <div className="rounded-2xl border border-purple-500/15 bg-white/[0.02] px-5 py-4">
                   <div className="flex items-center gap-3">
                     <span className="text-xl" aria-hidden>
-                      🔄
+                      
                     </span>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold text-white/50">{group.title}</p>
@@ -830,7 +830,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-xs text-green-400/40">
-                          ✓{" "}
+                          {""}
                           {histTask.completed_at
                             ? new Date(histTask.completed_at).toLocaleDateString("el-GR", {
                                 timeZone: "Europe/Athens",
@@ -841,7 +841,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                         </p>
                         {histTask.due_date ? (
                           <p className="text-xs text-white/20">
-                            Due{" "}
+                            Due{""}
                             {new Date(histTask.due_date).toLocaleDateString("el-GR", {
                               timeZone: "Europe/Athens",
                               day: "numeric",
@@ -964,7 +964,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
           <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Report shadowban</h3>
             <div className="mt-1 flex items-center gap-2">
-              <span className="text-xl">{SOCIAL_ICONS[shadowbanReportTarget.platform?.trim() ?? ""] ?? "📱"}</span>
+              <span className="text-xl">{SOCIAL_ICONS[shadowbanReportTarget.platform?.trim() ?? ""] ?? ""}</span>
               <p className="text-sm text-white/50">
                 @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
               </p>
@@ -992,7 +992,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                   />
                 ) : (
                   <>
-                    <p className="mb-1 text-2xl">📋</p>
+                    <p className="mb-1 flex justify-center"><ClipboardList className="h-8 w-8 text-white/30" aria-hidden /></p>
                     <p className="text-sm text-white/40">Paste (Ctrl+V) or click</p>
                   </>
                 )}
@@ -1070,7 +1070,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                     />
                   ) : (
                     <>
-                      <p className="mb-2 text-3xl">📷</p>
+                      <p className="mb-2 flex justify-center"><Camera className="h-10 w-10 text-white/30" aria-hidden /></p>
                       <p className="text-sm font-medium text-amber-400/80">Paste (Ctrl+V) or click to upload</p>
                       <p className="mt-1 text-xs text-white/25">Image from clipboard is accepted</p>
                     </>

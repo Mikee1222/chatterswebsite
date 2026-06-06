@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
+import { Calendar, Clock, Target } from "lucide-react";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
@@ -6,12 +8,12 @@ import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { daysRemainingYmd } from "@/lib/challenges";
 import { getAllChallengesWithProgress } from "@/services/challenges";
 
-const METRIC_ICON: Record<string, string> = {
-  transactions: "💰",
-  whales_added: "🐋",
-  shift_hours: "⏰",
-  customs_completed: "🎯",
-  whale_status_upgrades: "⬆️",
+const METRIC_ICON: Record<string, ReactNode> = {
+  transactions: null,
+  whales_added: null,
+  shift_hours: <Clock className="h-6 w-6" aria-hidden />,
+  customs_completed: null,
+  whale_status_upgrades: null,
 };
 
 export default async function ChallengesPage() {
@@ -31,8 +33,8 @@ export default async function ChallengesPage() {
 
       {rows.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 text-center">
-          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5 text-4xl">
-            🎯
+          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full border border-white/10 bg-white/5">
+            <Target className="h-10 w-10 text-white/40" aria-hidden />
           </div>
           <h3 className="mb-2 font-medium text-white/60">No active challenges</h3>
           <p className="text-sm text-white/30">Check back soon for new challenges!</p>
@@ -44,7 +46,7 @@ export default async function ChallengesPage() {
             const current = c.completed ? target : Math.min(target, c.current_value);
             const pct = Math.min(100, (current / target) * 100);
             const daysLeft = daysRemainingYmd(c.end_date, todayYmd);
-            const icon = METRIC_ICON[c.target_metric] ?? "✨";
+            const icon = METRIC_ICON[c.target_metric] ?? null;
             return (
               <li
                 key={c.id}
@@ -53,8 +55,8 @@ export default async function ChallengesPage() {
                 <div className="absolute inset-0 bg-gradient-to-br from-pink-500/0 via-pink-500/0 to-purple-500/0 transition-all duration-500 group-hover:from-pink-500/5 group-hover:to-purple-500/5" />
 
                 <div className="relative">
-                  <div className="absolute -left-2 -top-2 flex h-12 w-12 items-center justify-center rounded-full border border-pink-500/30 bg-gradient-to-br from-pink-500/20 to-purple-500/20 text-2xl">
-                    {icon}
+                  <div className="absolute -left-2 -top-2 flex h-12 w-12 items-center justify-center rounded-full border border-pink-500/30 bg-gradient-to-br from-pink-500/20 to-purple-500/20 text-pink-300">
+                    {icon ?? <Target className="h-6 w-6" aria-hidden />}
                   </div>
 
                   <div className="mb-3 flex items-start justify-between gap-3 pl-12">

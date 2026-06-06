@@ -862,7 +862,7 @@ export function ClientContentHub({ models }: Props) {
                   <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/45">
                     <span className="inline-flex items-center gap-1">
                       <CalendarClock className="h-3.5 w-3.5 text-pink-300/80" aria-hidden />
-                      Deadline:{" "}
+                      Deadline:{""}
                       <span className={cn("font-medium text-white/70", urgent && "text-pink-200")}>
                         {formatDateTimeUk(a.deadline)}
                       </span>
@@ -877,7 +877,7 @@ export function ClientContentHub({ models }: Props) {
 
                   {st === "scheduled" && a.scheduled_date ? (
                     <p className="mt-2 text-xs text-white/50">
-                      Scheduled for{" "}
+                      Scheduled for{""}
                       <span className="font-medium text-pink-200/95">
                         {formatDateTimeUk(a.scheduled_date)}
                       </span>
@@ -962,7 +962,7 @@ export function ClientContentHub({ models }: Props) {
                       tabIndex={0}
                       onClick={() => setDetailCustom(r)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
+                        if (e.key === "Enter" || e.key === "") {
                           e.preventDefault();
                           setDetailCustom(r);
                         }

@@ -7,11 +7,7 @@ import { addDays, WEEKLY_PROGRAM_DAY_OPTIONS } from "./weekly-program";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 
 export type ConflictType =
-  | "model_time_overlap"
-  | "chatter_overlap"
-  | "custom_overlap"
-  | "uncovered_model"
-  | "too_many_models";
+  | "model_time_overlap"| "chatter_overlap"| "custom_overlap"| "uncovered_model"| "too_many_models";
 
 export type Conflict = {
   type: ConflictType;

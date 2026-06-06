@@ -533,13 +533,13 @@ export function AdminWeeklyProgramVaClient({
               <p className="font-semibold text-amber-200">Conflict summary</p>
               <p className="mt-0.5 text-sm text-white/80">
                 {conflictSummary.modelConflicts > 0 && <span>{conflictSummary.modelConflicts} model conflict{conflictSummary.modelConflicts !== 1 ? "s" : ""}</span>}
-                {conflictSummary.modelConflicts > 0 && (conflictSummary.chatterOverlaps > 0 || conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && " · "}
+                {conflictSummary.modelConflicts > 0 && (conflictSummary.chatterOverlaps > 0 || conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && "· "}
                 {conflictSummary.chatterOverlaps > 0 && <span>{conflictSummary.chatterOverlaps} VA overlap{conflictSummary.chatterOverlaps !== 1 ? "s" : ""}</span>}
-                {conflictSummary.chatterOverlaps > 0 && (conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && " · "}
+                {conflictSummary.chatterOverlaps > 0 && (conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && "· "}
                 {conflictSummary.customOverlaps > 0 && <span>{conflictSummary.customOverlaps} overlapping custom shift{conflictSummary.customOverlaps !== 1 ? "s" : ""}</span>}
-                {conflictSummary.customOverlaps > 0 && (conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && " · "}
+                {conflictSummary.customOverlaps > 0 && (conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && "· "}
                 {conflictSummary.uncoveredCount > 0 && <span>{conflictSummary.uncoveredCount} uncovered model{conflictSummary.uncoveredCount !== 1 ? "s" : ""}</span>}
-                {conflictSummary.uncoveredCount > 0 && conflictSummary.tooManyModelsCount > 0 && " · "}
+                {conflictSummary.uncoveredCount > 0 && conflictSummary.tooManyModelsCount > 0 && "· "}
                 {conflictSummary.tooManyModelsCount > 0 && <span>{conflictSummary.tooManyModelsCount} too many models</span>}
               </p>
             </div>

@@ -197,7 +197,7 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
 
   async function handleEasyCopy(m: MistakeRecord) {
     const text = [
-      `⚠️ MISTAKE REPORT`,
+      `MISTAKE REPORT`,
       `Category: ${m.reason_category} | ${m.reason_label}`,
       `Chatter: ${m.chatter_name}`,
       `Model: ${m.model_name}`,
@@ -518,7 +518,7 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
                   onClick={() => void handleApprove(selected.id)}
                   className="w-full rounded-xl border border-green-500/30 bg-green-500/20 py-2.5 font-semibold text-green-400 hover:bg-green-500/30 disabled:opacity-50"
                 >
-                  ✅ Approve & deduct {pointsForSelected} pts
+                  Approve & deduct {pointsForSelected} pts
                 </button>
                 <button
                   type="button"
@@ -526,7 +526,7 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
                   onClick={() => void handleReject(selected.id)}
                   className="w-full rounded-xl border border-red-500/30 bg-red-500/20 py-2.5 font-semibold text-red-400 hover:bg-red-500/30 disabled:opacity-50"
                 >
-                  ❌ Reject
+                  Reject
                 </button>
               </div>
             ) : null}

@@ -218,7 +218,7 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
                     tabIndex={0}
                     onClick={() => setDetail(r)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
+                      if (e.key === "Enter" || e.key === "") {
                         e.preventDefault();
                         setDetail(r);
                       }

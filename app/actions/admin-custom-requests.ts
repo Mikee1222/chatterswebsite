@@ -112,8 +112,7 @@ export async function adminEditCustomRequest(input: z.infer<typeof editSchema>):
         price: parsed.data.price,
         deadline_requested: parsed.data.deadline_requested,
       },
-      "admin"
-    );
+      "admin");
     if (!res.ok) return res;
     revalidateCustomRequestSurfaces();
     return { ok: true };

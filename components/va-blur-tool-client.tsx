@@ -265,7 +265,7 @@ export function VABlurToolClient() {
           role="button"
           tabIndex={0}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+            if (e.key === "Enter" || e.key === "") fileInputRef.current?.click();
           }}
           onClick={() => fileInputRef.current?.click()}
           onDrop={handleDrop}
@@ -420,7 +420,7 @@ export function VABlurToolClient() {
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ")
+                      if (e.key === "Enter" || e.key === "")
                         setSelectedRegion(region.id === selectedRegion ? null : region.id);
                     }}
                     onClick={() => setSelectedRegion(region.id === selectedRegion ? null : region.id)}

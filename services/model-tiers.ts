@@ -39,8 +39,7 @@ function mapTierRecord(rec: AirtableRecord<TierFields>): ModelTierRecord {
   const n =
     typeof so === "number" && Number.isFinite(so)
       ? so
-      : typeof so === "string"
-        ? Number.parseInt(so, 10)
+      : typeof so === "string"? Number.parseInt(so, 10)
         : 0;
   return {
     id: rec.id,

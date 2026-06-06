@@ -65,7 +65,7 @@ export function RecordStatusBadge({ status }: { status: string }) {
 }
 
 export function UserRoleBadge({ role }: { role: UserRole }) {
-  const label = role.replace(/_/g, " ");
+  const label = role.replace(/_/g, "");
   const styles: Record<UserRole, string> = {
     chatter: "border-sky-500/30 bg-sky-500/12 text-sky-200",
     virtual_assistant: "border-fuchsia-500/30 bg-fuchsia-500/12 text-fuchsia-200",

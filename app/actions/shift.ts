@@ -475,8 +475,7 @@ export async function bulkAddModelsToShift(params: {
         eligible.length === 1
           ? names[0]
             ? `You're now chatting with ${names[0]}.`
-            : "A model was added to your shift."
-          : `${eligible.length} models were added to your shift.`;
+            : "A model was added to your shift.": `${eligible.length} models were added to your shift.`;
 
       try {
         await notify({
@@ -869,7 +868,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
               user_id: entry.chatter_id,
               event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
               priority: NOTIFICATION_PRIORITY.NORMAL,
-              title: "✅ Models added to your shift!",
+              title: " Models added to your shift!",
               body: `${namesLabel} ${bulk.added === 1 ? "has" : "have"} been added to your shift automatically.`,
               entity_type: NOTIFICATION_ENTITY.SHIFT,
               entity_id: targetShiftId,
@@ -884,7 +883,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
             await notifyAdmins({
               event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
               priority: NOTIFICATION_PRIORITY.NORMAL,
-              title: `🔄 Models auto-added: ${entry.chatter_name || "Chatter"}`,
+              title: ` Models auto-added: ${entry.chatter_name || "Chatter"}`,
               body: `${namesLabel} were added to ${(entry.chatter_name || "a chatter").trim()}'s shift from queue.`,
               entity_type: NOTIFICATION_ENTITY.SHIFT,
               entity_id: targetShiftId,
@@ -939,7 +938,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
             user_id: entry.chatter_id,
             event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
             priority: NOTIFICATION_PRIORITY.NORMAL,
-            title: "🚀 Shift started!",
+            title: " Shift started!",
             body: `Your shift started at ${formatTimeAthens(nowIso)} with ${namesLabel}. You're live!`,
             entity_type: NOTIFICATION_ENTITY.SHIFT,
             entity_id: result.shiftId,
@@ -954,7 +953,7 @@ async function processShiftQueueAfterShiftEnd(endedShiftId: string): Promise<voi
           await notifyAdmins({
             event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
             priority: NOTIFICATION_PRIORITY.NORMAL,
-            title: `🔄 Auto-shift: ${entry.chatter_name || "Chatter"}`,
+            title: ` Auto-shift: ${entry.chatter_name || "Chatter"}`,
             body: `${(entry.chatter_name || "A chatter").trim()}'s shift started automatically from queue at ${formatTimeAthens(nowIso)}. Models: ${namesLabel}`,
             entity_type: NOTIFICATION_ENTITY.SHIFT,
             entity_id: result.shiftId,

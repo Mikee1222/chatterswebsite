@@ -61,19 +61,16 @@ function fieldDefToApiPayload(
   if (isFallback && apiType === "number") {
     payload.options = { precision: 0 };
   } else if (apiType === "dateTime") {
-    const defOpts = "options" in def && def.options && typeof def.options === "object"
-      ? (def.options as Record<string, unknown>)
+    const defOpts = "options" in def && def.options && typeof def.options === "object"? (def.options as Record<string, unknown>)
       : {};
     payload.options = { ...DEFAULT_DATETIME_OPTIONS, ...defOpts };
   } else if (apiType === "date") {
     payload.options =
-      ("options" in def && def.options && typeof def.options === "object"
-        ? (def.options as Record<string, unknown>)
+      ("options" in def && def.options && typeof def.options === "object"? (def.options as Record<string, unknown>)
         : null) ?? DEFAULT_DATE_OPTIONS;
   } else if (apiType === "checkbox") {
     payload.options =
-      ("options" in def && def.options && typeof def.options === "object"
-        ? (def.options as Record<string, unknown>)
+      ("options" in def && def.options && typeof def.options === "object"? (def.options as Record<string, unknown>)
         : null) ?? DEFAULT_CHECKBOX_OPTIONS;
   } else if ("options" in def && def.options && typeof def.options === "object") {
     payload.options = def.options as Record<string, unknown>;

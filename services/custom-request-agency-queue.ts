@@ -38,7 +38,7 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
       user_id: modelUserId,
       event_type: NOTIFICATION_EVENT.CUSTOM_APPROVED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "✅ Custom request approved",
+      title: " Custom request approved",
       body: `A custom request "${customTitle}" has been approved. Please check your schedule.`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: recordId,
@@ -128,9 +128,7 @@ export async function agencyEditCustomRequest(
   if (input.price !== undefined) fields.price = input.price ?? "";
   if (input.deadline_requested !== undefined) {
     fields.deadline_requested =
-      input.deadline_requested == null || input.deadline_requested === ""
-        ? ""
-        : input.deadline_requested;
+      input.deadline_requested == null || input.deadline_requested === ""? "": input.deadline_requested;
   }
   if (Object.keys(fields).length === 0) {
     return { ok: false, error: "Nothing to update." };

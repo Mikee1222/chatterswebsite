@@ -72,7 +72,7 @@ function ProofFilePicker({
         role="button"
         tabIndex={0}
         onClick={openPicker}
-        onKeyDown={(e) => (e.key === "Enter" || e.key === " " ? openPicker() : null)}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === "" ? openPicker() : null)}
         onDragEnter={(e) => {
           e.preventDefault();
           e.stopPropagation();
@@ -102,7 +102,7 @@ function ProofFilePicker({
           isDragging
             ? "border-pink-500/50 ring-2 ring-pink-500/20"
             : "border-[#2f2f2f] hover:border-pink-500/50 focus-within:border-pink-500/50 focus-within:ring-1 focus-within:ring-pink-500/20",
-        ].join(" ")}
+        ].join("")}
       >
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-white/90">
@@ -993,7 +993,7 @@ export function PaymentForm({
               </div>
 
               <div className="mt-3 text-xs text-gray-500">
-                If you need to update your proof,{" "}
+                If you need to update your proof,{""}
                 {supportHref ? (
                   <Link href={supportHref} className="text-gray-300 underline hover:text-white">
                     contact support
@@ -1038,7 +1038,7 @@ export function PaymentForm({
         </p>
         {kind === "chatting_weekly" && (
           <p className="mt-1 text-sm text-gray-400">
-            Models:{" "}
+            Models:{""}
             {(() => {
               const ids = Array.from(
                 new Set(
@@ -1168,7 +1168,7 @@ export function PaymentForm({
                 </div>
                 {submissionStatus && (
                   <div className="text-xs text-yellow-200/70">
-                    Submission status: {submissionStatus.replace("_", " ")}
+                    Submission status: {submissionStatus.replace("_", "")}
                   </div>
                 )}
                 <Link
@@ -1381,7 +1381,7 @@ export function PaymentForm({
                   <span className="font-medium text-white">
                     {billingCycle.model_turnover
                       .toFixed(2)
-                      .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}{" "}
+                      .replace(/\B(?=(\d{3})+(?!\d))/g, ",")}{""}
                     {cycleCurrency}
                   </span>
                 </div>
@@ -1477,7 +1477,7 @@ export function PaymentForm({
 
           {amountConversionInfo && !manualAmountEdit && (
             <p className="mt-2 text-xs text-gray-500">
-              converted: {amountConversionInfo.fromCurrency}→{amountConversionInfo.toCurrency} @{" "}
+              converted: {amountConversionInfo.fromCurrency}→{amountConversionInfo.toCurrency} @{""}
               {amountConversionInfo.rate?.toFixed(4)}
               {amountConversionInfo.updatedAt && (
                 <> (updated {new Date(amountConversionInfo.updatedAt).toLocaleTimeString()})</>
@@ -1526,7 +1526,7 @@ export function PaymentForm({
                   : "cursor-not-allowed opacity-70"
               }`}
               style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${isBankPayment ? "%238b5cf6" : "%23999"}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='${isBankPayment ? "%238b5cf6": "%23999"}' d='M6 9L1 4h10z'/%3E%3C/svg%3E")`,
                 backgroundRepeat: "no-repeat",
                 backgroundPosition: "right 1rem center",
                 paddingRight: "2.5rem",

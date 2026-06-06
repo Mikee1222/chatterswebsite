@@ -223,7 +223,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
         }
       }
 
-      setSyncMessage(`✅ Sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
+      setSyncMessage(`Sync complete — ${totalSynced} saved to Airtable (${totalChecked} checked)`);
       setReloadTick((n) => n + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");
@@ -255,7 +255,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-semibold tracking-tight text-white">
-          <span aria-hidden>👥 </span>Subscribers
+          <span aria-hidden></span>Subscribers
         </h2>
         <div className="flex flex-col items-end gap-1 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
           <p className="text-[11px] text-white/45">
@@ -317,10 +317,10 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
       ) : (
         <>
           <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard emoji="🐋" label="Whales" value={whales} hint="≥ $1,000" />
-            <StatCard emoji="💎" label="VIP" value={vip} hint="≥ $200" />
-            <StatCard emoji="💸" label="High" value={high} hint="≥ $100" />
-            <StatCard emoji="😐" label="Freeloaders" value={freeloaders} hint="< $30" />
+            <StatCard emoji="" label="Whales" value={whales} hint="≥ $1,000" />
+            <StatCard emoji="" label="VIP" value={vip} hint="≥ $200" />
+            <StatCard emoji="" label="High" value={high} hint="≥ $100" />
+            <StatCard emoji="" label="Freeloaders" value={freeloaders} hint="< $30" />
           </div>
 
           <motion.ul
@@ -343,7 +343,7 @@ export function ModelOFSubscribers({ ofUserId, modelName }: { ofUserId: string; 
                 <span
                   className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${categoryBadgeClass(sub.category)}`}
                 >
-                  {sub.category.replaceAll("_", " ")}
+                  {sub.category.replaceAll("_", "")}
                 </span>
               </motion.li>
             ))}

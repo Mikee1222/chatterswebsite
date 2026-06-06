@@ -49,8 +49,7 @@ function mapMassListRecord(rec: AirtableRecord<MassListFields>): MassListRecord 
   const sortNum =
     typeof so === "number" && Number.isFinite(so)
       ? so
-      : typeof so === "string"
-        ? Number.parseInt(so, 10)
+      : typeof so === "string"? Number.parseInt(so, 10)
         : 0;
   return {
     id: rec.id,

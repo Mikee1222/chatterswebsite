@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { UserRound } from "lucide-react";
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
@@ -36,7 +37,7 @@ export default async function DashboardPage() {
             href={ROUTES.admin.accounts}
             className="glass-card flex items-center gap-3 p-5 transition-colors hover:bg-white/5"
           >
-            <span className="text-2xl">👤</span>
+            <UserRound className="h-8 w-8 text-white/70" aria-hidden />
             <div>
               <p className="font-medium text-white">Manage accounts</p>
               <p className="text-sm text-white/60">Create and manage users, roles, and access</p>
@@ -47,7 +48,7 @@ export default async function DashboardPage() {
 
       {!isAdmin && (
         <p className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-          You’re signed in as <span className="font-medium text-white/90">{String(user?.role ?? "").replace("_", " ")}</span>. Account management is available to admins only.
+          You’re signed in as <span className="font-medium text-white/90">{String(user?.role ?? "").replace("_", "")}</span>. Account management is available to admins only.
         </p>
       )}
     </div>

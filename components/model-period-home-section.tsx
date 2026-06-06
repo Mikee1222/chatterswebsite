@@ -75,12 +75,12 @@ export function ModelPeriodHomeSection({
           <h2 className="text-sm font-semibold uppercase tracking-wider text-white/50">{t("periodTracker.cycleTracking")}</h2>
           {currentPeriod ? (
             <p className="mt-2 text-sm text-rose-200/90">
-              {t("periodTracker.inPeriodPrefix")}{" "}
+              {t("periodTracker.inPeriodPrefix")}{""}
               <span className="font-medium text-white">{formatDateLong(currentPeriod.end_date, locale)}</span>
             </p>
           ) : predictedNextStart ? (
             <p className="mt-2 text-sm text-white/75">
-              {t("periodTracker.nextPredictedAroundPrefix")}{" "}
+              {t("periodTracker.nextPredictedAroundPrefix")}{""}
               <span className="font-medium text-white">{formatDateLong(predictedNextStart, locale)}</span>
             </p>
           ) : (

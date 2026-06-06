@@ -87,8 +87,7 @@ async function validateVaDayAvailabilityRequest(params: {
     if (!existingTimes) continue;
     if (rangesOverlap(newTimes.start_time, newTimes.end_time, existingTimes.start_time, existingTimes.end_time)) {
       const label =
-        existing.shift_type === "Custom"
-          ? `${existing.custom_start_time ? existing.custom_start_time.slice(11, 16) : "?"}–${existing.custom_end_time ? existing.custom_end_time.slice(11, 16) : "?"}`
+        existing.shift_type === "Custom"? `${existing.custom_start_time ? existing.custom_start_time.slice(11, 16) : "?"}–${existing.custom_end_time ? existing.custom_end_time.slice(11, 16) : "?"}`
           : existing.shift_type;
       return {
         ok: false,
@@ -180,7 +179,7 @@ export async function submitAvailabilityVaAction(fields: {
       user_id: vaId,
       event_type: NOTIFICATION_EVENT.AVAILABILITY_SUBMITTED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📅 Availability submitted",
+      title: " Availability submitted",
       body: "Your availability for next week has been recorded.",
       entity_type: "system",
       entity_id: created.id,

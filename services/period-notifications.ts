@@ -27,11 +27,7 @@ function dayDiff(fromYmd: string, toYmd: string): number {
 async function notifyModelOnce(input: {
   modelId: string;
   eventType:
-    | "period_3_day_reminder"
-    | "period_predicted_day"
-    | "period_confirmed_early"
-    | "period_overdue"
-    | "period_prediction_reset";
+    | "period_3_day_reminder"| "period_predicted_day"| "period_confirmed_early"| "period_overdue"| "period_prediction_reset";
   title: string;
   body: string;
   entityId: string;
@@ -138,10 +134,9 @@ async function notifyPeriodCronStakeholders(model: ModelRecord, predicted: strin
   const eventAirtable = EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.SYSTEM_ALERT] ?? "system_alert";
   const baseEntity = `pcron:${variant}:${model.id}:${predicted}`;
   const title =
-    variant === "3d" ? `⏰ ${modelName} — Period in 3 days` : `🩸 ${modelName} — Period expected today`;
+    variant === "3d" ? `⏰ ${modelName} — Period in 3 days` : ` ${modelName} — Period expected today`;
   const body =
-    variant === "3d"
-      ? `Next expected start: ${predicted}.`
+    variant === "3d"? `Next expected start: ${predicted}.`
       : `Predicted period start: ${predicted}.`;
 
   const vaIds = await listDistinctVaUserIdsForModel(model.id, model.model_id);

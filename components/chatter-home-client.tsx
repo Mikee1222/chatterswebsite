@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Calculator, Clock } from "lucide-react";
+import { Calculator, Clock, Fish } from "lucide-react";
 import { usdToEur } from "@/lib/exchange";
 import { ROUTES } from "@/lib/routes";
 import { formatTimeEuropean, formatDurationMinutes, formatDateEuropean } from "@/lib/format";
@@ -108,8 +108,8 @@ export function ChatterHomeClient({
           >
             <p className="text-xs font-semibold uppercase tracking-wider text-pink-200/55">Monthly target</p>
             <p className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl">
-              ${monthlyTargetData.achievedUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{" "}
-              <span className="text-white/35">/</span>{" "}
+              ${monthlyTargetData.achievedUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}{""}
+              <span className="text-white/35">/</span>{""}
               ${monthlyTargetData.target.target_amount_usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </p>
             <div className="mt-2 flex flex-wrap items-center gap-4">
@@ -124,7 +124,7 @@ export function ChatterHomeClient({
                 {Math.max(0, monthlyTargetData.target.target_amount_usd - monthlyTargetData.achievedUsd).toLocaleString("en-US", {
                   minimumFractionDigits: 2,
                   maximumFractionDigits: 2,
-                })}{" "}
+                })}{""}
                 left
               </span>
             </div>
@@ -243,7 +243,7 @@ export function ChatterHomeClient({
                   className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-lg"
                   aria-hidden
                 >
-                  🐋
+                  <Fish className="h-5 w-5 text-cyan-300" aria-hidden />
                 </span>
                 <p className="text-sm font-medium text-white/65">Assigned whales</p>
               </div>

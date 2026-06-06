@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Download, Loader2 } from "lucide-react";
+import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Download, Loader2, Home } from "lucide-react";
 import { useSWRConfig } from "swr";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
@@ -294,7 +294,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
 
                 {st === "scheduled" && a.scheduled_date ? (
                   <p className="mt-2 text-xs text-white/50">
-                    {t("assignments.youScheduledFor")}{" "}
+                    {t("assignments.youScheduledFor")}{""}
                     <span className="font-medium text-pink-200/95">{formatDateTimeUk(a.scheduled_date)}</span>
                   </p>
                 ) : null}
@@ -341,7 +341,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
                       onClick={() => setExpenseFor(a)}
                       className="inline-flex min-h-[44px] items-center rounded-xl border border-sky-500/35 bg-sky-500/10 px-4 py-2.5 text-sm font-semibold text-sky-100 transition hover:bg-sky-500/18 disabled:cursor-not-allowed disabled:opacity-45"
                     >
-                      🏠 Request Airbnb
+                      <span className="inline-flex items-center gap-1.5"><Home className="h-4 w-4" aria-hidden />Request Airbnb</span>
                     </button>
                   ) : null}
 
@@ -497,7 +497,7 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
           onClick={() => !isRequestingExpense && setExpenseFor(null)}
         >
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 id="expense-modal-title" className="text-lg font-semibold text-white">🏠 Airbnb request</h3>
+            <h3 id="expense-modal-title" className="inline-flex items-center gap-2 text-lg font-semibold text-white"><Home className="h-5 w-5" aria-hidden />Airbnb request</h3>
             <p className="mt-1 text-sm text-white/55">For: {expenseFor.title}</p>
             <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-white/45">
               Airbnb listing link

@@ -15,8 +15,10 @@ import {
   FileText,
   Star,
   CircleDot,
+  BarChart3,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { RankBadge } from "@/components/rank-badge";
 import { checkLevelMigration, getLeaderboardForPeriodAction } from "@/app/actions/rewards";
 import type { LeaderboardRow, PointsTransactionActivity } from "@/services/points-engine";
 import type { PointsConfig } from "@/services/points-config";
@@ -133,20 +135,20 @@ function LeaderboardSkeleton() {
 
 function getActivityIcon(type: string): string {
   const icons: Record<string, string> = {
-    challenge_completed: "🎯",
-    shift_worked: "💼",
-    no_break_taken: "⚡",
-    whale_added: "🐋",
-    whale_upgraded: "⬆️",
-    whale_relationship: "💕",
-    transaction_logged: "💰",
-    custom_completed: "✨",
-    spin_wheel: "🎰",
-    level_up: "🏆",
+    challenge_completed: "",
+    shift_worked: "",
+    no_break_taken: "",
+    whale_added: "",
+    whale_upgraded: "⬆",
+    whale_relationship: "",
+    transaction_logged: "",
+    custom_completed: "",
+    spin_wheel: "",
+    level_up: "",
     points_awarded: "⭐",
-    test: "🔧",
+    test: "",
   };
-  return icons[type] || "📝";
+  return icons[type] || "";
 }
 
 function inferActivityType(tx: PointsTransactionActivity): string {
@@ -221,7 +223,7 @@ function RewardsOnboardingModal({ onDismiss }: { onDismiss: () => void }) {
     >
       <div className="max-h-[90vh] max-w-md overflow-y-auto rounded-2xl border border-white/12 bg-gradient-to-b from-zinc-900 to-black p-6 shadow-2xl">
         <h2 id="rewards-onboard-title" className="text-xl font-bold text-white">
-          Welcome to Gunzo Rewards! 🎉
+          Welcome to Gunzo Rewards!
         </h2>
         <p className="mt-3 text-sm leading-relaxed text-white/70">
           You earn points from your shifts, whale work, custom requests, and more. Points unlock tiers and spin wheel
@@ -413,7 +415,7 @@ export function RewardsClient({
             <h2 className="text-xs font-semibold uppercase tracking-[0.2em] text-white/45">Leaderboard</h2>
             <p className="mt-1.5 text-xs text-white/45">
               Sorted by lifetime total points (same as My Rewards).
-              {period !== "alltime" ? " The smaller line shows points earned in the selected period." : ""}
+              {period !== "alltime" ? "The smaller line shows points earned in the selected period." : ""}
             </p>
           </div>
           <div
@@ -460,7 +462,6 @@ export function RewardsClient({
               {rows.map((row, index) => {
                 const rank = index + 1;
                 const isSelf = row.isCurrentUser || row.userId === currentUserId;
-                const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
                 return (
                   <motion.li
                     key={`m-${row.userId}`}
@@ -472,10 +473,10 @@ export function RewardsClient({
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className="flex h-11 min-w-[44px] shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30 text-base font-bold tabular-nums text-white"
+                        className="flex h-11 min-w-[44px] shrink-0 items-center justify-center rounded-full border border-white/15 bg-black/30"
                         aria-label={`Rank ${rank}`}
                       >
-                        {medal ?? rank}
+                        <RankBadge rank={rank} />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p
@@ -523,7 +524,6 @@ export function RewardsClient({
                     {rows.map((row, index) => {
                       const rank = index + 1;
                       const isSelf = row.isCurrentUser || row.userId === currentUserId;
-                      const medal = rank === 1 ? "🥇" : rank === 2 ? "🥈" : rank === 3 ? "🥉" : null;
                       const initial = row.userName.trim().charAt(0).toUpperCase() || "?";
                       return (
                         <tr
@@ -534,8 +534,8 @@ export function RewardsClient({
                           )}
                         >
                           <td className="whitespace-nowrap px-4 py-3 align-middle tabular-nums">
-                            <span className="inline-flex h-10 min-w-[2.5rem] items-center justify-center font-semibold text-white">
-                              {medal ?? rank}
+                            <span className="inline-flex h-10 min-w-[2.5rem] items-center justify-center">
+                              <RankBadge rank={rank} />
                             </span>
                           </td>
                           <td className="max-w-[1px] px-4 py-3 align-middle">
@@ -589,8 +589,8 @@ export function RewardsClient({
         </div>
         {initialRecent.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5 text-3xl">
-              📊
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full border border-white/10 bg-white/5">
+              <BarChart3 className="h-8 w-8 text-white/30" aria-hidden />
             </div>
             <h3 className="mb-2 font-medium text-white/60">No activity yet</h3>
             <p className="text-sm text-white/30">Complete shifts and challenges to see your activity here</p>

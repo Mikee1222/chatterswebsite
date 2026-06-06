@@ -282,7 +282,7 @@ export function AdminPartnershipClient({
         });
         return `${formatted} ${currency}`;
       })
-      .join(" / ");
+      .join("/ ");
   };
 
   const pushParams = (updates: Record<string, string | null>) => {
@@ -536,7 +536,7 @@ export function AdminPartnershipClient({
                           )
                         : `${formatDateEuropean(cycle.period_start)} – ${formatDateEuropean(cycle.period_end)}`}
                     </p>
-                    <p className="text-xs capitalize text-gray-400">{cycle.status.replace(/_/g, " ")}</p>
+                    <p className="text-xs capitalize text-gray-400">{cycle.status.replace(/_/g, "")}</p>
                     {turnover > 0 ? (
                       <p className="text-xs text-gray-500">
                         Turnover {turnover.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD
@@ -547,7 +547,7 @@ export function AdminPartnershipClient({
                     {chattingFee.toLocaleString("en-US", {
                       minimumFractionDigits: 2,
                       maximumFractionDigits: 2,
-                    })}{" "}
+                    })}{""}
                     {resolveCycleCurrency(cycle) ?? "USD"}
                   </p>
                 </div>

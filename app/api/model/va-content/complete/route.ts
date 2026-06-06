@@ -47,7 +47,7 @@ export async function POST(req: Request) {
         user_id: vaId,
         event_type: NOTIFICATION_EVENT.MODEL_CONTENT_COMPLETED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Content assignment completed",
+        title: " Content assignment completed",
         body: `${modelName} marked "${updated.title}" as completed.`,
         entity_type: "va_content_assignment",
         entity_id: updated.id,

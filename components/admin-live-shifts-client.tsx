@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Send, RefreshCw, Calendar, Users } from "lucide-react";
+import { Coffee, Send, RefreshCw, Calendar, Users } from "lucide-react";
 import { formatDateTimeEuropean } from "@/lib/format";
 import type { AdminShiftQueueRow, Shift } from "@/types";
 import { LiveTimer } from "@/components/live-timer";
@@ -89,7 +89,7 @@ function BreakSummaryBadge({ shift, isOnBreak }: { shift: LiveShiftWithModels; i
         className="inline-flex shrink-0 items-center rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400"
         title="Total break time used this shift"
       >
-        ☕ {completedMins} min break
+        <Coffee className="h-3.5 w-3.5" aria-hidden /> {completedMins} min break
       </span>
     );
   }

@@ -105,7 +105,7 @@ export default async function ChatterHomePage() {
       >
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-pink-200/50">Dashboard</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">
-          Welcome back{user.fullName ? `, ${user.fullName.split(" ")[0]}` : ""}
+          Welcome back{user.fullName ? `, ${user.fullName.split("")[0]}` : ""}
         </h1>
         <p className="mt-1.5 text-[15px] text-white/65">Your chatter dashboard</p>
       </div>

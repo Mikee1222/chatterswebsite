@@ -33,12 +33,12 @@ export function shiftStartedSelf(
   const list = modelListDisplay(modelNames);
   if (list) {
     return {
-      title: "🟢 Shift started",
+      title: " Shift started",
       body: `You're live with ${list}. Let's go!`,
     };
   }
   return {
-    title: "🟢 Shift started",
+    title: " Shift started",
     body: "You're live — no models assigned yet.",
   };
 }
@@ -55,12 +55,12 @@ export function shiftStartedAdmin(
   const count = modelNames.filter(Boolean).length;
   if (count > 0 && list) {
     return {
-      title: `🟢 ${chatterName} is on shift`,
+      title: ` ${chatterName} is on shift`,
       body: `Started at ${time} with ${count} model(s): ${list}.`,
     };
   }
   return {
-    title: `🟢 ${chatterName} is on shift`,
+    title: ` ${chatterName} is on shift`,
     body: `Started at ${time} with no models yet.`,
   };
 }
@@ -73,12 +73,12 @@ export function shiftCompletedSelf(
 ): { title: string; body: string } {
   if (workedMinutes != null && workedMinutes > 0) {
     return {
-      title: "🏁 Shift complete",
+      title: " Shift complete",
       body: `Great work! You were on for ${workedMinutes} min.`,
     };
   }
   return {
-    title: "🏁 Shift complete",
+    title: " Shift complete",
     body: "Your shift has ended.",
   };
 }
@@ -93,19 +93,19 @@ export function shiftCompletedAdmin(
   const time = formatTimeShort(endTime);
   if (workedMinutes != null && workedMinutes > 0) {
     return {
-      title: `🏁 ${chatterName} clocked out`,
+      title: ` ${chatterName} clocked out`,
       body: `Shift ended at ${time}. Total: ${workedMinutes} min.`,
     };
   }
   return {
-    title: `🏁 ${chatterName} clocked out`,
+    title: ` ${chatterName} clocked out`,
     body: `Shift ended at ${time}.`,
   };
 }
 
 /** Break started — self. */
 export function breakStartedSelf(): { title: string; body: string } {
-  return { title: "☕ Enjoy your break", body: "You're on break. Back soon!" };
+  return { title: " Enjoy your break", body: "You're on break. Back soon!" };
 }
 
 /** Break started — admin. */
@@ -115,7 +115,7 @@ export function breakStartedAdmin(chatterName: string, startedAt?: string | Date
       ? formatTimeShort(typeof startedAt === "string" ? startedAt : startedAt.toISOString())
       : null;
   return {
-    title: `☕ ${chatterName} is on break`,
+    title: ` ${chatterName} is on break`,
     body: time
       ? `Break started at ${time} — they'll be back shortly.`
       : "Break started — they'll be back shortly.",
@@ -124,7 +124,7 @@ export function breakStartedAdmin(chatterName: string, startedAt?: string | Date
 
 /** Break ended — self. */
 export function breakEndedSelf(): { title: string; body: string } {
-  return { title: "💪 Welcome back", body: "Break over — you're back on shift!" };
+  return { title: " Welcome back", body: "Break over — you're back on shift!" };
 }
 
 /** Break ended — admin. */
@@ -137,7 +137,7 @@ export function breakEndedAdmin(
   const hasDuration = duration != null && duration > 0;
   const time = formatTimeShort(typeof endTime === "string" ? endTime : endTime.toISOString());
   return {
-    title: `✅ ${chatterName} is back`,
+    title: ` ${chatterName} is back`,
     body: hasDuration
       ? `Returned from break at ${time} after ${duration} min.`
       : `Returned from break at ${time}.`,
@@ -154,12 +154,12 @@ export function taskShiftStartedAdmin(
   const time = formatTimeShort(startTime);
   if (list) {
     return {
-      title: `📋 ${vaName} started a task shift`,
+      title: ` ${vaName} started a task shift`,
       body: `Working with ${list} from ${time}.`,
     };
   }
   return {
-    title: `📋 ${vaName} started a task shift`,
+    title: ` ${vaName} started a task shift`,
     body: `Task shift started at ${time}.`,
   };
 }
@@ -168,7 +168,7 @@ export function taskShiftStartedAdmin(
 export function taskShiftEndedAdmin(vaName: string, endTime: string | Date): { title: string; body: string } {
   const time = formatTimeShort(endTime);
   return {
-    title: `✅ ${vaName} finished task shift`,
+    title: ` ${vaName} finished task shift`,
     body: `Completed at ${time}.`,
   };
 }
@@ -176,7 +176,7 @@ export function taskShiftEndedAdmin(vaName: string, endTime: string | Date): { t
 /** Whale registered — admin. */
 export function whaleRegisteredAdmin(whaleName: string): { title: string; body: string } {
   return {
-    title: "🐋 New whale registered",
+    title: " New whale registered",
     body: `${whaleName} has been added to the CRM.`,
   };
 }
@@ -184,7 +184,7 @@ export function whaleRegisteredAdmin(whaleName: string): { title: string; body: 
 /** Whale registered — chatter (self); same dual path as shift_started (notify + notifyAdmins). */
 export function whaleRegisteredSelf(whaleUsername: string): { title: string; body: string } {
   return {
-    title: "🐋 Whale added",
+    title: " Whale added",
     body: `${whaleUsername} is saved in My Whales.`,
   };
 }
@@ -192,7 +192,7 @@ export function whaleRegisteredSelf(whaleUsername: string): { title: string; bod
 /** Chatter added whale — admin copy (model not assigned yet). */
 export function whaleRegisteredAdminFromChatter(chatterName: string, whaleUsername: string): { title: string; body: string } {
   return {
-    title: "🐋 New whale added",
+    title: " New whale added",
     body: `${chatterName} added a new whale: ${whaleUsername}. Tap to assign a model.`,
   };
 }
@@ -204,7 +204,7 @@ export function whaleRegisteredAdminFromChatterWithModel(
   modelName: string
 ): { title: string; body: string } {
   return {
-    title: "🐋 New whale added",
+    title: " New whale added",
     body: `${chatterName} added ${whaleUsername} with model ${modelName}.`,
   };
 }
@@ -212,7 +212,7 @@ export function whaleRegisteredAdminFromChatterWithModel(
 /** Chatter submitted a whale; waiting for admin to assign a chatter (no auto-assign). */
 export function whaleSubmittedAwaitingAssignmentChatter(whaleUsername: string): { title: string; body: string } {
   return {
-    title: "🐋 Whale submitted",
+    title: " Whale submitted",
     body: `We received @${whaleUsername}. An admin will assign a chatter — it will appear in My whales once assigned.`,
   };
 }
@@ -223,7 +223,7 @@ export function whaleNeedsChatterAssignmentAdmin(chatterName: string, whaleUsern
     ? `${chatterName} added @${whaleUsername} (model: ${modelName}). Assign a chatter in Whales.`
     : `${chatterName} added @${whaleUsername}. Assign a chatter in Whales.`;
   return {
-    title: "🐋 Whale needs assignment",
+    title: " Whale needs assignment",
     body: detail,
   };
 }
@@ -231,7 +231,7 @@ export function whaleNeedsChatterAssignmentAdmin(chatterName: string, whaleUsern
 /** Chatter was assigned to a whale by admin. */
 export function whaleAssignedToYou(whaleUsername: string): { title: string; body: string } {
   return {
-    title: "🐋 Whale assigned to you",
+    title: " Whale assigned to you",
     body: `You've been assigned @${whaleUsername}. Open My whales to manage.`,
   };
 }
@@ -239,7 +239,7 @@ export function whaleAssignedToYou(whaleUsername: string): { title: string; body
 /** Whale assigned — admin. */
 export function whaleAssignedAdmin(whaleName: string, assigneeName: string): { title: string; body: string } {
   return {
-    title: "🐋 Whale assigned",
+    title: " Whale assigned",
     body: `${whaleName} assigned to ${assigneeName}.`,
   };
 }
@@ -247,7 +247,7 @@ export function whaleAssignedAdmin(whaleName: string, assigneeName: string): { t
 /** New custom request — admin. */
 export function customRequestCreatedAdmin(chatterName: string): { title: string; body: string } {
   return {
-    title: "📩 New custom request",
+    title: " New custom request",
     body: `${chatterName} submitted a new custom request.`,
   };
 }
@@ -255,7 +255,7 @@ export function customRequestCreatedAdmin(chatterName: string): { title: string;
 /** Custom status changed — chatter. */
 export function customStatusChangedChatter(status: string): { title: string; body: string } {
   return {
-    title: "📩 Custom updated",
+    title: " Custom updated",
     body: `Your custom request status changed to ${status}.`,
   };
 }
@@ -263,7 +263,7 @@ export function customStatusChangedChatter(status: string): { title: string; bod
 /** Model became free — admin. */
 export function modelBecameFreeAdmin(modelName: string): { title: string; body: string } {
   return {
-    title: "🟡 Model is now free",
+    title: " Model is now free",
     body: `${modelName} is no longer on shift.`,
   };
 }
@@ -271,7 +271,7 @@ export function modelBecameFreeAdmin(modelName: string): { title: string; body: 
 /** Model taken — admin. */
 export function modelTakenAdmin(modelName: string, chatterName: string): { title: string; body: string } {
   return {
-    title: "🔴 Model taken",
+    title: " Model taken",
     body: `${modelName} is now on shift with ${chatterName}.`,
   };
 }
@@ -279,7 +279,7 @@ export function modelTakenAdmin(modelName: string, chatterName: string): { title
 /** Model went live — assigned chatter (pause chatting). */
 export function modelLiveStartedChatter(modelName: string): { title: string; body: string } {
   return {
-    title: `🔴 ${modelName} is live!`,
+    title: ` ${modelName} is live!`,
     body: `Pause chatting — ${modelName} just started a live stream.`,
   };
 }
@@ -287,7 +287,7 @@ export function modelLiveStartedChatter(modelName: string): { title: string; bod
 /** Model went live — admin oversight. */
 export function modelLiveStartedAdmin(modelName: string): { title: string; body: string } {
   return {
-    title: `🔴 ${modelName} went live`,
+    title: ` ${modelName} went live`,
     body: `${modelName} started a live stream.`,
   };
 }
@@ -295,7 +295,7 @@ export function modelLiveStartedAdmin(modelName: string): { title: string; body:
 /** Model live ended — assigned chatter (resume chatting). */
 export function modelLiveEndedChatter(modelName: string): { title: string; body: string } {
   return {
-    title: `✅ ${modelName} live ended`,
+    title: ` ${modelName} live ended`,
     body: `${modelName}'s live stream ended. Resume chatting.`,
   };
 }
@@ -303,7 +303,7 @@ export function modelLiveEndedChatter(modelName: string): { title: string; body:
 /** Model live ended — admin oversight. */
 export function modelLiveEndedAdmin(modelName: string): { title: string; body: string } {
   return {
-    title: `📴 ${modelName} live ended`,
+    title: ` ${modelName} live ended`,
     body: `${modelName} finished the live stream.`,
   };
 }
@@ -311,7 +311,7 @@ export function modelLiveEndedAdmin(modelName: string): { title: string; body: s
 /** Availability submitted — self. */
 export function availabilitySubmittedSelf(): { title: string; body: string } {
   return {
-    title: "📅 Availability submitted",
+    title: " Availability submitted",
     body: "Your availability for next week has been recorded.",
   };
 }
@@ -327,7 +327,7 @@ export function availabilityReminderSelf(): { title: string; body: string } {
 /** Weekly program published — chatter. */
 export function weeklyProgramPublishedChatter(): { title: string; body: string } {
   return {
-    title: "📅 Weekly program is ready",
+    title: " Weekly program is ready",
     body: "Your schedule for next week has been published. Check your program.",
   };
 }
@@ -335,7 +335,7 @@ export function weeklyProgramPublishedChatter(): { title: string; body: string }
 /** VA weekly program published. */
 export function weeklyProgramVaPublished(): { title: string; body: string } {
   return {
-    title: "📅 VA weekly program is ready",
+    title: " VA weekly program is ready",
     body: "Your VA schedule for next week has been published.",
   };
 }
@@ -369,7 +369,7 @@ export function customScheduledAdmin(
   const at = scheduledTime ? ` at ${scheduledTime}` : "";
   const who = modelName?.trim() ? `${modelName.trim()} — ` : "";
   return {
-    title: "🗓 Custom scheduled",
+    title: " Custom scheduled",
     body: `${who}Scheduled for ${scheduledDate}${at}.`,
   };
 }
@@ -381,7 +381,7 @@ export function customScheduledChatter(customTitle: string, scheduledDate: strin
 } {
   const when = timeRange ? `${scheduledDate} (${timeRange})` : scheduledDate;
   return {
-    title: "🗓 Custom scheduled",
+    title: " Custom scheduled",
     body: `${customTitle} is scheduled for ${when}.`,
   };
 }
@@ -389,7 +389,7 @@ export function customScheduledChatter(customTitle: string, scheduledDate: strin
 /** Model marked custom as uploaded — chatter / admin body line. */
 export function customUploadedChatter(customTitle: string): { title: string; body: string } {
   return {
-    title: "✅ Custom uploaded",
+    title: " Custom uploaded",
     body: `${customTitle} was marked as uploaded by your model.`,
   };
 }
@@ -402,7 +402,7 @@ export function formSubmittedAdmin(
 ): { title: string; body: string } {
   const t = formatTimeShort(submittedAt);
   return {
-    title: "📝 Form submitted",
+    title: " Form submitted",
     body: `${formName} from ${actorName} at ${t}.`,
   };
 }
@@ -417,7 +417,7 @@ export function whaleSessionSubmittedSelf(
   const amt = typeof amount === "number" ? amount : amount;
   const model = modelName ? ` · ${modelName}` : "";
   return {
-    title: "🐋 Whale session logged",
+    title: " Whale session logged",
     body: `${whaleUsername}${model} · ${amt} ${currency}.`,
   };
 }
@@ -433,7 +433,7 @@ export function whaleSessionSubmittedAdmin(
   const amt = typeof amount === "number" ? amount : amount;
   const model = modelName ? ` · ${modelName}` : "";
   return {
-    title: "🐋 New whale session",
+    title: " New whale session",
     body: `${chatterName} submitted a session for ${whaleUsername}${model}. ${amt} ${currency}.`,
   };
 }

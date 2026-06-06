@@ -237,7 +237,6 @@ export async function getDeleteBlockReasonsForModel(modelRecordId: string): Prom
 
   const canDelete = reasons.length === 0;
   const summary = canDelete
-    ? "This model has no linked records and can be deleted."
-    : `Cannot delete: this model is linked to ${reasons.join(", ")}. Remove or reassign these first.`;
+    ? "This model has no linked records and can be deleted.": `Cannot delete: this model is linked to ${reasons.join(", ")}. Remove or reassign these first.`;
   return { canDelete, reasons, summary };
 }

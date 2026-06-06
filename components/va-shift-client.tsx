@@ -17,7 +17,7 @@ import { formatTimeFromISO, formatDateTimeEuropean } from "@/lib/format";
 import { FormError } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
-import { Check, Coffee, Loader2, LogOut, Play, Plus, RefreshCw, Search, X } from "lucide-react";
+import { Check, Coffee, Loader2, LogOut, Play, Plus, RefreshCw, Search, X, Users } from "lucide-react";
 import { motion } from "framer-motion";
 import { LiveTimer } from "@/components/live-timer";
 import { TodaySchedulePanel, TodayScheduleCollapsible, buildTodayLabel, type TodayScheduleItem } from "@/components/today-schedule-panel";
@@ -650,124 +650,7 @@ export function VaShiftClient({
           <TodaySchedulePanel
             todayLabel={buildTodayLabel(todaySchedule.todayYmd, todaySchedule.todayWeekday)}
             items={todaySchedule.items}
-            title="Today's assigned models to review"
-            emptyMessage="No scheduled models today"
-          />
-        ) : null}
-
-        <div
-          className="glass-panel relative overflow-hidden p-6 md:p-10"
-          style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 48px -12px hsl(330 80% 55% / 0.12)" }}
-        >
-          <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-pink-500/10 blur-3xl" />
-          <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-rose-500/[0.08] blur-3xl" />
-
-          <div className="relative flex flex-wrap items-start justify-between gap-4">
-            <div className="min-w-0 flex-1">
-              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-pink-500/25 bg-pink-500/10 px-3 py-1.5">
-                <div className="h-2 w-2 rounded-full bg-pink-400" />
-                <span className="text-xs font-semibold uppercase tracking-widest text-pink-300">Mistake shift</span>
-              </div>
-              <h2 className="text-2xl font-bold tracking-tight text-white md:text-4xl">Start a mistake shift</h2>
-              <p className="mt-2 text-sm text-white/50 md:text-base">
-                Review chatter errors across models. You can add any model — even ones currently in a chatter shift.
-              </p>
-              <div className="mt-6 flex flex-wrap gap-4">
-                <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
-                  <span className="text-xl" aria-hidden>
-                    🎭
-                  </span>
-                  <div>
-                    <p className="text-lg font-bold text-white">{modelss.length}</p>
-                    <p className="text-xs text-white/40">Models available</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5">
-                  <span className="text-xl" aria-hidden>
-                    ⏱
-                  </span>
-                  <div>
-                    <p className="text-lg font-bold text-white">{maxBreakMinutes}m</p>
-                    <p className="text-xs text-white/40">Max break</p>
-                  </div>
-                </div>
-              </div>
-              <motion.button
-                type="button"
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => setShowModelSelect(true)}
-                disabled={starting}
-                className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition-all hover:shadow-pink-500/40 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Play className="h-5 w-5 shrink-0" aria-hidden />
-                Start mistake shift
-              </motion.button>
-            </div>
-            <button
-              type="button"
-              onClick={handleRefresh}
-              disabled={starting}
-              className="flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/50 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
-            >
-              <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden />
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-        </div>
-
-        <div>
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-xs font-medium uppercase tracking-widest text-white/40">All models</p>
-            <Link href={ROUTES.va.models} className="text-xs font-medium text-pink-400 transition hover:text-pink-300">
-              View all →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
-            {modelss.slice(0, 8).map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition-all hover:bg-white/[0.06]"
-              >
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-pink-500/25 bg-gradient-to-br from-pink-500/30 to-rose-500/25 text-sm font-bold text-pink-300">
-                  {(m.model_name || "?").trim().slice(0, 1).toUpperCase() || "?"}
-                </div>
-                <span className="truncate text-sm font-medium text-white/75">{m.model_name}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white/60">Live shifts</h3>
-          <p className="mt-1 text-xs text-white/40">See who is on shift agency-wide.</p>
-          <Link
-            href={ROUTES.va.liveShifts}
-            className="mt-4 inline-flex rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 transition hover:bg-white/10"
-          >
-            View live shifts →
-          </Link>
-        </div>
-
-        {showModelSelect ? (
-          <VaModelSelectModal
-            modelss={modelss}
-            selectedModelIds={selectedModelIds}
-            onToggle={toggleModelSelection}
-            onConfirm={handleConfirmModelSelection}
-            onCancel={() => {
-              setShowModelSelect(false);
-              setError(null);
-            }}
-            loading={starting}
-            error={error}
-            modelIdsInActivePeriodToday={modelIdsInActivePeriodToday}
-            schedulePanel={
-              todaySchedule ? (
-                <TodayScheduleCollapsible
-                  todayLabel={buildTodayLabel(todaySchedule.todayYmd, todaySchedule.todayWeekday)}
-                  items={todaySchedule.items}
-                  title="Today's assigned models to review"
+            title="Today's assigned models to review" emptyMessage="No scheduled models today" /> ) : null} <div className="glass-panel relative overflow-hidden p-6 md:p-10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 0 48px -12px hsl(330 80% 55% / 0.12)" }} > <div className="pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full bg-pink-500/10 blur-3xl" /> <div className="pointer-events-none absolute -bottom-20 -left-20 h-64 w-64 rounded-full bg-rose-500/[0.08] blur-3xl" /> <div className="relative flex flex-wrap items-start justify-between gap-4"> <div className="min-w-0 flex-1"> <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-pink-500/25 bg-pink-500/10 px-3 py-1.5"> <div className="h-2 w-2 rounded-full bg-pink-400" /> <span className="text-xs font-semibold uppercase tracking-widest text-pink-300">Mistake shift</span> </div> <h2 className="text-2xl font-bold tracking-tight text-white md:text-4xl">Start a mistake shift</h2> <p className="mt-2 text-sm text-white/50 md:text-base"> Review chatter errors across models. You can add any model — even ones currently in a chatter shift. </p> <div className="mt-6 flex flex-wrap gap-4"> <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5"> <span className="text-xl" aria-hidden> </span> <div> <p className="text-lg font-bold text-white">{modelss.length}</p> <p className="text-xs text-white/40">Models available</p> </div> </div> <div className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5"> <span className="text-xl" aria-hidden> ⏱ </span> <div> <p className="text-lg font-bold text-white">{maxBreakMinutes}m</p> <p className="text-xs text-white/40">Max break</p> </div> </div> </div> <motion.button type="button" whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setShowModelSelect(true)} disabled={starting} className="mt-8 inline-flex items-center gap-3 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-8 py-4 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition-all hover:shadow-pink-500/40 hover:opacity-95 disabled:cursor-not-allowed disabled:opacity-50" > <Play className="h-5 w-5 shrink-0" aria-hidden /> Start mistake shift </motion.button> </div> <button type="button" onClick={handleRefresh} disabled={starting} className="flex shrink-0 items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/50 transition hover:bg-white/10 hover:text-white disabled:opacity-40" > <RefreshCw className={cn("h-4 w-4", refreshing && "animate-spin")} aria-hidden /> {refreshing ? "Refreshing…" : "Refresh"} </button> </div> </div> <div> <div className="mb-3 flex items-center justify-between"> <p className="text-xs font-medium uppercase tracking-widest text-white/40">All models</p> <Link href={ROUTES.va.models} className="text-xs font-medium text-pink-400 transition hover:text-pink-300"> View all → </Link> </div> <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4"> {modelss.slice(0, 8).map((m) => ( <div key={m.id} className="flex items-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2.5 transition-all hover:bg-white/[0.06]" > <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-pink-500/25 bg-gradient-to-br from-pink-500/30 to-rose-500/25 text-sm font-bold text-pink-300"> {(m.model_name || "?").trim().slice(0, 1).toUpperCase() || "?"} </div> <span className="truncate text-sm font-medium text-white/75">{m.model_name}</span> </div> ))} </div> </div> <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5"> <h3 className="text-sm font-semibold uppercase tracking-wider text-white/60">Live shifts</h3> <p className="mt-1 text-xs text-white/40">See who is on shift agency-wide.</p> <Link href={ROUTES.va.liveShifts} className="mt-4 inline-flex rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-sm font-medium text-white/90 transition hover:bg-white/10" > View live shifts → </Link> </div> {showModelSelect ? ( <VaModelSelectModal modelss={modelss} selectedModelIds={selectedModelIds} onToggle={toggleModelSelection} onConfirm={handleConfirmModelSelection} onCancel={() => { setShowModelSelect(false); setError(null); }} loading={starting} error={error} modelIdsInActivePeriodToday={modelIdsInActivePeriodToday} schedulePanel={ todaySchedule ? ( <TodayScheduleCollapsible todayLabel={buildTodayLabel(todaySchedule.todayYmd, todaySchedule.todayWeekday)} items={todaySchedule.items} title="Today's assigned models to review"
                   emptyMessage="No scheduled models today"
                 />
               ) : null
@@ -812,7 +695,7 @@ export function VaShiftClient({
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-white md:text-2xl">Mistake shift active</h2>
-                  <p className="mt-0.5 text-xs text-white/45">{isOnBreak ? "☕ On break" : "Reviewing mistakes"}</p>
+                  <p className="mt-0.5 text-xs text-white/45">{isOnBreak ? "On break" : "Reviewing mistakes"}</p>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
@@ -849,7 +732,7 @@ export function VaShiftClient({
                 </p>
               </div>
               <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                <p className="text-xs text-white/35">🎭 Models</p>
+                <p className="inline-flex items-center gap-1 text-xs text-white/35"><Users className="h-3.5 w-3.5" aria-hidden />Models</p>
                 <p className="mt-1 text-sm font-bold text-white">{shiftModels.length}</p>
               </div>
             </div>
@@ -924,7 +807,7 @@ export function VaShiftClient({
                   {breakStartedAtIso ? (
                     <>
                       Started {formatEnteredAt(breakStartedAtIso)}
-                      {" · "}
+                      {"· "}
                     </>
                   ) : null}
                   {totalBreakUsedDisplay} / {maxBreakMinutes} min used · {remainingBreak} min remaining
@@ -981,7 +864,7 @@ export function VaShiftClient({
                 if (names.length === 0) return null;
                 return (
                   <p className="mb-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
-                    ⚠️ {names.join(", ")} may have content restrictions today
+                    {names.join(", ")} may have content restrictions today
                   </p>
                 );
               })()}
@@ -997,7 +880,7 @@ export function VaShiftClient({
                     <p className="text-sm font-semibold text-white">{sm.model_name}</p>
                     <p className="text-xs text-white/35">Entered {formatEnteredAt(sm.entered_at)}</p>
                     {modelIdsInActivePeriodToday.includes(sm.model_id) ? (
-                      <p className="mt-1 text-[11px] text-amber-200/90">⚠️ Possible content restrictions today</p>
+                      <p className="mt-1 text-[11px] text-amber-200/90">Possible content restrictions today</p>
                     ) : null}
                   </div>
                   <motion.button

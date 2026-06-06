@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
+import { AlertTriangle, Calendar, Clock } from "lucide-react";
 import { getModelContext } from "@/lib/model-context-server";
 import { ModelWeeklyAvailabilityClient } from "@/components/model-weekly-availability-client";
 import { getThisWeekMonday, normalizeWeekStart, addDays } from "@/lib/weekly-program";
@@ -62,7 +63,7 @@ export default async function ModelAvailabilityPage({
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-white">Weekly availability</h1>
       <div className="mb-6 flex gap-3 rounded-2xl border border-blue-500/20 bg-blue-500/10 p-4">
-        <span className="text-2xl">📅</span>
+        <Calendar className="h-8 w-8 shrink-0 text-blue-300" aria-hidden />
         <div>
           <p className="text-sm font-semibold text-white">What is this?</p>
           <p className="mt-1 text-sm text-white/60">
@@ -73,17 +74,18 @@ export default async function ModelAvailabilityPage({
         </div>
       </div>
 
-      <div className="rounded-2xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
-        ⏰ Submit by Friday to be included in next week&apos;s schedule
+      <div className="mb-6 flex gap-3 rounded-2xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100">
+        <Clock className="h-4 w-4 shrink-0" aria-hidden />
+        Submit by Friday to be included in next week&apos;s schedule
       </div>
 
       {submittedThisWeek ? (
         <div className="rounded-2xl border border-emerald-500/25 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
-          ✅ Availability submitted for this week
+          Availability submitted for this week
         </div>
       ) : (
         <div className="rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          ⚠️ You haven&apos;t submitted your availability yet this week
+          You haven&apos;t submitted your availability yet this week
         </div>
       )}
 

@@ -376,8 +376,7 @@ export async function getPendingPaymentSubmissionsForClient(
   return records
     .map(mapPaymentSubmission)
     .filter(
-      (s) => s.client.includes(clientId) && s.status === "pending_review"
-    );
+      (s) => s.client.includes(clientId) && s.status === "pending_review");
 }
 
 export async function getPaymentSubmissionById(
@@ -745,8 +744,7 @@ export async function getClientCurrentChattingCycleFromRevenues(
   const cycleIds = Array.from(cycleIdToRevenues.keys());
   const cycleRecords = await Promise.all(cycleIds.map((id) => getBillingCycleByIdFromBilling(id)));
   const validCycles = cycleRecords.filter(
-    (c): c is NonNullable<typeof c> => c != null && c.kind === "chatting_weekly"
-  );
+    (c): c is NonNullable<typeof c> => c != null && c.kind === "chatting_weekly");
   if (validCycles.length === 0) return null;
 
   validCycles.sort((a, b) => (b.period_end || "").localeCompare(a.period_end || ""));
@@ -1118,8 +1116,7 @@ export async function submitClientPaymentProof(
       clientId,
       billingCycleId,
       ["announced", "overdue"],
-      "pending_review"
-    );
+      "pending_review");
   } else if (cycle?.kind === "crm_monthly") {
     await updateBillingCycleRecord(billingCycleId, { status: "pending_review" });
   }

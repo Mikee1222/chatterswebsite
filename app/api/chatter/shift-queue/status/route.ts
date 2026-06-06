@@ -70,8 +70,7 @@ export async function GET() {
     const sameShiftWaiting = await listShiftQueueWaitingForShift(entry.waiting_for_shift_id);
     const qt = entry.queue_type ?? "full_start";
     const fifoSlice =
-      qt === "add_models"
-        ? sameShiftWaiting.filter((r) => (r.queue_type ?? "full_start") === "add_models")
+      qt === "add_models"? sameShiftWaiting.filter((r) => (r.queue_type ?? "full_start") === "add_models")
         : sameShiftWaiting.filter((r) => (r.queue_type ?? "full_start") !== "add_models");
     const queuePosition = Math.max(1, fifoSlice.findIndex((r) => r.id === entry.id) + 1);
     const totalInQueue = fifoSlice.length;

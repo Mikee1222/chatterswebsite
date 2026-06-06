@@ -69,7 +69,7 @@ function StatusBadge({ status }: { status: string }) {
         variant
       )}
     >
-      {status.replace(/_/g, " ")}
+      {status.replace(/_/g, "")}
     </span>
   );
 }
@@ -530,7 +530,7 @@ export function AdminBillingClient({
                           : `${modelIds.length} model${modelIds.length === 1 ? "" : "s"}`}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-400">
-                        {formatDateEuropean(cycle.period_start)} –{" "}
+                        {formatDateEuropean(cycle.period_start)} –{""}
                         {formatDateEuropean(cycle.period_end)}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-400">
@@ -542,7 +542,7 @@ export function AdminBillingClient({
                       <td className="px-4 py-3 text-sm font-semibold text-white">
                         {fmtUsd(fee)} {cycle.currency}
                       </td>
-                      <td className="px-4 py-3 text-sm capitalize text-gray-300">{cycle.status.replace(/_/g, " ")}</td>
+                      <td className="px-4 py-3 text-sm capitalize text-gray-300">{cycle.status.replace(/_/g, "")}</td>
                       <td className="px-4 py-3">
                         <button
                           type="button"
@@ -831,7 +831,7 @@ export function AdminBillingClient({
                       {getClientName(cycle.client[0])}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-400">
-                      {formatDateEuropean(cycle.period_start)} –{" "}
+                      {formatDateEuropean(cycle.period_start)} –{""}
                       {formatDateEuropean(cycle.period_end)}
                     </td>
                     <td className="px-4 py-3 text-sm font-semibold text-white">
@@ -985,7 +985,7 @@ export function AdminBillingClient({
               >
                 {REVENUE_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s.replace(/_/g, " ")}
+                    {s.replace(/_/g, "")}
                   </option>
                 ))}
               </FormSelect>
@@ -1103,7 +1103,7 @@ export function AdminBillingClient({
               <FormSelect value={crmStatus} onChange={(e) => setCrmStatus(e.target.value)}>
                 {CYCLE_STATUSES.map((s) => (
                   <option key={s} value={s}>
-                    {s.replace(/_/g, " ")}
+                    {s.replace(/_/g, "")}
                   </option>
                 ))}
               </FormSelect>

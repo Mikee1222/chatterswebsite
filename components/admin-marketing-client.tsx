@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown, ExternalLink, Plus, Pencil, Trash2, Search } from "lucide-react";
+import { Check, ChevronDown, ExternalLink, Plus, Pencil, Trash2, Search, Smartphone, CheckCircle2, ImageIcon, ClipboardList } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type {
   FunnelLink,
@@ -45,15 +45,15 @@ const STATUS_CONFIG: Record<
 };
 
 const PLATFORM_ICONS: Record<string, string> = {
-  Instagram: "📸",
-  Facebook: "👥",
-  TikTok: "🎵",
-  Twitter: "🐦",
-  YouTube: "▶️",
-  Snapchat: "👻",
-  Telegram: "✈️",
-  GetMyLinks: "🔗",
-  Other: "📱",
+  Instagram: "",
+  Facebook: "",
+  TikTok: "",
+  Twitter: "",
+  YouTube: "▶",
+  Snapchat: "",
+  Telegram: "",
+  GetMyLinks: "",
+  Other: "",
 };
 
 const PLATFORM_COLORS: Record<string, string> = {
@@ -108,7 +108,7 @@ export function AdminMarketingClient({
 
   // —— Platforms ——
   const [pName, setPName] = React.useState("");
-  const [pIcon, setPIcon] = React.useState("📱");
+  const [pIcon, setPIcon] = React.useState("");
   const [pColor, setPColor] = React.useState("#ec4899");
   const [pSort, setPSort] = React.useState(99);
   const [editPlatform, setEditPlatform] = React.useState<MarketingPlatform | null>(null);
@@ -127,7 +127,7 @@ export function AdminMarketingClient({
       const data = (await res.json()) as { platform: MarketingPlatform };
       setPlatforms((prev) => [...prev, data.platform].sort((a, b) => a.sort_order - b.sort_order));
       setPName("");
-      setPIcon("📱");
+      setPIcon("");
       setPColor("#ec4899");
       setPSort(99);
     } catch (err) {
@@ -758,7 +758,7 @@ export function AdminMarketingClient({
               <option value="">All platforms</option>
               {[...new Set(accounts.map((a) => a.platform).filter(Boolean))].sort().map((p) => (
                 <option key={p} value={p}>
-                  {PLATFORM_ICONS[p] ?? "📱"} {p}
+                  {PLATFORM_ICONS[p] ?? ""} {p}
                 </option>
               ))}
             </select>
@@ -780,9 +780,9 @@ export function AdminMarketingClient({
               className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
             >
               <option value="">All statuses</option>
-              <option value="active">✅ Active</option>
-              <option value="shadowbanned">⚠️ Shadowbanned</option>
-              <option value="banned">🚫 Banned</option>
+              <option value="active">Active</option>
+              <option value="shadowbanned">Shadowbanned</option>
+              <option value="banned">Banned</option>
             </select>
             {(searchAccounts || filterModel || filterPlatform || filterVA || filterStatus) && (
               <button
@@ -803,7 +803,7 @@ export function AdminMarketingClient({
 
           {accountsByModel.length === 0 ? (
             <div className="py-20 text-center text-white/20">
-              <p className="mb-4 text-5xl">📱</p>
+              <p className="mb-4 flex justify-center"><Smartphone className="h-12 w-12 text-white/30" aria-hidden /></p>
               <p className="text-lg">No social accounts yet</p>
               <p className="mt-1 text-sm">Add the first account to get started</p>
             </div>
@@ -835,7 +835,7 @@ export function AdminMarketingClient({
                   {group.accounts.map((acc) => {
                     const color =
                       platformColorByName[acc.platform] ?? PLATFORM_COLORS[acc.platform] ?? "#888888";
-                    const icon = PLATFORM_ICONS[acc.platform] ?? "📱";
+                    const icon = PLATFORM_ICONS[acc.platform] ?? "";
                     const statusCfg = STATUS_CONFIG[acc.account_status ?? "active"];
 
                     return (
@@ -920,7 +920,7 @@ export function AdminMarketingClient({
                                     : "border-purple-500/20 bg-purple-500/10 text-purple-400",
                               )}
                             >
-                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : "🌍"} {acc.region}
+                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : ""} {acc.region}
                             </span>
                           </div>
 
@@ -999,7 +999,7 @@ export function AdminMarketingClient({
                                 }}
                                 className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/10"
                               >
-                                ⚠️ Report shadowban
+                                Report shadowban
                               </button>
                             </div>
                           </div>
@@ -1033,7 +1033,7 @@ export function AdminMarketingClient({
 
           {reports.length === 0 ? (
             <div className="py-16 text-center text-white/20">
-              <p className="mb-3 text-4xl">✅</p>
+              <p className="mb-3 flex justify-center"><CheckCircle2 className="h-10 w-10 text-emerald-400" aria-hidden /></p>
               <p>No shadowban reports</p>
             </div>
           ) : (
@@ -1053,7 +1053,7 @@ export function AdminMarketingClient({
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className="text-xl">{PLATFORM_ICONS[report.platform] ?? "📱"}</span>
+                        <span className="text-xl">{PLATFORM_ICONS[report.platform] ?? ""}</span>
                         <span className="font-bold text-white">@{report.username}</span>
                         <span className="text-sm text-white/40">{report.platform}</span>
                         <span className="text-xs text-white/30">·</span>
@@ -1092,7 +1092,7 @@ export function AdminMarketingClient({
                           rel="noreferrer"
                           className="mb-3 inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300"
                         >
-                          🖼 View screenshot
+                          <span className="inline-flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" aria-hidden />View screenshot</span>
                         </a>
                       ) : null}
                     </div>
@@ -1421,7 +1421,7 @@ export function AdminMarketingClient({
                 </div>
                 {accountDraft.platform ? (
                   <p className="mt-2 text-xs text-white/25">
-                    Selected: {platforms.find((p) => p.name === accountDraft.platform)?.icon}{" "}
+                    Selected: {platforms.find((p) => p.name === accountDraft.platform)?.icon}{""}
                     {accountDraft.platform}
                   </p>
                 ) : null}
@@ -1539,7 +1539,7 @@ export function AdminMarketingClient({
           <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <h3 className="mb-1 text-lg font-bold text-white">Report shadowban</h3>
             <div className="mb-5 flex items-center gap-2">
-              <span className="text-xl">{PLATFORM_ICONS[shadowbanReportTarget.platform] ?? "📱"}</span>
+              <span className="text-xl">{PLATFORM_ICONS[shadowbanReportTarget.platform] ?? ""}</span>
               <p className="text-sm text-white/50">
                 @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
               </p>
@@ -1564,7 +1564,7 @@ export function AdminMarketingClient({
                   />
                 ) : (
                   <>
-                    <p className="mb-1 text-2xl">📋</p>
+                    <p className="mb-1 flex justify-center"><ClipboardList className="h-8 w-8 text-white/30" aria-hidden /></p>
                     <p className="text-sm text-white/40">Paste (Ctrl+V) or click</p>
                   </>
                 )}

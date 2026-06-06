@@ -37,7 +37,7 @@ export async function updateWhaleTransactionAction(
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.WHALE_SPENT,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "💰 Whale transaction modified",
+      title: " Whale transaction modified",
       body: `${chatterName} edited a transaction for ${whaleName}. Previous: $${amountLabel}`,
       entity_type: NOTIFICATION_ENTITY.WHALE,
       entity_id: recordId,
@@ -72,7 +72,7 @@ export async function deleteWhaleTransactionAction(recordId: string): Promise<Ac
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.WHALE_SPENT,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "💰 Whale transaction modified",
+      title: " Whale transaction modified",
       body: `${chatterName} deleted a transaction for ${whaleName}. Previous: $${amountLabel}`,
       entity_type: NOTIFICATION_ENTITY.WHALE,
       entity_id: recordId,

@@ -1,19 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { Check, X } from "lucide-react";
+import { Check, X, ClipboardList } from "lucide-react";
 import type { SocialAccount } from "@/services/marketing";
 
 const PLATFORM_ICONS: Record<string, string> = {
-  Instagram: "📸",
-  Facebook: "👥",
-  TikTok: "🎵",
-  Twitter: "🐦",
-  YouTube: "▶️",
-  Snapchat: "👻",
-  Telegram: "✈️",
-  GetMyLinks: "🔗",
-  Other: "📱",
+  Instagram: "",
+  Facebook: "",
+  TikTok: "",
+  Twitter: "",
+  YouTube: "▶",
+  Snapchat: "",
+  Telegram: "",
+  GetMyLinks: "",
+  Other: "",
 };
 
 export type VAShadowbanReportModalProps = {
@@ -134,7 +134,7 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
                       : "border-white/10 bg-white/[0.05] text-white/40 hover:bg-white/[0.08]"
                   }`}
                 >
-                  ⚠️ Shadowbanned
+                  Shadowbanned
                 </button>
                 <button
                   type="button"
@@ -145,7 +145,7 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
                       : "border-white/10 bg-white/[0.05] text-white/40 hover:bg-white/[0.08]"
                   }`}
                 >
-                  🚫 Banned
+                  Banned
                 </button>
               </div>
             </div>
@@ -165,7 +165,7 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
                           : "border-white/[0.08] bg-white/[0.03] hover:bg-white/[0.05]"
                       }`}
                     >
-                      <span className="text-xl">{PLATFORM_ICONS[acc.platform] ?? "📱"}</span>
+                      <span className="text-xl">{PLATFORM_ICONS[acc.platform] ?? ""}</span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate text-sm font-medium text-white">@{acc.username}</p>
                         <p className="truncate text-xs text-white/40">
@@ -192,7 +192,7 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
                 tabIndex={0}
                 onClick={() => fileRef.current?.click()}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
+                  if (e.key === "Enter" || e.key === "") fileRef.current?.click();
                 }}
                 className={`cursor-pointer rounded-2xl border-2 border-dashed p-4 text-center transition-all ${
                   screenshot
@@ -207,11 +207,11 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
                       alt=""
                       className="mx-auto mb-2 max-h-24 rounded-xl object-contain"
                     />
-                    <p className="text-xs text-green-400">✓ {screenshot.name}</p>
+                    <p className="text-xs text-green-400">{screenshot.name}</p>
                   </div>
                 ) : (
                   <>
-                    <p className="mb-1 text-2xl">📋</p>
+                    <p className="mb-1 flex justify-center"><ClipboardList className="h-8 w-8 text-white/30" aria-hidden /></p>
                     <p className="text-sm text-white/30">Paste or click to upload</p>
                   </>
                 )}
@@ -251,8 +251,8 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
               {submitting
                 ? "Submitting..."
                 : reportType === "banned"
-                  ? "🚫 Report as Banned"
-                  : "⚠️ Report as Shadowbanned"}
+                  ? "Report as Banned"
+                  : "Report as Shadowbanned"}
             </button>
           </>
         )}

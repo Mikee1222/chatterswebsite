@@ -67,8 +67,7 @@ async function discoverWeekStartFieldName(): Promise<string> {
   try {
     const schema = await getBaseSchema();
     const table = schema.tables?.find(
-      (t) => t.name === "weekly_availability_requests" || t.name === "Weekly availability requests" || t.name === "Weekly Availability Requests"
-    );
+      (t) => t.name === "weekly_availability_requests" || t.name === "Weekly availability requests" || t.name === "Weekly Availability Requests");
     const field = table?.fields?.find((f) => /^week[-_\s]?start$/i.test(f.name));
     if (field?.name) return field.name;
   } catch (_) {
@@ -219,8 +218,7 @@ export async function getRequestsForWeek(
       const mappedAll = all.map((r) => mapRecord(r as AirtableRecord<Fields>));
       const forWeek = mappedAll.filter((r) => r.week_start === weekYmd);
       const result =
-        chatterRecordId != null && chatterRecordId !== ""
-          ? forWeek.filter((r) => r.chatter_id === chatterRecordId)
+        chatterRecordId != null && chatterRecordId !== ""? forWeek.filter((r) => r.chatter_id === chatterRecordId)
           : forWeek;
       if (process.env.NODE_ENV !== "production") {
         devLog("[getRequestsForWeek] fetch-then-filter", {
@@ -240,8 +238,7 @@ export async function getRequestsForWeek(
 
   const mapped = records.map((r) => mapRecord(r as AirtableRecord<Fields>));
   const filtered =
-    chatterRecordId != null && chatterRecordId !== ""
-      ? mapped.filter((r) => r.chatter_id === chatterRecordId)
+    chatterRecordId != null && chatterRecordId !== ""? mapped.filter((r) => r.chatter_id === chatterRecordId)
       : mapped;
 
   if (process.env.NODE_ENV !== "production") {

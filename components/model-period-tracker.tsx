@@ -3,7 +3,7 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { Calendar, Loader2, StickyNote } from "lucide-react";
+import { Calendar, Loader2, StickyNote, Droplet } from "lucide-react";
 import { formatDateLong } from "@/lib/format";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { FormField } from "@/components/ui/form-field";
@@ -387,7 +387,7 @@ export function ModelPeriodTracker({
 
       {currentPeriod ? (
         <p className="mt-4 text-sm text-rose-200/90">
-          {t("periodTracker.currentlyUntil")}{" "}
+          {t("periodTracker.currentlyUntil")}{""}
           <span className="font-medium text-white">{formatDateLong(currentPeriod.end_date, locale)}</span>
         </p>
       ) : null}
@@ -408,7 +408,7 @@ export function ModelPeriodTracker({
             {t("common.saving")}
           </span>
         ) : (
-          <>🩸 {t("periodTracker.myPeriodStartedToday")}</>
+          <><Droplet className="inline h-3.5 w-3.5 text-rose-400" aria-hidden /> {t("periodTracker.myPeriodStartedToday")}</>
         )}
       </button>
 
@@ -419,14 +419,14 @@ export function ModelPeriodTracker({
             onClick={() => setHistoryOpen(true)}
             className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-medium text-white/85 hover:bg-white/[0.1]"
           >
-            📋 {t("periodTracker.history")}
+            {t("periodTracker.history")}
           </button>
           <button
             type="button"
             onClick={() => setCustomOpen(true)}
             className="flex-1 rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2.5 text-sm font-medium text-white/85 hover:bg-white/[0.1]"
           >
-            📅 {t("periodTracker.differentDate")}
+            {t("periodTracker.differentDate")}
           </button>
         </div>
       ) : null}
@@ -437,7 +437,7 @@ export function ModelPeriodTracker({
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
             <div className="flex items-center justify-between gap-2">
-              <h3 className="text-lg font-semibold text-white">📋 {t("periodTracker.history")}</h3>
+              <h3 className="text-lg font-semibold text-white">{t("periodTracker.history")}</h3>
               <button
                 type="button"
                 className="rounded-lg border border-white/15 px-3 py-1 text-sm text-white/70 hover:bg-white/5"

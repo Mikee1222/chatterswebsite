@@ -41,8 +41,7 @@ export async function POST(req: Request) {
   }
 
   const result =
-    parsed.data.mode === "month"
-      ? await generateWeeklyPeriods(parsed.data.month)
+    parsed.data.mode === "month"? await generateWeeklyPeriods(parsed.data.month)
       : await generateBillingPeriodsRange(parsed.data.period_start, parsed.data.period_end);
 
   if (!result.ok) {

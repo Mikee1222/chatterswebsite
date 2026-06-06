@@ -48,7 +48,7 @@ const CATEGORY_CONFIG = {
     badge: "border-yellow-500/25 bg-yellow-500/15 text-yellow-400",
     dot: "bg-yellow-400",
     glow: "shadow-yellow-500/10",
-    emoji: "🟡",
+    emoji: "",
     defaultPts: 5,
   },
   Medium: {
@@ -58,7 +58,7 @@ const CATEGORY_CONFIG = {
     badge: "border-amber-500/25 bg-amber-500/15 text-amber-400",
     dot: "bg-amber-400",
     glow: "shadow-amber-500/10",
-    emoji: "🟠",
+    emoji: "",
     defaultPts: 10,
   },
   High: {
@@ -68,7 +68,7 @@ const CATEGORY_CONFIG = {
     badge: "border-red-500/25 bg-red-500/15 text-red-400",
     dot: "bg-red-500",
     glow: "shadow-red-500/10",
-    emoji: "🔴",
+    emoji: "",
     defaultPts: 20,
   },
 } as const;
@@ -344,7 +344,7 @@ export function AdminMistakeReasonsClient({ initialReasons }: Props) {
                 <div>
                   <h2 className={`text-lg font-bold ${cfg.color}`}>{cat} mistakes</h2>
                   <p className="text-xs text-white/30">
-                    {catReasons.filter((r) => r.active).length} active · {catReasons.filter((r) => !r.active).length}{" "}
+                    {catReasons.filter((r) => r.active).length} active · {catReasons.filter((r) => !r.active).length}{""}
                     hidden
                   </p>
                 </div>
@@ -482,9 +482,9 @@ export function AdminMistakeReasonsClient({ initialReasons }: Props) {
                     }
                     className="w-full rounded-2xl border border-white/10 bg-white/5 px-3 py-3 text-sm text-white focus:outline-none"
                   >
-                    <option value="Low">🟡 Low</option>
-                    <option value="Medium">🟠 Medium</option>
-                    <option value="High">🔴 High</option>
+                    <option value="Low">Low</option>
+                    <option value="Medium">Medium</option>
+                    <option value="High">High</option>
                   </select>
                 </div>
                 <div>

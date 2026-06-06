@@ -73,7 +73,7 @@ export default function NotificationDiagnosticPage() {
         body: JSON.stringify({
           user_id: userId,
           event_type: "system_alert",
-          title: "🧪 Test push notification",
+          title: "Test push notification",
           body: `Direct push test for ${userName} — ${new Date().toLocaleTimeString()}`,
           entity_type: "system",
           entity_id: `test_push:${userId}:${Date.now()}`,
@@ -82,12 +82,12 @@ export default function NotificationDiagnosticPage() {
       const data = (await res.json()) as { success?: boolean; error?: string };
       setTestResults((prev) => ({
         ...prev,
-        [userId]: data.success ? "✅ Sent! Check device." : `❌ Failed: ${data.error ?? res.statusText}`,
+        [userId]: data.success ? "Sent! Check device." : `Failed: ${data.error ?? res.statusText}`,
       }));
     } catch (err) {
       setTestResults((prev) => ({
         ...prev,
-        [userId]: `❌ Error: ${err instanceof Error ? err.message : String(err)}`,
+        [userId]: `Error: ${err instanceof Error ? err.message : String(err)}`,
       }));
     } finally {
       setTestingUser(null);
@@ -105,7 +105,7 @@ export default function NotificationDiagnosticPage() {
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6 pb-24">
       <div>
-        <h1 className="text-3xl font-bold text-white">🧪 Notification diagnostic</h1>
+        <h1 className="text-3xl font-bold text-white">Notification diagnostic</h1>
         <p className="mt-1 text-sm text-white/50">
           Check pipeline and send real push notifications (admin session; test-notifications API may still require
           ENABLE_NOTIFICATION_TESTING in production).
@@ -119,7 +119,7 @@ export default function NotificationDiagnosticPage() {
           disabled={loading}
           className="rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 px-6 py-3 font-semibold text-white hover:opacity-90 disabled:opacity-50"
         >
-          {loading ? "⏳ Running…" : "🔍 Run diagnostic"}
+          {loading ? "⏳ Running…" : "Run diagnostic"}
         </button>
 
         {results?.users && (
@@ -129,7 +129,7 @@ export default function NotificationDiagnosticPage() {
             disabled={!!testingUser}
             className="rounded-xl border border-white/20 bg-white/10 px-6 py-3 font-semibold text-white hover:bg-white/20 disabled:opacity-50"
           >
-            📤 Send test push to ALL users
+            Send test push to ALL users
           </button>
         )}
       </div>
@@ -151,7 +151,7 @@ export default function NotificationDiagnosticPage() {
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(results.env ?? {}).map(([key, val]) => (
                 <div key={key} className="flex flex-wrap items-center gap-2 text-sm">
-                  <span>{val ? "✅" : "❌"}</span>
+                  <span>{val ? "" : ""}</span>
                   <span className={val ? "text-white/70" : "font-semibold text-red-400"}>{key}</span>
                   {!val && <span className="text-xs text-red-400">← missing</span>}
                 </div>
@@ -164,7 +164,7 @@ export default function NotificationDiagnosticPage() {
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(results.airtable_tables ?? {}).map(([table, info]) => (
                 <div key={table} className="flex items-center gap-2 text-sm">
-                  <span>{info.exists ? "✅" : "❌"}</span>
+                  <span>{info.exists ? "" : ""}</span>
                   <span className={info.exists ? "text-white/70" : "text-red-400"}>{table}</span>
                 </div>
               ))}
@@ -192,7 +192,7 @@ export default function NotificationDiagnosticPage() {
           <div className="space-y-3">
             <h2 className="text-xs font-semibold uppercase tracking-widest text-white/40">Per user</h2>
             {(results.users ?? []).map((user) => {
-              const allPassed = String(user.overall).startsWith("✅");
+              const allPassed = String(user.overall).startsWith("");
               return (
                 <div
                   key={user.id}
@@ -215,8 +215,8 @@ export default function NotificationDiagnosticPage() {
                       return (
                         <div key={check}>
                           <div className="flex items-center gap-2 text-sm">
-                            <span>{passed ? "✅" : "❌"}</span>
-                            <span className={passed ? "text-white/60" : "text-red-400"}>{check.replace(/_/g, " ")}</span>
+                            <span>{passed ? "" : ""}</span>
+                            <span className={passed ? "text-white/60" : "text-red-400"}>{check.replace(/_/g, "")}</span>
                           </div>
                           {!passed && v?.fix && (
                             <div className="ml-6 mt-0.5 text-xs text-amber-400">→ {v.fix}</div>
@@ -236,12 +236,12 @@ export default function NotificationDiagnosticPage() {
                       disabled={testingUser === user.id}
                       className="rounded-xl border border-pink-500/30 bg-pink-500/20 px-4 py-2 text-sm font-semibold text-pink-300 hover:bg-pink-500/30 disabled:opacity-50"
                     >
-                      {testingUser === user.id ? "⏳ Sending…" : "📤 Send test push"}
+                      {testingUser === user.id ? "⏳ Sending…" : "Send test push"}
                     </button>
                     {testResults[user.id] && (
                       <span
                         className={`text-sm font-medium ${
-                          testResults[user.id].startsWith("✅") ? "text-green-400" : "text-red-400"
+                          testResults[user.id].startsWith("") ? "text-green-400" : "text-red-400"
                         }`}
                       >
                         {testResults[user.id]}

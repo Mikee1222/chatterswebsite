@@ -20,7 +20,7 @@ export default async function AdminEarningsConfigPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-white">Earnings config</h1>
         <p className="mt-1 text-sm text-white/55">
           Set agency cut % per model (stored in Airtable <code className="text-[hsl(330,80%,70%)]">earnings_config</code>
-          ). Create that table with fields <code className="text-white/70">model_id</code> (text) and{" "}
+          ). Create that table with fields <code className="text-white/70">model_id</code> (text) and{""}
           <code className="text-white/70">agency_cut_percent</code> (number) if it does not exist yet.
         </p>
       </div>

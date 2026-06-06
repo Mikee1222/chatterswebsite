@@ -64,8 +64,7 @@ export async function POST(request: Request) {
     const title =
       ctx.language === "es" ? "Entrega de contenido programada" : "Content delivery scheduled";
     const body =
-      ctx.language === "es"
-        ? `${modelName} programó «${updated.title}» para el ${dateLabel}.`
+      ctx.language === "es"? `${modelName} programó «${updated.title}» para el ${dateLabel}.`
         : `${modelName} scheduled “${updated.title}” for ${dateLabel}.`;
     await notify({
       user_id: before.va_id,

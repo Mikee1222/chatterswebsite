@@ -138,7 +138,7 @@ export function AdminTestNotificationsClient() {
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8">
       <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 px-4 py-3 text-sm text-amber-100/95">
-        <span className="font-semibold text-amber-200">Warning:</span> This page sends{" "}
+        <span className="font-semibold text-amber-200">Warning:</span> This page sends{""}
         <strong>real</strong> in-app notifications and may trigger <strong>real web push</strong> to the selected
         users (same as production <code className="rounded bg-black/30 px-1">notify()</code>).
       </div>

@@ -89,11 +89,11 @@ export function InflowwTodayEarningsCard(props: InflowwTodayEarningsCardProps = 
           </p>
           {data ? (
             <p className={cn("text-white/45", hero ? "relative mt-4 text-sm" : "relative mt-3 text-xs")}>
-              Net after OF ({Math.round(OF_NET_MULT * 100)}%):{" "}
+              Net after OF ({Math.round(OF_NET_MULT * 100)}%):{""}
               <span className="font-semibold text-pink-100/90">{money(data.net)}</span>
               {data.agency_cut > 0.001 ? (
                 <>
-                  {" "}
+                  {""}
                   · Agency: <span className="font-medium text-white/75">{money(data.agency_cut)}</span>
                 </>
               ) : null}

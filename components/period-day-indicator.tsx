@@ -1,5 +1,6 @@
 "use client";
 
+import { Droplet } from "lucide-react";
 import * as React from "react";
 
 const TOOLTIP = "Period day — sensitive content restrictions may apply";
@@ -23,7 +24,7 @@ export function PeriodDayIndicator({ variant = "dot", className = "" }: Props) {
           aria-label={TOOLTIP}
           onClick={() => setOpen((v) => !v)}
         >
-          🔴
+          <Droplet className="h-3.5 w-3.5 text-rose-400" aria-hidden />
         </button>
         {open && (
           <span className="sr-only" role="status">

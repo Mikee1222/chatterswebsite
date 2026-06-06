@@ -22,8 +22,7 @@ function parseBody(json: unknown): Omit<ModelTierRecord, "id"> | null {
   const sort_order =
     typeof so === "number" && Number.isFinite(so)
       ? so
-      : typeof so === "string"
-        ? Number.parseInt(so, 10)
+      : typeof so === "string"? Number.parseInt(so, 10)
         : 0;
   return {
     model_name: name,

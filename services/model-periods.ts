@@ -430,8 +430,7 @@ export async function updatePeriod(id: string, data: UpdateModelPeriodInput): Pr
   if (data.missed_period !== undefined) payload.missed_period = data.missed_period;
   if (data.predicted_next_date !== undefined) {
     payload.predicted_next_date =
-      data.predicted_next_date === null || data.predicted_next_date === ""
-        ? null
+      data.predicted_next_date === null || data.predicted_next_date === ""? null
         : data.predicted_next_date;
   }
   const rec = await updateRecord<Fields>(TABLE, id, payload);

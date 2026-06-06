@@ -146,14 +146,14 @@ function ModelTiersSection({ tiers }: { tiers: ModelTierRecord[] }) {
   }, [tiers]);
 
   const cols: { tier: ModelTier; title: string; emoji: string; accent: string }[] = [
-    { tier: "high", title: "High", emoji: "🔺", accent: "border-amber-500/25 bg-amber-500/[0.06]" },
-    { tier: "medium", title: "Medium", emoji: "◼️", accent: "border-sky-500/25 bg-sky-500/[0.05]" },
-    { tier: "low", title: "Low", emoji: "🔻", accent: "border-white/15 bg-white/[0.04]" },
+    { tier: "high", title: "High", emoji: "", accent: "border-amber-500/25 bg-amber-500/[0.06]" },
+    { tier: "medium", title: "Medium", emoji: "◼", accent: "border-sky-500/25 bg-sky-500/[0.05]" },
+    { tier: "low", title: "Low", emoji: "", accent: "border-white/15 bg-white/[0.04]" },
   ];
 
   return (
     <motion.section variants={sectionReveal} initial="hidden" animate="show" className="space-y-4">
-      <h2 className="text-xl font-bold tracking-tight text-white">🎯 Model Tiers</h2>
+      <h2 className="text-xl font-bold tracking-tight text-white">Model Tiers</h2>
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         {cols.map((c) => (
           <div
@@ -238,14 +238,14 @@ function PricingSection({
 
   return (
     <motion.section variants={sectionReveal} initial="hidden" animate="show" className="space-y-4">
-      <h2 className="text-xl font-bold tracking-tight text-white">💰 Pricing Guide</h2>
+      <h2 className="text-xl font-bold tracking-tight text-white">Pricing Guide</h2>
 
       <div className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl md:flex-row md:flex-wrap md:items-center">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[11px] font-bold uppercase tracking-wider text-white/40">Model</span>
           {(["all", "high", "medium", "low"] as const).map((k) => (
             <button key={k} type="button" className={pill(mt === k)} onClick={() => setMt(k)}>
-              {k === "all" ? "All" : k === "high" ? "🔺 High" : k === "medium" ? "◼️ Medium" : "🔻 Low"}
+              {k === "all" ? "All" : k === "high" ? "High" : k === "medium" ? "◼ Medium" : "Low"}
             </button>
           ))}
         </div>
@@ -310,7 +310,7 @@ function PricingSection({
       </div>
 
       <div>
-        <h3 className="mb-3 text-lg font-bold text-white">⚡ Special Prices</h3>
+        <h3 className="mb-3 text-lg font-bold text-white">Special Prices</h3>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           {specials.map((s) => (
             <div
@@ -383,10 +383,10 @@ export function InformationsClient({
       </motion.div>
 
       <motion.div variants={sectionReveal} className="space-y-4">
-        <h2 className="text-xl font-bold tracking-tight text-white">📋 Mass lists</h2>
+        <h2 className="text-xl font-bold tracking-tight text-white">Mass lists</h2>
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <MassListSection title="✅ Include" accent="include" lists={include} />
-          <MassListSection title="❌ Exclude" accent="exclude" lists={exclude} />
+          <MassListSection title="Include" accent="include" lists={include} />
+          <MassListSection title="Exclude" accent="exclude" lists={exclude} />
         </div>
       </motion.div>
     </motion.div>

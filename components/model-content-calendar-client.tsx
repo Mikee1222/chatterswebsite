@@ -9,7 +9,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
-import { Calendar, CalendarClock, ChevronLeft, ChevronRight, Clock, Plus, X } from "lucide-react";
+import { Calendar, CalendarClock, ChevronLeft, ChevronRight, Clock, Plus, X, Droplet } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { formatDateEuropean } from "@/lib/format";
 import { addDays, addWeeks, getMondayOfWeek } from "@/lib/weekly-program";
@@ -135,22 +135,22 @@ function getStatusDot(statusRaw: string | undefined | null): string {
     case "done":
     case "uploaded":
     case "delivered":
-      return "🟢";
+      return "";
     case "scheduled":
     case "in_progress":
     case "recording":
-      return "🔵";
+      return "";
     case "pending":
     case "waiting_schedule":
-      return "🟡";
+      return "";
     case "cancelled":
     case "canceled":
     case "declined":
     case "rejected":
     case "blocked":
-      return "🔴";
+      return "";
     default:
-      return "⚪";
+      return "";
   }
 }
 
@@ -477,7 +477,7 @@ function CalendarEventPopover(props: {
 
               <div className="mb-3 flex flex-wrap items-center gap-2">
                 <span className={cn("rounded-full border px-2.5 py-1 text-xs font-semibold uppercase", pillStyle)}>
-                  {(ev.status ?? "pending").replace(/-/g, " ").toUpperCase()}
+                  {(ev.status ?? "pending").replace(/-/g, "").toUpperCase()}
                 </span>
                 {contentTypeChip ? (
                   <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/50">
@@ -534,7 +534,7 @@ function CalendarEventPopover(props: {
                     >
                       {formatCalendarDisplayDate(ded)}
                     </span>
-                    {deadlinePast ? <span className="ml-auto text-red-400">⚠️ Overdue</span> : null}
+                    {deadlinePast ? <span className="ml-auto text-red-400">Overdue</span> : null}
                     {deadlineSoon && !deadlinePast ? <span className="ml-auto text-amber-400">⏰ Soon</span> : null}
                   </div>
                 ) : null}
@@ -955,7 +955,7 @@ export function ModelContentCalendarClient({
                 <div className="text-center">
                   <div className="text-[10px] font-semibold uppercase tracking-wider text-white/40">{WEEKDAYS_MON[i]}</div>
                   <div className={cn("mt-0.5 flex min-h-[14px] items-center justify-center", isPeriodDay && "text-rose-400")}>
-                    {isPeriodDay ? <span className="text-xs leading-none">🩸</span> : null}
+                    {isPeriodDay ? <Droplet className="h-3 w-3 text-rose-400" aria-hidden /> : null}
                   </div>
                   <div
                     className={cn(
@@ -1064,9 +1064,9 @@ export function ModelContentCalendarClient({
                               cell.inMonth && isPeriodDay && todayLocalYmd() !== cell.ymd && "text-rose-400"
                             )}
                           >
-                            {isPeriodDay ? <span className="mr-0.5 text-[10px] leading-none text-rose-400">🩸</span> : null}
+                            {isPeriodDay ? <Droplet className="mr-0.5 h-2.5 w-2.5 text-rose-400" aria-hidden /> : null}
                             {isPredictedDay && !isPeriodDay ? (
-                              <span className="mr-0.5 text-[10px] leading-none text-amber-400">🗓</span>
+                              <Calendar className="mr-0.5 h-2.5 w-2.5 text-amber-400" aria-hidden />
                             ) : null}
                             {Number(cell.ymd.slice(8, 10))}
                           </div>
@@ -1121,11 +1121,11 @@ export function ModelContentCalendarClient({
                   onChange={(e) => setEventForm((prev) => ({ ...prev, event_type: e.target.value as ModelPersonalEventType }))}
                   className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white"
                 >
-                  <option value="nails">💅 Nails</option>
-                  <option value="lashes">👁️ Lashes</option>
-                  <option value="hairdresser">💇 Hairdresser</option>
-                  <option value="surgery">🔪 Surgery</option>
-                  <option value="fillers">💉 Fillers</option>
+                  <option value="nails"> Nails</option>
+                  <option value="lashes"> Lashes</option>
+                  <option value="hairdresser"> Hairdresser</option>
+                  <option value="surgery"> Surgery</option>
+                  <option value="fillers"> Fillers</option>
                   <option value="custom">⭐ Custom event</option>
                 </select>
               </label>

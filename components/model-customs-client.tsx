@@ -168,7 +168,7 @@ export function ModelCustomsClient({ requests, language }: Props) {
                   <span className="mt-1 block text-xs text-white/50">
                     {r.fan_username ? `${t(language, "Fan", "Fan")}: ${r.fan_username} · ` : null}
                     {adminLabel(language, r.admin_status)}
-                    {" · "}
+                    {"· "}
                     {statusLabel(language, r.model_status)}
                   </span>
                 </span>

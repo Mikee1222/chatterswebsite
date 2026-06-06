@@ -12,14 +12,7 @@ import type { NotificationEventType } from "@/types";
 
 /** Who receives the notification. Use these when implementing or auditing send paths. */
 export type NotificationRecipientRule =
-  | "admin_only"
-  | "assigned_user_only"
-  | "assigned_chatter_only"
-  | "assigned_model_only"
-  | "admin_and_actor"
-  | "admin_and_assigned_chatter"
-  | "assigned_party_only"
-  | "all_users";
+  | "admin_only"| "assigned_user_only"| "assigned_chatter_only"| "assigned_model_only"| "admin_and_actor"| "admin_and_assigned_chatter"| "assigned_party_only"| "all_users";
 
 export type RoutingEntry = {
   rule: NotificationRecipientRule;

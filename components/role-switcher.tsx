@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeftRight } from "lucide-react";
+import { AlertTriangle, ArrowLeftRight } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import type { StaffPairRole } from "@/lib/staff-session-role";
 
@@ -75,7 +75,7 @@ export function RoleSwitcher({ currentRole, secondaryRole, hasActiveShift }: Pro
           <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <div className="mb-4 flex justify-center">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-500/20 text-2xl" aria-hidden>
-                ⚠️
+              <AlertTriangle className="h-6 w-6 text-amber-400" aria-hidden />
               </div>
             </div>
             <h3 className="mb-2 text-center text-lg font-bold text-white">Active shift detected</h3>

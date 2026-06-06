@@ -75,7 +75,7 @@ function isOvernightContinuationStart(startIso: string): boolean {
 function OvernightContinuationBadge() {
   return (
     <span className="inline-flex items-center rounded-full border border-indigo-400/30 bg-indigo-500/10 px-2 py-0.5 text-[11px] font-semibold text-indigo-100">
-      🌙 +1 cont.
+      +1 cont.
     </span>
   );
 }
@@ -267,7 +267,7 @@ function analyzeModelSlotCoverage(
       chips: [{ tone: "uncovered", text: "Uncovered" }],
     };
   }
-  const displayLabel = segments.map((s) => `${s.chatterName} (${formatUtcRangeCompactFromMs(s.cs, s.ce)})`).join(" / ");
+  const displayLabel = segments.map((s) => `${s.chatterName} (${formatUtcRangeCompactFromMs(s.cs, s.ce)})`).join("/ ");
   const sortedSegs = [...segments].sort((a, b) => a.cs - b.cs);
   const chips: CoverageChip[] = [];
   let walk = ws;
@@ -1194,7 +1194,7 @@ export function AdminWeeklyProgramClient({
                     {resolvedConflictSummary.customOverlaps !== 1 ? "s" : ""}
                   </span>
                 )}
-                {resolvedConflictSummary.customOverlaps > 0 && resolvedConflictSummary.uncoveredCount > 0 && " · "}
+                {resolvedConflictSummary.customOverlaps > 0 && resolvedConflictSummary.uncoveredCount > 0 && "· "}
                 {resolvedConflictSummary.uncoveredCount > 0 && (
                   <span>
                     {resolvedConflictSummary.uncoveredCount} uncovered model{resolvedConflictSummary.uncoveredCount !== 1 ? "s" : ""}
@@ -1956,7 +1956,7 @@ export function AdminWeeklyProgramClient({
                       Duplicating...
                     </>
                   ) : duplicateUi === "done" ? (
-                    "✓ Done"
+                    "Done"
                   ) : (
                     "Copy"
                   )}
@@ -2061,7 +2061,7 @@ export function AdminWeeklyProgramClient({
               Duplicate slot
             </h3>
             <p className="mt-1 text-sm text-white/40">
-              {duplicateSlotModal.chatter_name || "—"} ·{" "}
+              {duplicateSlotModal.chatter_name || "—"} ·{""}
               {duplicateSlotModal.start_time && duplicateSlotModal.end_time
                 ? formatTimeRange(duplicateSlotModal.start_time, duplicateSlotModal.end_time)
                 : "—"}

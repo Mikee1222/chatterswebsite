@@ -247,7 +247,7 @@ export function Sidebar({
         <div className="space-y-1 border-t border-white/[0.08] px-4 py-4">
           <p className="truncate text-xs leading-relaxed text-white/45">{user.email}</p>
           <p className="text-[11px] font-medium uppercase tracking-wider text-pink-200/50">
-            {user.role.replace("_", " ")}
+            {user.role.replace("_", "")}
           </p>
         </div>
       </div>

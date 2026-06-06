@@ -150,12 +150,12 @@ function ConfettiBurst({ seed, fading }: { seed: number; fading: boolean }) {
 
 function prizeEmoji(prizeType: string): string {
   const t = prizeType.toLowerCase();
-  if (t === "cash" || t === "bonus") return "💰";
+  if (t === "cash" || t === "bonus") return "";
   if (t === "extra_break" || t === "break") return "⏰";
-  if (t === "double_points") return "2️⃣";
-  if (t === "custom" || t === "mystery") return "🎁";
+  if (t === "double_points") return "2⃣";
+  if (t === "custom" || t === "mystery") return "";
   if (t === "points") return "⭐";
-  return "🎁";
+  return "";
 }
 
 function formatTimeAgo(iso: string): string {
@@ -224,7 +224,7 @@ function wheelSlicePath(
     `L ${sInner.x} ${sInner.y}`,
     `A ${innerR} ${innerR} 0 ${largeArc} 0 ${eInner.x} ${eInner.y}`,
     "Z",
-  ].join(" ");
+  ].join("");
 }
 
 export function SpinWheel({

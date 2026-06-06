@@ -67,12 +67,12 @@ export function AdminNotificationDiagnosticClient() {
   return (
     <div className="mx-auto max-w-4xl p-6 pb-24">
       <div className="mb-6 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
-        ⚠️ Sends a real diagnostic notification and direct push per user in scope. Prefer filtering to one test user in
+        Sends a real diagnostic notification and direct push per user in scope. Prefer filtering to one test user in
         staging.
       </div>
 
       <div className="mb-6">
-        <h1 className="text-3xl font-bold text-white">🧪 Notification diagnostic</h1>
+        <h1 className="text-3xl font-bold text-white">Notification diagnostic</h1>
         <p className="mt-1 text-sm text-white/50">Full pipeline check for every user</p>
       </div>
 
@@ -99,7 +99,7 @@ export function AdminNotificationDiagnosticClient() {
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(results.env ?? {}).map(([key, val]) => (
                 <div key={key} className="flex items-center gap-2 text-sm">
-                  <span>{val ? "✅" : "❌"}</span>
+                  <span>{val ? "" : ""}</span>
                   <span className={val ? "text-white/70" : "text-red-400"}>{key}</span>
                 </div>
               ))}
@@ -112,7 +112,7 @@ export function AdminNotificationDiagnosticClient() {
             <div className="grid grid-cols-2 gap-2">
               {Object.entries(results.airtable_tables ?? {}).map(([table, info]) => (
                 <div key={table} className="flex items-center gap-2 text-sm">
-                  <span>{info.exists ? "✅" : "❌"}</span>
+                  <span>{info.exists ? "" : ""}</span>
                   <span className={info.exists ? "text-white/70" : "text-red-400"}>{table}</span>
                 </div>
               ))}
@@ -144,7 +144,7 @@ export function AdminNotificationDiagnosticClient() {
               <div
                 key={user.id}
                 className={`rounded-2xl border bg-white/5 p-5 ${
-                  String(user.overall).startsWith("✅") ? "border-green-500/20" : "border-red-500/20"
+                  String(user.overall).startsWith("") ? "border-green-500/20" : "border-red-500/20"
                 }`}
               >
                 <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -154,7 +154,7 @@ export function AdminNotificationDiagnosticClient() {
                   </div>
                   <span
                     className={`text-sm font-semibold ${
-                      String(user.overall).startsWith("✅") ? "text-green-400" : "text-red-400"
+                      String(user.overall).startsWith("") ? "text-green-400" : "text-red-400"
                     }`}
                   >
                     {user.overall}
@@ -168,7 +168,7 @@ export function AdminNotificationDiagnosticClient() {
                     return (
                       <div key={check}>
                         <div className="flex items-center gap-2">
-                          <span>{passed ? "✅" : "❌"}</span>
+                          <span>{passed ? "" : ""}</span>
                           <span className={passed ? "text-white/60" : "text-red-400"}>{check}</span>
                         </div>
                         {!passed && v?.fix && (
@@ -182,7 +182,7 @@ export function AdminNotificationDiagnosticClient() {
                   })}
                 </div>
 
-                {!String(user.overall).startsWith("✅") && (
+                {!String(user.overall).startsWith("") && (
                   <button
                     type="button"
                     onClick={() => void runDiagnostic(user.id)}

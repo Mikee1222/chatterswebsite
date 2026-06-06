@@ -7,7 +7,7 @@ import { listAllModelss } from "@/services/modelss";
 import type { CustomRequest } from "@/types";
 
 function label(value: string | undefined): string {
-  return value ? value.replace(/_/g, " ") : "—";
+  return value ? value.replace(/_/g, "") : "—";
 }
 
 const TYPE_SET = new Set<string>([...CUSTOM_REQUEST_TYPE_OPTIONS]);

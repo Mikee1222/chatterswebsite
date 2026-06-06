@@ -233,7 +233,7 @@ function mapPlatform(rec: AirtableRecord<PlatformFields>): MarketingPlatform {
     id: rec.id,
     platform_id: (f.platform_id as string) ?? rec.id,
     name: (f.name as string) ?? "",
-    icon: (f.icon as string) ?? "📱",
+    icon: (f.icon as string) ?? "",
     color: (f.color as string) ?? "#888888",
     active: f.active !== false,
     sort_order: typeof f.sort_order === "number" ? f.sort_order : Number(f.sort_order) || 0,
@@ -261,7 +261,7 @@ export async function createPlatform(data: Partial<MarketingPlatform>): Promise<
   const rec = await createRecord<PlatformFields>(TABLE_PLATFORMS, {
     platform_id: `plt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     name: data.name ?? "",
-    icon: data.icon ?? "📱",
+    icon: data.icon ?? "",
     color: data.color ?? "#888888",
     active: true,
     sort_order: data.sort_order ?? 99,

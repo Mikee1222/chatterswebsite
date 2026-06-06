@@ -102,7 +102,7 @@ export async function POST(request: Request) {
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "📤 Upload confirmed",
+        title: " Upload confirmed",
         body: `Your upload for "${customTitle}" has been received.`,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: `${record_id}:upload_model_confirm`,

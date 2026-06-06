@@ -107,7 +107,7 @@ export function RewardsConfigClient({
 
   return (
     <div className="space-y-6">
-      <SectionCard title="⚡ Shift Points">
+      <SectionCard title="Shift Points">
         <ConfigRow label="Hours worked (per hour)" value={config.SHIFT_PER_HOUR} onChange={set("SHIFT_PER_HOUR")} />
         <ConfigRow label="Night shift bonus" value={config.SHIFT_NIGHT_BONUS} onChange={set("SHIFT_NIGHT_BONUS")} />
         <ConfigRow label="On time bonus (within 5 min)" value={config.SHIFT_ON_TIME} onChange={set("SHIFT_ON_TIME")} />
@@ -115,7 +115,7 @@ export function RewardsConfigClient({
         <ConfigRow label="No break bonus" value={config.SHIFT_NO_BREAK_BONUS} onChange={set("SHIFT_NO_BREAK_BONUS")} />
       </SectionCard>
 
-      <SectionCard title="🐋 Whale Points">
+      <SectionCard title="Whale Points">
         <ConfigRow label="New whale added" value={config.WHALE_ADDED} onChange={set("WHALE_ADDED")} />
         <ConfigRow label="Transaction logged" value={config.WHALE_TRANSACTION} onChange={set("WHALE_TRANSACTION")} />
         <ConfigRow label="Status upgrade" value={config.WHALE_STATUS_UPGRADE} onChange={set("WHALE_STATUS_UPGRADE")} />
@@ -124,25 +124,25 @@ export function RewardsConfigClient({
         <ConfigRow label="Simp or In Love" value={config.WHALE_SIMP_OR_LOVE} onChange={set("WHALE_SIMP_OR_LOVE")} />
       </SectionCard>
 
-      <SectionCard title="🎯 Custom & Other">
+      <SectionCard title="Custom & Other">
         <ConfigRow label="Custom completed" value={config.CUSTOM_COMPLETED} onChange={set("CUSTOM_COMPLETED")} />
         <ConfigRow label="Availability submitted" value={config.AVAILABILITY_SUBMITTED} onChange={set("AVAILABILITY_SUBMITTED")} />
       </SectionCard>
 
-      <SectionCard title="🔥 Streak Bonuses">
+      <SectionCard title="Streak Bonuses">
         <ConfigRow label="5 day streak bonus" value={config.STREAK_5_DAYS} onChange={set("STREAK_5_DAYS")} />
         <ConfigRow label="30 day streak bonus" value={config.STREAK_30_DAYS} onChange={set("STREAK_30_DAYS")} />
       </SectionCard>
 
-      <SectionCard title="🎰 Spin Wheel">
+      <SectionCard title="Spin Wheel">
         <ConfigRow label="Points needed per spin" value={config.POINTS_PER_SPIN} onChange={set("POINTS_PER_SPIN")} />
       </SectionCard>
 
-      <SectionCard title="🎯 Spin Wheel Prizes">
+      <SectionCard title="Spin Wheel Prizes">
         <AdminSpinWheelPrizesSection initialPrizes={spinPrizes} />
       </SectionCard>
 
-      <SectionCard title="💎 Level thresholds">
+      <SectionCard title="Level thresholds">
         <div className="grid grid-cols-1 gap-2 border-b border-white/[0.06] py-3 sm:grid-cols-[1fr_auto] sm:items-center sm:gap-4">
           <span className="text-sm text-white/75">Bronze starts at (fixed)</span>
           <input

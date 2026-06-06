@@ -1,7 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { CheckCircle2, Clock, Image, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Image, Trophy, X, XCircle } from "lucide-react";
+import { RankBadge } from "@/components/rank-badge";
 
 type Rebill = {
   id: string;
@@ -73,21 +74,27 @@ export function MyRebillsClient({
       <div className="flex w-fit gap-1 rounded-xl border border-white/10 bg-white/5 p-1">
         {[
           { key: "rebills", label: "My Rebills" },
-          { key: "standings", label: "🏆 Standings" },
-        ].map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            onClick={() => setTab(t.key as typeof tab)}
-            className={
-              tab === t.key
-                ? "rounded-lg bg-pink-500/20 px-4 py-1.5 text-sm font-medium text-pink-300"
-                : "px-4 py-1.5 text-sm text-white/50 hover:text-white"
-            }
-          >
-            {t.label}
-          </button>
-        ))}
+          { key: "standings", label: "Standings", icon: Trophy },
+        ].map((t) => {
+          const Icon = "icon" in t ? t.icon : undefined;
+          return (
+            <button
+              key={t.key}
+              type="button"
+              onClick={() => setTab(t.key as typeof tab)}
+              className={
+                tab === t.key
+                  ? "rounded-lg bg-pink-500/20 px-4 py-1.5 text-sm font-medium text-pink-300"
+                  : "px-4 py-1.5 text-sm text-white/50 hover:text-white"
+              }
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {Icon ? <Icon className="h-4 w-4" aria-hidden /> : null}
+                {t.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {tab === "rebills" && (
@@ -104,7 +111,7 @@ export function MyRebillsClient({
                     : "rounded-full border border-white/10 px-3 py-1 text-xs text-white/50 hover:text-white"
                 }
               >
-                {f === "all" ? "All" : statusLabel(f)}{" "}
+                {f === "all" ? "All" : statusLabel(f)}{""}
                 ({f === "all" ? rebills.length : rebills.filter((r) => r.status === f).length})
               </button>
             ))}
@@ -182,10 +189,7 @@ export function MyRebillsClient({
               }`}
             >
               <div className="w-8 flex-shrink-0 text-center">
-                {s.rank === 1 && <span className="text-xl">🥇</span>}
-                {s.rank === 2 && <span className="text-xl">🥈</span>}
-                {s.rank === 3 && <span className="text-xl">🥉</span>}
-                {s.rank > 3 && <span className="text-sm font-bold text-white/40">#{s.rank}</span>}
+                <RankBadge rank={s.rank} />
               </div>
               <div className="flex-1">
                 <p
@@ -194,7 +198,7 @@ export function MyRebillsClient({
                   }`}
                 >
                   {s.chatter_name}
-                  {s.chatter_id === currentChatterId ? " (You)" : ""}
+                  {s.chatter_id === currentChatterId ? "(You)" : ""}
                 </p>
               </div>
               <div className="text-right">
@@ -219,7 +223,7 @@ export function MyRebillsClient({
                 onClick={() => setSelectedRebill(null)}
                 className="text-white/40 hover:text-white"
               >
-                ✕
+                <X className="h-5 w-5" aria-hidden />
               </button>
             </div>
             {selectedRebill.screenshot[0]?.url ? (

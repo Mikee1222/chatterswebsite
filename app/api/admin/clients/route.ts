@@ -52,8 +52,7 @@ export async function POST(request: Request) {
   let clientPercentage: number | undefined;
   if (userType === "client" && body.client_percentage !== undefined && body.client_percentage !== null) {
     const raw =
-      typeof body.client_percentage === "number"
-        ? body.client_percentage
+      typeof body.client_percentage === "number"? body.client_percentage
         : Number(body.client_percentage);
     if (Number.isNaN(raw) || raw < 0 || raw > 1) {
       return NextResponse.json({ error: "Client percentage must be between 0 and 1." }, { status: 400 });

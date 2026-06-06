@@ -98,10 +98,10 @@ export function ModelContentRequestsSection({ initialRequests }: Props) {
               <article key={r.id} className="rounded-xl border border-white/10 bg-white/5 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="rounded-full border border-white/15 bg-white/10 px-2 py-0.5 text-[11px] text-white/70">
-                    {r.type.replace("_", " ")}
+                    {r.type.replace("_", "")}
                   </span>
                   <span className={`rounded-full border px-2 py-0.5 text-[11px] ${ui.cls}`}>{ui.label}</span>
-                  <span className="ml-auto text-[11px] text-white/35">{(r.created_at || "").slice(0, 16).replace("T", " ")}</span>
+                  <span className="ml-auto text-[11px] text-white/35">{(r.created_at || "").slice(0, 16).replace("T", "")}</span>
                 </div>
                 <p className="mt-2 text-sm font-semibold text-white">{r.title || "(untitled)"}</p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-white/70">{r.description}</p>

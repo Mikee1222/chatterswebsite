@@ -278,7 +278,7 @@ export function AdminRewardsClient({
       {showAdminInfoCard ? (
         <div className="rounded-2xl border border-white/[0.1] bg-zinc-900/50 p-4 text-sm leading-relaxed text-white/70">
           Points are awarded automatically when chatters complete shifts, add whales, log transactions and submit
-          availability. You can award manual points using the form below. Configure point values in{" "}
+          availability. You can award manual points using the form below. Configure point values in{""}
           <span className="font-medium text-white/90">Rewards Config</span>.
         </div>
       ) : null}
@@ -463,7 +463,7 @@ export function AdminRewardsClient({
         description={
           ledgerRowPendingDelete ? (
             <>
-              Remove this transaction for{" "}
+              Remove this transaction for{""}
               <span className="font-medium text-white">{ledgerRowPendingDelete.chatterName}</span> (
               {ledgerRowPendingDelete.points > 0 ? "+" : ""}
               {ledgerRowPendingDelete.points} pts)? The chatter&apos;s balance will be adjusted. This action cannot be
@@ -512,7 +512,7 @@ export function AdminRewardsClient({
               <span className="text-white/90">Chatter:</span> {selectedChatterName}
             </li>
             <li>
-              <span className="text-white/90">Points:</span>{" "}
+              <span className="text-white/90">Points:</span>{""}
               <span className={cn(Number(points) < 0 ? "text-red-400" : "text-emerald-400")}>
                 {Math.trunc(Number(points)) > 0 ? "+" : ""}
                 {Math.trunc(Number(points))}
@@ -536,7 +536,7 @@ export function AdminRewardsClient({
           confirming={resetting}
         >
           <p className="text-white/75">
-            This does not change total points. Type <span className="font-mono font-semibold text-white">RESET</span>{" "}
+            This does not change total points. Type <span className="font-mono font-semibold text-white">RESET</span>{""}
             below, then confirm.
           </p>
           <label className="mt-4 block">

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence } from "framer-motion";
-import { Pencil } from "lucide-react";
+import { Pencil, ClipboardList } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
 import { getNowDatetimeLocalAthens, athensDatetimeLocalToISO } from "@/lib/airtable-datetime";
@@ -407,7 +407,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
               : "text-white/50 hover:text-white"
           }`}
         >
-          📝 Submit mistake
+          Submit mistake
         </button>
         <button
           type="button"
@@ -418,7 +418,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
               : "text-white/50 hover:text-white"
           }`}
         >
-          📋 Submitted
+          Submitted
           {pendingCount > 0 ? (
             <span className="ml-2 rounded-full bg-amber-500 px-1.5 py-0.5 text-xs text-white">{pendingCount}</span>
           ) : null}
@@ -522,7 +522,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
               {(["Low", "Medium", "High"] as const).map((cat) => (
                 <optgroup
                   key={cat}
-                  label={`${cat === "High" ? "🔴" : cat === "Medium" ? "🟠" : "🟡"} ${cat} mistakes`}
+                  label={`${cat === "High" ? "" : cat === "Medium" ? "" : ""} ${cat} mistakes`}
                   className="bg-neutral-900"
                 >
                   {reasons
@@ -561,7 +561,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
               tabIndex={0}
               onClick={() => fileRef.current?.click()}
               onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") fileRef.current?.click();
+                if (e.key === "Enter" || e.key === "") fileRef.current?.click();
               }}
               className={`relative flex min-h-[140px] cursor-pointer flex-col items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed transition-all ${
                 justPasted
@@ -587,15 +587,15 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
                   </button>
                   {justPasted ? (
                     <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-green-500/20">
-                      <span className="text-lg font-bold text-green-400">✓ Pasted!</span>
+                      <span className="text-lg font-bold text-green-400">Pasted!</span>
                     </div>
                   ) : null}
                 </>
               ) : (
                 <>
-                  <div className="mb-3 text-4xl">📋</div>
+                  <div className="mb-3 flex justify-center"><ClipboardList className="h-10 w-10 text-white/30" aria-hidden /></div>
                   <p className="text-sm font-semibold text-white/60">
-                    {justPasted ? "✓ Pasted!" : "Paste screenshot (Ctrl+V)"}
+                    {justPasted ? "Pasted!" : "Paste screenshot (Ctrl+V)"}
                   </p>
                   <p className="mt-1 text-xs text-white/30">or click to upload</p>
                   <p className="mt-3 px-4 text-center text-xs text-white/20">
@@ -632,7 +632,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
             disabled={submitting || !isFormValid}
             className="w-full rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 py-4 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition-all hover:shadow-pink-500/40 enabled:hover:scale-[1.01] active:enabled:scale-[0.99] disabled:scale-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
-            {submitting ? "Submitting…" : "🚀 Submit mistake report"}
+            {submitting ? "Submitting…" : "Submit mistake report"}
           </button>
         </form>
       ) : (
@@ -654,7 +654,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
                 subTab === "rejected" ? "bg-red-500/25 text-red-200 ring-1 ring-red-500/30" : "text-white/45 hover:text-white/70"
               }`}
             >
-              ❌ Rejected (needs attention)
+              Rejected (needs attention)
             </button>
           </div>
 
@@ -687,7 +687,7 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
                     <div className="pl-3">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
-                          {m.reason_category === "High" ? "🔴 " : m.reason_category === "Medium" ? "🟠 " : "🟡 "}
+                          {m.reason_category === "High" ? "" : m.reason_category === "Medium" ? "" : ""}
                           {m.reason_category}
                         </span>
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(m.status)}`}>

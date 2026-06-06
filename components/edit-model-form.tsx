@@ -245,7 +245,7 @@ export function EditModelForm({
               className={selectOptionClass}
             >
               {u.name} ({u.email})
-              {u.alreadyLinked && !u.linkedToThisModel ? " (linked to other model)" : ""}
+              {u.alreadyLinked && !u.linkedToThisModel ? "(linked to other model)" : ""}
             </option>
           ))}
         </FormSelect>

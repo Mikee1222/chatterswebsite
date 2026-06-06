@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
-import { CalendarCheck, Coins, FilePlus2, Play, Plus, X } from "lucide-react";
+import { CalendarCheck, Coins, FilePlus2, Play, Plus, X, AlertTriangle } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
@@ -151,7 +151,7 @@ export function VaQuickActionsModal({ open, onClose, onReportShadowban }: VaQuic
                       className="flex w-full min-h-[52px] items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors active:bg-white/10"
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
-                        <span className="text-sm">⚠️</span>
+                        <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />
                       </div>
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-white">Report shadowban</p>
@@ -294,7 +294,7 @@ export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
                   className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
                 >
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
-                    <span className="text-sm">⚠️</span>
+                    <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />
                   </div>
                   <div>
                     <p className="text-sm font-medium text-white">Report shadowban</p>

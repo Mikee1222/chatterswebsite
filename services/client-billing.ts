@@ -628,8 +628,7 @@ export async function updatePaymentSubmission(
         clientId,
         finalCycleId,
         ["pending_review", "announced", "overdue"],
-        "confirmed_paid"
-      );
+        "confirmed_paid");
     } else if (cycle?.kind === "crm_monthly") {
       await updateBillingCycle(finalCycleId, { status: "confirmed_paid" });
     }

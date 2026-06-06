@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Coins } from "lucide-react";
+import { Coins, PartyPopper } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { useToast } from "@/contexts/toast-context";
@@ -210,7 +210,7 @@ export function AdminFineBonusModal({ open, onClose }: Props) {
                       : "border-white/10 bg-white/5 text-white/40"
                   }`}
                 >
-                  🎉 Bonus
+                  <span className="inline-flex items-center gap-1.5"><PartyPopper className="h-4 w-4" aria-hidden />Bonus</span>
                 </button>
                 <button
                   type="button"
@@ -221,7 +221,7 @@ export function AdminFineBonusModal({ open, onClose }: Props) {
                       : "border-white/10 bg-white/5 text-white/40"
                   }`}
                 >
-                  ⚠️ Fine
+                  Fine
                 </button>
               </div>
 
@@ -237,7 +237,7 @@ export function AdminFineBonusModal({ open, onClose }: Props) {
                   <option value="">{loadingUsers ? "Loading…" : "Select user"}</option>
                   {users.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.user_role === "va" ? "[🖥️ VA] " : "[👤 Chatter] "}
+                      {u.user_role === "va" ? "[ VA] " : "[ Chatter] "}
                       {u.name}
                     </option>
                   ))}

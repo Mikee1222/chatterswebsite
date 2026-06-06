@@ -77,7 +77,7 @@ export async function POST(req: Request) {
     created_at: new Date().toISOString(),
   });
 
-  const typeEmoji = allowedType === "bug" ? "🐛" : allowedType === "suggestion" ? "💡" : "📝";
+  const typeEmoji = allowedType === "bug" ? "" : allowedType === "suggestion" ? "" : "";
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,

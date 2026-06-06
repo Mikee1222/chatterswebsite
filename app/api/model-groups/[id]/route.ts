@@ -19,8 +19,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     const model_ids =
       Array.isArray(body?.model_ids) && body.model_ids.length >= 0
         ? body.model_ids.map((v: unknown) => String(v).trim()).filter(Boolean)
-        : body?.model_ids != null && typeof body.model_ids === "string"
-          ? String(body.model_ids)
+        : body?.model_ids != null && typeof body.model_ids === "string"? String(body.model_ids)
               .split(",")
               .map((v) => v.trim())
               .filter(Boolean)

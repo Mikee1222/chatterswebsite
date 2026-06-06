@@ -41,10 +41,8 @@ function mapRecord(rec: AirtableRecord<Record<string, unknown>>): FineBonusRecor
   const typ = f.type === "fine" ? "fine" : "bonus";
   const rawAmount = f.amount;
   const amount =
-    typeof rawAmount === "number"
-      ? rawAmount
-      : typeof rawAmount === "string"
-        ? Number.parseFloat(rawAmount) || 0
+    typeof rawAmount === "number"? rawAmount
+      : typeof rawAmount === "string"? Number.parseFloat(rawAmount) || 0
         : Number(rawAmount ?? 0);
   return {
     id: rec.id,

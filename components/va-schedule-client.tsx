@@ -128,7 +128,7 @@ function getRecurringPreviewDates(
 const SHIFT_TYPE_CONFIG = {
   Morning: {
     label: "Morning",
-    emoji: "☀️",
+    emoji: "",
     color: "from-amber-500/20 to-orange-500/10",
     border: "border-amber-500/25",
     text: "text-amber-400",
@@ -136,7 +136,7 @@ const SHIFT_TYPE_CONFIG = {
   },
   Night: {
     label: "Night",
-    emoji: "🌙",
+    emoji: "",
     color: "from-blue-500/20 to-indigo-500/10",
     border: "border-blue-500/25",
     text: "text-blue-400",
@@ -144,7 +144,7 @@ const SHIFT_TYPE_CONFIG = {
   },
   Custom: {
     label: "Custom",
-    emoji: "⚡",
+    emoji: "",
     color: "from-purple-500/20 to-pink-500/10",
     border: "border-purple-500/25",
     text: "text-purple-400",
@@ -335,7 +335,7 @@ export function VaScheduleClient({
         tabIndex={0}
         onClick={() => setSelectedDay(isSelected ? null : ymd)}
         onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
+          if (e.key === "Enter" || e.key === "") {
             e.preventDefault();
             setSelectedDay(isSelected ? null : ymd);
           }
@@ -409,7 +409,7 @@ export function VaScheduleClient({
                 t.status === "in_progress" ? "border-blue-500/20 bg-blue-500/10" : "border-white/10 bg-white/5"
               )}
             >
-              <span aria-hidden>{t.is_recurring ? "🔄" : "📋"}</span>
+              <span aria-hidden>{t.is_recurring ? "" : ""}</span>
               <span className="truncate text-white/70">{t.title}</span>
             </button>
           ))}
@@ -421,7 +421,7 @@ export function VaScheduleClient({
               title={`Upcoming recurring: ${t.title}`}
             >
               <span className="text-xs" aria-hidden>
-                🔄
+                
               </span>
               <span className="truncate text-xs text-purple-400/60">{t.title}</span>
             </div>
@@ -521,7 +521,7 @@ export function VaScheduleClient({
                   (s) =>
                     `${s.scheduled_shift || s.shift_type || "Shift"}${s.start_time ? ` (${formatShiftTime(s.start_time)})` : ""}`
                 )
-                .join(" · ")}
+                .join("· ")}
             </p>
           </div>
           <span className="shrink-0 text-xs text-emerald-300/60">Live</span>
@@ -666,7 +666,7 @@ export function VaScheduleClient({
                     <div className="flex shrink-0 items-center gap-2">
                       {t.is_recurring ? (
                         <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-xs text-purple-400">
-                          🔄
+                          
                         </span>
                       ) : null}
                       <span
@@ -707,7 +707,7 @@ export function VaScheduleClient({
           >
             <h3 className="text-lg font-semibold text-white">{detailTask.title}</h3>
             <p className="mt-1 text-xs uppercase text-white/40">
-              {detailTask.status.replace(/_/g, " ")} · {detailTask.priority}
+              {detailTask.status.replace(/_/g, "")} · {detailTask.priority}
             </p>
             {detailTask.description ? <p className="mt-3 text-sm text-white/55">{detailTask.description}</p> : null}
             {detailTask.due_date ? (

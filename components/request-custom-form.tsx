@@ -134,7 +134,7 @@ export function RequestCustomForm({ chatterRecordId, chatterName, modelOptions }
         >
           {CUSTOM_REQUEST_TYPE_OPTIONS.map((t) => (
             <option key={t} value={t} className={selectOptionClass}>
-              {t.replace(/_/g, " ")}
+              {t.replace(/_/g, "")}
             </option>
           ))}
         </FormSelect>

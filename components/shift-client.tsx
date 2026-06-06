@@ -1778,7 +1778,7 @@ export function ShiftClient({
               if (names.length === 0) return null;
               return (
                 <p className="mt-3 rounded-xl border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/95">
-                  ⚠️ {names.join(", ")} may have content restrictions today
+                  {names.join(", ")} may have content restrictions today
                 </p>
               );
             })()}
@@ -1808,7 +1808,7 @@ export function ShiftClient({
                           transition={{ type: "spring", stiffness: 420, damping: 28 }}
                           className="mt-0.5 text-xs text-white/55"
                         >
-                          Entered{" "}
+                          Entered{""}
                           <motion.span
                             key={`${sm.id}-${formatEnteredAt(sm.entered_at)}`}
                             className="inline-block font-mono tabular-nums text-pink-100/90"
@@ -1820,7 +1820,7 @@ export function ShiftClient({
                           </motion.span>
                         </motion.p>
                         {modelIdsInActivePeriodToday.includes(sm.model_id) && (
-                          <p className="mt-1 text-[11px] text-amber-200/90">⚠️ Possible content restrictions today</p>
+                          <p className="mt-1 text-[11px] text-amber-200/90">Possible content restrictions today</p>
                         )}
                       </div>
                     </div>
