@@ -30,6 +30,11 @@ type Fields = {
   period_notes?: string;
   period_tracking_enabled?: boolean;
   team?: string;
+  paypal_email?: string;
+  paypal_link?: string;
+  revolut_tag?: string;
+  payment_notes?: string;
+  payment_threshold_eur?: number;
 };
 
 function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
@@ -58,6 +63,11 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
     period_notes: typeof f.period_notes === "string" ? f.period_notes : "",
     period_tracking_enabled: f.period_tracking_enabled === true,
     team: (f.team === "chatting_agency" ? "chatting_agency" : "gunzo_team") as ModelRecord["team"],
+    paypal_email: typeof f.paypal_email === "string" ? f.paypal_email : undefined,
+    paypal_link: typeof f.paypal_link === "string" ? f.paypal_link : undefined,
+    revolut_tag: typeof f.revolut_tag === "string" ? f.revolut_tag : undefined,
+    payment_notes: typeof f.payment_notes === "string" ? f.payment_notes : undefined,
+    payment_threshold_eur: typeof f.payment_threshold_eur === "number" ? f.payment_threshold_eur : undefined,
   };
 }
 
@@ -78,6 +88,11 @@ export type ModelssWriteFields = {
   /** Airtable checkbox on modelss — add via scripts/setup-period-tracking.ts if missing. */
   period_tracking_enabled?: boolean | null;
   team?: "gunzo_team" | "chatting_agency";
+  paypal_email?: string;
+  paypal_link?: string;
+  revolut_tag?: string;
+  payment_notes?: string;
+  payment_threshold_eur?: number;
 };
 
 export async function listModelss(params: ListParams = {}) {

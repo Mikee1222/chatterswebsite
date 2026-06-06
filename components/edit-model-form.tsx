@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Building2, Gauge, Info, Layers, Link2, Sparkles, StickyNote, User, Users } from "lucide-react";
+import { Activity, Building2, CreditCard, Gauge, Info, Layers, Link2, Sparkles, StickyNote, User, Users } from "lucide-react";
 import { updateModel } from "@/services/modelss";
 import { relinkModelUserForModelProfile } from "@/services/users";
 import type { ClientModelRecord } from "@/types/client-portal";
@@ -54,6 +54,13 @@ export function EditModelForm({
   const [status, setStatus] = React.useState(model.status);
   const [priority, setPriority] = React.useState(model.priority || "medium");
   const [notes, setNotes] = React.useState(model.notes || "");
+  const [paypalEmail, setPaypalEmail] = React.useState(model.paypal_email ?? "");
+  const [paypalLink, setPaypalLink] = React.useState(model.paypal_link ?? "");
+  const [revolutTag, setRevolutTag] = React.useState(model.revolut_tag ?? "");
+  const [paymentNotes, setPaymentNotes] = React.useState(model.payment_notes ?? "");
+  const [paymentThreshold, setPaymentThreshold] = React.useState(
+    String(model.payment_threshold_eur ?? 200)
+  );
   const [team, setTeam] = React.useState<ModelRecord["team"]>(model.team ?? "gunzo_team");
   const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [clientId, setClientId] = React.useState(
@@ -134,6 +141,11 @@ export function EditModelForm({
         priority,
         notes: notes.trim(),
         team,
+        paypal_email: paypalEmail.trim() || undefined,
+        paypal_link: paypalLink.trim() || undefined,
+        revolut_tag: revolutTag.trim() || undefined,
+        payment_notes: paymentNotes.trim() || undefined,
+        payment_threshold_eur: Number.parseInt(paymentThreshold, 10) || 200,
       });
       await relinkModelUserForModelProfile(model.id, linkedUserId || null);
       await syncClientAssignments();
@@ -271,6 +283,74 @@ export function EditModelForm({
           placeholder="Optional"
         />
       </FormField>
+
+      <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <div className="flex items-center gap-2 text-sm font-semibold text-white">
+          <CreditCard className="h-4 w-4 text-pink-300" aria-hidden />
+          Payment Methods
+        </div>
+        <FormField label="PayPal Email" icon={<CreditCard />} htmlFor="paypal_email">
+          <FormInput
+            id="paypal_email"
+            type="email"
+            value={paypalEmail}
+            onChange={(e) => setPaypalEmail(e.target.value)}
+            placeholder="name@example.com"
+          />
+        </FormField>
+        <FormField
+          label="PayPal Link"
+          icon={<Link2 />}
+          htmlFor="paypal_link"
+          description="e.g. paypal.me/username"
+        >
+          <FormInput
+            id="paypal_link"
+            type="url"
+            value={paypalLink}
+            onChange={(e) => setPaypalLink(e.target.value)}
+            placeholder="https://paypal.me/..."
+          />
+        </FormField>
+        <FormField label="Revolut Tag" icon={<CreditCard />} htmlFor="revolut_tag">
+          <FormInput
+            id="revolut_tag"
+            value={revolutTag}
+            onChange={(e) => setRevolutTag(e.target.value)}
+            placeholder="@username"
+          />
+        </FormField>
+        <FormField
+          label="Payment Notes"
+          icon={<StickyNote />}
+          htmlFor="payment_notes"
+          description="Other payment methods or instructions."
+        >
+          <FormTextarea
+            id="payment_notes"
+            value={paymentNotes}
+            onChange={(e) => setPaymentNotes(e.target.value)}
+            rows={2}
+            placeholder="Optional"
+          />
+        </FormField>
+        <FormField
+          label="Payment Threshold EUR"
+          icon={<Gauge />}
+          htmlFor="payment_threshold_eur"
+          description="Minimum amount before submitting extra revenue."
+        >
+          <FormInput
+            id="payment_threshold_eur"
+            type="number"
+            min={0}
+            step={1}
+            value={paymentThreshold}
+            onChange={(e) => setPaymentThreshold(e.target.value)}
+          />
+        </FormField>
+      </div>
+
       <div className="flex flex-col gap-3 pt-2">
         <FormSubmitButton disabled={pending} loading={pending} className="w-full">
           {pending ? "Saving…" : "Save changes"}

@@ -180,6 +180,11 @@ export interface ModelRecord {
   /** When true, model sees period tracking tools (e.g. Settings). Checkbox on modelss. */
   period_tracking_enabled?: boolean | null;
   team: "gunzo_team" | "chatting_agency";
+  paypal_email?: string;
+  paypal_link?: string;
+  revolut_tag?: string;
+  payment_notes?: string;
+  payment_threshold_eur?: number;
 }
 
 /** Logged period row in Airtable table model_periods. */

@@ -1,16 +1,41 @@
 "use client";
 
 import * as React from "react";
-import { DollarSign } from "lucide-react";
+import { Check, Copy, CreditCard, DollarSign, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { GlassModal, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { FormInput } from "@/components/ui/form-input";
+import { FormSelect } from "@/components/ui/form-select";
+import { FormTextarea } from "@/components/ui/form-textarea";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatDateTimeAthens, formatMonthYyyyMm } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
-import { isSpinWheelFineBonus, type FineBonusRecord, type FineBonusType } from "@/services/fines-bonuses";
+import {
+  isSpinWheelFineBonus,
+  type FineBonusPaymentMethod,
+  type FineBonusRecord,
+  type FineBonusType,
+} from "@/services/fines-bonuses";
+
+export type ModelPaymentInfo = {
+  id: string;
+  model_name: string;
+  paypal_email?: string;
+  paypal_link?: string;
+  revolut_tag?: string;
+  payment_notes?: string;
+  payment_threshold_eur?: number;
+};
 
 type Props = {
   initialEntries: FineBonusRecord[];
+  modelss?: ModelPaymentInfo[];
+  showPaymentMethods?: boolean;
+  showExtraRevenueForm?: boolean;
 };
+
+type TabId = "fines_bonuses" | "payment_methods";
 
 function monthBonusTotal(rows: FineBonusRecord[]): number {
   return rows.filter((e) => e.type === "bonus").reduce((s, e) => s + (e.amount || 0), 0);
@@ -60,10 +85,259 @@ function groupByMonth(entries: FineBonusRecord[]): MonthGroup[] {
     }));
 }
 
-export function FinesBonusesClient({ initialEntries }: Props) {
-  const [entries] = React.useState(initialEntries);
+function CopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      toast.success(`${label} copied`);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      toast.error("Copy failed");
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/70 transition hover:bg-white/10"
+    >
+      {copied ? <Check className="h-3 w-3 text-green-400" /> : <Copy className="h-3 w-3" />}
+      Copy
+    </button>
+  );
+}
+
+function PaymentField({ label, value }: { label: string; value?: string }) {
+  if (!value?.trim()) {
+    return (
+      <div className="text-sm">
+        <span className="text-white/40">{label}: </span>
+        <span className="text-white/30">Not set</span>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-sm">
+      <span className="text-white/40">{label}:</span>
+      <span className="break-all font-medium text-white/90">{value}</span>
+      <CopyButton value={value} label={label} />
+    </div>
+  );
+}
+
+function ModelPaymentCard({ model }: { model: ModelPaymentInfo }) {
+  const threshold = model.payment_threshold_eur ?? 200;
+  const hasPaypal = !!(model.paypal_email?.trim() || model.paypal_link?.trim());
+  const hasRevolut = !!model.revolut_tag?.trim();
+  const hasAny = hasPaypal || hasRevolut || !!model.payment_notes?.trim();
+
+  return (
+    <div className="glass-card space-y-3 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-base font-semibold text-white">{model.model_name}</h3>
+        <span className="rounded-full border border-pink-500/25 bg-pink-500/10 px-2.5 py-0.5 text-xs font-medium text-pink-200">
+          Over €{threshold}
+        </span>
+      </div>
+      {!hasAny ? (
+        <p className="text-sm text-white/35">Not set</p>
+      ) : (
+        <div className="space-y-2">
+          <PaymentField label="PayPal email" value={model.paypal_email} />
+          <PaymentField label="PayPal link" value={model.paypal_link} />
+          <PaymentField label="Revolut" value={model.revolut_tag} />
+          {model.payment_notes?.trim() ? (
+            <p className="text-xs text-white/50">{model.payment_notes}</p>
+          ) : null}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExtraRevenueModal({
+  open,
+  onClose,
+  modelss,
+  onSubmitted,
+}: {
+  open: boolean;
+  onClose: () => void;
+  modelss: ModelPaymentInfo[];
+  onSubmitted: () => void;
+}) {
+  const [modelId, setModelId] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [paymentMethod, setPaymentMethod] = React.useState<FineBonusPaymentMethod>("PayPal");
+  const [paymentSource, setPaymentSource] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [screenshot, setScreenshot] = React.useState<File | null>(null);
+  const [pending, setPending] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open) {
+      setModelId("");
+      setAmount("");
+      setPaymentMethod("PayPal");
+      setPaymentSource("");
+      setNotes("");
+      setScreenshot(null);
+      setPending(false);
+    }
+  }, [open]);
+
+  const selectedModel = modelss.find((m) => m.id === modelId);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!modelId || !selectedModel) {
+      toast.error("Select a model");
+      return;
+    }
+    if (!screenshot) {
+      toast.error("Screenshot is required");
+      return;
+    }
+    setPending(true);
+    try {
+      const fd = new FormData();
+      fd.set("model_id", modelId);
+      fd.set("model_name", selectedModel.model_name);
+      fd.set("amount", amount);
+      fd.set("payment_method", paymentMethod);
+      if (paymentMethod === "Other") fd.set("payment_source", paymentSource);
+      if (notes.trim()) fd.set("notes", notes.trim());
+      fd.set("screenshot", screenshot);
+
+      const res = await fetch("/api/chatter/extra-revenue", { method: "POST", body: fd });
+      const data = (await res.json()) as { error?: string; success?: boolean };
+      if (!res.ok) {
+        toast.error(data.error || "Submit failed");
+        return;
+      }
+      toast.success("Payment submitted for review");
+      onSubmitted();
+      onClose();
+    } finally {
+      setPending(false);
+    }
+  }
+
+  if (!open) return null;
+
+  return (
+    <GlassModal onClose={onClose} title="Submit extra revenue">
+      <form onSubmit={submit} className="space-y-4">
+        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+          Model
+          <FormSelect
+            value={modelId}
+            onChange={(e) => setModelId(e.target.value)}
+            className="mt-1"
+            required
+          >
+            <option value="">— Select model —</option>
+            {modelss.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.model_name}
+              </option>
+            ))}
+          </FormSelect>
+        </label>
+
+        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+          Amount (EUR)
+          <FormInput
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="mt-1"
+            required
+          />
+        </label>
+
+        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+          Payment method
+          <FormSelect
+            value={paymentMethod}
+            onChange={(e) => setPaymentMethod(e.target.value as FineBonusPaymentMethod)}
+            className="mt-1"
+          >
+            <option value="PayPal">PayPal</option>
+            <option value="Revolut">Revolut</option>
+            <option value="Other">Other</option>
+          </FormSelect>
+        </label>
+
+        {paymentMethod === "Other" && (
+          <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+            Payment source
+            <FormInput
+              value={paymentSource}
+              onChange={(e) => setPaymentSource(e.target.value)}
+              className="mt-1"
+              placeholder="e.g. Wise, bank transfer"
+              required
+            />
+          </label>
+        )}
+
+        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+          Screenshot
+          <input
+            type="file"
+            accept="image/*"
+            required
+            onChange={(e) => setScreenshot(e.target.files?.[0] ?? null)}
+            className="mt-1 block w-full text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-pink-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-pink-200"
+          />
+        </label>
+
+        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+          Notes (optional)
+          <FormTextarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={2}
+            className="mt-1"
+          />
+        </label>
+
+        <div className="flex gap-2 pt-2">
+          <ButtonPrimary type="submit" disabled={pending} className="flex-1">
+            {pending ? "Submitting…" : "Submit payment"}
+          </ButtonPrimary>
+          <ButtonSecondary type="button" onClick={onClose} disabled={pending}>
+            Cancel
+          </ButtonSecondary>
+        </div>
+      </form>
+    </GlassModal>
+  );
+}
+
+export function FinesBonusesClient({
+  initialEntries,
+  modelss = [],
+  showPaymentMethods = false,
+  showExtraRevenueForm = false,
+}: Props) {
+  const [entries, setEntries] = React.useState(initialEntries);
+  const [tab, setTab] = React.useState<TabId>("fines_bonuses");
   const [month, setMonth] = React.useState(() => currentMonthYyyyMm());
   const [typeFilter, setTypeFilter] = React.useState<"all" | FineBonusType>("all");
+  const [extraModalOpen, setExtraModalOpen] = React.useState(false);
+
+  const sortedModels = React.useMemo(
+    () => [...modelss].sort((a, b) => a.model_name.localeCompare(b.model_name)),
+    [modelss]
+  );
 
   const filtered = React.useMemo(() => {
     return entries
@@ -108,125 +382,208 @@ export function FinesBonusesClient({ initialEntries }: Props) {
   const hasAnyEntries = entries.length > 0;
   const showEmpty = filtered.length === 0;
 
+  async function refreshEntries() {
+    try {
+      const res = await fetch("/api/chatter/fines-bonuses");
+      if (!res.ok) return;
+      const data = (await res.json()) as { entries?: FineBonusRecord[] };
+      if (data.entries) setEntries(data.entries);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Fines &amp; bonuses</h1>
-        <p className="mt-1 text-sm text-white/50">Your issued bonuses and fines by month.</p>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-xs font-semibold uppercase tracking-wider text-white/40">
-          Month
-          <select
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="mt-1 block min-h-11 w-44 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white"
-          >
-            {monthOptions.map((m) => (
-              <option key={m} value={m}>
-                {formatMonthYyyyMm(m)}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-xs font-semibold uppercase tracking-wider text-white/40">
-          Type
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
-            className="mt-1 block min-h-11 w-36 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white"
-          >
-            <option value="all">All</option>
-            <option value="bonus">Bonus</option>
-            <option value="fine">Fine</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <div className="glass-card border-green-500/20 bg-green-500/[0.06] p-4">
-          <p className="text-xs text-white/50">Total bonuses</p>
-          <p className="mt-1 text-xl font-bold text-green-400">+€{summary.bonuses.toFixed(2)}</p>
-        </div>
-        <div className="glass-card border-red-500/20 bg-red-500/[0.06] p-4">
-          <p className="text-xs text-white/50">Total fines</p>
-          <p className="mt-1 text-xl font-bold text-red-400">-€{summary.fines.toFixed(2)}</p>
-        </div>
-        <div className="glass-card p-4">
-          <p className="text-xs text-white/50">Net</p>
-          <p className={`mt-1 text-xl font-bold ${summary.net >= 0 ? "text-green-400" : "text-red-400"}`}>
-            {summary.net >= 0 ? "+" : ""}€{summary.net.toFixed(2)}
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-white">Fines &amp; bonuses</h1>
+          <p className="mt-1 text-sm text-white/50">
+            {tab === "payment_methods"
+              ? "Model payment details for extra revenue submissions."
+              : "Your issued bonuses and fines by month."}
           </p>
         </div>
+        {showExtraRevenueForm && tab === "fines_bonuses" && (
+          <button
+            type="button"
+            onClick={() => setExtraModalOpen(true)}
+            className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-pink-500/30 bg-pink-500/15 px-4 text-sm font-medium text-pink-200 transition hover:bg-pink-500/25"
+          >
+            <Plus className="h-4 w-4" />
+            Submit payment
+          </button>
+        )}
       </div>
 
-      {showEmpty ? (
-        <div className="py-16 text-center text-white/30">
-          <p className="mb-2 text-3xl">
-            <DollarSign className="mx-auto h-8 w-8 text-emerald-400" aria-hidden />
-          </p>
-          <p>{hasAnyEntries ? "No fines or bonuses for this filter." : "No fines or bonuses yet."}</p>
+      {showPaymentMethods && (
+        <div className="flex gap-2 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+          <button
+            type="button"
+            onClick={() => setTab("fines_bonuses")}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              tab === "fines_bonuses" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+            }`}
+          >
+            Fines &amp; bonuses
+          </button>
+          <button
+            type="button"
+            onClick={() => setTab("payment_methods")}
+            className={`flex-1 rounded-lg px-3 py-2 text-sm font-medium transition ${
+              tab === "payment_methods" ? "bg-white/10 text-white" : "text-white/50 hover:text-white/80"
+            }`}
+          >
+            <span className="inline-flex items-center justify-center gap-1.5">
+              <CreditCard className="h-4 w-4" />
+              Payment methods
+            </span>
+          </button>
+        </div>
+      )}
+
+      {tab === "payment_methods" ? (
+        <div className="space-y-3">
+          {sortedModels.length === 0 ? (
+            <div className="py-16 text-center text-white/30">
+              <CreditCard className="mx-auto mb-2 h-8 w-8 text-pink-300/50" aria-hidden />
+              <p>No active models found.</p>
+            </div>
+          ) : (
+            sortedModels.map((model) => <ModelPaymentCard key={model.id} model={model} />)
+          )}
         </div>
       ) : (
         <>
-          <div className="space-y-6">
-            {groupedPage.map(({ month: groupMonth, entries: groupEntries }) => (
-              <div key={groupMonth}>
-                <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-3 bg-zinc-950/90 px-1 py-2 backdrop-blur-md">
-                  <h3 className="text-xs font-semibold uppercase tracking-widest text-pink-300/80">
-                    {groupMonth === "unknown" ? "Unknown month" : formatMonthYyyyMm(groupMonth)}
-                  </h3>
-                  <div className="h-px flex-1 bg-white/10" />
-                  <span className="text-xs font-medium text-green-400">+€{monthBonusTotal(groupEntries).toFixed(2)}</span>
-                  <span className="text-xs font-medium text-red-400">-€{monthFineTotal(groupEntries).toFixed(2)}</span>
-                </div>
-                {groupEntries.map((entry) => (
-                  <div
-                    key={entry.id}
-                    className={`glass-card mb-2 flex items-start gap-4 p-4 transition hover:bg-white/[0.06] ${
-                      entry.type === "bonus" ? "border-green-500/15" : "border-red-500/15"
-                    }`}
-                  >
-                    <div
-                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
-                        entry.type === "bonus" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
-                      }`}
-                    >
-                      <DollarSign className="h-5 w-5" aria-hidden />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-sm font-semibold text-white">{entry.reason}</p>
-                        {isSpinWheelFineBonus(entry) ? <SpinWheelBadge /> : <ManualBadge />}
-                      </div>
-                      {entry.notes ? <p className="mt-0.5 text-xs text-white/50">{entry.notes}</p> : null}
-                      <p className="mt-1 text-xs text-white/30">
-                        {formatDateTimeAthens(entry.created_at)} · by {entry.admin_name || "Admin"}
-                      </p>
-                    </div>
-                    <div className={`shrink-0 text-right ${entry.type === "bonus" ? "text-green-400" : "text-red-400"}`}>
-                      <p className="text-base font-bold">
-                        {entry.type === "bonus" ? "+" : "-"}€{entry.amount.toFixed(2)}
-                      </p>
-                      <span
-                        className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-xs ${
-                          entry.type === "bonus"
-                            ? "border-green-500/25 bg-green-500/15 text-green-400"
-                            : "border-red-500/25 bg-red-500/15 text-red-400"
-                        }`}
-                      >
-                        {entry.type}
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="text-xs font-semibold uppercase tracking-wider text-white/40">
+              Month
+              <select
+                value={month}
+                onChange={(e) => setMonth(e.target.value)}
+                className="mt-1 block min-h-11 w-44 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white"
+              >
+                {monthOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {formatMonthYyyyMm(m)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-xs font-semibold uppercase tracking-wider text-white/40">
+              Type
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value as typeof typeFilter)}
+                className="mt-1 block min-h-11 w-36 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-sm text-white"
+              >
+                <option value="all">All</option>
+                <option value="bonus">Bonus</option>
+                <option value="fine">Fine</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="glass-card border-green-500/20 bg-green-500/[0.06] p-4">
+              <p className="text-xs text-white/50">Total bonuses</p>
+              <p className="mt-1 text-xl font-bold text-green-400">+€{summary.bonuses.toFixed(2)}</p>
+            </div>
+            <div className="glass-card border-red-500/20 bg-red-500/[0.06] p-4">
+              <p className="text-xs text-white/50">Total fines</p>
+              <p className="mt-1 text-xl font-bold text-red-400">-€{summary.fines.toFixed(2)}</p>
+            </div>
+            <div className="glass-card p-4">
+              <p className="text-xs text-white/50">Net</p>
+              <p className={`mt-1 text-xl font-bold ${summary.net >= 0 ? "text-green-400" : "text-red-400"}`}>
+                {summary.net >= 0 ? "+" : ""}€{summary.net.toFixed(2)}
+              </p>
+            </div>
+          </div>
+
+          {showEmpty ? (
+            <div className="py-16 text-center text-white/30">
+              <p className="mb-2 text-3xl">
+                <DollarSign className="mx-auto h-8 w-8 text-emerald-400" aria-hidden />
+              </p>
+              <p>{hasAnyEntries ? "No fines or bonuses for this filter." : "No fines or bonuses yet."}</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-6">
+                {groupedPage.map(({ month: groupMonth, entries: groupEntries }) => (
+                  <div key={groupMonth}>
+                    <div className="sticky top-0 z-10 -mx-1 mb-3 flex items-center gap-3 bg-zinc-950/90 px-1 py-2 backdrop-blur-md">
+                      <h3 className="text-xs font-semibold uppercase tracking-widest text-pink-300/80">
+                        {groupMonth === "unknown" ? "Unknown month" : formatMonthYyyyMm(groupMonth)}
+                      </h3>
+                      <div className="h-px flex-1 bg-white/10" />
+                      <span className="text-xs font-medium text-green-400">
+                        +€{monthBonusTotal(groupEntries).toFixed(2)}
+                      </span>
+                      <span className="text-xs font-medium text-red-400">
+                        -€{monthFineTotal(groupEntries).toFixed(2)}
                       </span>
                     </div>
+                    {groupEntries.map((entry) => (
+                      <div
+                        key={entry.id}
+                        className={`glass-card mb-2 flex items-start gap-4 p-4 transition hover:bg-white/[0.06] ${
+                          entry.type === "bonus" ? "border-green-500/15" : "border-red-500/15"
+                        }`}
+                      >
+                        <div
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                            entry.type === "bonus" ? "bg-green-500/20 text-green-400" : "bg-red-500/20 text-red-400"
+                          }`}
+                        >
+                          <DollarSign className="h-5 w-5" aria-hidden />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-sm font-semibold text-white">{entry.reason}</p>
+                            {isSpinWheelFineBonus(entry) ? <SpinWheelBadge /> : <ManualBadge />}
+                          </div>
+                          {entry.notes ? <p className="mt-0.5 text-xs text-white/50">{entry.notes}</p> : null}
+                          <p className="mt-1 text-xs text-white/30">
+                            {formatDateTimeAthens(entry.created_at)} · by {entry.admin_name || "Admin"}
+                          </p>
+                        </div>
+                        <div
+                          className={`shrink-0 text-right ${entry.type === "bonus" ? "text-green-400" : "text-red-400"}`}
+                        >
+                          <p className="text-base font-bold">
+                            {entry.type === "bonus" ? "+" : "-"}€{entry.amount.toFixed(2)}
+                          </p>
+                          <span
+                            className={`mt-1 inline-block rounded-full border px-2 py-0.5 text-xs ${
+                              entry.type === "bonus"
+                                ? "border-green-500/25 bg-green-500/15 text-green-400"
+                                : "border-red-500/25 bg-red-500/15 text-red-400"
+                            }`}
+                          >
+                            {entry.type}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
-            ))}
-          </div>
 
-          <PaginationControls page={page} totalPages={totalPages} onPage={setPage} totalItems={filtered.length} />
+              <PaginationControls page={page} totalPages={totalPages} onPage={setPage} totalItems={filtered.length} />
+            </>
+          )}
         </>
+      )}
+
+      {showExtraRevenueForm && (
+        <ExtraRevenueModal
+          open={extraModalOpen}
+          onClose={() => setExtraModalOpen(false)}
+          modelss={sortedModels}
+          onSubmitted={refreshEntries}
+        />
       )}
     </div>
   );

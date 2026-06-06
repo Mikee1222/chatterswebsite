@@ -297,6 +297,10 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   fines_and_bonuses: {
     user_role: new Set(["chatter", "va"]),
     type: new Set(["bonus", "fine"]),
+    category: new Set(["extra_revenue", "standard"]),
+    status: new Set(["pending_review", "approved", "rejected"]),
+    source: new Set(["chatter_submission", "admin", "spin_wheel"]),
+    payment_method: new Set(["PayPal", "Revolut", "Other"]),
   },
   model_social_accounts: {
     account_type: new Set(["main", "secondary"]),

@@ -1,12 +1,17 @@
 "use client";
 
 import * as React from "react";
-import { Search } from "lucide-react";
+import { ExternalLink, Search } from "lucide-react";
+import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { GlassModal, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { FormTextarea } from "@/components/ui/form-textarea";
 import { formatDateTimeEuropean, formatMonthYyyyMm, formatRelativeTime } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
 import { FormInput } from "@/components/ui/form-input";
 import {
+  isChatterExtraRevenueSubmission,
+  isPendingExtraRevenueReview,
   isSpinWheelFineBonus,
   type FineBonusRecord,
   type FineBonusType,
@@ -45,6 +50,31 @@ function TypeBadge({ type }: { type: FineBonusType }) {
   );
 }
 
+function StatusBadge({ status }: { status?: string }) {
+  if (status === "pending_review") {
+    return (
+      <span className="inline-flex rounded-full border border-yellow-500/30 bg-yellow-500/15 px-2 py-0.5 text-xs font-medium text-yellow-300">
+        Pending
+      </span>
+    );
+  }
+  if (status === "approved") {
+    return (
+      <span className="inline-flex rounded-full border border-green-500/30 bg-green-500/15 px-2 py-0.5 text-xs font-medium text-green-400">
+        Approved
+      </span>
+    );
+  }
+  if (status === "rejected") {
+    return (
+      <span className="inline-flex rounded-full border border-red-500/30 bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400">
+        Rejected
+      </span>
+    );
+  }
+  return null;
+}
+
 function SpinWheelBadge() {
   return (
     <span className="inline-flex rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-300">
@@ -61,7 +91,21 @@ function ManualBadge() {
   );
 }
 
-type SourceFilter = "all" | "manual" | "spin_wheel";
+function ChatterSubmissionBadge() {
+  return (
+    <span className="inline-flex rounded-full border border-pink-500/30 bg-pink-500/15 px-2 py-0.5 text-xs font-medium text-pink-300">
+      Chatter submission
+    </span>
+  );
+}
+
+function entrySourceBadge(entry: FineBonusRecord) {
+  if (isChatterExtraRevenueSubmission(entry)) return <ChatterSubmissionBadge />;
+  if (isSpinWheelFineBonus(entry)) return <SpinWheelBadge />;
+  return <ManualBadge />;
+}
+
+type SourceFilter = "all" | "manual" | "spin_wheel" | "chatter_submission";
 
 type MonthGroup = {
   month: string;
@@ -84,13 +128,21 @@ function groupByMonth(entries: FineBonusRecord[]): MonthGroup[] {
 }
 
 export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) {
-  const [rows] = React.useState(initialEntries);
+  const [rows, setRows] = React.useState(initialEntries);
   const [userFilter, setUserFilter] = React.useState("all");
   const [roleFilter, setRoleFilter] = React.useState<"all" | FineBonusUserRole>("all");
   const [typeFilter, setTypeFilter] = React.useState<"all" | FineBonusType>("all");
   const [sourceFilter, setSourceFilter] = React.useState<SourceFilter>("all");
   const [monthFilter, setMonthFilter] = React.useState("");
   const [search, setSearch] = React.useState("");
+  const [reviewEntry, setReviewEntry] = React.useState<FineBonusRecord | null>(null);
+  const [rejectReason, setRejectReason] = React.useState("");
+  const [reviewPending, setReviewPending] = React.useState(false);
+
+  const pendingSubmissions = React.useMemo(
+    () => rows.filter(isPendingExtraRevenueReview).sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    [rows]
+  );
 
   const monthOptions = React.useMemo(() => {
     const s = new Set<string>();
@@ -108,9 +160,10 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
         if (roleFilter !== "all" && r.user_role !== roleFilter) return false;
         if (typeFilter !== "all" && r.type !== typeFilter) return false;
         if (sourceFilter === "spin_wheel" && !isSpinWheelFineBonus(r)) return false;
-        if (sourceFilter === "manual" && isSpinWheelFineBonus(r)) return false;
+        if (sourceFilter === "chatter_submission" && !isChatterExtraRevenueSubmission(r)) return false;
+        if (sourceFilter === "manual" && (isSpinWheelFineBonus(r) || isChatterExtraRevenueSubmission(r))) return false;
         if (monthFilter && r.month !== monthFilter) return false;
-        if (q && !r.reason.toLowerCase().includes(q)) return false;
+        if (q && !r.reason.toLowerCase().includes(q) && !r.model_name?.toLowerCase().includes(q)) return false;
         return true;
       })
       .sort((a, b) => b.created_at.localeCompare(a.created_at));
@@ -135,6 +188,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
     let fines = 0;
     const people = new Set<string>();
     for (const r of filtered) {
+      if (r.status === "pending_review") continue;
       people.add(r.user_id);
       if (r.type === "bonus") bonuses += r.amount;
       else fines += r.amount;
@@ -147,12 +201,89 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
     };
   }, [filtered]);
 
+  async function submitReview(action: "approve" | "reject") {
+    if (!reviewEntry) return;
+    if (action === "reject" && !rejectReason.trim()) {
+      toast.error("Reject reason is required");
+      return;
+    }
+    setReviewPending(true);
+    try {
+      const res = await fetch(`/api/admin/fines-bonuses/${reviewEntry.id}/review`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action,
+          ...(action === "reject" ? { reject_reason: rejectReason.trim() } : {}),
+        }),
+      });
+      const data = (await res.json()) as { error?: string; entry?: FineBonusRecord };
+      if (!res.ok || !data.entry) {
+        toast.error(data.error || "Review failed");
+        return;
+      }
+      setRows((prev) => prev.map((r) => (r.id === data.entry!.id ? data.entry! : r)));
+      toast.success(action === "approve" ? "Submission approved" : "Submission rejected");
+      setReviewEntry(null);
+      setRejectReason("");
+    } finally {
+      setReviewPending(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Fines &amp; bonuses</h1>
-        <p className="mt-1 text-sm text-white/50">All issued entries.</p>
+        <p className="mt-1 text-sm text-white/50">All issued entries and chatter extra revenue submissions.</p>
       </div>
+
+      {pendingSubmissions.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-yellow-300/80">
+            Pending extra revenue ({pendingSubmissions.length})
+          </h2>
+          {pendingSubmissions.map((entry) => (
+            <div key={entry.id} className="glass-card flex flex-wrap items-start gap-4 border-yellow-500/20 p-4">
+              <div className="min-w-0 flex-1 space-y-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="font-semibold text-white">{entry.user_name}</p>
+                  <StatusBadge status={entry.status} />
+                </div>
+                <p className="text-sm text-white/80">{entry.reason}</p>
+                <p className="text-xs text-white/45">
+                  {entry.model_name || "Model"} · {entry.payment_method || "Payment"}
+                  {entry.payment_source ? ` (${entry.payment_source})` : ""} · €{entry.amount.toFixed(2)}
+                </p>
+                {entry.notes ? <p className="text-xs text-white/40">{entry.notes}</p> : null}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {entry.screenshot_url ? (
+                  <a
+                    href={entry.screenshot_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    Screenshot
+                  </a>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setReviewEntry(entry);
+                    setRejectReason("");
+                  }}
+                  className="rounded-lg border border-pink-500/30 bg-pink-500/15 px-3 py-2 text-xs font-medium text-pink-200 hover:bg-pink-500/25"
+                >
+                  Review
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         {[
@@ -207,6 +338,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           <option value="all">All sources</option>
           <option value="manual">Manual</option>
           <option value="spin_wheel">Spin Wheel</option>
+          <option value="chatter_submission">Chatter submissions</option>
         </select>
         <select
           value={monthFilter}
@@ -236,7 +368,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
       ) : (
         <>
           <div className="glass-card overflow-x-auto">
-            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[860px] border-collapse text-left text-sm">
               <thead className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 backdrop-blur-md">
                 <tr className="text-xs uppercase tracking-wider text-white/45">
                   <th className="px-4 py-3.5 font-semibold">User</th>
@@ -245,6 +377,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
                   <th className="px-4 py-3.5 text-right font-semibold">Amount</th>
                   <th className="px-4 py-3.5 font-semibold">Reason</th>
                   <th className="px-4 py-3.5 font-semibold">Source</th>
+                  <th className="px-4 py-3.5 font-semibold">Status</th>
                   <th className="px-4 py-3.5 font-semibold">Date</th>
                 </tr>
               </thead>
@@ -252,7 +385,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
                 {groupedPage.map(({ month, entries }) => (
                   <React.Fragment key={month}>
                     <tr className="sticky top-[41px] z-[5] bg-zinc-900/95 backdrop-blur-sm">
-                      <td colSpan={7} className="border-b border-pink-500/20 px-4 py-2">
+                      <td colSpan={8} className="border-b border-pink-500/20 px-4 py-2">
                         <span className="text-xs font-semibold uppercase tracking-widest text-pink-300/80">
                           {month === "unknown" ? "Unknown month" : formatMonthYyyyMm(month)}
                         </span>
@@ -282,8 +415,9 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
                         <td className="max-w-[220px] truncate px-4 py-3 text-white/80" title={e.reason}>
                           {e.reason}
                         </td>
+                        <td className="px-4 py-3">{entrySourceBadge(e)}</td>
                         <td className="px-4 py-3">
-                          {isSpinWheelFineBonus(e) ? <SpinWheelBadge /> : <ManualBadge />}
+                          <StatusBadge status={e.status} />
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <span
@@ -304,6 +438,69 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           <PaginationControls page={page} totalPages={totalPages} onPage={setPage} totalItems={filtered.length} />
         </>
       )}
+
+      {reviewEntry ? (
+        <GlassModal
+          onClose={() => {
+            if (!reviewPending) {
+              setReviewEntry(null);
+              setRejectReason("");
+            }
+          }}
+          title="Review extra revenue"
+        >
+          <div className="space-y-4">
+            <div className="space-y-1 text-sm">
+              <p className="font-medium text-white">{reviewEntry.user_name}</p>
+              <p className="text-white/70">{reviewEntry.reason}</p>
+              <p className="text-white/50">
+                €{reviewEntry.amount.toFixed(2)} · {reviewEntry.model_name} · {reviewEntry.payment_method}
+              </p>
+              {reviewEntry.screenshot_url ? (
+                <a
+                  href={reviewEntry.screenshot_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-pink-300 hover:underline"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  View screenshot
+                </a>
+              ) : null}
+            </div>
+
+            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
+              Reject reason (required to reject)
+              <FormTextarea
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                rows={3}
+                className="mt-1"
+                placeholder="Optional for approve; required for reject"
+              />
+            </label>
+
+            <div className="flex gap-2">
+              <ButtonPrimary
+                type="button"
+                disabled={reviewPending}
+                onClick={() => submitReview("approve")}
+                className="flex-1"
+              >
+                Approve
+              </ButtonPrimary>
+              <ButtonSecondary
+                type="button"
+                disabled={reviewPending}
+                onClick={() => submitReview("reject")}
+                className="flex-1 border-red-500/30 text-red-300"
+              >
+                Reject
+              </ButtonSecondary>
+            </div>
+          </div>
+        </GlassModal>
+      ) : null}
     </div>
   );
 }
