@@ -13,6 +13,7 @@ import {
   ListChecks,
   Pencil,
   Search,
+  Trash2,
   Upload,
   User,
   Users,
@@ -243,6 +244,8 @@ export function AdminCustomRequestsClient({ initialRequests: initial, initialNex
   const [editDeadline, setEditDeadline] = React.useState("");
   const [editBusy, setEditBusy] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<CustomRequest | null>(null);
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
 
   React.useEffect(() => {
     setRequests(initial);
@@ -520,6 +523,32 @@ export function AdminCustomRequestsClient({ initialRequests: initial, initialNex
   const bulkPendingDeclineCount = filtered.filter(
     (r) => selectedIds.has(r.id) && r.admin_status === "pending"
   ).length;
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/admin/custom-requests/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast("error", "Could not delete", data.error ?? "Delete failed.");
+        return;
+      }
+      setRequests((prev) => prev.filter((r) => r.id !== id));
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      setDetail((prev) => (prev?.id === id ? null : prev));
+      setPendingDelete(null);
+      toast("success", "Deleted", "Custom request removed.");
+      router.refresh();
+    } finally {
+      setDeleteBusy(false);
+    }
+  };
 
   const exportCsv = () => {
     const header = CSV_FIELDS.join(",");
@@ -813,6 +842,18 @@ export function AdminCustomRequestsClient({ initialRequests: initial, initialNex
                         </div>
                       </div>
                       <StatusBadge req={r} />
+                      <button
+                        type="button"
+                        disabled={deleteBusy && pendingDelete?.id === r.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPendingDelete(r);
+                        }}
+                        className="shrink-0 rounded-lg p-1.5 text-white/40 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                        title="Delete request"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
                     </div>
 
                     <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -928,6 +969,24 @@ export function AdminCustomRequestsClient({ initialRequests: initial, initialNex
           </section>
         ) : null}
       </CustomRequestDetailModal>
+
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onClose={() => {
+          if (deleteBusy) return;
+          setPendingDelete(null);
+        }}
+        onConfirm={() => void handleDelete()}
+        title="Delete custom request?"
+        description={
+          pendingDelete
+            ? `Permanently delete the request for @${pendingDelete.fan_username?.trim() || "the fan"} (${displayTitle(pendingDelete)})? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete request"
+        confirmVariant="danger"
+        loading={deleteBusy}
+      />
 
       <ConfirmDialog
         open={declineFor != null}

@@ -14,6 +14,7 @@ import {
   Loader2,
   Package,
   Search,
+  Trash2,
   Upload,
   User,
   X,
@@ -26,6 +27,7 @@ import {
 import { CustomRequestDetailModal } from "@/components/custom-request-detail-modal";
 import { MobileCard } from "@/components/mobile-card";
 import { FormInput } from "@/components/ui/form-input";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { PaginationControls } from "@/components/ui/pagination-controls";
 import { ROUTES } from "@/lib/routes";
@@ -34,7 +36,25 @@ import { formatDate } from "@/lib/format-date";
 import { dashboardSwrKeys } from "@/lib/hooks/use-dashboard-data";
 import { usePagination } from "@/lib/use-pagination";
 import { cn } from "@/lib/utils";
-import type { CustomRequest, CustomRequestModelStatus } from "@/types";
+import { useToast } from "@/contexts/toast-context";
+import type { AppNotification, CustomRequest, CustomRequestModelStatus } from "@/types";
+
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
 
 type Lang = "en" | "es";
 type StatusTab = "all" | CustomRequestModelStatus;
@@ -147,14 +167,18 @@ type Props = {
   language: Lang;
 };
 
-export function ModelCustomRequestsClient({ requests, language }: Props) {
+export function ModelCustomRequestsClient({ requests: initialRequests, language }: Props) {
   const router = useRouter();
   const { mutate } = useSWRConfig();
+  const { addToast } = useToast();
+  const [rows, setRows] = React.useState(initialRequests);
   const [filter, setFilter] = React.useState<StatusTab>("waiting_schedule");
   const [search, setSearch] = React.useState("");
   const [detail, setDetail] = React.useState<CustomRequest | null>(null);
   const [scheduleFor, setScheduleFor] = React.useState<CustomRequest | null>(null);
   const [confirmUpload, setConfirmUpload] = React.useState<CustomRequest | null>(null);
+  const [pendingDelete, setPendingDelete] = React.useState<CustomRequest | null>(null);
+  const [deleteBusy, setDeleteBusy] = React.useState(false);
 
   const [scheduleDate, setScheduleDate] = React.useState("");
   const [scheduleStart, setScheduleStart] = React.useState("10:00");
@@ -163,9 +187,15 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
   const [busy, setBusy] = React.useState(false);
   const [formError, setFormError] = React.useState<string | null>(null);
 
+  React.useEffect(() => setRows(initialRequests), [initialRequests]);
+
+  const toast = (kind: "success" | "error", title: string, body: string) => {
+    addToast(localToast(`mcr-${kind}-${Date.now()}`, title, body, kind === "error" ? "high" : "normal"));
+  };
+
   const counts = React.useMemo(() => {
     const c: Record<CustomRequestModelStatus, number> & { total: number } = {
-      total: requests.length,
+      total: rows.length,
       waiting_schedule: 0,
       scheduled: 0,
       in_progress: 0,
@@ -173,7 +203,7 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
       completed: 0,
       declined: 0,
     };
-    for (const r of requests) {
+    for (const r of rows) {
       const k = statusKey(r.model_status);
       if (k === "waiting_schedule") c.waiting_schedule += 1;
       else if (k === "scheduled") c.scheduled += 1;
@@ -183,10 +213,10 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
       else if (k === "declined") c.declined += 1;
     }
     return c;
-  }, [requests]);
+  }, [rows]);
 
   const filtered = React.useMemo(() => {
-    let list = filter === "all" ? [...requests] : requests.filter((r) => statusKey(r.model_status) === filter);
+    let list = filter === "all" ? [...rows] : rows.filter((r) => statusKey(r.model_status) === filter);
     const q = search.trim().toLowerCase();
     if (q) {
       list = list.filter((r) => {
@@ -196,7 +226,7 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
     }
     const createdMs = (r: CustomRequest) => Date.parse(r.created_at || "") || 0;
     return [...list].sort((a, b) => createdMs(b) - createdMs(a));
-  }, [requests, filter, search]);
+  }, [rows, filter, search]);
 
   const { page, setPage, totalPages, paginated, reset } = usePagination(filtered, 20);
 
@@ -265,6 +295,27 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
       router.refresh();
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!pendingDelete) return;
+    const id = pendingDelete.id;
+    setDeleteBusy(true);
+    try {
+      const res = await fetch(`/api/custom-requests/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast("error", t(language, "Could not delete", "No se pudo eliminar"), data.error ?? "Delete failed.");
+        return;
+      }
+      setRows((prev) => prev.filter((r) => r.id !== id));
+      setDetail((prev) => (prev?.id === id ? null : prev));
+      setPendingDelete(null);
+      toast("success", t(language, "Deleted", "Eliminado"), t(language, "Custom request removed.", "Encargo eliminado."));
+      router.refresh();
+    } finally {
+      setDeleteBusy(false);
     }
   };
 
@@ -465,14 +516,25 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
                     {canSchedule || canMarkUploaded ? (
                       <div className="mt-3 flex gap-2 border-t border-white/10 pt-3" onClick={(e) => e.stopPropagation()}>
                         {canSchedule ? (
-                          <button
-                            type="button"
-                            onClick={() => setScheduleFor(r)}
-                            className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
-                          >
-                            <CalendarClock className="h-3.5 w-3.5" aria-hidden />
-                            {t(language, "Schedule", "Programar")}
-                          </button>
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setScheduleFor(r)}
+                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/25"
+                            >
+                              <CalendarClock className="h-3.5 w-3.5" aria-hidden />
+                              {t(language, "Schedule", "Programar")}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deleteBusy && pendingDelete?.id === r.id}
+                              onClick={() => setPendingDelete(r)}
+                              className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/25 disabled:opacity-50"
+                              title={t(language, "Delete request", "Eliminar encargo")}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                            </button>
+                          </>
                         ) : null}
                         {canMarkUploaded ? (
                           <button
@@ -672,6 +734,28 @@ export function ModelCustomRequestsClient({ requests, language }: Props) {
           </div>
         </GlassModal>
       ) : null}
+
+      <ConfirmDialog
+        open={pendingDelete != null}
+        onClose={() => {
+          if (deleteBusy) return;
+          setPendingDelete(null);
+        }}
+        onConfirm={() => void handleDelete()}
+        title={t(language, "Delete custom request?", "¿Eliminar encargo?")}
+        description={
+          pendingDelete
+            ? t(
+                language,
+                `Remove "${displayTitle(pendingDelete)}" from your queue? This cannot be undone.`,
+                `¿Quitar "${displayTitle(pendingDelete)}" de tu cola? Esta acción no se puede deshacer.`
+              )
+            : ""
+        }
+        confirmLabel={t(language, "Delete request", "Eliminar")}
+        confirmVariant="danger"
+        loading={deleteBusy}
+      />
     </div>
   );
 }

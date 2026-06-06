@@ -8,8 +8,19 @@ export async function DELETE(_request: Request, { params }: { params: { id: stri
   }
   const res = await deleteCustomRequestAction(id);
   if (!res.success) {
-    const status = res.error === "Unauthorized" ? 401 : 400;
-    return NextResponse.json({ error: res.error ?? "Delete failed" }, { status });
+    const err = res.error ?? "Delete failed";
+    let status = 400;
+    if (err === "Unauthorized") status = 401;
+    else if (err === "Request not found.") status = 404;
+    else if (
+      err.includes("Only pending") ||
+      err.includes("Only waiting-schedule") ||
+      err.includes("not assigned") ||
+      err.includes("your own")
+    ) {
+      status = 403;
+    }
+    return NextResponse.json({ error: err }, { status });
   }
   return NextResponse.json({ success: true });
 }
