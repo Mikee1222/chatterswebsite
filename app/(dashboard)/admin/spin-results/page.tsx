@@ -42,11 +42,7 @@ export default async function AdminSpinResultsPage() {
   const stats = computeStats(rows);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 md:px-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Spin results</h1>
-        <p className="mt-1 text-sm text-white/55">All spin wheel outcomes and manual claims for cash and extra break prizes.</p>
-      </div>
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
       <AdminSpinResultsClient rows={rows} stats={stats} />
     </div>
   );
