@@ -34,7 +34,120 @@ export type AdminTipRow = {
   created_at: string;
 };
 
-type Tab = "rebills" | "tips";
+type Tab = "rebills" | "tips" | "standings";
+type StandingsDatePreset = "week" | "month" | "last_month" | "all" | "custom";
+
+type StandingRow = {
+  rank: number;
+  chatter_id: string;
+  chatter_name: string;
+  approved: number;
+  pending: number;
+  rejected: number;
+  total: number;
+};
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function getStandingsDateRange(preset: StandingsDatePreset): { from?: string; to?: string } {
+  const now = new Date();
+  const today = toDateStr(now);
+
+  if (preset === "all" || preset === "custom") return {};
+
+  if (preset === "week") {
+    const start = new Date(now);
+    const day = start.getDay();
+    const diff = day === 0 ? 6 : day - 1;
+    start.setDate(start.getDate() - diff);
+    return { from: toDateStr(start), to: today };
+  }
+
+  if (preset === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: toDateStr(start), to: today };
+  }
+
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 0);
+  return { from: toDateStr(start), to: toDateStr(end) };
+}
+
+function filterRebillsForStandings(
+  rebills: AdminRebillRow[],
+  opts: { from?: string; to?: string; chatterId?: string; modelId?: string }
+): AdminRebillRow[] {
+  let list = [...rebills];
+
+  if (opts.from) {
+    list = list.filter((r) => (r.created_at || "").slice(0, 10) >= opts.from!);
+  }
+  if (opts.to) {
+    list = list.filter((r) => {
+      const d = (r.created_at || "").slice(0, 10);
+      return d && d <= opts.to!;
+    });
+  }
+  if (opts.chatterId && opts.chatterId !== "all") {
+    list = list.filter((r) => r.chatter_id === opts.chatterId);
+  }
+  if (opts.modelId && opts.modelId !== "all") {
+    list = list.filter((r) => r.model_id === opts.modelId);
+  }
+
+  return list;
+}
+
+function computeStandingsFromRebills(rebills: AdminRebillRow[]): StandingRow[] {
+  const map = new Map<
+    string,
+    { chatter_id: string; chatter_name: string; approved: number; pending: number; rejected: number }
+  >();
+
+  for (const r of rebills) {
+    const key = r.chatter_id || r.chatter_name;
+    if (!key || key === "—") continue;
+    const existing = map.get(key) ?? {
+      chatter_id: r.chatter_id,
+      chatter_name: r.chatter_name,
+      approved: 0,
+      pending: 0,
+      rejected: 0,
+    };
+    if (r.status === "verified") existing.approved++;
+    else if (r.status === "pending") existing.pending++;
+    else if (r.status === "rejected") existing.rejected++;
+    map.set(key, existing);
+  }
+
+  return Array.from(map.values())
+    .map((s) => ({ ...s, total: s.approved + s.pending + s.rejected }))
+    .sort(
+      (a, b) =>
+        b.approved - a.approved ||
+        b.pending - a.pending ||
+        b.total - a.total ||
+        a.chatter_name.localeCompare(b.chatter_name)
+    )
+    .map((s, i) => ({ ...s, rank: i + 1 }));
+}
+
+function standingsRowHighlight(rank: number): string {
+  if (rank === 1) return "bg-amber-500/10 border-l-2 border-l-amber-400/60";
+  if (rank === 2) return "bg-white/[0.07] border-l-2 border-l-white/40";
+  if (rank === 3) return "bg-orange-700/10 border-l-2 border-l-orange-500/50";
+  if (rank <= 5) return "bg-pink-500/5 border-l-2 border-l-pink-500/20";
+  return "";
+}
+
+function rankMedal(rank: number): React.ReactNode {
+  if (rank === 1) return <span className="text-2xl">🥇</span>;
+  if (rank === 2) return <span className="text-2xl">🥈</span>;
+  if (rank === 3) return <span className="text-xl">🥉</span>;
+  return <span className="text-sm font-bold text-white/40">#{rank}</span>;
+}
 
 function timeAgo(iso: string): string {
   const t = new Date(iso).getTime();
@@ -86,6 +199,13 @@ export function AdminRebillsTipsClient({
   );
 
   const [activeTab, setActiveTab] = React.useState<Tab>("rebills");
+  const [standingsDatePreset, setStandingsDatePreset] = React.useState<StandingsDatePreset>("month");
+  const [standingsFromDate, setStandingsFromDate] = React.useState("");
+  const [standingsToDate, setStandingsToDate] = React.useState("");
+  const [standingsChatterFilter, setStandingsChatterFilter] = React.useState("all");
+  const [standingsChatterQuery, setStandingsChatterQuery] = React.useState("");
+  const [standingsChatterOpen, setStandingsChatterOpen] = React.useState(false);
+  const [standingsModelFilter, setStandingsModelFilter] = React.useState("all");
   const [search, setSearch] = React.useState("");
   const [modelFilter, setModelFilter] = React.useState("all");
   const [chatterFilter, setChatterFilter] = React.useState("all");
@@ -163,6 +283,89 @@ export function AdminRebillsTipsClient({
     return summarySource.filter((r) => r.status === statusFilter);
   }, [summarySource, statusFilter]);
 
+  const standingsModelOptions = React.useMemo(() => {
+    const names = new Map<string, string>();
+    for (const row of rebills) {
+      if (row.model_id) names.set(row.model_id, row.model_name || row.model_id);
+    }
+    return [...names.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rebills]);
+
+  const standingsChatterOptions = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of rebills) {
+      if (row.chatter_id) map.set(row.chatter_id, row.chatter_name || row.chatter_id);
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [rebills]);
+
+  const filteredStandingsChatterOptions = React.useMemo(() => {
+    const q = standingsChatterQuery.trim().toLowerCase();
+    if (!q) return standingsChatterOptions;
+    return standingsChatterOptions.filter(
+      ([id, name]) => name.toLowerCase().includes(q) || id.toLowerCase().includes(q)
+    );
+  }, [standingsChatterOptions, standingsChatterQuery]);
+
+  const standingsDateRange = React.useMemo(() => {
+    if (standingsDatePreset === "custom") {
+      return {
+        from: standingsFromDate || undefined,
+        to: standingsToDate || undefined,
+      };
+    }
+    return getStandingsDateRange(standingsDatePreset);
+  }, [standingsDatePreset, standingsFromDate, standingsToDate]);
+
+  const filteredStandingsRebills = React.useMemo(
+    () =>
+      filterRebillsForStandings(rebills, {
+        from: standingsDateRange.from,
+        to: standingsDateRange.to,
+        chatterId: standingsChatterFilter,
+        modelId: standingsModelFilter,
+      }),
+    [rebills, standingsDateRange, standingsChatterFilter, standingsModelFilter]
+  );
+
+  const standings = React.useMemo(
+    () => computeStandingsFromRebills(filteredStandingsRebills),
+    [filteredStandingsRebills]
+  );
+
+  const standingsStats = React.useMemo(() => {
+    const approved = filteredStandingsRebills.filter((r) => r.status === "verified").length;
+    const pending = filteredStandingsRebills.filter((r) => r.status === "pending").length;
+    const rejected = filteredStandingsRebills.filter((r) => r.status === "rejected").length;
+    const best = standings[0];
+    return {
+      approved,
+      pending,
+      rejected,
+      bestName: best?.chatter_name ?? "—",
+      bestCount: best?.approved ?? 0,
+    };
+  }, [filteredStandingsRebills, standings]);
+
+  const topFive = standings.slice(0, 5);
+  const podiumTopThree = [topFive[1], topFive[0], topFive[2]].filter(Boolean) as StandingRow[];
+
+  function clearStandingsFilters() {
+    setStandingsDatePreset("month");
+    setStandingsFromDate("");
+    setStandingsToDate("");
+    setStandingsChatterFilter("all");
+    setStandingsChatterQuery("");
+    setStandingsModelFilter("all");
+  }
+
+  const hasStandingsFilters =
+    standingsDatePreset !== "month" ||
+    Boolean(standingsFromDate) ||
+    Boolean(standingsToDate) ||
+    standingsChatterFilter !== "all" ||
+    standingsModelFilter !== "all";
+
   function clearFilters() {
     setSearch("");
     setModelFilter("all");
@@ -206,7 +409,7 @@ export function AdminRebillsTipsClient({
     }
   }
 
-  async function updateStatus(id: string, status: AdminRebillRow["status"], kind: Tab) {
+  async function updateStatus(id: string, status: AdminRebillRow["status"], kind: "rebills" | "tips") {
     setPatchingId(id);
     const prevR = rebills;
     const prevT = tips;
@@ -225,7 +428,7 @@ export function AdminRebillsTipsClient({
     }
   }
 
-  async function saveNotes(id: string, kind: Tab) {
+  async function saveNotes(id: string, kind: "rebills" | "tips") {
     setPatchingId(id);
     const prevR = rebills;
     const prevT = tips;
@@ -291,8 +494,303 @@ export function AdminRebillsTipsClient({
         >
           💰 Tips
         </button>
+        <button
+          type="button"
+          onClick={() => {
+            setNotesOpenId(null);
+            setActiveTab("standings");
+          }}
+          className={`flex-1 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+            activeTab === "standings"
+              ? "bg-white/10 text-white shadow-sm"
+              : "text-white/45 hover:text-white/70"
+          }`}
+        >
+          🏆 Standings
+        </button>
       </div>
 
+      {activeTab === "standings" ? (
+        <div className="space-y-6">
+          <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="glass-card px-4 py-3 text-center">
+              <p className="text-xs uppercase tracking-wide text-white/45">Total Approved</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400">{standingsStats.approved}</p>
+            </div>
+            <div className="glass-card px-4 py-3 text-center">
+              <p className="text-xs uppercase tracking-wide text-white/45">Total Pending</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-yellow-400">{standingsStats.pending}</p>
+            </div>
+            <div className="glass-card px-4 py-3 text-center">
+              <p className="text-xs uppercase tracking-wide text-white/45">Total Rejected</p>
+              <p className="mt-1 text-2xl font-semibold tabular-nums text-red-400">{standingsStats.rejected}</p>
+            </div>
+            <div className="glass-card px-4 py-3 text-center">
+              <p className="text-xs uppercase tracking-wide text-white/45">Best Performer</p>
+              <p className="mt-1 truncate text-lg font-semibold text-pink-300">{standingsStats.bestName}</p>
+              <p className="text-sm tabular-nums text-white/50">{standingsStats.bestCount} approved</p>
+            </div>
+          </section>
+
+          <section className="glass-card space-y-4 p-4">
+            <div className="flex flex-wrap gap-2">
+              {(
+                [
+                  { key: "week", label: "This week" },
+                  { key: "month", label: "This month" },
+                  { key: "last_month", label: "Last month" },
+                  { key: "all", label: "All time" },
+                  { key: "custom", label: "Custom" },
+                ] as const
+              ).map((p) => (
+                <button
+                  key={p.key}
+                  type="button"
+                  onClick={() => {
+                    setStandingsDatePreset(p.key);
+                    if (p.key !== "custom") {
+                      setStandingsFromDate("");
+                      setStandingsToDate("");
+                    }
+                  }}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                    standingsDatePreset === p.key
+                      ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                      : "border-white/10 text-white/50 hover:border-white/20 hover:text-white"
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+              <input
+                type="date"
+                value={standingsFromDate}
+                onChange={(e) => {
+                  setStandingsFromDate(e.target.value);
+                  setStandingsDatePreset("custom");
+                }}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                aria-label="Standings from date"
+              />
+              <input
+                type="date"
+                value={standingsToDate}
+                onChange={(e) => {
+                  setStandingsToDate(e.target.value);
+                  setStandingsDatePreset("custom");
+                }}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                aria-label="Standings to date"
+              />
+
+              <div className="relative md:col-span-1 lg:col-span-1">
+                <input
+                  value={
+                    standingsChatterFilter === "all"
+                      ? standingsChatterQuery
+                      : standingsChatterQuery ||
+                        standingsChatterOptions.find(([id]) => id === standingsChatterFilter)?.[1] ||
+                        ""
+                  }
+                  onChange={(e) => {
+                    setStandingsChatterQuery(e.target.value);
+                    setStandingsChatterFilter("all");
+                    setStandingsChatterOpen(true);
+                  }}
+                  onFocus={() => setStandingsChatterOpen(true)}
+                  onBlur={() => window.setTimeout(() => setStandingsChatterOpen(false), 150)}
+                  placeholder="All chatters"
+                  className="w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white placeholder:text-white/35"
+                  aria-label="Filter by chatter"
+                />
+                {standingsChatterOpen ? (
+                  <ul className="absolute z-20 mt-1 max-h-48 w-full overflow-auto rounded-xl border border-white/10 bg-[#1a1020] py-1 shadow-xl">
+                    <li>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setStandingsChatterFilter("all");
+                          setStandingsChatterQuery("");
+                          setStandingsChatterOpen(false);
+                        }}
+                        className="block w-full px-3 py-2 text-left text-sm text-white/70 hover:bg-white/5"
+                      >
+                        All chatters
+                      </button>
+                    </li>
+                    {filteredStandingsChatterOptions.map(([id, name]) => (
+                      <li key={id}>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.preventDefault()}
+                          onClick={() => {
+                            setStandingsChatterFilter(id);
+                            setStandingsChatterQuery(name);
+                            setStandingsChatterOpen(false);
+                          }}
+                          className={`block w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                            standingsChatterFilter === id ? "text-pink-300" : "text-white"
+                          }`}
+                        >
+                          {name}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+
+              <select
+                value={standingsModelFilter}
+                onChange={(e) => setStandingsModelFilter(e.target.value)}
+                className="rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                aria-label="Filter standings by model"
+              >
+                <option value="all">All models</option>
+                {standingsModelOptions.map(([id, name]) => (
+                  <option key={id} value={id}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs text-white/40">
+                {filteredStandingsRebills.length} rebill{filteredStandingsRebills.length === 1 ? "" : "s"} in range
+              </p>
+              <button
+                type="button"
+                onClick={clearStandingsFilters}
+                disabled={!hasStandingsFilters}
+                className="rounded-xl border border-white/15 px-3 py-1.5 text-xs font-medium text-white/70 hover:bg-white/5 disabled:pointer-events-none disabled:opacity-40"
+              >
+                Clear filters
+              </button>
+            </div>
+          </section>
+
+          <p className="text-sm text-white/50">Ranked by approved paid rebills (verified status)</p>
+
+          {standings.length === 0 ? (
+            <p className="glass-card border-dashed py-12 text-center text-sm text-white/45">
+              No rebill standings for this period.
+            </p>
+          ) : (
+            <>
+              {topFive.length > 0 ? (
+                <section className="space-y-4">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-white/45">Top 5 Podium</h2>
+
+                  {podiumTopThree.length > 0 ? (
+                    <div className="grid grid-cols-3 items-end gap-2 md:gap-4">
+                      {podiumTopThree.map((s) => {
+                        const isFirst = s.rank === 1;
+                        const isSecond = s.rank === 2;
+                        return (
+                          <div
+                            key={s.chatter_id || s.chatter_name}
+                            className={`glass-card flex flex-col items-center text-center transition ${
+                              isFirst
+                                ? "order-2 min-h-[220px] border-amber-400/30 bg-gradient-to-b from-amber-500/15 to-transparent p-5 md:min-h-[260px] md:p-6"
+                                : isSecond
+                                  ? "order-1 min-h-[180px] p-4 md:min-h-[210px]"
+                                  : "order-3 min-h-[160px] border-orange-600/20 p-4 md:min-h-[190px]"
+                            }`}
+                          >
+                            <div className="mb-2">{rankMedal(s.rank)}</div>
+                            <p className={`truncate font-semibold ${isFirst ? "text-lg text-white" : "text-white/90"}`}>
+                              {s.chatter_name}
+                            </p>
+                            <p
+                              className={`mt-2 font-bold tabular-nums text-emerald-400 ${
+                                isFirst ? "text-4xl md:text-5xl" : isSecond ? "text-3xl" : "text-2xl"
+                              }`}
+                            >
+                              {s.approved}
+                            </p>
+                            <p className="text-xs text-white/45">Approved</p>
+                            <div className="mt-2 flex flex-wrap justify-center gap-2 text-xs">
+                              {s.pending > 0 ? (
+                                <span className="text-yellow-400">{s.pending} pending</span>
+                              ) : null}
+                              {s.rejected > 0 ? (
+                                <span className="text-red-400">{s.rejected} rejected</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+
+                  {topFive.length > 3 ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {topFive.slice(3).map((s) => (
+                        <div
+                          key={s.chatter_id || s.chatter_name}
+                          className="glass-card flex items-center gap-4 p-4"
+                        >
+                          <div className="w-10 flex-shrink-0 text-center">{rankMedal(s.rank)}</div>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-medium text-white">{s.chatter_name}</p>
+                            <div className="mt-1 flex flex-wrap gap-2 text-xs">
+                              <span className="text-emerald-400">{s.approved} approved</span>
+                              {s.pending > 0 ? <span className="text-yellow-400">{s.pending} pending</span> : null}
+                              {s.rejected > 0 ? <span className="text-red-400">{s.rejected} rejected</span> : null}
+                            </div>
+                          </div>
+                          <p className="text-2xl font-bold tabular-nums text-emerald-400">{s.approved}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+
+              <section className="space-y-3">
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-white/45">Full Leaderboard</h2>
+                <div className="glass-card overflow-x-auto">
+                  <table className="w-full min-w-[640px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 text-xs uppercase tracking-wide text-white/45">
+                        <th className="px-4 py-3 font-medium">Rank</th>
+                        <th className="px-4 py-3 font-medium">Chatter</th>
+                        <th className="px-4 py-3 text-right font-medium">Approved</th>
+                        <th className="px-4 py-3 text-right font-medium">Pending</th>
+                        <th className="px-4 py-3 text-right font-medium">Rejected</th>
+                        <th className="px-4 py-3 text-right font-medium">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {standings.map((s) => (
+                        <tr
+                          key={s.chatter_id || s.chatter_name}
+                          className={`border-b border-white/5 last:border-0 ${standingsRowHighlight(s.rank)}`}
+                        >
+                          <td className="px-4 py-3">{rankMedal(s.rank)}</td>
+                          <td className="px-4 py-3 font-medium text-white">{s.chatter_name}</td>
+                          <td className="px-4 py-3 text-right font-semibold tabular-nums text-emerald-400">
+                            {s.approved}
+                          </td>
+                          <td className="px-4 py-3 text-right tabular-nums text-yellow-400">{s.pending}</td>
+                          <td className="px-4 py-3 text-right tabular-nums text-red-400">{s.rejected}</td>
+                          <td className="px-4 py-3 text-right font-medium tabular-nums text-white">{s.total}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </>
+          )}
+        </div>
+      ) : (
+        <>
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           ["Total", summaries.total],
@@ -615,6 +1113,8 @@ export function AdminRebillsTipsClient({
               );
             })}
         </ul>
+      )}
+        </>
       )}
     </div>
   );
