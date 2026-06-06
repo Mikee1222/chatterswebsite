@@ -1,10 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, Search } from "lucide-react";
+import { Search, X } from "lucide-react";
 import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { GlassModal, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
+import { GlassModal } from "@/components/ui/form";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { formatDateTimeEuropean, formatMonthYyyyMm, formatRelativeTime } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
@@ -137,7 +137,29 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
   const [search, setSearch] = React.useState("");
   const [reviewEntry, setReviewEntry] = React.useState<FineBonusRecord | null>(null);
   const [rejectReason, setRejectReason] = React.useState("");
+  const [rejectStep, setRejectStep] = React.useState(false);
   const [reviewPending, setReviewPending] = React.useState(false);
+  const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
+
+  function openReview(entry: FineBonusRecord) {
+    setReviewEntry(entry);
+    setRejectReason("");
+    setRejectStep(false);
+  }
+
+  function closeReview() {
+    if (reviewPending) return;
+    setReviewEntry(null);
+    setRejectReason("");
+    setRejectStep(false);
+  }
+
+  function paymentMethodLabel(entry: FineBonusRecord) {
+    if (entry.payment_method === "Other" && entry.payment_source?.trim()) {
+      return entry.payment_source.trim();
+    }
+    return entry.payment_method || "—";
+  }
 
   const pendingSubmissions = React.useMemo(
     () => rows.filter(isPendingExtraRevenueReview).sort((a, b) => b.created_at.localeCompare(a.created_at)),
@@ -224,8 +246,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
       }
       setRows((prev) => prev.map((r) => (r.id === data.entry!.id ? data.entry! : r)));
       toast.success(action === "approve" ? "Submission approved" : "Submission rejected");
-      setReviewEntry(null);
-      setRejectReason("");
+      closeReview();
     } finally {
       setReviewPending(false);
     }
@@ -243,45 +264,78 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           <h2 className="text-sm font-semibold uppercase tracking-wider text-yellow-300/80">
             Pending extra revenue ({pendingSubmissions.length})
           </h2>
-          {pendingSubmissions.map((entry) => (
-            <div key={entry.id} className="glass-card flex flex-wrap items-start gap-4 border-yellow-500/20 p-4">
-              <div className="min-w-0 flex-1 space-y-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="font-semibold text-white">{entry.user_name}</p>
-                  <StatusBadge status={entry.status} />
+
+          <div className="space-y-3 md:hidden">
+            {pendingSubmissions.map((entry) => (
+              <div key={entry.id} className="glass-card space-y-3 border-yellow-500/20 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <p className="font-semibold text-white">{entry.user_name}</p>
+                    <p className="text-sm text-white/70">{entry.model_name || "—"}</p>
+                  </div>
+                  <p className="shrink-0 text-lg font-bold tabular-nums text-green-400">€{entry.amount.toFixed(2)}</p>
                 </div>
-                <p className="text-sm text-white/80">{entry.reason}</p>
-                <p className="text-xs text-white/45">
-                  {entry.model_name || "Model"} · {entry.payment_method || "Payment"}
-                  {entry.payment_source ? ` (${entry.payment_source})` : ""} · €{entry.amount.toFixed(2)}
-                </p>
-                {entry.notes ? <p className="text-xs text-white/40">{entry.notes}</p> : null}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                {entry.screenshot_url ? (
-                  <a
-                    href={entry.screenshot_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-xs text-white/80 hover:bg-white/10"
-                  >
-                    <ExternalLink className="h-3.5 w-3.5" />
-                    Screenshot
-                  </a>
-                ) : null}
+                <div className="grid grid-cols-2 gap-2 text-xs text-white/50">
+                  <div>
+                    <p className="font-semibold uppercase tracking-wider text-white/35">Method</p>
+                    <p className="mt-0.5 text-white/75">{paymentMethodLabel(entry)}</p>
+                  </div>
+                  <div>
+                    <p className="font-semibold uppercase tracking-wider text-white/35">Submitted</p>
+                    <p className="mt-0.5 text-white/75" title={formatDateTimeEuropean(entry.created_at) || undefined}>
+                      {formatRelativeTime(entry.created_at)}
+                    </p>
+                  </div>
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setReviewEntry(entry);
-                    setRejectReason("");
-                  }}
-                  className="rounded-lg border border-pink-500/30 bg-pink-500/15 px-3 py-2 text-xs font-medium text-pink-200 hover:bg-pink-500/25"
+                  onClick={() => openReview(entry)}
+                  className="w-full rounded-lg border border-pink-500/30 bg-pink-500/15 px-3 py-2.5 text-sm font-medium text-pink-200 hover:bg-pink-500/25"
                 >
                   Review
                 </button>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+
+          <div className="glass-card hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[640px] border-collapse text-left text-sm">
+              <thead className="border-b border-white/10">
+                <tr className="text-xs uppercase tracking-wider text-white/45">
+                  <th className="px-4 py-3 font-semibold">Chatter</th>
+                  <th className="px-4 py-3 font-semibold">Model</th>
+                  <th className="px-4 py-3 text-right font-semibold">Amount</th>
+                  <th className="px-4 py-3 font-semibold">Method</th>
+                  <th className="px-4 py-3 font-semibold">Submitted</th>
+                  <th className="px-4 py-3 font-semibold" />
+                </tr>
+              </thead>
+              <tbody>
+                {pendingSubmissions.map((entry) => (
+                  <tr key={entry.id} className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.04]">
+                    <td className="px-4 py-3 font-medium text-white">{entry.user_name}</td>
+                    <td className="px-4 py-3 text-white/80">{entry.model_name || "—"}</td>
+                    <td className="px-4 py-3 text-right font-bold tabular-nums text-green-400">
+                      €{entry.amount.toFixed(2)}
+                    </td>
+                    <td className="px-4 py-3 text-white/70">{paymentMethodLabel(entry)}</td>
+                    <td className="px-4 py-3 whitespace-nowrap text-white/50" title={formatDateTimeEuropean(entry.created_at) || undefined}>
+                      {formatRelativeTime(entry.created_at)}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openReview(entry)}
+                        className="rounded-lg border border-pink-500/30 bg-pink-500/15 px-3 py-1.5 text-xs font-medium text-pink-200 hover:bg-pink-500/25"
+                      >
+                        Review
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -440,66 +494,138 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
       )}
 
       {reviewEntry ? (
-        <GlassModal
-          onClose={() => {
-            if (!reviewPending) {
-              setReviewEntry(null);
-              setRejectReason("");
-            }
-          }}
-          title="Review extra revenue"
-        >
-          <div className="space-y-4">
-            <div className="space-y-1 text-sm">
-              <p className="font-medium text-white">{reviewEntry.user_name}</p>
-              <p className="text-white/70">{reviewEntry.reason}</p>
-              <p className="text-white/50">
-                €{reviewEntry.amount.toFixed(2)} · {reviewEntry.model_name} · {reviewEntry.payment_method}
-              </p>
-              {reviewEntry.screenshot_url ? (
-                <a
-                  href={reviewEntry.screenshot_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-pink-300 hover:underline"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  View screenshot
-                </a>
+        <GlassModal onClose={closeReview} title="Review extra revenue" className="mx-4 w-[calc(100%-2rem)] max-w-lg md:mx-auto">
+          <div className="space-y-4 px-4 py-5 md:px-5">
+            <dl className="grid gap-3 text-sm">
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Model</dt>
+                <dd className="mt-0.5 font-medium text-white">{reviewEntry.model_name || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Amount (EUR)</dt>
+                <dd className="mt-0.5 text-lg font-bold tabular-nums text-green-400">€{reviewEntry.amount.toFixed(2)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Payment method</dt>
+                <dd className="mt-0.5 text-white/80">{paymentMethodLabel(reviewEntry)}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Screenshot</dt>
+                <dd className="mt-1">
+                  {reviewEntry.screenshot_url ? (
+                    <button
+                      type="button"
+                      onClick={() => setLightboxUrl(reviewEntry.screenshot_url!)}
+                      className="block w-full overflow-hidden rounded-xl border border-white/10 bg-white/5 transition-colors hover:border-pink-500/30 hover:bg-white/10"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={reviewEntry.screenshot_url}
+                        alt="Payment screenshot"
+                        className="max-h-64 w-full object-contain"
+                      />
+                    </button>
+                  ) : (
+                    <p className="text-white/50">No screenshot provided</p>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Chatter</dt>
+                <dd className="mt-0.5 font-medium text-white">{reviewEntry.user_name}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Submitted</dt>
+                <dd className="mt-0.5 text-white/80">{formatDateTimeEuropean(reviewEntry.created_at) || "—"}</dd>
+              </div>
+              {reviewEntry.notes ? (
+                <div>
+                  <dt className="text-xs font-semibold uppercase tracking-wider text-white/40">Notes</dt>
+                  <dd className="mt-0.5 whitespace-pre-wrap text-white/70">{reviewEntry.notes}</dd>
+                </div>
               ) : null}
-            </div>
+            </dl>
 
-            <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-              Reject reason (required to reject)
-              <FormTextarea
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                rows={3}
-                className="mt-1"
-                placeholder="Optional for approve; required for reject"
-              />
-            </label>
-
-            <div className="flex gap-2">
-              <ButtonPrimary
-                type="button"
-                disabled={reviewPending}
-                onClick={() => submitReview("approve")}
-                className="flex-1"
-              >
-                Approve
-              </ButtonPrimary>
-              <ButtonSecondary
-                type="button"
-                disabled={reviewPending}
-                onClick={() => submitReview("reject")}
-                className="flex-1 border-red-500/30 text-red-300"
-              >
-                Reject
-              </ButtonSecondary>
-            </div>
+            {rejectStep ? (
+              <div className="space-y-3 border-t border-white/10 pt-4">
+                <label className="block w-full text-xs font-semibold uppercase tracking-wider text-white/40">
+                  Reject reason
+                  <FormTextarea
+                    value={rejectReason}
+                    onChange={(e) => setRejectReason(e.target.value)}
+                    rows={3}
+                    className="mt-1 w-full"
+                    placeholder="Explain why this submission is rejected"
+                    autoFocus
+                  />
+                </label>
+                <div className="flex flex-col gap-2 md:flex-row">
+                  <button
+                    type="button"
+                    disabled={reviewPending}
+                    onClick={() => setRejectStep(false)}
+                    className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50 md:flex-1"
+                  >
+                    Back
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reviewPending || !rejectReason.trim()}
+                    onClick={() => submitReview("reject")}
+                    className="w-full rounded-xl border border-red-500/40 bg-red-500/20 px-4 py-2.5 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/30 disabled:opacity-50 md:flex-1"
+                  >
+                    Confirm reject
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 border-t border-white/10 pt-4 md:flex-row">
+                <button
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() => submitReview("approve")}
+                  className="w-full rounded-xl border border-green-500/40 bg-green-500/20 px-4 py-2.5 text-sm font-semibold text-green-200 transition-colors hover:bg-green-500/30 disabled:opacity-50 md:flex-1"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() => setRejectStep(true)}
+                  className="w-full rounded-xl border border-red-500/40 bg-red-500/20 px-4 py-2.5 text-sm font-semibold text-red-200 transition-colors hover:bg-red-500/30 disabled:opacity-50 md:flex-1"
+                >
+                  Reject
+                </button>
+              </div>
+            )}
           </div>
         </GlassModal>
+      ) : null}
+
+      {lightboxUrl ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Screenshot preview"
+          onClick={() => setLightboxUrl(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setLightboxUrl(null)}
+            className="absolute right-4 top-4 z-10 rounded-full border border-white/20 bg-black/60 p-2 text-white/80 transition-colors hover:bg-white/10 hover:text-white"
+            aria-label="Close screenshot"
+          >
+            <X className="h-5 w-5" />
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={lightboxUrl}
+            alt="Screenshot full size"
+            className="max-h-[90vh] max-w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
       ) : null}
     </div>
   );
