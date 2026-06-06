@@ -169,6 +169,7 @@ export async function markSpinClaimedAction(
       claimed?: boolean;
       user_id?: string;
       prize_label?: string;
+      created_at?: string;
     }>(SPINS_TABLE, spinId);
     if (spinRec.fields?.claimed) {
       return { success: false, error: "Already marked as claimed." };
@@ -201,6 +202,7 @@ export async function markSpinClaimedAction(
 
         await createSpinWheelCashBonus({
           spinId,
+          spinCreatedAt: String(spinRec.fields?.created_at ?? "").trim() || undefined,
           user_id: chatterId,
           user_name: chatterName,
           prize_label: prizeLabel,

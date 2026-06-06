@@ -132,6 +132,8 @@ export async function hasFineBonusForSpin(spinId: string): Promise<boolean> {
 
 export type CreateSpinWheelCashBonusInput = {
   spinId: string;
+  /** ISO timestamp from spin_wheel_spins.created_at — determines bonus month. */
+  spinCreatedAt?: string;
   user_id: string;
   user_name: string;
   prize_label: string;
@@ -145,8 +147,8 @@ export async function createSpinWheelCashBonus(
   data: CreateSpinWheelCashBonusInput
 ): Promise<{ id: string; record: FineBonusRecord } | null> {
   if (await hasFineBonusForSpin(data.spinId)) return null;
-  const now = new Date();
-  const month = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const spinDate = data.spinCreatedAt ? new Date(data.spinCreatedAt) : new Date();
+  const month = `${spinDate.getFullYear()}-${String(spinDate.getMonth() + 1).padStart(2, "0")}`;
   return createFineBonus({
     user_id: data.user_id,
     user_name: data.user_name,
