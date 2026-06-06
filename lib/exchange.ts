@@ -7,10 +7,12 @@
 const PLACEHOLDER_USD_TO_EUR = 0.92;
 const PLACEHOLDER_EUR_TO_USD = 1 / PLACEHOLDER_USD_TO_EUR;
 
+/** FALLBACK ONLY — use /api/client/fx for live rates */
 export function usdToEur(usd: number): number {
   return usd * PLACEHOLDER_USD_TO_EUR;
 }
 
+/** FALLBACK ONLY — use /api/client/fx for live rates */
 export function eurToUsd(eur: number): number {
   return eur * PLACEHOLDER_EUR_TO_USD;
 }

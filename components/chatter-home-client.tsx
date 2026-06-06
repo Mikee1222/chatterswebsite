@@ -3,7 +3,7 @@
 import * as React from "react";
 import { motion } from "framer-motion";
 import { Calculator, Clock, Fish } from "lucide-react";
-import { usdToEur } from "@/lib/exchange";
+import { useUsdToEurRate } from "@/lib/hooks/use-usd-to-eur-rate";
 import { ROUTES } from "@/lib/routes";
 import { formatTimeEuropean, formatDurationMinutes, formatDateEuropean } from "@/lib/format";
 import { Label, Input } from "@/components/ui/form";
@@ -73,6 +73,7 @@ export function ChatterHomeClient({
 }: Props) {
   const [revenueUsd, setRevenueUsd] = React.useState("");
   const [chatterPct, setChatterPct] = React.useState("");
+  const { usdToEur } = useUsdToEurRate();
 
   const rev = parseFloat(revenueUsd) || 0;
   const pct = parseFloat(chatterPct) || 0;

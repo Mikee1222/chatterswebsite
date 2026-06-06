@@ -7,7 +7,6 @@ import { getActiveShiftByChatter, getShiftsByChatter, listShiftModels } from "@/
 import { listTransactionsByChatter } from "@/services/whale-transactions";
 import { getMonthlyTargetByTeamMemberAndMonth } from "@/services/monthly-targets";
 import { transactionTypeLabel } from "@/lib/airtable-options";
-import { eurToUsd } from "@/lib/exchange";
 import { formatDateEuropean, displayName } from "@/lib/format";
 import { getNowInAthens } from "@/lib/airtable-datetime";
 import { ChatterHomeClient } from "@/components/chatter-home-client";
@@ -81,14 +80,28 @@ export default async function ChatterHomePage() {
 
   const assignedWhalesCount = whales.length;
 
+  let eurToUsdRate = 1.087; // fallback
+  try {
+    const fxRes = await fetch(
+      `${process.env.NEXT_PUBLIC_APP_URL ?? "https://www.gunzoteam.com"}/api/client/fx?base=EUR&quote=USD`,
+      { next: { revalidate: 3600 } }
+    );
+    if (fxRes.ok) {
+      const fxData = await fxRes.json() as { rate: number };
+      if (fxData.rate && fxData.rate > 0) eurToUsdRate = fxData.rate;
+    }
+  } catch {
+    // keep fallback
+  }
+
   const totalEarnedUsd = transactions.reduce((sum: number, tx: WhaleTransaction) => {
-    const amountUsd = tx.currency === "eur" ? eurToUsd(tx.amount) : tx.amount;
+    const amountUsd = tx.currency === "eur" ? tx.amount * eurToUsdRate : tx.amount;
     return sum + amountUsd;
   }, 0);
 
   const transactionsThisMonth = transactions.filter((tx) => tx.date && tx.date.startsWith(currentMonthKey));
   const achievedThisMonthUsd = transactionsThisMonth.reduce((sum: number, tx: WhaleTransaction) => {
-    const amountUsd = tx.currency === "eur" ? eurToUsd(tx.amount) : tx.amount;
+    const amountUsd = tx.currency === "eur" ? tx.amount * eurToUsdRate : tx.amount;
     return sum + amountUsd;
   }, 0);
 
