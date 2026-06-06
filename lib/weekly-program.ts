@@ -244,13 +244,13 @@ export function addDays(ymd: string, days: number): string {
 /**
  * Returns the Monday (YYYY-MM-DD) of the week containing the given date.
  * Use this everywhere for week_start so the system is consistently Monday-based.
- * Week is Mon–Sun; for Sunday we go back 5 days to get that week's Monday.
- * Example: 2026-03-01 (Sunday) -> 2026-02-24 (Monday); 2026-03-02 (Monday) -> 2026-03-02.
+ * Week is Mon–Sun; for Sunday we go back 6 days to get that week's Monday.
+ * Example: 2026-03-01 (Sunday) -> 2026-02-23 (Monday); 2026-03-02 (Monday) -> 2026-03-02.
  */
 export function getMondayOfWeek(ymd: string): string {
   const d = new Date(ymd.trim().slice(0, 10) + "T12:00:00.000Z");
   const day = d.getUTCDay();
-  const diff = day === 0 ? -5 : 1 - day;
+  const diff = day === 0 ? -6 : 1 - day;
   d.setUTCDate(d.getUTCDate() + diff);
   return d.toISOString().split("T")[0];
 }
