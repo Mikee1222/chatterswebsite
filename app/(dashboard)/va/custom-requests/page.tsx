@@ -35,11 +35,13 @@ export default async function VaCustomRequestsPage() {
   );
 
   return (
-    <VaCustomRequestsClient
-      initialRows={requests}
-      pendingCount={pendingCount}
-      assignedModelIds={assignedModelIds}
-      modelLabelById={modelLabelById}
-    />
+    <div className="mx-auto max-w-6xl px-4 py-6">
+      <VaCustomRequestsClient
+        initialRows={requests}
+        pendingCount={pendingCount}
+        assignedModelIds={assignedModelIds}
+        modelLabelById={modelLabelById}
+      />
+    </div>
   );
 }
