@@ -29,8 +29,12 @@ function isCashLike(row: AdminSpinRow): boolean {
   return t === "cash" || t === "extra_break";
 }
 
+function isCashPrize(row: AdminSpinRow): boolean {
+  return normalizeType(row.prize_type) === "cash";
+}
+
 function needsManualClaim(row: AdminSpinRow): boolean {
-  return isCashLike(row) && !row.claimed;
+  return isCashPrize(row) && !row.claimed;
 }
 
 function formatMoney(n: number): string {
@@ -285,6 +289,15 @@ export function AdminSpinResultsClient({
     [rows, search, typeFilter, statusFilter, datePreset]
   );
 
+  const pendingCashKpi = React.useMemo(
+    () =>
+      rows.reduce((sum, r) => {
+        if (!isCashPrize(r) || r.claimed) return sum;
+        return sum + Math.max(0, Number.parseFloat(r.prize_value) || 0);
+      }, 0),
+    [rows]
+  );
+
   const { page, setPage, totalPages, paginated, reset } = usePagination(filtered, 20);
 
   React.useEffect(() => {
@@ -331,7 +344,7 @@ export function AdminSpinResultsClient({
       <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           label="Total Pending Cash"
-          value={formatMoney(stats.pendingCashPayout)}
+          value={formatMoney(pendingCashKpi)}
           icon={DollarSign}
           gradient="bg-gradient-to-br from-rose-500/10 via-transparent to-transparent"
           iconClass="border-rose-500/25 bg-rose-500/15 text-rose-400"
@@ -443,11 +456,10 @@ export function AdminSpinResultsClient({
           {/* Mobile cards */}
           <ul className="space-y-3 md:hidden">
             {paginated.map((row) => {
-              const cashLike = isCashLike(row);
               const showMarkPaid = needsManualClaim(row);
               const busy = pendingId === row.id;
               const amt = Math.max(0, Number.parseFloat(row.prize_value) || 0);
-              const isPendingCash = normalizeType(row.prize_type) === "cash" && !row.claimed;
+              const isPendingCash = isCashPrize(row) && !row.claimed;
 
               return (
                 <li
@@ -479,9 +491,7 @@ export function AdminSpinResultsClient({
                       >
                         {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
                         Mark as Paid
-                        {cashLike && normalizeType(row.prize_type) === "cash" ? (
-                          <span className="tabular-nums">{formatMoney(amt)}</span>
-                        ) : null}
+                        <span className="tabular-nums">{formatMoney(amt)}</span>
                       </button>
                     ) : null}
                   </div>
@@ -506,11 +516,10 @@ export function AdminSpinResultsClient({
               </thead>
               <tbody>
                 {paginated.map((row, idx) => {
-                  const cashLike = isCashLike(row);
                   const showMarkPaid = needsManualClaim(row);
                   const busy = pendingId === row.id;
                   const amt = Math.max(0, Number.parseFloat(row.prize_value) || 0);
-                  const isPendingCash = normalizeType(row.prize_type) === "cash" && !row.claimed;
+                  const isPendingCash = isCashPrize(row) && !row.claimed;
 
                   return (
                     <tr
@@ -547,9 +556,7 @@ export function AdminSpinResultsClient({
                           >
                             {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> : null}
                             Mark as Paid
-                            {normalizeType(row.prize_type) === "cash" ? (
-                              <span className="tabular-nums">{formatMoney(amt)}</span>
-                            ) : null}
+                            <span className="tabular-nums">{formatMoney(amt)}</span>
                           </button>
                         ) : (
                           <span className="text-white/25">—</span>
