@@ -3,11 +3,31 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import * as Dialog from "@radix-ui/react-dialog";
-import { ClipboardList, Search, X } from "lucide-react";
-import type { VaContentAssignmentRecord } from "@/types";
-import { cn } from "@/lib/utils";
-import { CustomSelect } from "@/components/ui/custom-select";
+import {
+  Bell,
+  CalendarClock,
+  CheckCircle2,
+  ClipboardList,
+  Clock,
+  Gauge,
+  ListChecks,
+  Search,
+  Timer,
+  X,
+  XCircle,
+  type LucideIcon,
+} from "lucide-react";
+import { BeautifulDetailModal } from "@/components/beautiful-detail-modal";
+import { MobileCard } from "@/components/mobile-card";
+import { FormInput } from "@/components/ui/form-input";
+import { GlassModal } from "@/components/ui/glass-modal";
+import { PaginationControls } from "@/components/ui/pagination-controls";
+import { gradientClassForContentType } from "@/lib/detail-modal-gradients";
+import { formatDateEuropean } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
 import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
+import type { VaContentAssignmentRecord } from "@/types";
 
 export type AdminVaContentAssignmentDTO = VaContentAssignmentRecord & {
   va_name: string;
@@ -20,8 +40,23 @@ export type AdminVaContentClientProps = {
   modelOptions: { id: string; model_name: string }[];
 };
 
+type StatusFilterValue =
+  | "all"
+  | "pending_approval"
+  | "pending"
+  | "scheduled"
+  | "completed"
+  | "rejected"
+  | "cancelled";
+
 function statusKey(s: string): string {
   return (s || "").trim().toLowerCase();
+}
+
+function statusLabelForList(s: string): string {
+  const k = statusKey(s);
+  if (k === "pending_approval") return "pending approval";
+  return k || "—";
 }
 
 function ymdFromField(value: string | null | undefined): string | null {
@@ -53,40 +88,75 @@ function dateInOrOverlapsRange(
   return inRange(created) || inRange(deadline);
 }
 
-type StatusFilterValue = "all" | "pending" | "pending_approval" | "rejected" | "completed" | "cancelled" | "scheduled";
+function priorityClass(p: string): string {
+  const x = (p || "").toLowerCase();
+  if (x === "urgent") return "border-rose-500/40 bg-rose-500/15 text-rose-200";
+  if (x === "high") return "border-amber-500/35 bg-amber-500/12 text-amber-200";
+  if (x === "low") return "border-white/15 bg-white/[0.06] text-white/65";
+  return "border-sky-400/30 bg-sky-500/12 text-sky-200";
+}
 
 function StatusBadge({ status }: { status: string }) {
   const k = statusKey(status);
-  const label = (status || "—").trim() || "—";
+  const label = statusLabelForList(status);
   const variant =
     k === "completed"
-      ? "bg-green-500/20 text-green-400 border border-green-500/30"
+      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
       : k === "pending"
-        ? "bg-amber-500/20 text-amber-400 border border-amber-500/30"
+        ? "border-amber-500/30 bg-amber-500/15 text-amber-300"
         : k === "pending_approval"
-          ? "bg-sky-500/20 text-sky-300 border border-sky-500/30"
+          ? "border-sky-500/30 bg-sky-500/15 text-sky-300"
           : k === "rejected"
-            ? "bg-rose-500/20 text-rose-300 border border-rose-500/35"
+            ? "border-rose-500/35 bg-rose-500/15 text-rose-300"
             : k === "cancelled"
-              ? "bg-red-500/20 text-red-400 border border-red-500/30"
+              ? "border-red-500/30 bg-red-500/15 text-red-300"
               : k === "scheduled"
-                ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                : "border border-white/15 bg-white/10 text-white/70";
+                ? "border-violet-500/30 bg-violet-500/15 text-violet-300"
+                : "border-white/15 bg-white/[0.06] text-white/70";
 
   return (
-    <span
-      className={cn(
-        "inline-flex max-w-full items-center truncate rounded-full px-2.5 py-0.5 text-xs font-medium capitalize",
-        variant
-      )}
-    >
+    <span className={cn("inline-flex rounded-full border px-2.5 py-0.5 text-[11px] font-medium capitalize", variant)}>
       {label}
     </span>
   );
 }
 
-const selectTriggerClass =
-  "border-white/12 bg-black/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] hover:border-pink-400/25 hover:bg-white/[0.06]";
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accentClass,
+}: {
+  label: string;
+  value: number;
+  icon: LucideIcon;
+  accentClass: string;
+}) {
+  return (
+    <MobileCard
+      padding="md"
+      className={cn("min-w-[140px] shrink-0 snap-start border-white/10 bg-white/[0.04]", accentClass)}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-wide text-white/45">{label}</p>
+          <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{value}</p>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.06] text-white/55">
+          <Icon className="h-4 w-4" aria-hidden />
+        </div>
+      </div>
+    </MobileCard>
+  );
+}
+
+const STATUS_TABS: StatusFilterValue[] = [
+  "pending_approval",
+  "pending",
+  "scheduled",
+  "completed",
+  "rejected",
+];
 
 export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaContentClientProps) {
   const router = useRouter();
@@ -94,6 +164,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
   const [createOpen, setCreateOpen] = React.useState(false);
 
   const [reviewModal, setReviewModal] = React.useState<AdminVaContentAssignmentDTO | null>(null);
+  const [selected, setSelected] = React.useState<AdminVaContentAssignmentDTO | null>(null);
   const [editTitle, setEditTitle] = React.useState("");
   const [editDescription, setEditDescription] = React.useState("");
   const [editDeadline, setEditDeadline] = React.useState("");
@@ -101,6 +172,13 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
   const [editAdminNotes, setEditAdminNotes] = React.useState("");
   const [rejectionReason, setRejectionReason] = React.useState("");
   const [reviewing, setReviewing] = React.useState(false);
+
+  const [searchTitle, setSearchTitle] = React.useState("");
+  const [filterModelId, setFilterModelId] = React.useState("");
+  const [filterVaId, setFilterVaId] = React.useState("");
+  const [filterStatus, setFilterStatus] = React.useState<StatusFilterValue>("all");
+  const [dateFrom, setDateFrom] = React.useState("");
+  const [dateTo, setDateTo] = React.useState("");
 
   React.useEffect(() => {
     if (!reviewModal) return;
@@ -112,18 +190,6 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
     setEditAdminNotes("");
     setRejectionReason("");
   }, [reviewModal]);
-
-  const pendingApprovalItems = React.useMemo(
-    () => rows.filter((r) => statusKey(r.status) === "pending_approval"),
-    [rows]
-  );
-
-  const [searchTitle, setSearchTitle] = React.useState("");
-  const [filterModelId, setFilterModelId] = React.useState("");
-  const [filterVaId, setFilterVaId] = React.useState("");
-  const [filterStatus, setFilterStatus] = React.useState<StatusFilterValue>("all");
-  const [dateFrom, setDateFrom] = React.useState("");
-  const [dateTo, setDateTo] = React.useState("");
 
   const modelSelectOptions = React.useMemo(() => {
     const map = new Map<string, string>();
@@ -148,21 +214,28 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
       if (id) map.set(id, name);
     }
     const entries = [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-    return [{ value: "", label: "All VAs" }, { value: "__unassigned__", label: "Unassigned" }, ...entries.map(([value, label]) => ({ value, label }))];
+    return [
+      { value: "", label: "All VAs" },
+      { value: "__unassigned__", label: "Unassigned" },
+      ...entries.map(([value, label]) => ({ value, label })),
+    ];
   }, [rows, vaOptions]);
 
-  const statusSelectOptions = React.useMemo(
-    () => [
-      { value: "all", label: "All Statuses" },
-      { value: "pending_approval", label: "Pending approval" },
-      { value: "pending", label: "Pending (model)" },
-      { value: "rejected", label: "Rejected" },
-      { value: "completed", label: "Completed" },
-      { value: "cancelled", label: "Cancelled" },
-      { value: "scheduled", label: "Scheduled" },
-    ],
-    []
-  );
+  const counts = React.useMemo(() => {
+    const c = {
+      total: rows.length,
+      pending_approval: 0,
+      pending: 0,
+      scheduled: 0,
+      completed: 0,
+      rejected: 0,
+    };
+    for (const r of rows) {
+      const k = statusKey(r.status);
+      if (k in c) (c as Record<string, number>)[k] += 1;
+    }
+    return c;
+  }, [rows]);
 
   const filteredRows = React.useMemo(() => {
     const q = searchTitle.trim().toLowerCase();
@@ -178,6 +251,12 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
     });
   }, [rows, searchTitle, filterModelId, filterVaId, filterStatus, dateFrom, dateTo]);
 
+  const { page, setPage, totalPages, paginated, reset } = usePagination(filteredRows, 20);
+
+  React.useEffect(() => {
+    reset();
+  }, [searchTitle, filterModelId, filterVaId, filterStatus, dateFrom, dateTo, reset]);
+
   const filtersActive =
     searchTitle.trim() !== "" ||
     filterModelId !== "" ||
@@ -186,6 +265,14 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
     dateFrom !== "" ||
     dateTo !== "";
 
+  const activeFilterCount =
+    (searchTitle.trim() ? 1 : 0) +
+    (filterModelId ? 1 : 0) +
+    (filterVaId ? 1 : 0) +
+    (filterStatus !== "all" ? 1 : 0) +
+    (dateFrom ? 1 : 0) +
+    (dateTo ? 1 : 0);
+
   const clearFilters = () => {
     setSearchTitle("");
     setFilterModelId("");
@@ -193,6 +280,21 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
     setFilterStatus("all");
     setDateFrom("");
     setDateTo("");
+  };
+
+  const tabLabel = (key: StatusFilterValue): string => {
+    if (key === "all") return "All";
+    if (key === "pending_approval") return "Pending approval";
+    if (key === "pending") return "Pending";
+    if (key === "scheduled") return "Scheduled";
+    if (key === "completed") return "Completed";
+    if (key === "rejected") return "Rejected";
+    return "Cancelled";
+  };
+
+  const tabCount = (key: StatusFilterValue): number => {
+    if (key === "all") return counts.total;
+    return (counts as Record<string, number>)[key] ?? 0;
   };
 
   const onRemind = async (id: string) => {
@@ -275,23 +377,26 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
     return k === "pending" || k === "scheduled" || k === "pending_approval";
   };
 
-  const showRemind = (r: AdminVaContentAssignmentDTO) => {
-    const k = statusKey(r.status);
-    return k === "pending";
-  };
+  const showRemind = (r: AdminVaContentAssignmentDTO) => statusKey(r.status) === "pending";
 
   const showCancel = (r: AdminVaContentAssignmentDTO) => showActionButtons(r);
 
   const showReview = (r: AdminVaContentAssignmentDTO) => statusKey(r.status) === "pending_approval";
 
+  const pendingApprovalItems = React.useMemo(
+    () => rows.filter((r) => statusKey(r.status) === "pending_approval"),
+    [rows]
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">VA content assignments</h1>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-white/60">
-            Remind models or cancel assignments from the agency side. Use filters to narrow the list; all data is loaded
-            already and updates when you refresh the page.
+          <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/40">Administration</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white">VA content assignments</h1>
+          <p className="mt-2 max-w-2xl text-sm text-white/60">
+            Review VA-submitted work, approve assignments for models, and manage reminders or cancellations from the
+            agency side.
           </p>
         </div>
         <button
@@ -304,7 +409,300 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
         >
           + New assignment
         </button>
+      </header>
+
+      <div className="-mx-1 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
+        <div className="flex min-w-min gap-3">
+          <StatCard label="Total" value={counts.total} icon={ListChecks} accentClass="border-white/10 ring-white/[0.06]" />
+          <StatCard
+            label="Pending approval"
+            value={counts.pending_approval}
+            icon={Clock}
+            accentClass="border-sky-500/25 bg-sky-500/5 ring-sky-500/10"
+          />
+          <StatCard
+            label="Pending"
+            value={counts.pending}
+            icon={Timer}
+            accentClass="border-amber-500/25 bg-amber-500/5 ring-amber-500/10"
+          />
+          <StatCard
+            label="Scheduled"
+            value={counts.scheduled}
+            icon={CalendarClock}
+            accentClass="border-violet-500/25 bg-violet-500/5 ring-violet-500/10"
+          />
+          <StatCard
+            label="Completed"
+            value={counts.completed}
+            icon={CheckCircle2}
+            accentClass="border-emerald-500/25 bg-emerald-500/5 ring-emerald-500/10"
+          />
+          <StatCard
+            label="Rejected"
+            value={counts.rejected}
+            icon={XCircle}
+            accentClass="border-rose-500/25 bg-rose-500/5 ring-rose-500/10"
+          />
+        </div>
       </div>
+
+      {pendingApprovalItems.length > 0 ? (
+        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 md:p-5">
+          <div className="mb-3 flex items-center gap-2">
+            <div className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-sky-400" aria-hidden />
+            <p className="text-sm font-semibold text-sky-300">
+              {pendingApprovalItems.length} assignment{pendingApprovalItems.length > 1 ? "s" : ""} waiting for review
+            </p>
+          </div>
+          <div className="space-y-2">
+            {pendingApprovalItems.slice(0, 5).map((item) => (
+              <div
+                key={item.id}
+                className="flex flex-col gap-3 rounded-xl bg-black/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-white">{item.title}</p>
+                  <p className="mt-0.5 text-xs text-white/45">
+                    {item.va_name} → {item.model_name} · {item.content_type}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReviewModal(item)}
+                  className="shrink-0 rounded-xl border border-sky-500/35 bg-sky-500/15 px-3 py-1.5 text-xs font-semibold text-sky-200 transition hover:bg-sky-500/25"
+                >
+                  Review →
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="rounded-2xl border border-white/10 bg-black/30 p-4">
+        <div className="flex flex-wrap items-center gap-2 border-b border-white/10 pb-3">
+          <span className="text-xs font-semibold uppercase tracking-wide text-white/45">Status</span>
+          {(["all", ...STATUS_TABS] as StatusFilterValue[]).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setFilterStatus(key)}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
+                filterStatus === key
+                  ? "border-pink-400/55 bg-pink-500/20 text-pink-100"
+                  : "border-white/12 bg-white/[0.04] text-white/70 hover:bg-white/[0.08]"
+              )}
+            >
+              {tabLabel(key)}
+              <span className="ml-1 text-white/45">{tabCount(key)}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          <div className="relative md:col-span-2 lg:col-span-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <FormInput
+              value={searchTitle}
+              onChange={(e) => setSearchTitle(e.target.value)}
+              placeholder="Search by title…"
+              className="border-white/10 bg-zinc-950/80 pl-9"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-white/50">Model</label>
+            <select
+              value={filterModelId}
+              onChange={(e) => setFilterModelId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
+            >
+              {modelSelectOptions.map((o) => (
+                <option key={o.value || "all"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-white/50">VA</label>
+            <select
+              value={filterVaId}
+              onChange={(e) => setFilterVaId(e.target.value)}
+              className="w-full rounded-xl border border-white/10 bg-zinc-950 px-3 py-2 text-sm text-white"
+            >
+              {vaSelectOptions.map((o) => (
+                <option key={o.value || "all"} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-white/50">From</label>
+              <FormInput
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="border-white/10 bg-zinc-950/80 [color-scheme:dark]"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-[11px] font-medium text-white/50">To</label>
+              <FormInput
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="border-white/10 bg-zinc-950/80 [color-scheme:dark]"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {activeFilterCount > 0 ? (
+            <span className="rounded-full border border-pink-500/35 bg-pink-500/10 px-2 py-0.5 text-[11px] font-medium text-pink-100">
+              {activeFilterCount} filter{activeFilterCount === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!filtersActive}
+            className="inline-flex items-center gap-1 text-xs font-medium text-pink-300/90 underline-offset-4 hover:text-pink-200 hover:underline disabled:opacity-40"
+          >
+            <X className="h-3 w-3" aria-hidden />
+            Clear filters
+          </button>
+          <span className="ml-auto text-xs text-white/45">
+            {filteredRows.length} of {rows.length} assignments
+          </span>
+        </div>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-12 text-center">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
+            <ClipboardList className="h-7 w-7" aria-hidden />
+          </div>
+          <p className="mt-4 text-sm font-medium text-white/75">No assignments yet</p>
+          <p className="mt-1 text-xs text-white/45">
+            When VAs create content work for models, rows will show up here for agency oversight.
+          </p>
+        </div>
+      ) : filteredRows.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/10 bg-white/[0.03] px-4 py-12 text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-200/90">
+            <Search className="h-6 w-6" aria-hidden />
+          </div>
+          <p className="mt-3 text-sm font-medium text-white/85">No assignments match your filters</p>
+          <p className="mt-1 text-xs text-white/45">Try clearing filters or widening the date range.</p>
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="mt-4 inline-flex items-center gap-1.5 rounded-xl border border-pink-500/35 bg-pink-500/15 px-4 py-2 text-xs font-semibold text-pink-200 hover:bg-pink-500/25"
+          >
+            <X className="h-3.5 w-3.5" aria-hidden />
+            Clear filters
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {paginated.map((r) => (
+              <MobileCard
+                key={r.id}
+                onClick={() => setSelected(r)}
+                padding="none"
+                className="flex overflow-hidden border-white/10 bg-zinc-950/80 ring-white/[0.06] transition hover:bg-white/[0.03]"
+              >
+                <div
+                  className={cn("w-1 shrink-0 bg-gradient-to-b", gradientClassForContentType(r.content_type))}
+                  aria-hidden
+                />
+                <div className="min-w-0 flex-1 p-4 text-left">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate font-medium text-white" title={r.title || "—"}>
+                        {r.title || "—"}
+                      </p>
+                      <p className="mt-0.5 text-xs text-white/55">
+                        {r.va_name} → {r.model_name}
+                      </p>
+                    </div>
+                    <StatusBadge status={r.status} />
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="rounded-md border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] text-white/70">
+                      {r.content_type || "Type"}
+                    </span>
+                    <span
+                      className={cn(
+                        "inline-block rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
+                        priorityClass(r.priority)
+                      )}
+                    >
+                      {r.priority || "normal"}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[11px] text-white/45">
+                      <CalendarClock className="h-3 w-3" aria-hidden />
+                      Due {formatDateEuropean(r.deadline)}
+                    </span>
+                  </div>
+
+                  {statusKey(r.status) === "rejected" && (r.rejection_reason ?? "").trim() ? (
+                    <div className="mt-3 rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
+                      <p className="text-[11px] font-semibold text-rose-300">Rejected</p>
+                      <p className="mt-0.5 text-[11px] text-white/55">{r.rejection_reason}</p>
+                    </div>
+                  ) : null}
+
+                  {showActionButtons(r) ? (
+                    <div className="mt-3 flex flex-wrap gap-2 border-t border-white/10 pt-3" onClick={(e) => e.stopPropagation()}>
+                      {showReview(r) ? (
+                        <button
+                          type="button"
+                          disabled={busyId === r.id}
+                          onClick={() => setReviewModal(r)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-sky-500/35 bg-sky-500/15 py-2 text-xs font-medium text-sky-200 hover:bg-sky-500/25 disabled:opacity-50"
+                        >
+                          Review
+                        </button>
+                      ) : null}
+                      {showRemind(r) ? (
+                        <button
+                          type="button"
+                          disabled={busyId === r.id}
+                          onClick={() => void onRemind(r.id)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/15 bg-white/5 py-2 text-xs font-medium text-white/85 hover:bg-white/10 disabled:opacity-50"
+                        >
+                          <Bell className="h-3.5 w-3.5" aria-hidden />
+                          Remind
+                        </button>
+                      ) : null}
+                      {showCancel(r) ? (
+                        <button
+                          type="button"
+                          disabled={busyId === r.id}
+                          onClick={() => void onCancel(r.id)}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/35 bg-rose-500/15 py-2 text-xs font-medium text-rose-200 hover:bg-rose-500/25 disabled:opacity-50"
+                        >
+                          Cancel
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </MobileCard>
+            ))}
+          </div>
+
+          <PaginationControls page={page} totalPages={totalPages} onPage={setPage} totalItems={filteredRows.length} />
+        </>
+      )}
 
       <Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>
         <Dialog.Portal>
@@ -317,8 +715,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               <div className="min-w-0 flex-1">
                 <Dialog.Title className="text-lg font-semibold text-white">Create new assignments</Dialog.Title>
                 <Dialog.Description className="mt-2 text-sm leading-relaxed text-white/55">
-                  In the app, new VA content rows are created by accounts with the{""}
-                  <span className="font-medium text-white/75">Virtual Assistant</span> role from their{""}
+                  In the app, new VA content rows are created by accounts with the{" "}
+                  <span className="font-medium text-white/75">Virtual Assistant</span> role from their{" "}
                   <span className="font-medium text-white/75">Content assignments</span> workspace (the form posts as
                   that VA user). Admins and managers can still add or edit rows in Airtable if needed.
                 </Dialog.Description>
@@ -334,7 +732,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               </Dialog.Close>
             </div>
             <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/45">
-              VA path (sign in as a VA):{""}
+              VA path (sign in as a VA):{" "}
               <span className="font-mono text-white/65">{ROUTES.va.contentAssignments}</span>
             </p>
             <div className="mt-5 flex justify-end">
@@ -351,57 +749,17 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
         </Dialog.Portal>
       </Dialog.Root>
 
-      {pendingApprovalItems.length > 0 ? (
-        <div className="rounded-2xl border border-sky-500/20 bg-sky-500/10 p-4 md:p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="h-2 w-2 shrink-0 rounded-full bg-sky-400 animate-pulse" aria-hidden />
-            <p className="text-sky-300 font-semibold text-sm">
-              {pendingApprovalItems.length} assignment{pendingApprovalItems.length > 1 ? "s" : ""} waiting for review
-            </p>
-          </div>
-          <div className="space-y-2">
-            {pendingApprovalItems.map((item) => (
-              <div
-                key={item.id}
-                className="flex flex-col gap-3 rounded-xl bg-black/25 px-4 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="font-medium text-sm text-white truncate">{item.title}</p>
-                  <p className="text-white/45 text-xs mt-0.5">
-                    {item.va_name} → {item.model_name} · {item.content_type}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setReviewModal(item)}
-                  className="shrink-0 rounded-xl border border-sky-500/35 bg-sky-500/15 px-3 py-1.5 text-sky-200 text-xs font-semibold transition hover:bg-sky-500/25"
-                >
-                  Review →
-                </button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
-
       {reviewModal ? (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
-          <div
-            className="max-h-[min(90vh,720px)] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl"
-            role="dialog"
-            aria-modal
-            aria-labelledby="va-review-title"
-          >
-            <h3 id="va-review-title" className="text-white font-bold text-xl mb-1">
-              Review assignment
-            </h3>
-            <p className="text-white/40 text-sm mb-5">
-              {reviewModal.va_name} → {reviewModal.model_name}
-            </p>
-
-            <div className="mb-5 space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+        <GlassModal
+          onClose={() => !reviewing && setReviewModal(null)}
+          title="Review assignment"
+          subtitle={`${reviewModal.va_name} → ${reviewModal.model_name}`}
+          className="md:max-w-lg"
+        >
+          <div className="space-y-5 p-5">
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
               <div>
-                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Title</p>
+                <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Title</p>
                 <input
                   value={editTitle}
                   onChange={(e) => setEditTitle(e.target.value)}
@@ -409,7 +767,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
                 />
               </div>
               <div>
-                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Description</p>
+                <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Description</p>
                 <textarea
                   value={editDescription}
                   onChange={(e) => setEditDescription(e.target.value)}
@@ -419,7 +777,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Deadline</p>
+                  <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Deadline</p>
                   <input
                     type="date"
                     value={editDeadline}
@@ -428,7 +786,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
                   />
                 </div>
                 <div>
-                  <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Priority</p>
+                  <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Priority</p>
                   <select
                     value={editPriority}
                     onChange={(e) => setEditPriority(e.target.value)}
@@ -442,7 +800,7 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
                 </div>
               </div>
               <div>
-                <p className="text-white/40 text-xs uppercase tracking-widest mb-1">Edit notes (optional)</p>
+                <p className="mb-1 text-xs uppercase tracking-widest text-white/40">Edit notes (optional)</p>
                 <textarea
                   value={editAdminNotes}
                   onChange={(e) => setEditAdminNotes(e.target.value)}
@@ -453,8 +811,8 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               </div>
             </div>
 
-            <div className="mb-5">
-              <p className="text-white/40 text-xs uppercase tracking-widest mb-2">Rejection reason (required to reject)</p>
+            <div>
+              <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Rejection reason (required to reject)</p>
               <textarea
                 value={rejectionReason}
                 onChange={(e) => setRejectionReason(e.target.value)}
@@ -499,217 +857,94 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
               </button>
             </div>
           </div>
-        </div>
+        </GlassModal>
       ) : null}
 
-      <div className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl md:p-5">
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <div className="min-w-0 md:col-span-2 lg:col-span-2">
-            <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-pink-200/70">
-              <Search className="h-3 w-3 opacity-80" aria-hidden />
-              Search
-            </p>
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-pink-300/40" aria-hidden />
-              <input
-                type="search"
-                placeholder="Search by title…"
-                value={searchTitle}
-                onChange={(e) => setSearchTitle(e.target.value)}
-                className={cn(
-                  "h-11 w-full rounded-xl border py-0 pl-10 pr-4 text-sm text-white outline-none transition-all",
-                  "border-white/12 bg-black/35 placeholder:text-white/35",
-                  "shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-                  "focus:border-pink-400/45 focus:bg-black/50 focus:ring-2 focus:ring-pink-500/20"
-                )}
-              />
+      <BeautifulDetailModal
+        open={selected != null}
+        onOpenChange={(open) => {
+          if (!open) setSelected(null);
+        }}
+        title={selected?.title || "Assignment details"}
+        subtitle={selected ? `${selected.va_name} → ${selected.model_name} · ${selected.content_type || "Content"}` : ""}
+        badge="VA content assignment"
+        headerGradientClass={selected ? gradientClassForContentType(selected.content_type) : undefined}
+        stats={
+          selected
+            ? [
+                {
+                  label: "Status",
+                  value: statusLabelForList(selected.status),
+                  accent: "blue" as const,
+                  icon: <ListChecks className="h-5 w-5" aria-hidden />,
+                },
+                {
+                  label: "Priority",
+                  value: selected.priority || "normal",
+                  accent: "purple" as const,
+                  icon: <Gauge className="h-5 w-5" aria-hidden />,
+                },
+                {
+                  label: "Deadline",
+                  value: formatDateEuropean(selected.deadline),
+                  accent: "amber" as const,
+                  icon: <CalendarClock className="h-5 w-5" aria-hidden />,
+                },
+                {
+                  label: "Scheduled",
+                  value: formatDateEuropean(selected.scheduled_date),
+                  accent: "pink" as const,
+                  icon: <Timer className="h-5 w-5" aria-hidden />,
+                },
+              ]
+            : []
+        }
+        description={selected?.description || undefined}
+        children={
+          selected && statusKey(selected.status) === "rejected" ? (
+            <div className="rounded-xl border border-rose-500/25 bg-rose-500/10 px-3 py-2">
+              <p className="text-xs font-semibold text-rose-300">Rejected</p>
+              {(selected.rejection_reason ?? "").trim() ? (
+                <p className="mt-1 text-xs text-white/55">{selected.rejection_reason}</p>
+              ) : null}
             </div>
-          </div>
-          <div className="min-w-0">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Model</p>
-            <CustomSelect
-              value={filterModelId}
-              onChange={setFilterModelId}
-              options={modelSelectOptions}
-              triggerClassName={selectTriggerClass}
-              portaled
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">VA</p>
-            <CustomSelect
-              value={filterVaId}
-              onChange={setFilterVaId}
-              options={vaSelectOptions}
-              triggerClassName={selectTriggerClass}
-              portaled
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">Status</p>
-            <CustomSelect
-              value={filterStatus}
-              onChange={(v) => setFilterStatus((v || "all") as StatusFilterValue)}
-              options={statusSelectOptions}
-              triggerClassName={selectTriggerClass}
-              portaled
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">From</p>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={(e) => setDateFrom(e.target.value)}
-              className={cn(
-                "h-11 w-full rounded-xl border px-3 text-sm text-white outline-none transition-all [color-scheme:dark]",
-                "border-white/12 bg-black/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-                "focus:border-pink-400/45 focus:ring-2 focus:ring-pink-500/20"
-              )}
-            />
-          </div>
-          <div className="min-w-0">
-            <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.14em] text-white/45">To</p>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={(e) => setDateTo(e.target.value)}
-              className={cn(
-                "h-11 w-full rounded-xl border px-3 text-sm text-white outline-none transition-all [color-scheme:dark]",
-                "border-white/12 bg-black/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
-                "focus:border-pink-400/45 focus:ring-2 focus:ring-pink-500/20"
-              )}
-            />
-          </div>
-        </div>
-
-        <div className="mt-4 flex flex-col gap-3 border-t border-white/[0.08] pt-4 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-sm text-white/55">
-            Showing <span className="font-semibold text-white/90">{filteredRows.length}</span> of{""}
-            <span className="font-semibold text-white/90">{rows.length}</span> assignments
-          </p>
-          {filtersActive ? (
+          ) : selected && statusKey(selected.status) === "pending_approval" ? (
+            <div className="rounded-xl border border-sky-500/25 bg-sky-500/10 px-3 py-2">
+              <p className="text-xs font-semibold text-sky-300">Waiting for admin approval</p>
+            </div>
+          ) : null
+        }
+        uploadInfo={
+          selected?.file_url ? (
+            <a href={selected.file_url} target="_blank" rel="noreferrer" className="text-sky-300 underline">
+              Open file URL
+            </a>
+          ) : undefined
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            {selected && showReview(selected) ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setReviewModal(selected);
+                  setSelected(null);
+                }}
+                className="rounded-xl border border-sky-500/35 bg-sky-500/15 px-4 py-2 text-sm font-semibold text-sky-200 hover:bg-sky-500/25"
+              >
+                Review
+              </button>
+            ) : null}
             <button
               type="button"
-              onClick={clearFilters}
-              className="self-start rounded-xl border border-white/15 bg-white/[0.06] px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white/80 transition hover:border-pink-400/30 hover:bg-pink-500/10 hover:text-pink-100 sm:self-auto"
+              onClick={() => setSelected(null)}
+              className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm text-white/80 hover:bg-white/10"
             >
-              Clear filters
+              Close
             </button>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] backdrop-blur-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm text-white/90">
-            <thead className="border-b border-white/10 bg-white/[0.04] text-[11px] font-semibold uppercase tracking-[0.12em] text-white/50">
-              <tr>
-                <th className="px-4 py-3.5 font-medium md:px-5">VA</th>
-                <th className="px-4 py-3.5 font-medium md:px-5">Model</th>
-                <th className="px-4 py-3.5 font-medium md:px-5">Title</th>
-                <th className="px-4 py-3.5 font-medium md:px-5">Status</th>
-                <th className="px-4 py-3.5 text-right font-medium md:px-5">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-16 text-center md:px-5">
-                    <div className="mx-auto flex max-w-sm flex-col items-center">
-                      <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
-                        <ClipboardList className="h-7 w-7" aria-hidden />
-                      </div>
-                      <p className="mt-4 text-base font-semibold text-white/90">No assignments yet</p>
-                      <p className="mt-2 text-sm leading-relaxed text-white/50">
-                        When VAs create content work for models, rows will show up here for agency oversight.
-                      </p>
-                    </div>
-                  </td>
-                </tr>
-              ) : filteredRows.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-4 py-14 text-center md:px-5">
-                    <div className="mx-auto flex max-w-sm flex-col items-center">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-amber-500/25 bg-amber-500/10 text-amber-200/90">
-                        <Search className="h-6 w-6" aria-hidden />
-                      </div>
-                      <p className="mt-3 text-sm font-medium text-white/85">No assignments match your filters</p>
-                      <p className="mt-1.5 text-xs text-white/45">Try clearing filters or widening the date range.</p>
-                      <button
-                        type="button"
-                        onClick={clearFilters}
-                        className="mt-4 rounded-xl border border-pink-400/35 bg-gradient-to-r from-pink-500/20 to-fuchsia-600/15 px-4 py-2 text-xs font-semibold text-pink-100 transition hover:brightness-110"
-                      >
-                        Clear filters
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ) : (
-                filteredRows.map((r) => (
-                  <tr
-                    key={r.id}
-                    className="border-b border-white/[0.06] transition-colors last:border-b-0 hover:bg-white/5"
-                  >
-                    <td className="px-4 py-3.5 align-middle text-white/85 md:px-5">{r.va_name}</td>
-                    <td className="px-4 py-3.5 align-middle text-white/85 md:px-5">{r.model_name}</td>
-                    <td className="max-w-[280px] px-4 py-3.5 align-middle font-medium text-white md:max-w-xs md:px-5">
-                      <span className="line-clamp-2">{r.title || "—"}</span>
-                    </td>
-                    <td className="px-4 py-3.5 align-middle md:px-5">
-                      <StatusBadge status={r.status} />
-                    </td>
-                    <td className="px-4 py-3.5 text-right align-middle md:px-5">
-                      <div className="flex flex-wrap items-center justify-end gap-2">
-                        {showReview(r) ? (
-                          <button
-                            type="button"
-                            disabled={busyId === r.id}
-                            onClick={() => setReviewModal(r)}
-                            className={cn(
-                              "rounded-lg border border-sky-500/40 bg-sky-500/10 px-3 py-1.5 text-xs font-medium text-sky-200",
-                              "transition hover:border-sky-400/55 hover:bg-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
-                            )}
-                          >
-                            Review
-                          </button>
-                        ) : null}
-                        {showRemind(r) ? (
-                          <button
-                            type="button"
-                            disabled={busyId === r.id}
-                            onClick={() => void onRemind(r.id)}
-                            className={cn(
-                              "rounded-lg border border-white/15 bg-transparent px-3 py-1.5 text-xs font-medium text-white/85",
-                              "transition hover:border-white/25 hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
-                            )}
-                          >
-                            Remind
-                          </button>
-                        ) : null}
-                        {showCancel(r) ? (
-                          <button
-                            type="button"
-                            disabled={busyId === r.id}
-                            onClick={() => void onCancel(r.id)}
-                            className={cn(
-                              "rounded-lg border border-rose-500/40 bg-transparent px-3 py-1.5 text-xs font-medium text-rose-200",
-                              "transition hover:border-rose-400/55 hover:bg-rose-500/10 disabled:cursor-not-allowed disabled:opacity-50"
-                            )}
-                          >
-                            Cancel
-                          </button>
-                        ) : null}
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+          </div>
+        }
+      />
     </div>
   );
 }
