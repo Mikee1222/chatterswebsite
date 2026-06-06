@@ -1,12 +1,35 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, Search, X } from "lucide-react";
+import { Check, Copy, ImageIcon, Search, X } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
-import { formatDateTimeAthens } from "@/lib/format";
+import { formatDateTimeAthens, formatDateTimeEuropean, formatRelativeTime } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import type { MistakeReasonCategory, MistakeReasonRecord, MistakeRecord } from "@/services/chatter-mistakes";
 import { FormInput } from "@/components/ui/form-input";
+
+type DatePreset = "week" | "month" | "all";
+
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function getDateRange(preset: DatePreset): { from?: string; to?: string } {
+  const now = new Date();
+  const today = toDateStr(now);
+  if (preset === "all") return {};
+  if (preset === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: toDateStr(start), to: today };
+  }
+  const start = new Date(now);
+  const day = start.getDay();
+  const diff = day === 0 ? 6 : day - 1;
+  start.setDate(start.getDate() - diff);
+  return { from: toDateStr(start), to: today };
+}
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -25,28 +48,59 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
   };
 }
 
-function timeAgo(iso: string): string {
-  const t = new Date(iso).getTime();
-  if (Number.isNaN(t)) return "—";
-  const sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
-  if (sec < 60) return `${sec}s ago`;
-  const min = Math.floor(sec / 60);
-  if (min < 60) return `${min} min ago`;
-  const hr = Math.floor(min / 60);
-  if (hr < 24) return `${hr}h ago`;
-  return `${Math.floor(hr / 24)}d ago`;
-}
-
 function categoryBadgeClass(cat: MistakeReasonCategory): string {
-  if (cat === "High") return "bg-red-500/15 border-red-500/25 text-red-400";
-  if (cat === "Medium") return "bg-amber-500/15 border-amber-500/25 text-amber-400";
-  return "bg-yellow-500/15 border-yellow-500/25 text-yellow-400";
+  if (cat === "High") return "border-red-500/25 bg-red-500/10 text-red-400";
+  if (cat === "Medium") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-400";
+  return "border-blue-500/25 bg-blue-500/10 text-blue-400";
 }
 
 function statusBadgeClass(st: string): string {
-  if (st === "approved") return "bg-green-500/15 border-green-500/25 text-green-400";
-  if (st === "rejected") return "bg-red-500/15 border-red-500/25 text-red-400";
-  return "bg-amber-500/15 border-amber-500/25 text-amber-400";
+  if (st === "approved") return "border-emerald-500/25 bg-emerald-500/10 text-emerald-400";
+  if (st === "rejected") return "border-red-500/25 bg-red-500/10 text-red-400";
+  return "border-yellow-500/25 bg-yellow-500/10 text-yellow-400";
+}
+
+function StatusDotBadge({ status }: { status: string }) {
+  const label = status === "approved" ? "Approved" : status === "rejected" ? "Rejected" : "Pending";
+  const dotClass =
+    status === "approved" ? "bg-emerald-400" : status === "rejected" ? "bg-red-400" : "bg-yellow-400";
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${statusBadgeClass(status)}`}>
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dotClass}`} aria-hidden />
+      {label}
+    </span>
+  );
+}
+
+function ScreenshotThumb({ url }: { url?: string }) {
+  if (!url) {
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+        <ImageIcon className="h-4 w-4 text-white/25" aria-hidden />
+      </div>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="block shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 transition hover:ring-pink-500/40"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Screenshot" className="h-10 w-10 object-cover" />
+    </a>
+  );
+}
+
+function RelativeDate({ iso }: { iso: string }) {
+  const full = formatDateTimeEuropean(iso);
+  return (
+    <span className="text-xs text-white/40" title={full !== "—" ? full : undefined}>
+      {formatRelativeTime(iso)}
+    </span>
+  );
 }
 
 /** Convert any image blob to PNG for `ClipboardItem` (expects `image/png`). */
@@ -95,8 +149,6 @@ function copyTextWithTextarea(text: string): boolean {
 
   try {
     return document.execCommand("copy");
-  } catch {
-    return false;
   } finally {
     document.body.removeChild(textarea);
   }
@@ -109,17 +161,15 @@ type Props = {
   modelOptions: { id: string; name: string }[];
 };
 
-export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, modelOptions }: Props) {
+export function AdminMistakesClient({ initialMistakes, reasons, modelOptions }: Props) {
   const { addToast } = useToast();
   const [rows, setRows] = React.useState(initialMistakes);
   const [selectedId, setSelectedId] = React.useState<string | null>(initialMistakes[0]?.id ?? null);
   const [search, setSearch] = React.useState("");
-  const [chatterFilter, setChatterFilter] = React.useState("all");
   const [modelFilter, setModelFilter] = React.useState("all");
   const [categoryFilter, setCategoryFilter] = React.useState<"all" | MistakeReasonCategory>("all");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "pending" | "approved" | "rejected">("all");
-  const [fromDate, setFromDate] = React.useState("");
-  const [toDate, setToDate] = React.useState("");
+  const [datePreset, setDatePreset] = React.useState<DatePreset>("all");
   const [adminNotes, setAdminNotes] = React.useState("");
   const [saving, setSaving] = React.useState(false);
   const [copySuccess, setCopySuccess] = React.useState<string | null>(null);
@@ -136,25 +186,27 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
     setAdminNotes(selected?.admin_notes ?? "");
   }, [selectedId, selected?.admin_notes]);
 
+  const dateRange = React.useMemo(() => getDateRange(datePreset), [datePreset]);
+
   const filtered = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     return rows.filter((r) => {
       if (statusFilter !== "all" && r.status !== statusFilter) return false;
-      if (chatterFilter !== "all" && r.chatter_id !== chatterFilter) return false;
       if (modelFilter !== "all" && r.model_id !== modelFilter) return false;
       if (categoryFilter !== "all" && r.reason_category !== categoryFilter) return false;
-      if (fromDate) {
-        const d = (r.mistake_date || "").slice(0, 10);
-        if (!d || d < fromDate) return false;
-      }
-      if (toDate) {
-        const d = (r.mistake_date || "").slice(0, 10);
-        if (!d || d > toDate) return false;
-      }
+      const d = (r.mistake_date || r.created_at || "").slice(0, 10);
+      if (dateRange.from && (!d || d < dateRange.from)) return false;
+      if (dateRange.to && (!d || d > dateRange.to)) return false;
       if (!q) return true;
-      return `${r.sub_username} ${r.chatter_name} ${r.model_name} ${r.reason_label}`.toLowerCase().includes(q);
+      return (r.chatter_name ?? "").toLowerCase().includes(q);
     });
-  }, [rows, search, chatterFilter, modelFilter, categoryFilter, statusFilter, fromDate, toDate]);
+  }, [rows, search, modelFilter, categoryFilter, statusFilter, dateRange]);
+
+  const { page, setPage, totalPages, paginated, reset: resetPage } = usePagination(filtered, 20);
+
+  React.useEffect(() => {
+    resetPage();
+  }, [search, modelFilter, categoryFilter, statusFilter, datePreset, resetPage]);
 
   const stats = React.useMemo(() => {
     const pending = rows.filter((r) => r.status === "pending").length;
@@ -306,6 +358,10 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
     }
   }
 
+  function selectRow(id: string) {
+    setSelectedId(id);
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -327,94 +383,177 @@ export function AdminMistakesClient({ initialMistakes, reasons, chatterOptions, 
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-2 rounded-2xl border border-white/10 bg-white/[0.03] p-3">
-        <div className="relative min-w-[180px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-          <FormInput
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search sub username…"
-            className="!pl-9"
-          />
+      <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 space-y-3">
+        <div className="grid gap-3 md:grid-cols-6 lg:grid-cols-12">
+          <div className="relative md:col-span-3 lg:col-span-3">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+            <FormInput
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search chatter name…"
+              className="!pl-9"
+            />
+          </div>
+          <select
+            value={modelFilter}
+            onChange={(e) => setModelFilter(e.target.value)}
+            className="min-h-10 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white md:col-span-2 lg:col-span-2"
+            aria-label="Filter by model"
+          >
+            <option value="all">All models</option>
+            {modelOptions.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
+            className="min-h-10 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white md:col-span-2 lg:col-span-2"
+            aria-label="Filter by severity"
+          >
+            <option value="all">All severity</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+          </select>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
+            className="min-h-10 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white md:col-span-2 lg:col-span-2"
+            aria-label="Filter by status"
+          >
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
         </div>
-        <select
-          value={chatterFilter}
-          onChange={(e) => setChatterFilter(e.target.value)}
-          className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        >
-          <option value="all">All chatters</option>
-          {chatterOptions.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.name}
-            </option>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: "week", label: "This week" },
+              { key: "month", label: "This month" },
+              { key: "all", label: "All time" },
+            ] as const
+          ).map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => setDatePreset(p.key)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                datePreset === p.key
+                  ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                  : "border-white/10 text-white/50 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              {p.label}
+            </button>
           ))}
-        </select>
-        <select
-          value={modelFilter}
-          onChange={(e) => setModelFilter(e.target.value)}
-          className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        >
-          <option value="all">All models</option>
-          {modelOptions.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={categoryFilter}
-          onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-          className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        >
-          <option value="all">All categories</option>
-          <option value="Low">Low</option>
-          <option value="Medium">Medium</option>
-          <option value="High">High</option>
-        </select>
-        <select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-          className="min-h-10 rounded-xl border border-white/10 bg-white/[0.04] px-3 text-sm text-white"
-        >
-          <option value="all">All statuses</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
-        <FormInput type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="min-h-10 w-[140px]" />
-        <FormInput type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="min-h-10 w-[140px]" />
-      </div>
+        </div>
+      </section>
+
+      <p className="text-sm text-white/50">
+        Results: {filtered.length} of {rows.length} total mistakes
+      </p>
 
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
-        <div className="min-h-[320px] flex-1 space-y-3">
+        <div className="min-w-0 flex-1">
           {filtered.length === 0 ? (
-            <p className="text-sm text-white/45">No mistakes match filters.</p>
+            <p className="glass-card border-dashed py-12 text-center text-sm text-white/45">No mistakes match filters.</p>
           ) : (
-            filtered.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setSelectedId(m.id)}
-                className={`w-full rounded-2xl border p-4 text-left transition-colors ${
-                  selectedId === m.id ? "border-pink-500/40 bg-pink-500/10" : "border-white/10 bg-white/5 hover:border-white/20"
-                }`}
-              >
-                <div className="mb-2 flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
-                    {m.reason_category}
-                  </span>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold capitalize ${statusBadgeClass(m.status)}`}>
-                    {m.status}
-                  </span>
-                  <span className="ml-auto text-xs text-white/30">{timeAgo(m.created_at)}</span>
-                </div>
-                <p className="font-semibold text-white">{m.reason_label}</p>
-                <p className="text-sm text-white/50">
-                  {m.chatter_name} → {m.model_name} · @{m.sub_username}
-                </p>
-                <p className="mt-1 text-xs text-white/30">Submitted by {m.va_name}</p>
-              </button>
-            ))
+            <>
+              <ul className="space-y-3 md:hidden">
+                {paginated.map((m) => (
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      onClick={() => selectRow(m.id)}
+                      className={`glass-card w-full space-y-3 p-4 text-left transition hover:bg-white/[0.07] ${
+                        selectedId === m.id ? "ring-1 ring-pink-500/40" : ""
+                      }`}
+                    >
+                      <div className="flex items-start gap-3">
+                        <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
+                              {m.reason_category}
+                            </span>
+                            <RelativeDate iso={m.mistake_date || m.created_at} />
+                          </div>
+                          <p className="mt-2 font-medium text-white">{m.chatter_name}</p>
+                          <p className="text-sm text-white/55">{m.model_name}</p>
+                          <p className="mt-1 truncate text-sm text-white/70" title={m.reason_label}>
+                            {m.reason_label}
+                          </p>
+                          <div className="mt-2">
+                            <StatusDotBadge status={m.status} />
+                          </div>
+                        </div>
+                      </div>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+
+              <div className="glass-card hidden overflow-x-auto md:block">
+                <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+                  <thead className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 backdrop-blur-md">
+                    <tr className="text-xs uppercase tracking-wider text-white/45">
+                      <th className="w-14 px-4 py-3.5 font-semibold">Shot</th>
+                      <th className="px-4 py-3.5 font-semibold">Chatter</th>
+                      <th className="px-4 py-3.5 font-semibold">Model</th>
+                      <th className="px-4 py-3.5 font-semibold">Reason</th>
+                      <th className="px-4 py-3.5 font-semibold">Severity</th>
+                      <th className="px-4 py-3.5 font-semibold">Status</th>
+                      <th className="px-4 py-3.5 font-semibold">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {paginated.map((m, idx) => (
+                      <tr
+                        key={m.id}
+                        onClick={() => selectRow(m.id)}
+                        className={`cursor-pointer border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04] ${
+                          idx % 2 === 1 ? "bg-white/[0.02]" : ""
+                        } ${selectedId === m.id ? "bg-pink-500/10 hover:bg-pink-500/10" : ""}`}
+                      >
+                        <td className="px-4 py-3 align-middle">
+                          <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                        </td>
+                        <td className="px-4 py-3 align-middle font-medium text-white">{m.chatter_name}</td>
+                        <td className="px-4 py-3 align-middle text-white/70">{m.model_name}</td>
+                        <td className="max-w-[200px] px-4 py-3 align-middle">
+                          <span className="block truncate text-white/80" title={m.reason_label}>
+                            {m.reason_label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
+                            {m.reason_category}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 align-middle">
+                          <StatusDotBadge status={m.status} />
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3 align-middle">
+                          <RelativeDate iso={m.mistake_date || m.created_at} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <PaginationControls
+                page={page}
+                totalPages={totalPages}
+                onPage={setPage}
+                totalItems={filtered.length}
+              />
+            </>
           )}
         </div>
 

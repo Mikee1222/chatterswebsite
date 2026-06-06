@@ -1,97 +1,92 @@
 "use client";
 
 import * as React from "react";
-import { Search, Users, UserRound } from "lucide-react";
-import { formatDateTimeAthens } from "@/lib/format";
+import { ImageIcon, UserRound, Users } from "lucide-react";
+import { formatDateTimeEuropean, formatRelativeTime } from "@/lib/format";
+import { usePagination } from "@/lib/use-pagination";
+import { PaginationControls } from "@/components/ui/pagination-controls";
 import type { MistakeReasonCategory, MistakeRecord } from "@/services/chatter-mistakes";
 
 type Props = {
   initialMistakes: MistakeRecord[];
 };
 
-const filterFieldClass =
-  "min-h-10 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-pink-500/50 focus:outline-none [color-scheme:dark]";
+type DatePreset = "all" | "month" | "last_month";
 
-const SEVERITY_CONFIG = {
-  High: {
-    emoji: "",
-    label: "High severity",
-    weight: "Major mistake",
-    description: "Serious impact on performance and client experience",
-    barColor: "bg-red-500",
-    barWidth: "w-full",
-  },
-  Medium: {
-    emoji: "",
-    label: "Medium severity",
-    weight: "Moderate mistake",
-    description: "Notable impact on quality and client satisfaction",
-    barColor: "bg-amber-500",
-    barWidth: "w-2/3",
-  },
-  Low: {
-    emoji: "",
-    label: "Low severity",
-    weight: "Minor mistake",
-    description: "Small impact, easy to improve",
-    barColor: "bg-yellow-500",
-    barWidth: "w-1/3",
-  },
-} as const satisfies Record<
-  MistakeReasonCategory,
-  { emoji: string; label: string; weight: string; description: string; barColor: string; barWidth: string }
->;
+function toDateStr(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
 
-const SEVERITY_LEGEND_ITEMS = [
-  { cat: "Low" as const, emoji: "", pts: "5 pts", bar: "w-1/3 bg-yellow-500" },
-  { cat: "Medium" as const, emoji: "", pts: "10 pts", bar: "w-2/3 bg-amber-500" },
-  { cat: "High" as const, emoji: "", pts: "20 pts", bar: "w-full bg-red-500" },
-];
+function getChatterDateRange(preset: DatePreset): { from?: string; to?: string } {
+  const now = new Date();
+  if (preset === "all") return {};
+  if (preset === "month") {
+    const start = new Date(now.getFullYear(), now.getMonth(), 1);
+    return { from: toDateStr(start), to: toDateStr(now) };
+  }
+  const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const end = new Date(now.getFullYear(), now.getMonth(), 0);
+  return { from: toDateStr(start), to: toDateStr(end) };
+}
+
+function categoryBadgeClass(cat: MistakeReasonCategory): string {
+  if (cat === "High") return "border-red-500/25 bg-red-500/10 text-red-400";
+  if (cat === "Medium") return "border-yellow-500/25 bg-yellow-500/10 text-yellow-400";
+  return "border-blue-500/25 bg-blue-500/10 text-blue-400";
+}
+
+function ScreenshotThumb({ url }: { url?: string }) {
+  if (!url) {
+    return (
+      <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+        <ImageIcon className="h-4 w-4 text-white/25" aria-hidden />
+      </div>
+    );
+  }
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="block shrink-0 overflow-hidden rounded-lg ring-1 ring-white/10 transition hover:ring-pink-500/40"
+    >
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src={url} alt="Screenshot" className="h-10 w-10 object-cover" />
+    </a>
+  );
+}
+
+function RelativeDate({ iso }: { iso: string }) {
+  const full = formatDateTimeEuropean(iso);
+  return (
+    <span className="text-xs text-white/40" title={full !== "—" ? full : undefined}>
+      {formatRelativeTime(iso)}
+    </span>
+  );
+}
 
 export function ChatterMistakesClient({ initialMistakes }: Props) {
   const [mistakes] = React.useState(initialMistakes);
-  const [q, setQ] = React.useState("");
-  const [model, setModel] = React.useState("all");
-  const [reason, setReason] = React.useState("all");
+  const [datePreset, setDatePreset] = React.useState<DatePreset>("all");
   const [category, setCategory] = React.useState<"all" | MistakeReasonCategory>("all");
-  const [from, setFrom] = React.useState("");
-  const [to, setTo] = React.useState("");
 
-  const modelOptions = React.useMemo(() => {
-    const s = new Set<string>();
-    mistakes.forEach((m) => {
-      if (m.model_name?.trim()) s.add(m.model_name.trim());
-    });
-    return [...s].sort((a, b) => a.localeCompare(b));
-  }, [mistakes]);
-
-  const reasonOptions = React.useMemo(() => {
-    const s = new Set<string>();
-    mistakes.forEach((m) => {
-      if (m.reason_label?.trim()) s.add(m.reason_label.trim());
-    });
-    return [...s].sort((a, b) => a.localeCompare(b));
-  }, [mistakes]);
+  const dateRange = React.useMemo(() => getChatterDateRange(datePreset), [datePreset]);
 
   const filtered = React.useMemo(() => {
-    const qq = q.trim().toLowerCase();
     return mistakes.filter((m) => {
       if (category !== "all" && m.reason_category !== category) return false;
-      if (model !== "all" && (m.model_name ?? "").trim() !== model) return false;
-      if (reason !== "all" && (m.reason_label ?? "").trim() !== reason) return false;
-      if (from) {
-        const d = (m.mistake_date || "").slice(0, 10);
-        if (!d || d < from) return false;
-      }
-      if (to) {
-        const d = (m.mistake_date || "").slice(0, 10);
-        if (!d || d > to) return false;
-      }
-      if (!qq) return true;
-      const sub = (m.sub_username ?? "").toLowerCase();
-      return sub.includes(qq);
+      const d = (m.mistake_date || m.created_at || "").slice(0, 10);
+      if (dateRange.from && (!d || d < dateRange.from)) return false;
+      if (dateRange.to && (!d || d > dateRange.to)) return false;
+      return true;
     });
-  }, [mistakes, q, model, reason, category, from, to]);
+  }, [mistakes, category, dateRange]);
+
+  const { page, setPage, totalPages, paginated, reset: resetPage } = usePagination(filtered, 20);
+
+  React.useEffect(() => {
+    resetPage();
+  }, [category, datePreset, resetPage]);
 
   const stats = React.useMemo(() => {
     const rows = filtered;
@@ -119,8 +114,8 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
         {[
           { label: "Total", value: stats.total, border: "border-white/20", text: "text-white" },
-          { label: "Low", value: stats.low, border: "border-yellow-500/30", text: "text-yellow-400" },
-          { label: "Medium", value: stats.med, border: "border-amber-500/30", text: "text-amber-400" },
+          { label: "Low", value: stats.low, border: "border-blue-500/30", text: "text-blue-400" },
+          { label: "Medium", value: stats.med, border: "border-yellow-500/30", text: "text-yellow-400" },
           { label: "High", value: stats.high, border: "border-red-500/30", text: "text-red-400" },
           { label: "Points lost", value: stats.pts, border: "border-red-500/40", text: "text-red-400" },
         ].map((stat) => (
@@ -134,190 +129,142 @@ export function ChatterMistakesClient({ initialMistakes }: Props) {
         ))}
       </div>
 
-      <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 px-1">
-        <p className="text-xs uppercase tracking-widest text-white/30">Severity:</p>
-        {SEVERITY_LEGEND_ITEMS.map((item) => (
-          <div key={item.cat} className="flex items-center gap-2">
-            <span className="text-sm">{item.emoji}</span>
-            <div className="h-1 w-12 rounded-full bg-white/10">
-              <div className={`h-1 rounded-full ${item.bar}`} />
-            </div>
-            <span className="text-xs text-white/40">
-              {item.cat} · {item.pts}
-            </span>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex flex-wrap gap-3">
-        <div className="relative min-w-[12rem] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search sub username…"
-            className={`${filterFieldClass} w-full pl-9`}
-          />
+      <section className="rounded-2xl border border-white/10 bg-white/[0.05] p-4 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { key: "all", label: "All" },
+              { key: "month", label: "This month" },
+              { key: "last_month", label: "Last month" },
+            ] as const
+          ).map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              onClick={() => setDatePreset(p.key)}
+              className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                datePreset === p.key
+                  ? "border-pink-500/30 bg-pink-500/20 text-pink-300"
+                  : "border-white/10 text-white/50 hover:border-white/20 hover:text-white"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
-        <select
-          value={model}
-          onChange={(e) => setModel(e.target.value)}
-          className={`${filterFieldClass} min-w-[10rem] cursor-pointer appearance-none bg-neutral-950/60`}
-        >
-          <option value="all" className="bg-neutral-900">
-            All models
-          </option>
-          {modelOptions.map((name) => (
-            <option key={name} value={name} className="bg-neutral-900">
-              {name}
-            </option>
-          ))}
-        </select>
-        <select
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
-          className={`${filterFieldClass} min-w-[10rem] cursor-pointer appearance-none bg-neutral-950/60`}
-        >
-          <option value="all" className="bg-neutral-900">
-            All reasons
-          </option>
-          {reasonOptions.map((r) => (
-            <option key={r} value={r} className="bg-neutral-900">
-              {r}
-            </option>
-          ))}
-        </select>
         <select
           value={category}
           onChange={(e) => setCategory(e.target.value as typeof category)}
-          className={`${filterFieldClass} min-w-[9rem] cursor-pointer appearance-none bg-neutral-950/60`}
+          className="min-h-10 rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white"
+          aria-label="Filter by severity"
         >
-          <option value="all" className="bg-neutral-900">
-            All categories
-          </option>
-          <option value="Low" className="bg-neutral-900">
-            Low
-          </option>
-          <option value="Medium" className="bg-neutral-900">
-            Medium
-          </option>
-          <option value="High" className="bg-neutral-900">
-            High
-          </option>
+          <option value="all">All severity</option>
+          <option value="Low">Low</option>
+          <option value="Medium">Medium</option>
+          <option value="High">High</option>
         </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className={filterFieldClass} />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className={filterFieldClass} />
-      </div>
+      </section>
 
-      <div className="space-y-3">
-        {filtered.length === 0 ? (
-          <p className="text-sm text-white/45">No mistakes match your filters.</p>
-        ) : (
-          filtered.map((m) => (
-            <div
-              key={m.id}
-              className={`relative mb-3 overflow-hidden rounded-2xl border p-5 backdrop-blur-sm transition-transform hover:scale-[1.005] ${
-                m.reason_category === "High"
-                  ? "border-red-500/20 bg-red-500/[0.04]"
-                  : m.reason_category === "Medium"
-                    ? "border-amber-500/20 bg-amber-500/[0.04]"
-                    : "border-yellow-500/20 bg-yellow-500/[0.04]"
-              }`}
-            >
-              <div
-                className={`absolute bottom-0 left-0 top-0 w-1 rounded-l-2xl ${
-                  m.reason_category === "High" ? "bg-red-500" : m.reason_category === "Medium" ? "bg-amber-500" : "bg-yellow-500"
-                }`}
-              />
+      <p className="text-sm text-white/50">
+        Showing {filtered.length} mistake{filtered.length === 1 ? "" : "s"}
+      </p>
 
-              <div className="flex items-start justify-between gap-4 pl-3">
-                <div className="min-w-0 flex-1">
-                  <span
-                    className={`mb-2 inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-bold ${
-                      m.reason_category === "High"
-                        ? "border-red-500/25 bg-red-500/15 text-red-400"
-                        : m.reason_category === "Medium"
-                          ? "border-amber-500/25 bg-amber-500/15 text-amber-400"
-                          : "border-yellow-500/25 bg-yellow-500/15 text-yellow-400"
+      {filtered.length === 0 ? (
+        <p className="glass-card border-dashed py-12 text-center text-sm text-white/45">No mistakes match your filters.</p>
+      ) : (
+        <>
+          <ul className="space-y-3 md:hidden">
+            {paginated.map((m) => (
+              <li key={m.id} className="glass-card space-y-3 p-4 transition hover:bg-white/[0.07]">
+                <div className="flex items-start gap-3">
+                  <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
+                        {m.reason_category}
+                      </span>
+                      <RelativeDate iso={m.mistake_date || m.created_at} />
+                    </div>
+                    <p className="mt-2 truncate font-semibold text-white" title={m.reason_label}>
+                      {m.reason_label}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/40">
+                      <span className="inline-flex items-center gap-1">
+                        <Users className="h-3.5 w-3.5" aria-hidden />
+                        {m.model_name}
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <UserRound className="h-3.5 w-3.5" aria-hidden />@{m.sub_username}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-right text-lg font-bold text-red-400">-{m.points_deducted ?? 0} pts</p>
+                  </div>
+                </div>
+                {m.admin_notes ? (
+                  <div className="rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                    <p className="mb-1 text-xs uppercase tracking-widest text-white/30">Admin note</p>
+                    <p className="text-sm italic text-white/60">&ldquo;{m.admin_notes}&rdquo;</p>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+
+          <div className="glass-card hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[720px] border-collapse text-left text-sm">
+              <thead className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 backdrop-blur-md">
+                <tr className="text-xs uppercase tracking-wider text-white/45">
+                  <th className="w-14 px-4 py-3.5 font-semibold">Shot</th>
+                  <th className="px-4 py-3.5 font-semibold">Model</th>
+                  <th className="px-4 py-3.5 font-semibold">Reason</th>
+                  <th className="px-4 py-3.5 font-semibold">Severity</th>
+                  <th className="px-4 py-3.5 text-right font-semibold">Points</th>
+                  <th className="px-4 py-3.5 font-semibold">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginated.map((m, idx) => (
+                  <tr
+                    key={m.id}
+                    className={`border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04] ${
+                      idx % 2 === 1 ? "bg-white/[0.02]" : ""
                     }`}
                   >
-                    {m.reason_category === "High" ? "" : m.reason_category === "Medium" ? "" : ""}
-                    {m.reason_category}
-                  </span>
+                    <td className="px-4 py-3 align-middle">
+                      <ScreenshotThumb url={m.screenshot?.[0]?.url} />
+                    </td>
+                    <td className="px-4 py-3 align-middle text-white/80">{m.model_name}</td>
+                    <td className="max-w-[220px] px-4 py-3 align-middle">
+                      <span className="block truncate text-white/80" title={m.reason_label}>
+                        {m.reason_label}
+                      </span>
+                      <span className="text-xs text-white/35">@{m.sub_username}</span>
+                    </td>
+                    <td className="px-4 py-3 align-middle">
+                      <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${categoryBadgeClass(m.reason_category)}`}>
+                        {m.reason_category}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right align-middle font-semibold tabular-nums text-red-400">
+                      -{m.points_deducted ?? 0}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3 align-middle">
+                      <RelativeDate iso={m.mistake_date || m.created_at} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-                  <h3 className="mb-2 text-base font-semibold text-white">{m.reason_label}</h3>
-
-                  {(() => {
-                    const sev = SEVERITY_CONFIG[m.reason_category];
-                    return (
-                      <div
-                        className={`mt-3 rounded-xl border p-3 ${
-                          m.reason_category === "High"
-                            ? "border-red-500/15 bg-red-500/5"
-                            : m.reason_category === "Medium"
-                              ? "border-amber-500/15 bg-amber-500/5"
-                              : "border-yellow-500/15 bg-yellow-500/5"
-                        }`}
-                      >
-                        <div className="mb-2 flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm">{sev.emoji}</span>
-                            <span className="text-xs font-semibold uppercase tracking-widest text-white/70">
-                              {sev.label}
-                            </span>
-                          </div>
-                          <span className="text-xs text-white/40">{sev.weight}</span>
-                        </div>
-
-                        <div className="mb-2 h-1.5 w-full rounded-full bg-white/10">
-                          <div
-                            className={`h-1.5 rounded-full ${sev.barColor} ${sev.barWidth} transition-all`}
-                          />
-                        </div>
-
-                        <p className="text-xs text-white/30">{sev.description}</p>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-white/40">
-                    <span>{formatDateTimeAthens(m.mistake_date)}</span>
-                    <span className="inline-flex items-center gap-1"><Users className="h-3.5 w-3.5" aria-hidden />{m.model_name}</span>
-                    <span className="inline-flex items-center gap-1"><UserRound className="h-3.5 w-3.5" aria-hidden />@{m.sub_username}</span>
-                  </div>
-
-                  {m.admin_notes ? (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                      <p className="mb-1 text-xs uppercase tracking-widest text-white/30">Admin note</p>
-                      <p className="text-sm italic text-white/60">&ldquo;{m.admin_notes}&rdquo;</p>
-                    </div>
-                  ) : null}
-
-                  {m.screenshot?.[0]?.url ? (
-                    <div className="mt-3 rounded-xl border border-white/10 bg-white/5 p-3">
-                      <p className="mb-2 text-xs uppercase tracking-widest text-white/30">Screenshot evidence</p>
-                      <a href={m.screenshot?.[0]?.url} target="_blank" rel="noreferrer">
-                        <img
-                          src={m.screenshot?.[0]?.url}
-                          alt="Mistake evidence screenshot"
-                          className="max-h-80 w-full rounded-lg border border-white/10 object-contain transition-opacity hover:opacity-80"
-                        />
-                      </a>
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="ml-2 shrink-0 text-right">
-                  <div className="flex items-baseline justify-end gap-0.5 text-lg font-bold text-red-400">
-                    <span>-{m.points_deducted ?? 0}</span>
-                    <span className="text-sm font-normal text-red-400/60">pts</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
+          <PaginationControls
+            page={page}
+            totalPages={totalPages}
+            onPage={setPage}
+            totalItems={filtered.length}
+          />
+        </>
+      )}
     </div>
   );
 }

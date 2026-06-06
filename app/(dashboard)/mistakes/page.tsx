@@ -17,7 +17,7 @@ export default async function ChatterMistakesPage() {
   const mistakes = await getMistakesByChatter(chatterId).catch(() => []);
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-6">
+    <div className="mx-auto max-w-7xl px-4 py-6">
       <ChatterMistakesClient initialMistakes={mistakes} />
     </div>
   );
