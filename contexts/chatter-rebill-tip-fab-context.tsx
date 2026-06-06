@@ -5,6 +5,7 @@ import * as React from "react";
 export type ChatterRebillTipFabHandlers = {
   openRebill: () => void;
   openTip: () => void;
+  openExtraRevenue: () => void;
 };
 
 type Ctx = {

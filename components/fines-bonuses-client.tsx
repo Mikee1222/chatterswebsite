@@ -4,29 +4,15 @@ import * as React from "react";
 import { Check, Copy, CreditCard, DollarSign, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/pagination-controls";
-import { GlassModal, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
-import { FormInput } from "@/components/ui/form-input";
-import { FormSelect } from "@/components/ui/form-select";
-import { FormTextarea } from "@/components/ui/form-textarea";
+import { ExtraRevenueModal, type ModelPaymentInfo } from "@/components/extra-revenue-modal";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatDateTimeAthens, formatMonthYyyyMm } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
 import {
   isSpinWheelFineBonus,
-  type FineBonusPaymentMethod,
   type FineBonusRecord,
   type FineBonusType,
 } from "@/services/fines-bonuses";
-
-export type ModelPaymentInfo = {
-  id: string;
-  model_name: string;
-  paypal_email?: string;
-  paypal_link?: string;
-  revolut_tag?: string;
-  payment_notes?: string;
-  payment_threshold_eur?: number;
-};
 
 type Props = {
   initialEntries: FineBonusRecord[];
@@ -156,169 +142,6 @@ function ModelPaymentCard({ model }: { model: ModelPaymentInfo }) {
         </div>
       )}
     </div>
-  );
-}
-
-function ExtraRevenueModal({
-  open,
-  onClose,
-  modelss,
-  onSubmitted,
-}: {
-  open: boolean;
-  onClose: () => void;
-  modelss: ModelPaymentInfo[];
-  onSubmitted: () => void;
-}) {
-  const [modelId, setModelId] = React.useState("");
-  const [amount, setAmount] = React.useState("");
-  const [paymentMethod, setPaymentMethod] = React.useState<FineBonusPaymentMethod>("PayPal");
-  const [paymentSource, setPaymentSource] = React.useState("");
-  const [notes, setNotes] = React.useState("");
-  const [screenshot, setScreenshot] = React.useState<File | null>(null);
-  const [pending, setPending] = React.useState(false);
-
-  React.useEffect(() => {
-    if (!open) {
-      setModelId("");
-      setAmount("");
-      setPaymentMethod("PayPal");
-      setPaymentSource("");
-      setNotes("");
-      setScreenshot(null);
-      setPending(false);
-    }
-  }, [open]);
-
-  const selectedModel = modelss.find((m) => m.id === modelId);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!modelId || !selectedModel) {
-      toast.error("Select a model");
-      return;
-    }
-    if (!screenshot) {
-      toast.error("Screenshot is required");
-      return;
-    }
-    setPending(true);
-    try {
-      const fd = new FormData();
-      fd.set("model_id", modelId);
-      fd.set("model_name", selectedModel.model_name);
-      fd.set("amount", amount);
-      fd.set("payment_method", paymentMethod);
-      if (paymentMethod === "Other") fd.set("payment_source", paymentSource);
-      if (notes.trim()) fd.set("notes", notes.trim());
-      fd.set("screenshot", screenshot);
-
-      const res = await fetch("/api/chatter/extra-revenue", { method: "POST", body: fd });
-      const data = (await res.json()) as { error?: string; success?: boolean };
-      if (!res.ok) {
-        toast.error(data.error || "Submit failed");
-        return;
-      }
-      toast.success("Payment submitted for review");
-      onSubmitted();
-      onClose();
-    } finally {
-      setPending(false);
-    }
-  }
-
-  if (!open) return null;
-
-  return (
-    <GlassModal onClose={onClose} title="Submit extra revenue">
-      <form onSubmit={submit} className="space-y-4">
-        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-          Model
-          <FormSelect
-            value={modelId}
-            onChange={(e) => setModelId(e.target.value)}
-            className="mt-1"
-            required
-          >
-            <option value="">— Select model —</option>
-            {modelss.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.model_name}
-              </option>
-            ))}
-          </FormSelect>
-        </label>
-
-        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-          Amount (EUR)
-          <FormInput
-            type="number"
-            min="0.01"
-            step="0.01"
-            value={amount}
-            onChange={(e) => setAmount(e.target.value)}
-            className="mt-1"
-            required
-          />
-        </label>
-
-        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-          Payment method
-          <FormSelect
-            value={paymentMethod}
-            onChange={(e) => setPaymentMethod(e.target.value as FineBonusPaymentMethod)}
-            className="mt-1"
-          >
-            <option value="PayPal">PayPal</option>
-            <option value="Revolut">Revolut</option>
-            <option value="Other">Other</option>
-          </FormSelect>
-        </label>
-
-        {paymentMethod === "Other" && (
-          <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-            Payment source
-            <FormInput
-              value={paymentSource}
-              onChange={(e) => setPaymentSource(e.target.value)}
-              className="mt-1"
-              placeholder="e.g. Wise, bank transfer"
-              required
-            />
-          </label>
-        )}
-
-        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-          Screenshot
-          <input
-            type="file"
-            accept="image/*"
-            required
-            onChange={(e) => setScreenshot(e.target.files?.[0] ?? null)}
-            className="mt-1 block w-full text-sm text-white/70 file:mr-3 file:rounded-lg file:border-0 file:bg-pink-500/20 file:px-3 file:py-2 file:text-sm file:font-medium file:text-pink-200"
-          />
-        </label>
-
-        <label className="block text-xs font-semibold uppercase tracking-wider text-white/40">
-          Notes (optional)
-          <FormTextarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            rows={2}
-            className="mt-1"
-          />
-        </label>
-
-        <div className="flex gap-2 pt-2">
-          <ButtonPrimary type="submit" disabled={pending} className="flex-1">
-            {pending ? "Submitting…" : "Submit payment"}
-          </ButtonPrimary>
-          <ButtonSecondary type="button" onClick={onClose} disabled={pending}>
-            Cancel
-          </ButtonSecondary>
-        </div>
-      </form>
-    </GlassModal>
   );
 }
 
