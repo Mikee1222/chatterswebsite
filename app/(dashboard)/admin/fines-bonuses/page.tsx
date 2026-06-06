@@ -27,7 +27,11 @@ export default async function AdminFinesBonusesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6">
-      <AdminFinesBonusesClient initialEntries={entries} userOptions={userOptions} />
+      <AdminFinesBonusesClient
+        initialEntries={entries}
+        userOptions={userOptions}
+        isAdmin={session.role === "admin"}
+      />
     </div>
   );
 }

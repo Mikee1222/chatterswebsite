@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Search, X } from "lucide-react";
+import { Pencil, Search, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { GlassModal } from "@/components/ui/form";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { formatDateTimeEuropean, formatMonthYyyyMm, formatRelativeTime } from "@/lib/format";
@@ -23,6 +24,7 @@ type UserOpt = { id: string; name: string; user_role: FineBonusUserRole };
 type Props = {
   initialEntries: FineBonusRecord[];
   userOptions: UserOpt[];
+  isAdmin?: boolean;
 };
 
 function RoleBadge({ role }: { role: FineBonusUserRole }) {
@@ -127,7 +129,7 @@ function groupByMonth(entries: FineBonusRecord[]): MonthGroup[] {
     }));
 }
 
-export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) {
+export function AdminFinesBonusesClient({ initialEntries, userOptions, isAdmin = false }: Props) {
   const [rows, setRows] = React.useState(initialEntries);
   const [userFilter, setUserFilter] = React.useState("all");
   const [roleFilter, setRoleFilter] = React.useState<"all" | FineBonusUserRole>("all");
@@ -140,6 +142,15 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
   const [rejectStep, setRejectStep] = React.useState(false);
   const [reviewPending, setReviewPending] = React.useState(false);
   const [lightboxUrl, setLightboxUrl] = React.useState<string | null>(null);
+  const [editEntry, setEditEntry] = React.useState<FineBonusRecord | null>(null);
+  const [editType, setEditType] = React.useState<FineBonusType>("bonus");
+  const [editAmount, setEditAmount] = React.useState("");
+  const [editReason, setEditReason] = React.useState("");
+  const [editMonth, setEditMonth] = React.useState("");
+  const [editNotes, setEditNotes] = React.useState("");
+  const [editPending, setEditPending] = React.useState(false);
+  const [deleteEntry, setDeleteEntry] = React.useState<FineBonusRecord | null>(null);
+  const [deletePending, setDeletePending] = React.useState(false);
 
   function openReview(entry: FineBonusRecord) {
     setReviewEntry(entry);
@@ -152,6 +163,72 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
     setReviewEntry(null);
     setRejectReason("");
     setRejectStep(false);
+  }
+
+  function openEdit(entry: FineBonusRecord) {
+    setEditEntry(entry);
+    setEditType(entry.type);
+    setEditAmount(String(entry.amount));
+    setEditReason(entry.reason);
+    setEditMonth(entry.month && /^\d{4}-\d{2}$/.test(entry.month) ? entry.month : "");
+    setEditNotes(entry.notes ?? "");
+  }
+
+  function closeEdit() {
+    if (editPending) return;
+    setEditEntry(null);
+  }
+
+  async function submitEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editEntry) return;
+    const amt = Number.parseFloat(editAmount);
+    if (!editReason.trim() || !editMonth || !Number.isFinite(amt) || amt < 0) {
+      toast.error("Amount, reason, and month are required");
+      return;
+    }
+    setEditPending(true);
+    try {
+      const res = await fetch(`/api/admin/fines-bonuses/${editEntry.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: editType,
+          amount: amt,
+          reason: editReason.trim(),
+          month: editMonth,
+          notes: editNotes.trim(),
+        }),
+      });
+      const data = (await res.json()) as { error?: string; entry?: FineBonusRecord };
+      if (!res.ok || !data.entry) {
+        toast.error(typeof data.error === "string" ? data.error : "Update failed");
+        return;
+      }
+      setRows((prev) => prev.map((r) => (r.id === data.entry!.id ? data.entry! : r)));
+      toast.success("Entry updated");
+      closeEdit();
+    } finally {
+      setEditPending(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteEntry) return;
+    setDeletePending(true);
+    try {
+      const res = await fetch(`/api/admin/fines-bonuses/${deleteEntry.id}`, { method: "DELETE" });
+      const data = (await res.json()) as { error?: string };
+      if (!res.ok) {
+        toast.error(typeof data.error === "string" ? data.error : "Delete failed");
+        return;
+      }
+      setRows((prev) => prev.filter((r) => r.id !== deleteEntry.id));
+      toast.success("Entry deleted");
+      setDeleteEntry(null);
+    } finally {
+      setDeletePending(false);
+    }
   }
 
   function paymentMethodLabel(entry: FineBonusRecord) {
@@ -422,7 +499,7 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
       ) : (
         <>
           <div className="glass-card overflow-x-auto">
-            <table className="w-full min-w-[860px] border-collapse text-left text-sm">
+            <table className="w-full min-w-[920px] border-collapse text-left text-sm">
               <thead className="sticky top-0 z-10 border-b border-white/10 bg-zinc-950/95 backdrop-blur-md">
                 <tr className="text-xs uppercase tracking-wider text-white/45">
                   <th className="px-4 py-3.5 font-semibold">User</th>
@@ -433,13 +510,14 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
                   <th className="px-4 py-3.5 font-semibold">Source</th>
                   <th className="px-4 py-3.5 font-semibold">Status</th>
                   <th className="px-4 py-3.5 font-semibold">Date</th>
+                  {isAdmin ? <th className="px-4 py-3.5 font-semibold">Actions</th> : null}
                 </tr>
               </thead>
               <tbody>
                 {groupedPage.map(({ month, entries }) => (
                   <React.Fragment key={month}>
                     <tr className="sticky top-[41px] z-[5] bg-zinc-900/95 backdrop-blur-sm">
-                      <td colSpan={8} className="border-b border-pink-500/20 px-4 py-2">
+                      <td colSpan={isAdmin ? 9 : 8} className="border-b border-pink-500/20 px-4 py-2">
                         <span className="text-xs font-semibold uppercase tracking-widest text-pink-300/80">
                           {month === "unknown" ? "Unknown month" : formatMonthYyyyMm(month)}
                         </span>
@@ -481,6 +559,28 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
                             {formatRelativeTime(e.created_at)}
                           </span>
                         </td>
+                        {isAdmin ? (
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => openEdit(e)}
+                                className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-white/10 hover:text-white"
+                                aria-label="Edit entry"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setDeleteEntry(e)}
+                                className="rounded-lg p-1.5 text-white/40 transition-colors hover:bg-red-500/10 hover:text-red-300"
+                                aria-label="Delete entry"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                   </React.Fragment>
@@ -601,6 +701,128 @@ export function AdminFinesBonusesClient({ initialEntries, userOptions }: Props) 
           </div>
         </GlassModal>
       ) : null}
+
+      {editEntry ? (
+        <GlassModal onClose={closeEdit} title="Edit fine / bonus" className="mx-4 w-[calc(100%-2rem)] max-w-lg md:mx-auto">
+          <form onSubmit={submitEdit} className="space-y-4 px-4 py-5 md:px-5">
+            {isSpinWheelFineBonus(editEntry) ? (
+              <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-200">
+                This entry was auto-created from a spin wheel reward.
+              </div>
+            ) : null}
+
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wider text-white/40">User</p>
+              <p className="mt-0.5 font-medium text-white">{editEntry.user_name}</p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setEditType("bonus")}
+                className={`rounded-xl border py-3 font-semibold transition-all ${
+                  editType === "bonus"
+                    ? "border-green-500/30 bg-green-500/20 text-green-400"
+                    : "border-white/10 bg-white/5 text-white/40"
+                }`}
+              >
+                Bonus
+              </button>
+              <button
+                type="button"
+                onClick={() => setEditType("fine")}
+                className={`rounded-xl border py-3 font-semibold transition-all ${
+                  editType === "fine"
+                    ? "border-red-500/30 bg-red-500/20 text-red-400"
+                    : "border-white/10 bg-white/5 text-white/40"
+                }`}
+              >
+                Fine
+              </button>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/40">Amount</label>
+              <div className="relative mt-1">
+                <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-white/40">€</span>
+                <FormInput
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  required
+                  value={editAmount}
+                  onChange={(e) => setEditAmount(e.target.value)}
+                  className="!pl-8"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/40">Reason</label>
+              <FormInput
+                value={editReason}
+                onChange={(e) => setEditReason(e.target.value)}
+                required
+                className="mt-1"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/40">Month</label>
+              <input
+                type="month"
+                value={editMonth}
+                onChange={(e) => setEditMonth(e.target.value)}
+                required
+                className="mt-1 w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:border-pink-500/50 focus:outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-white/40">Notes (optional)</label>
+              <FormTextarea
+                value={editNotes}
+                onChange={(e) => setEditNotes(e.target.value)}
+                rows={3}
+                className="mt-1 w-full"
+              />
+            </div>
+
+            <div className="flex flex-col gap-2 border-t border-white/10 pt-4 md:flex-row">
+              <button
+                type="button"
+                disabled={editPending}
+                onClick={closeEdit}
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:bg-white/10 disabled:opacity-50 md:flex-1"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={editPending}
+                className="w-full rounded-xl border border-pink-500/40 bg-pink-500/20 px-4 py-2.5 text-sm font-semibold text-pink-100 transition-colors hover:bg-pink-500/30 disabled:opacity-50 md:flex-1"
+              >
+                {editPending ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </form>
+        </GlassModal>
+      ) : null}
+
+      <ConfirmDialog
+        open={deleteEntry != null}
+        onClose={() => !deletePending && setDeleteEntry(null)}
+        onConfirm={confirmDelete}
+        title="Delete entry?"
+        description={
+          deleteEntry
+            ? `Permanently delete this ${deleteEntry.type} of €${deleteEntry.amount.toFixed(2)} for ${deleteEntry.user_name}? This cannot be undone.`
+            : ""
+        }
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        loading={deletePending}
+      />
 
       {lightboxUrl ? (
         <div

@@ -3,6 +3,7 @@ import {
   listRecords,
   createRecord,
   updateRecord,
+  deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 
@@ -300,6 +301,31 @@ export async function createExtraRevenueSubmission(
     model_name: data.model_name,
     screenshot_url: data.screenshot_url,
   });
+}
+
+export type UpdateFineBonusInput = {
+  type?: FineBonusType;
+  amount?: number;
+  reason?: string;
+  notes?: string;
+  month?: string;
+};
+
+export async function updateFineBonus(recordId: string, data: UpdateFineBonusInput): Promise<FineBonusRecord> {
+  const fields: Record<string, unknown> = {};
+  if (data.type !== undefined) fields.type = data.type;
+  if (data.amount !== undefined) {
+    fields.amount = Math.round(Math.max(0, data.amount) * 100) / 100;
+  }
+  if (data.reason !== undefined) fields.reason = data.reason.trim();
+  if (data.notes !== undefined) fields.notes = data.notes.trim();
+  if (data.month !== undefined) fields.month = data.month.trim();
+  const updated = await updateRecord<Record<string, unknown>>(TABLE, recordId, fields);
+  return mapRecord(updated as AirtableRecord<Record<string, unknown>>);
+}
+
+export async function deleteFineBonus(recordId: string): Promise<void> {
+  await deleteRecord(TABLE, recordId);
 }
 
 export async function reviewExtraRevenueSubmission(
