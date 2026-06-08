@@ -269,6 +269,35 @@ function functionsFields(
   ];
 }
 
+function quizAttemptsFields(
+  usersTableId: string,
+  rolesTableId: string,
+  functionsTableId: string
+): Array<Record<string, unknown>> {
+  return [
+    { name: "attempt_id", type: "singleLineText" },
+    {
+      name: "user",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: usersTableId },
+    },
+    {
+      name: "sop_function",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: functionsTableId },
+    },
+    {
+      name: "sop_role",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: rolesTableId },
+    },
+    { name: "score", type: "number", options: { precision: 0 } },
+    { name: "passed", type: "checkbox", options: { ...checkboxOptions } },
+    { name: "wrong_count", type: "number", options: { precision: 0 } },
+    { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
+  ];
+}
+
 function feedbackFields(
   usersTableId: string,
   rolesTableId: string,
@@ -356,6 +385,13 @@ const TABLE_PLANS: TablePlan[] = [
     requires: ["users", "sop_roles", "sop_functions"],
     buildFields: ({ usersId, rolesId, functionsId }) =>
       feedbackFields(usersId, rolesId, functionsId),
+  },
+  {
+    name: "sop_quiz_attempts",
+    description: "SOP academy quiz submission attempts (setup-sop-tables.ts)",
+    requires: ["users", "sop_roles", "sop_functions"],
+    buildFields: ({ usersId, rolesId, functionsId }) =>
+      quizAttemptsFields(usersId, rolesId, functionsId),
   },
 ];
 

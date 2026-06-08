@@ -449,6 +449,11 @@ function AcademyRoleContent({
   const [loadingQuiz, setLoadingQuiz] = React.useState(false);
   const [quizAnswers, setQuizAnswers] = React.useState<Record<string, SopQuizCorrectOption | "">>({});
   const [wrongQuestionIds, setWrongQuestionIds] = React.useState<Set<string>>(new Set());
+  const [quizFailScore, setQuizFailScore] = React.useState<{
+    correct: number;
+    total: number;
+    score: number;
+  } | null>(null);
   const [quizPassed, setQuizPassed] = React.useState(false);
   const [signoffChecked, setSignoffChecked] = React.useState(false);
   const [signingOff, setSigningOff] = React.useState(false);
@@ -465,6 +470,7 @@ function AcademyRoleContent({
     setCompleteError("");
     setQuizAnswers({});
     setWrongQuestionIds(new Set());
+    setQuizFailScore(null);
     setQuizPassed(false);
   }, [role.id, defaultActiveId, initialStepId, sortedFnIds]);
 
@@ -486,6 +492,7 @@ function AcademyRoleContent({
     setLoadingQuiz(true);
     setQuizAnswers({});
     setWrongQuestionIds(new Set());
+    setQuizFailScore(null);
     setQuizPassed(false);
 
     fetch(
@@ -517,6 +524,7 @@ function AcademyRoleContent({
       next.delete(questionId);
       return next;
     });
+    setQuizFailScore(null);
     setQuizPassed(false);
   }
 
@@ -535,6 +543,7 @@ function AcademyRoleContent({
     setCompleting(true);
     setCompleteError("");
     setWrongQuestionIds(new Set());
+    setQuizFailScore(null);
 
     try {
       if (hasQuiz && !quizPassed) {
@@ -552,12 +561,29 @@ function AcademyRoleContent({
         });
         const submitData = (await submitRes.json().catch(() => ({}))) as {
           passed?: boolean;
+          score?: number;
+          total?: number;
           wrong_question_ids?: string[];
           error?: string;
         };
         if (!submitRes.ok || !submitData.passed) {
           const wrong = new Set(submitData.wrong_question_ids ?? []);
           setWrongQuestionIds(wrong);
+          const total =
+            typeof submitData.total === "number" && submitData.total > 0
+              ? submitData.total
+              : quizQuestions.length;
+          const wrongCount = wrong.size;
+          const correct = Math.max(0, total - wrongCount);
+          const score =
+            typeof submitData.score === "number"
+              ? submitData.score
+              : total > 0
+                ? Math.round((correct / total) * 100)
+                : 0;
+          if (total > 0) {
+            setQuizFailScore({ correct, total, score });
+          }
           throw new Error(
             typeof submitData.error === "string"
               ? submitData.error
@@ -831,7 +857,14 @@ function AcademyRoleContent({
                       />
                     ) : null}
                     {completeError ? (
-                      <p className="text-sm text-rose-300/90">{completeError}</p>
+                      <div className="space-y-1.5">
+                        <p className="text-sm text-rose-300/90">{completeError}</p>
+                        {quizFailScore ? (
+                          <p className="text-sm text-white/55">
+                            {quizFailScore.correct}/{quizFailScore.total} σωστές ({quizFailScore.score}%)
+                          </p>
+                        ) : null}
+                      </div>
                     ) : null}
                     <motion.button
                       type="button"

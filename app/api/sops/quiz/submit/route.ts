@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getMemberAccessibleSopRole, isSopMemberSession } from "@/lib/sop-member-access";
+import { recordQuizAttempt } from "@/services/sop-quiz-attempts";
 import { validateQuizAnswers } from "@/services/sop-quiz";
 import { getFunctionsByRole } from "@/services/sops";
 
@@ -49,8 +50,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Function not found for this role" }, { status: 404 });
   }
 
+  const userId = (session.airtableUserId ?? session.id)?.trim();
+
   try {
     const result = await validateQuizAnswers(fn.id, parsed.data.answers);
+    if (userId) {
+      try {
+        await recordQuizAttempt(
+          userId,
+          fn.id,
+          role.id,
+          result.score,
+          result.passed,
+          result.wrong_question_ids.length
+        );
+      } catch (recordErr) {
+        console.error("[sops/quiz/submit] recordQuizAttempt failed:", recordErr);
+      }
+    }
     return NextResponse.json({
       passed: result.passed,
       score: result.score,

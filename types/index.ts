@@ -172,6 +172,29 @@ export type SopQuizQuestion = {
   created_at?: string;
 };
 
+export type SopQuizAttempt = {
+  id: string;
+  attempt_id: string;
+  user_id: string;
+  sop_function_id: string;
+  sop_role_id: string;
+  score: number;
+  passed: boolean;
+  wrong_count: number;
+  created_at?: string;
+};
+
+/** Admin: per-function quiz attempt analytics for one role. */
+export type SopQuizFunctionInsight = {
+  function_id: string;
+  function_name: string;
+  total_attempts: number;
+  avg_score: number;
+  pass_rate: number;
+  members_multi_attempt: number;
+  is_difficult: boolean;
+};
+
 export type SopSignoff = {
   id: string;
   signoff_id: string;

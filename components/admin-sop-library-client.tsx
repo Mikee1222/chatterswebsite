@@ -35,6 +35,7 @@ import {
   X,
 } from "lucide-react";
 import { AdminSopOverviewPanel } from "@/components/admin-sop-overview-panel";
+import { AdminSopQuizInsightsPanel } from "@/components/admin-sop-quiz-insights-panel";
 import { useToast } from "@/contexts/toast-context";
 import {
   Checkbox,
@@ -1522,7 +1523,9 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                 description={`No users have completed steps for this role (${progressTotalFunctions} active functions).`}
               />
             ) : (
-              <div className="sop-glass-panel overflow-hidden rounded-2xl">
+              <div className="space-y-6">
+                <AdminSopQuizInsightsPanel roleId={selectedRole.id} />
+                <div className="sop-glass-panel overflow-hidden rounded-2xl">
                 <div className="sop-table-scroll overflow-x-auto">
                   <table className="w-full min-w-[520px] text-left text-sm">
                     <thead>
@@ -1585,6 +1588,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                       ))}
                     </tbody>
                   </table>
+                </div>
                 </div>
               </div>
             )
