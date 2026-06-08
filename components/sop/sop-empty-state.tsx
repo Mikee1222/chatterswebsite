@@ -26,8 +26,8 @@ export function SopEmptyState({
         className
       )}
     >
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] shadow-[0_0_32px_-12px_hsl(330_80%_55%_/_0.15)]">
-        <Icon className="h-6 w-6 text-white/35" strokeWidth={1.5} />
+      <div className="mx-auto flex h-12 w-12 items-center justify-center text-white/30">
+        <Icon className="h-7 w-7" strokeWidth={1.5} />
       </div>
       <p className="mt-4 text-sm font-medium text-white/75">{title}</p>
       {description ? <p className="mx-auto mt-1.5 max-w-sm text-sm text-white/45">{description}</p> : null}

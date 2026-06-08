@@ -53,6 +53,7 @@ import { SopShell } from "@/components/sop/sop-shell";
 import { SopEmptyState } from "@/components/sop/sop-empty-state";
 import { SopGlowBadge } from "@/components/sop/sop-glow-badge";
 import { CADENCE_STYLES, SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+import { SopIconPicker, SopRoleIcon, normalizeSopIconName } from "@/components/sop/sop-icons";
 import { useSopMotion } from "@/components/sop/sop-motion";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types";
@@ -253,7 +254,7 @@ function SortableDepartmentRow({
         type="button"
         {...listeners}
         {...attributes}
-        className="shrink-0 cursor-grab touch-none text-white/25 hover:text-white/55 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none text-white/10 transition-colors hover:text-white/45 active:cursor-grabbing group-hover:text-white/25"
         aria-label="Drag to reorder department"
       >
         <GripVertical className="h-4 w-4" />
@@ -326,13 +327,13 @@ function SortableRoleRow({
         type="button"
         {...listeners}
         {...attributes}
-        className="shrink-0 cursor-grab touch-none text-white/25 hover:text-white/55 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none text-white/10 transition-colors hover:text-white/45 active:cursor-grabbing group-hover:text-white/25"
         aria-label="Drag to reorder role"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-lg">
-        {role.icon || "📋"}
+      <span className={cn("flex h-9 w-9 shrink-0 items-center justify-center", cfg.text)}>
+        <SopRoleIcon name={role.icon} size="md" className="opacity-75" />
       </span>
       <button type="button" onClick={() => onOpen(role)} className="min-w-0 flex-1 text-left">
         <span className={cn("block text-sm font-semibold", role.is_active ? "text-white" : "text-white/35 line-through")}>
@@ -407,7 +408,7 @@ function SortableFunctionRow({
         type="button"
         {...listeners}
         {...attributes}
-        className="shrink-0 cursor-grab touch-none text-white/25 hover:text-white/55 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none text-white/10 transition-colors hover:text-white/45 active:cursor-grabbing group-hover:text-white/25"
         aria-label="Drag to reorder function"
       >
         <GripVertical className="h-4 w-4" />
@@ -497,7 +498,7 @@ function emptyRoleForm(): RoleForm {
     slug: "",
     slugManual: false,
     description: "",
-    icon: "",
+    icon: "BookOpen",
     color: "blue",
     auth_roles: [],
     assigned_user_ids: [],
@@ -511,7 +512,7 @@ function roleToForm(r: SopRole): RoleForm {
     slug: r.slug,
     slugManual: true,
     description: r.description,
-    icon: r.icon,
+    icon: normalizeSopIconName(r.icon),
     color: r.color,
     auth_roles: [...r.auth_roles],
     assigned_user_ids: [...r.assigned_user_ids],
@@ -816,7 +817,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         name,
         slug,
         description: roleForm.description,
-        icon: roleForm.icon.trim(),
+        icon: normalizeSopIconName(roleForm.icon),
         color: roleForm.color,
         auth_roles: roleForm.auth_roles,
         assigned_user_ids: roleForm.assigned_user_ids,
@@ -1041,9 +1042,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
             <div>
               <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">SOP role</p>
               <h1 className={cn("flex items-center gap-3 text-2xl font-bold md:text-3xl", roleCfg.text)}>
-                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-xl">
-                  {selectedRole.icon || "📋"}
-                </span>
+                <SopRoleIcon name={selectedRole.icon} size="lg" className="opacity-80" />
                 {selectedRole.name}
               </h1>
               <p className="mt-1.5 text-sm text-white/45">{selectedRole.slug}</p>
@@ -1349,9 +1348,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               onClick={() => setDeptOpen((o) => !o)}
               className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
             >
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
-                <Building2 className="h-4 w-4 text-white/50" />
-              </span>
+              <Building2 className="h-5 w-5 shrink-0 text-white/40" />
               <div>
                 <h2 className="text-sm font-bold text-white">Departments</h2>
                 <p className="text-xs text-white/40">{departments.length} total</p>
@@ -1417,9 +1414,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         <motion.section variants={motionCfg.reveal}>
           <div className="mb-5 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
-                <Users className="h-4 w-4 text-white/50" />
-              </span>
+              <Users className="h-5 w-5 shrink-0 text-white/40" />
               <div>
                 <h2 className="text-lg font-bold text-white">Roles</h2>
                 <p className="text-xs text-white/40">Click a role to manage its functions</p>
@@ -1528,28 +1523,24 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               className={cn(SOP_MODAL_CLASS, "md:max-w-lg")}
             >
           <form onSubmit={saveRole} className="max-h-[70vh] space-y-4 overflow-y-auto px-4 pb-5 pt-2 md:px-5">
-            <div className="grid grid-cols-[auto_1fr] gap-3">
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                  Icon
-                </label>
-                <FormInput
-                  value={roleForm.icon}
-                  onChange={(e) => setRoleForm((f) => ({ ...f, icon: e.target.value }))}
-                  className="max-w-[4.5rem] text-center text-lg"
-                  placeholder="📋"
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                  Name
-                </label>
-                <FormInput
-                  value={roleForm.name}
-                  onChange={(e) => updateRoleName(e.target.value)}
-                  required
-                />
-              </div>
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                Icon
+              </label>
+              <SopIconPicker
+                value={roleForm.icon}
+                onChange={(icon) => setRoleForm((f) => ({ ...f, icon }))}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                Name
+              </label>
+              <FormInput
+                value={roleForm.name}
+                onChange={(e) => updateRoleName(e.target.value)}
+                required
+              />
             </div>
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">

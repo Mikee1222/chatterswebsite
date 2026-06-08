@@ -79,9 +79,7 @@ export function FilePreview({ url, name, className, compact = false }: FilePrevi
         className
       )}
     >
-      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/5">
-        <FileText className="h-4 w-4 shrink-0 text-pink-300/80" />
-      </span>
+      <FileText className="h-4 w-4 shrink-0 text-pink-300/70" />
       <span className="min-w-0 flex-1 truncate">Open / Download {fileName}</span>
       <ExternalLink className="h-4 w-4 shrink-0 text-white/40" />
     </a>

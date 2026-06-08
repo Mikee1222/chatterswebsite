@@ -56,7 +56,7 @@ export function Markdown({
   if (!framed) return inner;
 
   return (
-    <div className="sop-glass-card rounded-xl border border-white/10 bg-black/25 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+    <div className="rounded-xl bg-white/[0.03] p-4">
       {inner}
     </div>
   );

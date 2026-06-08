@@ -3,6 +3,7 @@
 import * as React from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { BookOpen, Target } from "lucide-react";
+import { SopRoleIcon } from "@/components/sop/sop-icons";
 import { Markdown } from "@/components/ui/markdown";
 import { FilePreview } from "@/components/ui/file-preview";
 import { LoomEmbed } from "@/components/ui/loom-embed";
@@ -74,7 +75,7 @@ function RoleTabs({
               />
             ) : null}
             <span className="relative inline-flex items-center gap-1.5">
-              {role.icon ? <span>{role.icon}</span> : null}
+              <SopRoleIcon name={role.icon} size="sm" className="opacity-70" />
               {role.name}
             </span>
           </motion.button>
@@ -117,8 +118,8 @@ function FunctionCard({
           </div>
         </div>
         {fn.kpi.trim() ? (
-          <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.03] px-3 py-2.5">
-            <Target className="mt-0.5 h-4 w-4 shrink-0 text-pink-300/70" />
+          <div className="mt-3 flex items-start gap-2.5 rounded-lg bg-white/[0.03] px-1 py-1">
+            <Target className="mt-0.5 h-4 w-4 shrink-0 text-pink-300/60" />
             <p className="text-sm text-white/60">
               <span className="font-semibold text-white/75">KPI:</span> {fn.kpi}
             </p>
@@ -174,15 +175,9 @@ function RoleContent({
         )}
       >
         <div className="flex items-start gap-4">
-          {role.icon ? (
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-2xl shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-              {role.icon}
-            </span>
-          ) : (
-            <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.05] text-pink-300/80 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
-              <BookOpen className="h-6 w-6" />
-            </span>
-          )}
+          <span className={cn("mt-0.5 shrink-0", roleStyle.text)}>
+            <SopRoleIcon name={role.icon} size="lg" className="opacity-80" />
+          </span>
           <div className="min-w-0 flex-1">
             <h2 className={cn("text-xl font-bold tracking-tight", roleStyle.text)}>{role.name}</h2>
             {role.description.trim() ? (
