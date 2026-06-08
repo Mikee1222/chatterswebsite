@@ -24,7 +24,6 @@ import {
   BarChart3,
   Building2,
   ChevronDown,
-  Eye,
   GripVertical,
   Layers,
   Pencil,
@@ -38,17 +37,21 @@ import {
 import { AdminSopOverviewPanel } from "@/components/admin-sop-overview-panel";
 import { useToast } from "@/contexts/toast-context";
 import {
-  GlassModal,
   Checkbox,
   ButtonPrimary,
   ButtonSecondary,
   SubmitButton,
 } from "@/components/ui/form";
+import { SopModalShell } from "@/components/sop/sop-modal-shell";
+import { SopModalFooter } from "@/components/sop/sop-modal-footer";
+import { SopFormSection } from "@/components/sop/sop-form-section";
+import { SopFormLabel } from "@/components/sop/sop-form-label";
+import { SopMarkdownField } from "@/components/sop/sop-markdown-field";
+import { SopSegmentedToggle } from "@/components/sop/sop-segmented-toggle";
 import { FormInput } from "@/components/ui/form-input";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSelect } from "@/components/ui/form-select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Markdown } from "@/components/ui/markdown";
 import { FilePreview } from "@/components/ui/file-preview";
 import { Spinner } from "@/components/ui/spinner";
 import { SopShell } from "@/components/sop/sop-shell";
@@ -338,52 +341,6 @@ function ColorSelect({
         </option>
       ))}
     </FormSelect>
-  );
-}
-
-function MarkdownField({
-  label,
-  value,
-  onChange,
-  rows = 8,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  rows?: number;
-  placeholder?: string;
-}) {
-  const [showPreview, setShowPreview] = React.useState(false);
-
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <label className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
-          {label}
-        </label>
-        <button
-          type="button"
-          onClick={() => setShowPreview((p) => !p)}
-          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55 transition hover:border-pink-500/25 hover:bg-white/10 hover:text-white/85"
-        >
-          <Eye className="h-3 w-3" />
-          {showPreview ? "Edit" : "Preview"}
-        </button>
-      </div>
-      {showPreview ? (
-        <div className="min-h-[160px]">
-          <Markdown framed>{value}</Markdown>
-        </div>
-      ) : (
-        <FormTextarea
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          rows={rows}
-          placeholder={placeholder}
-        />
-      )}
-    </div>
   );
 }
 
@@ -1830,403 +1787,427 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
 
           <AnimatePresence>
             {fnModalOpen ? (
-              <GlassModal
+              <SopModalShell
                 onClose={() => !fnSaving && setFnModalOpen(false)}
+                closeDisabled={fnSaving || fnFileUploading}
                 title={fnEditing ? "Edit function" : "New function"}
                 subtitle="Define the SOP steps, KPI, and cadence for this role."
-                className={cn(SOP_MODAL_CLASS, "md:max-w-3xl")}
-              >
-            <input
-              ref={fnFileInputRef}
-              type="file"
-              className="hidden"
-              onChange={(e) => {
-                const file = e.target.files?.[0] ?? null;
-                void handleFnFileSelect(file);
-              }}
-            />
-            <div className="space-y-4 px-4 pb-5 pt-2 md:px-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <form id="sop-fn-form" onSubmit={saveFunction} className="space-y-4">
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      Function
-                    </label>
-                    <FormInput
-                      value={fnForm.name}
-                      onChange={(e) => setFnForm((f) => ({ ...f, name: e.target.value }))}
-                      placeholder="e.g. Morning inbox sweep"
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      Department
-                    </label>
-                    <FormSelect
-                      value={fnForm.department_id}
-                      onChange={(e) => setFnForm((f) => ({ ...f, department_id: e.target.value }))}
-                    >
-                      <option value="">— None —</option>
-                      {departments.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {d.name}
-                        </option>
-                      ))}
-                    </FormSelect>
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      KPI
-                    </label>
-                    <FormTextarea
-                      value={fnForm.kpi}
-                      onChange={(e) => setFnForm((f) => ({ ...f, kpi: e.target.value }))}
-                      rows={3}
-                      placeholder="How success is measured…"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                        Cadence
-                      </label>
-                      <FormSelect
-                        value={fnForm.cadence_type}
-                        onChange={(e) =>
-                          setFnForm((f) => ({
-                            ...f,
-                            cadence_type: e.target.value as CadenceType,
-                          }))
-                        }
-                      >
-                        {CADENCE_TYPES.map((c) => (
-                          <option key={c} value={c}>
-                            {CADENCE_LABELS[c]}
-                          </option>
-                        ))}
-                      </FormSelect>
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                        Cadence note
-                      </label>
-                      <FormInput
-                        value={fnForm.cadence_note}
-                        onChange={(e) => setFnForm((f) => ({ ...f, cadence_note: e.target.value }))}
-                        placeholder="e.g. Mon & Thu"
-                      />
-                    </div>
-                    <div>
-                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                        Est. minutes (academy)
-                      </label>
-                      <FormInput
-                        type="number"
-                        min={1}
-                        max={600}
-                        value={fnForm.estimated_minutes}
-                        onChange={(e) =>
-                          setFnForm((f) => ({ ...f, estimated_minutes: e.target.value }))
-                        }
-                        placeholder="e.g. 5"
-                      />
-                    </div>
-                  </div>
-                  <Checkbox
-                    checked={fnForm.is_active}
-                    onChange={(e) => setFnForm((f) => ({ ...f, is_active: e.target.checked }))}
-                    label="Active"
-                  />
-                </form>
-                <div className="space-y-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">Standard</p>
-                  <div className="flex flex-wrap gap-4">
-                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/75">
-                      <input
-                        type="radio"
-                        name="sop-standard-type"
-                        checked={fnForm.standard_type === "text"}
-                        onChange={() => setFnForm((f) => ({ ...f, standard_type: "text" }))}
-                        className="accent-pink-500"
-                      />
-                      Text (markdown)
-                    </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/75">
-                      <input
-                        type="radio"
-                        name="sop-standard-type"
-                        checked={fnForm.standard_type === "file"}
-                        onChange={() => setFnForm((f) => ({ ...f, standard_type: "file" }))}
-                        className="accent-pink-500"
-                      />
-                      File
-                    </label>
-                  </div>
-                  {fnForm.standard_type === "text" ? (
-                    <MarkdownField
-                      label="SOP content"
-                      value={fnForm.sop_content}
-                      onChange={(v) => setFnForm((f) => ({ ...f, sop_content: v }))}
-                      rows={10}
-                      placeholder="Step-by-step instructions (markdown)…"
-                    />
-                  ) : (
-                    <div className="space-y-3">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                        SOP file
-                      </p>
-                      {fnFileUploading ? (
-                        <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-                          <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                          Uploading…
-                        </div>
-                      ) : fnForm.sop_file_url.trim() ? (
-                        <div className="space-y-3">
-                          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                            <span className="min-w-0 flex-1 truncate text-sm text-white/80">
-                              {fnForm.sop_file_name || "Uploaded file"}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={clearFnFile}
-                              className="shrink-0 rounded-lg p-1.5 text-white/45 hover:bg-white/10 hover:text-white"
-                              aria-label="Remove file"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                          <FilePreview
-                            url={fnForm.sop_file_url}
-                            name={fnForm.sop_file_name}
-                            compact
-                          />
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => fnFileInputRef.current?.click()}
-                          className="inline-flex items-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-3 text-sm font-medium text-white/70 transition hover:border-pink-400/30 hover:bg-white/[0.06] hover:text-white"
-                        >
-                          <Upload className="h-4 w-4 text-pink-300/80" />
-                          Choose file
-                        </button>
-                      )}
-                      {fnFileUploadError ? (
-                        <p className="text-xs text-rose-300/90">{fnFileUploadError}</p>
-                      ) : null}
-                      {fnForm.sop_file_url.trim() && !fnFileUploading ? (
-                        <button
-                          type="button"
-                          onClick={() => fnFileInputRef.current?.click()}
-                          className="text-xs font-medium text-pink-300/80 hover:text-pink-200"
-                        >
-                          Replace file
-                        </button>
-                      ) : null}
-                    </div>
-                  )}
-                  <div>
-                    <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      Loom URL
-                    </label>
-                    <FormInput
-                      value={fnForm.loom_url}
-                      onChange={(e) => setFnForm((f) => ({ ...f, loom_url: e.target.value }))}
-                      placeholder="https://www.loom.com/share/…"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {fnEditing ? (
-                <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                      Quiz (optional)
-                    </p>
-                    <button
+                size="xl"
+                className={SOP_MODAL_CLASS}
+                footer={
+                  <SopModalFooter>
+                    <ButtonSecondary
                       type="button"
-                      onClick={() => setQuizDraft(emptyQuizDraft())}
-                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55 hover:border-pink-500/25 hover:text-white/85"
+                      className="min-h-[44px] flex-1 sm:min-w-[120px]"
+                      disabled={fnSaving || fnFileUploading}
+                      onClick={() => setFnModalOpen(false)}
                     >
-                      <Plus className="h-3 w-3" />
-                      Add question
-                    </button>
-                  </div>
-                  {loadingQuiz ? (
-                    <div className="flex justify-center py-4">
-                      <Spinner className="h-5 w-5 border-white/20 border-t-pink-400" />
-                    </div>
-                  ) : quizQuestions.length === 0 ? (
-                    <p className="text-xs text-white/40">No quiz questions — members can complete without a quiz.</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {quizQuestions.map((q, idx) => (
-                        <div
-                          key={q.id}
-                          className="flex items-start gap-2 rounded-lg border border-white/8 bg-white/[0.02] px-3 py-2"
+                      Cancel
+                    </ButtonSecondary>
+                    {fnEditing && standardSnapshot(fnForm) !== fnInitialStandard ? (
+                      <>
+                        <SubmitButton
+                          form="sop-fn-form"
+                          className="min-h-[44px] flex-1 !w-auto min-w-0"
+                          disabled={fnSaving || fnFileUploading}
                         >
-                          <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-white/85">{q.question}</p>
-                            <p className="mt-0.5 text-[10px] text-white/40">
-                              Correct: {q.correct_option.toUpperCase()}
-                            </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <button
-                              type="button"
-                              disabled={idx === 0}
-                              onClick={() => void moveQuizQuestion(q.id, "up")}
-                              className="rounded p-1 text-white/40 hover:bg-white/10 disabled:opacity-30"
-                              aria-label="Move up"
-                            >
-                              <ChevronDown className="h-3.5 w-3.5 rotate-180" />
-                            </button>
-                            <button
-                              type="button"
-                              disabled={idx === quizQuestions.length - 1}
-                              onClick={() => void moveQuizQuestion(q.id, "down")}
-                              className="rounded p-1 text-white/40 hover:bg-white/10 disabled:opacity-30"
-                              aria-label="Move down"
-                            >
-                              <ChevronDown className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setQuizDraft({
-                                  id: q.id,
-                                  question: q.question,
-                                  option_a: q.option_a,
-                                  option_b: q.option_b,
-                                  option_c: q.option_c,
-                                  option_d: q.option_d,
-                                  correct_option: q.correct_option,
-                                })
-                              }
-                              className="rounded p-1 text-white/50 hover:bg-white/10"
-                            >
-                              <Pencil className="h-3.5 w-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deleteQuizQuestion(q.id)}
-                              className="rounded p-1 text-rose-300/70 hover:bg-rose-500/15"
-                            >
-                              <Trash2 className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {quizDraft ? (
-                    <div className="space-y-3 rounded-lg border border-pink-500/20 bg-pink-500/5 p-3">
-                      <FormTextarea
-                        value={quizDraft.question}
-                        onChange={(e) => setQuizDraft((d) => (d ? { ...d, question: e.target.value } : d))}
-                        rows={2}
-                        placeholder="Question text…"
-                      />
-                      {(["a", "b", "c", "d"] as const).map((opt) => (
-                        <div key={opt} className="flex items-center gap-2">
-                          <input
-                            type="radio"
-                            name="quiz-correct"
-                            checked={quizDraft.correct_option === opt}
-                            onChange={() => setQuizDraft((d) => (d ? { ...d, correct_option: opt } : d))}
-                            className="accent-pink-500"
-                          />
-                          <span className="w-4 text-xs font-bold uppercase text-white/40">{opt}</span>
-                          <FormInput
-                            value={quizDraft[`option_${opt}`]}
-                            onChange={(e) =>
-                              setQuizDraft((d) =>
-                                d ? { ...d, [`option_${opt}`]: e.target.value } : d
-                              )
-                            }
-                            placeholder={`Option ${opt.toUpperCase()}`}
-                            className="flex-1"
-                          />
-                        </div>
-                      ))}
-                      <div className="flex gap-2">
-                        <ButtonSecondary
-                          type="button"
-                          className="flex-1"
-                          onClick={() => setQuizDraft(null)}
-                        >
-                          Cancel
-                        </ButtonSecondary>
+                          {fnSaving ? (
+                            <span className="inline-flex items-center justify-center gap-2">
+                              <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                              Saving…
+                            </span>
+                          ) : (
+                            "Save"
+                          )}
+                        </SubmitButton>
                         <ButtonPrimary
                           type="button"
-                          className="flex-1"
-                          disabled={quizSaving}
-                          onClick={() => void saveQuizQuestion()}
+                          className="min-h-[44px] flex-1 min-w-0"
+                          disabled={fnSaving || fnFileUploading}
+                          onClick={(e) => void saveFunction(e as unknown as React.FormEvent, true)}
                         >
-                          {quizSaving ? "Saving…" : quizDraft.id ? "Update question" : "Add question"}
+                          Save & require re-training
                         </ButtonPrimary>
+                      </>
+                    ) : (
+                      <SubmitButton
+                        form="sop-fn-form"
+                        className="min-h-[44px] flex-1 !w-auto min-w-0"
+                        disabled={fnSaving || fnFileUploading}
+                      >
+                        {fnSaving ? (
+                          <span className="inline-flex items-center justify-center gap-2">
+                            <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                            Saving…
+                          </span>
+                        ) : (
+                          "Save"
+                        )}
+                      </SubmitButton>
+                    )}
+                  </SopModalFooter>
+                }
+              >
+                <input
+                  ref={fnFileInputRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    void handleFnFileSelect(file);
+                  }}
+                />
+                <div className="space-y-4 px-4 py-4 md:px-5 md:py-5">
+                  <form id="sop-fn-form" onSubmit={saveFunction} className="space-y-4">
+                    <SopFormSection
+                      title="Basics"
+                      description="Name, department, cadence, and KPI"
+                      defaultOpen
+                    >
+                      <div>
+                        <SopFormLabel htmlFor="sop-fn-name">Function</SopFormLabel>
+                        <FormInput
+                          id="sop-fn-name"
+                          value={fnForm.name}
+                          onChange={(e) => setFnForm((f) => ({ ...f, name: e.target.value }))}
+                          placeholder="e.g. Morning inbox sweep"
+                          required
+                        />
                       </div>
-                    </div>
+                      <div>
+                        <SopFormLabel htmlFor="sop-fn-dept">Department</SopFormLabel>
+                        <FormSelect
+                          id="sop-fn-dept"
+                          value={fnForm.department_id}
+                          onChange={(e) => setFnForm((f) => ({ ...f, department_id: e.target.value }))}
+                        >
+                          <option value="">— None —</option>
+                          {departments.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
+                        </FormSelect>
+                      </div>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        <div>
+                          <SopFormLabel htmlFor="sop-fn-cadence">Cadence</SopFormLabel>
+                          <FormSelect
+                            id="sop-fn-cadence"
+                            value={fnForm.cadence_type}
+                            onChange={(e) =>
+                              setFnForm((f) => ({
+                                ...f,
+                                cadence_type: e.target.value as CadenceType,
+                              }))
+                            }
+                          >
+                            {CADENCE_TYPES.map((c) => (
+                              <option key={c} value={c}>
+                                {CADENCE_LABELS[c]}
+                              </option>
+                            ))}
+                          </FormSelect>
+                        </div>
+                        <div>
+                          <SopFormLabel htmlFor="sop-fn-cadence-note">Cadence note</SopFormLabel>
+                          <FormInput
+                            id="sop-fn-cadence-note"
+                            value={fnForm.cadence_note}
+                            onChange={(e) => setFnForm((f) => ({ ...f, cadence_note: e.target.value }))}
+                            placeholder="e.g. Mon & Thu"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <SopFormLabel htmlFor="sop-fn-kpi">KPI</SopFormLabel>
+                        <FormTextarea
+                          id="sop-fn-kpi"
+                          value={fnForm.kpi}
+                          onChange={(e) => setFnForm((f) => ({ ...f, kpi: e.target.value }))}
+                          rows={3}
+                          placeholder="How success is measured…"
+                        />
+                      </div>
+                      <div className="sm:max-w-[50%]">
+                        <SopFormLabel htmlFor="sop-fn-minutes">Est. minutes (academy)</SopFormLabel>
+                        <FormInput
+                          id="sop-fn-minutes"
+                          type="number"
+                          inputMode="numeric"
+                          min={1}
+                          max={600}
+                          value={fnForm.estimated_minutes}
+                          onChange={(e) =>
+                            setFnForm((f) => ({ ...f, estimated_minutes: e.target.value }))
+                          }
+                          placeholder="e.g. 5"
+                        />
+                      </div>
+                      <Checkbox
+                        checked={fnForm.is_active}
+                        onChange={(e) => setFnForm((f) => ({ ...f, is_active: e.target.checked }))}
+                        label="Active"
+                      />
+                    </SopFormSection>
+
+                    <SopFormSection
+                      title="Standard"
+                      description="SOP content as markdown or file, plus optional Loom"
+                      defaultOpen={false}
+                    >
+                      <div>
+                        <SopFormLabel className="mb-3">Content type</SopFormLabel>
+                        <SopSegmentedToggle
+                          name="sop-standard-type"
+                          value={fnForm.standard_type}
+                          onChange={(v) => setFnForm((f) => ({ ...f, standard_type: v }))}
+                          options={[
+                            { value: "text", label: "Text (markdown)" },
+                            { value: "file", label: "File upload" },
+                          ]}
+                        />
+                      </div>
+                      {fnForm.standard_type === "text" ? (
+                        <SopMarkdownField
+                          label="SOP content"
+                          value={fnForm.sop_content}
+                          onChange={(v) => setFnForm((f) => ({ ...f, sop_content: v }))}
+                          rows={10}
+                          placeholder="Step-by-step instructions (markdown)…"
+                        />
+                      ) : (
+                        <div className="space-y-3">
+                          <SopFormLabel>SOP file</SopFormLabel>
+                          {fnFileUploading ? (
+                            <div className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                              <Spinner className="h-5 w-5 border-white/40 border-t-white" />
+                              Uploading…
+                            </div>
+                          ) : fnForm.sop_file_url.trim() ? (
+                            <div className="space-y-3">
+                              <div className="flex min-h-[52px] items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                                <span className="min-w-0 flex-1 truncate text-sm text-white/80">
+                                  {fnForm.sop_file_name || "Uploaded file"}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={clearFnFile}
+                                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-white/45 transition hover:bg-white/10 hover:text-white"
+                                  aria-label="Remove file"
+                                >
+                                  <X className="h-5 w-5" />
+                                </button>
+                              </div>
+                              <FilePreview
+                                url={fnForm.sop_file_url}
+                                name={fnForm.sop_file_name}
+                                compact
+                              />
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => fnFileInputRef.current?.click()}
+                              className="flex min-h-[52px] w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-4 text-sm font-medium text-white/70 transition hover:border-pink-400/30 hover:bg-white/[0.06] hover:text-white"
+                            >
+                              <Upload className="h-5 w-5 text-pink-300/80" />
+                              Choose file
+                            </button>
+                          )}
+                          {fnFileUploadError ? (
+                            <p className="text-xs text-rose-300/95" role="alert">
+                              {fnFileUploadError}
+                            </p>
+                          ) : null}
+                          {fnForm.sop_file_url.trim() && !fnFileUploading ? (
+                            <button
+                              type="button"
+                              onClick={() => fnFileInputRef.current?.click()}
+                              className="min-h-[44px] text-sm font-medium text-pink-300/80 hover:text-pink-200"
+                            >
+                              Replace file
+                            </button>
+                          ) : null}
+                        </div>
+                      )}
+                      <div>
+                        <SopFormLabel htmlFor="sop-fn-loom">Loom URL</SopFormLabel>
+                        <FormInput
+                          id="sop-fn-loom"
+                          type="url"
+                          inputMode="url"
+                          autoComplete="url"
+                          value={fnForm.loom_url}
+                          onChange={(e) => setFnForm((f) => ({ ...f, loom_url: e.target.value }))}
+                          placeholder="https://www.loom.com/share/…"
+                        />
+                      </div>
+                    </SopFormSection>
+                  </form>
+
+                  {fnEditing ? (
+                    <SopFormSection
+                      title="Quiz"
+                      description="Optional questions — members can complete without a quiz"
+                      defaultOpen={false}
+                    >
+                      <div className="flex items-center justify-end">
+                        <button
+                          type="button"
+                          onClick={() => setQuizDraft(emptyQuizDraft())}
+                          className="inline-flex min-h-[44px] items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-white/65 transition hover:border-pink-500/25 hover:text-white/90"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add question
+                        </button>
+                      </div>
+                      {loadingQuiz ? (
+                        <div className="flex justify-center py-6">
+                          <Spinner className="h-6 w-6 border-white/20 border-t-pink-400" />
+                        </div>
+                      ) : quizQuestions.length === 0 ? (
+                        <p className="text-sm text-white/40">
+                          No quiz questions — members can complete without a quiz.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {quizQuestions.map((q, idx) => (
+                            <div
+                              key={q.id}
+                              className="flex items-start gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-3"
+                            >
+                              <div className="min-w-0 flex-1">
+                                <p className="text-sm font-medium leading-snug text-white/85">
+                                  {q.question}
+                                </p>
+                                <p className="mt-1 text-xs text-white/40">
+                                  Correct: {q.correct_option.toUpperCase()}
+                                </p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-1">
+                                <button
+                                  type="button"
+                                  disabled={idx === 0}
+                                  onClick={() => void moveQuizQuestion(q.id, "up")}
+                                  className="flex h-11 w-11 items-center justify-center rounded-xl text-white/45 transition hover:bg-white/10 disabled:opacity-30"
+                                  aria-label="Move up"
+                                >
+                                  <ChevronDown className="h-5 w-5 rotate-180" />
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={idx === quizQuestions.length - 1}
+                                  onClick={() => void moveQuizQuestion(q.id, "down")}
+                                  className="flex h-11 w-11 items-center justify-center rounded-xl text-white/45 transition hover:bg-white/10 disabled:opacity-30"
+                                  aria-label="Move down"
+                                >
+                                  <ChevronDown className="h-5 w-5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setQuizDraft({
+                                      id: q.id,
+                                      question: q.question,
+                                      option_a: q.option_a,
+                                      option_b: q.option_b,
+                                      option_c: q.option_c,
+                                      option_d: q.option_d,
+                                      correct_option: q.correct_option,
+                                    })
+                                  }
+                                  className="flex h-11 w-11 items-center justify-center rounded-xl text-white/55 transition hover:bg-white/10"
+                                  aria-label="Edit question"
+                                >
+                                  <Pencil className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void deleteQuizQuestion(q.id)}
+                                  className="flex h-11 w-11 items-center justify-center rounded-xl text-rose-300/80 transition hover:bg-rose-500/15"
+                                  aria-label="Delete question"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {quizDraft ? (
+                        <div className="space-y-4 rounded-xl border border-pink-500/25 bg-pink-500/[0.06] p-4">
+                          <FormTextarea
+                            value={quizDraft.question}
+                            onChange={(e) =>
+                              setQuizDraft((d) => (d ? { ...d, question: e.target.value } : d))
+                            }
+                            rows={3}
+                            placeholder="Question text…"
+                          />
+                          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                            Tap the correct answer
+                          </p>
+                          <div className="space-y-3">
+                            {(["a", "b", "c", "d"] as const).map((opt) => (
+                              <label
+                                key={opt}
+                                className={cn(
+                                  "flex min-h-[52px] cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 transition",
+                                  quizDraft.correct_option === opt
+                                    ? "border-pink-500/40 bg-pink-500/10"
+                                    : "border-white/10 bg-white/[0.02] hover:border-white/20"
+                                )}
+                              >
+                                <input
+                                  type="radio"
+                                  name="quiz-correct"
+                                  checked={quizDraft.correct_option === opt}
+                                  onChange={() =>
+                                    setQuizDraft((d) => (d ? { ...d, correct_option: opt } : d))
+                                  }
+                                  className="h-5 w-5 shrink-0 accent-pink-500"
+                                />
+                                <span className="w-5 text-xs font-bold uppercase text-white/45">
+                                  {opt}
+                                </span>
+                                <FormInput
+                                  value={quizDraft[`option_${opt}`]}
+                                  onChange={(e) =>
+                                    setQuizDraft((d) =>
+                                      d ? { ...d, [`option_${opt}`]: e.target.value } : d
+                                    )
+                                  }
+                                  placeholder={`Option ${opt.toUpperCase()}`}
+                                  className="flex-1"
+                                />
+                              </label>
+                            ))}
+                          </div>
+                          <div className="flex flex-col gap-3 sm:flex-row">
+                            <ButtonSecondary
+                              type="button"
+                              className="min-h-[44px] flex-1"
+                              onClick={() => setQuizDraft(null)}
+                            >
+                              Cancel
+                            </ButtonSecondary>
+                            <ButtonPrimary
+                              type="button"
+                              className="min-h-[44px] flex-1"
+                              disabled={quizSaving}
+                              onClick={() => void saveQuizQuestion()}
+                            >
+                              {quizSaving ? "Saving…" : quizDraft.id ? "Update question" : "Add question"}
+                            </ButtonPrimary>
+                          </div>
+                        </div>
+                      ) : null}
+                    </SopFormSection>
                   ) : null}
                 </div>
-              ) : null}
-
-              <div className="flex flex-wrap gap-3 pt-2">
-                <ButtonSecondary
-                  type="button"
-                  className="flex-1 min-w-[120px]"
-                  disabled={fnSaving || fnFileUploading}
-                  onClick={() => setFnModalOpen(false)}
-                >
-                  Cancel
-                </ButtonSecondary>
-                {fnEditing && standardSnapshot(fnForm) !== fnInitialStandard ? (
-                  <>
-                    <SubmitButton
-                      form="sop-fn-form"
-                      className="flex-1 !w-auto min-w-0"
-                      disabled={fnSaving || fnFileUploading}
-                    >
-                      {fnSaving ? (
-                        <span className="inline-flex items-center justify-center gap-2">
-                          <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                          Saving…
-                        </span>
-                      ) : (
-                        "Save"
-                      )}
-                    </SubmitButton>
-                    <ButtonPrimary
-                      type="button"
-                      className="flex-1 min-w-0"
-                      disabled={fnSaving || fnFileUploading}
-                      onClick={(e) => void saveFunction(e as unknown as React.FormEvent, true)}
-                    >
-                      Save & require re-training
-                    </ButtonPrimary>
-                  </>
-                ) : (
-                  <SubmitButton
-                    form="sop-fn-form"
-                    className="flex-1 !w-auto min-w-0"
-                    disabled={fnSaving || fnFileUploading}
-                  >
-                    {fnSaving ? (
-                      <span className="inline-flex items-center justify-center gap-2">
-                        <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                        Saving…
-                      </span>
-                    ) : (
-                      "Save"
-                    )}
-                  </SubmitButton>
-                )}
-              </div>
-            </div>
-              </GlassModal>
+              </SopModalShell>
             ) : null}
           </AnimatePresence>
 
@@ -2452,232 +2433,258 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
 
         <AnimatePresence>
           {deptModalOpen ? (
-            <GlassModal
+            <SopModalShell
               onClose={() => !deptSaving && setDeptModalOpen(false)}
+              closeDisabled={deptSaving}
               title={deptEditing ? "Edit department" : "New department"}
               subtitle="Group functions by department with a color badge."
-              className={cn(SOP_MODAL_CLASS, "md:max-w-md")}
+              size="sm"
+              className={SOP_MODAL_CLASS}
+              footer={
+                <SopModalFooter>
+                  <ButtonSecondary
+                    type="button"
+                    className="min-h-[44px] flex-1"
+                    disabled={deptSaving}
+                    onClick={() => setDeptModalOpen(false)}
+                  >
+                    Cancel
+                  </ButtonSecondary>
+                  <SubmitButton
+                    form="sop-dept-form"
+                    className="min-h-[44px] flex-1 !w-auto min-w-0"
+                    disabled={deptSaving}
+                  >
+                    {deptSaving ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                        Saving…
+                      </span>
+                    ) : (
+                      "Save"
+                    )}
+                  </SubmitButton>
+                </SopModalFooter>
+              }
             >
-          <form onSubmit={saveDept} className="space-y-4 px-4 pb-5 pt-2 md:px-5">
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Name
-              </label>
-              <FormInput
-                value={deptForm.name}
-                onChange={(e) => setDeptForm((f) => ({ ...f, name: e.target.value }))}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Color
-              </label>
-              <ColorSelect
-                value={deptForm.color}
-                onChange={(c) => setDeptForm((f) => ({ ...f, color: c }))}
-              />
-            </div>
-            <Checkbox
-              checked={deptForm.is_active}
-              onChange={(e) => setDeptForm((f) => ({ ...f, is_active: e.target.checked }))}
-              label="Active"
-            />
-            <div className="flex gap-3 pt-2">
-              <ButtonSecondary
-                type="button"
-                className="flex-1"
-                disabled={deptSaving}
-                onClick={() => setDeptModalOpen(false)}
+              <form
+                id="sop-dept-form"
+                onSubmit={saveDept}
+                className="space-y-5 px-4 py-4 md:px-5 md:py-5"
               >
-                Cancel
-              </ButtonSecondary>
-              <SubmitButton className="flex-1 !w-auto min-w-0" disabled={deptSaving}>
-                {deptSaving ? (
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                    Saving…
-                  </span>
-                ) : (
-                  "Save"
-                )}
-              </SubmitButton>
-            </div>
-          </form>
-            </GlassModal>
+                <div>
+                  <SopFormLabel htmlFor="sop-dept-name">Name</SopFormLabel>
+                  <FormInput
+                    id="sop-dept-name"
+                    value={deptForm.name}
+                    onChange={(e) => setDeptForm((f) => ({ ...f, name: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div>
+                  <SopFormLabel htmlFor="sop-dept-color">Color</SopFormLabel>
+                  <ColorSelect
+                    id="sop-dept-color"
+                    value={deptForm.color}
+                    onChange={(c) => setDeptForm((f) => ({ ...f, color: c }))}
+                  />
+                </div>
+                <Checkbox
+                  checked={deptForm.is_active}
+                  onChange={(e) => setDeptForm((f) => ({ ...f, is_active: e.target.checked }))}
+                  label="Active"
+                />
+              </form>
+            </SopModalShell>
           ) : null}
         </AnimatePresence>
 
         <AnimatePresence>
           {roleModalOpen ? (
-            <GlassModal
+            <SopModalShell
               onClose={() => !roleSaving && setRoleModalOpen(false)}
+              closeDisabled={roleSaving}
               title={roleEditing ? "Edit role" : "New role"}
               subtitle="Who sees this SOP role and which users it applies to."
-              className={cn(SOP_MODAL_CLASS, "md:max-w-lg")}
+              size="lg"
+              className={SOP_MODAL_CLASS}
+              footer={
+                <SopModalFooter>
+                  <ButtonSecondary
+                    type="button"
+                    className="min-h-[44px] flex-1"
+                    disabled={roleSaving}
+                    onClick={() => setRoleModalOpen(false)}
+                  >
+                    Cancel
+                  </ButtonSecondary>
+                  <SubmitButton
+                    form="sop-role-form"
+                    className="min-h-[44px] flex-1 !w-auto min-w-0"
+                    disabled={roleSaving}
+                  >
+                    {roleSaving ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                        Saving…
+                      </span>
+                    ) : (
+                      "Save"
+                    )}
+                  </SubmitButton>
+                </SopModalFooter>
+              }
             >
-          <form onSubmit={saveRole} className="max-h-[70vh] space-y-4 overflow-y-auto px-4 pb-5 pt-2 md:px-5">
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Icon
-              </label>
-              <SopIconPicker
-                value={roleForm.icon}
-                onChange={(icon) => setRoleForm((f) => ({ ...f, icon }))}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Name
-              </label>
-              <FormInput
-                value={roleForm.name}
-                onChange={(e) => updateRoleName(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Slug
-              </label>
-              <FormInput
-                value={roleForm.slug}
-                onChange={(e) =>
-                  setRoleForm((f) => ({ ...f, slug: e.target.value, slugManual: true }))
-                }
-                placeholder="auto-from-name"
-                required
-              />
-            </div>
-            <MarkdownField
-              label="Description"
-              value={roleForm.description}
-              onChange={(v) => setRoleForm((f) => ({ ...f, description: v }))}
-              rows={4}
-            />
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Color
-              </label>
-              <ColorSelect
-                value={roleForm.color}
-                onChange={(c) => setRoleForm((f) => ({ ...f, color: c }))}
-              />
-            </div>
-            <div>
-              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Department
-              </label>
-              <FormSelect
-                value={roleForm.department_id}
-                onChange={(e) => setRoleForm((f) => ({ ...f, department_id: e.target.value }))}
-              >
-                <option value="">— None —</option>
-                {departments.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </FormSelect>
-            </div>
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Auth roles (who can see)
-              </p>
-              <div className="grid grid-cols-2 gap-2">
-                {AUTH_ROLES.map((ar) => (
-                  <Checkbox
-                    key={ar}
-                    checked={roleForm.auth_roles.includes(ar)}
-                    onChange={(e) => {
-                      setRoleForm((f) => ({
-                        ...f,
-                        auth_roles: e.target.checked
-                          ? [...f.auth_roles, ar]
-                          : f.auth_roles.filter((x) => x !== ar),
-                      }));
-                    }}
-                    label={AUTH_ROLE_LABELS[ar]}
-                  />
-                ))}
-              </div>
-            </div>
-            <div>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
-                Assigned users
-              </p>
-              <FormInput
-                value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                placeholder="Search users…"
-                className="mb-2"
-              />
-              <div className="max-h-40 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-2">
-                {loadingUsers ? (
-                  <p className="py-4 text-center text-xs text-white/40">Loading users…</p>
-                ) : filteredUsers.length === 0 ? (
-                  <p className="py-4 text-center text-xs text-white/40">No users match</p>
-                ) : (
-                  filteredUsers.map((u) => (
-                    <Checkbox
-                      key={u.id}
-                      className="mb-1.5 last:mb-0"
-                      checked={roleForm.assigned_user_ids.includes(u.id)}
-                      onChange={(e) => {
-                        setRoleForm((f) => ({
-                          ...f,
-                          assigned_user_ids: e.target.checked
-                            ? [...f.assigned_user_ids, u.id]
-                            : f.assigned_user_ids.filter((id) => id !== u.id),
-                        }));
-                      }}
-                      label={
-                        <span>
-                          {u.name}{" "}
-                          <span className="text-white/35">({u.role})</span>
-                        </span>
-                      }
+              <form id="sop-role-form" onSubmit={saveRole} className="space-y-4 px-4 py-4 md:px-5 md:py-5">
+                <SopFormSection title="Identity" description="Icon, name, slug, and description" defaultOpen>
+                  <div>
+                    <SopFormLabel>Icon</SopFormLabel>
+                    <SopIconPicker
+                      value={roleForm.icon}
+                      onChange={(icon) => setRoleForm((f) => ({ ...f, icon }))}
                     />
-                  ))
-                )}
-              </div>
-            </div>
-            <Checkbox
-              checked={roleForm.academy_mode}
-              onChange={(e) => setRoleForm((f) => ({ ...f, academy_mode: e.target.checked }))}
-              label="Academy mode"
-            />
-            <p className="-mt-2 text-xs leading-relaxed text-white/40">
-              Gated step-by-step training: members complete one function at a time in sort order.
-              Progress is tracked per user for this role.
-            </p>
-            <Checkbox
-              checked={roleForm.is_active}
-              onChange={(e) => setRoleForm((f) => ({ ...f, is_active: e.target.checked }))}
-              label="Active"
-            />
-            <div className="flex gap-3 pt-2">
-              <ButtonSecondary
-                type="button"
-                className="flex-1"
-                disabled={roleSaving}
-                onClick={() => setRoleModalOpen(false)}
-              >
-                Cancel
-              </ButtonSecondary>
-              <SubmitButton className="flex-1 !w-auto min-w-0" disabled={roleSaving}>
-                {roleSaving ? (
-                  <span className="inline-flex items-center justify-center gap-2">
-                    <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                    Saving…
-                  </span>
-                ) : (
-                  "Save"
-                )}
-              </SubmitButton>
-            </div>
-          </form>
-            </GlassModal>
+                  </div>
+                  <div>
+                    <SopFormLabel htmlFor="sop-role-name">Name</SopFormLabel>
+                    <FormInput
+                      id="sop-role-name"
+                      value={roleForm.name}
+                      onChange={(e) => updateRoleName(e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <SopFormLabel htmlFor="sop-role-slug">Slug</SopFormLabel>
+                    <FormInput
+                      id="sop-role-slug"
+                      value={roleForm.slug}
+                      onChange={(e) =>
+                        setRoleForm((f) => ({ ...f, slug: e.target.value, slugManual: true }))
+                      }
+                      placeholder="auto-from-name"
+                      required
+                    />
+                  </div>
+                  <SopMarkdownField
+                    label="Description"
+                    value={roleForm.description}
+                    onChange={(v) => setRoleForm((f) => ({ ...f, description: v }))}
+                    rows={4}
+                  />
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div>
+                      <SopFormLabel htmlFor="sop-role-color">Color</SopFormLabel>
+                      <ColorSelect
+                        id="sop-role-color"
+                        value={roleForm.color}
+                        onChange={(c) => setRoleForm((f) => ({ ...f, color: c }))}
+                      />
+                    </div>
+                    <div>
+                      <SopFormLabel htmlFor="sop-role-dept">Department</SopFormLabel>
+                      <FormSelect
+                        id="sop-role-dept"
+                        value={roleForm.department_id}
+                        onChange={(e) =>
+                          setRoleForm((f) => ({ ...f, department_id: e.target.value }))
+                        }
+                      >
+                        <option value="">— None —</option>
+                        {departments.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {d.name}
+                          </option>
+                        ))}
+                      </FormSelect>
+                    </div>
+                  </div>
+                </SopFormSection>
+
+                <SopFormSection
+                  title="Access"
+                  description="Auth roles and assigned users"
+                  defaultOpen={false}
+                >
+                  <div>
+                    <SopFormLabel className="mb-3">Auth roles (who can see)</SopFormLabel>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {AUTH_ROLES.map((ar) => (
+                        <Checkbox
+                          key={ar}
+                          className="min-h-[44px] rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5"
+                          checked={roleForm.auth_roles.includes(ar)}
+                          onChange={(e) => {
+                            setRoleForm((f) => ({
+                              ...f,
+                              auth_roles: e.target.checked
+                                ? [...f.auth_roles, ar]
+                                : f.auth_roles.filter((x) => x !== ar),
+                            }));
+                          }}
+                          label={AUTH_ROLE_LABELS[ar]}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <SopFormLabel htmlFor="sop-role-user-search">Assigned users</SopFormLabel>
+                    <FormInput
+                      id="sop-role-user-search"
+                      value={userSearch}
+                      onChange={(e) => setUserSearch(e.target.value)}
+                      placeholder="Search users…"
+                      className="mb-3"
+                    />
+                    <div className="max-h-48 overflow-y-auto rounded-2xl border border-white/10 bg-black/25 p-3 sm:max-h-56">
+                      {loadingUsers ? (
+                        <p className="py-6 text-center text-sm text-white/40">Loading users…</p>
+                      ) : filteredUsers.length === 0 ? (
+                        <p className="py-6 text-center text-sm text-white/40">No users match</p>
+                      ) : (
+                        filteredUsers.map((u) => (
+                          <Checkbox
+                            key={u.id}
+                            className="mb-2 min-h-[44px] rounded-xl px-2 py-2 last:mb-0 hover:bg-white/[0.03]"
+                            checked={roleForm.assigned_user_ids.includes(u.id)}
+                            onChange={(e) => {
+                              setRoleForm((f) => ({
+                                ...f,
+                                assigned_user_ids: e.target.checked
+                                  ? [...f.assigned_user_ids, u.id]
+                                  : f.assigned_user_ids.filter((id) => id !== u.id),
+                              }));
+                            }}
+                            label={
+                              <span>
+                                {u.name}{" "}
+                                <span className="text-white/35">({u.role})</span>
+                              </span>
+                            }
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </SopFormSection>
+
+                <SopFormSection title="Settings" defaultOpen={false}>
+                  <Checkbox
+                    checked={roleForm.academy_mode}
+                    onChange={(e) => setRoleForm((f) => ({ ...f, academy_mode: e.target.checked }))}
+                    label="Academy mode"
+                  />
+                  <p className="text-xs leading-relaxed text-white/40">
+                    Gated step-by-step training: members complete one function at a time in sort
+                    order. Progress is tracked per user for this role.
+                  </p>
+                  <Checkbox
+                    checked={roleForm.is_active}
+                    onChange={(e) => setRoleForm((f) => ({ ...f, is_active: e.target.checked }))}
+                    label="Active"
+                  />
+                </SopFormSection>
+              </form>
+            </SopModalShell>
           ) : null}
         </AnimatePresence>
 
