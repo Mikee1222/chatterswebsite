@@ -2046,12 +2046,13 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                     </SopFormSection>
                   </form>
 
-                  {fnEditing ? (
-                    <SopFormSection
-                      title="Quiz"
-                      description="Optional questions — members can complete without a quiz"
-                      defaultOpen={false}
-                    >
+                  <SopFormSection
+                    title="Quiz"
+                    description="Optional questions — members can complete without a quiz"
+                    defaultOpen={false}
+                  >
+                    {fnEditing ? (
+                      <>
                       <div className="flex items-center justify-end">
                         <button
                           type="button"
@@ -2204,8 +2205,23 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                           </div>
                         </div>
                       ) : null}
-                    </SopFormSection>
-                  ) : null}
+                      </>
+                    ) : (
+                      <div className="rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-4">
+                        <p className="text-sm leading-relaxed text-white/45">
+                          Αποθήκευσε πρώτα τη function για να προσθέσεις ερωτήσεις quiz.
+                        </p>
+                        <button
+                          type="button"
+                          disabled
+                          className="mt-3 inline-flex min-h-[44px] cursor-not-allowed items-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-white/30"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add question
+                        </button>
+                      </div>
+                    )}
+                  </SopFormSection>
                 </div>
               </SopModalShell>
             ) : null}

@@ -68,6 +68,7 @@ scripts/smoke-sop-progress.ts
 scripts/smoke-sop-academy-polish.ts
 scripts/smoke-sop-academy-v2.ts
 scripts/smoke-*
+scripts/cleanup-sop-smoke-data.ts
 
 # Local junk / accidental copies
 .foo/

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -47,6 +48,8 @@ export function SopModalShell({
 }) {
   const reduce = useReducedMotion();
   const mobile = useMobileSheet();
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => setMounted(true), []);
 
   const panelMotion = reduce
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
@@ -62,9 +65,15 @@ export function SopModalShell({
           exit: { opacity: 0, scale: 0.96, y: 10 },
         };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <motion.div
-      className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4"
+      className={cn(
+        "sop-dark fixed z-50 flex items-end justify-center",
+        "inset-0",
+        "md:top-14 md:left-64 md:right-0 md:bottom-0 md:z-[25] md:items-center md:p-4"
+      )}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -81,8 +90,9 @@ export function SopModalShell({
         aria-modal="true"
         aria-labelledby="sop-modal-title"
         className={cn(
-          "sop-modal-panel relative flex w-full flex-col",
-          "h-[100dvh] max-h-[100dvh] rounded-none border-0 md:h-auto md:max-h-[calc(100dvh-2rem)] md:rounded-2xl md:border",
+          "sop-modal-panel relative flex w-full flex-col overflow-hidden",
+          "h-[100dvh] max-h-[100dvh] rounded-none border-0",
+          "md:h-auto md:max-h-[calc(100dvh-3.5rem-2rem)] md:rounded-2xl md:border",
           SIZE_CLASS[size],
           className
         )}
@@ -94,7 +104,7 @@ export function SopModalShell({
           ease: easeOut,
         }}
       >
-        <header className="sticky top-0 z-20 shrink-0 border-b border-white/10 bg-[rgba(10,10,16,0.96)] backdrop-blur-xl">
+        <header className="sticky top-0 z-20 shrink-0 border-b border-white/10 bg-[rgba(10,10,16,0.98)] backdrop-blur-xl">
           <div className="flex items-start gap-3 px-4 py-4 md:px-5">
             <div className="min-w-0 flex-1">
               <h2
@@ -123,11 +133,12 @@ export function SopModalShell({
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</div>
 
         {footer ? (
-          <footer className="sticky bottom-0 z-20 shrink-0 border-t border-white/10 bg-[rgba(10,10,16,0.96)] backdrop-blur-xl">
+          <footer className="sticky bottom-0 z-20 shrink-0 border-t border-white/10 bg-[rgba(10,10,16,0.98)] backdrop-blur-xl">
             <div className="px-4 py-4 md:px-5">{footer}</div>
           </footer>
         ) : null}
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }
