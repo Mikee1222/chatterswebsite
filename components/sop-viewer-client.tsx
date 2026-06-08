@@ -69,10 +69,6 @@ function sortFunctions(items: SopFunction[]): SopFunction[] {
   return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 }
 
-function sortDepartments(items: SopDepartment[]): SopDepartment[] {
-  return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
-}
-
 const NO_DEPT_GROUP_KEY = "__none__";
 
 type FnDeptGroup = {
@@ -81,51 +77,17 @@ type FnDeptGroup = {
   functions: SopFunction[];
 };
 
-function groupFunctionsByDepartment(
+function groupFunctionsForRole(
   functions: SopFunction[],
-  departments: SopDepartment[],
+  role: SopRole,
   departmentById: Map<string, SopDepartment>
 ): FnDeptGroup[] {
   const sorted = sortFunctions(functions);
-  const byDept = new Map<string, SopFunction[]>();
-  const noDept: SopFunction[] = [];
+  if (sorted.length === 0) return [];
 
-  for (const fn of sorted) {
-    const deptId = fn.department_id?.trim();
-    if (deptId) {
-      const list = byDept.get(deptId) ?? [];
-      list.push(fn);
-      byDept.set(deptId, list);
-    } else {
-      noDept.push(fn);
-    }
-  }
-
-  const groups: FnDeptGroup[] = [];
-  const seen = new Set<string>();
-
-  for (const dept of sortDepartments(departments)) {
-    const fns = byDept.get(dept.id);
-    if (fns?.length) {
-      groups.push({ key: dept.id, department: dept, functions: fns });
-      seen.add(dept.id);
-    }
-  }
-
-  for (const [deptId, fns] of byDept) {
-    if (seen.has(deptId)) continue;
-    groups.push({
-      key: deptId,
-      department: departmentById.get(deptId),
-      functions: fns,
-    });
-  }
-
-  if (noDept.length > 0) {
-    groups.push({ key: NO_DEPT_GROUP_KEY, department: undefined, functions: noDept });
-  }
-
-  return groups;
+  const deptId = role.department_id?.trim() ?? "";
+  const department = deptId ? departmentById.get(deptId) : undefined;
+  return [{ key: deptId || NO_DEPT_GROUP_KEY, department, functions: sorted }];
 }
 
 type StepStatus = "completed" | "current" | "locked" | "stale";
@@ -362,7 +324,7 @@ function AcademyStepper({
   activeId,
   onSelect,
   roleColor,
-  departmentById,
+  roleDepartment,
 }: {
   sorted: SopFunction[];
   completed: Set<string>;
@@ -370,7 +332,7 @@ function AcademyStepper({
   activeId: string;
   onSelect: (id: string) => void;
   roleColor: SopColor;
-  departmentById?: Map<string, SopDepartment>;
+  roleDepartment?: SopDepartment;
 }) {
   const motionCfg = useSopMotion();
   const cfg = SOP_COLOR_STYLES[roleColor];
@@ -381,7 +343,7 @@ function AcademyStepper({
         const status = getStepStatus(fn.id, sorted, completed, stale);
         const active = fn.id === activeId;
         const clickable = status === "completed" || status === "current" || status === "stale";
-        const dept = departmentById?.get(fn.department_id);
+        const dept = roleDepartment;
         const deptStyle = dept ? SOP_COLOR_STYLES[dept.color] : null;
 
         return (
@@ -461,6 +423,9 @@ function AcademyRoleContent({
   const { role, functions } = bundle;
   const roleStyle = SOP_COLOR_STYLES[role.color];
   const sorted = sortFunctions(functions.filter((f) => f.is_active));
+  const roleDepartment = role.department_id
+    ? departmentById.get(role.department_id)
+    : undefined;
   const total = sorted.length;
   const { completed: completedIds, stale: staleIds, signoff } = progressState;
   const completedCount = sorted.filter((f) => completedIds.has(f.id) && !staleIds.has(f.id)).length;
@@ -763,7 +728,7 @@ function AcademyRoleContent({
               activeId={activeFnId}
               onSelect={setActiveFnId}
               roleColor={role.color}
-              departmentById={departmentById}
+              roleDepartment={roleDepartment}
             />
           </div>
           {activeFn ? (
@@ -776,7 +741,7 @@ function AcademyRoleContent({
             >
               <FunctionStandardBody
                 fn={activeFn}
-                department={departmentById.get(activeFn.department_id)}
+                department={roleDepartment}
                 roleId={role.id}
                 showFeedback
               />
@@ -830,7 +795,7 @@ function AcademyRoleContent({
               activeId={activeFnId}
               onSelect={setActiveFnId}
               roleColor={role.color}
-              departmentById={departmentById}
+              roleDepartment={roleDepartment}
             />
           </section>
 
@@ -847,7 +812,7 @@ function AcademyRoleContent({
               >
                 <FunctionStandardBody
                   fn={activeFn}
-                  department={departmentById.get(activeFn.department_id)}
+                  department={roleDepartment}
                   showUpdatedBadge={staleIds.has(activeFn.id)}
                 />
                 {canComplete ? (
@@ -905,19 +870,20 @@ function AcademyRoleContent({
 function RoleContent({
   bundle,
   departmentById,
-  departments,
 }: {
   bundle: SopRoleBundle;
   departmentById: Map<string, SopDepartment>;
-  departments: SopDepartment[];
 }) {
   const motionCfg = useSopMotion();
   const { role, functions } = bundle;
   const roleStyle = SOP_COLOR_STYLES[role.color];
   const sorted = sortFunctions(functions);
+  const roleDepartment = role.department_id
+    ? departmentById.get(role.department_id)
+    : undefined;
   const fnGroups = React.useMemo(
-    () => groupFunctionsByDepartment(sorted, departments, departmentById),
-    [sorted, departments, departmentById]
+    () => groupFunctionsForRole(sorted, role, departmentById),
+    [sorted, role, departmentById]
   );
 
   return (
@@ -994,7 +960,7 @@ function RoleContent({
                       <FunctionCard
                         key={fn.id}
                         fn={fn}
-                        department={departmentById.get(fn.department_id)}
+                        department={roleDepartment}
                         roleId={role.id}
                       />
                     ))}
@@ -1176,7 +1142,6 @@ export function SopViewerClient({
                       key={activeBundle.role.id}
                       bundle={activeBundle}
                       departmentById={departmentById}
-                      departments={departments}
                     />
                   )
                 ) : null}

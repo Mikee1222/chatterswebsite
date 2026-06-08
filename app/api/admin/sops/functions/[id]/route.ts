@@ -10,7 +10,6 @@ function isStaffAdmin(session: { role: string } | null): boolean {
 const patchSchema = z.object({
   sop_role_id: z.string().trim().min(1).optional(),
   name: z.string().trim().min(1).max(200).optional(),
-  department_id: z.string().optional(),
   kpi: z.string().max(8000).optional(),
   standard_type: z.enum(["text", "file"]).optional(),
   sop_content: z.string().max(50000).optional(),

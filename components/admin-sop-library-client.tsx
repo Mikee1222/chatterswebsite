@@ -247,51 +247,17 @@ function flattenRoleGroups(groups: RoleDeptGroup[]): SopRole[] {
   return groups.flatMap((g) => g.roles);
 }
 
-function groupFunctionsByDepartment(
+function groupFunctionsForRole(
   functions: SopFunction[],
-  departments: SopDepartment[],
+  role: SopRole | null,
   deptById: Map<string, SopDepartment>
 ): FnDeptGroup[] {
   const sorted = sortFunctions(functions);
-  const byDept = new Map<string, SopFunction[]>();
-  const noDept: SopFunction[] = [];
+  if (sorted.length === 0) return [];
 
-  for (const fn of sorted) {
-    const deptId = fn.department_id?.trim();
-    if (deptId) {
-      const list = byDept.get(deptId) ?? [];
-      list.push(fn);
-      byDept.set(deptId, list);
-    } else {
-      noDept.push(fn);
-    }
-  }
-
-  const groups: FnDeptGroup[] = [];
-  const seen = new Set<string>();
-
-  for (const dept of sortDepartments(departments)) {
-    const fns = byDept.get(dept.id);
-    if (fns?.length) {
-      groups.push({ key: dept.id, department: dept, functions: fns });
-      seen.add(dept.id);
-    }
-  }
-
-  for (const [deptId, fns] of byDept) {
-    if (seen.has(deptId)) continue;
-    groups.push({
-      key: deptId,
-      department: deptById.get(deptId),
-      functions: fns,
-    });
-  }
-
-  if (noDept.length > 0) {
-    groups.push({ key: NO_DEPT_GROUP_KEY, department: undefined, functions: noDept });
-  }
-
-  return groups;
+  const deptId = role?.department_id?.trim() ?? "";
+  const department = deptId ? deptById.get(deptId) : undefined;
+  return [{ key: deptId || NO_DEPT_GROUP_KEY, department, functions: sorted }];
 }
 
 function flattenFnGroups(groups: FnDeptGroup[]): SopFunction[] {
@@ -589,7 +555,6 @@ type RoleForm = {
 };
 type FunctionForm = {
   name: string;
-  department_id: string;
   kpi: string;
   standard_type: StandardType;
   sop_content: string;
@@ -641,10 +606,9 @@ function roleToForm(r: SopRole): RoleForm {
   };
 }
 
-function emptyFunctionForm(deptId = ""): FunctionForm {
+function emptyFunctionForm(): FunctionForm {
   return {
     name: "",
-    department_id: deptId,
     kpi: "",
     standard_type: "text",
     sop_content: "",
@@ -660,7 +624,6 @@ function emptyFunctionForm(deptId = ""): FunctionForm {
 function fnToForm(f: SopFunction): FunctionForm {
   return {
     name: f.name,
-    department_id: f.department_id,
     kpi: f.kpi,
     standard_type: f.standard_type,
     sop_content: f.sop_content,
@@ -861,8 +824,8 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   );
 
   const fnGroups = React.useMemo(
-    () => groupFunctionsByDepartment(functions, departments, deptById),
-    [functions, departments, deptById]
+    () => groupFunctionsForRole(functions, selectedRole, deptById),
+    [functions, selectedRole, deptById]
   );
 
   const filteredUsers = React.useMemo(() => {
@@ -1136,9 +1099,8 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   }
 
   function openFnCreate() {
-    const defaultDept = departments.find((d) => d.is_active)?.id ?? "";
     setFnEditing(null);
-    setFnForm(emptyFunctionForm(defaultDept));
+    setFnForm(emptyFunctionForm());
     setFnInitialStandard("");
     setQuizQuestions([]);
     setQuizDraft(null);
@@ -1297,7 +1259,6 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
       const payload = {
         sop_role_id: selectedRole.id,
         name: fnForm.name.trim(),
-        department_id: fnForm.department_id,
         kpi: fnForm.kpi,
         standard_type: fnForm.standard_type,
         sop_content: fnForm.standard_type === "text" ? fnForm.sop_content : "",
@@ -1700,7 +1661,11 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                                   <SortableFunctionRow
                                     key={fn.id}
                                     fn={fn}
-                                    department={deptById.get(fn.department_id)}
+                                    department={
+                                      selectedRole.department_id
+                                        ? deptById.get(selectedRole.department_id)
+                                        : undefined
+                                    }
                                     onEdit={openFnEdit}
                                     onDelete={(f) => void openDeleteConfirm({ type: "function", item: f })}
                                   />
@@ -1833,7 +1798,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                   <form id="sop-fn-form" onSubmit={saveFunction} className="space-y-4">
                     <SopFormSection
                       title="Basics"
-                      description="Name, department, cadence, and KPI"
+                      description="Name, cadence, and KPI (department inherited from role)"
                       defaultOpen
                     >
                       <div>
@@ -1844,18 +1809,6 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                           onChange={(e) => setFnForm((f) => ({ ...f, name: e.target.value }))}
                           placeholder="e.g. Morning inbox sweep"
                           required
-                        />
-                      </div>
-                      <div>
-                        <SopFormLabel htmlFor="sop-fn-dept">Department</SopFormLabel>
-                        <SopSelect
-                          id="sop-fn-dept"
-                          value={fnForm.department_id}
-                          onChange={(v) => setFnForm((f) => ({ ...f, department_id: v }))}
-                          options={[
-                            { value: "", label: "— None —" },
-                            ...departments.map((d) => ({ value: d.id, label: d.name })),
-                          ]}
                         />
                       </div>
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -1901,12 +1854,15 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                           fn={{
                             ...fnEditing,
                             name: fnForm.name.trim() || fnEditing.name,
-                            department_id: fnForm.department_id,
                             kpi: fnForm.kpi,
                             cadence_type: fnForm.cadence_type,
                             cadence_note: fnForm.cadence_note,
                           }}
-                          department={departments.find((d) => d.id === fnForm.department_id)}
+                          department={
+                            selectedRole?.department_id
+                              ? deptById.get(selectedRole.department_id)
+                              : undefined
+                          }
                           compact
                         />
                       ) : null}

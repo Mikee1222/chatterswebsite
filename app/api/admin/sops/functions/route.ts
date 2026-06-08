@@ -14,7 +14,6 @@ const standardTypeSchema = z.enum(["text", "file"]);
 const postSchema = z.object({
   sop_role_id: z.string().trim().min(1),
   name: z.string().trim().min(1).max(200),
-  department_id: z.string().trim().min(1).optional().default(""),
   kpi: z.string().max(8000).optional().default(""),
   standard_type: standardTypeSchema.optional().default("text"),
   sop_content: z.string().max(50000).optional().default(""),
@@ -71,7 +70,6 @@ export async function POST(req: Request) {
     const created = await createFunction({
       sop_role_id: parsed.data.sop_role_id,
       name: parsed.data.name,
-      department_id: parsed.data.department_id,
       kpi: parsed.data.kpi,
       standard_type: parsed.data.standard_type,
       sop_content: parsed.data.sop_content,

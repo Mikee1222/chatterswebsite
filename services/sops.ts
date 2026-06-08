@@ -526,8 +526,26 @@ export async function getFunctionsByRoleAdmin(roleRecordId: string): Promise<Sop
     .map(mapFunctionRecord);
 }
 
+/** Link function `department` from the parent role's department (or clear when role has none). */
+async function applyFunctionDepartmentFromRole(
+  fields: Record<string, unknown>,
+  roleRecordId: string
+): Promise<void> {
+  const roleId = roleRecordId.trim();
+  if (!roleId) {
+    fields.department = [];
+    return;
+  }
+  const role = await getSopRoleById(roleId);
+  const deptId = role?.department_id?.trim() ?? "";
+  fields.department = deptId ? [deptId] : [];
+}
+
 export async function createFunction(
-  data: Omit<SopFunction, "id" | "function_id" | "created_at">
+  data: Omit<SopFunction, "id" | "function_id" | "created_at" | "department_id"> & {
+    /** Ignored — department is inherited from `sop_role_id`. */
+    department_id?: string;
+  }
 ): Promise<SopFunction> {
   const fields: Record<string, unknown> = {
     function_id: genStableId("sop_fn"),
@@ -547,8 +565,7 @@ export async function createFunction(
   };
   const roleLink = toLinkedRecordPayload(data.sop_role_id || null);
   if (roleLink) fields.sop_role = roleLink;
-  const deptLink = toLinkedRecordPayload(data.department_id || null);
-  if (deptLink) fields.department = deptLink;
+  await applyFunctionDepartmentFromRole(fields, data.sop_role_id);
   const rec = await createRecord<FunctionFields>(SOP_FUNCTIONS_TABLE, fields);
   return mapFunctionRecord(rec);
 }
@@ -578,9 +595,12 @@ export async function updateFunction(
   if (data.sop_role_id !== undefined) {
     fields.sop_role = data.sop_role_id ? [data.sop_role_id] : [];
   }
-  if (data.department_id !== undefined) {
-    fields.department = data.department_id ? [data.department_id] : [];
-  }
+
+  const roleIdForDept =
+    data.sop_role_id !== undefined
+      ? data.sop_role_id
+      : ((await getFunctionById(id))?.sop_role_id ?? "");
+  await applyFunctionDepartmentFromRole(fields, roleIdForDept);
 
   if (data.bumpVersion) {
     const existing = await getFunctionById(id);
