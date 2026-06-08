@@ -4,6 +4,7 @@ import * as React from "react";
 import { motion } from "framer-motion";
 import { BookOpen } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
+import { FilePreview } from "@/components/ui/file-preview";
 import { LoomEmbed } from "@/components/ui/loom-embed";
 import { cn } from "@/lib/utils";
 import type { SopDepartment, SopFunction, SopRole, SopColor, CadenceType } from "@/types";
@@ -168,7 +169,15 @@ function FunctionCard({
       <div className="space-y-4 px-4 py-4 sm:px-5">
         <div>
           <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-white/40">Standard</p>
-          <Markdown emptyFallback="No SOP content yet.">{fn.sop_content}</Markdown>
+          {fn.standard_type === "file" ? (
+            fn.sop_file_url.trim() ? (
+              <FilePreview url={fn.sop_file_url} name={fn.sop_file_name} />
+            ) : (
+              <p className="text-sm text-white/45">No file uploaded yet.</p>
+            )
+          ) : (
+            <Markdown emptyFallback="No SOP content yet.">{fn.sop_content}</Markdown>
+          )}
         </div>
         {fn.loom_url.trim() ? <LoomEmbed url={fn.loom_url} title={`${fn.name} — Loom`} /> : null}
       </div>

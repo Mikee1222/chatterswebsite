@@ -132,6 +132,8 @@ export type SopRole = {
   created_at?: string;
 };
 
+export type StandardType = "text" | "file";
+
 export type SopFunction = {
   id: string;
   function_id: string;
@@ -139,7 +141,10 @@ export type SopFunction = {
   name: string;
   department_id: string;
   kpi: string;
+  standard_type: StandardType;
   sop_content: string;
+  sop_file_url: string;
+  sop_file_name: string;
   loom_url: string;
   cadence_type: CadenceType;
   cadence_note: string;

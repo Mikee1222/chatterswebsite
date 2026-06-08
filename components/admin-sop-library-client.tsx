@@ -26,7 +26,9 @@ import {
   Pencil,
   Plus,
   Trash2,
+  Upload,
   Video,
+  X,
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import {
@@ -41,6 +43,7 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSelect } from "@/components/ui/form-select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Markdown } from "@/components/ui/markdown";
+import { FilePreview } from "@/components/ui/file-preview";
 import { Spinner } from "@/components/ui/spinner";
 import type { AppNotification } from "@/types";
 import type {
@@ -50,6 +53,7 @@ import type {
   SopColor,
   SopAuthRole,
   CadenceType,
+  StandardType,
 } from "@/types";
 
 function localToast(
@@ -485,7 +489,10 @@ type FunctionForm = {
   name: string;
   department_id: string;
   kpi: string;
+  standard_type: StandardType;
   sop_content: string;
+  sop_file_url: string;
+  sop_file_name: string;
   loom_url: string;
   cadence_type: CadenceType;
   cadence_note: string;
@@ -533,7 +540,10 @@ function emptyFunctionForm(deptId = ""): FunctionForm {
     name: "",
     department_id: deptId,
     kpi: "",
+    standard_type: "text",
     sop_content: "",
+    sop_file_url: "",
+    sop_file_name: "",
     loom_url: "",
     cadence_type: "ad_hoc",
     cadence_note: "",
@@ -546,7 +556,10 @@ function fnToForm(f: SopFunction): FunctionForm {
     name: f.name,
     department_id: f.department_id,
     kpi: f.kpi,
+    standard_type: f.standard_type,
     sop_content: f.sop_content,
+    sop_file_url: f.sop_file_url,
+    sop_file_name: f.sop_file_name,
     loom_url: f.loom_url,
     cadence_type: f.cadence_type,
     cadence_note: f.cadence_note,
@@ -585,6 +598,9 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   const [fnEditing, setFnEditing] = React.useState<SopFunction | null>(null);
   const [fnForm, setFnForm] = React.useState<FunctionForm>(emptyFunctionForm());
   const [fnSaving, setFnSaving] = React.useState(false);
+  const [fnFileUploading, setFnFileUploading] = React.useState(false);
+  const [fnFileUploadError, setFnFileUploadError] = React.useState("");
+  const fnFileInputRef = React.useRef<HTMLInputElement>(null);
 
   const [confirmDelete, setConfirmDelete] = React.useState<
     | { type: "department"; item: SopDepartment }
@@ -859,13 +875,52 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     const defaultDept = departments.find((d) => d.is_active)?.id ?? "";
     setFnEditing(null);
     setFnForm(emptyFunctionForm(defaultDept));
+    setFnFileUploading(false);
+    setFnFileUploadError("");
     setFnModalOpen(true);
   }
 
   function openFnEdit(f: SopFunction) {
     setFnEditing(f);
     setFnForm(fnToForm(f));
+    setFnFileUploading(false);
+    setFnFileUploadError("");
     setFnModalOpen(true);
+  }
+
+  async function handleFnFileSelect(file: File | null) {
+    setFnFileUploadError("");
+    if (!file) return;
+
+    setFnFileUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/sops/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const data = (await res.json()) as { url?: string; name?: string; error?: string };
+      if (!res.ok || !data.url) {
+        throw new Error(data.error ?? "Upload failed");
+      }
+      setFnForm((f) => ({
+        ...f,
+        sop_file_url: data.url!,
+        sop_file_name: data.name ?? file.name,
+      }));
+    } catch (err) {
+      setFnFileUploadError(err instanceof Error ? err.message : "Upload failed");
+      if (fnFileInputRef.current) fnFileInputRef.current.value = "";
+    } finally {
+      setFnFileUploading(false);
+    }
+  }
+
+  function clearFnFile() {
+    setFnForm((f) => ({ ...f, sop_file_url: "", sop_file_name: "" }));
+    setFnFileUploadError("");
+    if (fnFileInputRef.current) fnFileInputRef.current.value = "";
   }
 
   async function saveFunction(e: React.FormEvent) {
@@ -875,6 +930,14 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
       addToast(localToast("sop-fn-val", "Name required", "Enter a function name.", "normal"));
       return;
     }
+    if (fnForm.standard_type === "file" && !fnForm.sop_file_url.trim()) {
+      addToast(localToast("sop-fn-file", "File required", "Upload a file for this standard.", "normal"));
+      return;
+    }
+    if (fnFileUploading) {
+      addToast(localToast("sop-fn-upload", "Upload in progress", "Wait for the file upload to finish.", "normal"));
+      return;
+    }
     setFnSaving(true);
     try {
       const payload = {
@@ -882,7 +945,10 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         name: fnForm.name.trim(),
         department_id: fnForm.department_id,
         kpi: fnForm.kpi,
-        sop_content: fnForm.sop_content,
+        standard_type: fnForm.standard_type,
+        sop_content: fnForm.standard_type === "text" ? fnForm.sop_content : "",
+        sop_file_url: fnForm.standard_type === "file" ? fnForm.sop_file_url : "",
+        sop_file_name: fnForm.standard_type === "file" ? fnForm.sop_file_name : "",
         loom_url: fnForm.loom_url.trim(),
         cadence_type: fnForm.cadence_type,
         cadence_note: fnForm.cadence_note.trim(),
@@ -1026,9 +1092,18 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
             subtitle="Define the SOP steps, KPI, and cadence for this role."
             className="md:max-w-3xl"
           >
-            <form onSubmit={saveFunction} className="space-y-4 px-4 pb-5 pt-2 md:px-5">
+            <input
+              ref={fnFileInputRef}
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0] ?? null;
+                void handleFnFileSelect(file);
+              }}
+            />
+            <div className="space-y-4 px-4 pb-5 pt-2 md:px-5">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div className="space-y-4">
+                <form id="sop-fn-form" onSubmit={saveFunction} className="space-y-4">
                   <div>
                     <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
                       Function
@@ -1104,16 +1179,94 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                     onChange={(e) => setFnForm((f) => ({ ...f, is_active: e.target.checked }))}
                     label="Active"
                   />
-                </div>
+                </form>
                 <div className="space-y-4">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">Standard</p>
-                  <MarkdownField
-                    label="SOP content"
-                    value={fnForm.sop_content}
-                    onChange={(v) => setFnForm((f) => ({ ...f, sop_content: v }))}
-                    rows={10}
-                    placeholder="Step-by-step instructions (markdown)…"
-                  />
+                  <div className="flex flex-wrap gap-4">
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/75">
+                      <input
+                        type="radio"
+                        name="sop-standard-type"
+                        checked={fnForm.standard_type === "text"}
+                        onChange={() => setFnForm((f) => ({ ...f, standard_type: "text" }))}
+                        className="accent-pink-500"
+                      />
+                      Text (markdown)
+                    </label>
+                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm text-white/75">
+                      <input
+                        type="radio"
+                        name="sop-standard-type"
+                        checked={fnForm.standard_type === "file"}
+                        onChange={() => setFnForm((f) => ({ ...f, standard_type: "file" }))}
+                        className="accent-pink-500"
+                      />
+                      File
+                    </label>
+                  </div>
+                  {fnForm.standard_type === "text" ? (
+                    <MarkdownField
+                      label="SOP content"
+                      value={fnForm.sop_content}
+                      onChange={(v) => setFnForm((f) => ({ ...f, sop_content: v }))}
+                      rows={10}
+                      placeholder="Step-by-step instructions (markdown)…"
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                        SOP file
+                      </p>
+                      {fnFileUploading ? (
+                        <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
+                          <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                          Uploading…
+                        </div>
+                      ) : fnForm.sop_file_url.trim() ? (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
+                            <span className="min-w-0 flex-1 truncate text-sm text-white/80">
+                              {fnForm.sop_file_name || "Uploaded file"}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={clearFnFile}
+                              className="shrink-0 rounded-lg p-1.5 text-white/45 hover:bg-white/10 hover:text-white"
+                              aria-label="Remove file"
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <FilePreview
+                            url={fnForm.sop_file_url}
+                            name={fnForm.sop_file_name}
+                            compact
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => fnFileInputRef.current?.click()}
+                          className="inline-flex items-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-3 text-sm font-medium text-white/70 transition hover:border-pink-400/30 hover:bg-white/[0.06] hover:text-white"
+                        >
+                          <Upload className="h-4 w-4 text-pink-300/80" />
+                          Choose file
+                        </button>
+                      )}
+                      {fnFileUploadError ? (
+                        <p className="text-xs text-rose-300/90">{fnFileUploadError}</p>
+                      ) : null}
+                      {fnForm.sop_file_url.trim() && !fnFileUploading ? (
+                        <button
+                          type="button"
+                          onClick={() => fnFileInputRef.current?.click()}
+                          className="text-xs font-medium text-pink-300/80 hover:text-pink-200"
+                        >
+                          Replace file
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
                   <div>
                     <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
                       Loom URL
@@ -1130,12 +1283,16 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                 <ButtonSecondary
                   type="button"
                   className="flex-1"
-                  disabled={fnSaving}
+                  disabled={fnSaving || fnFileUploading}
                   onClick={() => setFnModalOpen(false)}
                 >
                   Cancel
                 </ButtonSecondary>
-                <SubmitButton className="flex-1 !w-auto min-w-0" disabled={fnSaving}>
+                <SubmitButton
+                  form="sop-fn-form"
+                  className="flex-1 !w-auto min-w-0"
+                  disabled={fnSaving || fnFileUploading}
+                >
                   {fnSaving ? (
                     <span className="inline-flex items-center justify-center gap-2">
                       <Spinner className="h-4 w-4 border-white/40 border-t-white" />
@@ -1146,7 +1303,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                   )}
                 </SubmitButton>
               </div>
-            </form>
+            </div>
           </GlassModal>
         ) : null}
 

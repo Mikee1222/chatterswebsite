@@ -16,12 +16,17 @@ const cadenceSchema = z.enum([
   "ad_hoc",
 ]);
 
+const standardTypeSchema = z.enum(["text", "file"]);
+
 const postSchema = z.object({
   sop_role_id: z.string().trim().min(1),
   name: z.string().trim().min(1).max(200),
   department_id: z.string().trim().min(1).optional().default(""),
   kpi: z.string().max(8000).optional().default(""),
+  standard_type: standardTypeSchema.optional().default("text"),
   sop_content: z.string().max(50000).optional().default(""),
+  sop_file_url: z.string().max(2000).optional().default(""),
+  sop_file_name: z.string().max(500).optional().default(""),
   loom_url: z.string().max(2000).optional().default(""),
   cadence_type: cadenceSchema.optional().default("ad_hoc"),
   cadence_note: z.string().max(500).optional().default(""),
@@ -75,7 +80,10 @@ export async function POST(req: Request) {
       name: parsed.data.name,
       department_id: parsed.data.department_id,
       kpi: parsed.data.kpi,
+      standard_type: parsed.data.standard_type,
       sop_content: parsed.data.sop_content,
+      sop_file_url: parsed.data.sop_file_url,
+      sop_file_name: parsed.data.sop_file_name,
       loom_url: parsed.data.loom_url,
       cadence_type: parsed.data.cadence_type,
       cadence_note: parsed.data.cadence_note,

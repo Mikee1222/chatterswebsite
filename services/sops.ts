@@ -19,6 +19,7 @@ import type {
   SopColor,
   SopAuthRole,
   CadenceType,
+  StandardType,
 } from "@/types";
 
 export const SOP_DEPARTMENTS_TABLE = "sop_departments";
@@ -52,6 +53,8 @@ const CADENCE_TYPES: readonly CadenceType[] = [
   "ad_hoc",
 ];
 
+const STANDARD_TYPES: readonly StandardType[] = ["text", "file"];
+
 const SORT = [{ field: "sort_order", direction: "asc" as const }];
 
 type DepartmentFields = {
@@ -83,7 +86,10 @@ type FunctionFields = {
   name?: string;
   department?: string | string[];
   kpi?: string;
+  standard_type?: string;
   sop_content?: string;
+  sop_file_url?: string;
+  sop_file_name?: string;
   loom_url?: string;
   cadence_type?: string;
   cadence_note?: string;
@@ -120,6 +126,11 @@ function coerceAuthRoles(v: unknown): SopAuthRole[] {
 function coerceCadenceType(v: unknown): CadenceType {
   const s = String(v ?? "").trim() as CadenceType;
   return CADENCE_TYPES.includes(s) ? s : "ad_hoc";
+}
+
+function coerceStandardType(v: unknown): StandardType {
+  const s = String(v ?? "").trim() as StandardType;
+  return STANDARD_TYPES.includes(s) ? s : "text";
 }
 
 function mapDepartmentRecord(rec: AirtableRecord<DepartmentFields>): SopDepartment {
@@ -162,7 +173,10 @@ function mapFunctionRecord(rec: AirtableRecord<FunctionFields>): SopFunction {
     name: String(f.name ?? ""),
     department_id: firstLinkedId(f.department) ?? "",
     kpi: String(f.kpi ?? ""),
+    standard_type: coerceStandardType(f.standard_type),
     sop_content: String(f.sop_content ?? ""),
+    sop_file_url: String(f.sop_file_url ?? ""),
+    sop_file_name: String(f.sop_file_name ?? ""),
     loom_url: String(f.loom_url ?? ""),
     cadence_type: coerceCadenceType(f.cadence_type),
     cadence_note: String(f.cadence_note ?? ""),
@@ -368,7 +382,10 @@ export async function createFunction(
     function_id: genStableId("sop_fn"),
     name: data.name,
     kpi: data.kpi,
+    standard_type: data.standard_type,
     sop_content: data.sop_content,
+    sop_file_url: data.sop_file_url,
+    sop_file_name: data.sop_file_name,
     loom_url: data.loom_url,
     cadence_type: data.cadence_type,
     cadence_note: data.cadence_note,
@@ -391,7 +408,10 @@ export async function updateFunction(
   const fields: Record<string, unknown> = {};
   if (data.name !== undefined) fields.name = data.name;
   if (data.kpi !== undefined) fields.kpi = data.kpi;
+  if (data.standard_type !== undefined) fields.standard_type = data.standard_type;
   if (data.sop_content !== undefined) fields.sop_content = data.sop_content;
+  if (data.sop_file_url !== undefined) fields.sop_file_url = data.sop_file_url;
+  if (data.sop_file_name !== undefined) fields.sop_file_name = data.sop_file_name;
   if (data.loom_url !== undefined) fields.loom_url = data.loom_url;
   if (data.cadence_type !== undefined) fields.cadence_type = data.cadence_type;
   if (data.cadence_note !== undefined) fields.cadence_note = data.cadence_note;

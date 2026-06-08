@@ -12,7 +12,10 @@ const patchSchema = z.object({
   name: z.string().trim().min(1).max(200).optional(),
   department_id: z.string().optional(),
   kpi: z.string().max(8000).optional(),
+  standard_type: z.enum(["text", "file"]).optional(),
   sop_content: z.string().max(50000).optional(),
+  sop_file_url: z.string().max(2000).optional(),
+  sop_file_name: z.string().max(500).optional(),
   loom_url: z.string().max(2000).optional(),
   cadence_type: z
     .enum(["daily", "per_shift", "weekly", "biweekly", "monthly", "ad_hoc"])

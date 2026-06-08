@@ -358,6 +358,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
       "monthly",
       "ad_hoc",
     ]),
+    standard_type: new Set(["text", "file"]),
   },
   model_tiers: {
     tier: new Set(["high", "medium", "low"]),

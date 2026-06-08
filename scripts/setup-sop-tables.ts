@@ -162,7 +162,14 @@ function functionsFields(
       options: { linkedTableId: departmentsTableId },
     },
     { name: "kpi", type: "multilineText" },
+    {
+      name: "standard_type",
+      type: "singleSelect",
+      options: { choices: [{ name: "text" }, { name: "file" }] },
+    },
     { name: "sop_content", type: "multilineText" },
+    { name: "sop_file_url", type: "url" },
+    { name: "sop_file_name", type: "singleLineText" },
     { name: "loom_url", type: "url" },
     {
       name: "cadence_type",
