@@ -340,6 +340,18 @@ export async function getFunctionsByRole(roleRecordId: string): Promise<SopFunct
     .map(mapFunctionRecord);
 }
 
+export async function getFunctionsByRoleAdmin(roleRecordId: string): Promise<SopFunction[]> {
+  const roleId = roleRecordId.trim();
+  if (!roleId) return [];
+  const rows = await listAllRecords<FunctionFields>(SOP_FUNCTIONS_TABLE, {
+    sort: SORT,
+    _caller: "getFunctionsByRoleAdmin",
+  });
+  return rows
+    .filter((rec) => firstLinkedId(rec.fields?.sop_role) === roleId)
+    .map(mapFunctionRecord);
+}
+
 export async function createFunction(
   data: Omit<SopFunction, "id" | "function_id" | "created_at">
 ): Promise<SopFunction> {
