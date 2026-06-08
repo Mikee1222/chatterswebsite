@@ -63,12 +63,13 @@ package-lock 2.json
 !.dev.vars.example
 !.env.example
 
-# Local smoke scripts (not part of build)
+# Local smoke / schema check scripts (not part of build)
 scripts/smoke-sop-progress.ts
 scripts/smoke-sop-academy-polish.ts
 scripts/smoke-sop-academy-v2.ts
 scripts/smoke-*
 scripts/cleanup-sop-smoke-data.ts
+scripts/check-sop-schema-sync.ts
 
 # Local junk / accidental copies
 .foo/
