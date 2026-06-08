@@ -127,9 +127,31 @@ export type SopRole = {
   color: SopColor;
   auth_roles: SopAuthRole[];
   assigned_user_ids: string[];
+  academy_mode: boolean;
   sort_order: number;
   is_active: boolean;
   created_at?: string;
+};
+
+export type SopProgress = {
+  id: string;
+  progress_id: string;
+  user_id: string;
+  sop_function_id: string;
+  sop_role_id: string;
+  completed_at: string;
+  created_at?: string;
+};
+
+/** Admin report: per-user academy progress for one role. */
+export type SopProgressUserSummary = {
+  user_id: string;
+  user_name: string;
+  completed_count: number;
+  total_functions: number;
+  percent: number;
+  last_completed_at: string | null;
+  completed_function_ids: string[];
 };
 
 export type StandardType = "text" | "file";

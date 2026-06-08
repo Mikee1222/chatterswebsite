@@ -65,6 +65,7 @@ import type {
   SopAuthRole,
   CadenceType,
   StandardType,
+  SopProgressUserSummary,
 } from "@/types";
 
 function localToast(
@@ -468,6 +469,7 @@ type RoleForm = {
   color: SopColor;
   auth_roles: SopAuthRole[];
   assigned_user_ids: string[];
+  academy_mode: boolean;
   is_active: boolean;
 };
 type FunctionForm = {
@@ -502,6 +504,7 @@ function emptyRoleForm(): RoleForm {
     color: "blue",
     auth_roles: [],
     assigned_user_ids: [],
+    academy_mode: false,
     is_active: true,
   };
 }
@@ -516,6 +519,7 @@ function roleToForm(r: SopRole): RoleForm {
     color: r.color,
     auth_roles: [...r.auth_roles],
     assigned_user_ids: [...r.assigned_user_ids],
+    academy_mode: r.academy_mode,
     is_active: r.is_active,
   };
 }
@@ -565,6 +569,10 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   const [selectedRole, setSelectedRole] = React.useState<SopRole | null>(null);
   const [functions, setFunctions] = React.useState<SopFunction[]>([]);
   const [loadingFunctions, setLoadingFunctions] = React.useState(false);
+  const [roleDetailTab, setRoleDetailTab] = React.useState<"functions" | "progress">("functions");
+  const [progressRows, setProgressRows] = React.useState<SopProgressUserSummary[]>([]);
+  const [loadingProgress, setLoadingProgress] = React.useState(false);
+  const [progressTotalFunctions, setProgressTotalFunctions] = React.useState(0);
 
   const [deptModalOpen, setDeptModalOpen] = React.useState(false);
   const [deptEditing, setDeptEditing] = React.useState<SopDepartment | null>(null);
@@ -606,6 +614,8 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   React.useEffect(() => {
     if (!selectedRole) {
       setFunctions([]);
+      setProgressRows([]);
+      setRoleDetailTab("functions");
       return;
     }
     setLoadingFunctions(true);
@@ -618,6 +628,32 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
       .catch(() => setFunctions([]))
       .finally(() => setLoadingFunctions(false));
   }, [selectedRole?.id]);
+
+  React.useEffect(() => {
+    if (!selectedRole || roleDetailTab !== "progress" || !selectedRole.academy_mode) {
+      return;
+    }
+    setLoadingProgress(true);
+    fetch(`/api/admin/sops/progress?role_id=${encodeURIComponent(selectedRole.id)}`)
+      .then((r) => r.json())
+      .then(
+        (d: {
+          users?: SopProgressUserSummary[];
+          total_functions?: number;
+        }) => {
+          if (Array.isArray(d.users)) setProgressRows(d.users);
+          else setProgressRows([]);
+          setProgressTotalFunctions(
+            typeof d.total_functions === "number" ? d.total_functions : 0
+          );
+        }
+      )
+      .catch(() => {
+        setProgressRows([]);
+        setProgressTotalFunctions(0);
+      })
+      .finally(() => setLoadingProgress(false));
+  }, [selectedRole?.id, selectedRole?.academy_mode, roleDetailTab]);
 
   React.useEffect(() => {
     if (!roleModalOpen) return;
@@ -821,6 +857,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         color: roleForm.color,
         auth_roles: roleForm.auth_roles,
         assigned_user_ids: roleForm.assigned_user_ids,
+        academy_mode: roleForm.academy_mode,
         is_active: roleForm.is_active,
       };
       if (roleEditing) {
@@ -1047,13 +1084,105 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               </h1>
               <p className="mt-1.5 text-sm text-white/45">{selectedRole.slug}</p>
             </div>
-            <ButtonPrimary type="button" onClick={openFnCreate}>
-              <Plus className="mr-1.5 inline h-4 w-4" />
-              New function
-            </ButtonPrimary>
+            {roleDetailTab === "functions" ? (
+              <ButtonPrimary type="button" onClick={openFnCreate}>
+                <Plus className="mr-1.5 inline h-4 w-4" />
+                New function
+              </ButtonPrimary>
+            ) : null}
           </motion.div>
 
-          {loadingFunctions ? (
+          <motion.div variants={motionCfg.reveal} className="mb-6 flex gap-2">
+            <button
+              type="button"
+              onClick={() => setRoleDetailTab("functions")}
+              className={cn(
+                "rounded-full border px-4 py-2 text-xs font-semibold transition",
+                roleDetailTab === "functions"
+                  ? "border-pink-500/35 bg-pink-500/15 text-pink-200"
+                  : "border-white/10 bg-white/[0.04] text-white/50 hover:text-white/80"
+              )}
+            >
+              Functions
+            </button>
+            <button
+              type="button"
+              onClick={() => setRoleDetailTab("progress")}
+              className={cn(
+                "rounded-full border px-4 py-2 text-xs font-semibold transition",
+                roleDetailTab === "progress"
+                  ? "border-pink-500/35 bg-pink-500/15 text-pink-200"
+                  : "border-white/10 bg-white/[0.04] text-white/50 hover:text-white/80"
+              )}
+            >
+              Progress
+            </button>
+          </motion.div>
+
+          {roleDetailTab === "progress" ? (
+            !selectedRole.academy_mode ? (
+              <SopEmptyState
+                icon={Users}
+                title="Academy mode off"
+                description="Enable Academy mode on this role to track gated step-by-step training progress per user."
+              />
+            ) : loadingProgress ? (
+              <div className="flex items-center justify-center py-20">
+                <Spinner className="h-8 w-8 border-white/20 border-t-pink-400" />
+              </div>
+            ) : progressRows.length === 0 ? (
+              <SopEmptyState
+                icon={Users}
+                title="No progress yet"
+                description={`No users have completed steps for this role (${progressTotalFunctions} active functions).`}
+              />
+            ) : (
+              <div className="sop-glass-panel overflow-hidden rounded-2xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[520px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 text-[11px] font-bold uppercase tracking-wider text-white/40">
+                        <th className="px-4 py-3">User</th>
+                        <th className="px-4 py-3">Completed</th>
+                        <th className="px-4 py-3">%</th>
+                        <th className="px-4 py-3">Last activity</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {progressRows.map((row) => (
+                        <tr
+                          key={row.user_id}
+                          className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
+                        >
+                          <td className="px-4 py-3 font-medium text-white/85">{row.user_name}</td>
+                          <td className="px-4 py-3 text-white/65">
+                            {row.completed_count} / {row.total_functions}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span
+                              className={cn(
+                                "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold",
+                                row.percent >= 100
+                                  ? "bg-emerald-500/15 text-emerald-200"
+                                  : "bg-white/10 text-white/70"
+                              )}
+                            >
+                              {row.percent}%
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-white/45">
+                            {row.last_completed_at
+                              ? new Date(row.last_completed_at).toLocaleString()
+                              : "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )
+          ) : loadingFunctions ? (
             <div className="flex items-center justify-center py-20">
               <Spinner className="h-8 w-8 border-white/20 border-t-pink-400" />
             </div>
@@ -1632,6 +1761,15 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                 )}
               </div>
             </div>
+            <Checkbox
+              checked={roleForm.academy_mode}
+              onChange={(e) => setRoleForm((f) => ({ ...f, academy_mode: e.target.checked }))}
+              label="Academy mode"
+            />
+            <p className="-mt-2 text-xs leading-relaxed text-white/40">
+              Gated step-by-step training: members complete one function at a time in sort order.
+              Progress is tracked per user for this role.
+            </p>
             <Checkbox
               checked={roleForm.is_active}
               onChange={(e) => setRoleForm((f) => ({ ...f, is_active: e.target.checked }))}

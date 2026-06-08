@@ -1,6 +1,7 @@
 import {
   listRecords,
   listAllRecords,
+  getRecord,
   createRecord,
   updateRecord,
   deleteRecord,
@@ -75,6 +76,7 @@ type RoleFields = {
   color?: string;
   auth_roles?: string[];
   assigned_users?: string | string[];
+  academy_mode?: boolean;
   sort_order?: number | string;
   is_active?: boolean;
   created_at?: string;
@@ -158,6 +160,7 @@ function mapRoleRecord(rec: AirtableRecord<RoleFields>): SopRole {
     color: coerceSopColor(f.color),
     auth_roles: coerceAuthRoles(f.auth_roles),
     assigned_user_ids: linkedRecordIds(f.assigned_users),
+    academy_mode: f.academy_mode === true,
     sort_order: coerceSortOrder(f.sort_order),
     is_active: f.is_active !== false,
     created_at: f.created_at != null ? String(f.created_at) : undefined,
@@ -276,6 +279,17 @@ export async function getAllSopRolesAdmin(): Promise<SopRole[]> {
   return rows.map(mapRoleRecord);
 }
 
+export async function getSopRoleById(recordId: string): Promise<SopRole | null> {
+  const id = recordId.trim();
+  if (!id) return null;
+  try {
+    const rec = await getRecord<RoleFields>(SOP_ROLES_TABLE, id);
+    return mapRoleRecord(rec);
+  } catch {
+    return null;
+  }
+}
+
 export async function getSopRoleBySlug(slug: string): Promise<SopRole | null> {
   const normalized = slug.trim();
   if (!normalized) return null;
@@ -300,6 +314,7 @@ export async function createSopRole(
     icon: data.icon,
     color: data.color,
     auth_roles: data.auth_roles,
+    academy_mode: data.academy_mode,
     sort_order: data.sort_order,
     is_active: data.is_active,
     created_at: new Date().toISOString(),
@@ -322,6 +337,7 @@ export async function updateSopRole(
   if (data.icon !== undefined) fields.icon = data.icon;
   if (data.color !== undefined) fields.color = data.color;
   if (data.auth_roles !== undefined) fields.auth_roles = data.auth_roles;
+  if (data.academy_mode !== undefined) fields.academy_mode = data.academy_mode;
   if (data.sort_order !== undefined) fields.sort_order = data.sort_order;
   if (data.is_active !== undefined) fields.is_active = data.is_active;
   if (data.created_at !== undefined) fields.created_at = data.created_at;

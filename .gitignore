@@ -63,6 +63,9 @@ package-lock 2.json
 !.dev.vars.example
 !.env.example
 
+# Local smoke scripts (not part of build)
+scripts/smoke-sop-progress.ts
+
 # Local junk / accidental copies
 .foo/
 .next-nope/

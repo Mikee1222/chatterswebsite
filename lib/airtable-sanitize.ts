@@ -422,6 +422,7 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   sop_departments: new Set(["created_at"]),
   sop_roles: new Set(["created_at"]),
   sop_functions: new Set(["created_at"]),
+  sop_progress: new Set(["created_at"]),
 };
 
 /** Tables where a normally global-stripped field is a normal writable column. */
@@ -450,6 +451,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   sop_departments: new Set(["created_at"]),
   sop_roles: new Set(["created_at"]),
   sop_functions: new Set(["created_at"]),
+  sop_progress: new Set(["created_at"]),
   shift_queue: new Set(["created_at", "started_at", "cancelled_at"]),
   /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
   challenge_progress: new Set(["updated_at"]),

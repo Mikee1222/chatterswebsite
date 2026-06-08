@@ -138,8 +138,36 @@ function rolesFields(usersTableId: string): Array<Record<string, unknown>> {
       type: "multipleRecordLinks",
       options: { linkedTableId: usersTableId },
     },
+    { name: "academy_mode", type: "checkbox", options: { ...checkboxOptions } },
     { name: "sort_order", type: "number", options: { precision: 0 } },
     { name: "is_active", type: "checkbox", options: { ...checkboxOptions } },
+    { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
+  ];
+}
+
+function progressFields(
+  usersTableId: string,
+  rolesTableId: string,
+  functionsTableId: string
+): Array<Record<string, unknown>> {
+  return [
+    { name: "progress_id", type: "singleLineText" },
+    {
+      name: "user",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: usersTableId },
+    },
+    {
+      name: "sop_function",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: functionsTableId },
+    },
+    {
+      name: "sop_role",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: rolesTableId },
+    },
+    { name: "completed_at", type: "dateTime", options: { ...datetimeOptions } },
     { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
   ];
 }
@@ -186,8 +214,13 @@ function functionsFields(
 type TablePlan = {
   name: string;
   description: string;
-  buildFields: (ctx: { usersId: string; rolesId: string; departmentsId: string }) => Array<Record<string, unknown>>;
-  requires?: ("users" | "sop_departments" | "sop_roles")[];
+  buildFields: (ctx: {
+    usersId: string;
+    rolesId: string;
+    departmentsId: string;
+    functionsId: string;
+  }) => Array<Record<string, unknown>>;
+  requires?: ("users" | "sop_departments" | "sop_roles" | "sop_functions")[];
 };
 
 const TABLE_PLANS: TablePlan[] = [
@@ -208,13 +241,20 @@ const TABLE_PLANS: TablePlan[] = [
     requires: ["sop_departments", "sop_roles"],
     buildFields: ({ rolesId, departmentsId }) => functionsFields(rolesId, departmentsId),
   },
+  {
+    name: "sop_progress",
+    description: "SOP academy per-user function completion (setup-sop-tables.ts)",
+    requires: ["users", "sop_roles", "sop_functions"],
+    buildFields: ({ usersId, rolesId, departmentsId: _d, functionsId }) =>
+      progressFields(usersId, rolesId, functionsId),
+  },
 ];
 
 async function createTable(
   baseId: string,
   token: string,
   plan: TablePlan,
-  ctx: { usersId: string; rolesId: string; departmentsId: string }
+  ctx: { usersId: string; rolesId: string; departmentsId: string; functionsId: string }
 ): Promise<{ ok: boolean; tableId?: string; error?: string }> {
   const fields = plan.buildFields(ctx);
   const body = {
@@ -275,6 +315,7 @@ async function main(): Promise<void> {
       usersId,
       departmentsId: findTableId(tables, "sop_departments") ?? "",
       rolesId: findTableId(tables, "sop_roles") ?? "",
+      functionsId: findTableId(tables, "sop_functions") ?? "",
     };
 
     for (const plan of TABLE_PLANS) {
@@ -283,6 +324,7 @@ async function main(): Promise<void> {
         skipped.push(plan.name);
         if (plan.name === "sop_departments") ctx.departmentsId = byName.get(plan.name)!.id;
         if (plan.name === "sop_roles") ctx.rolesId = byName.get(plan.name)!.id;
+        if (plan.name === "sop_functions") ctx.functionsId = byName.get(plan.name)!.id;
         continue;
       }
 
@@ -296,6 +338,10 @@ async function main(): Promise<void> {
       }
       if (plan.requires?.includes("sop_roles") && !ctx.rolesId) {
         errors.push(`${plan.name}: sop_roles must exist first`);
+        continue;
+      }
+      if (plan.requires?.includes("sop_functions") && !ctx.functionsId) {
+        errors.push(`${plan.name}: sop_functions must exist first`);
         continue;
       }
 
@@ -312,6 +358,7 @@ async function main(): Promise<void> {
         byName.set(plan.name, { id: result.tableId, name: plan.name });
         if (plan.name === "sop_departments") ctx.departmentsId = result.tableId;
         if (plan.name === "sop_roles") ctx.rolesId = result.tableId;
+        if (plan.name === "sop_functions") ctx.functionsId = result.tableId;
         log(`Created "${plan.name}" (id: ${result.tableId})`);
       }
     }
