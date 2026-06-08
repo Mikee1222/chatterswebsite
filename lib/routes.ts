@@ -42,6 +42,7 @@ export const ROUTES = {
     challenges: "/challenges",
     mistakes: "/mistakes",
     informations: "/informations",
+    sops: "/sops",
   },
 
   /** Virtual assistant (role: virtual_assistant) */
@@ -109,6 +110,7 @@ export const ROUTES = {
     expenseRequests: "/admin/expense-requests",
     marketing: "/admin/marketing",
     informations: "/admin/informations",
+    sopLibrary: "/admin/sop-library",
     vaTasks: "/admin/va-tasks",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
@@ -165,6 +167,8 @@ export const ROUTES = {
   /** Other dashboard pages */
   /** Fines & bonuses (chatter + VA shared). */
   finesBonuses: "/fines-bonuses",
+  /** SOP Library member view (chatter + VA shared). */
+  sops: "/sops",
   settings: "/settings",
   /** Hours / time summary (VA, chatter, admin). */
   hours: "/hours",

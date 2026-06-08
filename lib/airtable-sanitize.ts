@@ -335,6 +335,30 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   mass_lists: {
     type: new Set(["include", "exclude"]),
   },
+  sop_departments: {
+    color: new Set(["blue", "pink", "green", "orange", "purple", "gray"]),
+  },
+  sop_roles: {
+    color: new Set(["blue", "pink", "green", "orange", "purple", "gray"]),
+    auth_roles: new Set([
+      "admin",
+      "manager",
+      "chatter",
+      "virtual_assistant",
+      "model",
+      "client",
+    ]),
+  },
+  sop_functions: {
+    cadence_type: new Set([
+      "daily",
+      "per_shift",
+      "weekly",
+      "biweekly",
+      "monthly",
+      "ad_hoc",
+    ]),
+  },
   model_tiers: {
     tier: new Set(["high", "medium", "low"]),
   },
@@ -394,6 +418,9 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   spin_wheel_spins: new Set(["updated_at"]),
   model_personal_events: new Set(["created_at"]),
   payment_methods: new Set(["payment_submissions", "invoices"]),
+  sop_departments: new Set(["created_at"]),
+  sop_roles: new Set(["created_at"]),
+  sop_functions: new Set(["created_at"]),
 };
 
 /** Tables where a normally global-stripped field is a normal writable column. */
@@ -419,6 +446,9 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   chatter_mistakes: new Set(["created_at", "updated_at"]),
   fines_and_bonuses: new Set(["created_at"]),
   mass_lists: new Set(["created_at"]),
+  sop_departments: new Set(["created_at"]),
+  sop_roles: new Set(["created_at"]),
+  sop_functions: new Set(["created_at"]),
   shift_queue: new Set(["created_at", "started_at", "cancelled_at"]),
   /** Allow `updated_at` for optimistic concurrency / debounce in progress updates. */
   challenge_progress: new Set(["updated_at"]),

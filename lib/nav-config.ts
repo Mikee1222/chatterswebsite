@@ -43,7 +43,7 @@ export function parseHiddenNavSettingJson(raw: string | null | undefined): Recor
 }
 
 export type NavIconKey =
-  | "Home"| "Calendar"| "CalendarCheck"| "PlayCircle"| "FileText"| "Users"| "Receipt"| "Wrench"| "Radio"| "UserCheck"| "Activity"| "Package"| "UserCog"| "LayoutDashboard"| "ListTodo"| "Settings"| "Sparkles"| "Trophy"| "Target"| "LineChart"| "CalendarDays"| "CalendarClock"| "Clock"| "MessageSquarePlus"| "ImageOff"| "AlertTriangle"| "AlertCircle"| "Settings2"| "Coins"| "TrendingUp"| "Info"| "CreditCard";
+  | "Home"| "Calendar"| "CalendarCheck"| "PlayCircle"| "FileText"| "Users"| "Receipt"| "Wrench"| "Radio"| "UserCheck"| "Activity"| "Package"| "UserCog"| "LayoutDashboard"| "ListTodo"| "Settings"| "Sparkles"| "Trophy"| "Target"| "LineChart"| "CalendarDays"| "CalendarClock"| "Clock"| "MessageSquarePlus"| "ImageOff"| "AlertTriangle"| "AlertCircle"| "Settings2"| "Coins"| "TrendingUp"| "Info"| "CreditCard"| "BookOpen";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -102,6 +102,7 @@ const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
   { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.informations, label: "Informations", iconKey: "Info", excludeFromMobileMainTabs: true },
+  { href: ROUTES.sops, label: "SOPs", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
@@ -120,6 +121,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
   { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
+  { href: ROUTES.sops, label: "SOPs", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
@@ -150,6 +152,7 @@ const adminNav: NavItem[] = [
   // ── MARKETING ──
   { href: ROUTES.admin.marketing, label: "Marketing", iconKey: "TrendingUp", navSection: "MARKETING" },
   { href: ROUTES.admin.informations, label: "Informations", iconKey: "Info", navSection: undefined },
+  { href: ROUTES.admin.sopLibrary, label: "SOP Library", iconKey: "BookOpen" },
   { href: ROUTES.admin.vaContentAssignments, label: "VA Content", iconKey: "FileText" },
   { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
 

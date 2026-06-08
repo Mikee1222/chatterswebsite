@@ -86,6 +86,68 @@ export type VaRecurrenceDay =
   | "Saturday"
   | "Sunday";
 
+/** SOP Library — `sop_departments.color` / `sop_roles.color` single-select options. */
+export type SopColor = "blue" | "pink" | "green" | "orange" | "purple" | "gray";
+
+/** SOP Library — `sop_roles.auth_roles` multi-select options. */
+export type SopAuthRole =
+  | "admin"
+  | "manager"
+  | "chatter"
+  | "virtual_assistant"
+  | "model"
+  | "client";
+
+/** SOP Library — `sop_functions.cadence_type` single-select options. */
+export type CadenceType =
+  | "daily"
+  | "per_shift"
+  | "weekly"
+  | "biweekly"
+  | "monthly"
+  | "ad_hoc";
+
+export type SopDepartment = {
+  id: string;
+  department_id: string;
+  name: string;
+  color: SopColor;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+};
+
+export type SopRole = {
+  id: string;
+  role_id: string;
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  color: SopColor;
+  auth_roles: SopAuthRole[];
+  assigned_user_ids: string[];
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+};
+
+export type SopFunction = {
+  id: string;
+  function_id: string;
+  sop_role_id: string;
+  name: string;
+  department_id: string;
+  kpi: string;
+  sop_content: string;
+  loom_url: string;
+  cadence_type: CadenceType;
+  cadence_note: string;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+};
+
 export type VaTaskRecord = {
   id: string;
   title: string;
