@@ -102,7 +102,7 @@ const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
   { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.informations, label: "Informations", iconKey: "Info", excludeFromMobileMainTabs: true },
-  { href: ROUTES.sops, label: "SOPs", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
+  { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
@@ -121,7 +121,7 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
   { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
-  { href: ROUTES.sops, label: "SOPs", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
+  { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];

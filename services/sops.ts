@@ -236,6 +236,17 @@ export async function reorderDepartments(orderedIds: string[]): Promise<void> {
 
 // ── Roles ──
 
+/** Whether an active SOP role applies to the signed-in member (assigned user or auth role). */
+export function sopRoleMatchesMember(
+  role: SopRole,
+  opts: { airtableUserId: string | null; staffRole: SopAuthRole | null }
+): boolean {
+  const userId = opts.airtableUserId?.trim();
+  if (userId && role.assigned_user_ids.includes(userId)) return true;
+  if (opts.staffRole && role.auth_roles.includes(opts.staffRole)) return true;
+  return false;
+}
+
 export async function getAllSopRoles(): Promise<SopRole[]> {
   const rows = await listAllRecords<RoleFields>(SOP_ROLES_TABLE, {
     filterByFormula: "{is_active}",
