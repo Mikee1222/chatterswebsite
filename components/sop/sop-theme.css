@@ -1,0 +1,104 @@
+/**
+ * Scoped dark glass theme for SOP Library views only.
+ * Import via SopShell — does not affect sidebar/topbar.
+ */
+
+.sop-dark {
+  --sop-glass-bg: rgba(14, 14, 20, 0.72);
+  --sop-glass-bg-hover: rgba(22, 22, 30, 0.78);
+  --sop-glass-border: rgba(255, 255, 255, 0.09);
+  --sop-glass-border-hover: rgba(255, 255, 255, 0.14);
+  --sop-glass-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  --sop-glass-inner: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  --sop-pink-glow: hsl(330 88% 58% / 0.18);
+  color-scheme: dark;
+}
+
+.sop-dark .sop-glow-tl {
+  position: absolute;
+  top: -8%;
+  left: -12%;
+  width: 55vmax;
+  height: 55vmax;
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(244, 114, 182, 0.14),
+    rgba(192, 132, 252, 0.05) 42%,
+    transparent 58%
+  );
+  pointer-events: none;
+}
+
+.sop-dark .sop-glow-br {
+  position: absolute;
+  bottom: -10%;
+  right: -8%;
+  width: 50vmax;
+  height: 50vmax;
+  background: radial-gradient(
+    circle at 70% 70%,
+    rgba(236, 72, 153, 0.1),
+    rgba(167, 139, 250, 0.04) 45%,
+    transparent 58%
+  );
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .sop-dark .sop-glow-tl,
+  .sop-dark .sop-glow-br {
+    animation: sop-glow-drift 32s ease-in-out infinite;
+  }
+
+  .sop-dark .sop-glow-br {
+    animation-delay: -16s;
+  }
+}
+
+@keyframes sop-glow-drift {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1) translate(0, 0);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(1.03) translate(1%, 0.5%);
+  }
+}
+
+.sop-dark .sop-glass-panel {
+  background: var(--sop-glass-bg);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid var(--sop-glass-border);
+  box-shadow: var(--sop-glass-shadow), var(--sop-glass-inner);
+}
+
+.sop-dark .sop-glass-card {
+  background: var(--sop-glass-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--sop-glass-border);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 12px 40px -16px rgba(0, 0, 0, 0.5),
+    var(--sop-glass-inner);
+}
+
+.sop-dark .sop-media-frame {
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--sop-glass-border);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 32px -12px var(--sop-pink-glow);
+}
+
+.sop-dark .sop-modal-panel {
+  background: rgba(10, 10, 16, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.07),
+    0 28px 72px -16px rgba(0, 0, 0, 0.75),
+    0 0 80px -28px hsl(330 80% 55% / 0.12) !important;
+}

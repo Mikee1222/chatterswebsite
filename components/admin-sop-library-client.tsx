@@ -18,15 +18,19 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  Building2,
   ChevronDown,
   Eye,
   GripVertical,
+  Layers,
   Pencil,
   Plus,
   Trash2,
   Upload,
+  Users,
   Video,
   X,
 } from "lucide-react";
@@ -45,6 +49,12 @@ import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { Markdown } from "@/components/ui/markdown";
 import { FilePreview } from "@/components/ui/file-preview";
 import { Spinner } from "@/components/ui/spinner";
+import { SopShell } from "@/components/sop/sop-shell";
+import { SopEmptyState } from "@/components/sop/sop-empty-state";
+import { SopGlowBadge } from "@/components/sop/sop-glow-badge";
+import { CADENCE_STYLES, SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+import { useSopMotion } from "@/components/sop/sop-motion";
+import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types";
 import type {
   SopDepartment,
@@ -80,47 +90,7 @@ function localToast(
 
 const SOP_COLORS: SopColor[] = ["blue", "pink", "green", "orange", "purple", "gray"];
 
-const COLOR_STYLES: Record<
-  SopColor,
-  { badge: string; dot: string; border: string; text: string }
-> = {
-  blue: {
-    badge: "border-blue-500/25 bg-blue-500/15 text-blue-300",
-    dot: "bg-blue-400",
-    border: "border-blue-500/20",
-    text: "text-blue-300",
-  },
-  pink: {
-    badge: "border-pink-500/25 bg-pink-500/15 text-pink-300",
-    dot: "bg-pink-400",
-    border: "border-pink-500/20",
-    text: "text-pink-300",
-  },
-  green: {
-    badge: "border-emerald-500/25 bg-emerald-500/15 text-emerald-300",
-    dot: "bg-emerald-400",
-    border: "border-emerald-500/20",
-    text: "text-emerald-300",
-  },
-  orange: {
-    badge: "border-orange-500/25 bg-orange-500/15 text-orange-300",
-    dot: "bg-orange-400",
-    border: "border-orange-500/20",
-    text: "text-orange-300",
-  },
-  purple: {
-    badge: "border-violet-500/25 bg-violet-500/15 text-violet-300",
-    dot: "bg-violet-400",
-    border: "border-violet-500/20",
-    text: "text-violet-300",
-  },
-  gray: {
-    badge: "border-white/15 bg-white/10 text-white/60",
-    dot: "bg-white/40",
-    border: "border-white/10",
-    text: "text-white/60",
-  },
-};
+const SOP_MODAL_CLASS = "sop-modal-panel md:rounded-2xl";
 
 const AUTH_ROLES: SopAuthRole[] = [
   "admin",
@@ -224,15 +194,15 @@ function MarkdownField({
         <button
           type="button"
           onClick={() => setShowPreview((p) => !p)}
-          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55 transition hover:bg-white/10 hover:text-white/80"
+          className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55 transition hover:border-pink-500/25 hover:bg-white/10 hover:text-white/85"
         >
           <Eye className="h-3 w-3" />
           {showPreview ? "Edit" : "Preview"}
         </button>
       </div>
       {showPreview ? (
-        <div className="min-h-[160px] rounded-xl border border-white/10 bg-black/30 p-4">
-          <Markdown>{value}</Markdown>
+        <div className="min-h-[160px]">
+          <Markdown framed>{value}</Markdown>
         </div>
       ) : (
         <FormTextarea
@@ -255,41 +225,46 @@ function SortableDepartmentRow({
   onEdit: (d: SopDepartment) => void;
   onDelete: (d: SopDepartment) => void;
 }) {
+  const motionCfg = useSopMotion();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: dept.id,
   });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.45 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
-  const cfg = COLOR_STYLES[dept.color];
+  const cfg = SOP_COLOR_STYLES[dept.color];
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 transition-all ${
-        isDragging ? "scale-[1.01] shadow-xl" : "hover:bg-white/5"
-      } ${dept.is_active ? cfg.border : "border-white/5 opacity-50"}`}
+      variants={motionCfg.item}
+      whileHover={isDragging ? undefined : motionCfg.hoverLift}
+      className={cn(
+        "sop-glass-card group flex items-center gap-3 rounded-xl px-3.5 py-3 transition-[border-color,box-shadow]",
+        isDragging && "scale-[1.01] shadow-2xl",
+        dept.is_active ? cfg.border : "border-white/8 opacity-50"
+      )}
     >
       <button
         type="button"
         {...listeners}
         {...attributes}
-        className="shrink-0 cursor-grab touch-none text-white/20 hover:text-white/50 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none text-white/25 hover:text-white/55 active:cursor-grabbing"
         aria-label="Drag to reorder department"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <div className={`h-2 w-2 shrink-0 rounded-full ${cfg.dot}`} />
-      <span className={`flex-1 text-sm font-medium ${dept.is_active ? "text-white" : "text-white/35 line-through"}`}>
+      <div className={cn("h-2.5 w-2.5 shrink-0 rounded-full", cfg.dot)} />
+      <span className={cn("flex-1 text-sm font-medium", dept.is_active ? "text-white" : "text-white/35 line-through")}>
         {dept.name}
       </span>
-      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase ${cfg.badge}`}>
+      <SopGlowBadge className={cfg.badge} glowClassName={cfg.glow}>
         {dept.color}
-      </span>
+      </SopGlowBadge>
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
           type="button"
@@ -308,7 +283,7 @@ function SortableDepartmentRow({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -323,49 +298,52 @@ function SortableRoleRow({
   onDelete: (r: SopRole) => void;
   onOpen: (r: SopRole) => void;
 }) {
+  const motionCfg = useSopMotion();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: role.id,
   });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.45 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
-  const cfg = COLOR_STYLES[role.color];
+  const cfg = SOP_COLOR_STYLES[role.color];
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-3 rounded-2xl border px-4 py-3.5 transition-all ${
-        isDragging ? "scale-[1.02] shadow-2xl" : "hover:bg-white/5"
-      } ${role.is_active ? `${cfg.border} bg-white/[0.02]` : "border-white/5 opacity-50"}`}
+      variants={motionCfg.item}
+      whileHover={isDragging ? undefined : motionCfg.hoverLift}
+      className={cn(
+        "sop-glass-card group flex items-center gap-3 rounded-2xl px-4 py-4 transition-[border-color,box-shadow] hover:shadow-[0_0_40px_-12px_hsl(330_80%_55%_/_0.1)]",
+        isDragging && "scale-[1.02] shadow-2xl",
+        role.is_active ? cfg.border : "border-white/8 opacity-50"
+      )}
     >
       <button
         type="button"
         {...listeners}
         {...attributes}
-        className="shrink-0 cursor-grab touch-none text-white/20 hover:text-white/50 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none text-white/25 hover:text-white/55 active:cursor-grabbing"
         aria-label="Drag to reorder role"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className="shrink-0 text-lg">{role.icon || "📋"}</span>
-      <button
-        type="button"
-        onClick={() => onOpen(role)}
-        className="min-w-0 flex-1 text-left"
-      >
-        <span className={`block text-sm font-semibold ${role.is_active ? "text-white" : "text-white/35 line-through"}`}>
+      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04] text-lg">
+        {role.icon || "📋"}
+      </span>
+      <button type="button" onClick={() => onOpen(role)} className="min-w-0 flex-1 text-left">
+        <span className={cn("block text-sm font-semibold", role.is_active ? "text-white" : "text-white/35 line-through")}>
           {role.name}
         </span>
-        <span className="mt-0.5 block truncate text-xs text-white/35">{role.slug}</span>
+        <span className="mt-0.5 block truncate text-xs text-white/40">{role.slug}</span>
       </button>
       {role.auth_roles.length > 0 ? (
-        <span className="hidden shrink-0 rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] text-white/50 sm:inline">
+        <SopGlowBadge className="hidden border-white/12 bg-white/[0.05] text-white/55 sm:inline-flex">
           {role.auth_roles.length} role{role.auth_roles.length !== 1 ? "s" : ""}
-        </span>
+        </SopGlowBadge>
       ) : null}
       <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
@@ -385,7 +363,7 @@ function SortableRoleRow({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -400,56 +378,62 @@ function SortableFunctionRow({
   onEdit: (f: SopFunction) => void;
   onDelete: (f: SopFunction) => void;
 }) {
+  const motionCfg = useSopMotion();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: fn.id,
   });
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.4 : 1,
+    opacity: isDragging ? 0.45 : 1,
     zIndex: isDragging ? 50 : undefined,
   };
-  const deptCfg = department ? COLOR_STYLES[department.color] : COLOR_STYLES.gray;
+  const deptCfg = department ? SOP_COLOR_STYLES[department.color] : SOP_COLOR_STYLES.gray;
+  const cadenceCfg = CADENCE_STYLES[fn.cadence_type];
 
   return (
-    <div
+    <motion.div
       ref={setNodeRef}
       style={style}
-      className={`group flex flex-wrap items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3 transition-all sm:flex-nowrap sm:gap-3 ${
-        isDragging ? "scale-[1.01] shadow-xl" : "hover:bg-white/[0.04]"
-      } ${fn.is_active ? "" : "opacity-50"}`}
+      variants={motionCfg.item}
+      whileHover={isDragging ? undefined : motionCfg.hoverLift}
+      className={cn(
+        "sop-glass-card group flex flex-wrap items-center gap-2 rounded-2xl px-4 py-3.5 transition-[border-color,box-shadow] sm:flex-nowrap sm:gap-3",
+        isDragging && "scale-[1.01] shadow-xl",
+        !fn.is_active && "opacity-50"
+      )}
     >
       <button
         type="button"
         {...listeners}
         {...attributes}
-        className="shrink-0 cursor-grab touch-none text-white/20 hover:text-white/50 active:cursor-grabbing"
+        className="shrink-0 cursor-grab touch-none text-white/25 hover:text-white/55 active:cursor-grabbing"
         aria-label="Drag to reorder function"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <span className={`min-w-0 flex-1 text-sm font-semibold ${fn.is_active ? "text-white" : "text-white/35 line-through"}`}>
+      <span className={cn("min-w-0 flex-1 text-sm font-semibold", fn.is_active ? "text-white" : "text-white/35 line-through")}>
         {fn.name}
       </span>
       {department ? (
-        <span className={`shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${deptCfg.badge}`}>
+        <SopGlowBadge className={deptCfg.badge} glowClassName={deptCfg.glow}>
           {department.name}
-        </span>
+        </SopGlowBadge>
       ) : null}
-      <span className="shrink-0 rounded-full border border-sky-500/25 bg-sky-500/10 px-2 py-0.5 text-[10px] font-semibold text-sky-200">
+      <SopGlowBadge className={cadenceCfg.badge} glowClassName={cadenceCfg.glow}>
         {CADENCE_LABELS[fn.cadence_type]}
         {fn.cadence_note ? ` · ${fn.cadence_note}` : ""}
-      </span>
+      </SopGlowBadge>
       {fn.kpi.trim() ? (
         <span className="hidden max-w-[200px] truncate text-xs text-white/45 lg:inline" title={fn.kpi}>
           KPI: {fn.kpi}
         </span>
       ) : null}
       {fn.loom_url.trim() ? (
-        <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-violet-500/30 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold text-violet-200">
-          <Video className="h-3 w-3" />
+        <SopGlowBadge className="border-violet-500/30 bg-violet-500/12 text-violet-200" glowClassName="shadow-[0_0_14px_-5px_rgba(139,92,246,0.35)]">
+          <Video className="mr-1 inline h-3 w-3" />
           Loom
-        </span>
+        </SopGlowBadge>
       ) : null}
       <div className="ml-auto flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
         <button
@@ -469,7 +453,7 @@ function SortableFunctionRow({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }
 
@@ -1027,71 +1011,90 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     }
   }
 
+  const motionCfg = useSopMotion();
+
   if (selectedRole) {
+    const roleCfg = SOP_COLOR_STYLES[selectedRole.color];
+
     return (
-      <div className="mx-auto max-w-4xl px-4 py-8">
-        <button
-          type="button"
-          onClick={() => setSelectedRole(null)}
-          className="mb-6 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm font-medium text-white/70 transition hover:bg-white/10 hover:text-white"
+      <SopShell>
+        <motion.div
+          className="mx-auto max-w-4xl px-4 py-8 md:py-10"
+          initial="hidden"
+          animate="show"
+          variants={motionCfg.stagger}
         >
-          <ArrowLeft className="h-4 w-4" />
-          Back to roles
-        </button>
-
-        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/60">SOP role</p>
-            <h1 className="flex items-center gap-2 text-2xl font-bold text-white">
-              <span>{selectedRole.icon || "📋"}</span>
-              {selectedRole.name}
-            </h1>
-            <p className="mt-1 text-sm text-white/40">{selectedRole.slug}</p>
-          </div>
-          <ButtonPrimary type="button" onClick={openFnCreate}>
-            <Plus className="mr-1.5 inline h-4 w-4" />
-            New function
-          </ButtonPrimary>
-        </div>
-
-        {loadingFunctions ? (
-          <div className="flex items-center justify-center py-16">
-            <Spinner className="h-8 w-8 border-white/20 border-t-pink-400" />
-          </div>
-        ) : functions.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-sm text-white/30">
-            No functions yet — add the first one for this role.
-          </div>
-        ) : (
-          <DndContext
-            id="sop-functions"
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={(e) => handleFnDragEnd(e)}
+          <motion.button
+            type="button"
+            variants={motionCfg.reveal}
+            onClick={() => setSelectedRole(null)}
+            className="mb-6 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2 text-sm font-medium text-white/70 transition hover:border-white/16 hover:bg-white/10 hover:text-white"
           >
-            <SortableContext items={functions.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {functions.map((fn) => (
-                  <SortableFunctionRow
-                    key={fn.id}
-                    fn={fn}
-                    department={deptById.get(fn.department_id)}
-                    onEdit={openFnEdit}
-                    onDelete={(f) => setConfirmDelete({ type: "function", item: f })}
-                  />
-                ))}
-              </div>
-            </SortableContext>
-          </DndContext>
-        )}
+            <ArrowLeft className="h-4 w-4" />
+            Back to roles
+          </motion.button>
 
-        {fnModalOpen ? (
-          <GlassModal
-            onClose={() => !fnSaving && setFnModalOpen(false)}
-            title={fnEditing ? "Edit function" : "New function"}
-            subtitle="Define the SOP steps, KPI, and cadence for this role."
-            className="md:max-w-3xl"
+          <motion.div
+            variants={motionCfg.reveal}
+            className="sop-glass-panel mb-8 flex flex-wrap items-start justify-between gap-4 rounded-2xl p-5 md:p-6"
           >
+            <div>
+              <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">SOP role</p>
+              <h1 className={cn("flex items-center gap-3 text-2xl font-bold md:text-3xl", roleCfg.text)}>
+                <span className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.05] text-xl">
+                  {selectedRole.icon || "📋"}
+                </span>
+                {selectedRole.name}
+              </h1>
+              <p className="mt-1.5 text-sm text-white/45">{selectedRole.slug}</p>
+            </div>
+            <ButtonPrimary type="button" onClick={openFnCreate}>
+              <Plus className="mr-1.5 inline h-4 w-4" />
+              New function
+            </ButtonPrimary>
+          </motion.div>
+
+          {loadingFunctions ? (
+            <div className="flex items-center justify-center py-20">
+              <Spinner className="h-8 w-8 border-white/20 border-t-pink-400" />
+            </div>
+          ) : functions.length === 0 ? (
+            <SopEmptyState
+              icon={Layers}
+              title="No functions yet"
+              description="Add the first function for this role to define standards and KPIs."
+            />
+          ) : (
+            <DndContext
+              id="sop-functions"
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(e) => handleFnDragEnd(e)}
+            >
+              <SortableContext items={functions.map((f) => f.id)} strategy={verticalListSortingStrategy}>
+                <motion.div className="space-y-3" variants={motionCfg.stagger} initial="hidden" animate="show">
+                  {functions.map((fn) => (
+                    <SortableFunctionRow
+                      key={fn.id}
+                      fn={fn}
+                      department={deptById.get(fn.department_id)}
+                      onEdit={openFnEdit}
+                      onDelete={(f) => setConfirmDelete({ type: "function", item: f })}
+                    />
+                  ))}
+                </motion.div>
+              </SortableContext>
+            </DndContext>
+          )}
+
+          <AnimatePresence>
+            {fnModalOpen ? (
+              <GlassModal
+                onClose={() => !fnSaving && setFnModalOpen(false)}
+                title={fnEditing ? "Edit function" : "New function"}
+                subtitle="Define the SOP steps, KPI, and cadence for this role."
+                className={cn(SOP_MODAL_CLASS, "md:max-w-3xl")}
+              >
             <input
               ref={fnFileInputRef}
               type="file"
@@ -1304,140 +1307,168 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                 </SubmitButton>
               </div>
             </div>
-          </GlassModal>
-        ) : null}
+              </GlassModal>
+            ) : null}
+          </AnimatePresence>
 
-        <ConfirmDialog
-          open={confirmDelete?.type === "function"}
-          onClose={() => !deleteLoading && setConfirmDelete(null)}
-          onConfirm={handleConfirmDelete}
-          title="Delete function?"
-          description={`Remove “${confirmDelete?.type === "function" ? confirmDelete.item.name : ""}”? This cannot be undone.`}
-          confirmLabel="Delete"
-          confirmVariant="danger"
-          loading={deleteLoading}
-        />
-      </div>
+          <ConfirmDialog
+            open={confirmDelete?.type === "function"}
+            onClose={() => !deleteLoading && setConfirmDelete(null)}
+            onConfirm={handleConfirmDelete}
+            title="Delete function?"
+            description={`Remove “${confirmDelete?.type === "function" ? confirmDelete.item.name : ""}”? This cannot be undone.`}
+            confirmLabel="Delete"
+            confirmVariant="danger"
+            loading={deleteLoading}
+          />
+        </motion.div>
+      </SopShell>
     );
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-8">
-      <div className="mb-8">
-        <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/60">Administration</p>
-        <h1 className="text-3xl font-bold text-white">SOP Library</h1>
-        <p className="mt-1 text-sm text-white/40">
-          Manage departments, roles, and per-role functions · Drag to reorder
-        </p>
-      </div>
+    <SopShell>
+      <motion.div
+        className="mx-auto max-w-3xl px-4 py-8 md:py-10"
+        initial="hidden"
+        animate="show"
+        variants={motionCfg.stagger}
+      >
+        <motion.div variants={motionCfg.reveal} className="mb-8">
+          <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">Administration</p>
+          <h1 className="text-3xl font-bold tracking-tight text-white">SOP Library</h1>
+          <p className="mt-2 text-sm text-white/45">
+            Manage departments, roles, and per-role functions · Drag to reorder
+          </p>
+        </motion.div>
 
-      <section className="mb-8 rounded-2xl border border-white/10 bg-white/[0.02]">
-        <div className="flex w-full items-center justify-between gap-3 px-4 py-3.5">
-          <button
-            type="button"
-            onClick={() => setDeptOpen((o) => !o)}
-            className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
-          >
-            <div>
-              <h2 className="text-sm font-bold text-white">Departments</h2>
-              <p className="text-xs text-white/35">{departments.length} total</p>
-            </div>
-            <ChevronDown
-              className={`ml-auto h-4 w-4 shrink-0 text-white/40 transition-transform ${deptOpen ? "rotate-180" : ""}`}
-            />
-          </button>
-          <button
-            type="button"
-            onClick={openDeptCreate}
-            className="shrink-0 rounded-lg border border-pink-500/30 bg-pink-500/15 px-2.5 py-1.5 text-xs font-semibold text-pink-200 transition hover:bg-pink-500/25"
-          >
-            <Plus className="inline h-3.5 w-3.5" />
-            <span className="ml-1">Add</span>
-          </button>
-        </div>
-        {deptOpen ? (
-          <div className="border-t border-white/10 px-4 pb-4 pt-3">
-            {departments.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/30">No departments yet</p>
-            ) : (
-              <DndContext
-                id="sop-departments"
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={(e) => handleDeptDragEnd(e)}
-              >
-                <SortableContext
-                  items={departments.map((d) => d.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="space-y-2">
-                    {departments.map((dept) => (
-                      <SortableDepartmentRow
-                        key={dept.id}
-                        dept={dept}
-                        onEdit={openDeptEdit}
-                        onDelete={(d) => setConfirmDelete({ type: "department", item: d })}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            )}
-          </div>
-        ) : null}
-      </section>
-
-      <section>
-        <div className="mb-4 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-white">Roles</h2>
-            <p className="text-xs text-white/35">Click a role to manage its functions</p>
-          </div>
-          <button
-            type="button"
-            onClick={openRoleCreate}
-            className="flex items-center gap-1.5 rounded-xl border border-pink-500/30 bg-pink-500/15 px-3 py-2 text-xs font-semibold text-pink-200 transition hover:bg-pink-500/25"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            New role
-          </button>
-        </div>
-
-        {roles.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-white/10 py-12 text-center text-sm text-white/30">
-            No roles yet
-          </div>
-        ) : (
-          <DndContext
-            id="sop-roles"
-            sensors={sensors}
-            collisionDetection={closestCenter}
-            onDragEnd={(e) => handleRoleDragEnd(e)}
-          >
-            <SortableContext items={roles.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-              <div className="space-y-2">
-                {roles.map((role) => (
-                  <SortableRoleRow
-                    key={role.id}
-                    role={role}
-                    onEdit={openRoleEdit}
-                    onDelete={(r) => setConfirmDelete({ type: "role", item: r })}
-                    onOpen={setSelectedRole}
-                  />
-                ))}
+        <motion.section variants={motionCfg.reveal} className="sop-glass-panel mb-8 overflow-hidden rounded-2xl">
+          <div className="flex w-full items-center justify-between gap-3 px-4 py-4 md:px-5">
+            <button
+              type="button"
+              onClick={() => setDeptOpen((o) => !o)}
+              className="flex min-w-0 flex-1 items-center gap-3 text-left transition hover:opacity-90"
+            >
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
+                <Building2 className="h-4 w-4 text-white/50" />
+              </span>
+              <div>
+                <h2 className="text-sm font-bold text-white">Departments</h2>
+                <p className="text-xs text-white/40">{departments.length} total</p>
               </div>
-            </SortableContext>
-          </DndContext>
-        )}
-      </section>
+              <ChevronDown
+                className={cn(
+                  "ml-auto h-4 w-4 shrink-0 text-white/40 transition-transform duration-300",
+                  deptOpen && "rotate-180"
+                )}
+              />
+            </button>
+            <button
+              type="button"
+              onClick={openDeptCreate}
+              className="shrink-0 rounded-lg border border-pink-500/30 bg-pink-500/15 px-2.5 py-1.5 text-xs font-semibold text-pink-200 shadow-[0_0_16px_-6px_rgba(236,72,153,0.35)] transition hover:bg-pink-500/25"
+            >
+              <Plus className="inline h-3.5 w-3.5" />
+              <span className="ml-1">Add</span>
+            </button>
+          </div>
+          <AnimatePresence initial={false}>
+            {deptOpen ? (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: motionCfg.tabTransition.duration }}
+                className="overflow-hidden border-t border-white/[0.08]"
+              >
+                <div className="px-4 pb-4 pt-3 md:px-5">
+                  {departments.length === 0 ? (
+                    <p className="py-8 text-center text-sm text-white/35">No departments yet</p>
+                  ) : (
+                    <DndContext
+                      id="sop-departments"
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(e) => handleDeptDragEnd(e)}
+                    >
+                      <SortableContext
+                        items={departments.map((d) => d.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <motion.div className="space-y-2.5" variants={motionCfg.stagger} initial="hidden" animate="show">
+                          {departments.map((dept) => (
+                            <SortableDepartmentRow
+                              key={dept.id}
+                              dept={dept}
+                              onEdit={openDeptEdit}
+                              onDelete={(d) => setConfirmDelete({ type: "department", item: d })}
+                            />
+                          ))}
+                        </motion.div>
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </motion.section>
 
-      {deptModalOpen ? (
-        <GlassModal
-          onClose={() => !deptSaving && setDeptModalOpen(false)}
-          title={deptEditing ? "Edit department" : "New department"}
-          subtitle="Group functions by department with a color badge."
-          className="md:max-w-md"
-        >
+        <motion.section variants={motionCfg.reveal}>
+          <div className="mb-5 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/10 bg-white/[0.04]">
+                <Users className="h-4 w-4 text-white/50" />
+              </span>
+              <div>
+                <h2 className="text-lg font-bold text-white">Roles</h2>
+                <p className="text-xs text-white/40">Click a role to manage its functions</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={openRoleCreate}
+              className="flex items-center gap-1.5 rounded-xl border border-pink-500/30 bg-pink-500/15 px-3 py-2 text-xs font-semibold text-pink-200 shadow-[0_0_16px_-6px_rgba(236,72,153,0.35)] transition hover:bg-pink-500/25"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              New role
+            </button>
+          </div>
+
+          {roles.length === 0 ? (
+            <SopEmptyState icon={Users} title="No roles yet" description="Create a role to start building your SOP library." />
+          ) : (
+            <DndContext
+              id="sop-roles"
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(e) => handleRoleDragEnd(e)}
+            >
+              <SortableContext items={roles.map((r) => r.id)} strategy={verticalListSortingStrategy}>
+                <motion.div className="space-y-3" variants={motionCfg.stagger} initial="hidden" animate="show">
+                  {roles.map((role) => (
+                    <SortableRoleRow
+                      key={role.id}
+                      role={role}
+                      onEdit={openRoleEdit}
+                      onDelete={(r) => setConfirmDelete({ type: "role", item: r })}
+                      onOpen={setSelectedRole}
+                    />
+                  ))}
+                </motion.div>
+              </SortableContext>
+            </DndContext>
+          )}
+        </motion.section>
+
+        <AnimatePresence>
+          {deptModalOpen ? (
+            <GlassModal
+              onClose={() => !deptSaving && setDeptModalOpen(false)}
+              title={deptEditing ? "Edit department" : "New department"}
+              subtitle="Group functions by department with a color badge."
+              className={cn(SOP_MODAL_CLASS, "md:max-w-md")}
+            >
           <form onSubmit={saveDept} className="space-y-4 px-4 pb-5 pt-2 md:px-5">
             <div>
               <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
@@ -1484,16 +1515,18 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               </SubmitButton>
             </div>
           </form>
-        </GlassModal>
-      ) : null}
+            </GlassModal>
+          ) : null}
+        </AnimatePresence>
 
-      {roleModalOpen ? (
-        <GlassModal
-          onClose={() => !roleSaving && setRoleModalOpen(false)}
-          title={roleEditing ? "Edit role" : "New role"}
-          subtitle="Who sees this SOP role and which users it applies to."
-          className="md:max-w-lg"
-        >
+        <AnimatePresence>
+          {roleModalOpen ? (
+            <GlassModal
+              onClose={() => !roleSaving && setRoleModalOpen(false)}
+              title={roleEditing ? "Edit role" : "New role"}
+              subtitle="Who sees this SOP role and which users it applies to."
+              className={cn(SOP_MODAL_CLASS, "md:max-w-lg")}
+            >
           <form onSubmit={saveRole} className="max-h-[70vh] space-y-4 overflow-y-auto px-4 pb-5 pt-2 md:px-5">
             <div className="grid grid-cols-[auto_1fr] gap-3">
               <div>
@@ -1634,29 +1667,31 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               </SubmitButton>
             </div>
           </form>
-        </GlassModal>
-      ) : null}
+            </GlassModal>
+          ) : null}
+        </AnimatePresence>
 
-      <ConfirmDialog
-        open={confirmDelete?.type === "department" || confirmDelete?.type === "role"}
-        onClose={() => !deleteLoading && setConfirmDelete(null)}
-        onConfirm={handleConfirmDelete}
-        title={
-          confirmDelete?.type === "department"
-            ? "Delete department?"
-            : confirmDelete?.type === "role"
-              ? "Delete role?"
-              : "Delete?"
-        }
-        description={
-          confirmDelete
-            ? `Remove “${confirmDelete.item.name}”? Linked functions may lose their department reference.`
-            : ""
-        }
-        confirmLabel="Delete"
-        confirmVariant="danger"
-        loading={deleteLoading}
-      />
-    </div>
+        <ConfirmDialog
+          open={confirmDelete?.type === "department" || confirmDelete?.type === "role"}
+          onClose={() => !deleteLoading && setConfirmDelete(null)}
+          onConfirm={handleConfirmDelete}
+          title={
+            confirmDelete?.type === "department"
+              ? "Delete department?"
+              : confirmDelete?.type === "role"
+                ? "Delete role?"
+                : "Delete?"
+          }
+          description={
+            confirmDelete
+              ? `Remove “${confirmDelete.item.name}”? Linked functions may lose their department reference.`
+              : ""
+          }
+          confirmLabel="Delete"
+          confirmVariant="danger"
+          loading={deleteLoading}
+        />
+      </motion.div>
+    </SopShell>
   );
 }

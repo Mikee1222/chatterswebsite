@@ -15,9 +15,5 @@ export default async function AdminSopLibraryPage() {
     getAllSopRolesAdmin().catch(() => []),
   ]);
 
-  return (
-    <div className="relative min-h-full w-full">
-      <AdminSopLibraryClient initialDepartments={departments} initialRoles={roles} />
-    </div>
-  );
+  return <AdminSopLibraryClient initialDepartments={departments} initialRoles={roles} />;
 }

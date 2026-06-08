@@ -43,9 +43,5 @@ export default async function SopsPage() {
     }))
   );
 
-  return (
-    <div className="relative min-h-full w-full">
-      <SopViewerClient roleBundles={roleBundles} departments={departments} />
-    </div>
-  );
+  return <SopViewerClient roleBundles={roleBundles} departments={departments} />;
 }
