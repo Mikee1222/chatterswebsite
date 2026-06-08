@@ -7,14 +7,7 @@ function isStaffAdmin(session: { role: string } | null): boolean {
   return session != null && (session.role === "admin" || session.role === "manager");
 }
 
-const cadenceSchema = z.enum([
-  "daily",
-  "per_shift",
-  "weekly",
-  "biweekly",
-  "monthly",
-  "ad_hoc",
-]);
+const cadenceSchema = z.enum(["daily", "weekly", "monthly"]);
 
 const standardTypeSchema = z.enum(["text", "file"]);
 
@@ -28,11 +21,10 @@ const postSchema = z.object({
   sop_file_url: z.string().max(2000).optional().default(""),
   sop_file_name: z.string().max(500).optional().default(""),
   loom_url: z.string().max(2000).optional().default(""),
-  cadence_type: cadenceSchema.optional().default("ad_hoc"),
+  cadence_type: cadenceSchema.optional().default("weekly"),
   cadence_note: z.string().max(500).optional().default(""),
   is_active: z.boolean().optional().default(true),
   sort_order: z.number().int().min(0).optional(),
-  estimated_minutes: z.number().int().min(1).max(600).optional(),
 });
 
 export async function GET(req: Request) {
@@ -91,7 +83,6 @@ export async function POST(req: Request) {
       is_active: parsed.data.is_active,
       sort_order,
       content_version: 1,
-      estimated_minutes: parsed.data.estimated_minutes,
     });
     return NextResponse.json({ success: true, function: created });
   } catch (e) {

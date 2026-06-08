@@ -17,14 +17,11 @@ const patchSchema = z.object({
   sop_file_url: z.string().max(2000).optional(),
   sop_file_name: z.string().max(500).optional(),
   loom_url: z.string().max(2000).optional(),
-  cadence_type: z
-    .enum(["daily", "per_shift", "weekly", "biweekly", "monthly", "ad_hoc"])
-    .optional(),
+  cadence_type: z.enum(["daily", "weekly", "monthly"]).optional(),
   cadence_note: z.string().max(500).optional(),
   is_active: z.boolean().optional(),
   sort_order: z.number().int().min(0).optional(),
   bumpVersion: z.boolean().optional(),
-  estimated_minutes: z.number().int().min(1).max(600).nullable().optional(),
 });
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {

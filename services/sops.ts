@@ -75,14 +75,7 @@ const SOP_AUTH_ROLES: readonly SopAuthRole[] = [
   "client",
 ];
 
-const CADENCE_TYPES: readonly CadenceType[] = [
-  "daily",
-  "per_shift",
-  "weekly",
-  "biweekly",
-  "monthly",
-  "ad_hoc",
-];
+const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly"];
 
 const STANDARD_TYPES: readonly StandardType[] = ["text", "file"];
 
@@ -129,7 +122,6 @@ type FunctionFields = {
   sort_order?: number | string;
   is_active?: boolean;
   content_version?: number | string;
-  estimated_minutes?: number | string;
   created_at?: string;
 };
 
@@ -140,16 +132,6 @@ function coerceContentVersion(v: unknown): number {
     if (Number.isFinite(n)) return Math.max(1, n);
   }
   return 1;
-}
-
-function coerceEstimatedMinutes(v: unknown): number | undefined {
-  if (v == null || v === "") return undefined;
-  if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.floor(v);
-  if (typeof v === "string") {
-    const n = Number.parseInt(v, 10);
-    if (Number.isFinite(n) && n > 0) return n;
-  }
-  return undefined;
 }
 
 function genStableId(prefix: string): string {
@@ -179,7 +161,7 @@ function coerceAuthRoles(v: unknown): SopAuthRole[] {
 
 function coerceCadenceType(v: unknown): CadenceType {
   const s = String(v ?? "").trim() as CadenceType;
-  return CADENCE_TYPES.includes(s) ? s : "ad_hoc";
+  return CADENCE_TYPES.includes(s) ? s : "weekly";
 }
 
 function coerceStandardType(v: unknown): StandardType {
@@ -239,7 +221,6 @@ function mapFunctionRecord(rec: AirtableRecord<FunctionFields>): SopFunction {
     sort_order: coerceSortOrder(f.sort_order),
     is_active: f.is_active !== false,
     content_version: coerceContentVersion(f.content_version),
-    estimated_minutes: coerceEstimatedMinutes(f.estimated_minutes),
     created_at: f.created_at != null ? String(f.created_at) : undefined,
   };
 }
@@ -564,9 +545,6 @@ export async function createFunction(
     content_version: data.content_version ?? 1,
     created_at: new Date().toISOString(),
   };
-  if (data.estimated_minutes != null && data.estimated_minutes > 0) {
-    fields.estimated_minutes = data.estimated_minutes;
-  }
   const roleLink = toLinkedRecordPayload(data.sop_role_id || null);
   if (roleLink) fields.sop_role = roleLink;
   const deptLink = toLinkedRecordPayload(data.department_id || null);
@@ -575,9 +553,8 @@ export async function createFunction(
   return mapFunctionRecord(rec);
 }
 
-export type UpdateFunctionOptions = Partial<Omit<SopFunction, "id" | "function_id" | "estimated_minutes">> & {
+export type UpdateFunctionOptions = Partial<Omit<SopFunction, "id" | "function_id">> & {
   bumpVersion?: boolean;
-  estimated_minutes?: number | null;
 };
 
 export async function updateFunction(
@@ -597,11 +574,6 @@ export async function updateFunction(
   if (data.sort_order !== undefined) fields.sort_order = data.sort_order;
   if (data.is_active !== undefined) fields.is_active = data.is_active;
   if (data.content_version !== undefined) fields.content_version = data.content_version;
-  if (data.estimated_minutes !== undefined) {
-    if (data.estimated_minutes != null && data.estimated_minutes > 0) {
-      fields.estimated_minutes = data.estimated_minutes;
-    }
-  }
   if (data.created_at !== undefined) fields.created_at = data.created_at;
   if (data.sop_role_id !== undefined) {
     fields.sop_role = data.sop_role_id ? [data.sop_role_id] : [];

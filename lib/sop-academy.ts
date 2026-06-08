@@ -17,27 +17,6 @@ function sortFunctions(items: SopFunction[]): SopFunction[] {
   return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 }
 
-export function formatEstimatedMinutes(minutes: number): string {
-  return `~${minutes} min`;
-}
-
-export function sumEstimatedMinutes(functions: SopFunction[]): number {
-  return functions.reduce((sum, fn) => sum + (fn.estimated_minutes ?? 0), 0);
-}
-
-export function remainingEstimatedMinutes(
-  sorted: SopFunction[],
-  completed: Set<string>
-): number {
-  return sorted
-    .filter((fn) => !completed.has(fn.id))
-    .reduce((sum, fn) => sum + (fn.estimated_minutes ?? 0), 0);
-}
-
-export function hasTimeEstimates(functions: SopFunction[]): boolean {
-  return functions.some((fn) => (fn.estimated_minutes ?? 0) > 0);
-}
-
 export async function getMatchedAcademyRoles(
   opts: { airtableUserId: string | null; staffRole: SopAuthRole }
 ): Promise<SopRole[]> {

@@ -48,29 +48,25 @@ export const SOP_COLOR_STYLES: Record<
   },
 };
 
+export const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly"];
+
+export const CADENCE_LABELS: Record<CadenceType, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  monthly: "Monthly",
+};
+
 export const CADENCE_STYLES: Record<CadenceType, { badge: string; glow: string }> = {
   daily: {
     badge: "border-emerald-500/30 bg-emerald-500/12 text-emerald-200",
     glow: "shadow-[0_0_16px_-6px_rgba(16,185,129,0.3)]",
   },
-  per_shift: {
-    badge: "border-sky-500/30 bg-sky-500/12 text-sky-200",
-    glow: "shadow-[0_0_16px_-6px_rgba(14,165,233,0.3)]",
-  },
   weekly: {
     badge: "border-violet-500/30 bg-violet-500/12 text-violet-200",
     glow: "shadow-[0_0_16px_-6px_rgba(139,92,246,0.3)]",
   },
-  biweekly: {
-    badge: "border-amber-500/30 bg-amber-500/12 text-amber-200",
-    glow: "shadow-[0_0_16px_-6px_rgba(245,158,11,0.3)]",
-  },
   monthly: {
     badge: "border-pink-500/30 bg-pink-500/12 text-pink-200",
     glow: "shadow-[0_0_16px_-6px_rgba(236,72,153,0.3)]",
-  },
-  ad_hoc: {
-    badge: "border-white/15 bg-white/10 text-white/60",
-    glow: "shadow-[0_0_12px_-8px_rgba(255,255,255,0.1)]",
   },
 };

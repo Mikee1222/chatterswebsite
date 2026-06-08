@@ -57,7 +57,13 @@ import { Spinner } from "@/components/ui/spinner";
 import { SopShell } from "@/components/sop/sop-shell";
 import { SopEmptyState } from "@/components/sop/sop-empty-state";
 import { SopGlowBadge } from "@/components/sop/sop-glow-badge";
-import { CADENCE_STYLES, SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+import {
+  CADENCE_LABELS,
+  CADENCE_STYLES,
+  CADENCE_TYPES,
+  SOP_COLOR_STYLES,
+} from "@/components/sop/sop-colors";
+import { SopFunctionInfoCard } from "@/components/sop/sop-function-info-card";
 import { SopIconPicker, SopRoleIcon, normalizeSopIconName } from "@/components/sop/sop-icons";
 import { useSopMotion } from "@/components/sop/sop-motion";
 import { SopCertificationMiniBadge } from "@/components/sop-certification-shelf";
@@ -121,24 +127,6 @@ const AUTH_ROLE_LABELS: Record<SopAuthRole, string> = {
   virtual_assistant: "Virtual assistant",
   model: "Model",
   client: "Client",
-};
-
-const CADENCE_TYPES: CadenceType[] = [
-  "daily",
-  "per_shift",
-  "weekly",
-  "biweekly",
-  "monthly",
-  "ad_hoc",
-];
-
-const CADENCE_LABELS: Record<CadenceType, string> = {
-  daily: "Daily",
-  per_shift: "Per shift",
-  weekly: "Weekly",
-  biweekly: "Biweekly",
-  monthly: "Monthly",
-  ad_hoc: "Ad hoc",
 };
 
 type PickUser = { id: string; name: string; role: string };
@@ -521,7 +509,6 @@ function SortableFunctionRow({
     zIndex: isDragging ? 50 : undefined,
   };
   const deptCfg = department ? SOP_COLOR_STYLES[department.color] : SOP_COLOR_STYLES.gray;
-  const cadenceCfg = CADENCE_STYLES[fn.cadence_type];
 
   return (
     <motion.div
@@ -552,20 +539,12 @@ function SortableFunctionRow({
           {department.name}
         </SopGlowBadge>
       ) : null}
-      <SopGlowBadge className={cadenceCfg.badge} glowClassName={cadenceCfg.glow}>
+      <SopGlowBadge
+        className={CADENCE_STYLES[fn.cadence_type].badge}
+        glowClassName={CADENCE_STYLES[fn.cadence_type].glow}
+      >
         {CADENCE_LABELS[fn.cadence_type]}
-        {fn.cadence_note ? ` · ${fn.cadence_note}` : ""}
       </SopGlowBadge>
-      {(fn.estimated_minutes ?? 0) > 0 ? (
-        <SopGlowBadge className="bg-white/10 text-white/55" glowClassName="">
-          ~{fn.estimated_minutes} min
-        </SopGlowBadge>
-      ) : null}
-      {fn.kpi.trim() ? (
-        <span className="hidden max-w-[200px] truncate text-xs text-white/45 lg:inline" title={fn.kpi}>
-          KPI: {fn.kpi}
-        </span>
-      ) : null}
       {fn.loom_url.trim() ? (
         <SopGlowBadge className="border-violet-500/30 bg-violet-500/12 text-violet-200" glowClassName="shadow-[0_0_14px_-5px_rgba(139,92,246,0.35)]">
           <Video className="mr-1 inline h-3 w-3" />
@@ -619,7 +598,6 @@ type FunctionForm = {
   loom_url: string;
   cadence_type: CadenceType;
   cadence_note: string;
-  estimated_minutes: string;
   is_active: boolean;
 };
 
@@ -673,9 +651,8 @@ function emptyFunctionForm(deptId = ""): FunctionForm {
     sop_file_url: "",
     sop_file_name: "",
     loom_url: "",
-    cadence_type: "ad_hoc",
+    cadence_type: "weekly",
     cadence_note: "",
-    estimated_minutes: "",
     is_active: true,
   };
 }
@@ -690,12 +667,8 @@ function fnToForm(f: SopFunction): FunctionForm {
     sop_file_url: f.sop_file_url,
     sop_file_name: f.sop_file_name,
     loom_url: f.loom_url,
-    cadence_type: f.cadence_type,
+    cadence_type: CADENCE_TYPES.includes(f.cadence_type) ? f.cadence_type : "weekly",
     cadence_note: f.cadence_note,
-    estimated_minutes:
-      f.estimated_minutes != null && f.estimated_minutes > 0
-        ? String(f.estimated_minutes)
-        : "",
     is_active: f.is_active,
   };
 }
@@ -1334,9 +1307,6 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         cadence_type: fnForm.cadence_type,
         cadence_note: fnForm.cadence_note.trim(),
         is_active: fnForm.is_active,
-        ...(fnForm.estimated_minutes.trim()
-          ? { estimated_minutes: Number.parseInt(fnForm.estimated_minutes, 10) }
-          : { estimated_minutes: null }),
         ...(fnEditing && bumpVersion ? { bumpVersion: true } : {}),
       };
       if (fnEditing) {
@@ -1926,21 +1896,20 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                           placeholder="How success is measured…"
                         />
                       </div>
-                      <div className="sm:max-w-[50%]">
-                        <SopFormLabel htmlFor="sop-fn-minutes">Est. minutes (academy)</SopFormLabel>
-                        <FormInput
-                          id="sop-fn-minutes"
-                          type="number"
-                          inputMode="numeric"
-                          min={1}
-                          max={600}
-                          value={fnForm.estimated_minutes}
-                          onChange={(e) =>
-                            setFnForm((f) => ({ ...f, estimated_minutes: e.target.value }))
-                          }
-                          placeholder="e.g. 5"
+                      {fnEditing ? (
+                        <SopFunctionInfoCard
+                          fn={{
+                            ...fnEditing,
+                            name: fnForm.name.trim() || fnEditing.name,
+                            department_id: fnForm.department_id,
+                            kpi: fnForm.kpi,
+                            cadence_type: fnForm.cadence_type,
+                            cadence_note: fnForm.cadence_note,
+                          }}
+                          department={departments.find((d) => d.id === fnForm.department_id)}
+                          compact
                         />
-                      </div>
+                      ) : null}
                       <Checkbox
                         checked={fnForm.is_active}
                         onChange={(e) => setFnForm((f) => ({ ...f, is_active: e.target.checked }))}

@@ -99,13 +99,7 @@ export type SopAuthRole =
   | "client";
 
 /** SOP Library — `sop_functions.cadence_type` single-select options. */
-export type CadenceType =
-  | "daily"
-  | "per_shift"
-  | "weekly"
-  | "biweekly"
-  | "monthly"
-  | "ad_hoc";
+export type CadenceType = "daily" | "weekly" | "monthly";
 
 export type SopDepartment = {
   id: string;
@@ -305,8 +299,6 @@ export type SopFunction = {
   sort_order: number;
   is_active: boolean;
   content_version: number;
-  /** Optional step duration hint for academy UI (minutes). */
-  estimated_minutes?: number;
   created_at?: string;
 };
 

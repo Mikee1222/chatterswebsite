@@ -10,7 +10,6 @@ import {
   GraduationCap,
   Lock,
   RefreshCw,
-  Target,
 } from "lucide-react";
 import { SopRoleIcon } from "@/components/sop/sop-icons";
 import { Markdown } from "@/components/ui/markdown";
@@ -23,13 +22,13 @@ import { SopEmptyState } from "@/components/sop/sop-empty-state";
 import { SopGlowBadge } from "@/components/sop/sop-glow-badge";
 import { SopFeedbackPanel } from "@/components/sop-feedback-panel";
 import { SopCertificationShelf } from "@/components/sop-certification-shelf";
+import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+import { SopFunctionInfoCard } from "@/components/sop/sop-function-info-card";
 import {
-  formatEstimatedMinutes,
-  hasTimeEstimates,
-  remainingEstimatedMinutes,
-  sumEstimatedMinutes,
-} from "@/lib/sop-academy";
-import { CADENCE_STYLES, SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+  SopExpandButton,
+  SopFullscreenReader,
+  useSopFullscreenReader,
+} from "@/components/sop/sop-fullscreen-reader";
 import { useSopMotion } from "@/components/sop/sop-motion";
 import { cn } from "@/lib/utils";
 
@@ -41,18 +40,8 @@ import type {
   SopFunction,
   SopRole,
   SopColor,
-  CadenceType,
   SopQuizCorrectOption,
 } from "@/types";
-
-const CADENCE_LABELS: Record<CadenceType, string> = {
-  daily: "Daily",
-  per_shift: "Per shift",
-  weekly: "Weekly",
-  biweekly: "Biweekly",
-  monthly: "Monthly",
-  ad_hoc: "Ad hoc",
-};
 
 export type SopRoleBundle = {
   role: SopRole;
@@ -224,50 +213,34 @@ function FunctionStandardBody({
   roleId?: string;
   showFeedback?: boolean;
 }) {
-  const deptStyle = department ? SOP_COLOR_STYLES[department.color] : SOP_COLOR_STYLES.gray;
-  const cadenceStyle = CADENCE_STYLES[fn.cadence_type];
+  const fullscreen = useSopFullscreenReader(fn);
 
   return (
     <>
       <div className="border-b border-white/[0.07] px-5 py-5">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-            <h3 className="text-base font-semibold tracking-tight text-white">{fn.name}</h3>
-            {showUpdatedBadge ? (
-              <SopGlowBadge
-                className="bg-amber-500/15 text-amber-200"
-                glowClassName="shadow-[0_0_16px_-4px_rgba(245,158,11,0.35)]"
-              >
-                <RefreshCw className="mr-1 inline h-3 w-3" />
-                Updated
-              </SopGlowBadge>
-            ) : null}
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {department ? (
-              <SopGlowBadge className={deptStyle.badge} glowClassName={deptStyle.glow}>
-                {department.name}
-              </SopGlowBadge>
-            ) : null}
-            <SopGlowBadge className={cadenceStyle.badge} glowClassName={cadenceStyle.glow}>
-              {CADENCE_LABELS[fn.cadence_type]}
-              {fn.cadence_note.trim() ? ` · ${fn.cadence_note}` : ""}
+        <div className="flex flex-wrap items-center gap-2">
+          <h3 className="text-base font-semibold tracking-tight text-white">{fn.name}</h3>
+          {showUpdatedBadge ? (
+            <SopGlowBadge
+              className="bg-amber-500/15 text-amber-200"
+              glowClassName="shadow-[0_0_16px_-4px_rgba(245,158,11,0.35)]"
+            >
+              <RefreshCw className="mr-1 inline h-3 w-3" />
+              Updated
             </SopGlowBadge>
-          </div>
+          ) : null}
         </div>
-        {fn.kpi.trim() ? (
-          <div className="mt-3 flex items-start gap-2.5 rounded-lg bg-white/[0.03] px-1 py-1">
-            <Target className="mt-0.5 h-4 w-4 shrink-0 text-pink-300/60" />
-            <p className="text-sm text-white/60">
-              <span className="font-semibold text-white/75">KPI:</span> {fn.kpi}
-            </p>
-          </div>
-        ) : null}
+        <SopFunctionInfoCard fn={fn} department={department} className="mt-4" />
       </div>
 
       <div className="space-y-5 px-5 py-5">
         <div>
-          <p className="mb-2.5 text-[11px] font-bold uppercase tracking-wider text-white/40">Standard</p>
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-white/40">Standard</p>
+            {fullscreen.canExpand ? (
+              <SopExpandButton onClick={fullscreen.expand} />
+            ) : null}
+          </div>
           {fn.standard_type === "file" ? (
             fn.sop_file_url.trim() ? (
               <FilePreview url={fn.sop_file_url} name={fn.sop_file_name} />
@@ -280,6 +253,7 @@ function FunctionStandardBody({
         </div>
         {fn.loom_url.trim() ? <LoomEmbed url={fn.loom_url} title={`${fn.name} — Loom`} /> : null}
       </div>
+      <SopFullscreenReader open={fullscreen.open} onClose={fullscreen.close} fn={fn} />
       {showFeedback && roleId ? (
         <div className="border-t border-white/[0.07] px-5 py-5">
           <SopFeedbackPanel roleId={roleId} functionId={fn.id} />
@@ -462,11 +436,6 @@ function AcademyStepper({
                   {dept.name}
                 </span>
               ) : null}
-              {(fn.estimated_minutes ?? 0) > 0 ? (
-                <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/50">
-                  {formatEstimatedMinutes(fn.estimated_minutes!)}
-                </span>
-              ) : null}
             </motion.button>
           </React.Fragment>
         );
@@ -498,10 +467,6 @@ function AcademyRoleContent({
   const percent = total > 0 ? Math.round((completedCount / total) * 100) : 0;
   const allStepsComplete = total > 0 && completedCount >= total;
   const trainingComplete = allStepsComplete && signoff != null;
-  const showTimeEstimates = hasTimeEstimates(sorted);
-  const totalMinutes = sumEstimatedMinutes(sorted);
-  const remainingMinutes = remainingEstimatedMinutes(sorted, completedIds);
-
   const firstIncomplete = sorted.find(
     (f) => !completedIds.has(f.id) || staleIds.has(f.id)
   );
@@ -524,6 +489,8 @@ function AcademyRoleContent({
   const [signingOff, setSigningOff] = React.useState(false);
   const [signoffError, setSignoffError] = React.useState("");
 
+  const sortedFnIds = React.useMemo(() => sorted.map((f) => f.id).join("\0"), [sorted]);
+
   React.useEffect(() => {
     if (initialStepId && sorted.some((f) => f.id === initialStepId)) {
       setActiveFnId(initialStepId);
@@ -534,7 +501,7 @@ function AcademyRoleContent({
     setQuizAnswers({});
     setWrongQuestionIds(new Set());
     setQuizPassed(false);
-  }, [role.id, defaultActiveId, initialStepId, sorted]);
+  }, [role.id, defaultActiveId, initialStepId, sortedFnIds]);
 
   const activeFn = sorted.find((f) => f.id === activeFnId) ?? sorted[0];
   const activeStatus = activeFn
@@ -756,20 +723,7 @@ function AcademyRoleContent({
               <span>
                 {completedCount} / {total} completed
               </span>
-              <div className="flex items-center gap-3">
-                {showTimeEstimates ? (
-                  <span className="text-white/45">
-                    {formatEstimatedMinutes(totalMinutes)} total
-                    {remainingMinutes > 0 ? (
-                      <>
-                        {" "}
-                        / {formatEstimatedMinutes(remainingMinutes)} remaining
-                      </>
-                    ) : null}
-                  </span>
-                ) : null}
-                <span>{percent}%</span>
-              </div>
+              <span>{percent}%</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/10">
               <motion.div

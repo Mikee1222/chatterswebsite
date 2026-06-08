@@ -32,12 +32,20 @@ type FilePreviewProps = {
   className?: string;
   /** Compact thumbnail for admin upload preview */
   compact?: boolean;
+  /** Taller embed for fullscreen SOP reader */
+  fullscreen?: boolean;
 };
 
 const frameClass =
   "sop-media-frame overflow-hidden rounded-2xl transition-[border-color,box-shadow] duration-300 hover:border-pink-500/20 hover:shadow-[0_0_36px_-10px_hsl(330_80%_55%_/_0.2)]";
 
-export function FilePreview({ url, name, className, compact = false }: FilePreviewProps) {
+export function FilePreview({
+  url,
+  name,
+  className,
+  compact = false,
+  fullscreen = false,
+}: FilePreviewProps) {
   const fileUrl = url?.trim() ?? "";
   const fileName = name?.trim() || "File";
 
@@ -46,8 +54,18 @@ export function FilePreview({ url, name, className, compact = false }: FilePrevi
   if (isPdfFile(fileName, fileUrl)) {
     return (
       <div className={cn(frameClass, compact ? "max-w-xs" : "w-full", className)}>
-        <div className="relative w-full" style={{ aspectRatio: "16 / 9" }}>
-          <iframe src={fileUrl} title={fileName} className="absolute inset-0 h-full w-full bg-black/40" />
+        <div
+          className={cn("relative w-full", fullscreen && "min-h-[min(80vh,900px)]")}
+          style={fullscreen ? undefined : { aspectRatio: "16 / 9" }}
+        >
+          <iframe
+            src={fileUrl}
+            title={fileName}
+            className={cn(
+              "absolute inset-0 h-full w-full bg-black/40",
+              fullscreen && "min-h-[min(80vh,900px)]"
+            )}
+          />
         </div>
       </div>
     );
@@ -62,7 +80,7 @@ export function FilePreview({ url, name, className, compact = false }: FilePrevi
           alt={fileName}
           className={cn(
             "h-auto w-full bg-black/30 object-contain",
-            compact ? "max-h-32" : "max-h-[min(70vh,640px)]"
+            compact ? "max-h-32" : fullscreen ? "max-h-[min(85vh,960px)]" : "max-h-[min(70vh,640px)]"
           )}
         />
       </div>

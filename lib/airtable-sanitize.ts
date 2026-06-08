@@ -351,14 +351,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     ]),
   },
   sop_functions: {
-    cadence_type: new Set([
-      "daily",
-      "per_shift",
-      "weekly",
-      "biweekly",
-      "monthly",
-      "ad_hoc",
-    ]),
+    cadence_type: new Set(["daily", "weekly", "monthly"]),
     standard_type: new Set(["text", "file"]),
   },
   sop_quiz_questions: {
