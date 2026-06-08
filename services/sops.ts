@@ -13,8 +13,30 @@ import {
   linkedRecordIds,
   toLinkedRecordPayload,
 } from "@/lib/airtable-linked";
+import {
+  countFeedbackByFunction,
+  countFeedbackByRole,
+  deleteFeedbackByFunction,
+  deleteFeedbackByRole,
+} from "@/services/sop-feedback";
+import {
+  countProgressByFunction,
+  countProgressByRole,
+  deleteProgressByFunction,
+  deleteProgressByRole,
+} from "@/services/sop-progress";
+import {
+  countQuizQuestionsByFunction,
+  deleteQuizQuestionsByFunction,
+} from "@/services/sop-quiz";
+import {
+  countSignoffsByRole,
+  deleteSignoffsByRole,
+} from "@/services/sop-signoff";
 import type {
+  SopCascadeDeleteImpact,
   SopDepartment,
+  SopDepartmentDeleteImpact,
   SopRole,
   SopFunction,
   SopColor,
@@ -23,6 +45,13 @@ import type {
   StandardType,
   UserRecord,
 } from "@/types";
+
+export class SopDeleteBlockedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SopDeleteBlockedError";
+  }
+}
 
 export const SOP_DEPARTMENTS_TABLE = "sop_departments";
 export const SOP_ROLES_TABLE = "sop_roles";
@@ -274,7 +303,38 @@ export async function updateSopDepartment(
   return mapDepartmentRecord(rec);
 }
 
+async function countDepartmentLinks(departmentId: string): Promise<{ roles: number; functions: number }> {
+  const deptId = departmentId.trim();
+  const [roles, functions] = await Promise.all([
+    getAllSopRolesAdmin(),
+    listAllRecords<FunctionFields>(SOP_FUNCTIONS_TABLE, { _caller: "countDepartmentLinks" }),
+  ]);
+  const roleCount = roles.filter((r) => r.department_id === deptId).length;
+  const functionCount = functions.filter(
+    (rec) => firstLinkedId(rec.fields?.department) === deptId
+  ).length;
+  return { roles: roleCount, functions: functionCount };
+}
+
+export async function getDepartmentDeleteImpact(
+  departmentId: string
+): Promise<SopDepartmentDeleteImpact> {
+  const { roles, functions } = await countDepartmentLinks(departmentId);
+  return {
+    roles,
+    functions,
+    blocked: roles > 0 || functions > 0,
+  };
+}
+
 export async function deleteSopDepartment(id: string): Promise<void> {
+  const { roles, functions } = await countDepartmentLinks(id);
+  if (roles > 0 || functions > 0) {
+    const parts: string[] = [];
+    if (roles > 0) parts.push(`${roles} role${roles === 1 ? "" : "s"}`);
+    if (functions > 0) parts.push(`${functions} function${functions === 1 ? "" : "s"}`);
+    throw new SopDeleteBlockedError(`Department in use by ${parts.join(" and ")}`);
+  }
   await deleteRecord(SOP_DEPARTMENTS_TABLE, id);
 }
 
@@ -413,8 +473,37 @@ export async function updateSopRole(
   return mapRoleRecord(rec);
 }
 
+export async function getRoleDeleteImpact(roleId: string): Promise<SopCascadeDeleteImpact> {
+  const id = roleId.trim();
+  const [functions, progress, signoffs, feedback] = await Promise.all([
+    getFunctionsByRoleAdmin(id),
+    countProgressByRole(id),
+    countSignoffsByRole(id),
+    countFeedbackByRole(id),
+  ]);
+  let quiz_questions = 0;
+  for (const fn of functions) {
+    quiz_questions += await countQuizQuestionsByFunction(fn.id);
+  }
+  return {
+    functions: functions.length,
+    progress,
+    signoffs,
+    feedback,
+    quiz_questions,
+  };
+}
+
 export async function deleteSopRole(id: string): Promise<void> {
-  await deleteRecord(SOP_ROLES_TABLE, id);
+  const roleId = id.trim();
+  const functions = await getFunctionsByRoleAdmin(roleId);
+  for (const fn of functions) {
+    await deleteFunction(fn.id);
+  }
+  await deleteProgressByRole(roleId);
+  await deleteSignoffsByRole(roleId);
+  await deleteFeedbackByRole(roleId);
+  await deleteRecord(SOP_ROLES_TABLE, roleId);
 }
 
 export async function reorderRoles(orderedIds: string[]): Promise<void> {
@@ -531,8 +620,28 @@ export async function updateFunction(
   return mapFunctionRecord(rec);
 }
 
+export async function getFunctionDeleteImpact(functionId: string): Promise<SopCascadeDeleteImpact> {
+  const id = functionId.trim();
+  const [progress, feedback, quiz_questions] = await Promise.all([
+    countProgressByFunction(id),
+    countFeedbackByFunction(id),
+    countQuizQuestionsByFunction(id),
+  ]);
+  return {
+    functions: 0,
+    progress,
+    signoffs: 0,
+    feedback,
+    quiz_questions,
+  };
+}
+
 export async function deleteFunction(id: string): Promise<void> {
-  await deleteRecord(SOP_FUNCTIONS_TABLE, id);
+  const functionId = id.trim();
+  await deleteQuizQuestionsByFunction(functionId);
+  await deleteProgressByFunction(functionId);
+  await deleteFeedbackByFunction(functionId);
+  await deleteRecord(SOP_FUNCTIONS_TABLE, functionId);
 }
 
 export async function reorderFunctions(orderedIds: string[]): Promise<void> {

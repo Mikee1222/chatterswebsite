@@ -1,6 +1,7 @@
 import {
   listAllRecords,
   createRecord,
+  deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
@@ -90,4 +91,22 @@ export async function createSignoff(
 
   const rec = await createRecord<SignoffFields>(SOP_SIGNOFFS_TABLE, fields);
   return mapSignoffRecord(rec);
+}
+
+export async function countSignoffsByRole(roleRecordId: string): Promise<number> {
+  const signoffs = await getSignoffsByRole(roleRecordId);
+  return signoffs.length;
+}
+
+export async function deleteSignoffsByRole(roleRecordId: string): Promise<number> {
+  const roleId = roleRecordId.trim();
+  if (!roleId) return 0;
+  const rows = await listAllRecords<SignoffFields>(SOP_SIGNOFFS_TABLE, {
+    _caller: "deleteSignoffsByRole",
+  });
+  const matched = rows.filter((rec) => firstLinkedId(rec.fields?.sop_role) === roleId);
+  for (const rec of matched) {
+    await deleteRecord(SOP_SIGNOFFS_TABLE, rec.id);
+  }
+  return matched.length;
 }

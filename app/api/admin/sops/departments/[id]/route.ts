@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { deleteSopDepartment, updateSopDepartment } from "@/services/sops";
+import {
+  deleteSopDepartment,
+  getDepartmentDeleteImpact,
+  SopDeleteBlockedError,
+  updateSopDepartment,
+} from "@/services/sops";
 
 function isStaffAdmin(session: { role: string } | null): boolean {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -46,6 +51,24 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 }
 
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await getSessionFromCookies();
+  if (!isStaffAdmin(session)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await ctx.params;
+  if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  try {
+    const impact = await getDepartmentDeleteImpact(id);
+    return NextResponse.json({ impact });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!isStaffAdmin(session)) {
@@ -60,6 +83,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ success: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
-    return NextResponse.json({ error: msg }, { status: 500 });
+    const status = e instanceof SopDeleteBlockedError ? 409 : 500;
+    return NextResponse.json({ error: msg }, { status });
   }
 }

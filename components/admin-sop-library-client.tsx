@@ -61,7 +61,9 @@ import { SopCertificationMiniBadge } from "@/components/sop-certification-shelf"
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types";
 import type {
+  SopCascadeDeleteImpact,
   SopDepartment,
+  SopDepartmentDeleteImpact,
   SopRole,
   SopFunction,
   SopColor,
@@ -137,6 +139,37 @@ const CADENCE_LABELS: Record<CadenceType, string> = {
 };
 
 type PickUser = { id: string; name: string; role: string };
+
+function formatCascadeImpactLines(impact: SopCascadeDeleteImpact): string[] {
+  const lines: string[] = [];
+  if (impact.functions > 0) {
+    lines.push(`${impact.functions} function${impact.functions === 1 ? "" : "s"}`);
+  }
+  if (impact.progress > 0) {
+    lines.push(`${impact.progress} progress record${impact.progress === 1 ? "" : "s"}`);
+  }
+  if (impact.signoffs > 0) {
+    lines.push(`${impact.signoffs} sign-off record${impact.signoffs === 1 ? "" : "s"}`);
+  }
+  if (impact.feedback > 0) {
+    lines.push(`${impact.feedback} feedback record${impact.feedback === 1 ? "" : "s"}`);
+  }
+  if (impact.quiz_questions > 0) {
+    lines.push(`${impact.quiz_questions} quiz question${impact.quiz_questions === 1 ? "" : "s"}`);
+  }
+  return lines;
+}
+
+function formatDepartmentBlockedMessage(impact: SopDepartmentDeleteImpact): string {
+  const parts: string[] = [];
+  if (impact.roles > 0) {
+    parts.push(`${impact.roles} role${impact.roles === 1 ? "" : "s"}`);
+  }
+  if (impact.functions > 0) {
+    parts.push(`${impact.functions} function${impact.functions === 1 ? "" : "s"}`);
+  }
+  return `Department in use by ${parts.join(" and ")}. Reassign or remove those links before deleting.`;
+}
 
 function slugFromName(name: string): string {
   return name
@@ -790,6 +823,12 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     | { type: "function"; item: SopFunction }
     | null
   >(null);
+  const [deleteImpact, setDeleteImpact] = React.useState<
+    | { type: "department"; impact: SopDepartmentDeleteImpact }
+    | { type: "role" | "function"; impact: SopCascadeDeleteImpact }
+    | null
+  >(null);
+  const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
   const [collapsedFnGroups, setCollapsedFnGroups] = React.useState<Set<string>>(new Set());
 
@@ -1379,22 +1418,103 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     }
   }
 
+  async function openDeleteConfirm(
+    target:
+      | { type: "department"; item: SopDepartment }
+      | { type: "role"; item: SopRole }
+      | { type: "function"; item: SopFunction }
+  ) {
+    setConfirmDelete(target);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(true);
+    try {
+      const path =
+        target.type === "department"
+          ? `/api/admin/sops/departments/${target.item.id}`
+          : target.type === "role"
+            ? `/api/admin/sops/roles/${target.item.id}`
+            : `/api/admin/sops/functions/${target.item.id}`;
+      const res = await fetch(path);
+      const data = (await res.json().catch(() => ({}))) as {
+        impact?: SopDepartmentDeleteImpact | SopCascadeDeleteImpact;
+      };
+      if (res.ok && data.impact) {
+        if (target.type === "department") {
+          setDeleteImpact({
+            type: "department",
+            impact: data.impact as SopDepartmentDeleteImpact,
+          });
+        } else {
+          setDeleteImpact({
+            type: target.type,
+            impact: data.impact as SopCascadeDeleteImpact,
+          });
+        }
+      }
+    } catch {
+      // Confirm still works without impact counts.
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  }
+
+  function closeDeleteConfirm() {
+    if (deleteLoading) return;
+    setConfirmDelete(null);
+    setDeleteImpact(null);
+    setDeleteImpactLoading(false);
+  }
+
+  const departmentDeleteBlocked =
+    confirmDelete?.type === "department" &&
+    deleteImpact?.type === "department" &&
+    deleteImpact.impact.blocked;
+
+  const deleteConfirmDescription = React.useMemo(() => {
+    if (!confirmDelete) return "";
+    const name = confirmDelete.item.name;
+    if (deleteImpactLoading) {
+      return `Checking linked records for “${name}”…`;
+    }
+    if (confirmDelete.type === "department") {
+      if (deleteImpact?.type === "department" && deleteImpact.impact.blocked) {
+        return formatDepartmentBlockedMessage(deleteImpact.impact);
+      }
+      return `Remove “${name}”? This cannot be undone.`;
+    }
+    const cascade =
+      deleteImpact && deleteImpact.type !== "department"
+        ? formatCascadeImpactLines(deleteImpact.impact)
+        : [];
+    const cascadeText =
+      cascade.length > 0
+        ? ` This will also permanently delete ${cascade.join(", ")}.`
+        : "";
+    return `Remove “${name}”?${cascadeText} This cannot be undone.`;
+  }, [confirmDelete, deleteImpact, deleteImpactLoading]);
+
   async function handleConfirmDelete() {
-    if (!confirmDelete) return;
+    if (!confirmDelete || departmentDeleteBlocked) return;
     setDeleteLoading(true);
     try {
       if (confirmDelete.type === "department") {
         const res = await fetch(`/api/admin/sops/departments/${confirmDelete.item.id}`, {
           method: "DELETE",
         });
-        if (!res.ok) throw new Error("fail");
+        const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+        if (!res.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Delete failed");
+        }
         setDepartments((p) => p.filter((d) => d.id !== confirmDelete.item.id));
         addToast(localToast("sop-del-dept", "Deleted", "Department removed.", "normal"));
       } else if (confirmDelete.type === "role") {
         const res = await fetch(`/api/admin/sops/roles/${confirmDelete.item.id}`, {
           method: "DELETE",
         });
-        if (!res.ok) throw new Error("fail");
+        const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+        if (!res.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Delete failed");
+        }
         setRoles((p) => p.filter((r) => r.id !== confirmDelete.item.id));
         if (selectedRole?.id === confirmDelete.item.id) setSelectedRole(null);
         addToast(localToast("sop-del-role", "Deleted", "Role removed.", "normal"));
@@ -1402,13 +1522,23 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         const res = await fetch(`/api/admin/sops/functions/${confirmDelete.item.id}`, {
           method: "DELETE",
         });
-        if (!res.ok) throw new Error("fail");
+        const data = (await res.json().catch(() => ({}))) as { error?: unknown };
+        if (!res.ok) {
+          throw new Error(typeof data.error === "string" ? data.error : "Delete failed");
+        }
         setFunctions((p) => p.filter((f) => f.id !== confirmDelete.item.id));
         addToast(localToast("sop-del-fn", "Deleted", "Function removed.", "normal"));
       }
-      setConfirmDelete(null);
-    } catch {
-      addToast(localToast("sop-del-e", "Delete failed", "Could not delete. Try again.", "high"));
+      closeDeleteConfirm();
+    } catch (e) {
+      addToast(
+        localToast(
+          "sop-del-e",
+          "Delete failed",
+          e instanceof Error ? e.message : "Could not delete. Try again.",
+          "high"
+        )
+      );
     } finally {
       setDeleteLoading(false);
     }
@@ -1643,7 +1773,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                                     fn={fn}
                                     department={deptById.get(fn.department_id)}
                                     onEdit={openFnEdit}
-                                    onDelete={(f) => setConfirmDelete({ type: "function", item: f })}
+                                    onDelete={(f) => void openDeleteConfirm({ type: "function", item: f })}
                                   />
                                 ))}
                               </div>
@@ -2102,13 +2232,13 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
 
           <ConfirmDialog
             open={confirmDelete?.type === "function"}
-            onClose={() => !deleteLoading && setConfirmDelete(null)}
-            onConfirm={handleConfirmDelete}
+            onClose={closeDeleteConfirm}
+            onConfirm={departmentDeleteBlocked ? closeDeleteConfirm : handleConfirmDelete}
             title="Delete function?"
-            description={`Remove “${confirmDelete?.type === "function" ? confirmDelete.item.name : ""}”? This cannot be undone.`}
-            confirmLabel="Delete"
-            confirmVariant="danger"
-            loading={deleteLoading}
+            description={deleteConfirmDescription}
+            confirmLabel={departmentDeleteBlocked ? "OK" : "Delete"}
+            confirmVariant={departmentDeleteBlocked ? "default" : "danger"}
+            loading={deleteLoading || deleteImpactLoading}
           />
         </motion.div>
       </SopShell>
@@ -2226,7 +2356,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                               key={dept.id}
                               dept={dept}
                               onEdit={openDeptEdit}
-                              onDelete={(d) => setConfirmDelete({ type: "department", item: d })}
+                              onDelete={(d) => void openDeleteConfirm({ type: "department", item: d })}
                             />
                           ))}
                         </motion.div>
@@ -2306,7 +2436,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                                   : undefined
                               }
                               onEdit={openRoleEdit}
-                              onDelete={(r) => setConfirmDelete({ type: "role", item: r })}
+                              onDelete={(r) => void openDeleteConfirm({ type: "role", item: r })}
                               onOpen={setSelectedRole}
                             />
                           ))}
@@ -2553,23 +2683,21 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
 
         <ConfirmDialog
           open={confirmDelete?.type === "department" || confirmDelete?.type === "role"}
-          onClose={() => !deleteLoading && setConfirmDelete(null)}
-          onConfirm={handleConfirmDelete}
+          onClose={closeDeleteConfirm}
+          onConfirm={departmentDeleteBlocked ? closeDeleteConfirm : handleConfirmDelete}
           title={
-            confirmDelete?.type === "department"
-              ? "Delete department?"
-              : confirmDelete?.type === "role"
-                ? "Delete role?"
-                : "Delete?"
+            departmentDeleteBlocked
+              ? "Cannot delete department"
+              : confirmDelete?.type === "department"
+                ? "Delete department?"
+                : confirmDelete?.type === "role"
+                  ? "Delete role?"
+                  : "Delete?"
           }
-          description={
-            confirmDelete
-              ? `Remove “${confirmDelete.item.name}”? Linked functions may lose their department reference.`
-              : ""
-          }
-          confirmLabel="Delete"
-          confirmVariant="danger"
-          loading={deleteLoading}
+          description={deleteConfirmDescription}
+          confirmLabel={departmentDeleteBlocked ? "OK" : "Delete"}
+          confirmVariant={departmentDeleteBlocked ? "default" : "danger"}
+          loading={deleteLoading || deleteImpactLoading}
         />
           </>
         )}

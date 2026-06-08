@@ -23,7 +23,7 @@ import { useSopMotion } from "@/components/sop/sop-motion";
 import { cn } from "@/lib/utils";
 import type { SopAcademyOverview } from "@/types";
 
-const PIE_COLORS = ["#ec4899", "#34d399"];
+const PIE_COLORS = ["#ec4899", "#a78bfa", "#34d399"];
 
 function formatRelativeDays(days: number): string {
   if (days <= 0) return "today";
@@ -90,7 +90,7 @@ export function AdminSopOverviewPanel() {
     >
       <motion.div
         variants={motionCfg.reveal}
-        className="grid gap-3 sm:grid-cols-3"
+        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
       >
         {[
           {
@@ -104,6 +104,12 @@ export function AdminSopOverviewPanel() {
             value: data.total_in_training,
             icon: GraduationCap,
             accent: "text-pink-200",
+          },
+          {
+            label: "Completed training",
+            value: data.total_completed,
+            icon: GraduationCap,
+            accent: "text-violet-200",
           },
           {
             label: "Signed off",
@@ -209,6 +215,7 @@ export function AdminSopOverviewPanel() {
                 <th className="px-4 py-3">Members</th>
                 <th className="px-4 py-3">Completion rate</th>
                 <th className="px-4 py-3">In training</th>
+                <th className="px-4 py-3">Completed training</th>
                 <th className="px-4 py-3">Signed off</th>
               </tr>
             </thead>
@@ -228,6 +235,7 @@ export function AdminSopOverviewPanel() {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-white/65">{role.in_training_count}</td>
+                    <td className="px-4 py-3 text-violet-200/90">{role.completed_count}</td>
                     <td className="px-4 py-3 text-emerald-200/90">{role.signed_off_count}</td>
                   </tr>
                 );

@@ -194,6 +194,7 @@ export type SopAcademyOverviewRoleStats = {
   role_color: SopColor;
   total_functions: number;
   member_count: number;
+  completed_count: number;
   signed_off_count: number;
   in_training_count: number;
   completion_rate: number;
@@ -215,6 +216,7 @@ export type SopAcademyBehindMember = {
 export type SopAcademyOverview = {
   total_members: number;
   total_in_training: number;
+  total_completed: number;
   total_signed_off: number;
   roles: SopAcademyOverviewRoleStats[];
   behind: SopAcademyBehindMember[];
@@ -222,9 +224,24 @@ export type SopAcademyOverview = {
     name: string;
     completion_rate: number;
     in_training: number;
+    completed: number;
     signed_off: number;
   }>;
   chart_totals: Array<{ name: string; value: number }>;
+};
+
+export type SopDepartmentDeleteImpact = {
+  roles: number;
+  functions: number;
+  blocked: boolean;
+};
+
+export type SopCascadeDeleteImpact = {
+  functions: number;
+  progress: number;
+  signoffs: number;
+  feedback: number;
+  quiz_questions: number;
 };
 
 export type SopFeedbackHelpful = "yes" | "no";

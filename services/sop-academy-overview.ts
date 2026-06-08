@@ -45,6 +45,7 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
   const roleStats: SopAcademyOverviewRoleStats[] = [];
   const behind: SopAcademyBehindMember[] = [];
   let total_in_training = 0;
+  let total_completed = 0;
   let total_signed_off = 0;
   let total_members = 0;
 
@@ -74,6 +75,7 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
     );
     const summaryByUser = new Map(summaries.map((s) => [s.user_id, s]));
 
+    let roleCompleted = 0;
     let roleSignedOff = 0;
     let roleInTraining = 0;
     let rateSum = 0;
@@ -85,9 +87,9 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
       const percent = summary?.percent ?? 0;
       const fullyComplete = totalFunctions > 0 && completedCount >= totalFunctions;
 
-      if (signedOff || fullyComplete) {
-        roleSignedOff += 1;
-        total_signed_off += 1;
+      if (fullyComplete) {
+        roleCompleted += 1;
+        total_completed += 1;
       } else {
         roleInTraining += 1;
         total_in_training += 1;
@@ -104,11 +106,16 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
           percent,
           days_behind: daysSince(lastActivity),
           last_activity_at: lastActivity,
-          signed_off: false,
+          signed_off: signedOff,
         });
       }
 
-      rateSum += signedOff || fullyComplete ? 100 : percent;
+      if (signedOff) {
+        roleSignedOff += 1;
+        total_signed_off += 1;
+      }
+
+      rateSum += fullyComplete ? 100 : percent;
       total_members += 1;
     }
 
@@ -119,6 +126,7 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
       role_color: role.color,
       total_functions: totalFunctions,
       member_count,
+      completed_count: roleCompleted,
       signed_off_count: roleSignedOff,
       in_training_count: roleInTraining,
       completion_rate: member_count > 0 ? Math.round(rateSum / member_count) : 0,
@@ -136,18 +144,21 @@ export async function getAcademyOverview(): Promise<SopAcademyOverview> {
     name: r.role_name,
     completion_rate: r.completion_rate,
     in_training: r.in_training_count,
+    completed: r.completed_count,
     signed_off: r.signed_off_count,
   }));
 
   return {
     total_members,
     total_in_training,
+    total_completed,
     total_signed_off,
     roles: roleStats.sort((a, b) => a.role_name.localeCompare(b.role_name)),
     behind,
     chart_by_role,
     chart_totals: [
       { name: "In training", value: total_in_training },
+      { name: "Completed training", value: total_completed },
       { name: "Signed off", value: total_signed_off },
     ],
   };

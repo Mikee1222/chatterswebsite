@@ -157,6 +157,24 @@ export async function deleteQuizQuestion(id: string): Promise<void> {
   await deleteRecord(SOP_QUIZ_QUESTIONS_TABLE, id);
 }
 
+export async function countQuizQuestionsByFunction(functionRecordId: string): Promise<number> {
+  const questions = await getQuestionsByFunctionAdmin(functionRecordId);
+  return questions.length;
+}
+
+export async function deleteQuizQuestionsByFunction(functionRecordId: string): Promise<number> {
+  const functionId = functionRecordId.trim();
+  if (!functionId) return 0;
+  const rows = await listAllRecords<QuestionFields>(SOP_QUIZ_QUESTIONS_TABLE, {
+    _caller: "deleteQuizQuestionsByFunction",
+  });
+  const matched = rows.filter((rec) => firstLinkedId(rec.fields?.sop_function) === functionId);
+  for (const rec of matched) {
+    await deleteRecord(SOP_QUIZ_QUESTIONS_TABLE, rec.id);
+  }
+  return matched.length;
+}
+
 export async function reorderQuizQuestions(orderedIds: string[]): Promise<void> {
   const updates = orderedIds.map((recordId, index) => ({
     id: recordId,

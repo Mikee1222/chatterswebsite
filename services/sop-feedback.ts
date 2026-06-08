@@ -1,6 +1,7 @@
 import {
   listAllRecords,
   createRecord,
+  deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
@@ -150,4 +151,44 @@ export function buildFeedbackSummaries(
       comments,
     };
   });
+}
+
+export async function countFeedbackByRole(roleRecordId: string): Promise<number> {
+  const rows = await getFeedbackByRole(roleRecordId);
+  return rows.length;
+}
+
+export async function countFeedbackByFunction(functionRecordId: string): Promise<number> {
+  const functionId = functionRecordId.trim();
+  if (!functionId) return 0;
+  const rows = await listAllRecords<FeedbackFields>(SOP_FEEDBACK_TABLE, {
+    _caller: "countFeedbackByFunction",
+  });
+  return rows.filter((rec) => firstLinkedId(rec.fields?.sop_function) === functionId).length;
+}
+
+export async function deleteFeedbackByRole(roleRecordId: string): Promise<number> {
+  const roleId = roleRecordId.trim();
+  if (!roleId) return 0;
+  const rows = await listAllRecords<FeedbackFields>(SOP_FEEDBACK_TABLE, {
+    _caller: "deleteFeedbackByRole",
+  });
+  const matched = rows.filter((rec) => firstLinkedId(rec.fields?.sop_role) === roleId);
+  for (const rec of matched) {
+    await deleteRecord(SOP_FEEDBACK_TABLE, rec.id);
+  }
+  return matched.length;
+}
+
+export async function deleteFeedbackByFunction(functionRecordId: string): Promise<number> {
+  const functionId = functionRecordId.trim();
+  if (!functionId) return 0;
+  const rows = await listAllRecords<FeedbackFields>(SOP_FEEDBACK_TABLE, {
+    _caller: "deleteFeedbackByFunction",
+  });
+  const matched = rows.filter((rec) => firstLinkedId(rec.fields?.sop_function) === functionId);
+  for (const rec of matched) {
+    await deleteRecord(SOP_FEEDBACK_TABLE, rec.id);
+  }
+  return matched.length;
 }

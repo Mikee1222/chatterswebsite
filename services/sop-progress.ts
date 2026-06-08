@@ -236,6 +236,46 @@ export async function getProgressByRole(roleRecordId: string): Promise<SopProgre
   return { by_user, rows: matched };
 }
 
+export async function countProgressByRole(roleRecordId: string): Promise<number> {
+  const { rows } = await getProgressByRole(roleRecordId);
+  return rows.length;
+}
+
+export async function countProgressByFunction(functionRecordId: string): Promise<number> {
+  const functionId = functionRecordId.trim();
+  if (!functionId) return 0;
+  const rows = await listAllRecords<ProgressFields>(SOP_PROGRESS_TABLE, {
+    _caller: "countProgressByFunction",
+  });
+  return rows.filter((rec) => firstLinkedId(rec.fields?.sop_function) === functionId).length;
+}
+
+export async function deleteProgressByRole(roleRecordId: string): Promise<number> {
+  const roleId = roleRecordId.trim();
+  if (!roleId) return 0;
+  const rows = await listAllRecords<ProgressFields>(SOP_PROGRESS_TABLE, {
+    _caller: "deleteProgressByRole",
+  });
+  const matched = rows.filter((rec) => firstLinkedId(rec.fields?.sop_role) === roleId);
+  for (const rec of matched) {
+    await deleteRecord(SOP_PROGRESS_TABLE, rec.id);
+  }
+  return matched.length;
+}
+
+export async function deleteProgressByFunction(functionRecordId: string): Promise<number> {
+  const functionId = functionRecordId.trim();
+  if (!functionId) return 0;
+  const rows = await listAllRecords<ProgressFields>(SOP_PROGRESS_TABLE, {
+    _caller: "deleteProgressByFunction",
+  });
+  const matched = rows.filter((rec) => firstLinkedId(rec.fields?.sop_function) === functionId);
+  for (const rec of matched) {
+    await deleteRecord(SOP_PROGRESS_TABLE, rec.id);
+  }
+  return matched.length;
+}
+
 export function buildProgressUserSummaries(
   byUser: Map<string, SopProgress[]>,
   totalFunctions: number,

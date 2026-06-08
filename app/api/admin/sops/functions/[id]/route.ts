@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { deleteFunction, updateFunction } from "@/services/sops";
+import { deleteFunction, getFunctionDeleteImpact, updateFunction } from "@/services/sops";
 
 function isStaffAdmin(session: { role: string } | null): boolean {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -53,6 +53,24 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   try {
     const updated = await updateFunction(id, parsed.data);
     return NextResponse.json({ success: true, function: updated });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}
+
+export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
+  const session = await getSessionFromCookies();
+  if (!isStaffAdmin(session)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const { id } = await ctx.params;
+  if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  try {
+    const impact = await getFunctionDeleteImpact(id);
+    return NextResponse.json({ impact });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });
