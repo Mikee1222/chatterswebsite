@@ -3,6 +3,9 @@ import type { TransactionTypeOption } from "@/lib/airtable-options";
 /** Role from Airtable users table; auth must match. */
 export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "model" | "client";
 
+/** Airtable `users.va_type` — VA specialization (chatting, marketing, or both). */
+export type VaType = "chatting" | "marketing" | "both";
+
 /** whales.status – must match Airtable single-select options exactly. */
 export type WhaleStatus =
   | "Active"
@@ -839,6 +842,8 @@ export interface UserRecord {
   password_hash?: string;
   /** Airtable `secondary_role`: chatter or va (mapped to virtual_assistant in app). */
   secondary_role?: "chatter" | "virtual_assistant" | null;
+  /** Airtable `va_type` when role (or secondary_role) is virtual_assistant. */
+  va_type?: VaType | null;
   telegram_username?: string;
 }
 

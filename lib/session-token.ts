@@ -18,6 +18,7 @@ type SessionPayload = {
   fullName: string | null;
   secondary_role?: AuthUser["secondary_role"];
   active_role?: AuthUser["active_role"];
+  va_type?: AuthUser["va_type"];
 };
 
 function encodeSecret(secret: string): Uint8Array {
@@ -38,6 +39,7 @@ export async function signSessionToken(user: AuthUser, maxAgeSeconds: number): P
       ? { secondary_role: user.secondary_role }
       : {}),
     ...(user.active_role !== undefined && user.active_role !== null ? { active_role: user.active_role } : {}),
+    ...(user.va_type !== undefined && user.va_type !== null ? { va_type: user.va_type } : {}),
   } as SessionPayload)
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
@@ -74,6 +76,11 @@ export async function verifySessionToken(token: string | undefined): Promise<Aut
       out.active_role = p.active_role;
     } else if (p.active_role === null) {
       out.active_role = null;
+    }
+    if (p.va_type === "chatting" || p.va_type === "marketing" || p.va_type === "both") {
+      out.va_type = p.va_type;
+    } else if (p.va_type === null) {
+      out.va_type = null;
     }
     return out;
   } catch {

@@ -4,6 +4,8 @@
  * when D1 is not bound.
  */
 
+import type { VaType } from "@/types";
+
 export const AUTH_COOKIE_NAME = "chatter_session";
 
 /** "Remember me" checked: JWT and optional cookie max-age (30 days). */
@@ -41,4 +43,6 @@ export type AuthUser = {
   secondary_role?: "chatter" | "virtual_assistant" | null;
   /** Which staff hat is active when `secondary_role` is set. */
   active_role?: "chatter" | "virtual_assistant" | null;
+  /** VA specialization from Airtable `users.va_type`. */
+  va_type?: VaType | null;
 };

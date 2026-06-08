@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { updateAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
-import type { UserRecord, UserRole } from "@/types";
+import type { UserRecord, UserRole, VaType } from "@/types";
 import { Checkbox, btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
@@ -26,6 +26,7 @@ import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
 const STATUSES = ["active", "inactive", "suspended"];
+const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
 
 function EditAccountSubmit() {
   const { pending } = useFormStatus();
@@ -43,6 +44,11 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
   const [secondaryRole, setSecondaryRole] = React.useState(
     user.secondary_role === "chatter" || user.secondary_role === "virtual_assistant"
       ? user.secondary_role
+      : ""
+  );
+  const [vaType, setVaType] = React.useState<VaType | "">(
+    user.va_type === "chatting" || user.va_type === "marketing" || user.va_type === "both"
+      ? user.va_type
       : ""
   );
   const [linkedModelId, setLinkedModelId] = React.useState(user.linked_model_id ?? "");
@@ -66,7 +72,10 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
           onChange={(e) => {
             const r = e.target.value as UserRole;
             setRole(r);
-            if (r !== "chatter" && r !== "virtual_assistant") setSecondaryRole("");
+            if (r !== "chatter" && r !== "virtual_assistant") {
+              setSecondaryRole("");
+              setVaType("");
+            }
           }}
           required
         >
@@ -88,7 +97,12 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
             id="secondary_role"
             name="secondary_role"
             value={secondaryRole}
-            onChange={(e) => setSecondaryRole(e.target.value)}
+            onChange={(e) => {
+              setSecondaryRole(e.target.value);
+              if (e.target.value !== "virtual_assistant" && role !== "virtual_assistant") {
+                setVaType("");
+              }
+            }}
           >
             <option value="" className={selectOptionClass}>
               No secondary role
@@ -99,6 +113,30 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
             <option value="chatter" className={selectOptionClass}>
               Chatter
             </option>
+          </FormSelect>
+        </FormField>
+      )}
+      {(role === "virtual_assistant" || secondaryRole === "virtual_assistant") && (
+        <FormField
+          label="VA type"
+          icon={<UserCog />}
+          htmlFor="va_type"
+          description="Specialization for virtual assistant accounts."
+        >
+          <FormSelect
+            id="va_type"
+            name="va_type"
+            value={vaType}
+            onChange={(e) => setVaType(e.target.value as VaType | "")}
+          >
+            <option value="" className={selectOptionClass}>
+              — Select VA type —
+            </option>
+            {VA_TYPES.map((t) => (
+              <option key={t} value={t} className={selectOptionClass}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </option>
+            ))}
           </FormSelect>
         </FormField>
       )}

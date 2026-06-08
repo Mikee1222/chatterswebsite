@@ -22,12 +22,20 @@ import {
   type CreateUserInput,
   type UpdateUserInput,
 } from "@/services/users";
+import type { VaType } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
 async function requireAdmin() {
   const user = await getSessionFromCookies();
   if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
   return user;
+}
+
+const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
+
+function parseVaType(raw: string): VaType | null {
+  const v = raw.trim().toLowerCase();
+  return VA_TYPES.includes(v as VaType) ? (v as VaType) : null;
 }
 
 export async function createAccount(formData: FormData) {
@@ -41,6 +49,7 @@ export async function createAccount(formData: FormData) {
   const linked_model_id = (formData.get("linked_model_id") as string)?.trim() || undefined;
   const language_preference = (formData.get("language_preference") as string)?.trim() || undefined;
   const telegram_username = (formData.get("telegram_username") as string)?.trim() || undefined;
+  const va_type_raw = (formData.get("va_type") as string)?.trim() ?? "";
 
   if (!full_name || !email) {
     redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Name and email are required"));
@@ -60,6 +69,13 @@ export async function createAccount(formData: FormData) {
   if (role === "model" && linked_model_id) input.linked_model_id = linked_model_id;
   if (role === "model" && language_preference) input.language_preference = language_preference;
   if (telegram_username) input.telegram_username = telegram_username;
+  if (role === "virtual_assistant") {
+    const vaType = parseVaType(va_type_raw);
+    if (!vaType) {
+      redirect(ROUTES.accounts + "?error=" + encodeURIComponent("VA type is required for virtual assistant accounts."));
+    }
+    input.va_type = vaType;
+  }
   try {
     await createUser(input);
     redirect(ROUTES.accounts + "?success=created");
@@ -80,6 +96,7 @@ export async function updateAccount(formData: FormData) {
   const email = (formData.get("email") as string)?.trim()?.toLowerCase();
   const role = formData.get("role") as UpdateUserInput["role"] | null;
   const secondary_role_raw = (formData.get("secondary_role") as string)?.trim() ?? "";
+  const va_type_raw = (formData.get("va_type") as string)?.trim() ?? "";
   const status = (formData.get("status") as string)?.trim();
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim();
@@ -119,6 +136,21 @@ export async function updateAccount(formData: FormData) {
     }
   } else {
     input.secondary_role = null;
+  }
+  const isVaAccount =
+    role === "virtual_assistant" || secondary_role_raw === "virtual_assistant";
+  if (isVaAccount) {
+    const vaType = parseVaType(va_type_raw);
+    if (!vaType) {
+      redirect(
+        ROUTES.accounts +
+          "?error=" +
+          encodeURIComponent("VA type is required when the account has a virtual assistant role.")
+      );
+    }
+    input.va_type = vaType;
+  } else {
+    input.va_type = null;
   }
   if (telegram_username !== undefined) input.telegram_username = telegram_username;
   try {

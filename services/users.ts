@@ -10,7 +10,7 @@ import {
   type ListParams,
 } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
-import type { UserRecord, UserRole } from "@/types";
+import type { UserRecord, UserRole, VaType } from "@/types";
 
 const TABLE = "users";
 
@@ -21,6 +21,8 @@ type Fields = {
   role?: string;
   /** Airtable single select: chatter | va */
   secondary_role?: string;
+  /** Airtable single select: chatting | marketing | both */
+  va_type?: string;
   status?: string;
   can_login?: boolean;
   notes?: string;
@@ -36,6 +38,12 @@ function mapSecondaryRoleField(raw: unknown): "chatter" | "virtual_assistant" | 
   const s = String(raw ?? "").trim().toLowerCase();
   if (s === "chatter") return "chatter";
   if (s === "va" || s === "virtual_assistant") return "virtual_assistant";
+  return null;
+}
+
+function mapVaTypeField(raw: unknown): VaType | null {
+  const s = String(raw ?? "").trim().toLowerCase();
+  if (s === "chatting" || s === "marketing" || s === "both") return s;
   return null;
 }
 
@@ -61,6 +69,8 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   }
   const sec = mapSecondaryRoleField(f.secondary_role);
   if (sec) out.secondary_role = sec;
+  const vaType = mapVaTypeField(f.va_type);
+  if (vaType) out.va_type = vaType;
   if (typeof f.telegram_username === "string" && f.telegram_username.trim()) {
     out.telegram_username = f.telegram_username.trim();
   }
@@ -140,6 +150,7 @@ export type CreateUserInput = {
   linked_model_id?: string;
   language_preference?: string;
   telegram_username?: string;
+  va_type?: VaType;
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
@@ -156,6 +167,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   if (input.linked_model_id) fields.linked_model = [input.linked_model_id];
   if (input.language_preference) fields.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) fields.telegram_username = input.telegram_username.trim();
+  if (input.va_type) fields.va_type = input.va_type;
   const rec = await createRecord<Fields>(TABLE, fields as Fields);
   return mapRecord(rec);
 }
@@ -171,6 +183,8 @@ export type UpdateUserInput = Partial<{
   language_preference: string | null;
   /** Persists Airtable values `chatter` or `va` (null clears). */
   secondary_role: "chatter" | "virtual_assistant" | null;
+  /** Persists Airtable values chatting | marketing | both (null clears). */
+  va_type: VaType | null;
   telegram_username: string | null;
 }>;
 
@@ -193,6 +207,13 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
       (fields as Record<string, unknown>).secondary_role = null;
     } else {
       fields.secondary_role = input.secondary_role === "virtual_assistant" ? "va" : "chatter";
+    }
+  }
+  if (input.va_type !== undefined) {
+    if (input.va_type === null) {
+      (fields as Record<string, unknown>).va_type = null;
+    } else {
+      fields.va_type = input.va_type;
     }
   }
   if (input.telegram_username !== undefined) {

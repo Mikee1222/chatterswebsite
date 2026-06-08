@@ -376,6 +376,9 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   whales: {
     status: new Set(WHALE_STATUS_OPTIONS as unknown as string[]),
   },
+  users: {
+    va_type: new Set(["chatting", "marketing", "both"]),
+  },
 };
 
 function getAllowedOptionsForSelectField(normalizedKey: string, tableName?: string): Set<string> | null {

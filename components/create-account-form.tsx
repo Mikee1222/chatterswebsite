@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { createAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
-import type { UserRole } from "@/types";
+import type { UserRole, VaType } from "@/types";
 import { Checkbox, btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
@@ -27,6 +27,7 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
 const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
+const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
 
 function CreateAccountSubmit() {
   const { pending } = useFormStatus();
@@ -45,6 +46,7 @@ type Props = {
 
 export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
   const [role, setRole] = React.useState<UserRole>(defaultRole ?? "chatter");
+  const [vaType, setVaType] = React.useState<VaType | "">("");
   const [linkedModelId, setLinkedModelId] = React.useState("");
   const [languagePreference, setLanguagePreference] = React.useState("en");
 
@@ -67,7 +69,11 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
           id="role"
           name="role"
           value={role}
-          onChange={(e) => setRole(e.target.value as UserRole)}
+          onChange={(e) => {
+            const r = e.target.value as UserRole;
+            setRole(r);
+            if (r !== "virtual_assistant") setVaType("");
+          }}
           required
         >
           {ROLES.map((r) => (
@@ -77,13 +83,38 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
           ))}
         </FormSelect>
       </FormField>
+      {role === "virtual_assistant" && (
+        <FormField
+          label="VA type"
+          icon={<UserCog />}
+          htmlFor="va_type"
+          description="Specialization for virtual assistant accounts."
+          staggerIndex={3}
+        >
+          <FormSelect
+            id="va_type"
+            name="va_type"
+            value={vaType}
+            onChange={(e) => setVaType(e.target.value as VaType | "")}
+          >
+            <option value="" className={selectOptionClass}>
+              — Select VA type —
+            </option>
+            {VA_TYPES.map((t) => (
+              <option key={t} value={t} className={selectOptionClass}>
+                {t.charAt(0).toUpperCase() + t.slice(1)}
+              </option>
+            ))}
+          </FormSelect>
+        </FormField>
+      )}
       {(role === "chatter" || role === "virtual_assistant") && (
         <FormField
           label="Telegram username"
           icon={<Send />}
           htmlFor="telegram_username"
           description="Without @ — used for Message links on live shifts."
-          staggerIndex={3}
+          staggerIndex={role === "virtual_assistant" ? 4 : 3}
         >
           <FormInput
             id="telegram_username"

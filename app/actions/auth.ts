@@ -86,6 +86,7 @@ export async function login(formData: FormData) {
             ...(hasPair && (user.role === "chatter" || user.role === "virtual_assistant")
               ? { active_role: user.role }
               : {}),
+            ...(user.va_type ? { va_type: user.va_type } : {}),
           },
           jwtMaxAgeSec
         );

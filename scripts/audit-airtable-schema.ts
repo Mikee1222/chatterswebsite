@@ -156,6 +156,7 @@ function buildCodeSelectExpectations(): Record<string, Record<string, readonly s
     },
     users: {
       role: userRoles,
+      va_type: ["chatting", "marketing", "both"],
     },
     feedback: {
       type: ["bug", "suggestion", "other"],
@@ -293,6 +294,7 @@ const EXPECTED_FIELDS_BY_TABLE: Record<string, string[]> = {
     "full_name",
     "email",
     "role",
+    "va_type",
     "status",
     "can_login",
     "notes",
