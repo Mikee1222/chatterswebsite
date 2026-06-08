@@ -125,6 +125,8 @@ export type SopRole = {
   description: string;
   icon: string;
   color: SopColor;
+  /** Linked `sop_departments` record id (optional). */
+  department_id: string;
   auth_roles: SopAuthRole[];
   assigned_user_ids: string[];
   academy_mode: boolean;

@@ -116,7 +116,10 @@ function departmentsFields(): Array<Record<string, unknown>> {
   ];
 }
 
-function rolesFields(usersTableId: string): Array<Record<string, unknown>> {
+function rolesFields(
+  usersTableId: string,
+  departmentsTableId: string
+): Array<Record<string, unknown>> {
   return [
     { name: "role_id", type: "singleLineText" },
     { name: "name", type: "singleLineText" },
@@ -127,6 +130,11 @@ function rolesFields(usersTableId: string): Array<Record<string, unknown>> {
       name: "color",
       type: "singleSelect",
       options: { choices: SOP_COLOR_CHOICES },
+    },
+    {
+      name: "department",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: departmentsTableId },
     },
     {
       name: "auth_roles",
@@ -314,8 +322,8 @@ const TABLE_PLANS: TablePlan[] = [
   {
     name: "sop_roles",
     description: "SOP roles (setup-sop-tables.ts)",
-    requires: ["users"],
-    buildFields: ({ usersId }) => rolesFields(usersId),
+    requires: ["users", "sop_departments"],
+    buildFields: ({ usersId, departmentsId }) => rolesFields(usersId, departmentsId),
   },
   {
     name: "sop_functions",

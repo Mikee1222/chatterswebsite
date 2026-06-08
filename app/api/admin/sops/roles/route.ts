@@ -26,6 +26,7 @@ const postSchema = z.object({
   auth_roles: z.array(authRoleSchema).optional().default([]),
   assigned_user_ids: z.array(z.string().trim().min(1)).optional().default([]),
   academy_mode: z.boolean().optional().default(false),
+  department_id: z.string().trim().optional().default(""),
   is_active: z.boolean().optional().default(true),
   sort_order: z.number().int().min(0).optional(),
 });
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
       auth_roles: parsed.data.auth_roles,
       assigned_user_ids: parsed.data.assigned_user_ids,
       academy_mode: parsed.data.academy_mode,
+      department_id: parsed.data.department_id,
       is_active: parsed.data.is_active,
       sort_order,
     });

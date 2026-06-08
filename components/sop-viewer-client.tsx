@@ -80,6 +80,65 @@ function sortFunctions(items: SopFunction[]): SopFunction[] {
   return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 }
 
+function sortDepartments(items: SopDepartment[]): SopDepartment[] {
+  return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
+}
+
+const NO_DEPT_GROUP_KEY = "__none__";
+
+type FnDeptGroup = {
+  key: string;
+  department: SopDepartment | undefined;
+  functions: SopFunction[];
+};
+
+function groupFunctionsByDepartment(
+  functions: SopFunction[],
+  departments: SopDepartment[],
+  departmentById: Map<string, SopDepartment>
+): FnDeptGroup[] {
+  const sorted = sortFunctions(functions);
+  const byDept = new Map<string, SopFunction[]>();
+  const noDept: SopFunction[] = [];
+
+  for (const fn of sorted) {
+    const deptId = fn.department_id?.trim();
+    if (deptId) {
+      const list = byDept.get(deptId) ?? [];
+      list.push(fn);
+      byDept.set(deptId, list);
+    } else {
+      noDept.push(fn);
+    }
+  }
+
+  const groups: FnDeptGroup[] = [];
+  const seen = new Set<string>();
+
+  for (const dept of sortDepartments(departments)) {
+    const fns = byDept.get(dept.id);
+    if (fns?.length) {
+      groups.push({ key: dept.id, department: dept, functions: fns });
+      seen.add(dept.id);
+    }
+  }
+
+  for (const [deptId, fns] of byDept) {
+    if (seen.has(deptId)) continue;
+    groups.push({
+      key: deptId,
+      department: departmentById.get(deptId),
+      functions: fns,
+    });
+  }
+
+  if (noDept.length > 0) {
+    groups.push({ key: NO_DEPT_GROUP_KEY, department: undefined, functions: noDept });
+  }
+
+  return groups;
+}
+
 type StepStatus = "completed" | "current" | "locked" | "stale";
 
 function getStepStatus(
@@ -329,6 +388,7 @@ function AcademyStepper({
   activeId,
   onSelect,
   roleColor,
+  departmentById,
 }: {
   sorted: SopFunction[];
   completed: Set<string>;
@@ -336,6 +396,7 @@ function AcademyStepper({
   activeId: string;
   onSelect: (id: string) => void;
   roleColor: SopColor;
+  departmentById?: Map<string, SopDepartment>;
 }) {
   const motionCfg = useSopMotion();
   const cfg = SOP_COLOR_STYLES[roleColor];
@@ -346,6 +407,8 @@ function AcademyStepper({
         const status = getStepStatus(fn.id, sorted, completed, stale);
         const active = fn.id === activeId;
         const clickable = status === "completed" || status === "current" || status === "stale";
+        const dept = departmentById?.get(fn.department_id);
+        const deptStyle = dept ? SOP_COLOR_STYLES[dept.color] : null;
 
         return (
           <React.Fragment key={fn.id}>
@@ -376,7 +439,7 @@ function AcademyStepper({
                   "cursor-not-allowed border-white/8 bg-white/[0.02] text-white/30",
                 !clickable && "pointer-events-none"
               )}
-              title={fn.name}
+              title={dept ? `${fn.name} · ${dept.name}` : fn.name}
             >
               {status === "completed" ? (
                 <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
@@ -387,7 +450,18 @@ function AcademyStepper({
               ) : (
                 <Lock className="h-3.5 w-3.5 shrink-0" />
               )}
+              {deptStyle ? (
+                <span
+                  className={cn("h-1.5 w-1.5 shrink-0 rounded-full", deptStyle.dot)}
+                  aria-hidden
+                />
+              ) : null}
               <span className="max-w-[8rem] truncate">{fn.name}</span>
+              {dept ? (
+                <span className={cn("hidden max-w-[5rem] truncate text-[10px] font-medium opacity-70 sm:inline", deptStyle?.text)}>
+                  {dept.name}
+                </span>
+              ) : null}
               {(fn.estimated_minutes ?? 0) > 0 ? (
                 <span className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-medium text-white/50">
                   {formatEstimatedMinutes(fn.estimated_minutes!)}
@@ -735,6 +809,7 @@ function AcademyRoleContent({
               activeId={activeFnId}
               onSelect={setActiveFnId}
               roleColor={role.color}
+              departmentById={departmentById}
             />
           </div>
           {activeFn ? (
@@ -801,6 +876,7 @@ function AcademyRoleContent({
               activeId={activeFnId}
               onSelect={setActiveFnId}
               roleColor={role.color}
+              departmentById={departmentById}
             />
           </section>
 
@@ -875,14 +951,20 @@ function AcademyRoleContent({
 function RoleContent({
   bundle,
   departmentById,
+  departments,
 }: {
   bundle: SopRoleBundle;
   departmentById: Map<string, SopDepartment>;
+  departments: SopDepartment[];
 }) {
   const motionCfg = useSopMotion();
   const { role, functions } = bundle;
   const roleStyle = SOP_COLOR_STYLES[role.color];
   const sorted = sortFunctions(functions);
+  const fnGroups = React.useMemo(
+    () => groupFunctionsByDepartment(sorted, departments, departmentById),
+    [sorted, departments, departmentById]
+  );
 
   return (
     <motion.div
@@ -925,19 +1007,47 @@ function RoleContent({
           />
         ) : (
           <motion.div
-            className="grid grid-cols-1 gap-5"
+            className="space-y-8"
             variants={motionCfg.stagger}
             initial="hidden"
             animate="show"
           >
-            {sorted.map((fn) => (
-              <FunctionCard
-                key={fn.id}
-                fn={fn}
-                department={departmentById.get(fn.department_id)}
-                roleId={role.id}
-              />
-            ))}
+            {fnGroups.map((group) => {
+              const deptStyle = group.department
+                ? SOP_COLOR_STYLES[group.department.color]
+                : SOP_COLOR_STYLES.gray;
+              return (
+                <section key={group.key} className="space-y-4">
+                  <div className="flex items-center gap-2.5">
+                    {group.department ? (
+                      <>
+                        <div className={cn("h-2.5 w-2.5 shrink-0 rounded-full", deptStyle.dot)} />
+                        <SopGlowBadge className={deptStyle.badge} glowClassName={deptStyle.glow}>
+                          {group.department.name}
+                        </SopGlowBadge>
+                      </>
+                    ) : (
+                      <SopGlowBadge className="border-white/12 bg-white/[0.05] text-white/55">
+                        General
+                      </SopGlowBadge>
+                    )}
+                    <span className="text-xs text-white/35">
+                      {group.functions.length} function{group.functions.length !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-5">
+                    {group.functions.map((fn) => (
+                      <FunctionCard
+                        key={fn.id}
+                        fn={fn}
+                        department={departmentById.get(fn.department_id)}
+                        roleId={role.id}
+                      />
+                    ))}
+                  </div>
+                </section>
+              );
+            })}
           </motion.div>
         )}
       </section>
@@ -1112,6 +1222,7 @@ export function SopViewerClient({
                       key={activeBundle.role.id}
                       bundle={activeBundle}
                       departmentById={departmentById}
+                      departments={departments}
                     />
                   )
                 ) : null}

@@ -75,6 +75,7 @@ type RoleFields = {
   description?: string;
   icon?: string;
   color?: string;
+  department?: string | string[];
   auth_roles?: string[];
   assigned_users?: string | string[];
   academy_mode?: boolean;
@@ -180,6 +181,7 @@ function mapRoleRecord(rec: AirtableRecord<RoleFields>): SopRole {
     description: String(f.description ?? ""),
     icon: String(f.icon ?? ""),
     color: coerceSopColor(f.color),
+    department_id: firstLinkedId(f.department) ?? "",
     auth_roles: coerceAuthRoles(f.auth_roles),
     assigned_user_ids: linkedRecordIds(f.assigned_users),
     academy_mode: f.academy_mode === true,
@@ -380,6 +382,8 @@ export async function createSopRole(
   if (data.assigned_user_ids.length > 0) {
     fields.assigned_users = data.assigned_user_ids;
   }
+  const deptLink = toLinkedRecordPayload(data.department_id || null);
+  if (deptLink) fields.department = deptLink;
   const rec = await createRecord<RoleFields>(SOP_ROLES_TABLE, fields);
   return mapRoleRecord(rec);
 }
@@ -401,6 +405,9 @@ export async function updateSopRole(
   if (data.created_at !== undefined) fields.created_at = data.created_at;
   if (data.assigned_user_ids !== undefined) {
     fields.assigned_users = data.assigned_user_ids;
+  }
+  if (data.department_id !== undefined) {
+    fields.department = data.department_id ? [data.department_id] : [];
   }
   const rec = await updateRecord<RoleFields>(SOP_ROLES_TABLE, id, fields);
   return mapRoleRecord(rec);

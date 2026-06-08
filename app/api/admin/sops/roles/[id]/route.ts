@@ -20,6 +20,7 @@ const patchSchema = z.object({
     .optional(),
   assigned_user_ids: z.array(z.string().trim().min(1)).optional(),
   academy_mode: z.boolean().optional(),
+  department_id: z.string().trim().optional(),
   is_active: z.boolean().optional(),
   sort_order: z.number().int().min(0).optional(),
 });

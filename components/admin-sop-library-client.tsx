@@ -158,6 +158,136 @@ function sortFunctions(items: SopFunction[]): SopFunction[] {
   return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 }
 
+const NO_DEPT_GROUP_KEY = "__none__";
+
+type RoleDeptGroup = {
+  key: string;
+  department: SopDepartment | null;
+  roles: SopRole[];
+};
+
+type FnDeptGroup = {
+  key: string;
+  department: SopDepartment | undefined;
+  functions: SopFunction[];
+};
+
+function groupRolesByDepartment(
+  roles: SopRole[],
+  departments: SopDepartment[],
+  deptById: Map<string, SopDepartment>
+): RoleDeptGroup[] {
+  const sorted = sortRoles(roles);
+  const byDept = new Map<string, SopRole[]>();
+  const noDept: SopRole[] = [];
+
+  for (const role of sorted) {
+    const deptId = role.department_id?.trim();
+    if (deptId) {
+      const list = byDept.get(deptId) ?? [];
+      list.push(role);
+      byDept.set(deptId, list);
+    } else {
+      noDept.push(role);
+    }
+  }
+
+  const groups: RoleDeptGroup[] = [];
+  const seen = new Set<string>();
+
+  for (const dept of sortDepartments(departments)) {
+    const deptRoles = byDept.get(dept.id);
+    if (deptRoles?.length) {
+      groups.push({ key: dept.id, department: dept, roles: deptRoles });
+      seen.add(dept.id);
+    }
+  }
+
+  for (const [deptId, deptRoles] of byDept) {
+    if (seen.has(deptId)) continue;
+    groups.push({
+      key: deptId,
+      department: deptById.get(deptId) ?? null,
+      roles: deptRoles,
+    });
+  }
+
+  if (noDept.length > 0) {
+    groups.push({ key: NO_DEPT_GROUP_KEY, department: null, roles: noDept });
+  }
+
+  return groups;
+}
+
+function flattenRoleGroups(groups: RoleDeptGroup[]): SopRole[] {
+  return groups.flatMap((g) => g.roles);
+}
+
+function groupFunctionsByDepartment(
+  functions: SopFunction[],
+  departments: SopDepartment[],
+  deptById: Map<string, SopDepartment>
+): FnDeptGroup[] {
+  const sorted = sortFunctions(functions);
+  const byDept = new Map<string, SopFunction[]>();
+  const noDept: SopFunction[] = [];
+
+  for (const fn of sorted) {
+    const deptId = fn.department_id?.trim();
+    if (deptId) {
+      const list = byDept.get(deptId) ?? [];
+      list.push(fn);
+      byDept.set(deptId, list);
+    } else {
+      noDept.push(fn);
+    }
+  }
+
+  const groups: FnDeptGroup[] = [];
+  const seen = new Set<string>();
+
+  for (const dept of sortDepartments(departments)) {
+    const fns = byDept.get(dept.id);
+    if (fns?.length) {
+      groups.push({ key: dept.id, department: dept, functions: fns });
+      seen.add(dept.id);
+    }
+  }
+
+  for (const [deptId, fns] of byDept) {
+    if (seen.has(deptId)) continue;
+    groups.push({
+      key: deptId,
+      department: deptById.get(deptId),
+      functions: fns,
+    });
+  }
+
+  if (noDept.length > 0) {
+    groups.push({ key: NO_DEPT_GROUP_KEY, department: undefined, functions: noDept });
+  }
+
+  return groups;
+}
+
+function flattenFnGroups(groups: FnDeptGroup[]): SopFunction[] {
+  return groups.flatMap((g) => g.functions);
+}
+
+function findRoleGroupKey(roleId: string, groups: RoleDeptGroup[]): string | null {
+  for (const g of groups) {
+    if (g.roles.some((r) => r.id === roleId)) return g.key;
+  }
+  return null;
+}
+
+function findFnGroupKey(fnId: string, groups: FnDeptGroup[]): string | null {
+  for (const g of groups) {
+    if (g.functions.some((f) => f.id === fnId)) return g.key;
+  }
+  return null;
+}
+
 function ColorSelect({
   value,
   onChange,
@@ -297,11 +427,13 @@ function SortableDepartmentRow({
 
 function SortableRoleRow({
   role,
+  department,
   onEdit,
   onDelete,
   onOpen,
 }: {
   role: SopRole;
+  department?: SopDepartment;
   onEdit: (r: SopRole) => void;
   onDelete: (r: SopRole) => void;
   onOpen: (r: SopRole) => void;
@@ -478,6 +610,7 @@ type RoleForm = {
   description: string;
   icon: string;
   color: SopColor;
+  department_id: string;
   auth_roles: SopAuthRole[];
   assigned_user_ids: string[];
   academy_mode: boolean;
@@ -514,6 +647,7 @@ function emptyRoleForm(): RoleForm {
     description: "",
     icon: "BookOpen",
     color: "blue",
+    department_id: "",
     auth_roles: [],
     assigned_user_ids: [],
     academy_mode: false,
@@ -529,6 +663,7 @@ function roleToForm(r: SopRole): RoleForm {
     description: r.description,
     icon: normalizeSopIconName(r.icon),
     color: r.color,
+    department_id: r.department_id,
     auth_roles: [...r.auth_roles],
     assigned_user_ids: [...r.assigned_user_ids],
     academy_mode: r.academy_mode,
@@ -656,6 +791,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     | null
   >(null);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
+  const [collapsedFnGroups, setCollapsedFnGroups] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
     setDepartments(sortDepartments(initialDepartments));
@@ -748,6 +884,16 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     return m;
   }, [departments]);
 
+  const roleGroups = React.useMemo(
+    () => groupRolesByDepartment(roles, departments, deptById),
+    [roles, departments, deptById]
+  );
+
+  const fnGroups = React.useMemo(
+    () => groupFunctionsByDepartment(functions, departments, deptById),
+    [functions, departments, deptById]
+  );
+
   const filteredUsers = React.useMemo(() => {
     const q = userSearch.trim().toLowerCase();
     if (!q) return users;
@@ -795,10 +941,23 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   function handleRoleDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = roles.findIndex((r) => r.id === active.id);
-    const newIndex = roles.findIndex((r) => r.id === over.id);
+
+    const activeGroupKey = findRoleGroupKey(String(active.id), roleGroups);
+    const overGroupKey = findRoleGroupKey(String(over.id), roleGroups);
+    if (!activeGroupKey || activeGroupKey !== overGroupKey) return;
+
+    const group = roleGroups.find((g) => g.key === activeGroupKey);
+    if (!group) return;
+
+    const oldIndex = group.roles.findIndex((r) => r.id === active.id);
+    const newIndex = group.roles.findIndex((r) => r.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const reordered = arrayMove(roles, oldIndex, newIndex).map((r, i) => ({
+
+    const reorderedGroupRoles = arrayMove(group.roles, oldIndex, newIndex);
+    const nextGroups = roleGroups.map((g) =>
+      g.key === activeGroupKey ? { ...g, roles: reorderedGroupRoles } : g
+    );
+    const reordered = flattenRoleGroups(nextGroups).map((r, i) => ({
       ...r,
       sort_order: i + 1,
     }));
@@ -810,10 +969,23 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   function handleFnDragEnd(event: DragEndEvent) {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const oldIndex = functions.findIndex((f) => f.id === active.id);
-    const newIndex = functions.findIndex((f) => f.id === over.id);
+
+    const activeGroupKey = findFnGroupKey(String(active.id), fnGroups);
+    const overGroupKey = findFnGroupKey(String(over.id), fnGroups);
+    if (!activeGroupKey || activeGroupKey !== overGroupKey) return;
+
+    const group = fnGroups.find((g) => g.key === activeGroupKey);
+    if (!group) return;
+
+    const oldIndex = group.functions.findIndex((f) => f.id === active.id);
+    const newIndex = group.functions.findIndex((f) => f.id === over.id);
     if (oldIndex < 0 || newIndex < 0) return;
-    const reordered = arrayMove(functions, oldIndex, newIndex).map((f, i) => ({
+
+    const reorderedGroupFns = arrayMove(group.functions, oldIndex, newIndex);
+    const nextGroups = fnGroups.map((g) =>
+      g.key === activeGroupKey ? { ...g, functions: reorderedGroupFns } : g
+    );
+    const reordered = flattenFnGroups(nextGroups).map((f, i) => ({
       ...f,
       sort_order: i + 1,
     }));
@@ -822,6 +994,15 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     void reorderItems("/api/admin/sops/functions/reorder", reordered.map((f) => f.id), () =>
       setFunctions(prev)
     );
+  }
+
+  function toggleFnGroupCollapsed(key: string) {
+    setCollapsedFnGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
   }
 
   function openDeptCreate() {
@@ -928,6 +1109,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         auth_roles: roleForm.auth_roles,
         assigned_user_ids: roleForm.assigned_user_ids,
         academy_mode: roleForm.academy_mode,
+        department_id: roleForm.department_id,
         is_active: roleForm.is_active,
       };
       if (roleEditing) {
@@ -1403,19 +1585,76 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               collisionDetection={closestCenter}
               onDragEnd={(e) => handleFnDragEnd(e)}
             >
-              <SortableContext items={functions.map((f) => f.id)} strategy={verticalListSortingStrategy}>
-                <motion.div className="space-y-3" variants={motionCfg.stagger} initial="hidden" animate="show">
-                  {functions.map((fn) => (
-                    <SortableFunctionRow
-                      key={fn.id}
-                      fn={fn}
-                      department={deptById.get(fn.department_id)}
-                      onEdit={openFnEdit}
-                      onDelete={(f) => setConfirmDelete({ type: "function", item: f })}
-                    />
-                  ))}
-                </motion.div>
-              </SortableContext>
+              <motion.div className="space-y-5" variants={motionCfg.stagger} initial="hidden" animate="show">
+                {fnGroups.map((group) => {
+                  const deptCfg = group.department
+                    ? SOP_COLOR_STYLES[group.department.color]
+                    : SOP_COLOR_STYLES.gray;
+                  const collapsed = collapsedFnGroups.has(group.key);
+                  return (
+                    <div key={group.key} className="space-y-2.5">
+                      <button
+                        type="button"
+                        onClick={() => toggleFnGroupCollapsed(group.key)}
+                        className={cn(
+                          "flex w-full items-center gap-3 rounded-xl border px-3.5 py-2.5 text-left transition hover:bg-white/[0.03]",
+                          group.department ? deptCfg.border : "border-white/10"
+                        )}
+                      >
+                        {group.department ? (
+                          <>
+                            <div className={cn("h-2 w-2 shrink-0 rounded-full", deptCfg.dot)} />
+                            <SopGlowBadge className={deptCfg.badge} glowClassName={deptCfg.glow}>
+                              {group.department.name}
+                            </SopGlowBadge>
+                          </>
+                        ) : (
+                          <SopGlowBadge className="border-white/12 bg-white/[0.05] text-white/55">
+                            No department
+                          </SopGlowBadge>
+                        )}
+                        <span className="text-xs text-white/40">
+                          {group.functions.length} function{group.functions.length !== 1 ? "s" : ""}
+                        </span>
+                        <ChevronDown
+                          className={cn(
+                            "ml-auto h-4 w-4 shrink-0 text-white/40 transition-transform duration-300",
+                            !collapsed && "rotate-180"
+                          )}
+                        />
+                      </button>
+                      <AnimatePresence initial={false}>
+                        {!collapsed ? (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: motionCfg.tabTransition.duration }}
+                            className="overflow-hidden"
+                          >
+                            <SortableContext
+                              items={group.functions.map((f) => f.id)}
+                              strategy={verticalListSortingStrategy}
+                            >
+                              <div className="space-y-3 pt-0.5">
+                                {group.functions.map((fn) => (
+                                  <SortableFunctionRow
+                                    key={fn.id}
+                                    fn={fn}
+                                    department={deptById.get(fn.department_id)}
+                                    onEdit={openFnEdit}
+                                    onDelete={(f) => setConfirmDelete({ type: "function", item: f })}
+                                  />
+                                ))}
+                              </div>
+                            </SortableContext>
+                          </motion.div>
+                        ) : null}
+                      </AnimatePresence>
+                    </div>
+                  );
+                })}
+              </motion.div>
             </DndContext>
           )}
 
@@ -2028,19 +2267,55 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               collisionDetection={closestCenter}
               onDragEnd={(e) => handleRoleDragEnd(e)}
             >
-              <SortableContext items={roles.map((r) => r.id)} strategy={verticalListSortingStrategy}>
-                <motion.div className="space-y-3" variants={motionCfg.stagger} initial="hidden" animate="show">
-                  {roles.map((role) => (
-                    <SortableRoleRow
-                      key={role.id}
-                      role={role}
-                      onEdit={openRoleEdit}
-                      onDelete={(r) => setConfirmDelete({ type: "role", item: r })}
-                      onOpen={setSelectedRole}
-                    />
-                  ))}
-                </motion.div>
-              </SortableContext>
+              <motion.div className="space-y-6" variants={motionCfg.stagger} initial="hidden" animate="show">
+                {roleGroups.map((group) => {
+                  const deptCfg = group.department
+                    ? SOP_COLOR_STYLES[group.department.color]
+                    : SOP_COLOR_STYLES.gray;
+                  return (
+                    <div key={group.key} className="space-y-3">
+                      <div className="flex items-center gap-2.5 px-1">
+                        {group.department ? (
+                          <>
+                            <div className={cn("h-2.5 w-2.5 shrink-0 rounded-full", deptCfg.dot)} />
+                            <SopGlowBadge className={deptCfg.badge} glowClassName={deptCfg.glow}>
+                              {group.department.name}
+                            </SopGlowBadge>
+                          </>
+                        ) : (
+                          <SopGlowBadge className="border-white/12 bg-white/[0.05] text-white/55">
+                            No department
+                          </SopGlowBadge>
+                        )}
+                        <span className="text-xs text-white/35">
+                          {group.roles.length} role{group.roles.length !== 1 ? "s" : ""}
+                        </span>
+                      </div>
+                      <SortableContext
+                        items={group.roles.map((r) => r.id)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        <div className="space-y-3">
+                          {group.roles.map((role) => (
+                            <SortableRoleRow
+                              key={role.id}
+                              role={role}
+                              department={
+                                role.department_id
+                                  ? deptById.get(role.department_id)
+                                  : undefined
+                              }
+                              onEdit={openRoleEdit}
+                              onDelete={(r) => setConfirmDelete({ type: "role", item: r })}
+                              onOpen={setSelectedRole}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </div>
+                  );
+                })}
+              </motion.div>
             </DndContext>
           )}
         </motion.section>
@@ -2158,6 +2433,22 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                 value={roleForm.color}
                 onChange={(c) => setRoleForm((f) => ({ ...f, color: c }))}
               />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                Department
+              </label>
+              <FormSelect
+                value={roleForm.department_id}
+                onChange={(e) => setRoleForm((f) => ({ ...f, department_id: e.target.value }))}
+              >
+                <option value="">— None —</option>
+                {departments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name}
+                  </option>
+                ))}
+              </FormSelect>
             </div>
             <div>
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-white/45">
