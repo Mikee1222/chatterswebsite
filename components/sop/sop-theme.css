@@ -74,6 +74,21 @@
   }
 }
 
+.sop-dark .sop-table-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.15) transparent;
+}
+
+.sop-dark .sop-table-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.sop-dark .sop-table-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .sop-dark .sop-modal-panel {
     transition: none !important;

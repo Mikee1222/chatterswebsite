@@ -23,12 +23,28 @@ import { useSopMotion } from "@/components/sop/sop-motion";
 import { cn } from "@/lib/utils";
 import type { SopAcademyOverview } from "@/types";
 
-const PIE_COLORS = ["#ec4899", "#a78bfa", "#34d399"];
+const STATUS_COLORS: Record<string, string> = {
+  "In training": "#ec4899",
+  "Completed training": "#a78bfa",
+  "Signed off": "#34d399",
+};
+
+const chartTooltipStyle: React.CSSProperties = {
+  background: "rgba(10, 10, 16, 0.94)",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  borderRadius: 12,
+  color: "#fff",
+  backdropFilter: "blur(12px)",
+};
 
 function formatRelativeDays(days: number): string {
   if (days <= 0) return "today";
   if (days === 1) return "1 day";
   return `${days} days`;
+}
+
+function statusColor(name: string, index: number): string {
+  return STATUS_COLORS[name] ?? ["#ec4899", "#a78bfa", "#34d399"][index % 3];
 }
 
 export function AdminSopOverviewPanel() {
@@ -81,6 +97,9 @@ export function AdminSopOverviewPanel() {
     );
   }
 
+  const pieTotal = data.chart_totals.reduce((sum, d) => sum + d.value, 0);
+  const pieSegments = data.chart_totals.filter((d) => d.value > 0);
+  const allZeroCompletion = data.chart_by_role.every((r) => r.completion_rate === 0);
   return (
     <motion.div
       className="space-y-6"
@@ -118,16 +137,17 @@ export function AdminSopOverviewPanel() {
             accent: "text-emerald-200",
           },
         ].map((stat) => (
-          <div
+          <motion.div
             key={stat.label}
-            className="sop-glass-panel rounded-2xl p-4 md:p-5"
+            whileHover={motionCfg.hoverLift}
+            className="sop-glass-panel rounded-2xl p-4 transition-[border-color,box-shadow] duration-300 hover:border-white/14 md:p-5"
           >
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-white/40">
               <stat.icon className="h-4 w-4" />
               {stat.label}
             </div>
-            <p className={cn("mt-2 text-3xl font-bold", stat.accent)}>{stat.value}</p>
-          </div>
+            <p className={cn("mt-2 text-3xl font-bold tabular-nums", stat.accent)}>{stat.value}</p>
+          </motion.div>
         ))}
       </motion.div>
 
@@ -137,68 +157,133 @@ export function AdminSopOverviewPanel() {
       >
         <div className="sop-glass-panel rounded-2xl p-4 md:p-5">
           <h3 className="mb-4 text-sm font-bold text-white">Completion rate by role</h3>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data.chart_by_role} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
-                  interval={0}
-                  angle={-18}
-                  textAnchor="end"
-                  height={56}
-                />
-                <YAxis
-                  domain={[0, 100]}
-                  tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
-                  tickFormatter={(v) => `${v}%`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(10,10,14,0.92)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: 12,
-                    color: "#fff",
-                  }}
-                  formatter={(value) => [`${value}%`, "Completion rate"]}
-                />
-                <Bar dataKey="completion_rate" fill="#ec4899" radius={[6, 6, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="relative h-64 w-full">
+            {allZeroCompletion ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
+                <p className="text-sm font-medium text-white/55">No completions yet</p>
+                <p className="max-w-xs text-xs text-white/35">
+                  Completion bars will appear once members finish academy steps.
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={data.chart_by_role} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <XAxis
+                    dataKey="name"
+                    tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+                    axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
+                    tickLine={false}
+                    interval={0}
+                    angle={-18}
+                    textAnchor="end"
+                    height={56}
+                  />
+                  <YAxis
+                    domain={[0, 100]}
+                    tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+                    axisLine={false}
+                    tickLine={false}
+                    tickFormatter={(v) => `${v}%`}
+                  />
+                  <Tooltip
+                    cursor={{ fill: "rgba(255,255,255,0.04)" }}
+                    contentStyle={chartTooltipStyle}
+                    formatter={(value) => [`${value}%`, "Completion rate"]}
+                  />
+                  <Bar dataKey="completion_rate" radius={[6, 6, 0, 0]} minPointSize={3}>
+                    {data.chart_by_role.map((entry) => (
+                      <Cell
+                        key={entry.name}
+                        fill={
+                          entry.completion_rate > 0
+                            ? "#ec4899"
+                            : "rgba(236, 72, 153, 0.25)"
+                        }
+                      />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
         <div className="sop-glass-panel rounded-2xl p-4 md:p-5">
           <h3 className="mb-4 text-sm font-bold text-white">Training status</h3>
-          <div className="h-64 w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={data.chart_totals}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={52}
-                  outerRadius={82}
-                  paddingAngle={3}
-                >
-                  {data.chart_totals.map((_, i) => (
-                    <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(10,10,14,0.92)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: 12,
-                    color: "#fff",
-                  }}
-                />
-                <Legend wrapperStyle={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="relative h-64 w-full">
+            {pieTotal === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.02] px-4 text-center">
+                <p className="text-sm font-medium text-white/55">No training activity yet</p>
+                <p className="max-w-xs text-xs text-white/35">
+                  Status breakdown appears when members start academy training.
+                </p>
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieSegments}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="46%"
+                    innerRadius={52}
+                    outerRadius={82}
+                    paddingAngle={pieSegments.length > 1 ? 3 : 0}
+                    stroke="rgba(10, 10, 16, 0.9)"
+                    strokeWidth={2}
+                  >
+                    {pieSegments.map((entry, i) => (
+                      <Cell key={entry.name} fill={statusColor(entry.name, i)} />
+                    ))}
+                  </Pie>
+                  <text
+                    x="50%"
+                    y="46%"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fill="rgba(255,255,255,0.92)"
+                    fontSize={22}
+                    fontWeight={700}
+                  >
+                    {pieTotal}
+                  </text>
+                  <text
+                    x="50%"
+                    y="46%"
+                    dy={18}
+                    textAnchor="middle"
+                    fill="rgba(255,255,255,0.42)"
+                    fontSize={11}
+                    fontWeight={500}
+                  >
+                    total
+                  </text>
+                  <Tooltip contentStyle={chartTooltipStyle} />
+                  <Legend
+                    verticalAlign="bottom"
+                    content={() => (
+                      <ul className="flex flex-wrap justify-center gap-x-4 gap-y-1.5 pt-2">
+                        {data.chart_totals.map((entry, i) => (
+                          <li
+                            key={entry.name}
+                            className="flex items-center gap-1.5 text-xs text-white/65"
+                          >
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                              style={{ backgroundColor: statusColor(entry.name, i) }}
+                              aria-hidden
+                            />
+                            {entry.name}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
       </motion.div>
@@ -207,16 +292,16 @@ export function AdminSopOverviewPanel() {
         <div className="border-b border-white/10 px-4 py-3 md:px-5">
           <h3 className="text-sm font-bold text-white">Per-role breakdown</h3>
         </div>
-        <div className="overflow-x-auto">
+        <div className="sop-table-scroll overflow-x-auto">
           <table className="w-full min-w-[640px] text-left text-sm">
             <thead>
               <tr className="border-b border-white/10 text-[11px] font-bold uppercase tracking-wider text-white/40">
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Members</th>
-                <th className="px-4 py-3">Completion rate</th>
-                <th className="px-4 py-3">In training</th>
-                <th className="px-4 py-3">Completed training</th>
-                <th className="px-4 py-3">Signed off</th>
+                <th className="px-4 py-3 md:px-5">Role</th>
+                <th className="px-4 py-3 md:px-5">Members</th>
+                <th className="px-4 py-3 md:px-5">Completion rate</th>
+                <th className="px-4 py-3 md:px-5">In training</th>
+                <th className="px-4 py-3 md:px-5">Completed training</th>
+                <th className="px-4 py-3 md:px-5">Signed off</th>
               </tr>
             </thead>
             <tbody>
@@ -225,18 +310,18 @@ export function AdminSopOverviewPanel() {
                 return (
                   <tr
                     key={role.role_id}
-                    className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
+                    className="border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04]"
                   >
-                    <td className={cn("px-4 py-3 font-medium", cfg.text)}>{role.role_name}</td>
-                    <td className="px-4 py-3 text-white/70">{role.member_count}</td>
-                    <td className="px-4 py-3">
+                    <td className={cn("px-4 py-3 font-medium md:px-5", cfg.text)}>{role.role_name}</td>
+                    <td className="px-4 py-3 tabular-nums text-white/70 md:px-5">{role.member_count}</td>
+                    <td className="px-4 py-3 md:px-5">
                       <span className="inline-flex rounded-full bg-pink-500/15 px-2.5 py-0.5 text-xs font-semibold text-pink-200">
                         {role.completion_rate}%
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-white/65">{role.in_training_count}</td>
-                    <td className="px-4 py-3 text-violet-200/90">{role.completed_count}</td>
-                    <td className="px-4 py-3 text-emerald-200/90">{role.signed_off_count}</td>
+                    <td className="px-4 py-3 tabular-nums text-pink-200/85 md:px-5">{role.in_training_count}</td>
+                    <td className="px-4 py-3 tabular-nums text-violet-200/90 md:px-5">{role.completed_count}</td>
+                    <td className="px-4 py-3 tabular-nums text-emerald-200/90 md:px-5">{role.signed_off_count}</td>
                   </tr>
                 );
               })}
@@ -255,29 +340,29 @@ export function AdminSopOverviewPanel() {
             Everyone is caught up — no members behind on training.
           </p>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="sop-table-scroll overflow-x-auto">
             <table className="w-full min-w-[720px] text-left text-sm">
               <thead>
                 <tr className="border-b border-white/10 text-[11px] font-bold uppercase tracking-wider text-white/40">
-                  <th className="px-4 py-3">Member</th>
-                  <th className="px-4 py-3">Role</th>
-                  <th className="px-4 py-3">Progress</th>
-                  <th className="px-4 py-3">Inactive</th>
-                  <th className="px-4 py-3">Last activity</th>
+                  <th className="px-4 py-3 md:px-5">Member</th>
+                  <th className="px-4 py-3 md:px-5">Role</th>
+                  <th className="px-4 py-3 md:px-5">Progress</th>
+                  <th className="px-4 py-3 md:px-5">Inactive</th>
+                  <th className="px-4 py-3 md:px-5">Last activity</th>
                 </tr>
               </thead>
               <tbody>
                 {data.behind.map((row) => (
                   <tr
                     key={`${row.user_id}:${row.role_id}`}
-                    className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
+                    className="border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04]"
                   >
-                    <td className="px-4 py-3 font-medium text-white/85">{row.user_name}</td>
-                    <td className="px-4 py-3 text-white/65">{row.role_name}</td>
-                    <td className="px-4 py-3 text-white/65">
+                    <td className="px-4 py-3 font-medium text-white/85 md:px-5">{row.user_name}</td>
+                    <td className="px-4 py-3 text-white/65 md:px-5">{row.role_name}</td>
+                    <td className="px-4 py-3 tabular-nums text-white/65 md:px-5">
                       {row.completed_count}/{row.total_functions} ({row.percent}%)
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 md:px-5">
                       <span
                         className={cn(
                           "inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold",
@@ -291,7 +376,7 @@ export function AdminSopOverviewPanel() {
                         {formatRelativeDays(row.days_behind)}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-xs text-white/45">
+                    <td className="px-4 py-3 text-xs text-white/45 md:px-5">
                       {row.last_activity_at
                         ? new Date(row.last_activity_at).toLocaleString()
                         : "—"}

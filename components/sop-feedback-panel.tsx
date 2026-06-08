@@ -64,9 +64,9 @@ export function SopFeedbackPanel({ roleId, functionId }: Props) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3.5 rounded-xl border border-white/[0.07] bg-white/[0.02] p-4">
       <p className="text-sm font-medium text-white/75">Ήταν ξεκάθαρο;</p>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2.5">
         <motion.button
           type="button"
           disabled={submitting}
@@ -74,10 +74,10 @@ export function SopFeedbackPanel({ roleId, functionId }: Props) {
           whileTap={submitting ? undefined : { scale: 0.97 }}
           onClick={() => void submit("yes")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold transition",
+            "inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold transition",
             helpful === "yes"
-              ? "border-emerald-500/35 bg-emerald-500/15 text-emerald-100"
-              : "border-white/12 bg-white/[0.04] text-white/65 hover:border-white/20 hover:text-white/85"
+              ? "border-emerald-500/35 bg-emerald-500/15 text-emerald-100 shadow-[0_0_20px_-8px_rgba(16,185,129,0.35)]"
+              : "border-white/12 bg-white/[0.04] text-white/65 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/85"
           )}
         >
           {submitting && helpful === "yes" ? (
@@ -94,10 +94,10 @@ export function SopFeedbackPanel({ roleId, functionId }: Props) {
           whileTap={submitting ? undefined : { scale: 0.97 }}
           onClick={() => void submit("no")}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold transition",
+            "inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border px-3.5 py-2 text-sm font-semibold transition",
             helpful === "no"
-              ? "border-rose-500/35 bg-rose-500/15 text-rose-100"
-              : "border-white/12 bg-white/[0.04] text-white/65 hover:border-white/20 hover:text-white/85"
+              ? "border-rose-500/35 bg-rose-500/15 text-rose-100 shadow-[0_0_20px_-8px_rgba(244,63,94,0.35)]"
+              : "border-white/12 bg-white/[0.04] text-white/65 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/85"
           )}
         >
           {submitting && helpful === "no" ? (
@@ -114,7 +114,7 @@ export function SopFeedbackPanel({ roleId, functionId }: Props) {
         placeholder="Προαιρετικό σχόλιο…"
         rows={2}
         disabled={submitting}
-        className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white/85 placeholder:text-white/35 focus:border-pink-500/35 focus:outline-none disabled:opacity-60"
+        className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3.5 py-2.5 text-sm text-white/85 placeholder:text-white/35 transition focus:border-pink-500/35 focus:outline-none focus:ring-2 focus:ring-pink-500/15 disabled:opacity-60"
       />
       {error ? <p className="text-sm text-rose-300/90">{error}</p> : null}
     </div>

@@ -50,7 +50,7 @@ import { SopMarkdownField } from "@/components/sop/sop-markdown-field";
 import { SopSegmentedToggle } from "@/components/sop/sop-segmented-toggle";
 import { FormInput } from "@/components/ui/form-input";
 import { FormTextarea } from "@/components/ui/form-textarea";
-import { FormSelect } from "@/components/ui/form-select";
+import { SopSelect } from "@/components/sop/sop-select";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { FilePreview } from "@/components/ui/file-preview";
 import { Spinner } from "@/components/ui/spinner";
@@ -334,13 +334,15 @@ function ColorSelect({
   id?: string;
 }) {
   return (
-    <FormSelect id={id} value={value} onChange={(e) => onChange(e.target.value as SopColor)}>
-      {SOP_COLORS.map((c) => (
-        <option key={c} value={c}>
-          {c.charAt(0).toUpperCase() + c.slice(1)}
-        </option>
-      ))}
-    </FormSelect>
+    <SopSelect
+      id={id}
+      value={value}
+      onChange={(v) => onChange(v as SopColor)}
+      options={SOP_COLORS.map((c) => ({
+        value: c,
+        label: c.charAt(0).toUpperCase() + c.slice(1),
+      }))}
+    />
   );
 }
 
@@ -1590,7 +1592,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               />
             ) : (
               <div className="sop-glass-panel overflow-hidden rounded-2xl">
-                <div className="overflow-x-auto">
+                <div className="sop-table-scroll overflow-x-auto">
                   <table className="w-full min-w-[520px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-white/10 text-[11px] font-bold uppercase tracking-wider text-white/40">
@@ -1606,7 +1608,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                       {progressRows.map((row) => (
                         <tr
                           key={row.user_id}
-                          className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
+                          className="border-b border-white/[0.06] transition-colors last:border-0 hover:bg-white/[0.04]"
                         >
                           <td className="px-4 py-3 font-medium text-white/85">
                             {row.user_name}
@@ -1876,38 +1878,33 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                       </div>
                       <div>
                         <SopFormLabel htmlFor="sop-fn-dept">Department</SopFormLabel>
-                        <FormSelect
+                        <SopSelect
                           id="sop-fn-dept"
                           value={fnForm.department_id}
-                          onChange={(e) => setFnForm((f) => ({ ...f, department_id: e.target.value }))}
-                        >
-                          <option value="">— None —</option>
-                          {departments.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
-                        </FormSelect>
+                          onChange={(v) => setFnForm((f) => ({ ...f, department_id: v }))}
+                          options={[
+                            { value: "", label: "— None —" },
+                            ...departments.map((d) => ({ value: d.id, label: d.name })),
+                          ]}
+                        />
                       </div>
                       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <div>
                           <SopFormLabel htmlFor="sop-fn-cadence">Cadence</SopFormLabel>
-                          <FormSelect
+                          <SopSelect
                             id="sop-fn-cadence"
                             value={fnForm.cadence_type}
-                            onChange={(e) =>
+                            onChange={(v) =>
                               setFnForm((f) => ({
                                 ...f,
-                                cadence_type: e.target.value as CadenceType,
+                                cadence_type: v as CadenceType,
                               }))
                             }
-                          >
-                            {CADENCE_TYPES.map((c) => (
-                              <option key={c} value={c}>
-                                {CADENCE_LABELS[c]}
-                              </option>
-                            ))}
-                          </FormSelect>
+                            options={CADENCE_TYPES.map((c) => ({
+                              value: c,
+                              label: CADENCE_LABELS[c],
+                            }))}
+                          />
                         </div>
                         <div>
                           <SopFormLabel htmlFor="sop-fn-cadence-note">Cadence note</SopFormLabel>
@@ -2598,20 +2595,15 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                     </div>
                     <div>
                       <SopFormLabel htmlFor="sop-role-dept">Department</SopFormLabel>
-                      <FormSelect
+                      <SopSelect
                         id="sop-role-dept"
                         value={roleForm.department_id}
-                        onChange={(e) =>
-                          setRoleForm((f) => ({ ...f, department_id: e.target.value }))
-                        }
-                      >
-                        <option value="">— None —</option>
-                        {departments.map((d) => (
-                          <option key={d.id} value={d.id}>
-                            {d.name}
-                          </option>
-                        ))}
-                      </FormSelect>
+                        onChange={(v) => setRoleForm((f) => ({ ...f, department_id: v }))}
+                        options={[
+                          { value: "", label: "— None —" },
+                          ...departments.map((d) => ({ value: d.id, label: d.name })),
+                        ]}
+                      />
                     </div>
                   </div>
                 </SopFormSection>

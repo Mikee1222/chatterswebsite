@@ -16,8 +16,8 @@ export function SopResumeBanner({ resume }: { resume: SopAcademyResume }) {
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
-      className="rounded-2xl border border-white/10 bg-black/40 px-4 py-3.5 backdrop-blur-xl md:px-5"
-      style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 8px 32px -12px rgba(0,0,0,0.45)" }}
+      className="rounded-2xl border border-white/10 bg-[rgba(14,14,20,0.72)] px-4 py-3.5 backdrop-blur-xl md:px-5"
+      style={{ boxShadow: "0 8px 32px -20px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.06)" }}
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex min-w-0 items-start gap-3">

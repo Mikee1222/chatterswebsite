@@ -4,7 +4,7 @@ import * as React from "react";
 import * as LucideIcons from "lucide-react";
 import { BookOpen, type LucideIcon } from "lucide-react";
 import { FormInput } from "@/components/ui/form-input";
-import { FormSelect } from "@/components/ui/form-select";
+import { SopSelect } from "@/components/sop/sop-select";
 import { cn } from "@/lib/utils";
 
 export const SOP_ICON_PRESETS = [
@@ -111,11 +111,10 @@ export function SopIconPicker({
         <span className="flex h-9 w-9 shrink-0 items-center justify-center text-white/55">
           <SopRoleIcon name={previewName} size="md" />
         </span>
-        <FormSelect
+        <SopSelect
           id={id}
           value={selectValue}
-          onChange={(e) => {
-            const next = e.target.value;
+          onChange={(next) => {
             if (next === "custom") {
               setCustomMode(true);
               if (isPreset) onChange("");
@@ -125,14 +124,14 @@ export function SopIconPicker({
             }
           }}
           className="min-w-0 flex-1"
-        >
-          {SOP_ICON_PRESETS.map((iconName) => (
-            <option key={iconName} value={iconName}>
-              {iconName}
-            </option>
-          ))}
-          <option value="custom">Custom Lucide name…</option>
-        </FormSelect>
+          options={[
+            ...SOP_ICON_PRESETS.map((iconName) => ({
+              value: iconName,
+              label: iconName,
+            })),
+            { value: "custom", label: "Custom Lucide name…" },
+          ]}
+        />
       </div>
       {customMode ? (
         <FormInput
