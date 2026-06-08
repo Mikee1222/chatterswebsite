@@ -29,12 +29,22 @@ const STATUS_COLORS: Record<string, string> = {
   "Signed off": "#34d399",
 };
 
+const chartAxisStroke = "rgba(255,255,255,0.45)";
+const chartTickStyle = { fill: "rgba(255,255,255,0.55)", fontSize: 11 };
+
 const chartTooltipStyle: React.CSSProperties = {
-  background: "rgba(10, 10, 16, 0.94)",
-  border: "1px solid rgba(255, 255, 255, 0.1)",
+  backgroundColor: "rgba(0,0,0,0.88)",
+  border: "1px solid rgba(255,255,255,0.12)",
   borderRadius: 12,
-  color: "#fff",
-  backdropFilter: "blur(12px)",
+  color: "rgba(255,255,255,0.92)",
+};
+
+const chartTooltipLabelStyle: React.CSSProperties = {
+  color: "rgba(255,255,255,0.7)",
+};
+
+const chartTooltipItemStyle: React.CSSProperties = {
+  color: "rgba(255,255,255,0.92)",
 };
 
 function formatRelativeDays(days: number): string {
@@ -168,10 +178,11 @@ export function AdminSopOverviewPanel() {
             ) : (
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={data.chart_by_role} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" vertical={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" vertical={false} />
                   <XAxis
                     dataKey="name"
-                    tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+                    stroke={chartAxisStroke}
+                    tick={chartTickStyle}
                     axisLine={{ stroke: "rgba(255,255,255,0.08)" }}
                     tickLine={false}
                     interval={0}
@@ -181,7 +192,8 @@ export function AdminSopOverviewPanel() {
                   />
                   <YAxis
                     domain={[0, 100]}
-                    tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }}
+                    stroke={chartAxisStroke}
+                    tick={chartTickStyle}
                     axisLine={false}
                     tickLine={false}
                     tickFormatter={(v) => `${v}%`}
@@ -189,6 +201,8 @@ export function AdminSopOverviewPanel() {
                   <Tooltip
                     cursor={{ fill: "rgba(255,255,255,0.04)" }}
                     contentStyle={chartTooltipStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
                     formatter={(value) => [`${value}%`, "Completion rate"]}
                   />
                   <Bar dataKey="completion_rate" radius={[6, 6, 0, 0]} minPointSize={3}>
@@ -260,7 +274,11 @@ export function AdminSopOverviewPanel() {
                   >
                     total
                   </text>
-                  <Tooltip contentStyle={chartTooltipStyle} />
+                  <Tooltip
+                    contentStyle={chartTooltipStyle}
+                    labelStyle={chartTooltipLabelStyle}
+                    itemStyle={chartTooltipItemStyle}
+                  />
                   <Legend
                     verticalAlign="bottom"
                     content={() => (
