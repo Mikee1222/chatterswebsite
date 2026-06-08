@@ -76,6 +76,9 @@ export const NOTIFICATION_EVENT = {
   LEVEL_UP: "level_up" as const,
   SPIN_AVAILABLE: "spin_available" as const,
   CHALLENGE_COMPLETED: "challenge_completed" as const,
+  SOP_ACADEMY_REMINDER: "sop_academy_reminder" as const,
+  SOP_ACADEMY_TRAINING_COMPLETE: "sop_academy_training_complete" as const,
+  SOP_ACADEMY_SIGNED_OFF: "sop_academy_signed_off" as const,
 } satisfies Record<string, NotificationEventType>;
 
 /** Default priority by event type for operational alerts. Callers can override. */
@@ -127,6 +130,9 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   level_up: "high",
   spin_available: "normal",
   challenge_completed: "normal",
+  sop_academy_reminder: "normal",
+  sop_academy_training_complete: "normal",
+  sop_academy_signed_off: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */
@@ -142,6 +148,7 @@ export const NOTIFICATION_ENTITY = {
   ACCOUNT: "account",
   CHATTER_MISTAKE: "chatter_mistake",
   FINE_BONUS: "fine_bonus",
+  SOP_ACADEMY: "sop_academy",
 } as const;
 
 /** Priorities. */

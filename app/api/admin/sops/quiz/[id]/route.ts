@@ -1,30 +1,21 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { deleteFunction, updateFunction } from "@/services/sops";
+import { deleteQuizQuestion, updateQuizQuestion } from "@/services/sop-quiz";
 
 function isStaffAdmin(session: { role: string } | null): boolean {
   return session != null && (session.role === "admin" || session.role === "manager");
 }
 
 const patchSchema = z.object({
-  sop_role_id: z.string().trim().min(1).optional(),
-  name: z.string().trim().min(1).max(200).optional(),
-  department_id: z.string().optional(),
-  kpi: z.string().max(8000).optional(),
-  standard_type: z.enum(["text", "file"]).optional(),
-  sop_content: z.string().max(50000).optional(),
-  sop_file_url: z.string().max(2000).optional(),
-  sop_file_name: z.string().max(500).optional(),
-  loom_url: z.string().max(2000).optional(),
-  cadence_type: z
-    .enum(["daily", "per_shift", "weekly", "biweekly", "monthly", "ad_hoc"])
-    .optional(),
-  cadence_note: z.string().max(500).optional(),
+  question: z.string().trim().min(1).max(2000).optional(),
+  option_a: z.string().trim().min(1).max(500).optional(),
+  option_b: z.string().trim().min(1).max(500).optional(),
+  option_c: z.string().trim().min(1).max(500).optional(),
+  option_d: z.string().trim().min(1).max(500).optional(),
+  correct_option: z.enum(["a", "b", "c", "d"]).optional(),
   is_active: z.boolean().optional(),
   sort_order: z.number().int().min(0).optional(),
-  bumpVersion: z.boolean().optional(),
-  estimated_minutes: z.number().int().min(1).max(600).nullable().optional(),
 });
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -42,6 +33,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
+
   const parsed = patchSchema.safeParse(body);
   if (!parsed.success) {
     return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
@@ -51,8 +43,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   try {
-    const updated = await updateFunction(id, parsed.data);
-    return NextResponse.json({ success: true, function: updated });
+    const question = await updateQuizQuestion(id, parsed.data);
+    return NextResponse.json({ success: true, question });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });
@@ -69,7 +61,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
 
   try {
-    await deleteFunction(id);
+    await deleteQuizQuestion(id);
     return NextResponse.json({ success: true });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

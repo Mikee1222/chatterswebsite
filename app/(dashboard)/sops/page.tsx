@@ -9,6 +9,7 @@ import {
   sopRoleMatchesMember,
 } from "@/services/sops";
 import { SopViewerClient } from "@/components/sop-viewer-client";
+import { getCertificationBadgesForMember } from "@/lib/sop-academy";
 import type { SopAuthRole } from "@/types";
 
 export default async function SopsPage() {
@@ -36,12 +37,26 @@ export default async function SopsPage() {
     )
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
-  const roleBundles = await Promise.all(
-    matchedRoles.map(async (role) => ({
-      role,
-      functions: await getFunctionsByRole(role.id).catch(() => []),
-    }))
-  );
+  const userId = user.airtableUserId ?? user.id;
 
-  return <SopViewerClient roleBundles={roleBundles} departments={departments} />;
+  const [roleBundles, certificationBadges] = await Promise.all([
+    Promise.all(
+      matchedRoles.map(async (role) => ({
+        role,
+        functions: await getFunctionsByRole(role.id).catch(() => []),
+      }))
+    ),
+    getCertificationBadgesForMember(userId, {
+      airtableUserId: user.airtableUserId,
+      staffRole: staffAuthRole,
+    }).catch(() => []),
+  ]);
+
+  return (
+    <SopViewerClient
+      roleBundles={roleBundles}
+      departments={departments}
+      certificationBadges={certificationBadges}
+    />
+  );
 }

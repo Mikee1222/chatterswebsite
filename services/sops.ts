@@ -21,6 +21,7 @@ import type {
   SopAuthRole,
   CadenceType,
   StandardType,
+  UserRecord,
 } from "@/types";
 
 export const SOP_DEPARTMENTS_TABLE = "sop_departments";
@@ -97,8 +98,29 @@ type FunctionFields = {
   cadence_note?: string;
   sort_order?: number | string;
   is_active?: boolean;
+  content_version?: number | string;
+  estimated_minutes?: number | string;
   created_at?: string;
 };
+
+function coerceContentVersion(v: unknown): number {
+  if (typeof v === "number" && Number.isFinite(v)) return Math.max(1, Math.floor(v));
+  if (typeof v === "string") {
+    const n = Number.parseInt(v, 10);
+    if (Number.isFinite(n)) return Math.max(1, n);
+  }
+  return 1;
+}
+
+function coerceEstimatedMinutes(v: unknown): number | undefined {
+  if (v == null || v === "") return undefined;
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return Math.floor(v);
+  if (typeof v === "string") {
+    const n = Number.parseInt(v, 10);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return undefined;
+}
 
 function genStableId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
@@ -185,8 +207,21 @@ function mapFunctionRecord(rec: AirtableRecord<FunctionFields>): SopFunction {
     cadence_note: String(f.cadence_note ?? ""),
     sort_order: coerceSortOrder(f.sort_order),
     is_active: f.is_active !== false,
+    content_version: coerceContentVersion(f.content_version),
+    estimated_minutes: coerceEstimatedMinutes(f.estimated_minutes),
     created_at: f.created_at != null ? String(f.created_at) : undefined,
   };
+}
+
+export async function getFunctionById(recordId: string): Promise<SopFunction | null> {
+  const id = recordId.trim();
+  if (!id) return null;
+  try {
+    const rec = await getRecord<FunctionFields>(SOP_FUNCTIONS_TABLE, id);
+    return mapFunctionRecord(rec);
+  } catch {
+    return null;
+  }
 }
 
 // ── Departments ──
@@ -250,6 +285,29 @@ export async function reorderDepartments(orderedIds: string[]): Promise<void> {
 }
 
 // ── Roles ──
+
+/** Active users assigned to a role (explicit links or matching auth role). */
+export function getSopRoleMemberUserIds(role: SopRole, users: UserRecord[]): string[] {
+  const ids = new Set<string>();
+  for (const uid of role.assigned_user_ids) {
+    if (uid) ids.add(uid);
+  }
+  for (const u of users) {
+    if ((u.status ?? "").toLowerCase() === "inactive") continue;
+    if (ids.has(u.id)) continue;
+    const primary = u.role as SopAuthRole;
+    if (role.auth_roles.includes(primary)) {
+      ids.add(u.id);
+      continue;
+    }
+    if (u.secondary_role === "virtual_assistant" && role.auth_roles.includes("virtual_assistant")) {
+      ids.add(u.id);
+    } else if (u.secondary_role === "chatter" && role.auth_roles.includes("chatter")) {
+      ids.add(u.id);
+    }
+  }
+  return [...ids];
+}
 
 /** Whether an active SOP role applies to the signed-in member (assigned user or auth role). */
 export function sopRoleMatchesMember(
@@ -407,8 +465,12 @@ export async function createFunction(
     cadence_note: data.cadence_note,
     sort_order: data.sort_order,
     is_active: data.is_active,
+    content_version: data.content_version ?? 1,
     created_at: new Date().toISOString(),
   };
+  if (data.estimated_minutes != null && data.estimated_minutes > 0) {
+    fields.estimated_minutes = data.estimated_minutes;
+  }
   const roleLink = toLinkedRecordPayload(data.sop_role_id || null);
   if (roleLink) fields.sop_role = roleLink;
   const deptLink = toLinkedRecordPayload(data.department_id || null);
@@ -417,9 +479,14 @@ export async function createFunction(
   return mapFunctionRecord(rec);
 }
 
+export type UpdateFunctionOptions = Partial<Omit<SopFunction, "id" | "function_id" | "estimated_minutes">> & {
+  bumpVersion?: boolean;
+  estimated_minutes?: number | null;
+};
+
 export async function updateFunction(
   id: string,
-  data: Partial<Omit<SopFunction, "id" | "function_id">>
+  data: UpdateFunctionOptions
 ): Promise<SopFunction> {
   const fields: Record<string, unknown> = {};
   if (data.name !== undefined) fields.name = data.name;
@@ -433,6 +500,12 @@ export async function updateFunction(
   if (data.cadence_note !== undefined) fields.cadence_note = data.cadence_note;
   if (data.sort_order !== undefined) fields.sort_order = data.sort_order;
   if (data.is_active !== undefined) fields.is_active = data.is_active;
+  if (data.content_version !== undefined) fields.content_version = data.content_version;
+  if (data.estimated_minutes !== undefined) {
+    if (data.estimated_minutes != null && data.estimated_minutes > 0) {
+      fields.estimated_minutes = data.estimated_minutes;
+    }
+  }
   if (data.created_at !== undefined) fields.created_at = data.created_at;
   if (data.sop_role_id !== undefined) {
     fields.sop_role = data.sop_role_id ? [data.sop_role_id] : [];
@@ -440,6 +513,13 @@ export async function updateFunction(
   if (data.department_id !== undefined) {
     fields.department = data.department_id ? [data.department_id] : [];
   }
+
+  if (data.bumpVersion) {
+    const existing = await getFunctionById(id);
+    const current = existing?.content_version ?? 1;
+    fields.content_version = current + 1;
+  }
+
   const rec = await updateRecord<FunctionFields>(SOP_FUNCTIONS_TABLE, id, fields);
   return mapFunctionRecord(rec);
 }

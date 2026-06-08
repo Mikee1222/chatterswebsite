@@ -140,6 +140,8 @@ export type SopProgress = {
   sop_function_id: string;
   sop_role_id: string;
   completed_at: string;
+  completed_version: number;
+  quiz_score: number | null;
   created_at?: string;
 };
 
@@ -152,6 +154,117 @@ export type SopProgressUserSummary = {
   percent: number;
   last_completed_at: string | null;
   completed_function_ids: string[];
+  signoff_at: string | null;
+  /** Per-function quiz scores when present. */
+  quiz_scores: Array<{ function_id: string; score: number }>;
+};
+
+export type SopQuizCorrectOption = "a" | "b" | "c" | "d";
+
+export type SopQuizQuestion = {
+  id: string;
+  question_id: string;
+  sop_function_id: string;
+  question: string;
+  option_a: string;
+  option_b: string;
+  option_c: string;
+  option_d: string;
+  correct_option: SopQuizCorrectOption;
+  sort_order: number;
+  is_active: boolean;
+  created_at?: string;
+};
+
+export type SopSignoff = {
+  id: string;
+  signoff_id: string;
+  user_id: string;
+  sop_role_id: string;
+  signed_at: string;
+  statement: string;
+  created_at?: string;
+};
+
+export type SopAcademyOverviewRoleStats = {
+  role_id: string;
+  role_name: string;
+  role_color: SopColor;
+  total_functions: number;
+  member_count: number;
+  signed_off_count: number;
+  in_training_count: number;
+  completion_rate: number;
+};
+
+export type SopAcademyBehindMember = {
+  user_id: string;
+  user_name: string;
+  role_id: string;
+  role_name: string;
+  completed_count: number;
+  total_functions: number;
+  percent: number;
+  days_behind: number;
+  last_activity_at: string | null;
+  signed_off: boolean;
+};
+
+export type SopAcademyOverview = {
+  total_members: number;
+  total_in_training: number;
+  total_signed_off: number;
+  roles: SopAcademyOverviewRoleStats[];
+  behind: SopAcademyBehindMember[];
+  chart_by_role: Array<{
+    name: string;
+    completion_rate: number;
+    in_training: number;
+    signed_off: number;
+  }>;
+  chart_totals: Array<{ name: string; value: number }>;
+};
+
+export type SopFeedbackHelpful = "yes" | "no";
+
+export type SopFeedback = {
+  id: string;
+  feedback_id: string;
+  user_id: string;
+  sop_function_id: string;
+  sop_role_id: string;
+  helpful: SopFeedbackHelpful;
+  comment: string;
+  created_at?: string;
+};
+
+/** Admin: aggregated helpfulness for one function. */
+export type SopFeedbackSummary = {
+  function_id: string;
+  total: number;
+  helpful_yes: number;
+  helpful_pct: number;
+  comments: Array<{
+    comment: string;
+    helpful: SopFeedbackHelpful;
+    created_at: string;
+  }>;
+};
+
+/** Home resume banner + deep-link into academy viewer. */
+export type SopAcademyResume = {
+  role_id: string;
+  role_name: string;
+  completed_count: number;
+  total_functions: number;
+  next_function_id: string | null;
+};
+
+export type SopCertificationBadge = {
+  kind: "role" | "master";
+  label: string;
+  role_id?: string;
+  role_color?: SopColor;
 };
 
 export type StandardType = "text" | "file";
@@ -172,6 +285,9 @@ export type SopFunction = {
   cadence_note: string;
   sort_order: number;
   is_active: boolean;
+  content_version: number;
+  /** Optional step duration hint for academy UI (minutes). */
+  estimated_minutes?: number;
   created_at?: string;
 };
 
@@ -883,7 +999,11 @@ export type NotificationEventType =
   // Billing
   | "billing_cycle_announced"
   | "billing_due_reminder"
-  | "billing_payment_submitted";
+  | "billing_payment_submitted"
+  // SOP Academy
+  | "sop_academy_reminder"
+  | "sop_academy_training_complete"
+  | "sop_academy_signed_off";
 
 /** Optional structured metadata for richer display (e.g. models, shift type, deadline). */
 export type NotificationMetadataItem = { label: string; value: string };

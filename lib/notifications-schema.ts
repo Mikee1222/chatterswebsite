@@ -148,6 +148,9 @@ export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtabl
   billing_cycle_announced: "billing_cycle_announced",
   billing_due_reminder: "billing_due_reminder",
   billing_payment_submitted: "system_alert",
+  sop_academy_reminder: "system_alert",
+  sop_academy_training_complete: "system_alert",
+  sop_academy_signed_off: "system_alert",
 };
 
 /** Map legacy category to Airtable category (task_shift -> task, account -> system). */

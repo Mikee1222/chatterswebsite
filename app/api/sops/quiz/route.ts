@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getMemberAccessibleSopRole, isSopMemberSession } from "@/lib/sop-member-access";
-import { getProgressStateForUser } from "@/services/sop-progress";
-import { getSignoffForUserRole } from "@/services/sop-signoff";
+import { getQuestionsByFunction } from "@/services/sop-quiz";
 import { getFunctionsByRole } from "@/services/sops";
 
 const querySchema = z.object({
   role_id: z.string().trim().min(1),
+  function_id: z.string().trim().min(1),
 });
 
 export async function GET(req: Request) {
@@ -19,9 +19,10 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const parsed = querySchema.safeParse({
     role_id: url.searchParams.get("role_id") ?? "",
+    function_id: url.searchParams.get("function_id") ?? "",
   });
   if (!parsed.success) {
-    return NextResponse.json({ error: "role_id is required" }, { status: 400 });
+    return NextResponse.json({ error: "role_id and function_id are required" }, { status: 400 });
   }
 
   const role = await getMemberAccessibleSopRole(session, parsed.data.role_id);
@@ -29,25 +30,25 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const userId = (session.airtableUserId ?? session.id)?.trim();
-  if (!userId) {
-    return NextResponse.json({ error: "User record not linked" }, { status: 400 });
+  const functions = await getFunctionsByRole(role.id);
+  const fn = functions.find((f) => f.id === parsed.data.function_id);
+  if (!fn) {
+    return NextResponse.json({ error: "Function not found for this role" }, { status: 404 });
   }
 
   try {
-    const functions = await getFunctionsByRole(role.id);
-    const activeFunctions = functions.filter((f) => f.is_active);
-    const state = await getProgressStateForUser(userId, role.id, activeFunctions);
-    const signoff = await getSignoffForUserRole(userId, role.id);
-
-    return NextResponse.json({
-      completed_function_ids: state.completed_function_ids,
-      stale_function_ids: state.stale_function_ids,
-      progress: state.current_rows,
-      signoff: signoff
-        ? { signed_at: signoff.signed_at, statement: signoff.statement }
-        : null,
-    });
+    const questions = await getQuestionsByFunction(fn.id);
+    const safe = questions.map((q) => ({
+      id: q.id,
+      question_id: q.question_id,
+      question: q.question,
+      option_a: q.option_a,
+      option_b: q.option_b,
+      option_c: q.option_c,
+      option_d: q.option_d,
+      sort_order: q.sort_order,
+    }));
+    return NextResponse.json({ questions: safe });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });

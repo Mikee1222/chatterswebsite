@@ -41,6 +41,8 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return ROUTES.chatter.rewards;
     case "fine_bonus":
       return ROUTES.finesBonuses;
+    case "sop_academy":
+      return isAdmin ? ROUTES.admin.sopLibrary : ROUTES.sops;
     case "system":
     case "account":
       return ROUTES.settings;
@@ -84,6 +86,8 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return ROUTES.chatter.rewards;
     case "fine_bonus":
       return ROUTES.finesBonuses;
+    case "sop_academy":
+      return isAdmin ? ROUTES.admin.sopLibrary : ROUTES.sops;
     case "system":
     case "account":
       return ROUTES.settings;

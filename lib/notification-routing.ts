@@ -235,6 +235,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "Admins when a client submits payment proof.",
   },
+  sop_academy_reminder: {
+    rule: "assigned_user_only",
+    description: "Learner reminded to continue SOP Academy training.",
+  },
+  sop_academy_training_complete: {
+    rule: "admin_only",
+    description: "Admins when a learner completes all academy steps for a role.",
+  },
+  sop_academy_signed_off: {
+    rule: "admin_only",
+    description: "Admins when a learner signs off on academy training.",
+  },
 };
 
 /**

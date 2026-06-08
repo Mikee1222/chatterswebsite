@@ -168,6 +168,54 @@ function progressFields(
       options: { linkedTableId: rolesTableId },
     },
     { name: "completed_at", type: "dateTime", options: { ...datetimeOptions } },
+    { name: "completed_version", type: "number", options: { precision: 0 } },
+    { name: "quiz_score", type: "number", options: { precision: 0 } },
+    { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
+  ];
+}
+
+function quizFields(functionsTableId: string): Array<Record<string, unknown>> {
+  return [
+    { name: "question_id", type: "singleLineText" },
+    {
+      name: "sop_function",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: functionsTableId },
+    },
+    { name: "question", type: "multilineText" },
+    { name: "option_a", type: "singleLineText" },
+    { name: "option_b", type: "singleLineText" },
+    { name: "option_c", type: "singleLineText" },
+    { name: "option_d", type: "singleLineText" },
+    {
+      name: "correct_option",
+      type: "singleSelect",
+      options: { choices: [{ name: "a" }, { name: "b" }, { name: "c" }, { name: "d" }] },
+    },
+    { name: "sort_order", type: "number", options: { precision: 0 } },
+    { name: "is_active", type: "checkbox", options: { ...checkboxOptions } },
+    { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
+  ];
+}
+
+function signoffsFields(
+  usersTableId: string,
+  rolesTableId: string
+): Array<Record<string, unknown>> {
+  return [
+    { name: "signoff_id", type: "singleLineText" },
+    {
+      name: "user",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: usersTableId },
+    },
+    {
+      name: "sop_role",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: rolesTableId },
+    },
+    { name: "signed_at", type: "dateTime", options: { ...datetimeOptions } },
+    { name: "statement", type: "multilineText" },
     { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
   ];
 }
@@ -207,6 +255,40 @@ function functionsFields(
     { name: "cadence_note", type: "singleLineText" },
     { name: "sort_order", type: "number", options: { precision: 0 } },
     { name: "is_active", type: "checkbox", options: { ...checkboxOptions } },
+    { name: "content_version", type: "number", options: { precision: 0 } },
+    { name: "estimated_minutes", type: "number", options: { precision: 0 } },
+    { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
+  ];
+}
+
+function feedbackFields(
+  usersTableId: string,
+  rolesTableId: string,
+  functionsTableId: string
+): Array<Record<string, unknown>> {
+  return [
+    { name: "feedback_id", type: "singleLineText" },
+    {
+      name: "user",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: usersTableId },
+    },
+    {
+      name: "sop_function",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: functionsTableId },
+    },
+    {
+      name: "sop_role",
+      type: "multipleRecordLinks",
+      options: { linkedTableId: rolesTableId },
+    },
+    {
+      name: "helpful",
+      type: "singleSelect",
+      options: { choices: [{ name: "yes" }, { name: "no" }] },
+    },
+    { name: "comment", type: "multilineText" },
     { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
   ];
 }
@@ -247,6 +329,25 @@ const TABLE_PLANS: TablePlan[] = [
     requires: ["users", "sop_roles", "sop_functions"],
     buildFields: ({ usersId, rolesId, departmentsId: _d, functionsId }) =>
       progressFields(usersId, rolesId, functionsId),
+  },
+  {
+    name: "sop_quiz_questions",
+    description: "SOP academy quiz questions per function (setup-sop-tables.ts)",
+    requires: ["sop_functions"],
+    buildFields: ({ functionsId }) => quizFields(functionsId),
+  },
+  {
+    name: "sop_signoffs",
+    description: "SOP academy role training sign-offs (setup-sop-tables.ts)",
+    requires: ["users", "sop_roles"],
+    buildFields: ({ usersId, rolesId }) => signoffsFields(usersId, rolesId),
+  },
+  {
+    name: "sop_feedback",
+    description: "SOP academy member feedback per function (setup-sop-tables.ts)",
+    requires: ["users", "sop_roles", "sop_functions"],
+    buildFields: ({ usersId, rolesId, functionsId }) =>
+      feedbackFields(usersId, rolesId, functionsId),
   },
 ];
 

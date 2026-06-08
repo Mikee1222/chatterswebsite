@@ -10,6 +10,8 @@ import {
 import { formatDateEuropean, formatDateTimeEuropean } from "@/lib/format";
 import { addDays } from "@/lib/weekly-program";
 import { VaHomeClient, type VaHomeTaskItem } from "@/components/va-home-client";
+import { SopResumeBanner } from "@/components/sop-resume-banner";
+import { getAcademyResumeForMember } from "@/lib/sop-academy";
 import { getVaTasksForUser } from "@/services/va-tasks";
 import type { Shift, VaTaskPriority, VaTaskRecord, VaTaskStatus } from "@/types";
 
@@ -125,10 +127,14 @@ export default async function VaHomePage() {
   const vaId = user.airtableUserId ?? user.id;
   const displayName = (user.fullName ?? user.email ?? "VA").trim();
   const firstName = displayName.split(/\s+/)[0] ?? displayName;
-  const [allShifts, shiftCardData, vaTasks] = await Promise.all([
+  const [allShifts, shiftCardData, vaTasks, sopResume] = await Promise.all([
     getShiftsByChatter(vaId, "virtual_assistant").catch(() => []),
     getVaHomeShiftCardData(vaId),
     getVaTasksForUser(vaId).catch(() => []),
+    getAcademyResumeForMember(vaId, {
+      airtableUserId: user.airtableUserId,
+      staffRole: "virtual_assistant",
+    }).catch(() => null),
   ]);
 
   const todayY = todayYmdLocal();
@@ -195,6 +201,11 @@ export default async function VaHomePage() {
 
   return (
     <div className="pb-4 md:pb-6">
+      {sopResume ? (
+        <div className="mb-6">
+          <SopResumeBanner resume={sopResume} />
+        </div>
+      ) : null}
       <VaHomeClient
         firstName={firstName}
         displayName={displayName}

@@ -11,6 +11,8 @@ import { formatDateEuropean, displayName } from "@/lib/format";
 import { getNowInAthens } from "@/lib/airtable-datetime";
 import { ChatterHomeClient } from "@/components/chatter-home-client";
 import { ChatterHomePageClient } from "@/components/chatter-home-page-client";
+import { SopResumeBanner } from "@/components/sop-resume-banner";
+import { getAcademyResumeForMember } from "@/lib/sop-academy";
 import type { WhaleTransaction } from "@/types";
 
 export type HomeShiftCardData =
@@ -71,11 +73,15 @@ export default async function ChatterHomePage() {
   const athens = getNowInAthens();
   const currentMonthKey = `${athens.getUTCFullYear()}-${String(athens.getUTCMonth() + 1).padStart(2, "0")}`;
 
-  const [whales, shiftCardData, transactions, monthlyTarget] = await Promise.all([
+  const [whales, shiftCardData, transactions, monthlyTarget, sopResume] = await Promise.all([
     getWhalesByChatter(chatterId).catch(() => []),
     getHomeShiftCardData(chatterId),
     listTransactionsByChatter(chatterId, 10000).catch(() => []),
     getMonthlyTargetByTeamMemberAndMonth(chatterId, currentMonthKey).catch(() => null),
+    getAcademyResumeForMember(chatterId, {
+      airtableUserId: user.airtableUserId,
+      staffRole: "chatter",
+    }).catch(() => null),
   ]);
 
   const assignedWhalesCount = whales.length;
@@ -122,6 +128,8 @@ export default async function ChatterHomePage() {
         </h1>
         <p className="mt-1.5 text-[15px] text-white/65">Your chatter dashboard</p>
       </div>
+
+      {sopResume ? <SopResumeBanner resume={sopResume} /> : null}
 
       <ChatterHomeClient
         totalEarnedUsd={totalEarnedUsd}

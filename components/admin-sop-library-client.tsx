@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
+  BarChart3,
   Building2,
   ChevronDown,
   Eye,
@@ -34,6 +35,7 @@ import {
   Video,
   X,
 } from "lucide-react";
+import { AdminSopOverviewPanel } from "@/components/admin-sop-overview-panel";
 import { useToast } from "@/contexts/toast-context";
 import {
   GlassModal,
@@ -55,6 +57,7 @@ import { SopGlowBadge } from "@/components/sop/sop-glow-badge";
 import { CADENCE_STYLES, SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
 import { SopIconPicker, SopRoleIcon, normalizeSopIconName } from "@/components/sop/sop-icons";
 import { useSopMotion } from "@/components/sop/sop-motion";
+import { SopCertificationMiniBadge } from "@/components/sop-certification-shelf";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types";
 import type {
@@ -66,6 +69,9 @@ import type {
   CadenceType,
   StandardType,
   SopProgressUserSummary,
+  SopQuizQuestion,
+  SopQuizCorrectOption,
+  SopFeedbackSummary,
 } from "@/types";
 
 function localToast(
@@ -426,6 +432,11 @@ function SortableFunctionRow({
         {CADENCE_LABELS[fn.cadence_type]}
         {fn.cadence_note ? ` · ${fn.cadence_note}` : ""}
       </SopGlowBadge>
+      {(fn.estimated_minutes ?? 0) > 0 ? (
+        <SopGlowBadge className="bg-white/10 text-white/55" glowClassName="">
+          ~{fn.estimated_minutes} min
+        </SopGlowBadge>
+      ) : null}
       {fn.kpi.trim() ? (
         <span className="hidden max-w-[200px] truncate text-xs text-white/45 lg:inline" title={fn.kpi}>
           KPI: {fn.kpi}
@@ -483,6 +494,7 @@ type FunctionForm = {
   loom_url: string;
   cadence_type: CadenceType;
   cadence_note: string;
+  estimated_minutes: string;
   is_active: boolean;
 };
 
@@ -536,6 +548,7 @@ function emptyFunctionForm(deptId = ""): FunctionForm {
     loom_url: "",
     cadence_type: "ad_hoc",
     cadence_note: "",
+    estimated_minutes: "",
     is_active: true,
   };
 }
@@ -552,7 +565,32 @@ function fnToForm(f: SopFunction): FunctionForm {
     loom_url: f.loom_url,
     cadence_type: f.cadence_type,
     cadence_note: f.cadence_note,
+    estimated_minutes:
+      f.estimated_minutes != null && f.estimated_minutes > 0
+        ? String(f.estimated_minutes)
+        : "",
     is_active: f.is_active,
+  };
+}
+
+function standardSnapshot(form: FunctionForm): string {
+  return JSON.stringify({
+    standard_type: form.standard_type,
+    sop_content: form.sop_content,
+    sop_file_url: form.sop_file_url,
+    sop_file_name: form.sop_file_name,
+  });
+}
+
+function emptyQuizDraft() {
+  return {
+    id: null as string | null,
+    question: "",
+    option_a: "",
+    option_b: "",
+    option_c: "",
+    option_d: "",
+    correct_option: "a" as SopQuizCorrectOption,
   };
 }
 
@@ -563,6 +601,7 @@ type Props = {
 
 export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Props) {
   const { addToast } = useToast();
+  const [mainTab, setMainTab] = React.useState<"overview" | "library">("overview");
   const [departments, setDepartments] = React.useState(() => sortDepartments(initialDepartments));
   const [roles, setRoles] = React.useState(() => sortRoles(initialRoles));
   const [deptOpen, setDeptOpen] = React.useState(true);
@@ -573,6 +612,8 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   const [progressRows, setProgressRows] = React.useState<SopProgressUserSummary[]>([]);
   const [loadingProgress, setLoadingProgress] = React.useState(false);
   const [progressTotalFunctions, setProgressTotalFunctions] = React.useState(0);
+  const [feedbackSummaries, setFeedbackSummaries] = React.useState<SopFeedbackSummary[]>([]);
+  const [loadingFeedback, setLoadingFeedback] = React.useState(false);
 
   const [deptModalOpen, setDeptModalOpen] = React.useState(false);
   const [deptEditing, setDeptEditing] = React.useState<SopDepartment | null>(null);
@@ -594,6 +635,19 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   const [fnFileUploading, setFnFileUploading] = React.useState(false);
   const [fnFileUploadError, setFnFileUploadError] = React.useState("");
   const fnFileInputRef = React.useRef<HTMLInputElement>(null);
+  const [fnInitialStandard, setFnInitialStandard] = React.useState("");
+  const [quizQuestions, setQuizQuestions] = React.useState<SopQuizQuestion[]>([]);
+  const [loadingQuiz, setLoadingQuiz] = React.useState(false);
+  const [quizDraft, setQuizDraft] = React.useState<{
+    id: string | null;
+    question: string;
+    option_a: string;
+    option_b: string;
+    option_c: string;
+    option_d: string;
+    correct_option: SopQuizCorrectOption;
+  } | null>(null);
+  const [quizSaving, setQuizSaving] = React.useState(false);
 
   const [confirmDelete, setConfirmDelete] = React.useState<
     | { type: "department"; item: SopDepartment }
@@ -628,6 +682,22 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
       .catch(() => setFunctions([]))
       .finally(() => setLoadingFunctions(false));
   }, [selectedRole?.id]);
+
+  React.useEffect(() => {
+    if (!selectedRole || roleDetailTab !== "functions") {
+      if (roleDetailTab !== "functions") setFeedbackSummaries([]);
+      return;
+    }
+    setLoadingFeedback(true);
+    fetch(`/api/admin/sops/feedback?role_id=${encodeURIComponent(selectedRole.id)}`)
+      .then((r) => r.json())
+      .then((d: { summaries?: SopFeedbackSummary[] }) => {
+        if (Array.isArray(d.summaries)) setFeedbackSummaries(d.summaries);
+        else setFeedbackSummaries([]);
+      })
+      .catch(() => setFeedbackSummaries([]))
+      .finally(() => setLoadingFeedback(false));
+  }, [selectedRole?.id, roleDetailTab]);
 
   React.useEffect(() => {
     if (!selectedRole || roleDetailTab !== "progress" || !selectedRole.academy_mode) {
@@ -893,21 +963,47 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     }
   }
 
+  async function loadQuizQuestions(functionId: string) {
+    setLoadingQuiz(true);
+    try {
+      const res = await fetch(
+        `/api/admin/sops/quiz?function_id=${encodeURIComponent(functionId)}`
+      );
+      const data = (await res.json().catch(() => ({}))) as { questions?: SopQuizQuestion[] };
+      setQuizQuestions(
+        Array.isArray(data.questions)
+          ? [...data.questions].sort((a, b) => a.sort_order - b.sort_order)
+          : []
+      );
+    } catch {
+      setQuizQuestions([]);
+    } finally {
+      setLoadingQuiz(false);
+    }
+  }
+
   function openFnCreate() {
     const defaultDept = departments.find((d) => d.is_active)?.id ?? "";
     setFnEditing(null);
     setFnForm(emptyFunctionForm(defaultDept));
+    setFnInitialStandard("");
+    setQuizQuestions([]);
+    setQuizDraft(null);
     setFnFileUploading(false);
     setFnFileUploadError("");
     setFnModalOpen(true);
   }
 
   function openFnEdit(f: SopFunction) {
+    const form = fnToForm(f);
     setFnEditing(f);
-    setFnForm(fnToForm(f));
+    setFnForm(form);
+    setFnInitialStandard(standardSnapshot(form));
+    setQuizDraft(null);
     setFnFileUploading(false);
     setFnFileUploadError("");
     setFnModalOpen(true);
+    void loadQuizQuestions(f.id);
   }
 
   async function handleFnFileSelect(file: File | null) {
@@ -945,7 +1041,90 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
     if (fnFileInputRef.current) fnFileInputRef.current.value = "";
   }
 
-  async function saveFunction(e: React.FormEvent) {
+  async function saveQuizQuestion() {
+    if (!fnEditing || !quizDraft) return;
+    if (!quizDraft.question.trim()) {
+      addToast(localToast("sop-quiz-val", "Question required", "Enter the quiz question.", "normal"));
+      return;
+    }
+    setQuizSaving(true);
+    try {
+      const payload = {
+        sop_function_id: fnEditing.id,
+        question: quizDraft.question.trim(),
+        option_a: quizDraft.option_a.trim(),
+        option_b: quizDraft.option_b.trim(),
+        option_c: quizDraft.option_c.trim(),
+        option_d: quizDraft.option_d.trim(),
+        correct_option: quizDraft.correct_option,
+      };
+      if (quizDraft.id) {
+        const res = await fetch(`/api/admin/sops/quiz/${quizDraft.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json().catch(() => ({}))) as { question?: SopQuizQuestion };
+        if (!res.ok) throw new Error("fail");
+        if (data.question) {
+          setQuizQuestions((p) =>
+            [...p.map((q) => (q.id === data.question!.id ? data.question! : q))].sort(
+              (a, b) => a.sort_order - b.sort_order
+            )
+          );
+        }
+      } else {
+        const res = await fetch("/api/admin/sops/quiz", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = (await res.json().catch(() => ({}))) as { question?: SopQuizQuestion };
+        if (!res.ok) throw new Error("fail");
+        if (data.question) {
+          setQuizQuestions((p) => [...p, data.question!].sort((a, b) => a.sort_order - b.sort_order));
+        }
+      }
+      setQuizDraft(null);
+    } catch {
+      addToast(localToast("sop-quiz-e", "Save failed", "Could not save quiz question.", "high"));
+    } finally {
+      setQuizSaving(false);
+    }
+  }
+
+  async function deleteQuizQuestion(id: string) {
+    try {
+      const res = await fetch(`/api/admin/sops/quiz/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("fail");
+      setQuizQuestions((p) => p.filter((q) => q.id !== id));
+    } catch {
+      addToast(localToast("sop-quiz-del", "Delete failed", "Could not delete question.", "high"));
+    }
+  }
+
+  async function moveQuizQuestion(id: string, direction: "up" | "down") {
+    const idx = quizQuestions.findIndex((q) => q.id === id);
+    if (idx < 0) return;
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= quizQuestions.length) return;
+    const reordered = [...quizQuestions];
+    const tmp = reordered[idx];
+    reordered[idx] = reordered[swapIdx];
+    reordered[swapIdx] = tmp;
+    setQuizQuestions(reordered);
+    try {
+      await fetch("/api/admin/sops/quiz/reorder", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ordered_ids: reordered.map((q) => q.id) }),
+      });
+    } catch {
+      void loadQuizQuestions(fnEditing!.id);
+    }
+  }
+
+  async function saveFunction(e: React.FormEvent, bumpVersion = false) {
     e.preventDefault();
     if (!selectedRole) return;
     if (!fnForm.name.trim()) {
@@ -975,6 +1154,10 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
         cadence_type: fnForm.cadence_type,
         cadence_note: fnForm.cadence_note.trim(),
         is_active: fnForm.is_active,
+        ...(fnForm.estimated_minutes.trim()
+          ? { estimated_minutes: Number.parseInt(fnForm.estimated_minutes, 10) }
+          : { estimated_minutes: null }),
+        ...(fnEditing && bumpVersion ? { bumpVersion: true } : {}),
       };
       if (fnEditing) {
         const res = await fetch(`/api/admin/sops/functions/${fnEditing.id}`, {
@@ -1145,6 +1328,8 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                         <th className="px-4 py-3">User</th>
                         <th className="px-4 py-3">Completed</th>
                         <th className="px-4 py-3">%</th>
+                        <th className="px-4 py-3">Quiz scores</th>
+                        <th className="px-4 py-3">Sign-off</th>
                         <th className="px-4 py-3">Last activity</th>
                       </tr>
                     </thead>
@@ -1154,7 +1339,12 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                           key={row.user_id}
                           className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.03]"
                         >
-                          <td className="px-4 py-3 font-medium text-white/85">{row.user_name}</td>
+                          <td className="px-4 py-3 font-medium text-white/85">
+                            {row.user_name}
+                            {row.signoff_at || row.percent >= 100 ? (
+                              <SopCertificationMiniBadge label="Certified" />
+                            ) : null}
+                          </td>
                           <td className="px-4 py-3 text-white/65">
                             {row.completed_count} / {row.total_functions}
                           </td>
@@ -1169,6 +1359,20 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                             >
                               {row.percent}%
                             </span>
+                          </td>
+                          <td className="px-4 py-3 text-xs text-white/50">
+                            {row.quiz_scores.length > 0
+                              ? row.quiz_scores.map((q) => `${q.score}%`).join(", ")
+                              : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-white/55">
+                            {row.signoff_at ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-200/90">
+                                ✓ {new Date(row.signoff_at).toLocaleDateString()}
+                              </span>
+                            ) : (
+                              "—"
+                            )}
                           </td>
                           <td className="px-4 py-3 text-xs text-white/45">
                             {row.last_completed_at
@@ -1214,6 +1418,46 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
               </SortableContext>
             </DndContext>
           )}
+
+          {roleDetailTab === "functions" && !loadingFeedback && feedbackSummaries.some((s) => s.total > 0) ? (
+            <div className="sop-glass-panel mt-6 rounded-2xl p-5">
+              <p className="mb-4 text-[11px] font-bold uppercase tracking-wider text-white/40">
+                Member feedback
+              </p>
+              <div className="space-y-3">
+                {feedbackSummaries
+                  .filter((s) => s.total > 0)
+                  .map((summary) => {
+                    const fn = functions.find((f) => f.id === summary.function_id);
+                    return (
+                      <div
+                        key={summary.function_id}
+                        className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-white/85">
+                            {fn?.name ?? summary.function_id}
+                          </p>
+                          <span className="text-xs text-white/50">
+                            {summary.helpful_pct}% helpful ({summary.helpful_yes}/{summary.total})
+                          </span>
+                        </div>
+                        {summary.comments.length > 0 ? (
+                          <ul className="mt-2 space-y-1.5 border-t border-white/[0.06] pt-2">
+                            {summary.comments.slice(0, 3).map((c, i) => (
+                              <li key={i} className="text-xs text-white/55">
+                                <span className="text-white/35">{c.helpful === "yes" ? "👍" : "👎"}</span>{" "}
+                                {c.comment}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          ) : null}
 
           <AnimatePresence>
             {fnModalOpen ? (
@@ -1302,6 +1546,21 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                         value={fnForm.cadence_note}
                         onChange={(e) => setFnForm((f) => ({ ...f, cadence_note: e.target.value }))}
                         placeholder="e.g. Mon & Thu"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                        Est. minutes (academy)
+                      </label>
+                      <FormInput
+                        type="number"
+                        min={1}
+                        max={600}
+                        value={fnForm.estimated_minutes}
+                        onChange={(e) =>
+                          setFnForm((f) => ({ ...f, estimated_minutes: e.target.value }))
+                        }
+                        placeholder="e.g. 5"
                       />
                     </div>
                   </div>
@@ -1410,29 +1669,192 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                   </div>
                 </div>
               </div>
-              <div className="flex gap-3 pt-2">
+
+              {fnEditing ? (
+                <div className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                      Quiz (optional)
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setQuizDraft(emptyQuizDraft())}
+                      className="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/[0.05] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white/55 hover:border-pink-500/25 hover:text-white/85"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add question
+                    </button>
+                  </div>
+                  {loadingQuiz ? (
+                    <div className="flex justify-center py-4">
+                      <Spinner className="h-5 w-5 border-white/20 border-t-pink-400" />
+                    </div>
+                  ) : quizQuestions.length === 0 ? (
+                    <p className="text-xs text-white/40">No quiz questions — members can complete without a quiz.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {quizQuestions.map((q, idx) => (
+                        <div
+                          key={q.id}
+                          className="flex items-start gap-2 rounded-lg border border-white/8 bg-white/[0.02] px-3 py-2"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-white/85">{q.question}</p>
+                            <p className="mt-0.5 text-[10px] text-white/40">
+                              Correct: {q.correct_option.toUpperCase()}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => void moveQuizQuestion(q.id, "up")}
+                              className="rounded p-1 text-white/40 hover:bg-white/10 disabled:opacity-30"
+                              aria-label="Move up"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5 rotate-180" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === quizQuestions.length - 1}
+                              onClick={() => void moveQuizQuestion(q.id, "down")}
+                              className="rounded p-1 text-white/40 hover:bg-white/10 disabled:opacity-30"
+                              aria-label="Move down"
+                            >
+                              <ChevronDown className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setQuizDraft({
+                                  id: q.id,
+                                  question: q.question,
+                                  option_a: q.option_a,
+                                  option_b: q.option_b,
+                                  option_c: q.option_c,
+                                  option_d: q.option_d,
+                                  correct_option: q.correct_option,
+                                })
+                              }
+                              className="rounded p-1 text-white/50 hover:bg-white/10"
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void deleteQuizQuestion(q.id)}
+                              className="rounded p-1 text-rose-300/70 hover:bg-rose-500/15"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {quizDraft ? (
+                    <div className="space-y-3 rounded-lg border border-pink-500/20 bg-pink-500/5 p-3">
+                      <FormTextarea
+                        value={quizDraft.question}
+                        onChange={(e) => setQuizDraft((d) => (d ? { ...d, question: e.target.value } : d))}
+                        rows={2}
+                        placeholder="Question text…"
+                      />
+                      {(["a", "b", "c", "d"] as const).map((opt) => (
+                        <div key={opt} className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="quiz-correct"
+                            checked={quizDraft.correct_option === opt}
+                            onChange={() => setQuizDraft((d) => (d ? { ...d, correct_option: opt } : d))}
+                            className="accent-pink-500"
+                          />
+                          <span className="w-4 text-xs font-bold uppercase text-white/40">{opt}</span>
+                          <FormInput
+                            value={quizDraft[`option_${opt}`]}
+                            onChange={(e) =>
+                              setQuizDraft((d) =>
+                                d ? { ...d, [`option_${opt}`]: e.target.value } : d
+                              )
+                            }
+                            placeholder={`Option ${opt.toUpperCase()}`}
+                            className="flex-1"
+                          />
+                        </div>
+                      ))}
+                      <div className="flex gap-2">
+                        <ButtonSecondary
+                          type="button"
+                          className="flex-1"
+                          onClick={() => setQuizDraft(null)}
+                        >
+                          Cancel
+                        </ButtonSecondary>
+                        <ButtonPrimary
+                          type="button"
+                          className="flex-1"
+                          disabled={quizSaving}
+                          onClick={() => void saveQuizQuestion()}
+                        >
+                          {quizSaving ? "Saving…" : quizDraft.id ? "Update question" : "Add question"}
+                        </ButtonPrimary>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
+              <div className="flex flex-wrap gap-3 pt-2">
                 <ButtonSecondary
                   type="button"
-                  className="flex-1"
+                  className="flex-1 min-w-[120px]"
                   disabled={fnSaving || fnFileUploading}
                   onClick={() => setFnModalOpen(false)}
                 >
                   Cancel
                 </ButtonSecondary>
-                <SubmitButton
-                  form="sop-fn-form"
-                  className="flex-1 !w-auto min-w-0"
-                  disabled={fnSaving || fnFileUploading}
-                >
-                  {fnSaving ? (
-                    <span className="inline-flex items-center justify-center gap-2">
-                      <Spinner className="h-4 w-4 border-white/40 border-t-white" />
-                      Saving…
-                    </span>
-                  ) : (
-                    "Save"
-                  )}
-                </SubmitButton>
+                {fnEditing && standardSnapshot(fnForm) !== fnInitialStandard ? (
+                  <>
+                    <SubmitButton
+                      form="sop-fn-form"
+                      className="flex-1 !w-auto min-w-0"
+                      disabled={fnSaving || fnFileUploading}
+                    >
+                      {fnSaving ? (
+                        <span className="inline-flex items-center justify-center gap-2">
+                          <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                          Saving…
+                        </span>
+                      ) : (
+                        "Save"
+                      )}
+                    </SubmitButton>
+                    <ButtonPrimary
+                      type="button"
+                      className="flex-1 min-w-0"
+                      disabled={fnSaving || fnFileUploading}
+                      onClick={(e) => void saveFunction(e as unknown as React.FormEvent, true)}
+                    >
+                      Save & require re-training
+                    </ButtonPrimary>
+                  </>
+                ) : (
+                  <SubmitButton
+                    form="sop-fn-form"
+                    className="flex-1 !w-auto min-w-0"
+                    disabled={fnSaving || fnFileUploading}
+                  >
+                    {fnSaving ? (
+                      <span className="inline-flex items-center justify-center gap-2">
+                        <Spinner className="h-4 w-4 border-white/40 border-t-white" />
+                        Saving…
+                      </span>
+                    ) : (
+                      "Save"
+                    )}
+                  </SubmitButton>
+                )}
               </div>
             </div>
               </GlassModal>
@@ -1457,7 +1879,10 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   return (
     <SopShell>
       <motion.div
-        className="mx-auto max-w-3xl px-4 py-8 md:py-10"
+        className={cn(
+          "mx-auto px-4 py-8 md:py-10",
+          mainTab === "overview" ? "max-w-5xl" : "max-w-3xl"
+        )}
         initial="hidden"
         animate="show"
         variants={motionCfg.stagger}
@@ -1466,10 +1891,45 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">Administration</p>
           <h1 className="text-3xl font-bold tracking-tight text-white">SOP Library</h1>
           <p className="mt-2 text-sm text-white/45">
-            Manage departments, roles, and per-role functions · Drag to reorder
+            Academy overview, departments, roles, and per-role functions
           </p>
         </motion.div>
 
+        <motion.div variants={motionCfg.reveal} className="mb-8 flex gap-2">
+          <button
+            type="button"
+            onClick={() => setMainTab("overview")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition",
+              mainTab === "overview"
+                ? "border-pink-500/35 bg-pink-500/15 text-pink-200"
+                : "border-white/10 bg-white/[0.04] text-white/50 hover:text-white/80"
+            )}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            Overview
+          </button>
+          <button
+            type="button"
+            onClick={() => setMainTab("library")}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition",
+              mainTab === "library"
+                ? "border-pink-500/35 bg-pink-500/15 text-pink-200"
+                : "border-white/10 bg-white/[0.04] text-white/50 hover:text-white/80"
+            )}
+          >
+            <Layers className="h-3.5 w-3.5" />
+            Library
+          </button>
+        </motion.div>
+
+        {mainTab === "overview" ? (
+          <motion.div variants={motionCfg.reveal}>
+            <AdminSopOverviewPanel />
+          </motion.div>
+        ) : (
+          <>
         <motion.section variants={motionCfg.reveal} className="sop-glass-panel mb-8 overflow-hidden rounded-2xl">
           <div className="flex w-full items-center justify-between gap-3 px-4 py-4 md:px-5">
             <button
@@ -1820,6 +2280,8 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
           confirmVariant="danger"
           loading={deleteLoading}
         />
+          </>
+        )}
       </motion.div>
     </SopShell>
   );

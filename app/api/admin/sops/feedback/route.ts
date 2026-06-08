@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import {
-  buildProgressUserSummaries,
-  getProgressByRole,
-} from "@/services/sop-progress";
-import { getSignoffsByRole } from "@/services/sop-signoff";
+import { buildFeedbackSummaries, getFeedbackByRole } from "@/services/sop-feedback";
 import { getFunctionsByRoleAdmin, getSopRoleById } from "@/services/sops";
-import { listAllUsers } from "@/services/users";
 
 function isStaffAdmin(session: { role: string } | null): boolean {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -37,40 +32,20 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "Role not found" }, { status: 404 });
     }
 
-    const [functions, progress, users, signoffs] = await Promise.all([
+    const [functions, feedbackRows] = await Promise.all([
       getFunctionsByRoleAdmin(role.id),
-      getProgressByRole(role.id),
-      listAllUsers(),
-      getSignoffsByRole(role.id),
+      getFeedbackByRole(role.id),
     ]);
 
     const activeFunctions = functions.filter((f) => f.is_active);
-    const userNames = new Map(
-      users.map((u) => [
-        u.id,
-        (u.full_name ?? "").trim() || u.email || u.id,
-      ])
-    );
-
-    const signoffByUser = new Map(
-      signoffs
-        .filter((s) => Boolean(s.user_id))
-        .map((s) => [s.user_id, s.signed_at] as [string, string])
-    );
-
-    const summaries = buildProgressUserSummaries(
-      progress.by_user,
-      activeFunctions.length,
-      userNames,
-      activeFunctions,
-      signoffByUser
+    const summaries = buildFeedbackSummaries(
+      feedbackRows,
+      activeFunctions.map((f) => f.id)
     );
 
     return NextResponse.json({
-      role,
-      academy_mode: role.academy_mode,
-      total_functions: activeFunctions.length,
-      users: summaries,
+      role_id: role.id,
+      summaries,
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);

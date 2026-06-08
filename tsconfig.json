@@ -44,6 +44,7 @@
     "cloudflare-wrapper/node_modules",
     "realtime",
     "workers",
-    "cloudflare-wrapper"
+    "cloudflare-wrapper",
+    "scripts/smoke-sop-*.ts"
   ]
 }

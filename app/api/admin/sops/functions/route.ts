@@ -32,6 +32,7 @@ const postSchema = z.object({
   cadence_note: z.string().max(500).optional().default(""),
   is_active: z.boolean().optional().default(true),
   sort_order: z.number().int().min(0).optional(),
+  estimated_minutes: z.number().int().min(1).max(600).optional(),
 });
 
 export async function GET(req: Request) {
@@ -89,6 +90,8 @@ export async function POST(req: Request) {
       cadence_note: parsed.data.cadence_note,
       is_active: parsed.data.is_active,
       sort_order,
+      content_version: 1,
+      estimated_minutes: parsed.data.estimated_minutes,
     });
     return NextResponse.json({ success: true, function: created });
   } catch (e) {

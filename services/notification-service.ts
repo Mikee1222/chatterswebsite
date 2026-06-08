@@ -99,6 +99,9 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   billing_cycle_announced: "billing",
   billing_due_reminder: "billing",
   billing_payment_submitted: "system",
+  sop_academy_reminder: "system",
+  sop_academy_training_complete: "system",
+  sop_academy_signed_off: "system",
 };
 
 /** Service-layer defaults (merges lib/notification-types + model session events). */
