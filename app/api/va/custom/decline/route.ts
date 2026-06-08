@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { revalidateCustomRequestSurfaces } from "@/lib/revalidate-custom-request-paths";
 import { agencyDeclineCustomRequest } from "@/services/custom-request-agency-queue";
 
@@ -16,6 +18,8 @@ export async function POST(req: Request) {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.customRequests);
+  if (blocked) return blocked;
 
   let json: unknown;
   try {

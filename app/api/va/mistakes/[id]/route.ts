@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import {
   getActiveMistakeReasonByReasonId,
   getMistakeById,
@@ -26,6 +28,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
+  if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 

@@ -19,11 +19,15 @@ import {
   hasDualStaffRole,
 } from "@/lib/staff-session-role";
 import { RoleSwitcher } from "@/components/role-switcher";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { Settings } from "lucide-react";
 
 export default async function SettingsPage() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
+  if (getEffectiveStaffRole(user) === "virtual_assistant") {
+    await assertVaTypeCanAccessNavHref(user, ROUTES.settings);
+  }
 
   let modelProfile:
     | { fullName: string; email: string; languagePreference: "en" | "es"; uiLanguage: "en" | "es" }

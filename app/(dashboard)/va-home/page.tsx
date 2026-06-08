@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import {
   getShiftsByChatter,
   getActiveShiftByStaff,
@@ -123,6 +124,7 @@ function sortTasksForHome(a: VaTaskRecord, b: VaTaskRecord): number {
 export default async function VaHomePage() {
   const user = await getSessionFromCookies();
   if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
+  await assertVaTypeCanAccessNavHref(user, ROUTES.va.home);
 
   const vaId = user.airtableUserId ?? user.id;
   const displayName = (user.fullName ?? user.email ?? "VA").trim();

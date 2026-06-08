@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import {
   getAllSopDepartments,
@@ -19,6 +20,9 @@ export default async function SopsPage() {
   const staffRole = getEffectiveStaffRole(user);
   if (staffRole !== "chatter" && staffRole !== "virtual_assistant") {
     redirect(ROUTES.dashboard);
+  }
+  if (staffRole === "virtual_assistant") {
+    await assertVaTypeCanAccessNavHref(user, ROUTES.sops);
   }
 
   const staffAuthRole = staffRole as SopAuthRole;

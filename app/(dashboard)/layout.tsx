@@ -47,7 +47,7 @@ export default async function DashboardLayout({
   }
 
   const hiddenNavRaw = await getSystemSetting("hidden_nav_items").catch(() => null);
-  const hiddenNavByProfile = parseHiddenNavSettingJson(hiddenNavRaw);
+  const hiddenNavConfig = parseHiddenNavSettingJson(hiddenNavRaw);
   const navBadgeCounts: Record<string, number> = {};
   if (user.role === "admin" || user.role === "manager") {
     navBadgeCounts[ROUTES.admin.vaContentAssignments] = await countPendingVAContentAssignments().catch(() => 0);
@@ -67,7 +67,7 @@ export default async function DashboardLayout({
         <div className="dashboard-glow-br" aria-hidden />
         <Sidebar
           user={user}
-          hiddenNavByProfile={hiddenNavByProfile}
+          hiddenNavConfig={hiddenNavConfig}
           navBadgeCounts={navBadgeCounts}
           modelUiLanguage={modelUiLanguage}
         />
@@ -77,7 +77,7 @@ export default async function DashboardLayout({
             user={user}
             activeShift={activeShift}
             activeShiftModelsCount={activeShiftModelsCount}
-            hiddenNavByProfile={hiddenNavByProfile}
+            hiddenNavConfig={hiddenNavConfig}
             navBadgeCounts={navBadgeCounts}
             modelUiLanguage={modelUiLanguage}
           >

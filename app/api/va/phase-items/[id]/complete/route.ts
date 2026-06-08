@@ -3,6 +3,8 @@ import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { notifyAdmins } from "@/services/notification-service";
 import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
 
@@ -11,6 +13,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.tasks);
+  if (blocked) return blocked;
 
   const { id: paramId } = await ctx.params;
   const itemRowId = await resolvePhaseItemRowId(paramId);

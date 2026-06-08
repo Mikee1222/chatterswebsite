@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { listAllModelss } from "@/services/modelss";
 import { listVAContentAssignmentsForVaUser } from "@/services/va-content-assignments";
 import { VaContentAssignmentsClient } from "@/components/va-content-assignments-client";
@@ -11,6 +12,7 @@ export default async function VaContentAssignmentsPage() {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     redirect(ROUTES.dashboard);
   }
+  await assertVaTypeCanAccessNavHref(session, ROUTES.va.contentAssignments);
 
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) redirect(ROUTES.dashboard);

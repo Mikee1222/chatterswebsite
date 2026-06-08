@@ -4,12 +4,19 @@
  * Same items, same order, same role-based visibility for all viewports.
  *
  * Hidden items: Airtable `system_settings` key `hidden_nav_items` (JSON per profile); see parseHiddenNavSettingJson / getNavItemsForRole.
+ * `virtual_assistant` may be a flat string[] (legacy) or `{ chatting, marketing, both }` for per-va_type visibility.
  */
 
 import { ROUTES } from "@/lib/routes";
+import type { VaType } from "@/types";
 
 /** Keys in stored JSON — admin + manager share `admin`. */
 export type NavStorageProfile = "chatter" | "virtual_assistant" | "admin" | "model";
+
+export type VaTypeNavKey = "chatting" | "marketing" | "both";
+
+/** Per-va_type hidden href lists stored under `virtual_assistant` when extended. */
+export type VaHiddenNavByType = Record<VaTypeNavKey, string[]>;
 
 /** Default: nothing hidden for any profile (matches stored JSON shape). */
 export const EMPTY_HIDDEN_NAV_BY_PROFILE: Record<NavStorageProfile, string[]> = {
@@ -19,27 +26,114 @@ export const EMPTY_HIDDEN_NAV_BY_PROFILE: Record<NavStorageProfile, string[]> = 
   model: [],
 };
 
+export const EMPTY_VA_HIDDEN_BY_TYPE: VaHiddenNavByType = {
+  chatting: [],
+  marketing: [],
+  both: [],
+};
+
+export type ParsedHiddenNavConfig = {
+  byProfile: Record<NavStorageProfile, string[]>;
+  /** Set when `virtual_assistant` JSON value is an object with per-type lists. */
+  vaByType: VaHiddenNavByType | null;
+};
+
+function parseStringArray(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string");
+}
+
 /** Parse `setting_value` JSON from system_settings `hidden_nav_items`. */
-export function parseHiddenNavSettingJson(raw: string | null | undefined): Record<NavStorageProfile, string[]> {
+export function parseHiddenNavSettingJson(raw: string | null | undefined): ParsedHiddenNavConfig {
+  const empty: ParsedHiddenNavConfig = {
+    byProfile: { ...EMPTY_HIDDEN_NAV_BY_PROFILE },
+    vaByType: null,
+  };
   if (raw == null || String(raw).trim() === "") {
-    return { ...EMPTY_HIDDEN_NAV_BY_PROFILE };
+    return empty;
   }
   try {
     const parsed = JSON.parse(String(raw)) as unknown;
     if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      return { ...EMPTY_HIDDEN_NAV_BY_PROFILE };
+      return empty;
     }
-    const out = { ...EMPTY_HIDDEN_NAV_BY_PROFILE };
-    for (const k of Object.keys(out) as NavStorageProfile[]) {
-      const v = (parsed as Record<string, unknown>)[k];
-      if (Array.isArray(v)) {
-        out[k] = v.filter((x): x is string => typeof x === "string");
-      }
+    const record = parsed as Record<string, unknown>;
+    const byProfile = { ...EMPTY_HIDDEN_NAV_BY_PROFILE };
+    for (const k of Object.keys(byProfile) as NavStorageProfile[]) {
+      if (k === "virtual_assistant") continue;
+      byProfile[k] = parseStringArray(record[k]);
     }
-    return out;
+    const vaRaw = record.virtual_assistant;
+    let vaByType: VaHiddenNavByType | null = null;
+    if (Array.isArray(vaRaw)) {
+      byProfile.virtual_assistant = parseStringArray(vaRaw);
+    } else if (typeof vaRaw === "object" && vaRaw !== null) {
+      const vaObj = vaRaw as Record<string, unknown>;
+      vaByType = {
+        chatting: parseStringArray(vaObj.chatting),
+        marketing: parseStringArray(vaObj.marketing),
+        both: parseStringArray(vaObj.both),
+      };
+    }
+    return { byProfile, vaByType };
   } catch {
-    return { ...EMPTY_HIDDEN_NAV_BY_PROFILE };
+    return empty;
   }
+}
+
+/** Serialize parsed config back to the stored JSON shape. */
+export function serializeHiddenNavConfig(config: ParsedHiddenNavConfig): string {
+  const out: Record<string, unknown> = {
+    chatter: config.byProfile.chatter,
+    admin: config.byProfile.admin,
+    model: config.byProfile.model,
+  };
+  if (config.vaByType) {
+    out.virtual_assistant = config.vaByType;
+  } else {
+    out.virtual_assistant = config.byProfile.virtual_assistant;
+  }
+  return JSON.stringify(out);
+}
+
+/**
+ * Hidden hrefs for a VA by `va_type`.
+ * Legacy (flat `virtual_assistant` array): same list for all types.
+ * Extended: per-type lists; `both` users use UNION visibility (hidden only if hidden in BOTH chatting AND marketing).
+ * Null `va_type` (legacy users): nothing hidden — safe default.
+ */
+export function getHiddenNavForVaType(
+  vaType: VaType | null | undefined,
+  config: ParsedHiddenNavConfig
+): string[] {
+  if (vaType == null) return [];
+  if (!config.vaByType) {
+    return config.byProfile.virtual_assistant;
+  }
+  const { chatting, marketing } = config.vaByType;
+  if (vaType === "chatting") return chatting;
+  if (vaType === "marketing") return marketing;
+  const marketingSet = new Set(marketing);
+  return chatting.filter((h) => marketingSet.has(h));
+}
+
+/** Resolve hidden nav hrefs for the active session role (va_type-aware for virtual_assistant). */
+export function resolveHiddenNavItemsForSession(
+  role: NavRole,
+  config: ParsedHiddenNavConfig,
+  vaType?: VaType | null
+): string[] {
+  if (role !== "virtual_assistant") {
+    const profile = navStorageProfileForRole(role);
+    return config.byProfile[profile] ?? [];
+  }
+  return getHiddenNavForVaType(vaType, config);
+}
+
+/** Effective hidden set for `both`-type VAs (intersection of chatting + marketing hidden lists). */
+export function getBothTypeHiddenNavPreview(config: VaHiddenNavByType): string[] {
+  const marketingSet = new Set(config.marketing);
+  return config.chatting.filter((h) => marketingSet.has(h));
 }
 
 export type NavIconKey =

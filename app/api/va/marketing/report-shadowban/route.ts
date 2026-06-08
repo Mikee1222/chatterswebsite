@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { createShadowbanReport } from "@/services/marketing";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -16,6 +18,10 @@ export async function POST(req: Request) {
   const isAdmin = session.role === "admin" || session.role === "manager";
   if (!isVa && !isAdmin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (isVa) {
+    const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.marketingAccounts);
+    if (blocked) return blocked;
   }
 
   const formData = await req.formData();

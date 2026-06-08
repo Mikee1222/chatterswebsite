@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getVaTasksForUser } from "@/services/va-tasks";
 import { getActiveShifts } from "@/services/shifts";
@@ -34,6 +35,7 @@ export default async function VaSchedulePage({ searchParams }: { searchParams?: 
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     redirect(ROUTES.va.home);
   }
+  await assertVaTypeCanAccessNavHref(session, ROUTES.va.schedule);
 
   const userId = (session.airtableUserId ?? session.id)?.trim();
   if (!userId) redirect(ROUTES.va.home);

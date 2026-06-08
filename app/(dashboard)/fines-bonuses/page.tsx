@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getFinesBonusesForUser } from "@/services/fines-bonuses";
 import { listAllModelss } from "@/services/modelss";
 import { FinesBonusesClient } from "@/components/fines-bonuses-client";
@@ -11,6 +12,9 @@ export default async function FinesBonusesPage() {
   const role = getEffectiveStaffRole(session);
   if (!session || (role !== "chatter" && role !== "virtual_assistant")) {
     redirect(ROUTES.dashboard);
+  }
+  if (role === "virtual_assistant") {
+    await assertVaTypeCanAccessNavHref(session, ROUTES.finesBonuses);
   }
 
   const userId = (session.airtableUserId ?? session.id)?.trim();

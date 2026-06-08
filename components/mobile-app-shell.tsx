@@ -51,11 +51,11 @@ import {
   getMobileMainTabDisplays,
   getNavItemsForRole,
   navHrefIsActive,
-  navStorageProfileForRole,
+  resolveHiddenNavItemsForSession,
   type NavIconKey,
   type NavItem,
   type NavRole,
-  type NavStorageProfile,
+  type ParsedHiddenNavConfig,
 } from "@/lib/nav-config";
 import type { SessionUser } from "@/types";
 import type { Shift } from "@/types";
@@ -216,7 +216,7 @@ type MobileAppShellProps = {
   children: React.ReactNode;
   activeShift?: Shift | null;
   activeShiftModelsCount?: number | null;
-  hiddenNavByProfile: Record<NavStorageProfile, string[]>;
+  hiddenNavConfig: ParsedHiddenNavConfig;
   navBadgeCounts?: Record<string, number>;
   /** Model UI language from cookie / Airtable — translates bottom tabs + More menu labels. */
   modelUiLanguage?: ModelLang;
@@ -227,7 +227,7 @@ export function MobileAppShell({
   children,
   activeShift = null,
   activeShiftModelsCount = null,
-  hiddenNavByProfile,
+  hiddenNavConfig,
   navBadgeCounts,
   modelUiLanguage,
 }: MobileAppShellProps) {
@@ -251,10 +251,9 @@ export function MobileAppShell({
   }, []);
 
   const role = getNavRoleForSession(user);
-  const profile = navStorageProfileForRole(role);
   const hiddenForRole = React.useMemo(
-    () => hiddenNavByProfile[profile] ?? [],
-    [hiddenNavByProfile, profile]
+    () => resolveHiddenNavItemsForSession(role, hiddenNavConfig, user.va_type),
+    [hiddenNavConfig, role, user.va_type]
   );
 
   const baseNavItems: NavItem[] = React.useMemo(() => {

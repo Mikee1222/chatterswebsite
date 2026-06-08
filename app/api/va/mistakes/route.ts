@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -16,6 +18,8 @@ export async function GET() {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
+  if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
@@ -43,6 +47,8 @@ export async function POST(req: Request) {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
+  if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 

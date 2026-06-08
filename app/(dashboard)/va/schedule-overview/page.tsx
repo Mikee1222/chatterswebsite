@@ -1,6 +1,7 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { loadScheduleOverviewPageData } from "@/lib/schedule-overview-page-data";
 import { addDays } from "@/lib/weekly-program";
 import { redirect } from "next/navigation";
@@ -18,6 +19,7 @@ export default async function VaScheduleOverviewPage({
 }) {
   const user = await getSessionFromCookies();
   if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
+  await assertVaTypeCanAccessNavHref(user, ROUTES.va.scheduleOverview);
 
   const vaId = (user.airtableUserId ?? user.id)?.trim();
   if (!vaId) redirect(ROUTES.dashboard);

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
+import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { listAllUsers } from "@/services/users";
 import { listAllModelss } from "@/services/modelss";
 import {
@@ -17,6 +18,7 @@ export default async function VaMistakesPage() {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     redirect(ROUTES.dashboard);
   }
+  await assertVaTypeCanAccessNavHref(session, ROUTES.va.mistakes);
 
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) redirect(ROUTES.dashboard);

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { listAllWhales } from "@/services/whales";
 import { buildWhalesFilterFormula, type WhalesListFilters } from "@/lib/whales-filters";
 
@@ -9,6 +11,8 @@ export async function GET(req: Request) {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.whales);
+  if (blocked) return blocked;
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status")?.trim() || undefined;

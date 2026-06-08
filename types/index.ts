@@ -937,6 +937,7 @@ export interface SessionUser {
   fullName: string | null;
   secondary_role?: "chatter" | "virtual_assistant" | null;
   active_role?: "chatter" | "virtual_assistant" | null;
+  va_type?: import("@/types").VaType | null;
 }
 
 // --- Notifications ---

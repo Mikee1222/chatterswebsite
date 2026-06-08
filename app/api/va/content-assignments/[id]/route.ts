@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
+import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import {
   deletePendingVAContentAssignmentByVa,
   updatePendingVAContentAssignmentByVa,
@@ -23,6 +24,8 @@ async function requireVa() {
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
     return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
+  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.contentAssignments);
+  if (blocked) return { ok: false as const, response: blocked };
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) return { ok: false as const, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   return { ok: true as const, vaId };
