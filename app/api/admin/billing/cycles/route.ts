@@ -6,6 +6,7 @@ import {
   getAllBillingCycles,
   getBillingCycleClientCounts,
 } from "@/services/client-billing";
+import { notifyClientsForBillingCycle } from "@/services/client-billing-notifications";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -70,6 +71,7 @@ export async function POST(req: Request) {
 
   try {
     const cycle = await createBillingCycle(parsed.data);
+    await notifyClientsForBillingCycle(cycle);
     return NextResponse.json({ ok: true, data: cycle });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create billing cycle";

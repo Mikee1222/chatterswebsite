@@ -6,10 +6,7 @@ import {
   getBillingCycleById,
   updateBillingCycle,
 } from "@/services/client-billing";
-import {
-  getClientIdsForBillingCycle,
-  notifyClientBillingAnnounced,
-} from "@/services/client-billing-notifications";
+import { notifyClientsForBillingCycle } from "@/services/client-billing-notifications";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -67,17 +64,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const cycle = await updateBillingCycle(id, parsed.data);
 
     if (parsed.data.status === "announced" && previousStatus !== "announced") {
-      const clientIds = await getClientIdsForBillingCycle(cycle.id, cycle.client);
-      for (const clientId of clientIds) {
-        await notifyClientBillingAnnounced(cycle.id, clientId, {
-          kind: cycle.kind,
-          period_start: cycle.period_start,
-          period_end: cycle.period_end,
-          amount_due: cycle.amount_due ?? cycle.amount ?? 0,
-          currency: cycle.currency ?? "USD",
-          due_date: cycle.due_date,
-        }).catch(console.error);
-      }
+      await notifyClientsForBillingCycle(cycle);
     }
 
     return NextResponse.json({ data: cycle });

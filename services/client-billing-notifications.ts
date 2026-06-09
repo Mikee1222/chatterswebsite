@@ -2,7 +2,9 @@
 
 import { listAllRecords } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
+import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { notify } from "@/services/notification-service";
+import { findExistingNotification } from "@/services/notifications";
 import { sendPushToUser } from "@/services/push-subscriptions";
 import { getBillingCycleRevenues } from "@/services/client-billing";
 import type { BillingCycleKind } from "@/types/client-portal";
@@ -22,6 +24,18 @@ function kindLabelFor(kind: BillingCycleKind): string {
 
 function formatBillingPeriod(periodStart: string, periodEnd: string): string {
   return `${periodStart} – ${periodEnd}`;
+}
+
+function formatDueDateElGr(ymd: string): string {
+  const s = String(ymd).trim().slice(0, 10);
+  const d = new Date(`${s}T12:00:00.000Z`);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleDateString("el-GR", {
+    timeZone: "Europe/Athens",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 /** Resolve client IDs from cycle.client or billing_cycle_revenues (weekly cycles). */
@@ -54,7 +68,10 @@ async function amountDueForClient(
   return fallbackAmount;
 }
 
-// Called when admin announces a billing cycle (status changes to "announced")
+const BILLING_CYCLE_ANNOUNCED_AIRTABLE =
+  EVENT_TYPE_TO_AIRTABLE.billing_cycle_announced ?? "billing_cycle_announced";
+
+// Called when a billing cycle is created or status changes to "announced"
 export async function notifyClientBillingAnnounced(
   cycleId: string,
   clientId: string,
@@ -66,28 +83,61 @@ export async function notifyClientBillingAnnounced(
     currency: string;
     due_date: string;
   }
-) {
+): Promise<boolean> {
+  const exists = await findExistingNotification(
+    clientId,
+    "billing_cycle",
+    cycleId,
+    BILLING_CYCLE_ANNOUNCED_AIRTABLE
+  ).catch(() => false);
+  if (exists) return false;
+
   const kindLabel = kindLabelFor(cycleData.kind);
   const period = formatBillingPeriod(cycleData.period_start, cycleData.period_end);
   const amountDue = await amountDueForClient(cycleId, clientId, cycleData.amount_due);
   const amount = `${amountDue.toFixed(2)} ${cycleData.currency}`;
+  const dueDateFormatted = formatDueDateElGr(cycleData.due_date);
 
   await notify({
     user_id: clientId,
     event_type: "billing_cycle_announced",
     priority: "high",
     title: `Payment Due - ${kindLabel} ${period}`,
-    body: `Your ${kindLabel} payment of ${amount} is due by ${cycleData.due_date}.`,
+    body: `Your ${kindLabel} payment of ${amount} is due by ${dueDateFormatted}.`,
     entity_type: "billing_cycle",
     entity_id: cycleId,
     _triggerSource: "notifyClientBillingAnnounced",
   });
 
-  await sendPushToUser(clientId, {
-    title: `Payment Due - ${kindLabel} ${period}`,
-    body: `${amount} due by ${cycleData.due_date}`,
-    url: payUrlForKind(cycleData.kind),
-  });
+  return true;
+}
+
+export async function notifyClientsForBillingCycle(cycle: {
+  id: string;
+  client: string[];
+  kind: BillingCycleKind;
+  period_start: string;
+  period_end: string;
+  amount_due?: number | null;
+  amount?: number | null;
+  currency?: string | null;
+  due_date: string;
+}): Promise<void> {
+  const clientIds = await getClientIdsForBillingCycle(cycle.id, cycle.client);
+  const payload = {
+    kind: cycle.kind,
+    period_start: cycle.period_start,
+    period_end: cycle.period_end,
+    amount_due: cycle.amount_due ?? cycle.amount ?? 0,
+    currency: cycle.currency ?? "USD",
+    due_date: cycle.due_date,
+  };
+
+  for (const clientId of clientIds) {
+    await notifyClientBillingAnnounced(cycle.id, clientId, payload).catch((err) =>
+      console.error("[billing] notifyClientBillingAnnounced failed", err)
+    );
+  }
 }
 
 // Called by cron job daily — sends reminder 2 days before due date
