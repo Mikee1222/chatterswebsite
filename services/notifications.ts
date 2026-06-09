@@ -12,6 +12,7 @@ import {
 import {
   NOTIFICATIONS_TABLE,
   NOTIFICATION_FIELDS,
+  CATEGORY_TO_AIRTABLE,
   validateNotificationPayload,
   type NotificationCategoryAirtable,
   type NotificationEventTypeAirtable,
@@ -85,11 +86,12 @@ export async function createNotification(fields: {
   }
 
   const notificationId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const airtableCategory = CATEGORY_TO_AIRTABLE[fields.category] ?? fields.category;
   // Only include fields that exist in the Airtable notifications table. Do not send "metadata"// unless the table has a Long text column named "metadata" (Airtable returns Unknown field name otherwise).
   const payload: Record<string, unknown> = {
     [NOTIFICATION_FIELDS.notification_id]: notificationId,
     [NOTIFICATION_FIELDS.user_id]: fields.user_id,
-    [NOTIFICATION_FIELDS.category]: fields.category,
+    [NOTIFICATION_FIELDS.category]: airtableCategory,
     [NOTIFICATION_FIELDS.event_type]: fields.event_type,
     [NOTIFICATION_FIELDS.priority]: fields.priority,
     [NOTIFICATION_FIELDS.title]: fields.title,

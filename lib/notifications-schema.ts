@@ -165,7 +165,8 @@ export const CATEGORY_TO_AIRTABLE: Record<string, NotificationCategoryAirtable> 
   custom_request: "custom_request",
   system: "system",
   account: "system",
-  billing: "billing",
+  /** Airtable category select has no "billing"; store as system. */
+  billing: "system",
 };
 
 export type NotificationCreatePayload = {

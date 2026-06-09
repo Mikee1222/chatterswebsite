@@ -85,9 +85,9 @@ export async function POST(req: Request) {
     const clientName = client.display_name?.trim() || client.company_name?.trim() || "Client";
     const cycleKind = cycle?.kind === "crm_monthly" ? "CRM" : "Chatting";
 
-    console.log("attempting to notify client:", clientId);
-
-    await notify({
+    console.log("[submit-payment] clientId for notification:", clientId);
+    console.log("[submit-payment] sending notification...");
+    const notifResult = await notify({
       user_id: clientId,
       event_type: "payment_submitted",
       priority: "high",
@@ -96,7 +96,11 @@ export async function POST(req: Request) {
       entity_type: "payment_submission",
       entity_id: result.submissionId ?? billingCycleId,
       _triggerSource: "submitClientPayment",
-    }).catch(console.error);
+    }).catch((err) => {
+      console.error("[submit-payment] notification error:", err);
+      return null;
+    });
+    console.log("[submit-payment] notification result:", notifResult?.notification?.id ?? "FAILED");
 
     await notifyAdmins({
       event_type: "payment_submitted",
