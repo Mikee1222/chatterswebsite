@@ -72,14 +72,21 @@ export function ClientPortalNav() {
 
   return (
     <>
-      <aside className="glass-panel hidden h-screen w-64 shrink-0 flex-col overflow-y-auto border-r border-white/10 bg-black/50 shadow-[4px_0_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl md:flex">
-        <div className="flex h-[3.25rem] items-center border-b border-white/10 px-5">
-          <p className="text-[15px] font-semibold tracking-tight text-white">Client Portal</p>
+      <aside className="glass-panel fixed left-0 top-0 z-40 hidden h-screen w-64 border-r border-white/[0.08] bg-black/50 shadow-[4px_0_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl md:block">
+        <div className="flex h-full flex-col">
+        <div className="flex h-[3.25rem] items-center border-b border-white/[0.08] px-5">
+          <Link
+            href={ROUTES.client.home}
+            prefetch
+            className="text-[15px] font-semibold tracking-tight text-white transition-colors hover:text-pink-100/95"
+          >
+            Client Portal
+          </Link>
         </div>
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
           <NavLinks />
         </nav>
-        <div className="border-t border-white/10 px-4 py-4">
+        <div className="border-t border-white/[0.08] px-4 py-4">
           <form action={logout}>
             <button
               type="submit"
@@ -88,6 +95,7 @@ export function ClientPortalNav() {
               Log out
             </button>
           </form>
+        </div>
         </div>
       </aside>
 

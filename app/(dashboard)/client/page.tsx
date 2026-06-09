@@ -3,7 +3,6 @@ import {
   Building2,
   CalendarDays,
   CreditCard,
-  FileText,
   BarChart3,
   LayoutGrid,
   UserCog,
@@ -36,9 +35,6 @@ import {
 } from "@/services/client-portal";
 
 export const dynamic = "force-dynamic";
-
-const glassCardBase =
-  "group rounded-2xl border border-white/10 bg-gradient-to-br from-white/10 via-white/5 to-white/[0.02] backdrop-blur-xl shadow-[0_20px_60px_-20px_rgba(0,0,0,0.6)] transition-all duration-300 hover:-translate-y-1 hover:border-violet-400/30";
 
 export default async function ClientHomePage() {
   const user = await getSessionFromCookies();
@@ -115,21 +111,14 @@ export default async function ClientHomePage() {
     : ROUTES.client.payChatting;
 
   return (
-    <div className="relative space-y-10 pb-20 md:pb-0">
-      <div
-        className="pointer-events-none absolute -top-24 right-0 h-72 w-72 rounded-full bg-[radial-gradient(circle_at_center,rgba(139,92,246,0.25),rgba(0,0,0,0)_60%)] blur-3xl opacity-70"
-        aria-hidden
-      />
-      <div
-        className="pointer-events-none absolute top-32 -left-20 h-80 w-80 rounded-full bg-[radial-gradient(circle_at_center,rgba(99,102,241,0.22),rgba(0,0,0,0)_65%)] blur-3xl opacity-70"
-        aria-hidden
-      />
-
-      <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+    <div className="space-y-10 pb-20 md:pb-0">
+      <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-xs uppercase tracking-[0.35em] text-violet-300/70">Client portal</p>
-          <h1 className="mt-2 text-4xl font-semibold text-white md:text-5xl">Welcome back, {displayName}</h1>
-          <p className="mt-3 text-base text-gray-300 md:text-lg">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40">CLIENT PORTAL</p>
+          <h1 className="mt-2 text-4xl font-bold tracking-tight text-white md:text-5xl">
+            Welcome back, {displayName}
+          </h1>
+          <p className="mt-3 text-base text-white/50 md:text-lg">
             Your executive overview of billing, payments, and activity.
           </p>
         </div>
@@ -138,11 +127,11 @@ export default async function ClientHomePage() {
       <ClientAttentionItemsBox items={attentionItems} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className={`${glassCardBase} p-6 hover:shadow-[0_30px_80px_-25px_rgba(139,92,246,0.25)]`}>
+        <div className="glass-card p-6 transition-all duration-300 hover:border-pink-400/30">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-sm text-gray-300">
-                <Wallet className="h-4 w-4 text-violet-300" />
+              <div className="flex items-center gap-2 text-sm text-white/70">
+                <Wallet className="h-4 w-4 text-pink-400" />
                 <span className="font-semibold">Chatting Weekly</span>
               </div>
               <p className="mt-3 text-2xl font-semibold text-white">
@@ -161,9 +150,9 @@ export default async function ClientHomePage() {
               ) : null}
               <Link
                 href={chattingCanSubmit ? chattingPayHref : ROUTES.client.paymentHistory}
-                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold ${
+                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
                   chattingCanSubmit
-                    ? "bg-gradient-to-r from-violet-600 to-purple-600 text-white shadow-lg shadow-violet-900/30"
+                    ? "bg-pink-500/80 text-white hover:bg-pink-500"
                     : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
                 }`}
               >
@@ -172,9 +161,9 @@ export default async function ClientHomePage() {
             </div>
           </div>
           {chattingCycle && (
-            <div className="mt-5 space-y-3 text-sm text-gray-300">
+            <div className="mt-5 space-y-3 text-sm text-white/60">
               {chattingCycle.period_start && chattingCycle.period_end && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-white/45">
                   Week {formatDateEuropean(chattingCycle.period_start)} –{""}
                   {formatDateEuropean(chattingCycle.period_end)}
                 </p>
@@ -182,14 +171,14 @@ export default async function ClientHomePage() {
               {(() => {
                 const dueWindow = getChattingWeeklyDueWindow(chattingCycle.period_end);
                 return dueWindow ? (
-                  <p className="text-xs text-gray-500">
+                  <p className="text-xs text-white/45">
                     Due window: {formatDateEuropean(dueWindow.dueStart)} –{""}
                     {formatDateEuropean(dueWindow.dueEnd)}
                   </p>
                 ) : null;
               })()}
               {chattingPendingReview && chattingLatestSubmission?.submitted_datetime && (
-                <p className="text-xs text-gray-500">
+                <p className="text-xs text-white/45">
                   Submitted: {formatDateEuropean(chattingLatestSubmission.submitted_datetime)}
                 </p>
               )}
@@ -197,11 +186,11 @@ export default async function ClientHomePage() {
           )}
         </div>
 
-        <div className={`${glassCardBase} p-6 hover:shadow-[0_30px_80px_-25px_rgba(79,70,229,0.25)]`}>
+        <div className="glass-card p-6 transition-all duration-300 hover:border-pink-400/30">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <div className="flex items-center gap-2 text-sm text-gray-300">
-                <Building2 className="h-4 w-4 text-indigo-300" />
+              <div className="flex items-center gap-2 text-sm text-white/70">
+                <Building2 className="h-4 w-4 text-pink-400" />
                 <span className="font-semibold">CRM Monthly</span>
               </div>
               <p className="mt-3 text-2xl font-semibold text-white">
@@ -218,9 +207,9 @@ export default async function ClientHomePage() {
               ) : null}
               <Link
                 href={crmCanSubmit ? ROUTES.client.payCrm : ROUTES.client.paymentHistory}
-                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold ${
+                className={`inline-flex items-center justify-center rounded-full px-4 py-2 text-xs font-semibold transition-colors ${
                   crmCanSubmit
-                    ? "bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-900/30"
+                    ? "bg-pink-500/80 text-white hover:bg-pink-500"
                     : "border border-white/10 bg-white/5 text-white/80 hover:bg-white/10"
                 }`}
               >
@@ -229,13 +218,13 @@ export default async function ClientHomePage() {
             </div>
           </div>
           {crmCycle && (
-            <div className="mt-5 grid grid-cols-2 gap-3 text-sm text-gray-300">
+            <div className="mt-5 grid grid-cols-2 gap-3 text-sm text-white/60">
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Due date</p>
+                <p className="text-xs uppercase tracking-wide text-white/45">Due date</p>
                 <p className="font-medium text-white">{formatDateEuropean(crmCycle.due_date)}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-gray-500">Status</p>
+                <p className="text-xs uppercase tracking-wide text-white/45">Status</p>
                 <p className="font-medium text-white">{crmStatusLabel}</p>
               </div>
             </div>
@@ -246,72 +235,95 @@ export default async function ClientHomePage() {
       <div>
         <h2 className="mb-4 text-xl font-semibold text-white">Quick actions</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <QuickAction href={ROUTES.client.content} icon={LayoutGrid} title="Content Hub" subtitle="Schedule and manage content for your models" gradient="from-violet-500/80 to-purple-500/80" />
-          <QuickAction href={chattingCanSubmit ? chattingPayHref : ROUTES.client.paymentHistory} icon={Wallet} title={chattingCanSubmit ? "Pay Chatting" : "View Chatting"} subtitle={chattingCanSubmit ? "Submit payment proof" : "Review status"} gradient="from-purple-500/80 to-indigo-500/80" />
-          <QuickAction href={crmCanSubmit ? ROUTES.client.payCrm : ROUTES.client.paymentHistory} icon={Building2} title={crmCanSubmit ? "Pay CRM" : "View CRM"} subtitle={crmCanSubmit ? "Submit payment proof" : "Review status"} gradient="from-indigo-500/80 to-blue-500/80" />
-          <QuickAction href={ROUTES.client.gunzoPartnership} icon={BarChart3} title="Gunzo Partnership" subtitle="Performance overview" gradient="from-fuchsia-500/80 to-violet-500/80" />
+          <QuickAction
+            href={ROUTES.client.content}
+            icon={LayoutGrid}
+            title="Content Hub"
+            subtitle="Schedule and manage content for your models"
+          />
+          <QuickAction
+            href={chattingCanSubmit ? chattingPayHref : ROUTES.client.paymentHistory}
+            icon={Wallet}
+            title={chattingCanSubmit ? "Pay Chatting" : "View Chatting"}
+            subtitle={chattingCanSubmit ? "Submit payment proof" : "Review status"}
+          />
+          <QuickAction
+            href={crmCanSubmit ? ROUTES.client.payCrm : ROUTES.client.paymentHistory}
+            icon={Building2}
+            title={crmCanSubmit ? "Pay CRM" : "View CRM"}
+            subtitle={crmCanSubmit ? "Submit payment proof" : "Review status"}
+          />
+          <QuickAction
+            href={ROUTES.client.gunzoPartnership}
+            icon={BarChart3}
+            title="Gunzo Partnership"
+            subtitle="Performance overview"
+          />
         </div>
       </div>
 
-      <div className={`${glassCardBase} p-6 hover:translate-y-0`}>
+      <div className="glass-card p-6">
         <h3 className="mb-4 flex items-center gap-2 text-xl font-semibold text-white">
-          <UserCog className="h-5 w-5 text-violet-300" />
+          <UserCog className="h-5 w-5 text-pink-400" />
           Your models
         </h3>
         {models.length > 0 ? (
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
             {models.map((model) => (
-              <div key={model.id} className={`${glassCardBase} rounded-xl p-4`}>
+              <div
+                key={model.id}
+                className="glass-card rounded-xl border-l-2 border-l-pink-500/40 p-4"
+              >
                 <p className="font-semibold text-white">{model.model_name ?? "Model"}</p>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-gray-500">No models assigned</p>
+          <p className="text-sm text-white/45">No models assigned</p>
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <div className={`${glassCardBase} p-6 hover:translate-y-0`}>
+        <div className="glass-card p-6">
           <h3 className="mb-4 flex items-center gap-2 text-xl font-semibold text-white">
-            <CreditCard className="h-5 w-5 text-violet-300" />
+            <CreditCard className="h-5 w-5 text-pink-400" />
             Payment methods
           </h3>
           {paymentMethods.length > 0 ? (
             <div className="space-y-2">
               {paymentMethods.slice(0, 3).map((method) => (
-                <div key={method.id} className={`${glassCardBase} rounded-xl p-4`}>
+                <div key={method.id} className="glass-card rounded-xl p-4">
                   <p className="font-medium text-white">{method.label}</p>
-                  <p className="mt-1 text-xs uppercase tracking-wide text-slate-300">{method.type}</p>
+                  <p className="mt-1 text-xs uppercase tracking-wide text-white/50">{method.type}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-400">No payment methods available</p>
+            <p className="text-sm text-white/45">No payment methods available</p>
           )}
         </div>
 
-        <div className={`${glassCardBase} p-6 hover:translate-y-0`}>
+        <div className="glass-card p-6">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="flex items-center gap-2 text-xl font-semibold text-white">
-              <CalendarDays className="h-5 w-5 text-indigo-300" />
+              <CalendarDays className="h-5 w-5 text-pink-400" />
               Upcoming events
             </h3>
-            <Link href={ROUTES.client.weeklyPayments} className="text-sm text-violet-300 hover:text-violet-200">
+            <Link href={ROUTES.client.weeklyPayments} className="text-sm text-pink-400 hover:text-pink-300">
               View all →
             </Link>
           </div>
           {upcomingEvents.length > 0 ? (
             <div className="space-y-3">
               {upcomingEvents.map((event) => (
-                <div key={event.id} className={`${glassCardBase} rounded-xl p-4`}>
+                <div key={event.id} className="glass-card rounded-xl p-4">
                   <p className="font-medium text-white">{event.title}</p>
-                  <p className="mt-1 text-xs text-slate-300">{formatDateEuropean(event.start_datetime)}</p>
+                  <p className="mt-1 text-xs text-white/50">{formatDateEuropean(event.start_datetime)}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-sm text-slate-400">No upcoming events</p>
+            <p className="text-sm text-white/45">No upcoming events</p>
           )}
         </div>
       </div>
@@ -324,23 +336,21 @@ function QuickAction({
   icon: Icon,
   title,
   subtitle,
-  gradient,
 }: {
   href: string;
   icon: typeof Wallet;
   title: string;
   subtitle: string;
-  gradient: string;
 }) {
   return (
-    <Link href={href} className={`${glassCardBase} p-5`}>
+    <Link href={href} className="glass-card group p-5 transition-all duration-300 hover:border-pink-400/30">
       <div className="flex items-center gap-4">
-        <div className={`flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br ${gradient} shadow-lg`}>
-          <Icon className="h-6 w-6 text-white" />
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-pink-500/20">
+          <Icon className="h-6 w-6 text-pink-400" />
         </div>
         <div>
           <h3 className="text-base font-semibold text-white">{title}</h3>
-          <p className="text-sm text-slate-300">{subtitle}</p>
+          <p className="text-sm text-white/55">{subtitle}</p>
         </div>
       </div>
     </Link>

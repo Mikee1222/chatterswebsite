@@ -33,7 +33,7 @@ export function ClientPaymentMethodCard({ method }: Props) {
   const showOpenInApp = !!method.open_url && !isZen;
 
   return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.04] p-3 transition-colors hover:border-pink-400/25">
+    <div className="glass-card rounded-xl p-3 transition-colors hover:border-pink-400/25">
       <div className="mb-1 flex items-center gap-2">
         <div className="h-2 w-2 rounded-full bg-gradient-to-r from-pink-400 to-pink-500" />
         <strong className="font-semibold text-pink-200">{method.label}</strong>

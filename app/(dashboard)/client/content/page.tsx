@@ -80,7 +80,7 @@ export default async function ClientContentPage() {
   return (
     <div className="space-y-6 pb-20 md:pb-0">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-violet-300/60">Content</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40">Content</p>
         <h1 className="mt-2 text-2xl font-semibold tracking-tight text-white md:text-3xl">Content Hub</h1>
         <p className="mt-2 max-w-2xl text-sm text-white/55">
           Manage VA content assignments and custom requests across your models.
