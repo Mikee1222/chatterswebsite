@@ -79,6 +79,11 @@ export const NOTIFICATION_EVENT = {
   SOP_ACADEMY_REMINDER: "sop_academy_reminder" as const,
   SOP_ACADEMY_TRAINING_COMPLETE: "sop_academy_training_complete" as const,
   SOP_ACADEMY_SIGNED_OFF: "sop_academy_signed_off" as const,
+  BILLING_CYCLE_ANNOUNCED: "billing_cycle_announced" as const,
+  BILLING_DUE_REMINDER: "billing_due_reminder" as const,
+  PAYMENT_SUBMITTED: "payment_submitted" as const,
+  PAYMENT_CONFIRMED: "payment_confirmed" as const,
+  PAYMENT_REJECTED: "payment_rejected" as const,
 } satisfies Record<string, NotificationEventType>;
 
 /** Default priority by event type for operational alerts. Callers can override. */
@@ -133,6 +138,11 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   sop_academy_reminder: "normal",
   sop_academy_training_complete: "normal",
   sop_academy_signed_off: "normal",
+  billing_cycle_announced: "high",
+  billing_due_reminder: "high",
+  payment_submitted: "high",
+  payment_confirmed: "normal",
+  payment_rejected: "high",
 };
 
 /** Entity types for notifications (entity_type in payload). */

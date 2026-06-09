@@ -5,6 +5,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getPaymentSubmissionById } from "@/services/client-portal";
 import { updatePaymentSubmission } from "@/services/client-billing";
+import { notify } from "@/services/notification-service";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -54,6 +55,32 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   try {
     const submission = await updatePaymentSubmission(id, parsed.data);
+    const clientId = submission.client[0];
+    if (clientId) {
+      if (parsed.data.status === "approved") {
+        await notify({
+          user_id: clientId,
+          event_type: "payment_confirmed",
+          priority: "normal",
+          title: "Payment Approved",
+          body: "Your payment has been confirmed. Thank you!",
+          entity_type: "payment_submission",
+          entity_id: id,
+          _triggerSource: "adminSubmissionReview",
+        }).catch(console.error);
+      } else {
+        await notify({
+          user_id: clientId,
+          event_type: "payment_rejected",
+          priority: "high",
+          title: "Payment Rejected",
+          body: "Your payment proof was rejected. Please resubmit.",
+          entity_type: "payment_submission",
+          entity_id: id,
+          _triggerSource: "adminSubmissionReview",
+        }).catch(console.error);
+      }
+    }
     revalidatePath(ROUTES.admin.clients);
     revalidatePath(ROUTES.admin.submissions);
     return NextResponse.json({ success: true, submission });

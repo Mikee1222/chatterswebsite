@@ -2,7 +2,7 @@
 
 import { listAllRecords } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
-import { createNotification } from "@/services/notifications";
+import { notify } from "@/services/notification-service";
 import { sendPushToUser } from "@/services/push-subscriptions";
 import { getBillingCycleRevenues } from "@/services/client-billing";
 import type { BillingCycleKind } from "@/types/client-portal";
@@ -14,6 +14,14 @@ const TABLES = {
 
 function payUrlForKind(kind: BillingCycleKind): string {
   return kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm";
+}
+
+function kindLabelFor(kind: BillingCycleKind): string {
+  return kind === "chatting_weekly" ? "Chatting" : "CRM";
+}
+
+function formatBillingPeriod(periodStart: string, periodEnd: string): string {
+  return `${periodStart} – ${periodEnd}`;
 }
 
 /** Resolve client IDs from cycle.client or billing_cycle_revenues (weekly cycles). */
@@ -59,23 +67,24 @@ export async function notifyClientBillingAnnounced(
     due_date: string;
   }
 ) {
-  const kindLabel = cycleData.kind === "chatting_weekly" ? "Chatting" : "CRM";
+  const kindLabel = kindLabelFor(cycleData.kind);
+  const period = formatBillingPeriod(cycleData.period_start, cycleData.period_end);
   const amountDue = await amountDueForClient(cycleId, clientId, cycleData.amount_due);
   const amount = `${amountDue.toFixed(2)} ${cycleData.currency}`;
 
-  await createNotification({
+  await notify({
     user_id: clientId,
-    category: "billing",
     event_type: "billing_cycle_announced",
     priority: "high",
-    title: `${kindLabel} Payment Due`,
+    title: `Payment Due - ${kindLabel} ${period}`,
     body: `Your ${kindLabel} payment of ${amount} is due by ${cycleData.due_date}.`,
     entity_type: "billing_cycle",
     entity_id: cycleId,
+    _triggerSource: "notifyClientBillingAnnounced",
   });
 
   await sendPushToUser(clientId, {
-    title: `${kindLabel} Payment Due`,
+    title: `Payment Due - ${kindLabel} ${period}`,
     body: `${amount} due by ${cycleData.due_date}`,
     url: payUrlForKind(cycleData.kind),
   });
@@ -120,7 +129,7 @@ export async function sendBillingDueReminders() {
           ];
 
     const kind = String(f.kind ?? "chatting_weekly") as BillingCycleKind;
-    const kindLabel = kind === "chatting_weekly" ? "Chatting" : "CRM";
+    const kindLabel = kindLabelFor(kind);
     const dueDate = String(f.due_date ?? "");
     const currency = String(f.currency ?? "USD");
     const cycleAmountDue = typeof f.amount_due === "number" ? f.amount_due : 0;
@@ -136,15 +145,15 @@ export async function sendBillingDueReminders() {
         typeof feeUsd === "number" && Number.isFinite(feeUsd) ? feeUsd : cycleAmountDue;
       const amount = `${amountDue.toFixed(2)} ${currency}`;
 
-      await createNotification({
+      await notify({
         user_id: clientId,
-        category: "billing",
         event_type: "billing_due_reminder",
         priority: "high",
         title: "Payment Due in 2 Days",
         body: `Your ${kindLabel} payment of ${amount} is due on ${dueDate}.`,
         entity_type: "billing_cycle",
         entity_id: rec.id,
+        _triggerSource: "sendBillingDueReminders",
       });
 
       await sendPushToUser(clientId, {

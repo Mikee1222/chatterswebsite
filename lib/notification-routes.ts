@@ -12,6 +12,7 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
   const isAdmin = role === "admin" || role === "manager";
   const isModel = role === "model";
   const isVa = role === "virtual_assistant";
+  const isClient = role === "client";
   switch (entityType) {
     case "whale":
       return isAdmin ? ROUTES.admin.whales : ROUTES.chatter.logTransaction;
@@ -41,13 +42,19 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return ROUTES.chatter.rewards;
     case "fine_bonus":
       return ROUTES.finesBonuses;
+    case "billing_cycle":
+      return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
+    case "payment_submission":
+      return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.submissions;
+    case "rebill":
+      return isAdmin ? ROUTES.admin.rebillsTips : ROUTES.chatter.myRebills;
     case "sop_academy":
       return isAdmin ? ROUTES.admin.sopLibrary : ROUTES.sops;
     case "system":
     case "account":
-      return ROUTES.settings;
+      return isClient ? ROUTES.client.home : ROUTES.settings;
     default:
-      return "/home";
+      return isClient ? ROUTES.client.home : "/home";
   }
 }
 
@@ -57,6 +64,7 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
   const isAdmin = role === "admin" || role === "manager";
   const isModel = role === "model";
   const isVa = role === "virtual_assistant";
+  const isClient = role === "client";
   switch (entity_type) {
     case "whale":
       return isAdmin ? ROUTES.admin.whales : ROUTES.chatter.logTransaction;
@@ -86,11 +94,17 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return ROUTES.chatter.rewards;
     case "fine_bonus":
       return ROUTES.finesBonuses;
+    case "billing_cycle":
+      return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
+    case "payment_submission":
+      return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.submissions;
+    case "rebill":
+      return isAdmin ? ROUTES.admin.rebillsTips : ROUTES.chatter.myRebills;
     case "sop_academy":
       return isAdmin ? ROUTES.admin.sopLibrary : ROUTES.sops;
     case "system":
     case "account":
-      return ROUTES.settings;
+      return isClient ? ROUTES.client.home : ROUTES.settings;
     default:
       return null;
   }
@@ -162,6 +176,13 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "weekly_availability_friday_reminder":
     case "availability_submitted":
       return "Form";
+    case "billing_cycle_announced":
+    case "billing_due_reminder":
+    case "billing_payment_submitted":
+    case "payment_submitted":
+    case "payment_confirmed":
+    case "payment_rejected":
+      return "Billing";
     case "user_created":
     case "role_changed":
     case "account_deleted":
@@ -215,6 +236,8 @@ export function isAdminPriorityEvent(eventType: AppNotification["event_type"]): 
     eventType === "model_missed_live" ||
     eventType === "model_content_completed" ||
     eventType === "form_submitted" ||
+    eventType === "payment_submitted" ||
+    eventType === "billing_payment_submitted" ||
     eventType === "schedule_updated" ||
     eventType === "availability_submitted" ||
     eventType === "user_created" ||

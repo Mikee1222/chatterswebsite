@@ -21,6 +21,7 @@ function isRedirectError(err: unknown): boolean {
 }
 import { setSession, getSessionFromCookies, deleteSession, hashPassword, verifyPassword } from "@/lib/auth";
 import { getUserByEmailForAuth } from "@/services/users";
+import { createDefaultPreferencesForUser } from "@/services/notification-preferences";
 
 loadEnvConfig(process.cwd());
 
@@ -150,6 +151,9 @@ export async function login(formData: FormData) {
             sameSite: "lax",
             path: "/",
             ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
+          });
+          void createDefaultPreferencesForUser(clientRecord.id).catch((err) => {
+            console.error(`${logPrefix} client notification prefs init failed`, err);
           });
           console.log(`${logPrefix} login success (client)`, { email: obfuscatedEmail });
           redirect(ROUTES.client.home);

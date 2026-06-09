@@ -58,8 +58,8 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: " New rebill logged",
-    body: `${reporterName} logged a ${sub_type} rebill for ${model_name || "a model"} — @${sub_username}`,
+    title: "New Rebill Submitted",
+    body: `${reporterName} submitted a rebill for ${model_name || "a model"}`,
     entity_type: "rebill",
     entity_id: rebillId,
     actor_user_id: session.airtableUserId ?? session.id,

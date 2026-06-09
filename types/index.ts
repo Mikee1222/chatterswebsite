@@ -1040,6 +1040,9 @@ export type NotificationEventType =
   | "billing_cycle_announced"
   | "billing_due_reminder"
   | "billing_payment_submitted"
+  | "payment_submitted"
+  | "payment_confirmed"
+  | "payment_rejected"
   // SOP Academy
   | "sop_academy_reminder"
   | "sop_academy_training_complete"

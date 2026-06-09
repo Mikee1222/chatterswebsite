@@ -235,6 +235,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "Admins when a client submits payment proof.",
   },
+  payment_submitted: {
+    rule: "admin_only",
+    description: "Admins when a client submits payment proof.",
+  },
+  payment_confirmed: {
+    rule: "assigned_user_only",
+    description: "The B2B client when payment proof is approved.",
+  },
+  payment_rejected: {
+    rule: "assigned_user_only",
+    description: "The B2B client when payment proof is rejected.",
+  },
   sop_academy_reminder: {
     rule: "assigned_user_only",
     description: "Learner reminded to continue SOP Academy training.",

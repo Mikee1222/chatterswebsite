@@ -1,14 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getClientAirtableId } from "@/lib/client-session";
-import { getAdminNotificationIds } from "@/services/admin-notification-settings";
-import { createNotification } from "@/services/notifications";
-import {
-  markBillingCycleAsNotified,
-  markInvoiceAsViewed,
-  markSubmissionAsSeen,
-  submitClientPaymentProof,
-} from "@/services/client-portal";
+import { getBillingCycleById } from "@/services/client-billing";
+import { getClientById, markBillingCycleAsNotified, markInvoiceAsViewed, markSubmissionAsSeen, submitClientPaymentProof } from "@/services/client-portal";
+import { notifyAdmins } from "@/services/notification-service";
 
 type SubmitBody = {
   billing_cycle_id?: string;
@@ -83,21 +78,21 @@ export async function POST(req: Request) {
       );
     }
 
-    const adminIds = await getAdminNotificationIds();
-    await Promise.all(
-      adminIds.map((adminId) =>
-        createNotification({
-          user_id: adminId,
-          category: "system",
-          event_type: "system_alert",
-          priority: "high",
-          title: "Payment proof submitted",
-          body: "Client submitted payment proof for review",
-          entity_type: "payment_submission",
-          entity_id: result.submissionId ?? billingCycleId,
-        })
-      )
-    );
+    const [cycle, client] = await Promise.all([
+      getBillingCycleById(billingCycleId),
+      getClientById(clientId),
+    ]);
+    const clientName = client.display_name?.trim() || client.company_name?.trim() || "Client";
+    const cycleKind = cycle?.kind === "crm_monthly" ? "CRM" : "Chatting";
+
+    await notifyAdmins({
+      event_type: "payment_submitted",
+      priority: "high",
+      title: "Payment Proof Submitted",
+      body: `${clientName} submitted payment proof for ${cycleKind}`,
+      entity_type: "payment_submission",
+      entity_id: result.submissionId ?? billingCycleId,
+    }).catch(console.error);
 
     return NextResponse.json({ success: true, submissionId: result.submissionId });
   } catch (err) {
