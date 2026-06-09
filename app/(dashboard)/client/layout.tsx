@@ -4,7 +4,6 @@ import { ClientRedirect } from "@/components/client-redirect";
 import { Providers } from "@/components/providers";
 import { ClientPortalNav } from "@/components/client-portal-nav";
 import { ClientPortalHeader } from "@/components/client-portal-header";
-import { AnimatedBackground } from "@/components/animated-background";
 
 export default async function ClientLayout({
   children,
@@ -18,10 +17,7 @@ export default async function ClientLayout({
 
   return (
     <Providers>
-      <div className="relative flex h-screen overflow-hidden dashboard-bg text-white">
-        <AnimatedBackground />
-        <div className="dashboard-glow-tl" aria-hidden />
-        <div className="dashboard-glow-br" aria-hidden />
+      <div className="relative flex h-screen overflow-hidden bg-[#0a0a0f] text-white">
         <ClientPortalNav />
         <div className="relative z-20 flex min-w-0 flex-1 flex-col overflow-hidden pl-0 md:pl-64">
           <ClientPortalHeader />
