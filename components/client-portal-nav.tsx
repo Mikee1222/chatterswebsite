@@ -132,7 +132,7 @@ export function ClientPortalNav({ userEmail }: { userEmail: string }) {
               prefetch
               className="text-[15px] font-semibold tracking-tight text-white transition-colors hover:text-pink-100/95"
             >
-              Gunzo Partner
+              Client Portal
             </Link>
           </div>
           <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
@@ -154,7 +154,7 @@ export function ClientPortalNav({ userEmail }: { userEmail: string }) {
               className="flex h-[3.25rem] items-center justify-between border-b border-white/10 px-5"
               style={{ paddingTop: "env(safe-area-inset-top, 0px)" }}
             >
-              <span className="text-[15px] font-semibold tracking-tight text-white">Gunzo Partner</span>
+              <span className="text-[15px] font-semibold tracking-tight text-white">Client Portal</span>
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
