@@ -182,6 +182,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
 
   const closePanel = () => setOpen(false);
   const isAdmin = role === "admin" || role === "manager";
+  const settingsHref = role === "client" ? ROUTES.client.settings : ROUTES.settings;
 
   return (
     <div className="relative" ref={ref}>
@@ -355,7 +356,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
               </div>
               <div className="shrink-0 border-t border-white/[0.08] bg-[#0c0c0c] pb-[max(12px,env(safe-area-inset-bottom))]">
                 <Link
-                  href={ROUTES.settings}
+                  href={settingsHref}
                   onClick={closePanel}
                   className="block py-4 text-center text-sm text-white/50 hover:bg-white/5 hover:text-white"
                 >

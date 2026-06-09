@@ -21,6 +21,8 @@ function getRoleCopy(role?: UserRole | null): string {
       return "Get alerts for shifts, breaks, whale sessions, and customs.";
     case "virtual_assistant":
       return "Get alerts for mistake shifts, breaks, and assigned work.";
+    case "client":
+      return "Get alerts for payment reminders, approvals, and new billing cycles.";
     case "admin":
     case "manager":
       return "Get live operational alerts for shifts, sessions, customs, and activity.";

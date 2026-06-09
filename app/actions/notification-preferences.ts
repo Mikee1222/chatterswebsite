@@ -82,6 +82,7 @@ export async function updateMyNotificationPreferences(
       quiet_hours_end,
     });
     revalidatePath(ROUTES.settings);
+    revalidatePath(ROUTES.client.settings);
     return { ok: true };
   } catch (e) {
     if (isRedirectError(e)) throw e;

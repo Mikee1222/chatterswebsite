@@ -138,6 +138,10 @@ const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceG
 };
 
 const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {
+  billing_due_reminder: "system_alerts",
+  billing_cycle_announced: "period_alerts",
+  payment_confirmed: "task_alerts",
+  payment_rejected: "task_alerts",
   period_3_day_reminder: "period_alerts",
   period_predicted_day: "period_alerts",
   period_confirmed_early: "period_alerts",

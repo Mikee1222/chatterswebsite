@@ -5,6 +5,7 @@ import {
   CreditCard,
   BarChart3,
   LayoutGrid,
+  User,
   UserCog,
   Wallet,
 } from "lucide-react";
@@ -21,8 +22,10 @@ import {
 import { formatDateEuropean } from "@/lib/format";
 import { getChattingWeeklyDueWindow, getCycleAmountDue } from "@/lib/client-portal-utils";
 import { ROUTES } from "@/lib/routes";
+import { cn } from "@/lib/utils";
 import { redirect } from "next/navigation";
 import { ClientAttentionItemsBox } from "@/components/client-portal/attention-items-box";
+import { ClientHomePrompts } from "@/components/client-home-prompts";
 import {
   getCalendarEvents,
   getClientAttentionItems,
@@ -112,10 +115,13 @@ export default async function ClientHomePage() {
 
   return (
     <div className="space-y-10 pb-20 md:pb-0">
+      <ClientHomePrompts />
       <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-white/40">CLIENT PORTAL</p>
-          <h1 className="mt-2 text-4xl font-bold tracking-tight text-white md:text-5xl">
+          <p className="hidden text-[11px] font-semibold uppercase tracking-wider text-white/40 md:block">
+            CLIENT PORTAL
+          </p>
+          <h1 className="mt-0 text-3xl font-bold tracking-tight text-white md:mt-2 md:text-5xl">
             Welcome back, {displayName}
           </h1>
           <p className="mt-3 text-base text-white/50 md:text-lg">
@@ -127,14 +133,19 @@ export default async function ClientHomePage() {
       <ClientAttentionItemsBox items={attentionItems} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="glass-card p-6 transition-all duration-300 hover:border-pink-400/30">
+        <div className="glass-card border-l-2 border-l-pink-500/40 p-6 transition-all duration-300 hover:border-pink-400/30">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-sm text-white/70">
                 <Wallet className="h-4 w-4 text-pink-400" />
                 <span className="font-semibold">Chatting Weekly</span>
               </div>
-              <p className="mt-3 text-2xl font-semibold text-white">
+              <p
+                className={cn(
+                  "mt-3 text-2xl",
+                  chattingCycle ? "font-semibold text-white" : "font-normal text-white/40"
+                )}
+              >
                 {chattingCycle
                   ? formatAmount(getCycleAmountDue(chattingCycle), chattingCycle.currency)
                   : "No active cycle"}
@@ -186,14 +197,19 @@ export default async function ClientHomePage() {
           )}
         </div>
 
-        <div className="glass-card p-6 transition-all duration-300 hover:border-pink-400/30">
+        <div className="glass-card border-l-2 border-l-violet-500/40 p-6 transition-all duration-300 hover:border-violet-400/30">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 text-sm text-white/70">
-                <Building2 className="h-4 w-4 text-pink-400" />
+                <Building2 className="h-4 w-4 text-violet-400" />
                 <span className="font-semibold">CRM Monthly</span>
               </div>
-              <p className="mt-3 text-2xl font-semibold text-white">
+              <p
+                className={cn(
+                  "mt-3 text-2xl",
+                  crmCycle ? "font-semibold text-white" : "font-normal text-white/40"
+                )}
+              >
                 {crmCycle ? formatAmount(getCycleAmountDue(crmCycle), crmCycle.currency) : "No active cycle"}
               </p>
             </div>
@@ -272,9 +288,15 @@ export default async function ClientHomePage() {
             {models.map((model) => (
               <div
                 key={model.id}
-                className="glass-card rounded-xl border-l-2 border-l-pink-500/40 p-4"
+                className="glass-card flex items-center gap-3 p-3 transition-colors hover:bg-white/[0.04]"
               >
-                <p className="font-semibold text-white">{model.model_name ?? "Model"}</p>
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-pink-500/20">
+                  <User className="h-4 w-4 text-pink-400" aria-hidden />
+                </div>
+                <span className="min-w-0 truncate text-sm font-medium text-white">
+                  {model.model_name ?? "Model"}
+                </span>
+                <span className="ml-auto shrink-0 text-xs text-white/30">Active</span>
               </div>
             ))}
           </div>

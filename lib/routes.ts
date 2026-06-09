@@ -153,6 +153,7 @@ export const ROUTES = {
     content: "/client/content",
     models: "/client/models",
     calendar: "/client/calendar",
+    settings: "/client/settings",
   },
 
   /** Shared: accounts (admin-only UI) */
