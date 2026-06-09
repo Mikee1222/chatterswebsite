@@ -12,6 +12,7 @@ import {
   getPaymentSubmissionById,
   updatePaymentSubmissionReview,
 } from "@/services/client-portal";
+import { listAllModelss } from "@/services/modelss";
 import type {
   AdminClientRecord,
   BillingCycleKind,
@@ -33,7 +34,8 @@ export type {
 
 const TABLES = {
   clients: "clients",
-  models: "modelss",
+  /** billing_cycle_revenues.model and client_models.model link here (not legacy `models`). */
+  modelss: "modelss",
   client_models: "client_models",
   billing_cycles: "billing_cycles",
   billing_cycle_revenues: "billing_cycle_revenues",
@@ -141,17 +143,6 @@ function mapPaymentSubmission(rec: AirtableRecord<Record<string, unknown>>): Pay
   };
 }
 
-function mapBillingModel(rec: AirtableRecord<Record<string, unknown>>): ModelRecord {
-  const f = rec.fields;
-  return {
-    id: rec.id,
-    model_name: String(f.model_name ?? ""),
-    status: String(f.status ?? "active"),
-    platform: typeof f.platform === "string" ? f.platform : undefined,
-    team: f.team === "chatting_agency" ? "chatting_agency" : "gunzo_team",
-  };
-}
-
 function toDateStrLocal(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -178,11 +169,18 @@ function monthKeyFromCycle(cycle: BillingCycleRecord): string | null {
 }
 
 export async function listAllBillingModels(): Promise<ModelRecord[]> {
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.models, {
-    sort: [{ field: "model_name", direction: "asc" }],
-    _caller: "listAllBillingModels",
-  });
-  return records.map(mapBillingModel);
+  const records = await listAllModelss();
+  return records
+    .map(
+      (m): ModelRecord => ({
+        id: m.id,
+        model_name: m.model_name,
+        status: m.status || "active",
+        platform: m.platform,
+        team: m.team === "chatting_agency" ? "chatting_agency" : "gunzo_team",
+      })
+    )
+    .sort((a, b) => a.model_name.localeCompare(b.model_name));
 }
 
 export async function getClientModelsForBilling(clientId: string): Promise<ClientModelRecord[]> {
@@ -190,12 +188,10 @@ export async function getClientModelsForBilling(clientId: string): Promise<Clien
     listAllRecords<Record<string, unknown>>(TABLES.client_models, {
       _caller: "getClientModelsForBilling:assignments",
     }),
-    listAllRecords<Record<string, unknown>>(TABLES.models, {
-      _caller: "getClientModelsForBilling:models",
-    }),
+    listAllModelss(),
   ]);
 
-  const modelNameById = new Map(models.map((m) => [m.id, String(m.fields.model_name ?? "")]));
+  const modelNameById = new Map(models.map((m) => [m.id, m.model_name]));
 
   return assignments
     .map((rec) => {
