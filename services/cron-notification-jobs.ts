@@ -260,7 +260,7 @@ export async function runVaTaskReminders(): Promise<VaTaskReminderCronResult> {
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "Task reminder",
+        title: "⏰ Task reminder",
         body,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: entityId,
@@ -307,8 +307,8 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: " Task overdue",
-        body: `Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
+        title: "⚠️ Task overdue",
+        body: `⚠️ Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
       }).catch(() => {});
@@ -320,8 +320,8 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: ` VA task overdue: ${task.title}`,
-        body: `${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
+        title: `⚠️ VA task overdue: ${task.title}`,
+        body: `⚠️ ${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue_admin:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
       }).catch(() => {});
@@ -450,8 +450,8 @@ export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestA
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.CUSTOM_OVERDUE,
       priority: NOTIFICATION_PRIORITY.HIGH,
-      title: ` Custom request stuck: ${request.request_title}`,
-      body: `Request from ${request.chatter_name || "Unknown chatter"} has been in "${request.model_status}" status for 2+ days. Fan: ${request.fan_username || "Unknown fan"}.`,
+      title: `⚠️ Custom request stuck: ${request.request_title}`,
+      body: `⚠️ Request from ${request.chatter_name || "Unknown chatter"} has been in "${request.model_status}" status for 2+ days. Fan: ${request.fan_username || "Unknown fan"}.`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: `custom_stuck_admin:${request.id}`,
     }).catch(() => {});
@@ -548,8 +548,8 @@ export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.PHASE_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "Phase overdue",
-        body: `"${phaseTitle}" deadline passed with incomplete items`,
+        title: "⚠️ Phase overdue",
+        body: `⚠️ "${phaseTitle}" deadline passed with incomplete items`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
         entity_id: phase.id,
       }).catch(() => {});
@@ -560,8 +560,8 @@ export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
           user_id: vaId,
           event_type: NOTIFICATION_EVENT.PHASE_OVERDUE,
           priority: NOTIFICATION_PRIORITY.HIGH,
-          title: `Phase overdue: ${phaseTitle}`,
-          body: `The deadline for "${phaseTitle}" has passed. Please complete remaining items.`,
+          title: `⚠️ Phase overdue: ${phaseTitle}`,
+          body: `⚠️ The deadline for "${phaseTitle}" has passed. Please complete remaining items.`,
           entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
           entity_id: phase.id,
         }).catch(() => {});

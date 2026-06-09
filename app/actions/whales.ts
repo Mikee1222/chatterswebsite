@@ -287,7 +287,7 @@ export async function assignWhaleToChatter(
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: " Whale assigned",
+        title: "🐋 Whale assigned",
         body: `${whale?.username || whale?.whale_id || "Whale"} assigned to ${chatterName}.`,
         entity_type: NOTIFICATION_ENTITY.WHALE,
         entity_id: whaleRecordId,
@@ -324,7 +324,7 @@ export async function assignWhaleToModel(
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: " Whale assigned",
+        title: "🐋 Whale assigned",
         body: `${whale?.username || whale?.whale_id || "Whale"} assigned to ${modelName}.`,
         entity_type: NOTIFICATION_ENTITY.WHALE,
         entity_id: whaleRecordId,
@@ -383,7 +383,7 @@ export async function clearWhaleChatter(whaleRecordId: string): Promise<AssignWh
           user_id: previousChatterId,
           event_type: NOTIFICATION_EVENT.WHALE_ASSIGNED,
           priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: " Whale returned to pool",
+          title: "🐋 Whale returned to pool",
           body: `${whaleName} (@${whaleUsername}) has been removed from your list and returned to the unassigned pool.`,
           entity_type: NOTIFICATION_ENTITY.WHALE,
           entity_id: whaleRecordId,

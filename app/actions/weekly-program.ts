@@ -201,7 +201,7 @@ export async function updateProgramAction(
         user_id: affectedChatterId,
         event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: " Schedule updated",
+        title: "📆 Schedule updated",
         body: `Your weekly program for ${weekLabel} has been updated. Please check your new schedule.`,
         entity_type: "system",
         entity_id: `weekly_program_corrected:${weekStart}:${recordId}`,

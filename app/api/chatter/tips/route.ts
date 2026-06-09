@@ -59,8 +59,8 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: " New tip logged",
-    body: `${reporterName} logged $${amount_usd.toFixed(2)} tip for ${model_name || "a model"} — @${sub_username}`,
+    title: "💵 New Tip Submitted",
+    body: `💵 ${reporterName} logged $${amount_usd.toFixed(2)} tip for ${model_name || "a model"} — @${sub_username}`,
     entity_type: "tip",
     entity_id: tipId,
     actor_user_id: session.airtableUserId ?? session.id,

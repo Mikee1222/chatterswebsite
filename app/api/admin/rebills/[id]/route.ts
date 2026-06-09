@@ -7,6 +7,8 @@ import { ROUTES } from "@/lib/routes";
 import { awardPoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
 import { updateChallengeProgress } from "@/services/challenges";
+import { notify } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 type RebillFields = {
   status?: string;
@@ -71,6 +73,17 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         pointsAwarded = pointsPerRebill;
       }
       await updateChallengeProgress(chatterId, "rebills_verified", 1);
+      const pointsSuffix = pointsPerRebill > 0 ? ` +${pointsPerRebill} pts earned.` : "";
+      await notify({
+        user_id: chatterId,
+        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "✅ Rebill Verified",
+        body: `🎯 Your rebill was approved!${pointsSuffix}`,
+        entity_type: "rebill",
+        entity_id: id,
+        _triggerSource: "adminRebillVerified",
+      }).catch(() => {});
     }
   }
 

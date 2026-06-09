@@ -102,8 +102,8 @@ export async function notifyClientBillingAnnounced(
     user_id: clientId,
     event_type: "billing_cycle_announced",
     priority: "high",
-    title: `Payment Due - ${kindLabel} ${period}`,
-    body: `Your ${kindLabel} payment of ${amount} is due by ${dueDateFormatted}.`,
+    title: `📋 Payment Due — ${kindLabel} ${period}`,
+    body: `💳 Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,
     entity_type: "billing_cycle",
     entity_id: cycleId,
     _triggerSource: "notifyClientBillingAnnounced",
@@ -183,6 +183,8 @@ export async function sendBillingDueReminders() {
     const dueDate = String(f.due_date ?? "");
     const currency = String(f.currency ?? "USD");
     const cycleAmountDue = typeof f.amount_due === "number" ? f.amount_due : 0;
+    const cycleStatus = String(f.status ?? "");
+    const isOverdue = cycleStatus === "overdue";
 
     for (const clientId of clientIds) {
       const revenue = revenueRecords.find(
@@ -195,20 +197,27 @@ export async function sendBillingDueReminders() {
         typeof feeUsd === "number" && Number.isFinite(feeUsd) ? feeUsd : cycleAmountDue;
       const amount = `${amountDue.toFixed(2)} ${currency}`;
 
+      const reminderTitle = isOverdue ? "🚨 Payment Overdue" : "⏰ Payment Due in 2 Days";
+      const reminderBody = isOverdue
+        ? `🚨 Your ${kindLabel} payment of 💰 ${amount} was due on ${dueDate}. Please pay as soon as possible.`
+        : `⏰ Your ${kindLabel} payment of 💰 ${amount} is due on ${dueDate}.`;
+
       await notify({
         user_id: clientId,
         event_type: "billing_due_reminder",
         priority: "high",
-        title: "Payment Due in 2 Days",
-        body: `Your ${kindLabel} payment of ${amount} is due on ${dueDate}.`,
+        title: reminderTitle,
+        body: reminderBody,
         entity_type: "billing_cycle",
         entity_id: rec.id,
         _triggerSource: "sendBillingDueReminders",
       });
 
       await sendPushToUser(clientId, {
-        title: "Payment Due in 2 Days",
-        body: `${kindLabel}: ${amount} due ${dueDate}`,
+        title: reminderTitle,
+        body: isOverdue
+          ? `🚨 ${kindLabel}: 💰 ${amount} overdue (due ${dueDate})`
+          : `⏰ ${kindLabel}: 💰 ${amount} due ${dueDate}`,
         url: payUrlForKind(kind),
       });
 

@@ -179,7 +179,7 @@ export async function submitAvailabilityVaAction(fields: {
       user_id: vaId,
       event_type: NOTIFICATION_EVENT.AVAILABILITY_SUBMITTED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: " Availability submitted",
+      title: "📅 Availability submitted",
       body: "Your availability for next week has been recorded.",
       entity_type: "system",
       entity_id: created.id,

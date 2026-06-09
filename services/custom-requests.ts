@@ -454,8 +454,8 @@ export async function runCustomRequestOverdue48hAdminAlerts(): Promise<{ ok: tru
     const req = mapRecord(rec as AirtableRecord<Fields>);
     const customTitle = (req.request_title || "Custom request").trim() || "Custom request";
     const chatterName = (req.chatter_name || "—").trim();
-    const title = " Custom request overdue";
-    const body = `${customTitle} has had no update in over 48 hours. Assigned to: ${chatterName}.`;
+    const title = "⏰ Custom request overdue";
+    const body = `⏰ ${customTitle} has had no update in over 48 hours. Assigned to: ${chatterName}.`;
     const entityId = `custom_overdue_${rec.id}`;
 
     for (const adminId of adminIds) {

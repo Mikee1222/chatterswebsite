@@ -80,8 +80,8 @@ export async function POST(req: Request) {
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "Extra Revenue Submitted",
-      body: `${userName} submitted extra revenue for ${model_name}`,
+      title: "💸 Extra Revenue Submitted",
+      body: `💸 ${userName} submitted extra revenue for ${model_name}`,
       entity_type: "fine_bonus",
       entity_id: id,
       actor_user_id: userId,

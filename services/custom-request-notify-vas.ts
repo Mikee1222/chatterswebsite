@@ -55,8 +55,8 @@ export async function notifyAssignedVirtualAssistantCustomUploaded(input: {
   if (!vaId) return;
   const customTitle = (input.request_title || "Custom request").trim() || "Custom request";
   const actorPrefix = input.actor_name?.trim() ? `${input.actor_name.trim()} uploaded ` : "Uploaded ";
-  const title = "Custom request uploaded";
-  const body = `${actorPrefix}“${customTitle}”.`;
+  const title = "✅ Custom request uploaded";
+  const body = `✅ ${actorPrefix}“${customTitle}”.`;
   await createNotification({
     user_id: vaId,
     category: "custom_request",

@@ -73,10 +73,10 @@ export async function runDailySummaryNotifications(): Promise<DailySummaryCronRe
   const whaleSum = txsYesterday.reduce((acc, t) => acc + (typeof t.amount === "number" ? t.amount : 0), 0);
   const whaleTotal = whaleSum.toFixed(2);
 
-  const body = `${shiftCount} shifts · ${totalHours}h worked
-Models active: ${modelNames}
-Whale revenue: €${whaleTotal}
-Pending customs: ${pendingCustoms}`;
+  const body = `📊 ${shiftCount} shifts · ${totalHours}h worked
+📋 Models active: ${modelNames}
+💰 Whale revenue: €${whaleTotal}
+📝 Pending customs: ${pendingCustoms}`;
 
   const adminIds = await getAdminNotificationIds();
   const needing: string[] = [];
@@ -90,7 +90,7 @@ Pending customs: ${pendingCustoms}`;
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.DAILY_SUMMARY,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: ` Daily Summary — ${dateLabel}`,
+      title: `📊 Daily Summary — ${dateLabel}`,
       body,
       entity_type: "system",
       entity_id: entityId,

@@ -155,7 +155,7 @@ export async function POST(request: Request) {
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_SCHEDULED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: " Custom scheduled",
+        title: "📅 Custom scheduled",
         body: `A custom "${customTitle}" has been scheduled. Check your calendar.`,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: record_id,

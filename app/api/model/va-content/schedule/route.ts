@@ -51,7 +51,7 @@ export async function POST(req: Request) {
         user_id: vaId,
         event_type: NOTIFICATION_EVENT.MODEL_CONTENT_SCHEDULED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: " Content assignment scheduled",
+        title: "📅 Content assignment scheduled",
         body: `${modelName} scheduled "${updated.title}" for ${parsed.data.scheduled_date}.`,
         entity_type: "va_content_assignment",
         entity_id: updated.id,

@@ -141,8 +141,8 @@ async function notifyAfterPointsAwarded(params: {
       await notify({
         user_id: userId,
         event_type: NOTIFICATION_EVENT.LEVEL_UP,
-        title: " Level up!",
-        body: `You reached ${finalLevel}! Keep it up.`,
+        title: "🚀 Level up!",
+        body: `🚀 You reached ${finalLevel}! Keep it up.`,
         entity_type: "chatter_points",
         entity_id: userId,
         _triggerSource: "awardPoints",
@@ -153,8 +153,8 @@ async function notifyAfterPointsAwarded(params: {
       await notify({
         user_id: userId,
         event_type: NOTIFICATION_EVENT.SPIN_AVAILABLE,
-        title: " Free spin available!",
-        body: "You earned a spin! Go claim your prize.",
+        title: "🎰 Free spin available!",
+        body: "🎰 You earned a spin! Go claim your prize.",
         entity_type: "chatter_points",
         entity_id: userId,
         _triggerSource: "awardPoints",

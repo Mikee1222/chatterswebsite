@@ -138,8 +138,8 @@ export async function POST(req: Request) {
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
       priority: NOTIFICATION_PRIORITY.HIGH,
-      title: " New mistake submitted",
-      body: `${vaName} reported a ${reason.category} mistake for ${parsed.data.chatter_name}.`,
+      title: "⚠️ New Mistake Logged",
+      body: `⚠️ ${vaName} reported a ${reason.category} mistake for ${parsed.data.chatter_name}.`,
       entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
       entity_id: recordId,
       _triggerSource: "va_mistakes_post",

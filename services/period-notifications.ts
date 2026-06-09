@@ -60,8 +60,8 @@ export async function sendPeriodThreeDayReminder({ modelId, predictedDate }: Not
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_3_DAY_REMINDER,
-    title: "Cycle reminder",
-    body: `Your next period is predicted around ${predictedDate} (in 3 days).`,
+    title: "📅 Cycle reminder",
+    body: `📅 Your next period is predicted around ${predictedDate} (in 3 days).`,
     entityId: `period:reminder3:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
   });
@@ -71,8 +71,8 @@ export async function sendPeriodPredictedDayNotification({ modelId, predictedDat
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTED_DAY,
-    title: "Predicted period day",
-    body: `Today is your predicted period day (${predictedDate}).`,
+    title: "🔔 Predicted period day",
+    body: `🔔 Today is your predicted period day (${predictedDate}).`,
     entityId: `period:predicted:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.HIGH,
   });
@@ -82,8 +82,8 @@ export async function sendPeriodConfirmedEarlyNotification({ modelId, predictedD
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_CONFIRMED_EARLY,
-    title: "Period confirmed",
-    body: `Cycle updated. Period was confirmed before ${predictedDate}.`,
+    title: "✅ Period confirmed",
+    body: `✅ Cycle updated. Period was confirmed before ${predictedDate}.`,
     entityId: `period:confirmed:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
   });
@@ -97,8 +97,8 @@ export async function sendPeriodOverdueNotification({
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_OVERDUE,
-    title: "Period overdue",
-    body: `Your period appears overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`,
+    title: "⚠️ Period overdue",
+    body: `⚠️ Your period appears overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`,
     entityId: `period:overdue:${predictedDate}:d${overdueDays}`,
     priority: NOTIFICATION_PRIORITY.HIGH,
   });
@@ -114,8 +114,8 @@ export async function sendPeriodPredictionResetNotification({
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTION_RESET,
-    title: "Prediction reset",
-    body: `Prediction from ${previousPredictedDate} was reset until next period log.`,
+    title: "🔄 Prediction reset",
+    body: `🔄 Prediction from ${previousPredictedDate} was reset until next period log.`,
     entityId: `period:reset:${previousPredictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
   });
@@ -134,10 +134,10 @@ async function notifyPeriodCronStakeholders(model: ModelRecord, predicted: strin
   const eventAirtable = EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.SYSTEM_ALERT] ?? "system_alert";
   const baseEntity = `pcron:${variant}:${model.id}:${predicted}`;
   const title =
-    variant === "3d" ? `⏰ ${modelName} — Period in 3 days` : ` ${modelName} — Period expected today`;
+    variant === "3d" ? `⏰ ${modelName} — Period in 3 days` : `🔔 ${modelName} — Period expected today`;
   const body =
-    variant === "3d"? `Next expected start: ${predicted}.`
-      : `Predicted period start: ${predicted}.`;
+    variant === "3d"? `📅 Next expected start: ${predicted}.`
+      : `🔔 Predicted period start: ${predicted}.`;
 
   const vaIds = await listDistinctVaUserIdsForModel(model.id, model.model_id);
   for (const vaUserId of vaIds) {
