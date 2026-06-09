@@ -1,7 +1,7 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/services/modelss";
 import { getActiveShifts, getActiveShiftModels } from "@/services/shifts";
 import { listAllModelPeriods } from "@/services/model-periods";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
@@ -9,16 +9,21 @@ import { AdminModelsClient } from "@/components/admin-models-client";
 import type { ModelRecord, ModelPeriodRecord } from "@/types";
 import { listAllUsers } from "@/services/users";
 
+export const revalidate = 30;
+
+const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 export default async function AdminModelsPage() {
   const user = await getSessionFromCookies();
   if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
 
-  const [modelss, vaShifts, allPeriods, allUsers] = await Promise.all([
-    listAllModelss(),
-    getActiveShifts("virtual_assistant").catch(() => []),
-    listAllModelPeriods().catch(() => [] as ModelPeriodRecord[]),
-    listAllUsers().catch(() => []),
-  ]);
+  const modelss = await getCachedModelss();
+  await stagger(150);
+  const vaShifts = await getActiveShifts("virtual_assistant").catch(() => []);
+  await stagger(150);
+  const allPeriods = await listAllModelPeriods().catch(() => [] as ModelPeriodRecord[]);
+  await stagger(150);
+  const allUsers = await listAllUsers().catch(() => []);
   const linkedModelIds = new Set(
     allUsers
       .filter((u) => u.role === "model")

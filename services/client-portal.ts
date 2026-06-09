@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import {
   listRecords,
   listAllRecords,
@@ -238,6 +239,13 @@ export async function listAllClients(activeOnly = false): Promise<AdminClientRec
   });
   return records.map(mapAdminClient);
 }
+
+/** Full clients list cached 60s — use on heavy admin pages instead of listAllClients(). */
+export const getCachedListAllClients = unstable_cache(
+  async (activeOnly: boolean) => listAllClients(activeOnly),
+  ["all-clients-v1"],
+  { revalidate: 60 }
+);
 
 /** @deprecated Prefer `listAllClients` — alias kept for callers using the older name. */
 export const getAllClients = listAllClients;

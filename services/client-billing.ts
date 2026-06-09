@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import {
   listRecords,
   listAllRecords,
@@ -669,3 +670,10 @@ export async function listBillingClients(): Promise<BillingClientRecord[]> {
     };
   });
 }
+
+/** Active billing clients cached 60s — use on heavy admin pages instead of listBillingClients(). */
+export const getCachedBillingClients = unstable_cache(
+  async () => listBillingClients(),
+  ["billing-clients-v1"],
+  { revalidate: 60 }
+);

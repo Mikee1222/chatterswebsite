@@ -4,13 +4,15 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
 import { getActiveShifts, getShiftsForMonth } from "@/services/shifts";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/services/modelss";
 import { listAllCustomRequests } from "@/services/custom-requests";
 import { listAllUsers } from "@/services/users";
 import { eurToUsd } from "@/lib/exchange";
 import { AdminHomeClient } from "@/components/admin-home-client";
 import { buildAdminRecentActivity, buildAdminSparklineWow } from "@/lib/admin-home-dashboard";
 import type { WhaleTransaction } from "@/types";
+
+const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 function filterByMonth(transactions: WhaleTransaction[], yearMonth: string): WhaleTransaction[] {
   if (!yearMonth || yearMonth.length < 7) return transactions;
@@ -67,15 +69,22 @@ export default async function AdminHomePage({
   const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const yearMonth = /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : currentYearMonth;
 
-  const [allTransactions, chatterShifts, vaShifts, shiftsThisMonth, modelss, customs, users] = await Promise.all([
-    listAllWhaleTransactions().catch(() => []),
-    getActiveShifts("chatter").catch(() => []),
-    getActiveShifts("virtual_assistant").catch(() => []),
-    getShiftsForMonth(yearMonth).catch(() => []),
-    listAllModelss().catch(() => []),
-    listAllCustomRequests().catch(() => []),
-    listAllUsers().catch(() => []),
-  ]);
+  const [allTransactions, chatterShifts, vaShifts, shiftsThisMonth, modelss, customs, users] = await (async () => {
+    const allTransactions = await listAllWhaleTransactions().catch(() => []);
+    await stagger(150);
+    const chatterShifts = await getActiveShifts("chatter").catch(() => []);
+    await stagger(150);
+    const vaShifts = await getActiveShifts("virtual_assistant").catch(() => []);
+    await stagger(150);
+    const shiftsThisMonth = await getShiftsForMonth(yearMonth).catch(() => []);
+    await stagger(150);
+    const modelss = await getCachedModelss().catch(() => []);
+    await stagger(150);
+    const customs = await listAllCustomRequests().catch(() => []);
+    await stagger(150);
+    const users = await listAllUsers().catch(() => []);
+    return [allTransactions, chatterShifts, vaShifts, shiftsThisMonth, modelss, customs, users] as const;
+  })();
   const chatters = users.filter((u) => u.role === "chatter").map((u) => ({ id: u.id, full_name: u.full_name ?? "" }));
 
   const filtered = filterByMonth(allTransactions, yearMonth);

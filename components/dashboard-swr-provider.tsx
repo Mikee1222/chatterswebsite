@@ -13,7 +13,7 @@ export function DashboardSwrProvider({ children }: DashboardSwrProviderProps) {
       value={{
         revalidateOnFocus: false,
         revalidateOnReconnect: false,
-        dedupingInterval: 20_000,
+        dedupingInterval: 5000,
         focusThrottleInterval: 10_000,
         errorRetryCount: 2,
         errorRetryInterval: 8_000,

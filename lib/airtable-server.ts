@@ -106,7 +106,7 @@ async function airtableHttpJsonWithRetry<T>(
       },
     });
     if (res.status === 429 && attempt < retries - 1) {
-      const delay = Math.pow(2, attempt) * 1000;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
       console.warn(
         `[airtableFetch] Rate limited, retrying in ${delay}ms (attempt ${attempt + 1}/${retries})`
       );
@@ -180,7 +180,7 @@ export type ListParams = {
 };
 
 /** Full `users` table list (all pages); longer TTL than per-page listRecords cache to cut rate limits on hot paths. */
-const USERS_CACHE_TTL_MS = 5 * 60 * 1000;
+const USERS_CACHE_TTL_MS = 120_000;
 let usersCache: { data: AirtableRecord<unknown>[]; fetchedAt: number } | null = null;
 
 function isUsersTableFullListParams(
@@ -389,7 +389,7 @@ export async function deleteRecord(tableName: string, recordId: string): Promise
   invalidateListRecordsReadCacheForTable(tableName);
 }
 
-/** Fetch all pages of records. For table `users` with no filter/sort/field slice, results are cached 5 minutes (see USERS_CACHE_TTL_MS). */
+/** Fetch all pages of records. For table `users` with no filter/sort/field slice, results are cached 2 minutes (see USERS_CACHE_TTL_MS). */
 export async function listAllRecords<T = Record<string, unknown>>(
   tableName: string,
   params: Omit<ListParams, "offset"> = {}

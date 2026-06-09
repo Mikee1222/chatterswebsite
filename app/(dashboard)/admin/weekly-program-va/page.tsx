@@ -7,13 +7,15 @@ import { adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getRequestsForWeekVa } from "@/services/weekly-availability-requests-va";
 import { listAllUsers } from "@/services/users";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/services/modelss";
 import { getLastAssignmentBatch } from "@/services/shifts";
 import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-program-conflicts";
 import { AdminWeeklyProgramVaClient } from "@/components/admin-weekly-program-va-client";
 import type { WeeklyProgramRecord } from "@/types";
 import type { ModelRecord } from "@/types";
 import { devLog } from "@/lib/dev-log";
+
+export const revalidate = 30;
 
 export default async function AdminWeeklyProgramVaPage({
   searchParams,
@@ -31,7 +33,7 @@ export default async function AdminWeeklyProgramVaPage({
     getProgramsForWeekVa(weekStart).catch(() => []),
     getRequestsForWeekVa(weekStart).catch(() => []),
     listAllUsers().catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
 
   if (process.env.NODE_ENV !== "production") {

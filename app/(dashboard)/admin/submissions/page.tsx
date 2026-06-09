@@ -5,7 +5,7 @@ import { AdminSubmissionsClient } from "@/components/admin-submissions-client";
 import {
   getAllBillingCycles,
   getAllPaymentSubmissions,
-  listBillingClients,
+  getCachedBillingClients,
 } from "@/services/client-billing";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +17,7 @@ export default async function AdminSubmissionsPage() {
 
   const [allSubmissions, clients, billingCycles] = await Promise.all([
     getAllPaymentSubmissions(),
-    listBillingClients(),
+    getCachedBillingClients(),
     getAllBillingCycles(),
   ]);
 

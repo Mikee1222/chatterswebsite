@@ -4,9 +4,11 @@ import { redirect } from "next/navigation";
 import { listWhalesPaginated, getWhaleStatusCounts, type WhalesListFilters } from "@/services/whales";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
 import { listAllUsers } from "@/services/users";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/services/modelss";
 import { AdminWhalesClient } from "@/components/admin-whales-client";
 import type { Whale } from "@/types";
+
+export const revalidate = 30;
 
 const PAGE_SIZE = 200;
 
@@ -61,7 +63,7 @@ export default async function AdminWhalesPage({
     getWhaleStatusCounts().catch(() => ({ total: 0, active: 0, inactive: 0, dead: 0, deleted: 0 })),
     listAllWhaleTransactions().catch(() => []),
     listAllUsers().catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
 
   let whales = paginated.whales as Whale[];

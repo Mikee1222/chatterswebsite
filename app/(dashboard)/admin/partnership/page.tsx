@@ -7,7 +7,7 @@ import {
   getBillingCycleRevenuesForCycles,
   getPartnerBillingCycles,
   listAllBillingModels,
-  listBillingClients,
+  getCachedBillingClients,
 } from "@/services/client-billing";
 import type {
   BillingClientRecord,
@@ -51,7 +51,7 @@ export default async function AdminPartnershipPage({ searchParams }: { searchPar
   try {
     [cycles, clients, models, submissions] = await Promise.all([
       getPartnerBillingCycles(viewMode === "selected" ? selectedMonth : undefined),
-      listBillingClients(),
+      getCachedBillingClients(),
       listAllBillingModels(),
       getAllPaymentSubmissions(),
     ]);

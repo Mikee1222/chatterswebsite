@@ -1,11 +1,13 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { listAllShifts } from "@/services/shifts";
+import { listAllShifts, getShiftStatusFieldName } from "@/services/shifts";
 import { AdminShiftActivityClient } from "@/components/admin-shift-activity-client";
 import type { Shift } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import { formatDateEuropean } from "@/lib/format";
+
+const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /** Week starts Monday; returns Monday 00:00 and Sunday 23:59:59 for the week containing d. */
 function weekBounds(d: Date): { start: Date; end: Date } {
@@ -90,14 +92,14 @@ export default async function AdminShiftActivityPage({
   const range = (params.range as "daily" | "weekly" | "monthly" | "custom") || "weekly";
   const { start: rangeStart, end: rangeEnd } = parseRange(range, params.from, params.to);
 
-  const allShifts = await listAllShifts().catch(() => []);
-  const completed = allShifts.filter((s) => s.status === "completed" && s.start_time && s.end_time);
   const rangeStartDate = toDateString(rangeStart);
   const rangeEndDate = toDateString(rangeEnd);
-  const inRange = completed.filter((s) => {
-    const shiftDate = toDateString(new Date(s.start_time!));
-    return shiftDate >= rangeStartDate && shiftDate <= rangeEndDate;
-  });
+
+  const statusField = await getShiftStatusFieldName();
+  await stagger(150);
+  const esc = (s: string) => s.replace(/"/g, '""');
+  const formula = `AND({${statusField}} = "completed", NOT(ISBLANK({start_time})), NOT(ISBLANK({end_time})), DATESTR({start_time}) >= "${esc(rangeStartDate)}", DATESTR({start_time}) <= "${esc(rangeEndDate)}")`;
+  const inRange = await listAllShifts(formula, "admin.shift-activity").catch(() => [] as Shift[]);
 
   const byPerson: Record<string, { name: string; role: string; totalMinutes: number; shifts: number; breakMinutes: number }> = {};
   for (const s of inRange) {
@@ -129,8 +131,6 @@ export default async function AdminShiftActivityPage({
       to: params.to,
       rangeStart: rangeStart.toISOString(),
       rangeEnd: rangeEnd.toISOString(),
-      totalFetched: allShifts.length,
-      completedCount: completed.length,
       inRangeCount: inRange.length,
       groupedCount: rows.length,
       sampleRows: rows.slice(0, 3).map((r) => ({ name: r.name, role: r.role, totalMinutes: r.totalMinutes, shifts: r.shifts })),

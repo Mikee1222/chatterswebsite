@@ -7,13 +7,15 @@ import { adminWeeklyProgramUrl } from "@/lib/routes";
 import { getProgramsForWeek } from "@/services/weekly-program";
 import { getRequestsForWeek } from "@/services/weekly-availability-requests";
 import { listAllUsers } from "@/services/users";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/services/modelss";
 import { getLastAssignmentBatch } from "@/services/shifts";
 import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-program-conflicts";
 import { AdminWeeklyProgramClient } from "@/components/admin-weekly-program-client";
 import type { WeeklyProgramRecord } from "@/types";
 import type { ModelRecord } from "@/types";
 import { devLog } from "@/lib/dev-log";
+
+export const revalidate = 30;
 
 export default async function AdminWeeklyProgramPage({
   searchParams,
@@ -31,7 +33,7 @@ export default async function AdminWeeklyProgramPage({
     getProgramsForWeek(weekStart).catch(() => []),
     getRequestsForWeek(weekStart).catch(() => []),
     listAllUsers().catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
 
   if (process.env.NODE_ENV !== "production") {

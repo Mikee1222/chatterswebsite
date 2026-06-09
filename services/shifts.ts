@@ -235,9 +235,14 @@ export async function listShifts(params: ListParams & { filterByFormula?: string
 export async function listAllShifts(filterByFormula?: string, caller = "shifts.listAllShifts") {
   const records = await listAllRecords<ShiftFields>(
     SHIFTS_TABLE,
-    filterByFormula ? { filterByFormula, _caller: caller } : {}
+    filterByFormula ? { filterByFormula, _caller: caller } : { _caller: caller }
   );
   return records.map(mapShift);
+}
+
+/** Resolved Airtable status column name (case-sensitive) for formula filters. */
+export async function getShiftStatusFieldName(): Promise<string> {
+  return getShiftsStatusFieldName();
 }
 
 export async function getActiveShifts(staffRole?: "chatter" | "virtual_assistant") {

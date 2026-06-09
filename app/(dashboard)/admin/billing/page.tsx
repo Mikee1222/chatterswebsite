@@ -7,7 +7,7 @@ import {
   getAllBillingCycles,
   getBillingCycleClientCounts,
   listAllBillingModels,
-  listBillingClients,
+  getCachedBillingClients,
 } from "@/services/client-billing";
 
 export default async function AdminBillingPage() {
@@ -16,7 +16,7 @@ export default async function AdminBillingPage() {
 
   const [cycles, clients, models, clientModelsRecs] = await Promise.all([
     getAllBillingCycles(),
-    listBillingClients(),
+    getCachedBillingClients(),
     listAllBillingModels(),
     listAllRecords("client_models", { _caller: "admin/billing:client_models" }),
   ]);

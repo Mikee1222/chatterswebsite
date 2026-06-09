@@ -1,5 +1,6 @@
 "use server";
 
+import { unstable_cache } from "next/cache";
 import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
 import type { ModelRecord } from "@/types";
@@ -104,6 +105,13 @@ export async function listAllModelss(filterByFormula?: string) {
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
   return records.map(mapRecord);
 }
+
+/** Full modelss list cached 60s — use on heavy admin pages instead of listAllModelss(). */
+export const getCachedModelss = unstable_cache(
+  async () => listAllModelss(),
+  ["all-modelss-v1"],
+  { revalidate: 60 }
+);
 
 /**
  * Returns only modelss that have a linked user account with role=model, status=active.
