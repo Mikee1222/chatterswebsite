@@ -19,6 +19,7 @@ import type {
   PaymentSubmissionRecord,
 } from "@/types/client-portal";
 import { getCycleAmountDue } from "@/lib/client-portal-utils";
+import { RefreshButton } from "@/components/client-portal/refresh-button";
 
 type CycleRow = BillingCycleRecord & {
   latestSubmission: PaymentSubmissionRecord | null;
@@ -184,12 +185,13 @@ export function ClientPaymentHistoryClient({ cycles }: Props) {
 
   return (
     <div className="space-y-6 pb-20 md:pb-0">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-start justify-between gap-3">
         <div>
           <p className="text-xs uppercase tracking-[0.35em] text-pink-300/80">Finance</p>
           <h1 className="mt-1 text-3xl font-bold text-white">Payment History</h1>
           <p className="mt-1 text-sm text-white/40">All billing cycles and submissions</p>
         </div>
+        <RefreshButton />
       </div>
 
       {cycles.length > 0 && (

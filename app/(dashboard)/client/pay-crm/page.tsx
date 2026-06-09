@@ -3,6 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getClientAirtableId } from "@/lib/client-session";
 import { ROUTES } from "@/lib/routes";
 import { PaymentForm } from "@/components/client-portal/payment-form";
+import { RefreshButton } from "@/components/client-portal/refresh-button";
 import {
   getClientCurrentBillingCycle,
   getClientPaymentMethods,
@@ -34,9 +35,12 @@ export default async function ClientPayCrmPage() {
 
   return (
     <div className="pb-20 md:pb-0">
-      <div className="mb-8">
-        <h1 className="text-4xl font-bold text-white">Pay CRM Expenses</h1>
-        <p className="text-gray-400">Submit payment proof for monthly CRM expenses</p>
+      <div className="mb-8 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-4xl font-bold text-white">Pay CRM Expenses</h1>
+          <p className="text-gray-400">Submit payment proof for monthly CRM expenses</p>
+        </div>
+        <RefreshButton />
       </div>
       <PaymentForm
         billingCycle={cycle}

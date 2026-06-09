@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getClientAirtableId } from "@/lib/client-session";
 import { getBillingCycleById } from "@/services/client-billing";
 import { getClientById, markBillingCycleAsNotified, markInvoiceAsViewed, markSubmissionAsSeen, submitClientPaymentProof } from "@/services/client-portal";
-import { notifyAdmins } from "@/services/notification-service";
+import { notify, notifyAdmins } from "@/services/notification-service";
 
 type SubmitBody = {
   billing_cycle_id?: string;
@@ -85,6 +85,19 @@ export async function POST(req: Request) {
     const clientName = client.display_name?.trim() || client.company_name?.trim() || "Client";
     const cycleKind = cycle?.kind === "crm_monthly" ? "CRM" : "Chatting";
 
+    console.log("attempting to notify client:", clientId);
+
+    await notify({
+      user_id: clientId,
+      event_type: "payment_submitted",
+      priority: "high",
+      title: "Payment Submitted",
+      body: `Your ${cycleKind} payment proof has been submitted and is pending review.`,
+      entity_type: "payment_submission",
+      entity_id: result.submissionId ?? billingCycleId,
+      _triggerSource: "submitClientPayment",
+    }).catch(console.error);
+
     await notifyAdmins({
       event_type: "payment_submitted",
       priority: "high",
@@ -92,6 +105,7 @@ export async function POST(req: Request) {
       body: `${clientName} submitted payment proof for ${cycleKind}`,
       entity_type: "payment_submission",
       entity_id: result.submissionId ?? billingCycleId,
+      _triggerSource: "submitClientPayment",
     }).catch(console.error);
 
     return NextResponse.json({ success: true, submissionId: result.submissionId });
