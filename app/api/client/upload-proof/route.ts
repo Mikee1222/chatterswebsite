@@ -10,7 +10,16 @@ export async function POST(req: Request) {
   const form = await req.formData();
   const file = form.get("file") as File;
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });
-  const allowed = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
+  const allowed = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+    "image/gif",
+    "application/pdf",
+  ];
   if (!allowed.includes(file.type)) {
     return NextResponse.json({ error: "Invalid file type" }, { status: 400 });
   }

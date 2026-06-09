@@ -40,7 +40,16 @@ function ProofFilePicker({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const isAllowedType = (file: File) =>
-    ["image/jpeg", "image/png", "image/webp", "application/pdf"].includes(file.type);
+    [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/webp",
+      "image/heic",
+      "image/heif",
+      "image/gif",
+      "application/pdf",
+    ].includes(file.type);
 
   const openPicker = () => inputRef.current?.click();
 
@@ -144,7 +153,7 @@ function ProofFilePicker({
       </div>
 
       <p className="text-xs text-gray-500">
-        Accepted: images or PDF. Maximum {maxMb}MB
+        Accepted: JPG, PNG, HEIC, WebP, PDF. Maximum {maxMb}MB
       </p>
     </div>
   );
@@ -1611,7 +1620,7 @@ export function PaymentForm({
           <ProofFilePicker
             value={proofFile}
             onChange={(file) => void handleProofFileChange(file)}
-            accept="image/jpeg,image/png,image/webp,.pdf"
+            accept="image/*,.pdf,.heic,.heif"
             maxMb={10}
           />
           {uploading && (
