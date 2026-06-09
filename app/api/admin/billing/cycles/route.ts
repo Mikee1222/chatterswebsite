@@ -6,10 +6,20 @@ import {
   getAllBillingCycles,
   getBillingCycleClientCounts,
 } from "@/services/client-billing";
-import { notifyClientsForBillingCycle } from "@/services/client-billing-notifications";
+import {
+  formatBillingPeriod,
+  formatDueDateElGr,
+  kindLabelFor,
+} from "@/services/client-billing-notifications";
+import { notify } from "@/services/notification-service";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
+}
+
+function clientIdsFromBody(client: string | string[] | undefined): string[] {
+  if (!client) return [];
+  return Array.isArray(client) ? client : [client];
 }
 
 export async function GET(req: Request) {
@@ -34,7 +44,7 @@ export async function GET(req: Request) {
 }
 
 const postSchema = z.object({
-  client: z.array(z.string()).optional(),
+  client: z.union([z.array(z.string()), z.string()]).optional(),
   kind: z.enum(["chatting_weekly", "crm_monthly"]),
   period_start: z.string().min(1),
   period_end: z.string().min(1),
@@ -70,8 +80,33 @@ export async function POST(req: Request) {
   }
 
   try {
-    const cycle = await createBillingCycle(parsed.data);
-    await notifyClientsForBillingCycle(cycle);
+    const clientIds = clientIdsFromBody(parsed.data.client);
+    const cycle = await createBillingCycle({
+      ...parsed.data,
+      client: clientIds,
+    });
+    const kindLabel = kindLabelFor(cycle.kind);
+    const period = formatBillingPeriod(cycle.period_start, cycle.period_end);
+    const amountDue = parsed.data.amount ?? parsed.data.amount_crm ?? cycle.amount ?? 0;
+    const amount = `${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"}`;
+    const dueDateFormatted = formatDueDateElGr(cycle.due_date);
+
+    for (const clientId of clientIds) {
+      if (!clientId) continue;
+      await notify({
+        user_id: clientId,
+        event_type: "billing_cycle_announced",
+        priority: "high",
+        title: `📋 Payment Due — ${kindLabel} ${period}`,
+        body: `💳 Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,
+        entity_type: "billing_cycle",
+        entity_id: cycle.id,
+        _triggerSource: "admin.billing.cycles.POST",
+      })
+        .then(() => console.log("[billing] notified client", clientId))
+        .catch((err) => console.error("[billing] notify on create failed", clientId, err));
+    }
+
     return NextResponse.json({ ok: true, data: cycle });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create billing cycle";

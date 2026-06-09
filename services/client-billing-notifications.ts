@@ -18,15 +18,15 @@ function payUrlForKind(kind: BillingCycleKind): string {
   return kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm";
 }
 
-function kindLabelFor(kind: BillingCycleKind): string {
+export function kindLabelFor(kind: BillingCycleKind): string {
   return kind === "chatting_weekly" ? "Chatting" : "CRM";
 }
 
-function formatBillingPeriod(periodStart: string, periodEnd: string): string {
+export function formatBillingPeriod(periodStart: string, periodEnd: string): string {
   return `${periodStart} – ${periodEnd}`;
 }
 
-function formatDueDateElGr(ymd: string): string {
+export function formatDueDateElGr(ymd: string): string {
   const s = String(ymd).trim().slice(0, 10);
   const d = new Date(`${s}T12:00:00.000Z`);
   if (Number.isNaN(d.getTime())) return s;
