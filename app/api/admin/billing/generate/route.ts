@@ -18,6 +18,7 @@ const bodySchema = z.discriminatedUnion("mode", [
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, "billing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let json: unknown;

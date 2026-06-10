@@ -14,6 +14,7 @@ export default async function Home() {
   if (navRole === "virtual_assistant") redirect(ROUTES.va.home);
   if (user.role === "admin" || user.role === "manager") redirect(ROUTES.admin.home);
   if (user.role === "client") redirect(ROUTES.client.home);
+  if (user.role === "model") redirect(ROUTES.model.home);
   const isSystemRole = SYSTEM_ROLES.includes(user.role);
   if (!isSystemRole) redirect(ROUTES.admin.customRoleHome);
   redirect(ROUTES.dashboard);

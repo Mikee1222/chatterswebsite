@@ -6,6 +6,7 @@ import { createBillingCycleForClient, getClientBillingCycles } from "@/services/
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
@@ -24,6 +25,7 @@ const postSchema = z.object({
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
