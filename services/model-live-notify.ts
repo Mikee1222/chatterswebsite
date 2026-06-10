@@ -1,17 +1,104 @@
 "use server";
 
-import { notify, notifyAdmins } from "@/services/notification-service";
-import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
+import { getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
 import {
   modelLiveStartedAdmin,
   modelLiveStartedChatter,
   modelLiveEndedAdmin,
   modelLiveEndedChatter,
 } from "@/lib/notification-copy";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { notify, notifyAdmins } from "@/services/notification-service";
+import { getActiveShiftsWithModel, getChatterIdsFromOpenShiftModels } from "@/services/shifts";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId, listAllUsers } from "@/services/users";
+import { getProgramsForWeek } from "@/services/weekly-program";
+import { listAllWhales } from "@/services/whales";
 import type { ModelRecord } from "@/types";
 
-/** Admins + assigned chatter (when model is occupied). */
+type LiveNotifyKind = "started" | "ended";
+
+async function getFallbackChatterIdsForModel(modelId: string, modelRecord: ModelRecord): Promise<string[]> {
+  const trimmed = modelId.trim();
+  if (!trimmed) return [];
+
+  const weekStart = getWeekStartYmdInAthens(0);
+  const [users, programs, whales] = await Promise.all([
+    listAllUsers().catch(() => []),
+    getProgramsForWeek(weekStart).catch(() => []),
+    listAllWhales().catch(() => []),
+  ]);
+
+  const activeChatterIds = new Set(
+    users
+      .filter((u) => u.role === "chatter" && (u.status ?? "").toLowerCase() === "active" && u.id?.trim())
+      .map((u) => u.id.trim())
+  );
+  if (activeChatterIds.size === 0) return [];
+
+  const candidateIds = new Set<string>();
+
+  const currentChatter = modelRecord.current_chatter_id?.trim();
+  if (currentChatter) candidateIds.add(currentChatter);
+
+  for (const program of programs) {
+    if ((program.model_ids ?? []).includes(trimmed) && program.chatter_id?.trim()) {
+      candidateIds.add(program.chatter_id.trim());
+    }
+  }
+
+  for (const chatterId of await getChatterIdsFromOpenShiftModels(trimmed).catch(() => [])) {
+    candidateIds.add(chatterId);
+  }
+
+  for (const whale of whales) {
+    if (whale.assigned_model_id === trimmed && whale.assigned_chatter_id?.trim()) {
+      candidateIds.add(whale.assigned_chatter_id.trim());
+    }
+  }
+
+  return [...candidateIds].filter((id) => activeChatterIds.has(id));
+}
+
+async function resolveChatterIdsForModelLive(modelRecord: ModelRecord): Promise<string[]> {
+  const modelId = modelRecord.id;
+  const shifts = await getActiveShiftsWithModel(modelId);
+  const fromShifts = [...new Set(shifts.map((s) => s.chatter_id.trim()).filter(Boolean))];
+  if (fromShifts.length > 0) return fromShifts;
+  return getFallbackChatterIdsForModel(modelId, modelRecord);
+}
+
+async function notifyChattersModelLive(
+  modelRecord: ModelRecord,
+  liveStreamRecordId: string,
+  kind: LiveNotifyKind,
+  modelActorUserId: string | undefined,
+  modelName: string
+): Promise<void> {
+  const chatterIds = await resolveChatterIdsForModelLive(modelRecord);
+  const chatterCopy = kind === "started" ? modelLiveStartedChatter(modelName) : modelLiveEndedChatter(modelName);
+  const eventType =
+    kind === "started" ? NOTIFICATION_EVENT.MODEL_LIVE_STARTED : NOTIFICATION_EVENT.MODEL_LIVE_ENDED;
+  const priority =
+    kind === "started" ? NOTIFICATION_PRIORITY.HIGH : NOTIFICATION_PRIORITY.NORMAL;
+  const triggerSource = kind === "started" ? "live_start_chatter" : "live_end_chatter";
+
+  for (const chatterId of chatterIds) {
+    await notify({
+      user_id: chatterId,
+      event_type: eventType,
+      priority,
+      title: chatterCopy.title,
+      body: chatterCopy.body,
+      entity_type: "model_live_stream",
+      entity_id: liveStreamRecordId,
+      actor_user_id: modelActorUserId,
+      actor_name: modelName,
+      _triggerSource: triggerSource,
+    }).catch(() => {});
+  }
+}
+
+/** Admins + chatters on active shifts (or weekly-program fallback when none). */
 export async function notifyModelLiveStarted(modelRecord: ModelRecord, liveStreamRecordId: string): Promise<void> {
   const modelName = (modelRecord.model_name ?? "Model").trim() || "Model";
   const modelActorUserId =
@@ -27,22 +114,7 @@ export async function notifyModelLiveStarted(modelRecord: ModelRecord, liveStrea
     actor_user_id: modelActorUserId,
     actor_name: modelName,
   }).catch(() => {});
-  const chatterId = modelRecord.current_chatter_id?.trim();
-  if (chatterId) {
-    const chatterCopy = modelLiveStartedChatter(modelName);
-    await notify({
-      user_id: chatterId,
-      event_type: NOTIFICATION_EVENT.MODEL_LIVE_STARTED,
-      priority: NOTIFICATION_PRIORITY.HIGH,
-      title: chatterCopy.title,
-      body: chatterCopy.body,
-      entity_type: "model_live_stream",
-      entity_id: liveStreamRecordId,
-      actor_user_id: modelActorUserId,
-      actor_name: modelName,
-      _triggerSource: "live_start_chatter",
-    }).catch(() => {});
-  }
+  await notifyChattersModelLive(modelRecord, liveStreamRecordId, "started", modelActorUserId, modelName);
 }
 
 export async function notifyModelLiveEnded(modelRecord: ModelRecord, liveStreamRecordId: string): Promise<void> {
@@ -60,20 +132,5 @@ export async function notifyModelLiveEnded(modelRecord: ModelRecord, liveStreamR
     actor_user_id: modelActorUserId,
     actor_name: modelName,
   }).catch(() => {});
-  const chatterId = modelRecord.current_chatter_id?.trim();
-  if (chatterId) {
-    const chatterCopy = modelLiveEndedChatter(modelName);
-    await notify({
-      user_id: chatterId,
-      event_type: NOTIFICATION_EVENT.MODEL_LIVE_ENDED,
-      priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: chatterCopy.title,
-      body: chatterCopy.body,
-      entity_type: "model_live_stream",
-      entity_id: liveStreamRecordId,
-      actor_user_id: modelActorUserId,
-      actor_name: modelName,
-      _triggerSource: "live_end_chatter",
-    }).catch(() => {});
-  }
+  await notifyChattersModelLive(modelRecord, liveStreamRecordId, "ended", modelActorUserId, modelName);
 }

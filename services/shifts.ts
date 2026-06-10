@@ -254,6 +254,38 @@ export async function getActiveShifts(staffRole?: "chatter" | "virtual_assistant
   return listAllShifts(formula);
 }
 
+/** Active/on-break chatter shifts that include this model (via `shift_models.model`, session not left). */
+export async function getActiveShiftsWithModel(modelId: string): Promise<Shift[]> {
+  const trimmed = modelId.trim();
+  if (!trimmed) return [];
+  const activeShifts = await getActiveShifts("chatter");
+  if (activeShifts.length === 0) return [];
+  const shiftModels = await listShiftModelsForShifts(activeShifts.map((s) => s.id));
+  const shiftIdsWithModel = new Set(
+    shiftModels
+      .filter((sm) => sm.model_id === trimmed && !sm.left_at)
+      .map((sm) => sm.shift_id)
+  );
+  return activeShifts.filter((s) => shiftIdsWithModel.has(s.id));
+}
+
+/** Chatter user ids with an open `shift_models` row for this model (`left_at` empty). */
+export async function getChatterIdsFromOpenShiftModels(modelId: string): Promise<string[]> {
+  const trimmed = modelId.trim();
+  if (!trimmed) return [];
+  const records = await listAllRecords<ShiftModelFields>(SHIFT_MODELS_TABLE, {
+    _caller: "shifts.getChatterIdsFromOpenShiftModels",
+  });
+  const ids = new Set<string>();
+  for (const rec of records) {
+    const sm = mapShiftModel(rec as AirtableRecord<ShiftModelFields>);
+    if (sm.model_id === trimmed && !sm.left_at && sm.chatter_id.trim()) {
+      ids.add(sm.chatter_id.trim());
+    }
+  }
+  return [...ids];
+}
+
 /** All currently live shifts (chatter + VA). For live-shifts page. */
 export async function getLiveShifts(): Promise<Shift[]> {
   const statusField = await getShiftsStatusFieldName();
