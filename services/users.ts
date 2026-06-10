@@ -54,7 +54,7 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
     user_id: f.user_id ?? "",
     full_name: f.full_name ?? "",
     email: f.email ?? "",
-    role: (f.role as UserRole) ?? "chatter",
+    role: (f.role === "va" ? "virtual_assistant" : f.role) as UserRole,
     status: f.status ?? "",
     can_login: f.can_login ?? true,
     notes: f.notes ?? "",

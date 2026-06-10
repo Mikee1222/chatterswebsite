@@ -5,6 +5,7 @@ import { redirect, notFound } from "next/navigation";
 import { ResetPasswordForm } from "@/components/reset-password-form";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import Link from "next/link";
 
 export default async function ResetPasswordPage({
   params,
@@ -19,14 +20,18 @@ export default async function ResetPasswordPage({
   if (!record) notFound();
 
   return (
-    <div className="max-w-md space-y-6">
-      <h1 className="text-xl font-semibold text-white">Reset password</h1>
-      <p className="text-sm text-white/60">
-        Set a new password for {record.full_name} ({record.email}).
-      </p>
-      <div className="glass-card p-6">
-        <ResetPasswordForm recordId={record.id} />
+    <div className="space-y-6">
+      <div className="text-center">
+        <Link
+          href={ROUTES.admin.accounts}
+          className="text-sm text-white/50 transition hover:text-pink-300"
+        >
+          ← Back to accounts
+        </Link>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white">Reset password</h1>
+        <p className="mt-1 text-sm text-white/55">Set a new password for this account.</p>
       </div>
+      <ResetPasswordForm recordId={record.id} fullName={record.full_name} email={record.email} />
     </div>
   );
 }

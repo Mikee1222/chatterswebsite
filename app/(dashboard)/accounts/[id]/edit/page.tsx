@@ -7,6 +7,7 @@ import { listAllModelss } from "@/services/modelss";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import Link from "next/link";
 
 export default async function EditAccountPage({
   params,
@@ -19,10 +20,11 @@ export default async function EditAccountPage({
   const { id } = await params;
   const record = await getUserByAirtableId(id);
   if (!record) notFound();
-  const [allModels, allUsers, roles] = await Promise.all([
+  const [allModels, allUsers, roles, canDelete] = await Promise.all([
     listAllModelss(),
     listAllUsers(),
     getRoles(),
+    hasPermission(user, PERMISSIONS.ACCOUNTS_DELETE),
   ]);
   const linkedModelIds = new Set(
     allUsers
@@ -39,11 +41,20 @@ export default async function EditAccountPage({
     .sort((a, b) => a.model_name.localeCompare(b.model_name));
 
   return (
-    <div className="max-w-md space-y-6">
-      <h1 className="text-xl font-semibold text-white">Edit user</h1>
-      <div className="glass-card p-6">
-        <EditAccountForm user={record} roles={roles} modelOptions={modelOptions} />
+    <div className="space-y-6">
+      <div>
+        <Link
+          href={ROUTES.admin.accounts}
+          className="text-sm text-white/50 transition hover:text-pink-300"
+        >
+          ← Back to accounts
+        </Link>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white">Edit user</h1>
+        <p className="mt-1 text-sm text-white/55">
+          {record.full_name} · {record.email}
+        </p>
       </div>
+      <EditAccountForm user={record} roles={roles} modelOptions={modelOptions} canDelete={canDelete} />
     </div>
   );
 }

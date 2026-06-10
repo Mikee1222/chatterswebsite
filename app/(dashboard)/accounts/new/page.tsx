@@ -1,13 +1,13 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { FormCard } from "@/components/ui/form";
 import { CreateAccountForm } from "@/components/create-account-form";
 import { listAllModelss } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import Link from "next/link";
 
 export default async function NewAccountPage({
   searchParams,
@@ -40,10 +40,18 @@ export default async function NewAccountPage({
     .sort((a, b) => a.model_name.localeCompare(b.model_name));
 
   return (
-    <div className="max-w-md">
-      <FormCard title="Create user" subtitle="Add a new account">
-        <CreateAccountForm roles={roles} defaultRole={defaultRole} modelOptions={modelOptions} />
-      </FormCard>
+    <div className="space-y-6">
+      <div>
+        <Link
+          href={ROUTES.admin.accounts}
+          className="text-sm text-white/50 transition hover:text-pink-300"
+        >
+          ← Back to accounts
+        </Link>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight text-white">Create user</h1>
+        <p className="mt-1 text-sm text-white/55">Add a new account with role and access settings.</p>
+      </div>
+      <CreateAccountForm roles={roles} defaultRole={defaultRole} modelOptions={modelOptions} />
     </div>
   );
 }

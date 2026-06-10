@@ -37,6 +37,13 @@ async function requireAccountsPermission(permission: Permission) {
 
 const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
 
+const ACCOUNTS_LIST = ROUTES.admin.accounts;
+
+function revalidateAccountsPaths() {
+  revalidatePath(ROUTES.accounts);
+  revalidatePath(ROUTES.admin.accounts);
+}
+
 async function resolveValidRoleId(raw: string): Promise<string | null> {
   const key = raw.trim().toLowerCase();
   if (!key) return null;
@@ -65,10 +72,10 @@ export async function createAccount(formData: FormData) {
   const va_type_raw = (formData.get("va_type") as string)?.trim() ?? "";
 
   if (!full_name || !email) {
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Name and email are required"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("Name and email are required"));
   }
   if (!role) {
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Invalid role selected."));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("Invalid role selected."));
   }
 
   const input: CreateUserInput = {
@@ -88,25 +95,26 @@ export async function createAccount(formData: FormData) {
   if (role === "virtual_assistant") {
     const vaType = parseVaType(va_type_raw);
     if (!vaType) {
-      redirect(ROUTES.accounts + "?error=" + encodeURIComponent("VA type is required for virtual assistant accounts."));
+      redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("VA type is required for virtual assistant accounts."));
     }
     input.va_type = vaType;
   }
   try {
     await createUser(input);
-    redirect(ROUTES.accounts + "?success=created");
+    revalidateAccountsPaths();
+    redirect(ACCOUNTS_LIST + "?success=created");
   } catch (err) {
     if (isRedirectError(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[createAccount] error", err);
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent(message || "Failed to create account"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(message || "Failed to create account"));
   }
 }
 
 export async function updateAccount(formData: FormData) {
   await requireAccountsPermission(PERMISSIONS.ACCOUNTS_EDIT);
   const recordId = (formData.get("recordId") as string)?.trim();
-  if (!recordId) redirect(ROUTES.accounts + "?error=missing_record");
+  if (!recordId) redirect(ACCOUNTS_LIST + "?error=missing_record");
 
   const full_name = (formData.get("full_name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim()?.toLowerCase();
@@ -130,7 +138,7 @@ export async function updateAccount(formData: FormData) {
   if (email !== undefined) input.email = email;
   if (roleRaw != null) {
     if (!role) {
-      redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Invalid role selected."));
+      redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("Invalid role selected."));
     }
     input.role = role as UpdateUserInput["role"];
   }
@@ -147,7 +155,7 @@ export async function updateAccount(formData: FormData) {
     if (secondary_role_raw === "chatter" || secondary_role_raw === "virtual_assistant") {
       if (secondary_role_raw === role) {
         redirect(
-          ROUTES.accounts +
+          ACCOUNTS_LIST +
             "?error=" +
             encodeURIComponent("Secondary role must be different from primary role.")
         );
@@ -165,7 +173,7 @@ export async function updateAccount(formData: FormData) {
     const vaType = parseVaType(va_type_raw);
     if (!vaType) {
       redirect(
-        ROUTES.accounts +
+        ACCOUNTS_LIST +
           "?error=" +
           encodeURIComponent("VA type is required when the account has a virtual assistant role.")
       );
@@ -177,32 +185,34 @@ export async function updateAccount(formData: FormData) {
   if (telegram_username !== undefined) input.telegram_username = telegram_username;
   try {
     await updateUser(recordId, input);
-    redirect(ROUTES.accounts + "?success=updated");
+    revalidateAccountsPaths();
+    redirect(ACCOUNTS_LIST + "?success=updated");
   } catch (err) {
     if (isRedirectError(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[updateAccount] error", err);
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent(message || "Failed to update account"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(message || "Failed to update account"));
   }
 }
 
 export async function setAccountPassword(formData: FormData) {
   await requireAccountsPermission(PERMISSIONS.ACCOUNTS_RESET_PASSWORD);
   const recordId = (formData.get("recordId") as string)?.trim();
-  if (!recordId) redirect(ROUTES.accounts + "?error=missing_record");
+  if (!recordId) redirect(ACCOUNTS_LIST + "?error=missing_record");
   const password = (formData.get("password") as string)?.trim() ?? "";
   if (!password || password.length < 8) {
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Password must be at least 8 characters"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("Password must be at least 8 characters"));
   }
   const hash = await hashPassword(password);
   try {
     await setPasswordHash(recordId, hash);
-    redirect(ROUTES.accounts + "?success=password_reset");
+    revalidateAccountsPaths();
+    redirect(ACCOUNTS_LIST + "?success=password_reset");
   } catch (err) {
     if (isRedirectError(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[setAccountPassword] error", err);
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent(message || "Failed to set password"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(message || "Failed to set password"));
   }
 }
 
@@ -210,15 +220,16 @@ export async function toggleCanLogin(formData: FormData) {
   await requireAccountsPermission(PERMISSIONS.ACCOUNTS_EDIT);
   const recordId = (formData.get("recordId") as string)?.trim();
   const canLogin = formData.get("can_login") === "true";
-  if (!recordId) redirect(ROUTES.accounts + "?error=missing_record");
+  if (!recordId) redirect(ACCOUNTS_LIST + "?error=missing_record");
   try {
     await updateUser(recordId, { can_login: canLogin });
-    redirect(ROUTES.accounts + "?success=updated");
+    revalidateAccountsPaths();
+    redirect(ACCOUNTS_LIST + "?success=updated");
   } catch (err) {
     if (isRedirectError(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[toggleCanLogin] error", err);
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent(message || "Failed to update"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(message || "Failed to update"));
   }
 }
 
@@ -226,18 +237,18 @@ export async function deleteUserAction(recordId: string) {
   await requireAccountsPermission(PERMISSIONS.ACCOUNTS_DELETE);
   const id = recordId?.trim();
   if (!id) {
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Missing user record"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("Missing user record"));
     return;
   }
   try {
     devLog("[delete-user]", { userId: id, step: "forceDeleteUser" });
     await forceDeleteUser(id);
-    revalidatePath(ROUTES.accounts);
-    redirect(ROUTES.accounts + "?success=user_deleted");
+    revalidateAccountsPaths();
+    redirect(ACCOUNTS_LIST + "?success=user_deleted");
   } catch (err) {
     if (isRedirectError(err)) throw err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[deleteUserAction] error", err);
-    redirect(ROUTES.accounts + "?error=" + encodeURIComponent(message || "Failed to delete user"));
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(message || "Failed to delete user"));
   }
 }
