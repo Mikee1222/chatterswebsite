@@ -143,6 +143,10 @@ export function RealtimeProvider({
           ws.close();
           return;
         }
+        if (data.type === "unread_count" && typeof data.unreadCount === "number") {
+          setUnreadCountState(data.unreadCount);
+          return;
+        }
         if ((data.type === "notification" || data.type === "notification_created") && data.notification) {
           setUnreadCountState((c) => (typeof data.unreadCount === "number" ? data.unreadCount : c + 1));
           addNotification(data.notification as AppNotification);

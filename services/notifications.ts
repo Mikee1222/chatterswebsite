@@ -6,6 +6,7 @@ import {
   getRecord,
   createRecord,
   updateRecord,
+  batchUpdateRecords,
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
@@ -171,9 +172,8 @@ export async function getUnreadCount(userId: string): Promise<number> {
   const escaped = userId.replace(/"/g, '""');
   const formula = `AND({${NOTIFICATION_FIELDS.user_id}} = "${escaped}", ${unreadReadAtFormula()})`;
   devLog(NOTIFY_UI_DEBUG, "getUnreadCount", JSON.stringify({ airtable_filter: formula, recipient_user_id: userId }));
-  const { records } = await listRecords<Fields>(NOTIFICATIONS_TABLE, {
+  const records = await listAllRecords<Fields>(NOTIFICATIONS_TABLE, {
     filterByFormula: formula,
-    pageSize: 100,
     fields: [NOTIFICATION_FIELDS.notification_id],
   });
   devLog(NOTIFY_UI_DEBUG, "getUnreadCount_result", JSON.stringify({ recipient_user_id: userId, unread_count: records.length }));
@@ -213,27 +213,42 @@ export async function markAllAsRead(userId: string) {
   const allUnread = await listAllRecords<Fields>(NOTIFICATIONS_TABLE, {
     filterByFormula: formula,
     sort: [{ field: NOTIFICATION_FIELDS.created_at, direction: "desc" }],
+    fields: [NOTIFICATION_FIELDS.user_id],
   });
-  let marked = 0;
-  for (const rec of allUnread) {
-    try {
-      await updateRecord<Fields>(NOTIFICATIONS_TABLE, rec.id, {
-        [NOTIFICATION_FIELDS.read_at]: readAtValue,
-      });
-      marked += 1;
-    } catch (err) {
-      console.error(
-        NOTIFY_UI_DEBUG,
-        "mark_all_read_row_failed",
-        JSON.stringify({
-          recordId: rec.id,
-          error: err instanceof Error ? err.message : String(err),
-        })
-      );
-    }
+  const ownedUnread = allUnread.filter((rec) => {
+    const ownerId = String((rec.fields as Fields)[NOTIFICATION_FIELDS.user_id] ?? "");
+    return ownerId === userId;
+  });
+  if (ownedUnread.length === 0) {
+    devLog(NOTIFY_UI_DEBUG, "mark_all_read", JSON.stringify({ userId, found: 0, patched: 0 }));
+    return 0;
   }
-  devLog(NOTIFY_UI_DEBUG, "mark_all_read", JSON.stringify({ userId, found: allUnread.length, patched: marked }));
-  return marked;
+  try {
+    await batchUpdateRecords(
+      NOTIFICATIONS_TABLE,
+      ownedUnread.map((rec) => ({
+        id: rec.id,
+        fields: { [NOTIFICATION_FIELDS.read_at]: readAtValue },
+      }))
+    );
+  } catch (err) {
+    console.error(
+      NOTIFY_UI_DEBUG,
+      "mark_all_read_batch_failed",
+      JSON.stringify({
+        userId,
+        count: ownedUnread.length,
+        error: err instanceof Error ? err.message : String(err),
+      })
+    );
+    throw err;
+  }
+  devLog(
+    NOTIFY_UI_DEBUG,
+    "mark_all_read",
+    JSON.stringify({ userId, found: ownedUnread.length, patched: ownedUnread.length })
+  );
+  return ownedUnread.length;
 }
 
 export async function getNotificationById(recordId: string): Promise<AppNotification | null> {

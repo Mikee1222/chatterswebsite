@@ -123,16 +123,22 @@ export function NotificationBell({ role }: NotificationBellProps) {
   }, [open, setOpen]);
 
   const handleMarkRead = async (id: string) => {
-    await markNotificationRead(id);
-    setUnreadCount?.((c) => Math.max(0, c - 1));
-    await mutate(dashboardSwrKeys.notificationsUnreadCount);
+    const unreadCount = await markNotificationRead(id);
+    const count = typeof unreadCount === "number" ? unreadCount : await getMyUnreadCount();
+    setUnreadCount?.(count);
+    void mutate(
+      dashboardSwrKeys.notificationsUnreadCount,
+      { count: Math.max(0, count) },
+      { revalidate: false }
+    );
+    const ts = new Date().toISOString();
     if (realtime) {
       realtime.setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n))
+        prev.map((n) => (n.id === id ? { ...n, read_at: n.read_at || ts } : n))
       );
     } else {
       setFallbackList((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, read_at: new Date().toISOString() } : n))
+        prev.map((n) => (n.id === id ? { ...n, read_at: n.read_at || ts } : n))
       );
     }
   };
@@ -147,7 +153,13 @@ export function NotificationBell({ role }: NotificationBellProps) {
     } else {
       setFallbackList((prev) => prev.filter((n) => !idSet.has(n.id)));
     }
-    await mutate(dashboardSwrKeys.notificationsUnreadCount);
+    const count = await getMyUnreadCount();
+    setUnreadCount?.(count);
+    void mutate(
+      dashboardSwrKeys.notificationsUnreadCount,
+      { count: Math.max(0, count) },
+      { revalidate: false }
+    );
     router.refresh();
   };
 
@@ -160,24 +172,30 @@ export function NotificationBell({ role }: NotificationBellProps) {
       setFallbackList((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || ts })));
     }
     try {
-      await markAllMyNotificationsRead();
-    } finally {
-      getMyUnreadCount().then((c) => {
-        if (realtime) realtime.setUnreadCount?.(c);
-        else {
-          void mutate(
-            dashboardSwrKeys.notificationsUnreadCount,
-            { count: Math.max(0, c) },
-            { revalidate: false }
-          );
-        }
-      });
-      getMyNotifications(false).then(({ notifications: n }) => {
-        if (realtime) realtime.setNotifications(n);
-        else setFallbackList(n);
-      });
+      const { unreadCount } = await markAllMyNotificationsRead();
+      const { notifications: refreshedList } = await getMyNotifications(false);
+      setUnreadCount?.(unreadCount);
+      if (realtime) realtime.setNotifications(refreshedList);
+      else setFallbackList(refreshedList);
+      void mutate(
+        dashboardSwrKeys.notificationsUnreadCount,
+        { count: Math.max(0, unreadCount) },
+        { revalidate: false }
+      );
+    } catch {
+      const [count, { notifications: refreshedList }] = await Promise.all([
+        getMyUnreadCount(),
+        getMyNotifications(false),
+      ]);
+      setUnreadCount?.(count);
+      if (realtime) realtime.setNotifications(refreshedList);
+      else setFallbackList(refreshedList);
+      void mutate(
+        dashboardSwrKeys.notificationsUnreadCount,
+        { count: Math.max(0, count) },
+        { revalidate: false }
+      );
     }
-    await mutate(dashboardSwrKeys.notificationsUnreadCount);
     router.refresh();
   };
 

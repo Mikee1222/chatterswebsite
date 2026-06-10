@@ -12,6 +12,7 @@ import {
   markAllAsRead,
   deleteNotificationForUser,
 } from "@/services/notifications";
+import { broadcastUserUnreadCount } from "@/lib/realtime-broadcast";
 import { devLog } from "@/lib/dev-log";
 
 const DEBUG = "[notify-ui-debug]";
@@ -56,8 +57,11 @@ export async function markNotificationRead(recordId: string) {
   const userId = getNotificationUserId(user);
   if (userId == null) return;
   await markAsRead(recordId, userId);
+  const unreadCount = await getUnreadCount(userId);
+  await broadcastUserUnreadCount(userId, unreadCount).catch(() => {});
   revalidatePath("/", "layout");
   revalidatePath("/notifications");
+  return unreadCount;
 }
 
 /** Deletes one or more notifications owned by the current user. */
@@ -78,9 +82,11 @@ export async function markAllMyNotificationsRead() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
   const userId = getNotificationUserId(user);
-  if (userId == null) return 0;
-  const count = await markAllAsRead(userId);
+  if (userId == null) return { marked: 0, unreadCount: 0 };
+  const marked = await markAllAsRead(userId);
+  const unreadCount = await getUnreadCount(userId);
+  await broadcastUserUnreadCount(userId, unreadCount).catch(() => {});
   revalidatePath("/", "layout");
   revalidatePath("/notifications");
-  return count;
+  return { marked, unreadCount };
 }
