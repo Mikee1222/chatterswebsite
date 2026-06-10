@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion, useAnimation, type PanInfo } from "framer-motion";
+import { AnimatePresence, motion, useAnimation } from "framer-motion";
 import { Bell } from "lucide-react";
 import { useSWRConfig } from "swr";
 import {
@@ -28,9 +29,6 @@ type NotificationBellProps = {
   /** Role for role-aware notification routing (shift → live shifts for admin, etc.). */
   role?: UserRole | null;
 };
-
-const SHEET_CLOSE_OFFSET = 100;
-const SHEET_CLOSE_VELOCITY = 500;
 
 export function NotificationBell({ role }: NotificationBellProps) {
   const router = useRouter();
@@ -83,6 +81,17 @@ export function NotificationBell({ role }: NotificationBellProps) {
       { revalidate: false }
     );
   }, [mutate, realtime?.unreadCount]);
+
+  useEffect(() => {
+    if (open) {
+      document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.overflow = "";
+    }
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [open]);
 
   useEffect(() => {
     if (open && !realtime) {
@@ -191,12 +200,6 @@ export function NotificationBell({ role }: NotificationBellProps) {
   const closePanel = () => setOpen(false);
   const settingsHref = role === "client" ? ROUTES.client.settings : ROUTES.settings;
 
-  const handleSheetDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
-    if (info.offset.y > SHEET_CLOSE_OFFSET || info.velocity.y > SHEET_CLOSE_VELOCITY) {
-      closePanel();
-    }
-  };
-
   const contentProps = {
     notifications: list,
     unreadCount,
@@ -250,44 +253,51 @@ export function NotificationBell({ role }: NotificationBellProps) {
             >
               <NotificationCenterContent {...contentProps} compact />
             </motion.div>
-            <div key="notif-mobile-panel" className="fixed inset-0 z-40 md:hidden">
-              <motion.div
-                key="notif-mobile-backdrop"
-                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                aria-hidden
-                onClick={closePanel}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.2 }}
-              />
-              <motion.div
-                key="notif-mobile-sheet"
-                className="absolute inset-x-0 bottom-0 z-50 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-[#0f0a1a] shadow-2xl"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Notification center"
-                drag="y"
-                dragConstraints={{ top: 0, bottom: 0 }}
-                dragElastic={{ top: 0, bottom: 0.45 }}
-                onDragEnd={handleSheetDragEnd}
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", damping: 28, stiffness: 320 }}
-              >
-                <div
-                  className="mx-auto mt-2 h-1 w-10 shrink-0 cursor-grab rounded-full bg-white/20 active:cursor-grabbing"
-                  aria-hidden
-                />
-                <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0px,env(safe-area-inset-bottom))]">
-                  <NotificationCenterContent {...contentProps} compact={false} isMobile />
-                </div>
-              </motion.div>
-            </div>
           </>
         )}
       </AnimatePresence>
+
+      {mounted &&
+        createPortal(
+          <AnimatePresence>
+            {open && (
+              <div key="notif-mobile-root" className="fixed inset-0 z-[100] md:hidden">
+                <motion.div
+                  key="notif-mobile-backdrop"
+                  className="absolute inset-0 bg-black/70"
+                  aria-hidden
+                  onClick={closePanel}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                />
+                <motion.div
+                  key="notif-mobile-sheet"
+                  className="absolute bottom-0 left-0 right-0 flex flex-col overflow-hidden rounded-t-3xl bg-[#0f0a1a] shadow-2xl"
+                  style={{ height: "85vh" }}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Notification center"
+                  onClick={(e) => e.stopPropagation()}
+                  initial={{ y: "100%" }}
+                  animate={{ y: 0 }}
+                  exit={{ y: "100%" }}
+                  transition={{ type: "spring", damping: 28, stiffness: 320 }}
+                >
+                  <div
+                    className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-white/20"
+                    aria-hidden
+                  />
+                  <div className="flex-1 overflow-hidden">
+                    <NotificationCenterContent {...contentProps} compact={false} isMobile />
+                  </div>
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>,
+          document.body
+        )}
     </div>
   );
 }

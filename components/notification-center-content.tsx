@@ -273,7 +273,7 @@ export function NotificationCenterContent({
       </div>
 
       <div
-        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${isMobile ? "max-h-[60vh]" : "max-h-[440px]"}`}
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${isMobile ? "" : "max-h-[440px]"}`}
       >
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
@@ -396,7 +396,7 @@ export function NotificationCenterContent({
         )}
       </div>
 
-      {!omitSettingsFooter && (
+      {!isMobile && (
         <div className="flex shrink-0 items-center justify-between border-t border-white/[0.06] p-3">
           <Link
             href={settingsHref}
