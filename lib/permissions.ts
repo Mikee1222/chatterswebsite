@@ -101,6 +101,101 @@ export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 export const ALL_PERMISSIONS: Permission[] = Object.values(PERMISSIONS);
 
+const ACTION_LABELS: Record<string, string> = {
+  view: "View",
+  manage: "Manage",
+  create: "Create",
+  edit: "Edit",
+  delete: "Delete",
+  "reset-password": "Reset password",
+  config: "Configure",
+  "reasons-manage": "Manage reasons",
+  "sign-off": "Sign off",
+  quiz: "Take quiz",
+  assign: "Assign",
+  approve: "Approve",
+  submit: "Submit",
+  start: "Start",
+  "active-view": "View active",
+  review: "Review",
+  schedules: "Schedules",
+  availability: "Availability",
+  "shadowban-report": "Shadowban report",
+  diagnostic: "Diagnostic",
+};
+
+/** Human-readable labels for permission categories (prefix before `:`). */
+export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
+  billing: "Billing",
+  accounts: "Accounts",
+  earnings: "Earnings",
+  mistakes: "Mistakes",
+  challenges: "Challenges",
+  rewards: "Rewards",
+  shifts: "Shifts",
+  fines: "Fines & bonuses",
+  models: "Models",
+  clients: "Clients",
+  whales: "Whales",
+  marketing: "Marketing",
+  "va-tasks": "VA tasks",
+  sops: "SOPs / training",
+  content: "Content",
+  "spin-wheel": "Spin wheel",
+  notifications: "Notifications",
+  "custom-requests": "Custom requests",
+  "weekly-program": "Weekly program",
+  payments: "Payments",
+  settings: "Settings",
+  roles: "Roles & permissions",
+  feedback: "Feedback",
+  pricing: "Pricing",
+  "mass-lists": "Mass lists",
+};
+
+function humanizePermissionSegment(segment: string): string {
+  if (ACTION_LABELS[segment]) return ACTION_LABELS[segment];
+  return segment
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+/** Human-readable label for each permission string. */
+export const PERMISSION_LABELS: Record<Permission, string> = Object.fromEntries(
+  ALL_PERMISSIONS.map((p) => {
+    const [category, action] = p.split(":");
+    const catLabel = PERMISSION_CATEGORY_LABELS[category] ?? humanizePermissionSegment(category);
+    const actLabel = humanizePermissionSegment(action ?? p);
+    return [p, `${catLabel} — ${actLabel}`];
+  })
+) as Record<Permission, string>;
+
+export type PermissionGroup = {
+  key: string;
+  label: string;
+  permissions: Permission[];
+};
+
+/** Group all permissions by resource prefix for the roles editor UI. */
+export function getPermissionGroups(): PermissionGroup[] {
+  const byCategory = new Map<string, Permission[]>();
+  for (const p of ALL_PERMISSIONS) {
+    const [cat] = p.split(":");
+    if (!cat) continue;
+    const list = byCategory.get(cat) ?? [];
+    list.push(p);
+    byCategory.set(cat, list);
+  }
+  return [...byCategory.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, permissions]) => ({
+      key,
+      label: PERMISSION_CATEGORY_LABELS[key] ?? humanizePermissionSegment(key),
+      permissions: [...permissions].sort(),
+    }));
+}
+
 const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.ROLES_MANAGE,
   PERMISSIONS.ACCOUNTS_DELETE,

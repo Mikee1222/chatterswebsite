@@ -43,7 +43,9 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { getModelT, MODEL_NAV_HREF_TO_LABEL_KEY } from "@/lib/model-i18n";
 import type { ModelLang } from "@/lib/model-i18n";
+import type { Permission } from "@/lib/permissions";
 import {
+  filterNavItemsByPermissions,
   getNavItemsForRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
@@ -115,12 +117,14 @@ export function Sidebar({
   hiddenNavConfig,
   navBadgeCounts,
   modelUiLanguage,
+  userPermissions = [],
 }: {
   user: SessionUser;
   hiddenNavConfig: ParsedHiddenNavConfig;
   navBadgeCounts?: Record<string, number>;
   /** When set (model role), sidebar nav labels use the JSON message pack (model namespace). */
   modelUiLanguage?: ModelLang;
+  userPermissions?: Permission[];
 }) {
   const pathname = usePathname();
   const role = getNavRoleForSession(user);
@@ -130,8 +134,9 @@ export function Sidebar({
   );
 
   const baseItems: NavItem[] = React.useMemo(() => {
-    return getNavItemsForRole(role, hiddenForRole);
-  }, [role, hiddenForRole]);
+    const items = getNavItemsForRole(role, hiddenForRole);
+    return filterNavItemsByPermissions(items, userPermissions);
+  }, [role, hiddenForRole, userPermissions]);
 
   const items: NavItem[] = React.useMemo(() => {
     if (role !== "model" || !modelUiLanguage) return baseItems;

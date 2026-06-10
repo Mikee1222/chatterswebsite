@@ -47,7 +47,9 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { getModelT, getModelShellTitle, MODEL_NAV_HREF_TO_LABEL_KEY } from "@/lib/model-i18n";
 import type { ModelLang } from "@/lib/model-i18n";
+import type { Permission } from "@/lib/permissions";
 import {
+  filterNavItemsByPermissions,
   getMobileMainTabDisplays,
   getNavItemsForRole,
   navHrefIsActive,
@@ -220,6 +222,7 @@ type MobileAppShellProps = {
   navBadgeCounts?: Record<string, number>;
   /** Model UI language from cookie / Airtable — translates bottom tabs + More menu labels. */
   modelUiLanguage?: ModelLang;
+  userPermissions?: Permission[];
 };
 
 export function MobileAppShell({
@@ -230,6 +233,7 @@ export function MobileAppShell({
   hiddenNavConfig,
   navBadgeCounts,
   modelUiLanguage,
+  userPermissions = [],
 }: MobileAppShellProps) {
   const pathname = usePathname();
   const [moreOpen, setMoreOpen] = React.useState(false);
@@ -257,8 +261,9 @@ export function MobileAppShell({
   );
 
   const baseNavItems: NavItem[] = React.useMemo(() => {
-    return getNavItemsForRole(role, hiddenForRole);
-  }, [role, hiddenForRole]);
+    const items = getNavItemsForRole(role, hiddenForRole);
+    return filterNavItemsByPermissions(items, userPermissions);
+  }, [role, hiddenForRole, userPermissions]);
 
   const allItems: NavItem[] = React.useMemo(() => {
     if (role !== "model" || !modelUiLanguage) return baseNavItems;

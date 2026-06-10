@@ -8,6 +8,7 @@
  */
 
 import { ROUTES } from "@/lib/routes";
+import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import type { VaType } from "@/types";
 
 /** Keys in stored JSON — admin + manager share `admin`. */
@@ -159,6 +160,8 @@ export type NavItem = {
   beta?: boolean;
   /** If true, only `admin` role sees this link (managers use the same admin nav profile but skip these). */
   adminOnly?: boolean;
+  /** When set, item is hidden unless the user has this permission. */
+  requiresPermission?: Permission;
   /** When true, item never fills a mobile bottom-bar slot (stays in the More sheet only). */
   excludeFromMobileMainTabs?: boolean;
   /**
@@ -273,6 +276,13 @@ const adminNav: NavItem[] = [
 
   // ── SUPPORT ──
   { href: ROUTES.admin.feedback, label: "Feedback", iconKey: "MessageSquarePlus", navSection: "SUPPORT" },
+  {
+    href: ROUTES.admin.roles,
+    label: "Roles",
+    iconKey: "Settings2",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.ROLES_MANAGE,
+  },
   { href: ROUTES.activityLogs, label: "Activity logs", iconKey: "Activity" },
   {
     href: ROUTES.admin.notificationDiagnostic,
@@ -325,6 +335,15 @@ export function getNavItemsForRole(role: NavRole, hiddenItems?: string[]): NavIt
   if (hiddenItems == null || hiddenItems.length === 0) return base;
   const hidden = new Set(hiddenItems);
   return base.filter((item) => !hidden.has(item.href));
+}
+
+/** Hide nav items the user lacks `requiresPermission` for. */
+export function filterNavItemsByPermissions(
+  items: NavItem[],
+  granted: ReadonlySet<Permission> | readonly Permission[]
+): NavItem[] {
+  const set = granted instanceof Set ? granted : new Set(granted);
+  return items.filter((item) => !item.requiresPermission || set.has(item.requiresPermission));
 }
 
 /**

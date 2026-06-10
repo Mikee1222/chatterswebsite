@@ -90,11 +90,21 @@ export async function requirePermission(
   return user;
 }
 
-/** Invalidate cached permissions (e.g. after role upsert). */
-export function invalidateRolePermissionsCache(roleName?: string): void {
+/** Invalidate in-memory permission cache (all roles or one role). */
+export function clearRbacCache(roleName?: string): void {
   if (roleName) {
     rolePermissionsCache.delete(roleName.trim().toLowerCase());
     return;
   }
   rolePermissionsCache.clear();
+}
+
+/** @deprecated Use `clearRbacCache`. */
+export const invalidateRolePermissionsCache = clearRbacCache;
+
+/** All permissions granted to the session's effective role. */
+export async function getUserPermissions(user: AuthUser): Promise<Permission[]> {
+  const role = resolveRoleForPermissions(user);
+  const set = await loadPermissionsForRole(role);
+  return [...set];
 }

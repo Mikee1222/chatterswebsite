@@ -123,6 +123,7 @@ export const ROUTES = {
     testNotifications: "/admin/test-notifications",
     /** Admin-only full notification pipeline diagnostic (same env gate as test notifications). */
     notificationDiagnostic: "/admin/notification-diagnostic",
+    roles: "/admin/roles",
   },
 
   /** Model (role: model) – modelss-linked user */

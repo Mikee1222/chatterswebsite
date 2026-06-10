@@ -15,7 +15,7 @@ import { countPendingVAContentAssignments } from "@/services/va-content-assignme
 import { countWhalesWithoutChatter } from "@/services/whales";
 import type { ModelLang } from "@/lib/model-i18n";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { hasPermission } from "@/lib/rbac";
+import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
@@ -50,6 +50,7 @@ export default async function DashboardLayout({
 
   const hiddenNavRaw = await getSystemSetting("hidden_nav_items").catch(() => null);
   const hiddenNavConfig = parseHiddenNavSettingJson(hiddenNavRaw);
+  const userPermissions = await getUserPermissions(user).catch(() => [] as Awaited<ReturnType<typeof getUserPermissions>>);
   const navBadgeCounts: Record<string, number> = {};
   if (await hasPermission(user, PERMISSIONS.WHALES_ASSIGN)) {
     navBadgeCounts[ROUTES.admin.vaContentAssignments] = await countPendingVAContentAssignments().catch(() => 0);
@@ -72,6 +73,7 @@ export default async function DashboardLayout({
           hiddenNavConfig={hiddenNavConfig}
           navBadgeCounts={navBadgeCounts}
           modelUiLanguage={modelUiLanguage}
+          userPermissions={userPermissions}
         />
         <div className="dashboard-content pl-0 md:pl-64">
           <Topbar user={user} />
@@ -82,6 +84,7 @@ export default async function DashboardLayout({
             hiddenNavConfig={hiddenNavConfig}
             navBadgeCounts={navBadgeCounts}
             modelUiLanguage={modelUiLanguage}
+            userPermissions={userPermissions}
           >
             <main
               data-main-content

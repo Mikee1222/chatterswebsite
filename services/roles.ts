@@ -3,15 +3,22 @@
 import {
   listRecords,
   listAllRecords,
+  getRecord,
   createRecord,
   updateRecord,
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { listAllUsers } from "@/services/users";
 import type { RoleRecord, UserRole } from "@/types";
 
 const TABLE = "roles";
+
+async function invalidateRbacCache(roleName?: string): Promise<void> {
+  const { clearRbacCache } = await import("@/lib/rbac");
+  clearRbacCache(roleName);
+}
 
 type Fields = {
   role_id?: string;
@@ -79,9 +86,34 @@ export async function getRolePermissions(roleName: string): Promise<Permission[]
 export async function getRoles(): Promise<RoleRecord[]> {
   try {
     const records = await listAllRecords<Fields>(TABLE, {});
-    return records.map(mapRecord);
+    return records.map(mapRecord).sort((a, b) => a.label.localeCompare(b.label));
   } catch {
     return [];
+  }
+}
+
+export async function getRoleById(recordId: string): Promise<RoleRecord | null> {
+  try {
+    const rec = await getRecord<Fields>(TABLE, recordId);
+    return mapRecord(rec);
+  } catch {
+    return null;
+  }
+}
+
+/** Active users per `users.role` slug (lowercase). */
+export async function getRoleUserCounts(): Promise<Record<string, number>> {
+  try {
+    const users = await listAllUsers();
+    const counts: Record<string, number> = {};
+    for (const u of users) {
+      const key = String(u.role ?? "").trim().toLowerCase();
+      if (!key) continue;
+      counts[key] = (counts[key] ?? 0) + 1;
+    }
+    return counts;
+  } catch {
+    return {};
   }
 }
 
@@ -111,12 +143,16 @@ export async function upsertRole(
 
   if (existingRecordId) {
     const rec = await updateRecord<Fields>(TABLE, existingRecordId, fields);
-    return mapRecord(rec);
+    const mapped = mapRecord(rec);
+    await invalidateRbacCache(mapped.role_id);
+    return mapped;
   }
 
   fields.created_at = now;
   const rec = await createRecord<Fields>(TABLE, fields);
-  return mapRecord(rec);
+  const mapped = mapRecord(rec);
+  await invalidateRbacCache(mapped.role_id);
+  return mapped;
 }
 
 export async function deleteRole(recordId: string): Promise<void> {
@@ -128,5 +164,7 @@ export async function deleteRole(recordId: string): Promise<void> {
   if (row?.fields.is_system_role) {
     throw new Error("System roles cannot be deleted.");
   }
+  const roleId = row?.fields.role_id?.trim().toLowerCase();
   await deleteRecord(TABLE, recordId);
+  if (roleId) await invalidateRbacCache(roleId);
 }
