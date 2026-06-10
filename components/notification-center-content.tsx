@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -101,13 +101,23 @@ function getCategory(n: AppNotification): string {
   return n.category || "system";
 }
 
-const FILTER_TABS = [
+const ROLE_CATEGORIES: Record<string, string[]> = {
+  admin: ["all", "unread", "billing", "shift", "whale", "custom_request", "model", "task", "system"],
+  manager: ["all", "unread", "billing", "shift", "whale", "custom_request", "model", "task", "system"],
+  chatter: ["all", "unread", "shift", "whale", "custom_request", "task", "system"],
+  virtual_assistant: ["all", "unread", "task", "custom_request", "model", "system"],
+  model: ["all", "unread", "custom_request", "model", "task", "system"],
+  client: ["all", "unread", "billing", "system"],
+};
+
+const ALL_TABS = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
   { key: "billing", label: "Billing" },
   { key: "shift", label: "Shifts" },
   { key: "whale", label: "Whales" },
   { key: "custom_request", label: "Requests" },
+  { key: "model", label: "Models" },
   { key: "task", label: "Tasks" },
   { key: "system", label: "System" },
 ] as const;
@@ -152,6 +162,20 @@ export function NotificationCenterContent({
   const notifications = notificationsProp ?? list ?? [];
   const [activeFilter, setActiveFilter] = useState<string>("all");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  const visibleTabs = useMemo(
+    () =>
+      ALL_TABS.filter((tab) =>
+        (ROLE_CATEGORIES[role ?? "chatter"] ?? ROLE_CATEGORIES.chatter).includes(tab.key)
+      ),
+    [role]
+  );
+
+  useEffect(() => {
+    if (!visibleTabs.some((tab) => tab.key === activeFilter)) {
+      setActiveFilter("all");
+    }
+  }, [visibleTabs, activeFilter]);
 
   const filtered = useMemo(() => {
     if (activeFilter === "all") return notifications;
@@ -247,7 +271,7 @@ export function NotificationCenterContent({
       <div
         className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-white/[0.06] px-3 py-2 [-webkit-overflow-scrolling:touch]"
       >
-        {FILTER_TABS.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
