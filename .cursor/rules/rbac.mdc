@@ -1,0 +1,58 @@
+---
+name: RBAC — permissions required for every new feature
+description: Enforces that every new page, API route, or server action includes proper RBAC permission wiring
+globs:
+  - app/(dashboard)/**/*.tsx
+  - app/api/**/*.ts
+  - app/actions/*.ts
+alwaysApply: true
+---
+
+## RBAC rules — always follow these when creating or editing features
+
+### New page (app/(dashboard)/**page.tsx)
+1. Add a permission to `lib/permissions.ts` if one doesn't exist yet:
+   - Format: `"resource:action"` e.g. `"invoices:view"`, `"invoices:manage"`
+   - Add to the PERMISSIONS object AND the Permission type
+   - Add a human label to PERMISSION_LABELS
+   - Add a Greek description to PERMISSION_DESCRIPTIONS
+2. Add the permission to DEFAULT_ROLE_PERMISSIONS in `lib/permissions.ts` for the relevant roles
+3. Add `requireAdminRoute(user, PERMISSIONS.YOUR_PERMISSION)` at the top of the page server component
+4. If the page should appear in the sidebar, add a nav item with `requiresPermission: PERMISSIONS.YOUR_PERMISSION` in `lib/nav-config.ts`
+5. Run `npx tsx scripts/sync-airtable-role-options.ts` is NOT needed for permissions — only for new role slugs
+
+### New API route (app/api/**route.ts)
+1. Always start every handler with:
+```ts
+   const session = await getSessionFromCookies()
+   if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+   if (!hasPermission(session, PERMISSIONS.YOUR_PERMISSION)) return Response.json({ error: 'Forbidden' }, { status: 403 })
+```
+2. Use an existing permission if one covers the resource, or add a new one following the page rules above
+3. Never use raw `user.role === "admin"` checks — always use `hasPermission()`
+
+### New server action (app/actions/*.ts)
+1. Always start with `requireAccountsPermission()` pattern or inline:
+```ts
+   const user = await getSessionFromCookies()
+   if (!user) redirect(ROUTES.login)
+   if (!hasPermission(user, PERMISSIONS.YOUR_PERMISSION)) redirect(ROUTES.dashboard)
+```
+2. Never use raw role checks
+
+### Adding permission to DEFAULT_ROLE_PERMISSIONS
+- admin → always include all permissions (admin has ALL_PERMISSIONS)
+- manager → include unless it's a destructive/config permission
+- chatter → only if chatters genuinely need this feature
+- virtual_assistant → only if VAs genuinely need this feature  
+- model → only if models need it
+- client → only if clients need it
+
+### Checklist before committing any new feature
+- [ ] Permission added to PERMISSIONS object in lib/permissions.ts
+- [ ] Permission added to PERMISSION_LABELS and PERMISSION_DESCRIPTIONS
+- [ ] Permission added to correct roles in DEFAULT_ROLE_PERMISSIONS
+- [ ] Page guard uses requireAdminRoute() or hasPermission()
+- [ ] API route returns 401 (no session) and 403 (no permission)
+- [ ] Nav item has requiresPermission if page should be in sidebar
+- [ ] No raw user.role === "..." checks added
