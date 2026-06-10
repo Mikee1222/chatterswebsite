@@ -18,6 +18,8 @@ import {
   type UpdateModelPeriodInput,
 } from "@/services/model-periods";
 import type { PeriodLoggedBy } from "@/types";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 function revalidatePeriodRelatedPaths() {
   revalidatePath(ROUTES.admin.models);
@@ -48,7 +50,7 @@ async function getLinkedModelIdForSession(): Promise<string | null> {
 async function canManagePeriodForModel(modelId: string): Promise<boolean> {
   const session = await getSessionFromCookies();
   if (!session) return false;
-  if (session.role === "admin" || session.role === "manager") return true;
+  if (await hasPermission(session, PERMISSIONS.MODELS_MANAGE)) return true;
   if (getEffectiveStaffRole(session) === "virtual_assistant") return true;
   if (session.role === "model") {
     const linked = await getLinkedModelIdForSession();
@@ -75,8 +77,7 @@ export async function logPeriodAction(
 
   const eff = getEffectiveStaffRole(session);
   const allowed =
-    session.role === "admin" ||
-    session.role === "manager" ||
+    (await hasPermission(session, PERMISSIONS.MODELS_MANAGE)) ||
     eff === "virtual_assistant" ||
     (session.role === "model" && (await getLinkedModelIdForSession()) === modelId);
 

@@ -1,7 +1,24 @@
 import type { TransactionTypeOption } from "@/lib/airtable-options";
+import type { Permission } from "@/lib/permissions";
 
 /** Role from Airtable users table; auth must match. */
 export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "model" | "client";
+
+/** Alias for permission strings used in RBAC checks. */
+export type PermissionKey = Permission;
+
+/** Airtable `roles` table row. */
+export interface RoleRecord {
+  id: string;
+  role_id: string;
+  label: string;
+  description: string;
+  permissions: Permission[];
+  is_system_role: boolean;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
 
 /** Airtable `users.va_type` — VA specialization (chatting, marketing, or both). */
 export type VaType = "chatting" | "marketing" | "both";

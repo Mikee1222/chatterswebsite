@@ -12,6 +12,8 @@ import {
   runLevelFromPointsMigrationIfNeeded,
   type LeaderboardRow,
 } from "@/services/points-engine";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export async function getLeaderboardForPeriodAction(
   period: "weekly" | "monthly" | "alltime"
@@ -28,7 +30,7 @@ export async function deletePointsLedgerEntryAction(
   transactionId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+  if (!user || !(await hasPermission(user, PERMISSIONS.REWARDS_MANAGE))) {
     return { success: false, error: "Unauthorized" };
   }
   const id = transactionId.trim();
@@ -52,7 +54,7 @@ export async function awardManualPointsAction(
   reason: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+  if (!user || !(await hasPermission(user, PERMISSIONS.REWARDS_MANAGE))) {
     return { success: false, error: "Unauthorized" };
   }
   const uid = userId.trim();
@@ -72,7 +74,7 @@ export async function resetWeeklyLeaderboardCacheAction(
   confirmPhrase: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.REWARDS_CONFIG))) {
     return { success: false, error: "Admin only." };
   }
   if (confirmPhrase.trim() !== "RESET") {

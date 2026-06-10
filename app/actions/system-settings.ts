@@ -11,6 +11,8 @@ import {
   type ParsedHiddenNavConfig,
   type VaHiddenNavByType,
 } from "@/lib/nav-config";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 const NAV_VISIBILITY_KEY = "hidden_nav_items";
 const NAV_VISIBILITY_DESCRIPTION =
@@ -40,7 +42,7 @@ function normalizeVaByType(raw: VaHiddenNavByType | null | undefined): VaHiddenN
 /** Load hidden nav config from Airtable (admin UI). */
 export async function getNavVisibilityAction(): Promise<NavVisibilityState> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.SETTINGS_MANAGE))) {
     return emptyNavVisibilityState();
   }
   const raw = await getSystemSetting(NAV_VISIBILITY_KEY).catch(() => null);
@@ -57,7 +59,7 @@ export async function getNavVisibilityAction(): Promise<NavVisibilityState> {
  */
 export async function setNavVisibilityAction(state: NavVisibilityState): Promise<NavVisibilityActionResult> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.SETTINGS_MANAGE))) {
     return { success: false, error: "Only admins can update navigation visibility." };
   }
   try {

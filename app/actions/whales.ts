@@ -17,12 +17,14 @@ import {
   whaleAssignedToYou,
 } from "@/lib/notification-copy";
 import { devLog } from "@/lib/dev-log";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 const WHALES_TABLE = "whales";
 
-async function requireAdminManager(): Promise<{ ok: true } | { ok: false; error: string }> {
+async function requireWhalesAssign(): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+  if (!user || !(await hasPermission(user, PERMISSIONS.WHALES_ASSIGN))) {
     return { ok: false, error: "Unauthorized" };
   }
   return { ok: true };
@@ -254,7 +256,7 @@ export async function assignWhaleToChatter(
   chatterName: string
 ): Promise<AssignWhaleResult> {
   try {
-    const gate = await requireAdminManager();
+    const gate = await requireWhalesAssign();
     if (!gate.ok) return { success: false, error: gate.error };
 
     await updateWhale(whaleRecordId, {
@@ -310,7 +312,7 @@ export async function assignWhaleToModel(
   modelName: string
 ): Promise<AssignWhaleResult> {
   try {
-    const gate = await requireAdminManager();
+    const gate = await requireWhalesAssign();
     if (!gate.ok) return { success: false, error: gate.error };
 
     await updateWhale(whaleRecordId, {
@@ -343,7 +345,7 @@ export async function assignWhaleToModel(
 /** Clear assigned model from a whale. */
 export async function clearWhaleModel(whaleRecordId: string): Promise<AssignWhaleResult> {
   try {
-    const gate = await requireAdminManager();
+    const gate = await requireWhalesAssign();
     if (!gate.ok) return { success: false, error: gate.error };
 
     await updateWhale(whaleRecordId, {
@@ -362,7 +364,7 @@ export async function clearWhaleModel(whaleRecordId: string): Promise<AssignWhal
 /** Clear assigned chatter from a whale. */
 export async function clearWhaleChatter(whaleRecordId: string): Promise<AssignWhaleResult> {
   try {
-    const gate = await requireAdminManager();
+    const gate = await requireWhalesAssign();
     if (!gate.ok) return { success: false, error: gate.error };
 
     const before = await getWhaleById(whaleRecordId);
@@ -441,7 +443,7 @@ export async function updateWhaleFields(
 export async function deleteWhale(whaleRecordId: string): Promise<AssignWhaleResult> {
   try {
     const user = await getSessionFromCookies();
-    if (!user || (user.role !== "admin" && user.role !== "manager")) {
+    if (!user || !(await hasPermission(user, PERMISSIONS.WHALES_MANAGE))) {
       return { success: false, error: "Unauthorized" };
     }
 

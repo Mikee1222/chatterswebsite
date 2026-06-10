@@ -24,10 +24,13 @@ import {
 } from "@/services/users";
 import type { VaType } from "@/types";
 import { devLog } from "@/lib/dev-log";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS, type Permission } from "@/lib/permissions";
 
-async function requireAdmin() {
+async function requireAccountsPermission(permission: Permission) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user) redirect(ROUTES.login);
+  if (!(await hasPermission(user, permission))) redirect(ROUTES.dashboard);
   return user;
 }
 
@@ -39,7 +42,7 @@ function parseVaType(raw: string): VaType | null {
 }
 
 export async function createAccount(formData: FormData) {
-  await requireAdmin();
+  await requireAccountsPermission(PERMISSIONS.ACCOUNTS_CREATE);
   const full_name = (formData.get("full_name") as string)?.trim() ?? "";
   const email = (formData.get("email") as string)?.trim()?.toLowerCase() ?? "";
   const role = (formData.get("role") as CreateUserInput["role"]) ?? "chatter";
@@ -88,7 +91,7 @@ export async function createAccount(formData: FormData) {
 }
 
 export async function updateAccount(formData: FormData) {
-  await requireAdmin();
+  await requireAccountsPermission(PERMISSIONS.ACCOUNTS_EDIT);
   const recordId = (formData.get("recordId") as string)?.trim();
   if (!recordId) redirect(ROUTES.accounts + "?error=missing_record");
 
@@ -165,7 +168,7 @@ export async function updateAccount(formData: FormData) {
 }
 
 export async function setAccountPassword(formData: FormData) {
-  await requireAdmin();
+  await requireAccountsPermission(PERMISSIONS.ACCOUNTS_RESET_PASSWORD);
   const recordId = (formData.get("recordId") as string)?.trim();
   if (!recordId) redirect(ROUTES.accounts + "?error=missing_record");
   const password = (formData.get("password") as string)?.trim() ?? "";
@@ -185,7 +188,7 @@ export async function setAccountPassword(formData: FormData) {
 }
 
 export async function toggleCanLogin(formData: FormData) {
-  await requireAdmin();
+  await requireAccountsPermission(PERMISSIONS.ACCOUNTS_EDIT);
   const recordId = (formData.get("recordId") as string)?.trim();
   const canLogin = formData.get("can_login") === "true";
   if (!recordId) redirect(ROUTES.accounts + "?error=missing_record");
@@ -201,7 +204,7 @@ export async function toggleCanLogin(formData: FormData) {
 }
 
 export async function deleteUserAction(recordId: string) {
-  await requireAdmin();
+  await requireAccountsPermission(PERMISSIONS.ACCOUNTS_DELETE);
   const id = recordId?.trim();
   if (!id) {
     redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Missing user record"));

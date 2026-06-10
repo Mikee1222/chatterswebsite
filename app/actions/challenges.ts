@@ -6,6 +6,8 @@ import { ROUTES } from "@/lib/routes";
 import { deleteProgressForChallenge } from "@/services/challenges";
 import type { ChallengeMetric } from "@/lib/challenges";
 import { createRecord, deleteRecord, updateRecord } from "@/lib/airtable-server";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 const TABLE = "challenges";
 
@@ -22,11 +24,10 @@ export type ChallengeData = {
   assigned_user_ids: string[];
 };
 
-function requireAdminSession() {
-  return getSessionFromCookies().then((u) => {
-    if (!u || u.role !== "admin") return null;
-    return u;
-  });
+async function requireChallengesManage() {
+  const u = await getSessionFromCookies();
+  if (!u || !(await hasPermission(u, PERMISSIONS.CHALLENGES_MANAGE))) return null;
+  return u;
 }
 
 function assignedUsersCsv(ids: string[] | undefined): string {
@@ -51,7 +52,7 @@ function normalizeCreatePayload(data: ChallengeData): Record<string, unknown> {
 export async function createChallengeAction(
   data: ChallengeData
 ): Promise<{ success: true; id: string } | { success: false; error: string }> {
-  const session = await requireAdminSession();
+  const session = await requireChallengesManage();
   if (!session) return { success: false, error: "Unauthorized" };
   if (!data.title.trim()) return { success: false, error: "Title is required." };
 
@@ -73,7 +74,7 @@ export async function updateChallengeAction(
   id: string,
   data: Partial<ChallengeData>
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const session = await requireAdminSession();
+  const session = await requireChallengesManage();
   if (!session) return { success: false, error: "Unauthorized" };
   if (!id.trim()) return { success: false, error: "Missing id." };
 
@@ -105,7 +106,7 @@ export async function updateChallengeAction(
 export async function deleteChallengeAction(
   id: string
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const session = await requireAdminSession();
+  const session = await requireChallengesManage();
   if (!session) return { success: false, error: "Unauthorized" };
   if (!id.trim()) return { success: false, error: "Missing id." };
 

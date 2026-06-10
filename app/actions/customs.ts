@@ -14,6 +14,8 @@ import { getUserByAirtableId } from "@/services/users";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { CustomRequestAdminStatus } from "@/types";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export type UpdateCustomStatusResult = { success: true } | { success: false; error: string };
 
@@ -38,7 +40,7 @@ export async function deleteCustomRequestAction(
   const staffRole = getEffectiveStaffRole(user);
   const sessionRecordId = (user.airtableUserId ?? user.id)?.trim() ?? "";
 
-  if (role === "admin" || role === "manager") {
+  if (await hasPermission(user, PERMISSIONS.CUSTOM_REQUESTS_MANAGE)) {
     // Agency staff may delete any custom request.
   } else if (staffRole === "virtual_assistant" || role === "virtual_assistant") {
     if (existing.admin_status !== "pending") {

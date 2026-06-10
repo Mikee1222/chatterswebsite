@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { createRecord, getRecord, updateRecord } from "@/lib/airtable-server";
 import { awardPoints, consumeOneSpin, refundOneSpin } from "@/services/points-engine";
@@ -159,7 +161,7 @@ export async function markSpinClaimedAction(
   spinId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
+  if (!user || !(await hasPermission(user, PERMISSIONS.SPIN_WHEEL_MANAGE))) {
     return { success: false, error: "Unauthorized" };
   }
   if (!spinId.trim()) return { success: false, error: "Missing spin id." };

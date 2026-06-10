@@ -3,6 +3,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import {
   createRecord,
@@ -89,7 +91,7 @@ export type SaveSpinWheelPrizesResult =
 
 export async function saveSpinWheelPrizesAction(raw: unknown): Promise<SaveSpinWheelPrizesResult> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.SPIN_WHEEL_MANAGE))) {
     return { success: false, error: "Unauthorized" };
   }
 

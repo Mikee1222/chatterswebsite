@@ -18,16 +18,14 @@ import {
 } from "@/services/va-tasks";
 import { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import type { VaTaskRecord, VaTaskStatus } from "@/types";
-
-function isAdminLike(role: string | undefined) {
-  return role === "admin" || role === "manager";
-}
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export type VaTaskActionResult = { success: true; task?: VaTaskRecord } | { success: false; error: string };
 
 export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
-  if (!user || !isAdminLike(user.role)) return { success: false, error: "Unauthorized." };
+  if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) return { success: false, error: "Unauthorized." };
 
   const actorId = getNotificationUserId(user) ?? user.airtableUserId ?? user.id;
   if (!input.title?.trim()) return { success: false, error: "Title is required." };
@@ -49,7 +47,7 @@ export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTa
 
 export async function updateVaTaskAction(id: string, data: VaTaskUpdateInput): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
-  if (!user || !isAdminLike(user.role)) return { success: false, error: "Unauthorized." };
+  if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) return { success: false, error: "Unauthorized." };
   try {
     await updateVaTask(id, data);
     revalidatePath(ROUTES.admin.vaTasks);
@@ -167,7 +165,7 @@ export async function updateVaTaskStatusAction(input: {
 
 export async function deleteVaTaskAction(id: string): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
-  if (!user || !isAdminLike(user.role)) return { success: false, error: "Unauthorized." };
+  if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) return { success: false, error: "Unauthorized." };
   try {
     await deleteVaTask(id);
     revalidatePath(ROUTES.admin.vaTasks);

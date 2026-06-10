@@ -8,6 +8,8 @@ import { getPointsConfig } from "@/services/points-config";
 import { awardPoints, clearLeaderboardCacheAdminDebug, finalLevelNoDowngrade } from "@/services/points-engine";
 import { applyPointsAuditFixAll, runPointsAudit, type PointsAuditIssue } from "@/services/points-debug-audit";
 import { REWARDS_TEST_EVENT_TYPES, type RewardsTestEventType } from "@/lib/rewards-debug-constants";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 const CHATTER_POINTS = "chatter_points";
 
@@ -43,7 +45,7 @@ export async function simulateTestPointsAction(
   eventType: string
 ): Promise<SimulateTestPointsResult> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC))) {
     return { success: false, error: "Admin only." };
   }
   const uid = userId.trim();
@@ -107,7 +109,7 @@ export async function runPointsAuditAction(): Promise<
   { success: true; issues: PointsAuditIssue[] } | { success: false; error: string; issues: PointsAuditIssue[] }
 > {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC))) {
     return { success: false, error: "Admin only.", issues: [] };
   }
   try {
@@ -124,7 +126,7 @@ export async function fixPointsAuditAction(): Promise<
   | { success: false; error: string }
 > {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC))) {
     return { success: false, error: "Admin only." };
   }
   try {
@@ -142,7 +144,7 @@ export async function fixPointsAuditAction(): Promise<
 
 export async function clearLeaderboardCacheDebugAction(): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC))) {
     return { success: false, error: "Admin only." };
   }
   clearLeaderboardCacheAdminDebug();

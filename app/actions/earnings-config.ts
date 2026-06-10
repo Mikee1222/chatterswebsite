@@ -2,12 +2,14 @@
 
 import { getSessionFromCookies } from "@/lib/auth";
 import { upsertManyEarningsConfigRows } from "@/services/earnings-config";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export async function saveEarningsAgencyCutPercentsAction(
   rows: { model_id: string; agency_cut_percent: number }[]
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.EARNINGS_CONFIG))) {
     return { ok: false, error: "Unauthorized." };
   }
   try {

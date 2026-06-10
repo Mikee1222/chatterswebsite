@@ -9,14 +9,15 @@ import {
   agencyEditCustomRequest,
 } from "@/services/custom-request-agency-queue";
 import { listCustomRequestsPaginated } from "@/services/custom-requests";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
-function assertAdminOrManager() {
-  return getSessionFromCookies().then((u) => {
-    if (!u || (u.role !== "admin" && u.role !== "manager")) {
-      throw new Error("Unauthorized");
-    }
-    return u;
-  });
+async function assertCustomRequestsManage() {
+  const u = await getSessionFromCookies();
+  if (!u || !(await hasPermission(u, PERMISSIONS.CUSTOM_REQUESTS_MANAGE))) {
+    throw new Error("Unauthorized");
+  }
+  return u;
 }
 
 const idSchema = z.string().trim().min(1);
@@ -42,7 +43,7 @@ export type LoadMoreCustomRequestsResult =
 
 export async function adminLoadMoreCustomRequests(offset: string): Promise<LoadMoreCustomRequestsResult> {
   try {
-    await assertAdminOrManager();
+    await assertCustomRequestsManage();
     const o = offset?.trim();
     if (!o) return { ok: false, error: "Invalid cursor." };
     const batch = await listCustomRequestsPaginated({}, 1, 50, o);
@@ -64,7 +65,7 @@ export async function adminLoadMoreCustomRequests(offset: string): Promise<LoadM
  */
 export async function adminApproveCustomRequest(recordId: string): Promise<ActionResult> {
   try {
-    await assertAdminOrManager();
+    await assertCustomRequestsManage();
     const id = idSchema.safeParse(recordId);
     if (!id.success) return { ok: false, error: "Invalid record id." };
     const res = await agencyApproveCustomRequest(id.data);
@@ -85,7 +86,7 @@ export async function adminDeclineCustomRequest(input: z.infer<typeof declineSch
     return { ok: false, error: parsed.error.issues.map((x) => x.message).join(" ") };
   }
   try {
-    await assertAdminOrManager();
+    await assertCustomRequestsManage();
     const res = await agencyDeclineCustomRequest(parsed.data.recordId, parsed.data.decline_reason);
     if (!res.ok) return res;
     revalidateCustomRequestSurfaces();
@@ -104,7 +105,7 @@ export async function adminEditCustomRequest(input: z.infer<typeof editSchema>):
     return { ok: false, error: parsed.error.issues.map((x) => x.message).join(" ") };
   }
   try {
-    await assertAdminOrManager();
+    await assertCustomRequestsManage();
     const res = await agencyEditCustomRequest(
       parsed.data.recordId,
       {

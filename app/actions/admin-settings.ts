@@ -5,20 +5,21 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getAdminNotificationIds, setAdminNotificationIds } from "@/services/admin-notification-settings";
 import { getUserByAirtableId } from "@/services/users";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export type AdminNotificationUserRow = { id: string; name: string; email: string };
 
-function requireAdmin() {
-  return getSessionFromCookies().then((u) => {
-    if (!u || u.role !== "admin") return null;
-    return u;
-  });
+async function requireSettingsManage() {
+  const u = await getSessionFromCookies();
+  if (!u || !(await hasPermission(u, PERMISSIONS.SETTINGS_MANAGE))) return null;
+  return u;
 }
 
 export async function getAdminNotificationUsers(): Promise<
   { success: true; users: AdminNotificationUserRow[] } | { success: false; error: string }
 > {
-  const session = await requireAdmin();
+  const session = await requireSettingsManage();
   if (!session) return { success: false, error: "Unauthorized" };
 
   const ids = await getAdminNotificationIds();
@@ -39,7 +40,7 @@ export async function getAdminNotificationUsers(): Promise<
 export async function addAdminNotificationUser(
   userId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const session = await requireAdmin();
+  const session = await requireSettingsManage();
   if (!session) return { success: false, error: "Unauthorized" };
 
   const trimmed = userId?.trim();
@@ -59,7 +60,7 @@ export async function addAdminNotificationUser(
 export async function removeAdminNotificationUser(
   userId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
-  const session = await requireAdmin();
+  const session = await requireSettingsManage();
   if (!session) return { success: false, error: "Unauthorized" };
 
   const trimmed = userId?.trim();

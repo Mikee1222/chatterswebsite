@@ -26,6 +26,8 @@ import { updateModel, getModelById } from "@/services/modelss";
 import { batchCreateRecords, batchUpdateRecords, deleteRecord, listRecords } from "@/lib/airtable-server";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { awardShiftEndPoints } from "@/services/points-engine";
@@ -1106,7 +1108,7 @@ export type AdminForceEndShiftResult = { success: true } | { success: false; err
 export async function adminForceEndShift(shiftId: string, reason?: string): Promise<AdminForceEndShiftResult> {
   try {
     const session = await getSessionFromCookies();
-    if (!session || (session.role !== "admin" && session.role !== "manager")) {
+    if (!session || !(await hasPermission(session, PERMISSIONS.SHIFTS_MANAGE))) {
       return { success: false, error: "Unauthorized." };
     }
     const id = shiftId?.trim();

@@ -15,6 +15,8 @@ import { countPendingVAContentAssignments } from "@/services/va-content-assignme
 import { countWhalesWithoutChatter } from "@/services/whales";
 import type { ModelLang } from "@/lib/model-i18n";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({
@@ -49,7 +51,7 @@ export default async function DashboardLayout({
   const hiddenNavRaw = await getSystemSetting("hidden_nav_items").catch(() => null);
   const hiddenNavConfig = parseHiddenNavSettingJson(hiddenNavRaw);
   const navBadgeCounts: Record<string, number> = {};
-  if (user.role === "admin" || user.role === "manager") {
+  if (await hasPermission(user, PERMISSIONS.WHALES_ASSIGN)) {
     navBadgeCounts[ROUTES.admin.vaContentAssignments] = await countPendingVAContentAssignments().catch(() => 0);
     navBadgeCounts[ROUTES.admin.whales] = await countWhalesWithoutChatter().catch(() => 0);
   }

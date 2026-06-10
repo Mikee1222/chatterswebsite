@@ -5,6 +5,8 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { invalidatePointsConfigCache } from "@/services/points-engine";
 import { DEFAULT_CONFIG, savePointsConfig, type PointsConfig } from "@/services/points-config";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 function mergeConfig(input: Partial<PointsConfig>): PointsConfig {
   const out: Record<keyof PointsConfig, number> = { ...(DEFAULT_CONFIG as unknown as Record<keyof PointsConfig, number>) };
@@ -20,7 +22,7 @@ export async function saveRewardsConfigAction(
   config: Partial<PointsConfig>
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.REWARDS_CONFIG))) {
     return { success: false, error: "Unauthorized" };
   }
   await savePointsConfig(mergeConfig(config));
