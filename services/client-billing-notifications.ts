@@ -68,7 +68,7 @@ async function amountDueForClient(
 }
 
 const BILLING_CYCLE_ANNOUNCED_AIRTABLE =
-  EVENT_TYPE_TO_AIRTABLE.billing_cycle_announced ?? "billing_cycle_announced";
+  EVENT_TYPE_TO_AIRTABLE.system_alert ?? "system_alert";
 
 // Called when a billing cycle is created or status changes to "announced"
 export async function notifyClientBillingAnnounced(
@@ -99,7 +99,7 @@ export async function notifyClientBillingAnnounced(
 
   await notify({
     user_id: clientId,
-    event_type: "billing_cycle_announced",
+    event_type: "system_alert",
     priority: "high",
     title: `📋 Payment Due — ${kindLabel} ${period}`,
     body: `💳 Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,

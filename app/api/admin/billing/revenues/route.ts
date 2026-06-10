@@ -84,7 +84,7 @@ export async function POST(req: Request) {
 
         await notify({
           user_id: String(clientId),
-          event_type: "billing_cycle_announced",
+          event_type: "system_alert",
           priority: "high",
           title: "📋 New Revenue Entry",
           body: `💳 A new revenue entry has been added to your billing cycle.${amount ? ` Fee: ${amount}` : ""}`,

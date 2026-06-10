@@ -95,7 +95,7 @@ export async function POST(req: Request) {
         const { notify } = await import("@/services/notification-service");
         const result = await notify({
           user_id: clientId,
-          event_type: "billing_cycle_announced",
+          event_type: "system_alert",
           priority: "high",
           title: `📋 New Billing Cycle`,
           body: `💳 A new ${kindLabel} billing cycle has been created. Amount: ${amount}. Due: ${dueDateFormatted}.`,

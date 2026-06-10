@@ -15,7 +15,7 @@ function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCooki
 }
 
 const BILLING_CYCLE_ANNOUNCED_AIRTABLE =
-  EVENT_TYPE_TO_AIRTABLE.billing_cycle_announced ?? "billing_cycle_announced";
+  EVENT_TYPE_TO_AIRTABLE.system_alert ?? "system_alert";
 
 const patchSchema = z.object({
   client: z.array(z.string()).optional(),
@@ -86,7 +86,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
           await notify({
             user_id: clientId,
-            event_type: "billing_cycle_announced",
+            event_type: "system_alert",
             priority: "high",
             title: "📋 Payment Due",
             body: `⏰ Your ${kindLabel} payment of $${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"} is due on ${dueDateFormatted}.`,
