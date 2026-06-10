@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { deleteWhale } from "@/app/actions/whales";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "whales:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const id = params.id?.trim();
   if (!id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasAnyPermission } from "@/lib/rbac";
 import { getClientAirtableId } from "@/lib/client-session";
 import { getBillingCycleById } from "@/services/client-billing";
 import { getClientById, markBillingCycleAsNotified, markInvoiceAsViewed, markSubmissionAsSeen, submitClientPaymentProof } from "@/services/client-portal";
@@ -18,9 +19,8 @@ type SubmitBody = {
 
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "client") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasAnyPermission(user, ["payments:submit", "clients:view"]))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: SubmitBody;
   try {
@@ -121,9 +121,8 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "client") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasAnyPermission(user, ["payments:submit", "clients:view"]))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: { action?: string; recordId?: string };
   try {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { listRecords } from "@/lib/airtable-server";
 import { getPushTargetPath } from "@/lib/notification-routes";
 import { sendWebPush } from "@/lib/web-push-server";
@@ -39,8 +40,9 @@ function checkValuePassed(c: unknown): boolean {
  */
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "admin") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "notifications:diagnostic"))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   const { searchParams } = new URL(req.url);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import {
   isNotificationTestingEnabled,
   type NotificationTestUserOption,
@@ -101,8 +102,11 @@ async function assertAdminAndTestingEnabled(): Promise<
     return { ok: false, response: NextResponse.json({ error: "Not found" }, { status: 404 }) };
   }
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "admin") {
+  if (!session) {
     return { ok: false, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  if (!(await hasPermission(session, "notifications:diagnostic"))) {
+    return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
   }
   return { ok: true };
 }

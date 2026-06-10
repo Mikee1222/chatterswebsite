@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { reorderQuizQuestions } from "@/services/sop-quiz";
-
-function isStaffAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const bodySchema = z.object({
   ordered_ids: z.array(z.string().trim().min(1)).min(1),
@@ -13,9 +10,8 @@ const bodySchema = z.object({
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isStaffAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "sops:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: unknown;
   try {

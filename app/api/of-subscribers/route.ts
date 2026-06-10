@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasAnyPermission } from "@/lib/rbac";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { OF_SUBSCRIBERS_TABLE } from "@/lib/airtable-schema";
 import {
@@ -55,12 +56,8 @@ function maxIso(dates: (string | undefined)[]): string | null {
 
 export async function GET(req: Request) {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (user.role !== "admin" && user.role !== "manager" && user.role !== "chatter") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasAnyPermission(user, ["earnings:view", "whales:view"]))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const ofUserId = searchParams.get("of_user_id")?.trim();

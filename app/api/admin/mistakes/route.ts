@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { listMistakesForAdmin, type MistakeAdminListFilters } from "@/services/chatter-mistakes";
-
-function isAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "mistakes:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const filters: MistakeAdminListFilters = {

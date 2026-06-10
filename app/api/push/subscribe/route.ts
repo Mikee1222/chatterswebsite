@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getNotificationUserId } from "@/lib/notification-user";
 
 const AUTH_DEBUG = "[auth-debug]";
@@ -19,9 +20,8 @@ type SubscribeBody = {
 
 export async function POST(request: Request) {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "settings:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const userId = getNotificationUserId(user);
   const session = user;
   devLog("[push-subscribe-debug]", {

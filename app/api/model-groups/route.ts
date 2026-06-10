@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { createRecord, listAllRecords } from "@/lib/airtable-server";
 
 const TABLE = "model_groups";
@@ -30,9 +31,8 @@ function mapGroup(r: { id: string; fields: ModelGroupFields }) {
 
 export async function GET() {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "models:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const records = await listAllRecords<ModelGroupFields>(TABLE, { _caller: "model-groups.GET" });
     return NextResponse.json(records.map(mapGroup));
@@ -44,9 +44,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "models:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const body = await req.json();
     const name = String(body?.name ?? "").trim();

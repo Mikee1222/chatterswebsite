@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { notify } from "@/services/notification-service";
 import { awardPoints } from "@/services/points-engine";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -10,10 +11,6 @@ import {
   updateMistakeRow,
 } from "@/services/chatter-mistakes";
 
-function isAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
-
 const patchSchema = z.object({
   action: z.enum(["approve", "reject"]),
   admin_notes: z.string().max(8000).optional().default(""),
@@ -21,9 +18,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "mistakes:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const adminId = (session!.airtableUserId ?? session!.id)?.trim();
   if (!adminId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 

@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getInflowwTransactions } from "@/lib/infloww-api";
 
 export async function GET(req: Request) {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "earnings:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const { searchParams } = new URL(req.url);
     const creatorIdsRaw = searchParams.get("creatorIds");

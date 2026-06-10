@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
 import { createRecord } from "@/lib/airtable-server";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
@@ -14,9 +14,8 @@ function normalizeSubUsername(raw: string): string {
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "chatter") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "shifts:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const formData = await req.formData();
   const model_id = String(formData.get("model_id") ?? "").trim();

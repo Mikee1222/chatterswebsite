@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import {
   deleteBillingCycle,
@@ -9,10 +10,6 @@ import {
 } from "@/services/client-billing";
 import { formatDueDateElGr, kindLabelFor } from "@/services/client-billing-notifications";
 import { findExistingNotification } from "@/services/notifications";
-
-function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const BILLING_CYCLE_ANNOUNCED_AIRTABLE =
   EVENT_TYPE_TO_AIRTABLE.system_alert ?? "system_alert";
@@ -36,9 +33,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "billing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   const current = await getBillingCycleById(id);
@@ -109,9 +104,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "billing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   try {

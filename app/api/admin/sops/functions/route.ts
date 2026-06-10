@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { createFunction, getFunctionsByRoleAdmin } from "@/services/sops";
-
-function isStaffAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const cadenceSchema = z.enum(["daily", "weekly", "monthly"]);
 
@@ -28,9 +25,8 @@ const postSchema = z.object({
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isStaffAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "sops:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const roleId = new URL(req.url).searchParams.get("role_id")?.trim() ?? "";
   if (!roleId) {
@@ -48,9 +44,8 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isStaffAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "sops:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: unknown;
   try {

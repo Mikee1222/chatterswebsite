@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { createMistakeReason, getAllMistakeReasons } from "@/services/chatter-mistakes";
 import type { MistakeReasonCategory } from "@/services/chatter-mistakes";
-
-function isAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const postSchema = z.object({
   label: z.string().trim().min(1).max(500),
@@ -19,9 +16,7 @@ const postSchema = z.object({
 
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "mistakes:reasons-manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const reasons = await getAllMistakeReasons();
     return NextResponse.json({ reasons });
@@ -33,9 +28,7 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "mistakes:reasons-manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: unknown;
   try {

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getInflowwEarningsSnapshot, InflowwApiError } from "@/lib/infloww-api";
 import type { InflowwEarningsResponse } from "@/types/infloww";
 import { listEarningsAgencyCutConfig } from "@/services/earnings-config";
@@ -14,12 +15,8 @@ function cacheKey(from: string, to: string, modelId: string, agencySig: string) 
 
 export async function GET(req: NextRequest) {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (user.role !== "admin" && user.role !== "manager") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "earnings:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const from = req.nextUrl.searchParams.get("from") ?? "";
   const to = req.nextUrl.searchParams.get("to") ?? "";

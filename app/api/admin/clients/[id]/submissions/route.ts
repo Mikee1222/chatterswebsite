@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { getRecord } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getPendingPaymentSubmissionsForClient } from "@/services/client-portal";
 import type { PaymentSubmissionRecord } from "@/types/client-portal";
-
-function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 type EnrichedSubmission = PaymentSubmissionRecord & {
   payment_method_label?: string;
@@ -49,9 +46,7 @@ async function enrichSubmissionsWithPaymentMethods(
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   const submissions = await getPendingPaymentSubmissionsForClient(id);

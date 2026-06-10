@@ -2,21 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { listAllRecords } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import {
   getAdminClientById,
   getClientBillingCycles,
   updateAdminClient,
 } from "@/services/client-portal";
 
-function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
-
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
 
@@ -108,9 +103,7 @@ const patchSchema = z
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   let json: unknown;

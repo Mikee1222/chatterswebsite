@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { softDeleteMistakeReason, updateMistakeReasonRow } from "@/services/chatter-mistakes";
 import type { MistakeReasonCategory } from "@/services/chatter-mistakes";
-
-function isAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const patchSchema = z.object({
   label: z.string().trim().min(1).max(500).optional(),
@@ -18,9 +15,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "mistakes:reasons-manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -58,9 +53,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "mistakes:reasons-manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });

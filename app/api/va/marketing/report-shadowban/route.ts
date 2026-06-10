@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasAnyPermission } from "@/lib/rbac";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
@@ -10,15 +11,12 @@ import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasAnyPermission(session, ["marketing:manage", "marketing:shadowban-report"]))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const staff = getEffectiveStaffRole(session);
   const isVa = staff === "virtual_assistant";
-  const isAdmin = session.role === "admin" || session.role === "manager";
-  if (!isVa && !isAdmin) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
   if (isVa) {
     const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.marketingAccounts);
     if (blocked) return blocked;

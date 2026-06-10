@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 
 const ALLOWED_IMAGE_HOSTNAMES = [
   "v5.airtableusercontent.com",
@@ -30,9 +31,8 @@ function parseSafeImageUrl(rawUrl: string | null): URL | null {
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "settings:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { searchParams } = new URL(req.url);
   const imageUrl = parseSafeImageUrl(searchParams.get("url"));

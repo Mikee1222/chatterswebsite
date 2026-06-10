@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { deleteFineBonus, updateFineBonus } from "@/services/fines-bonuses";
-
-function isAdminOnly(session: { role: string } | null): boolean {
-  return session != null && session.role === "admin";
-}
 
 const patchSchema = z.object({
   type: z.enum(["bonus", "fine"]).optional(),
@@ -17,9 +14,7 @@ const patchSchema = z.object({
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOnly(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "fines:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -50,9 +45,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOnly(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "fines:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });

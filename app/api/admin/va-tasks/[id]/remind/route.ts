@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getVaTaskById } from "@/services/va-tasks";
 import { notify } from "@/services/notification-service";
 import { listAllUsers } from "@/services/users";
@@ -8,9 +9,8 @@ import { formatDateTimeAthens } from "@/lib/format";
 
 export async function POST(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "va-tasks:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id: rawId } = await ctx.params;
   const id = rawId?.trim();

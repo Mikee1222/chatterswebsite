@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import { addDaysAthensYmd, getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
@@ -18,10 +19,8 @@ type UserFields = {
  */
 export async function GET() {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (user.role !== "model") {
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "models:view"))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

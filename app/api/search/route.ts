@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { listRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { escapeAirtableString } from "@/lib/airtable-linked";
 import { getUserByAirtableId } from "@/services/users";
@@ -37,7 +38,7 @@ export async function GET(req: Request) {
   const qLower = raw.toLowerCase();
   const staffMode = getEffectiveStaffRole(session);
 
-  const isStaffAdmin = session.role === "admin" || session.role === "manager";
+  const canSearchUsers = await hasPermission(session, "accounts:view");
   const chatterRecordId = (session.airtableUserId ?? session.id)?.trim() || "";
 
   let modelLinkedRecordId: string | null = null;
@@ -128,7 +129,7 @@ export async function GET(req: Request) {
     })();
 
     const usersPromise = (async (): Promise<SearchHit[]> => {
-      if (!isStaffAdmin) return [];
+      if (!canSearchUsers) return [];
       const namePart = lowerFindFormula("full_name", qLower);
       const emailPart = lowerFindFormula("email", qLower);
       const formula = `OR(${namePart}, ${emailPart})`;

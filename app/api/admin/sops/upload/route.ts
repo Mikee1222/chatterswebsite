@@ -1,15 +1,13 @@
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-
-function isStaffAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
+import { hasPermission } from "@/lib/rbac";
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isStaffAdmin(session)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "sops:manage"))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const form = await req.formData();
   const file = form.get("file") as File;

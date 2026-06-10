@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { notify } from "@/services/notification-service";
 import {
   isChatterExtraRevenueSubmission,
   reviewExtraRevenueSubmission,
 } from "@/services/fines-bonuses";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-
-function isStaffAdmin(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const reviewSchema = z.object({
   action: z.enum(["approve", "reject"]),
@@ -19,9 +16,8 @@ const reviewSchema = z.object({
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isStaffAdmin(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "fines:review"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const adminId = (session!.airtableUserId ?? session!.id)?.trim();
   const adminName = (session!.fullName ?? session!.email ?? "Admin").trim() || "Admin";

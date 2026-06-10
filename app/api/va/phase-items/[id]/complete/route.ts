@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { notifyAdmins } from "@/services/notification-service";
@@ -10,9 +10,8 @@ import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "va-tasks:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.tasks);
   if (blocked) return blocked;
 

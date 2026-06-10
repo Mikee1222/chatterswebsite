@@ -1,12 +1,12 @@
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasAnyPermission } from "@/lib/rbac";
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || session.role !== "client") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasAnyPermission(session, ["payments:submit", "clients:view"]))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const form = await req.formData();
   const file = form.get("file") as File;
   if (!file) return NextResponse.json({ error: "No file" }, { status: 400 });

@@ -1,12 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { createRecord, listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
 import type { PaymentMethodRecord } from "@/types/client-portal";
-
-function isAdminOrManager(session: { role: string } | null): boolean {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 function mapPaymentMethod(rec: AirtableRecord<Record<string, unknown>>): PaymentMethodRecord {
   const f = rec.fields;
@@ -98,9 +95,7 @@ function validateCreate(body: PaymentMethodBody): string | null {
 
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "payments:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const records = await listAllRecords<Record<string, unknown>>("payment_methods", {
@@ -115,9 +110,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "payments:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let body: PaymentMethodBody;
   try {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
@@ -15,9 +15,8 @@ import {
 
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "mistakes:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
   if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();
@@ -44,9 +43,8 @@ const postSchema = z.object({
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "mistakes:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.mistakes);
   if (blocked) return blocked;
   const vaId = (session.airtableUserId ?? session.id)?.trim();

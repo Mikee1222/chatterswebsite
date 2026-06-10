@@ -1,19 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasAnyPermission, hasPermission } from "@/lib/rbac";
 import {
   createMassList,
   getAllMassLists,
   getAllMassListsAdmin,
   type MassListRecord,
 } from "@/services/mass-lists";
-
-function isAdminOrManager(role: string | undefined): boolean {
-  return role === "admin" || role === "manager";
-}
-
-function isChatterOrVa(role: string | undefined): boolean {
-  return role === "chatter" || role === "virtual_assistant";
-}
 
 function parseCreateBody(json: unknown): Omit<MassListRecord, "id" | "created_at"> | null {
   if (json == null || typeof json !== "object") return null;
@@ -42,15 +35,13 @@ function parseCreateBody(json: unknown): Omit<MassListRecord, "id" | "created_at
 
 export async function GET() {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    if (isAdminOrManager(user.role)) {
+    if (await hasPermission(user, "mass-lists:manage")) {
       const lists = await getAllMassListsAdmin();
       return NextResponse.json(lists);
     }
-    if (isChatterOrVa(user.role)) {
+    if (await hasAnyPermission(user, ["mass-lists:view"])) {
       const lists = await getAllMassLists();
       return NextResponse.json(lists);
     }
@@ -63,12 +54,8 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!isAdminOrManager(user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "mass-lists:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   let body: unknown;
   try {
     body = await req.json();

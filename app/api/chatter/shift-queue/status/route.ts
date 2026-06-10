@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
 import { getShiftById } from "@/services/shifts";
 import {
   getShiftQueueWaitingForChatter,
@@ -24,9 +24,8 @@ export type ShiftQueuePollResponse = {
 
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "chatter") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "shifts:start"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const chatterId = session.airtableUserId ?? session.id;
   if (!chatterId?.trim()) {
     return NextResponse.json({ error: "Missing user id" }, { status: 400 });

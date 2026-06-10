@@ -1,18 +1,14 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { deleteRecord, updateRecord } from "@/lib/airtable-server";
 
 const TABLE = "model_groups";
 
-function isAdminRole(role: string | undefined) {
-  return role === "admin" || role === "manager";
-}
-
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const user = await getSessionFromCookies();
-  if (!user || !isAdminRole(user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "models:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     const body = await req.json();
     const name = body?.name != null ? String(body.name).trim() : undefined;
@@ -37,9 +33,8 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
 export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
   const user = await getSessionFromCookies();
-  if (!user || !isAdminRole(user.role)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "models:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   try {
     await deleteRecord(TABLE, params.id);
     return NextResponse.json({ success: true });

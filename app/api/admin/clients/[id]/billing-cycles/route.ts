@@ -1,17 +1,12 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { createBillingCycleForClient, getClientBillingCycles } from "@/services/client-portal";
-
-function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   const billingCycles = (await getClientBillingCycles(id)).slice(0, 5);
@@ -29,9 +24,7 @@ const postSchema = z.object({
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "clients:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { id } = await ctx.params;
   let json: unknown;

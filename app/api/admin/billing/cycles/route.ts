@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import {
   createBillingCycle,
   getAllBillingCycles,
   getBillingCycleClientCounts,
 } from "@/services/client-billing";
 import { formatDueDateElGr, kindLabelFor } from "@/services/client-billing-notifications";
-
-function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 function clientIdsFromBody(client: string | string[] | undefined): string[] {
   if (!client) return [];
@@ -19,9 +16,7 @@ function clientIdsFromBody(client: string | string[] | undefined): string[] {
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "billing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const url = new URL(req.url);
   const month = url.searchParams.get("month") ?? undefined;
@@ -55,9 +50,7 @@ const postSchema = z.object({
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "billing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let json: unknown;
   try {

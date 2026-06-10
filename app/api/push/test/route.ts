@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getActiveSubscriptionsForUser } from "@/services/push-subscriptions";
 import { sendWebPush } from "@/lib/web-push-server";
 import { devLog } from "@/lib/dev-log";
@@ -7,9 +8,8 @@ import { devLog } from "@/lib/dev-log";
 /** POST: send a test push to the current user's subscriptions (for verifying push works). */
 export async function POST() {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "settings:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const userId = user.airtableUserId ?? user.id;
   const subscriptions = await getActiveSubscriptionsForUser(userId);

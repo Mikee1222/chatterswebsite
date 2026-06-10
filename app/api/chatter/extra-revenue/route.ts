@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { createExtraRevenueSubmission, type FineBonusPaymentMethod } from "@/services/fines-bonuses";
@@ -11,9 +11,8 @@ const PAYMENT_METHODS = new Set<FineBonusPaymentMethod>(["PayPal", "Revolut", "O
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "chatter") {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "shifts:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const userId = (session.airtableUserId ?? session.id)?.trim();
   const userName = session.fullName?.trim() || session.email || "Chatter";

@@ -1,14 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import {
   generateBillingPeriodsRange,
   generateWeeklyPeriods,
 } from "@/services/client-billing";
-
-function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
-  return session != null && (session.role === "admin" || session.role === "manager");
-}
 
 const bodySchema = z.discriminatedUnion("mode", [
   z.object({ mode: z.literal("month"), month: z.string().regex(/^\d{4}-\d{2}$/) }),
@@ -21,9 +18,7 @@ const bodySchema = z.discriminatedUnion("mode", [
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
-  if (!isAdminOrManager(session)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!(await hasPermission(session, "billing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   let json: unknown;
   try {

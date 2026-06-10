@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getInflowwEarningsSnapshot, InflowwApiError } from "@/lib/infloww-api";
 import { listEarningsAgencyCutConfig } from "@/services/earnings-config";
 
 export async function GET() {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "earnings:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const today = getTodayYmdAthens();
   const agencyPct = await listEarningsAgencyCutConfig().catch(() => ({}));

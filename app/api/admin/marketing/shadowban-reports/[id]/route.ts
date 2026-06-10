@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { getRecord, listAllRecords } from "@/lib/airtable-server";
 import { updateAccount, updateShadowbanReport } from "@/services/marketing";
 import { notify } from "@/services/notification-service";
@@ -11,9 +12,8 @@ function esc(s: string): string {
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "marketing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await ctx.params;
   if (!id?.trim()) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

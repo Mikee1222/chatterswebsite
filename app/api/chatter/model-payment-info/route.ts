@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
 import { listAllModelss } from "@/services/modelss";
 
 /**
@@ -8,9 +8,8 @@ import { listAllModelss } from "@/services/modelss";
  */
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "chatter") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "payments:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const modelss = await listAllModelss('{status} = "active"');

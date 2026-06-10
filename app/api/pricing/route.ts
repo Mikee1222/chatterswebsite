@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import {
   createPricingRow,
   createPricingSpecial,
@@ -12,10 +13,6 @@ import {
 } from "@/services/pricing";
 import type { ModelTier } from "@/services/model-tiers";
 import type { SpenderTier } from "@/services/pricing";
-
-function isAdminOrManager(role: string | undefined): boolean {
-  return role === "admin" || role === "manager";
-}
 
 function coerceMt(v: unknown): ModelTier {
   if (v === "medium") return "medium";
@@ -74,8 +71,11 @@ function parseSpecialCreate(json: unknown): Omit<PricingSpecial, "id"> | null {
 export async function GET() {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "pricing:view")) && !(await hasPermission(user, "pricing:manage"))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   try {
-    const admin = isAdminOrManager(user.role);
+    const admin = await hasPermission(user, "pricing:manage");
     const [rows, specials] = await Promise.all([
       admin ? getAllPricingRowsAdmin() : getAllPricingRows(),
       admin ? getAllPricingSpecialsAdmin() : getAllPricingSpecials(),
@@ -90,7 +90,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!isAdminOrManager(user.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(user, "pricing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   let body: unknown;
   try {
     body = await req.json();

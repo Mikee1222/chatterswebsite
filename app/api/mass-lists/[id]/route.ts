@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
 import { deleteMassList, updateMassList, type MassListRecord } from "@/services/mass-lists";
-
-function isAdminOrManager(role: string | undefined): boolean {
-  return role === "admin" || role === "manager";
-}
 
 function parseUpdateBody(json: unknown): Partial<Omit<MassListRecord, "id">> | null {
   if (json == null || typeof json !== "object") return null;
@@ -33,12 +30,8 @@ function parseUpdateBody(json: unknown): Partial<Omit<MassListRecord, "id">> | n
 
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!isAdminOrManager(user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "mass-lists:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await ctx.params;
   if (!id?.trim()) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -64,12 +57,8 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getSessionFromCookies();
-  if (!user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  if (!isAdminOrManager(user.role)) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(user, "mass-lists:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const { id } = await ctx.params;
   if (!id?.trim()) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });

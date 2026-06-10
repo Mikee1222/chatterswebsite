@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
 import { listAllRecords } from "@/lib/airtable-server";
 
 type ModelOption = { id: string; name: string };
@@ -10,9 +10,8 @@ type ModelOption = { id: string; name: string };
  */
 export async function GET() {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "chatter") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await hasPermission(session, "shifts:active-view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const records = await listAllRecords<{ model_name?: string; model_id?: string }>("modelss", {
