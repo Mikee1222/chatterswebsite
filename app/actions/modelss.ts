@@ -3,6 +3,8 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { getModelById, updateModel } from "@/services/modelss";
 import { forceDeleteModel } from "@/services/force-delete-cascade";
@@ -20,7 +22,9 @@ function isRedirectError(err: unknown): boolean {
 /** Admin only: toggle model status between active and inactive. */
 export async function toggleModelStatus(recordId: string) {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") return { error: "Unauthorized" };
+  if (!user || !(await hasPermission(user, PERMISSIONS.MODELS_MANAGE))) {
+    return { error: "Unauthorized" };
+  }
 
   const model = await getModelById(recordId);
   if (!model) return { error: "Model not found" };
@@ -35,7 +39,7 @@ export async function deleteModelForAdmin(
   recordId: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_DELETE))) {
     return { success: false, error: "Unauthorized" };
   }
   const id = recordId?.trim();
@@ -57,7 +61,7 @@ export async function deleteModelForAdmin(
 /** Admin only: force-delete model and cascade linked rows (best-effort). */
 export async function deleteModelAction(recordId: string) {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_DELETE))) redirect(ROUTES.dashboard);
 
   const id = recordId?.trim();
   if (!id) {
@@ -86,7 +90,7 @@ export async function setModelPeriodTrackingEnabledAction(
   enabled: boolean
 ): Promise<{ success: true } | { success: false; error: string }> {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.MODELS_MANAGE))) {
     return { success: false, error: "Unauthorized" };
   }
   const id = recordId?.trim();

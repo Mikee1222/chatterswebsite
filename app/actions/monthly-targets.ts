@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getSessionFromCookies } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { upsertMonthlyTarget } from "@/services/monthly-targets";
 
@@ -13,6 +16,10 @@ export async function upsertMonthlyTargetAction(
   targetAmountUsd: number,
   options: { notes?: string; is_active?: boolean } = {}
 ): Promise<UpsertMonthlyTargetResult> {
+  const user = await getSessionFromCookies();
+  if (!user || !(await hasPermission(user, PERMISSIONS.WEEKLY_PROGRAM_MANAGE))) {
+    return { success: false, error: "Unauthorized" };
+  }
   if (!teamMemberRecordId?.trim() || !monthKey?.trim()) {
     return { success: false, error: "Team member and month are required" };
   }

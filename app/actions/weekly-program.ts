@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getSessionFromCookies } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasAnyPermission, hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import {
   createWeeklyProgram,
@@ -25,10 +28,32 @@ import { notifyActiveChattersWeeklyProgramPublished } from "@/services/weekly-pr
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
+async function requireWeeklyProgramManage() {
+  const user = await getSessionFromCookies();
+  if (!user || !(await hasPermission(user, PERMISSIONS.WEEKLY_PROGRAM_MANAGE))) return null;
+  return user;
+}
+
+async function requireWeeklyProgramRead() {
+  const user = await getSessionFromCookies();
+  if (
+    !user ||
+    !(await hasAnyPermission(user, [
+      PERMISSIONS.WEEKLY_PROGRAM_VIEW,
+      PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+      PERMISSIONS.SHIFTS_VIEW,
+    ]))
+  ) {
+    return null;
+  }
+  return user;
+}
+
 export async function getLastAssignmentsForChatterAction(
   chatterId: string,
   modelIds: string[]
 ): Promise<Record<string, LastAssignmentInfo>> {
+  if (!(await requireWeeklyProgramRead())) return {};
   if (!chatterId || modelIds.length === 0) return {};
   const pairs = modelIds.filter(Boolean).map((modelId) => ({ chatterId, modelId }));
   return getLastAssignmentBatch(pairs);
@@ -50,6 +75,9 @@ export async function createProgramAction(fields: {
   custom_start_time?: string;
   custom_end_time?: string;
 }): Promise<CreateProgramResult> {
+  if (!(await requireWeeklyProgramManage())) {
+    return { success: false, error: "Unauthorized" };
+  }
   try {
     const weekMonday = getMondayOfWeek(fields.week_start.trim().slice(0, 10));
     const dayIndex = WEEKLY_PROGRAM_DAY_OPTIONS.indexOf(fields.day);
@@ -129,6 +157,9 @@ export async function updateProgramAction(
     custom_end_time?: string;
   }
 ): Promise<UpdateProgramResult> {
+  if (!(await requireWeeklyProgramManage())) {
+    return { success: false, error: "Unauthorized" };
+  }
   try {
     const existing = await getWeeklyProgramById(recordId);
     if (!existing) return { success: false, error: "Entry not found." };
@@ -217,6 +248,9 @@ export async function updateProgramAction(
 }
 
 export async function deleteProgramAction(recordId: string): Promise<DeleteProgramResult> {
+  if (!(await requireWeeklyProgramManage())) {
+    return { success: false, error: "Unauthorized" };
+  }
   try {
     await deleteWeeklyProgram(recordId);
     revalidatePath(ROUTES.admin.weeklyProgram);

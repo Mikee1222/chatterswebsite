@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
-import { verifyPassword } from "@/lib/auth";
+import { getSessionFromCookies, verifyPassword } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/rbac";
 import { getUserByEmailForAuth } from "@/services/users";
 
 export const runtime = "nodejs";
@@ -17,6 +19,16 @@ function detectHashType(hash: string | undefined): "bcrypt" | "scrypt" | "unknow
 }
 
 export async function POST(req: Request) {
+  if (process.env.NODE_ENV === "production") {
+    return new NextResponse(null, { status: 404 });
+  }
+  if (process.env.NODE_ENV !== "development") {
+    const user = await getSessionFromCookies();
+    if (!user || !(await hasPermission(user, PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC))) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403, headers: { "Cache-Control": "no-store" } });
+    }
+  }
+
   try {
     const body = (await req.json().catch(() => ({}))) as DebugAuthBody;
     const submittedEmail = (body.email ?? "").trim().toLowerCase();

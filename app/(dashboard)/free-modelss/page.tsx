@@ -1,3 +1,8 @@
+import { redirect } from "next/navigation";
+import { getSessionFromCookies } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/rbac";
+import { ROUTES } from "@/lib/routes";
 import { listAllModelss } from "@/services/modelss";
 import { FreeModelssTable } from "@/components/free-modelss-table";
 import { Select, selectOptionClass, btnSecondaryClass } from "@/components/ui/form";
@@ -7,6 +12,12 @@ export default async function FreeModelssPage({
 }: {
   searchParams: { platform?: string; status?: string };
 }) {
+  const user = await getSessionFromCookies();
+  if (!user) redirect(ROUTES.login);
+  if (!(await hasPermission(user, PERMISSIONS.SHIFTS_ACTIVE_VIEW))) {
+    redirect(ROUTES.dashboard);
+  }
+
   const all = await listAllModelss().catch(() => []);
 
   let filtered = all;

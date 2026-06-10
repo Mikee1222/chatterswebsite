@@ -1,6 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { getSessionFromCookies } from "@/lib/auth";
+import { PERMISSIONS } from "@/lib/permissions";
+import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import {
   createWeeklyProgramVa,
@@ -25,6 +28,12 @@ export type CreateProgramVaResult = { success: true; id: string; week_start: str
 export type UpdateProgramVaResult = { success: true } | { success: false; error: string };
 export type DeleteProgramVaResult = { success: true } | { success: false; error: string };
 
+async function requireWeeklyProgramManage() {
+  const user = await getSessionFromCookies();
+  if (!user || !(await hasPermission(user, PERMISSIONS.WEEKLY_PROGRAM_MANAGE))) return null;
+  return user;
+}
+
 export async function createProgramVaAction(fields: {
   chatter: string[];
   chatter_name: string;
@@ -37,6 +46,9 @@ export async function createProgramVaAction(fields: {
   custom_start_time?: string;
   custom_end_time?: string;
 }): Promise<CreateProgramVaResult> {
+  if (!(await requireWeeklyProgramManage())) {
+    return { success: false, error: "Unauthorized" };
+  }
   try {
     const weekMonday = getMondayOfWeek(fields.week_start.trim().slice(0, 10));
     const dayIndex = WEEKLY_PROGRAM_DAY_OPTIONS.indexOf(fields.day);
@@ -116,6 +128,9 @@ export async function updateProgramVaAction(
     custom_end_time?: string;
   }
 ): Promise<UpdateProgramVaResult> {
+  if (!(await requireWeeklyProgramManage())) {
+    return { success: false, error: "Unauthorized" };
+  }
   try {
     const existing = await getWeeklyProgramVaById(recordId);
     if (!existing) return { success: false, error: "Entry not found." };
@@ -188,6 +203,9 @@ export async function updateProgramVaAction(
 }
 
 export async function deleteProgramVaAction(recordId: string): Promise<DeleteProgramVaResult> {
+  if (!(await requireWeeklyProgramManage())) {
+    return { success: false, error: "Unauthorized" };
+  }
   try {
     await deleteWeeklyProgramVa(recordId);
     revalidatePath(ROUTES.admin.weeklyProgramVa);
