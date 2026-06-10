@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { AnimatePresence, motion, useAnimation } from "framer-motion";
+import { AnimatePresence, motion, useAnimation, type PanInfo } from "framer-motion";
 import { Bell } from "lucide-react";
 import { useSWRConfig } from "swr";
 import {
@@ -29,6 +28,9 @@ type NotificationBellProps = {
   /** Role for role-aware notification routing (shift → live shifts for admin, etc.). */
   role?: UserRole | null;
 };
+
+const SHEET_CLOSE_OFFSET = 100;
+const SHEET_CLOSE_VELOCITY = 500;
 
 export function NotificationBell({ role }: NotificationBellProps) {
   const router = useRouter();
@@ -71,8 +73,8 @@ export function NotificationBell({ role }: NotificationBellProps) {
         );
       };
   const list = realtime ? realtime.notifications : fallbackList;
-  /** Only show badge numeric content after mount to avoid server/client text mismatch (unreadCount can differ). */
   const showBadge = mounted && unreadCount > 0;
+  const isLoading = !realtime && unreadQuery.isValidating;
 
   useEffect(() => {
     if (realtime?.unreadCount == null) return;
@@ -180,73 +182,60 @@ export function NotificationBell({ role }: NotificationBellProps) {
   };
 
   const closePanel = () => setOpen(false);
-  const isAdmin = role === "admin" || role === "manager";
   const settingsHref = role === "client" ? ROUTES.client.settings : ROUTES.settings;
+
+  const handleSheetDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    if (info.offset.y > SHEET_CLOSE_OFFSET || info.velocity.y > SHEET_CLOSE_VELOCITY) {
+      closePanel();
+    }
+  };
+
+  const contentProps = {
+    notifications: list,
+    unreadCount,
+    onMarkRead: handleMarkRead,
+    onMarkAllRead: handleMarkAllRead,
+    onDelete: handleDelete,
+    onClose: closePanel,
+    onNavigate: closePanel,
+    settingsHref,
+    isLoading,
+    role: role ?? null,
+  };
 
   return (
     <div className="relative" ref={ref}>
-      <motion.button
+      <button
         type="button"
         onClick={() => setOpen(!open)}
-        className={`relative rounded-xl p-2.5 transition-colors md:rounded-lg md:p-2 ${
-          showBadge
-            ? "text-[hsl(330,90%,65%)] ring-1 ring-[hsl(330,80%,55%)]/30 hover:bg-[hsl(330,80%,55%)]/10 hover:ring-[hsl(330,80%,55%)]/50"
-            : "text-white/70 hover:bg-white/5 hover:text-white"
-        }`}
+        className="relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-white/10"
         aria-label="Notifications"
       >
-        <motion.span
-          className="inline-flex"
-          animate={bellMotion}
-          whileHover={{ rotate: [0, -10, 10, -10, 0] }}
-          transition={{ duration: 0.4, ease: "easeInOut" }}
-        >
-          <Bell className="h-5 w-5 md:h-5 md:w-5" />
-        </motion.span>
+        <motion.div animate={bellMotion}>
+          <Bell className="h-5 w-5 text-white/70" />
+        </motion.div>
         {showBadge && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[hsl(330,80%,55%)] px-1 text-[10px] font-semibold text-white shadow-[0_0_0_2px_rgba(0,0,0,0.9)] transition-transform duration-200">
+          <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-bold text-white shadow-lg shadow-pink-500/30">
             {unreadCount > 99 ? "99+" : unreadCount}
           </span>
         )}
-      </motion.button>
+      </button>
 
       <AnimatePresence>
         {open && (
           <motion.div
             key="notif-dropdown-desktop"
-            className="absolute right-0 top-full z-50 mt-2 hidden w-[min(100vw-1.5rem,380px)] md:block"
+            className="absolute right-0 top-12 z-50 hidden w-[400px] overflow-hidden rounded-2xl border border-white/10 bg-[#0f0a1a]/95 shadow-2xl shadow-black/50 backdrop-blur-xl md:block"
             role="dialog"
             aria-modal="true"
             aria-label="Notification center"
             onClick={(e) => e.stopPropagation()}
-            initial={{ opacity: 0, y: -10, scale: 0.96 }}
+            initial={{ opacity: 0, y: -8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.98 }}
+            exit={{ opacity: 0, y: -8, scale: 0.96 }}
             transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
           >
-            <div
-              className="flex max-h-[min(85vh,560px)] flex-col overflow-hidden rounded-2xl border border-white/[0.12] bg-[#0a0a0a]/95 shadow-2xl backdrop-blur-2xl"
-              style={{
-                boxShadow:
-                  "0 0 0 1px rgba(236,72,153,0.08), 0 0 40px -8px rgba(236,72,153,0.12), 0 24px 56px -16px rgba(0,0,0,0.75)",
-              }}
-            >
-              <div className="flex min-h-0 flex-1 flex-col">
-                <NotificationCenterContent
-                  list={list}
-                  unreadCount={unreadCount}
-                  onMarkRead={handleMarkRead}
-                  onMarkAllRead={handleMarkAllRead}
-                  onDelete={handleDelete}
-                  onNavigate={closePanel}
-                  onClose={closePanel}
-                  role={role ?? null}
-                  compact
-                  isAdmin={isAdmin}
-                  settingsHref={settingsHref}
-                />
-              </div>
-            </div>
+            <NotificationCenterContent {...contentProps} compact />
           </motion.div>
         )}
       </AnimatePresence>
@@ -257,7 +246,6 @@ export function NotificationBell({ role }: NotificationBellProps) {
             <motion.div
               key="notif-mobile-backdrop"
               className="fixed inset-0 z-[59] bg-black/75 backdrop-blur-md md:hidden"
-              style={{ padding: 0, margin: 0 }}
               aria-hidden
               onClick={closePanel}
               initial={{ opacity: 0 }}
@@ -267,46 +255,23 @@ export function NotificationBell({ role }: NotificationBellProps) {
             />
             <motion.div
               key="notif-mobile-sheet"
-              className="fixed bottom-0 left-0 right-0 z-[60] flex h-[80vh] max-h-[80vh] w-full max-w-[100vw] flex-col overflow-hidden rounded-t-2xl border border-white/[0.12] border-b-0 bg-[#0c0c0c] shadow-2xl md:hidden"
+              className="fixed bottom-0 left-0 right-0 z-[60] flex h-[92vh] max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 border-b-0 bg-[#0f0a1a] shadow-2xl md:hidden"
               role="dialog"
               aria-modal="true"
               aria-label="Notification center"
               onClick={(e) => e.stopPropagation()}
-              style={{
-                boxShadow:
-                  "0 -12px 48px rgba(0,0,0,0.55), 0 0 0 1px rgba(236,72,153,0.1), 0 0 32px -12px rgba(236,72,153,0.15)",
-              }}
+              drag="y"
+              dragConstraints={{ top: 0, bottom: 0 }}
+              dragElastic={{ top: 0, bottom: 0.45 }}
+              onDragEnd={handleSheetDragEnd}
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
             >
-              <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-white/20" aria-hidden />
-              <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
-                <NotificationCenterContent
-                  list={list}
-                  unreadCount={unreadCount}
-                  onMarkRead={handleMarkRead}
-                  onMarkAllRead={handleMarkAllRead}
-                  onDelete={handleDelete}
-                  onNavigate={closePanel}
-                  onClose={closePanel}
-                  role={role ?? null}
-                  compact={false}
-                  omitSettingsFooter
-                  isMobile
-                  isAdmin={isAdmin}
-                  settingsHref={settingsHref}
-                />
-              </div>
-              <div className="shrink-0 border-t border-white/[0.08] bg-[#0c0c0c] pb-[max(12px,env(safe-area-inset-bottom))]">
-                <Link
-                  href={settingsHref}
-                  onClick={closePanel}
-                  className="block py-4 text-center text-sm text-white/50 hover:bg-white/5 hover:text-white"
-                >
-                  Notification settings
-                </Link>
+              <div className="mx-auto mt-2 h-1 w-10 shrink-0 cursor-grab rounded-full bg-white/20 active:cursor-grabbing" aria-hidden />
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0px,env(safe-area-inset-bottom))]">
+                <NotificationCenterContent {...contentProps} compact={false} isMobile />
               </div>
             </motion.div>
           </>
