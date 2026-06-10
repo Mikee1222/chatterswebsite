@@ -80,26 +80,34 @@ export async function POST(req: Request) {
       ...parsed.data,
       client: clientIds,
     });
+    console.log("[billing/cycles] cycle created id:", cycle.id);
+    console.log("[billing/cycles] client IDs from body:", clientIds);
+
     const kindLabel = kindLabelFor(cycle.kind);
     const amountDue = parsed.data.amount ?? parsed.data.amount_crm ?? cycle.amount ?? 0;
     const amount = `${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"}`;
     const dueDateFormatted = formatDueDateElGr(cycle.due_date);
-    const { notify } = await import("@/services/notification-service");
 
     for (const clientId of clientIds) {
       if (!clientId) continue;
-      await notify({
-        user_id: clientId,
-        event_type: "billing_cycle_announced",
-        priority: "high",
-        title: `📋 New Billing Cycle`,
-        body: `💳 A new ${kindLabel} billing cycle has been created. Amount: ${amount}. Due: ${dueDateFormatted}.`,
-        entity_type: "billing_cycle",
-        entity_id: cycle.id,
-        _triggerSource: "admin.billing.cycles.POST",
-      })
-        .then(() => console.log("[billing] notified client", clientId))
-        .catch((err) => console.error("[billing] notify on create failed", clientId, err));
+      console.log("[billing/cycles] calling notify for client:", clientId);
+      try {
+        const { notify } = await import("@/services/notification-service");
+        const result = await notify({
+          user_id: clientId,
+          event_type: "billing_cycle_announced",
+          priority: "high",
+          title: `📋 New Billing Cycle`,
+          body: `💳 A new ${kindLabel} billing cycle has been created. Amount: ${amount}. Due: ${dueDateFormatted}.`,
+          entity_type: "billing_cycle",
+          entity_id: cycle.id,
+          _triggerSource: "admin.billing.cycles.POST",
+        });
+        console.log("[billing/cycles] notify result:", JSON.stringify(result));
+      } catch (e) {
+        console.error("[billing/cycles] notify THREW:", e);
+      }
+      console.log("[billing/cycles] notify completed for client:", clientId);
     }
 
     return NextResponse.json({ ok: true, data: cycle });

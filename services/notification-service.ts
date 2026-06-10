@@ -372,6 +372,7 @@ function logShiftStartedAdminOutcome(
  * Main entry: create notification record, then optionally send push based on preferences.
  */
 export async function notify(options: NotifyOptions) {
+  console.log("[notify] called with user_id:", options.user_id, "event_type:", options.event_type);
   const category = EVENT_TO_CATEGORY[options.event_type];
   const priority = resolveNotifyPriority(options.event_type, options.priority);
   const eventTypeAirtable = EVENT_TYPE_TO_AIRTABLE[options.event_type] ?? options.event_type;
@@ -481,6 +482,7 @@ export async function notify(options: NotifyOptions) {
   devLog(NOTIF, "4 before_load_preferences", JSON.stringify({ recipient_user_id: options.user_id }));
 
   const prefs = await getPreferencesByUserId(options.user_id);
+  console.log("[notify] user preferences lookup for:", options.user_id);
 
   devLog(PUSH_DEBUG, "recipient user id", JSON.stringify({ recipient_user_id: options.user_id }));
   devLog(PUSH_DEBUG, "preferences loaded", JSON.stringify({ has_prefs: !!prefs }));

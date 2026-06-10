@@ -73,6 +73,7 @@ export async function createNotification(fields: {
 }): Promise<AppNotification | null> {
   const NOTIF = "[NOTIF]";
   const airtableCategory = CATEGORY_TO_AIRTABLE[fields.category] ?? fields.category;
+  console.log("[createNotification] called, user_id:", fields.user_id);
   console.log(
     "[createNotification] user_id:",
     fields.user_id,
@@ -114,7 +115,9 @@ export async function createNotification(fields: {
   devLog(NOTIF, "6 before_airtable_create", JSON.stringify({ table: NOTIFICATIONS_TABLE, payload }));
 
   try {
+    console.log("[createNotification] about to write to Airtable...");
     const rec = await createRecord(NOTIFICATIONS_TABLE, payload as Record<string, string | number | boolean | null>);
+    console.log("[createNotification] SUCCESS, record id:", rec.id);
     // 7. Right after successful airtable notification create
     devLog(NOTIF, "7 after_airtable_create", JSON.stringify({
       created_record_id: rec.id,
