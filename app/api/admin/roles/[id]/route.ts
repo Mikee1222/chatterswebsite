@@ -64,6 +64,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     const existing = await getRoleById(id);
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
+    const rawBody = body as Record<string, unknown>;
+    if (
+      existing.is_system_role &&
+      typeof rawBody.role_id === "string" &&
+      rawBody.role_id.trim().toLowerCase() !== existing.role_id.trim().toLowerCase()
+    ) {
+      return NextResponse.json({ error: "System role slug cannot be changed." }, { status: 403 });
+    }
+
     const updated = await upsertRole(
       {
         role_id: existing.role_id,
@@ -97,7 +106,7 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     const existing = await getRoleById(id);
     if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
     if (existing.is_system_role) {
-      return NextResponse.json({ error: "System roles cannot be deleted." }, { status: 400 });
+      return NextResponse.json({ error: "System roles cannot be deleted." }, { status: 403 });
     }
     await deleteRole(id);
     clearRbacCache(existing.role_id);

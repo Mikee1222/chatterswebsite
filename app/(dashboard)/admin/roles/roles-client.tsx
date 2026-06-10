@@ -201,7 +201,7 @@ export function AdminRolesClient({
   }
 
   function togglePermission(perm: Permission, enabled: boolean) {
-    if (!draft || draft.is_system_role) return;
+    if (!draft) return;
     if (!grantableSet.has(perm)) return;
     setDraft((prev) => {
       if (!prev) return prev;
@@ -298,7 +298,6 @@ export function AdminRolesClient({
   }
 
   const selectedRole = roles.find((r) => r.id === selectedId);
-  const isReadonly = draft?.is_system_role ?? false;
 
   return (
     <SopShell className="min-h-full pb-8">
@@ -307,7 +306,7 @@ export function AdminRolesClient({
           <p className="mb-1 text-xs font-bold uppercase tracking-widest text-pink-400/55">Admin</p>
           <h1 className="text-2xl font-bold text-white md:text-3xl">Roles & permissions</h1>
           <p className="mt-2 max-w-2xl text-sm text-white/50">
-            Configure what each role can access. System roles are locked; custom roles can be created and removed.
+            Configure what each role can access. System roles keep a fixed slug but can otherwise be edited; custom roles can be created and removed.
           </p>
         </div>
 
@@ -403,7 +402,7 @@ export function AdminRolesClient({
                       ) : null}
                     </div>
                     <p className="mt-1 text-sm text-white/45">
-                      {draft.is_system_role ? "System role — permissions are read-only" : "Custom role"}
+                      {draft.is_system_role ? "System role — slug cannot be changed" : "Custom role"}
                     </p>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -452,8 +451,6 @@ export function AdminRolesClient({
                     <FormInput
                       value={draft.label}
                       onChange={(e) => updateDraft({ label: e.target.value })}
-                      readOnly={isReadonly}
-                      disabled={isReadonly}
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -464,8 +461,6 @@ export function AdminRolesClient({
                       value={draft.description}
                       onChange={(e) => updateDraft({ description: e.target.value })}
                       rows={2}
-                      readOnly={isReadonly}
-                      disabled={isReadonly}
                     />
                   </div>
                   <div className="sm:col-span-2">
@@ -480,12 +475,10 @@ export function AdminRolesClient({
                           <button
                             key={c}
                             type="button"
-                            disabled={isReadonly}
                             onClick={() => updateDraft({ color: c })}
                             className={cn(
                               "rounded-full border px-3 py-1.5 text-xs font-semibold capitalize transition",
-                              picked ? cn(cfg.badge, cfg.glow) : "border-white/10 bg-white/5 text-white/50 hover:text-white/80",
-                              isReadonly && "cursor-not-allowed opacity-50"
+                              picked ? cn(cfg.badge, cfg.glow) : "border-white/10 bg-white/5 text-white/50 hover:text-white/80"
                             )}
                           >
                             {c}
@@ -531,14 +524,14 @@ export function AdminRolesClient({
                               {groupPerms.map((perm) => {
                                 const checked = draft.permissions.includes(perm);
                                 const canGrant = grantableSet.has(perm);
-                                const disabled = isReadonly || !canGrant;
+                                const disabled = !canGrant;
                                 const switchId = `perm-${draft.id}-${perm}`;
                                 return (
                                   <li
                                     key={perm}
                                     className={cn(
                                       "flex items-center justify-between gap-3 rounded-lg px-2 py-2.5",
-                                      !canGrant && !isReadonly && "opacity-45"
+                                      !canGrant && "opacity-45"
                                     )}
                                   >
                                     <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">

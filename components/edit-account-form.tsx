@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { updateAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
-import type { UserRecord, UserRole, VaType } from "@/types";
+import type { RoleRecord, UserRecord, VaType } from "@/types";
 import { Checkbox, btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
@@ -24,7 +24,6 @@ import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
-const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
 const STATUSES = ["active", "inactive", "suspended"];
 const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
 
@@ -37,10 +36,16 @@ function EditAccountSubmit() {
   );
 }
 
-type Props = { user: UserRecord; modelOptions?: { id: string; model_name: string; alreadyLinked?: boolean }[] };
+type Props = {
+  user: UserRecord;
+  roles: RoleRecord[];
+  modelOptions?: { id: string; model_name: string; alreadyLinked?: boolean }[];
+};
 
-export function EditAccountForm({ user, modelOptions = [] }: Props) {
-  const [role, setRole] = React.useState<UserRole>(user.role);
+export function EditAccountForm({ user, roles, modelOptions = [] }: Props) {
+  const roleIds = React.useMemo(() => new Set(roles.map((r) => r.role_id)), [roles]);
+  const initialRole = roleIds.has(user.role) ? user.role : roles[0]?.role_id ?? user.role;
+  const [role, setRole] = React.useState(initialRole);
   const [secondaryRole, setSecondaryRole] = React.useState(
     user.secondary_role === "chatter" || user.secondary_role === "virtual_assistant"
       ? user.secondary_role
@@ -70,7 +75,7 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
           name="role"
           value={role}
           onChange={(e) => {
-            const r = e.target.value as UserRole;
+            const r = e.target.value;
             setRole(r);
             if (r !== "chatter" && r !== "virtual_assistant") {
               setSecondaryRole("");
@@ -79,9 +84,9 @@ export function EditAccountForm({ user, modelOptions = [] }: Props) {
           }}
           required
         >
-          {ROLES.map((r) => (
-            <option key={r} value={r} className={selectOptionClass}>
-              {r.replace("_", "")}
+          {roles.map((r) => (
+            <option key={r.id} value={r.role_id} className={selectOptionClass}>
+              {r.label || r.role_id.replace(/_/g, " ")}
             </option>
           ))}
         </FormSelect>

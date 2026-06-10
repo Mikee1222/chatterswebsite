@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { createAccount } from "@/app/actions/accounts";
 import { ROUTES } from "@/lib/routes";
-import type { UserRole, VaType } from "@/types";
+import type { RoleRecord, VaType } from "@/types";
 import { Checkbox, btnSecondaryClass, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
@@ -26,7 +26,6 @@ import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 
-const ROLES: UserRole[] = ["admin", "manager", "chatter", "virtual_assistant", "model"];
 const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
 
 function CreateAccountSubmit() {
@@ -39,13 +38,19 @@ function CreateAccountSubmit() {
 }
 
 type Props = {
+  roles: RoleRecord[];
   modelOptions?: { id: string; model_name: string; alreadyLinked?: boolean }[];
   /** Pre-select role (e.g. from `/accounts/new?role=chatter`). */
-  defaultRole?: UserRole;
+  defaultRole?: string;
 };
 
-export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
-  const [role, setRole] = React.useState<UserRole>(defaultRole ?? "chatter");
+export function CreateAccountForm({ roles, modelOptions = [], defaultRole }: Props) {
+  const roleIds = React.useMemo(() => new Set(roles.map((r) => r.role_id)), [roles]);
+  const initialRole =
+    defaultRole && roleIds.has(defaultRole)
+      ? defaultRole
+      : roles.find((r) => r.role_id === "chatter")?.role_id ?? roles[0]?.role_id ?? "chatter";
+  const [role, setRole] = React.useState(initialRole);
   const [vaType, setVaType] = React.useState<VaType | "">("");
   const [linkedModelId, setLinkedModelId] = React.useState("");
   const [languagePreference, setLanguagePreference] = React.useState("en");
@@ -70,15 +75,15 @@ export function CreateAccountForm({ modelOptions = [], defaultRole }: Props) {
           name="role"
           value={role}
           onChange={(e) => {
-            const r = e.target.value as UserRole;
+            const r = e.target.value;
             setRole(r);
             if (r !== "virtual_assistant") setVaType("");
           }}
           required
         >
-          {ROLES.map((r) => (
-            <option key={r} value={r} className={selectOptionClass}>
-              {r.replace("_", "")}
+          {roles.map((r) => (
+            <option key={r.id} value={r.role_id} className={selectOptionClass}>
+              {r.label || r.role_id.replace(/_/g, " ")}
             </option>
           ))}
         </FormSelect>

@@ -26,6 +26,7 @@ import type { VaType } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
+import { getRoles } from "@/services/roles";
 
 async function requireAccountsPermission(permission: Permission) {
   const user = await getSessionFromCookies();
@@ -36,6 +37,14 @@ async function requireAccountsPermission(permission: Permission) {
 
 const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
 
+async function resolveValidRoleId(raw: string): Promise<string | null> {
+  const key = raw.trim().toLowerCase();
+  if (!key) return null;
+  const roles = await getRoles();
+  const match = roles.find((r) => r.role_id.trim().toLowerCase() === key);
+  return match?.role_id ?? null;
+}
+
 function parseVaType(raw: string): VaType | null {
   const v = raw.trim().toLowerCase();
   return VA_TYPES.includes(v as VaType) ? (v as VaType) : null;
@@ -45,7 +54,8 @@ export async function createAccount(formData: FormData) {
   await requireAccountsPermission(PERMISSIONS.ACCOUNTS_CREATE);
   const full_name = (formData.get("full_name") as string)?.trim() ?? "";
   const email = (formData.get("email") as string)?.trim()?.toLowerCase() ?? "";
-  const role = (formData.get("role") as CreateUserInput["role"]) ?? "chatter";
+  const roleRaw = (formData.get("role") as string)?.trim() ?? "chatter";
+  const role = await resolveValidRoleId(roleRaw);
   const password = (formData.get("password") as string)?.trim() ?? "";
   const can_login = formData.get("can_login") === "on" || formData.get("can_login") === "true";
   const notes = (formData.get("notes") as string)?.trim() ?? "";
@@ -57,11 +67,14 @@ export async function createAccount(formData: FormData) {
   if (!full_name || !email) {
     redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Name and email are required"));
   }
+  if (!role) {
+    redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Invalid role selected."));
+  }
 
   const input: CreateUserInput = {
     full_name,
     email,
-    role,
+    role: role as CreateUserInput["role"],
     status: "active",
     can_login,
     notes,
@@ -97,7 +110,8 @@ export async function updateAccount(formData: FormData) {
 
   const full_name = (formData.get("full_name") as string)?.trim();
   const email = (formData.get("email") as string)?.trim()?.toLowerCase();
-  const role = formData.get("role") as UpdateUserInput["role"] | null;
+  const roleRaw = formData.get("role") as string | null;
+  const role = roleRaw != null ? await resolveValidRoleId(roleRaw) : null;
   const secondary_role_raw = (formData.get("secondary_role") as string)?.trim() ?? "";
   const va_type_raw = (formData.get("va_type") as string)?.trim() ?? "";
   const status = (formData.get("status") as string)?.trim();
@@ -114,7 +128,12 @@ export async function updateAccount(formData: FormData) {
   const input: UpdateUserInput = {};
   if (full_name !== undefined) input.full_name = full_name;
   if (email !== undefined) input.email = email;
-  if (role !== undefined && role !== null) input.role = role;
+  if (roleRaw != null) {
+    if (!role) {
+      redirect(ROUTES.accounts + "?error=" + encodeURIComponent("Invalid role selected."));
+    }
+    input.role = role as UpdateUserInput["role"];
+  }
   if (status !== undefined) input.status = status;
   input.can_login = can_login;
   if (notes !== undefined) input.notes = notes;

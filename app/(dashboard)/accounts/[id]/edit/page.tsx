@@ -4,6 +4,7 @@ import { getUserByAirtableId, listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditAccountForm } from "@/components/edit-account-form";
 import { listAllModelss } from "@/services/modelss";
+import { getRoles } from "@/services/roles";
 
 export default async function EditAccountPage({
   params,
@@ -16,7 +17,11 @@ export default async function EditAccountPage({
   const { id } = await params;
   const record = await getUserByAirtableId(id);
   if (!record) notFound();
-  const [allModels, allUsers] = await Promise.all([listAllModelss(), listAllUsers()]);
+  const [allModels, allUsers, roles] = await Promise.all([
+    listAllModelss(),
+    listAllUsers(),
+    getRoles(),
+  ]);
   const linkedModelIds = new Set(
     allUsers
       .filter((u) => u.role === "model")
@@ -35,7 +40,7 @@ export default async function EditAccountPage({
     <div className="max-w-md space-y-6">
       <h1 className="text-xl font-semibold text-white">Edit user</h1>
       <div className="glass-card p-6">
-        <EditAccountForm user={record} modelOptions={modelOptions} />
+        <EditAccountForm user={record} roles={roles} modelOptions={modelOptions} />
       </div>
     </div>
   );
