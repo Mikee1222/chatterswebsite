@@ -82,9 +82,9 @@ export async function runFridayWeeklyAvailabilityReminders(): Promise<FridayAvai
   }
   const slot: "morning" | "evening" = isMorning ? "morning" : "evening";
   const title =
-    slot === "morning"? " Submit your weekly availability": "⏰ Last chance: Weekly availability";
+    slot === "morning"? "📅 Submit your weekly availability": "⏰ Last chance: Weekly availability";
   const body =
-    slot === "morning"? "Don't forget to submit your availability for next week. Deadline is tonight.": "Tonight is the deadline. Please submit your availability for next week now.";
+    slot === "morning"? "📅 Don't forget to submit your availability for next week. Deadline is tonight.": "⏰ Tonight is the deadline. Please submit your availability for next week now.";
 
   const nextWeekMonday = addWeeks(getWeekStartYmdInAthens(0), 1);
   let reminders_sent = 0;
@@ -143,7 +143,7 @@ export async function runSundayAvailabilityReminders(): Promise<SundayAvailabili
       event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "⏰ Reminder: Submit your availability",
-      body: "Please submit your availability for next week before midnight.",
+      body: "⏰ Please submit your availability for next week before midnight.",
       entity_type: "system",
       entity_id: entityId,
     }).catch(() => {});
@@ -179,7 +179,7 @@ export async function runCustomDeadlinesWithin48Hours(): Promise<CustomDeadline4
     const dl = parseDeadlineEndMs(req.deadline_requested);
     if (dl == null || dl <= now || dl > windowEnd) continue;
     const customTitle = (req.request_title ?? "").trim() || "Custom request";
-    const body = `${customTitle} is due in less than 48 hours.`;
+    const body = `⏰ ${customTitle} is due in less than 48 hours.`;
     const deadlineAlertEntityId = `deadline_48h:${req.id}`;
 
     if (req.requested_by_chatter_id) {
@@ -260,7 +260,7 @@ export async function runVaTaskReminders(): Promise<VaTaskReminderCronResult> {
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⏰ Task reminder",
+        title: "📋 Task Reminder",
         body,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: entityId,
@@ -307,7 +307,7 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⚠️ Task overdue",
+        title: "⚠️ Task Overdue",
         body: `⚠️ Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
@@ -440,7 +440,7 @@ export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestA
         event_type: NOTIFICATION_EVENT.CUSTOM_DEADLINE_APPROACHING,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: "⏰ Custom request needs attention",
-        body: `Custom request "${request.request_title}" has been ${request.model_status} for over 2 days with no update.`,
+        body: `⚠️ Custom request "${request.request_title}" has been ${request.model_status} for over 2 days with no update.`,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: `custom_stuck_va:${request.id}`,
       }).catch(() => {});
@@ -548,7 +548,7 @@ export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.PHASE_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⚠️ Phase overdue",
+        title: "⚠️ Phase Overdue",
         body: `⚠️ "${phaseTitle}" deadline passed with incomplete items`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
         entity_id: phase.id,

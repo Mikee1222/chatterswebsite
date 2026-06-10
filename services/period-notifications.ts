@@ -60,7 +60,7 @@ export async function sendPeriodThreeDayReminder({ modelId, predictedDate }: Not
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_3_DAY_REMINDER,
-    title: "📅 Cycle reminder",
+    title: "📅 Cycle Reminder",
     body: `📅 Your next period is predicted around ${predictedDate} (in 3 days).`,
     entityId: `period:reminder3:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -71,7 +71,7 @@ export async function sendPeriodPredictedDayNotification({ modelId, predictedDat
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTED_DAY,
-    title: "🔔 Predicted period day",
+    title: "🌸 Predicted Period Day",
     body: `🔔 Today is your predicted period day (${predictedDate}).`,
     entityId: `period:predicted:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.HIGH,
@@ -82,7 +82,7 @@ export async function sendPeriodConfirmedEarlyNotification({ modelId, predictedD
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_CONFIRMED_EARLY,
-    title: "✅ Period confirmed",
+    title: "✅ Period Confirmed",
     body: `✅ Cycle updated. Period was confirmed before ${predictedDate}.`,
     entityId: `period:confirmed:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -97,7 +97,7 @@ export async function sendPeriodOverdueNotification({
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_OVERDUE,
-    title: "⚠️ Period overdue",
+    title: "⚠️ Period Overdue",
     body: `⚠️ Your period appears overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`,
     entityId: `period:overdue:${predictedDate}:d${overdueDays}`,
     priority: NOTIFICATION_PRIORITY.HIGH,
@@ -114,7 +114,7 @@ export async function sendPeriodPredictionResetNotification({
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTION_RESET,
-    title: "🔄 Prediction reset",
+    title: "🔄 Prediction Reset",
     body: `🔄 Prediction from ${previousPredictedDate} was reset until next period log.`,
     entityId: `period:reset:${previousPredictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,

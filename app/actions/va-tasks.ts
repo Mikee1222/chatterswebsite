@@ -152,8 +152,8 @@ export async function updateVaTaskStatusAction(input: {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.TASK_COMPLETED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "VA task completed",
-        body: ` Task completed: ${task.title} by ${vaName}`,
+        title: "✅ VA Task Completed",
+        body: `✅ Task completed: ${task.title} by ${vaName}`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_done:${input.taskId}:${Date.now()}`,
       }).catch((e) => console.error("[notify] va_task_completed failed", e));

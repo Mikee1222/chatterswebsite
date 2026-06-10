@@ -289,7 +289,7 @@ async function completeChallengeIfNeeded(userId: string, ch: ChallengeRow, curre
     await notify({
       user_id: userId,
       event_type: NOTIFICATION_EVENT.CHALLENGE_COMPLETED,
-      title: "🏆 Challenge completed!",
+      title: "🏆 Challenge Completed!",
       body: `🎉 You completed '${safeTitle}' and earned ${reward} pts!`,
       entity_type: "challenge",
       entity_id: ch.id,

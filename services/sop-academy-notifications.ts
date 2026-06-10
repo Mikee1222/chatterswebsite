@@ -202,7 +202,7 @@ export async function notifyAdminsSopTrainingComplete(input: {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SOP_ACADEMY_TRAINING_COMPLETE,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "🎓 SOP training completed",
+    title: "📚 SOP Training Completed",
     body: `🎉 ${input.userName} completed all ${input.totalFunctions} steps for ${input.roleName}.`,
     entity_type: ENTITY_TYPE,
     entity_id: entityId,
@@ -221,7 +221,7 @@ export async function notifyAdminsSopSignoff(input: {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SOP_ACADEMY_SIGNED_OFF,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "✍️ SOP training sign-off",
+    title: "✅ SOP Training Sign-Off",
     body: `✅ ${input.userName} signed off on ${input.roleName} academy training.`,
     entity_type: ENTITY_TYPE,
     entity_id: entityId,

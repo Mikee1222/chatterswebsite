@@ -93,7 +93,7 @@ export async function updateCustomStatusAction(
           event_type: "custom_status_changed",
           priority: "normal",
           title: "📝 Custom updated",
-          body: `Status: ${admin_status}.`,
+          body: `📝 Status: ${admin_status}.`,
           entity_type: "custom_request",
           entity_id: recordId,
         });
@@ -106,7 +106,7 @@ export async function updateCustomStatusAction(
         event_type: NOTIFICATION_EVENT.CUSTOM_REQUEST_UPDATED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: "📝 Custom request updated",
-        body: `${customTitle} status changed to ${admin_status}.`,
+        body: `📝 ${customTitle} status changed to ${admin_status}.`,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: recordId,
       });

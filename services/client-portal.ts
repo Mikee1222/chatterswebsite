@@ -1004,7 +1004,7 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
         type: "payment_due",
         recordId: cycle.id,
         severity: cycle.status === "overdue" ? "high" : "medium",
-        title: "Payment due soon",
+        title: "⏰ Payment Due Soon",
         description: `${cycle.kind === "chatting_weekly" ? "Chatting" : "CRM"} payment due ${formatDateEuropean(cycle.due_date)}`,
         link:
           cycle.kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
@@ -1021,7 +1021,7 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
         type: "proof_rejected",
         recordId: submission.id,
         severity: "high",
-        title: "Payment proof rejected",
+        title: "❌ Payment Proof Rejected",
         description: "Your payment proof needs attention. Please review and resubmit.",
         link: kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
       });
@@ -1040,7 +1040,7 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
         type: "invoice",
         recordId: invoice.id,
         severity: "low",
-        title: "New invoice available",
+        title: "📄 New Invoice Available",
         description: `Invoice #${invoice.invoice_number || invoice.id.slice(0, 8)}`,
         link: "/client/invoices",
       });

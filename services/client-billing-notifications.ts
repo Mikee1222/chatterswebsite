@@ -1,4 +1,3 @@
-"use server";
 
 import { listAllRecords } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
@@ -200,7 +199,7 @@ export async function sendBillingDueReminders() {
       const reminderTitle = isOverdue ? "🚨 Payment Overdue" : "⏰ Payment Due in 2 Days";
       const reminderBody = isOverdue
         ? `🚨 Your ${kindLabel} payment of 💰 ${amount} was due on ${dueDate}. Please pay as soon as possible.`
-        : `⏰ Your ${kindLabel} payment of 💰 ${amount} is due on ${dueDate}.`;
+        : `💳 Your payment is due in 2 days. Please submit proof before the deadline.`;
 
       await notify({
         user_id: clientId,

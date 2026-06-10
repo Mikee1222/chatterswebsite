@@ -56,12 +56,12 @@ export function shiftStartedAdmin(
   if (count > 0 && list) {
     return {
       title: `🟢 ${chatterName} is on shift`,
-      body: `Started at ${time} with ${count} model(s): ${list}.`,
+      body: `🟢 Started at ${time} with ${count} model(s): ${list}.`,
     };
   }
   return {
     title: `🟢 ${chatterName} is on shift`,
-    body: `Started at ${time} with no models yet.`,
+    body: `🟢 Started at ${time} with no models yet.`,
   };
 }
 
@@ -94,12 +94,12 @@ export function shiftCompletedAdmin(
   if (workedMinutes != null && workedMinutes > 0) {
     return {
       title: `✅ ${chatterName} clocked out`,
-      body: `Shift ended at ${time}. Total: ${workedMinutes} min.`,
+      body: `✅ Shift ended at ${time}. Total: ${workedMinutes} min.`,
     };
   }
   return {
     title: `✅ ${chatterName} clocked out`,
-    body: `Shift ended at ${time}.`,
+    body: `✅ Shift ended at ${time}.`,
   };
 }
 
@@ -117,8 +117,8 @@ export function breakStartedAdmin(chatterName: string, startedAt?: string | Date
   return {
     title: `☕ ${chatterName} is on break`,
     body: time
-      ? `Break started at ${time} — they'll be back shortly.`
-      : "Break started — they'll be back shortly.",
+      ? `☕ Break started at ${time} — they'll be back shortly.`
+      : "☕ Break started — they'll be back shortly.",
   };
 }
 
@@ -139,8 +139,8 @@ export function breakEndedAdmin(
   return {
     title: `👋 ${chatterName} is back`,
     body: hasDuration
-      ? `Returned from break at ${time} after ${duration} min.`
-      : `Returned from break at ${time}.`,
+      ? `👋 Returned from break at ${time} after ${duration} min.`
+      : `👋 Returned from break at ${time}.`,
   };
 }
 
@@ -155,12 +155,12 @@ export function taskShiftStartedAdmin(
   if (list) {
     return {
       title: `📋 ${vaName} started a task shift`,
-      body: `Working with ${list} from ${time}.`,
+      body: `📋 Working with ${list} from ${time}.`,
     };
   }
   return {
     title: `📋 ${vaName} started a task shift`,
-    body: `Task shift started at ${time}.`,
+    body: `📋 Task shift started at ${time}.`,
   };
 }
 
@@ -169,7 +169,7 @@ export function taskShiftEndedAdmin(vaName: string, endTime: string | Date): { t
   const time = formatTimeShort(endTime);
   return {
     title: `✅ ${vaName} finished task shift`,
-    body: `Completed at ${time}.`,
+    body: `✅ Completed at ${time}.`,
   };
 }
 
@@ -327,16 +327,16 @@ export function availabilityReminderSelf(): { title: string; body: string } {
 /** Weekly program published — chatter. */
 export function weeklyProgramPublishedChatter(): { title: string; body: string } {
   return {
-    title: "📆 Weekly program is ready",
-    body: "📆 Your schedule for next week has been published. Check your program.",
+    title: "📅 Weekly Program is Ready",
+    body: "📅 Your schedule for next week has been published. Check your program.",
   };
 }
 
 /** VA weekly program published. */
 export function weeklyProgramVaPublished(): { title: string; body: string } {
   return {
-    title: "📆 VA weekly program is ready",
-    body: "📆 Your VA schedule for next week has been published.",
+    title: "📅 VA Weekly Program is Ready",
+    body: "📅 Your VA schedule for next week has been published.",
   };
 }
 

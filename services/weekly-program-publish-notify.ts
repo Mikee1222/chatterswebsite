@@ -27,8 +27,8 @@ export async function notifyActiveChattersWeeklyProgramPublished(weekStart: stri
       user_id: u.id,
       event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📆 Weekly program is ready",
-      body: "📆 Your schedule for next week has been published. Check your program.",
+      title: "📅 Weekly Program is Ready",
+      body: "📅 Your schedule for next week has been published. Check your program.",
       entity_type: "system",
       entity_id: entityId,
     }).catch(() => {});
@@ -60,8 +60,8 @@ export async function notifyActiveVAsWeeklyProgramVaPublished(weekStart: string)
       user_id: u.id,
       event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📆 VA weekly program is ready",
-      body: "📆 Your VA schedule for next week has been published.",
+      title: "📅 VA Weekly Program is Ready",
+      body: "📅 Your VA schedule for next week has been published.",
       entity_type: "system",
       entity_id: entityId,
     }).catch(() => {});
