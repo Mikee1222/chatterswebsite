@@ -15,6 +15,7 @@ import { useToast } from "@/contexts/toast-context";
 import type { AppNotification } from "@/types";
 import {
   getPermissionGroups,
+  PERMISSION_DESCRIPTIONS,
   PERMISSION_LABELS,
   type Permission,
 } from "@/lib/permissions";
@@ -537,6 +538,9 @@ export function AdminRolesClient({
                                     <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
                                       <p className="text-sm font-medium text-white/80">
                                         {PERMISSION_LABELS[perm]}
+                                      </p>
+                                      <p className="mt-0.5 text-xs text-white/40">
+                                        {PERMISSION_DESCRIPTIONS[perm]}
                                       </p>
                                       <p className="font-mono text-[11px] text-white/35">{perm}</p>
                                     </label>
