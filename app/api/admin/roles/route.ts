@@ -7,7 +7,7 @@ const permissionSchema = z
   .string()
   .refine((v): v is Permission => (ALL_PERMISSIONS as readonly string[]).includes(v));
 import { hasPermission } from "@/lib/rbac";
-import { getRoles, upsertRole } from "@/services/roles";
+import { getRoles, syncRoleOptionToAirtable, upsertRole } from "@/services/roles";
 
 const postSchema = z.object({
   role_id: z
@@ -64,7 +64,12 @@ export async function POST(req: Request) {
       is_system_role: false,
       color: parsed.data.color,
     });
-    return NextResponse.json({ success: true, role: created });
+    const airtableSync = await syncRoleOptionToAirtable(created.role_id);
+    return NextResponse.json({
+      success: true,
+      role: created,
+      ...(airtableSync.warning ? { airtable_sync_warning: airtableSync.warning } : {}),
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     return NextResponse.json({ error: msg }, { status: 500 });

@@ -1,6 +1,10 @@
 "use server";
 
 import {
+  syncRoleOptionToAirtable as syncRoleOptionToAirtableImpl,
+  type SyncRoleOptionResult,
+} from "@/lib/airtable-role-field-sync";
+import {
   listRecords,
   listAllRecords,
   getRecord,
@@ -117,6 +121,13 @@ export async function getRoleUserCounts(): Promise<Record<string, number>> {
   }
 }
 
+export type { SyncRoleOptionResult };
+
+/** Ensure a role slug exists on Airtable users.role single-select (Meta API). Does not throw. */
+export async function syncRoleOptionToAirtable(roleId: string): Promise<SyncRoleOptionResult> {
+  return syncRoleOptionToAirtableImpl(roleId);
+}
+
 export type UpsertRoleInput = {
   role_id: string;
   label: string;
@@ -151,6 +162,7 @@ export async function upsertRole(
   fields.created_at = now;
   const rec = await createRecord<Fields>(TABLE, fields);
   const mapped = mapRecord(rec);
+  await syncRoleOptionToAirtable(mapped.role_id);
   await invalidateRbacCache(mapped.role_id);
   return mapped;
 }
