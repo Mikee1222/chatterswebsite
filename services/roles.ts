@@ -13,6 +13,11 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import {
+  getFallbackNotificationDefaults,
+  parseNotificationDefaultsJson,
+  type NotificationRoleDefaults,
+} from "@/lib/notification-role-defaults";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 import { listAllUsers } from "@/services/users";
 import type { RoleRecord, UserRole } from "@/types";
@@ -29,6 +34,7 @@ type Fields = {
   label?: string;
   description?: string;
   permissions?: string;
+  notification_defaults?: string;
   is_system_role?: boolean;
   color?: string;
   created_at?: string;
@@ -48,12 +54,15 @@ function parsePermissionsJson(raw: unknown): Permission[] {
 
 function mapRecord(rec: AirtableRecord<Fields>): RoleRecord {
   const f = rec.fields;
+  const roleId = f.role_id ?? "";
+  const parsedDefaults = parseNotificationDefaultsJson(f.notification_defaults);
   return {
     id: rec.id,
-    role_id: f.role_id ?? "",
+    role_id: roleId,
     label: f.label ?? "",
     description: f.description ?? "",
     permissions: parsePermissionsJson(f.permissions),
+    notification_defaults: parsedDefaults ?? getFallbackNotificationDefaults(roleId),
     is_system_role: f.is_system_role ?? false,
     color: f.color ?? "",
     created_at: f.created_at ?? "",
@@ -128,11 +137,31 @@ export async function syncRoleOptionToAirtable(roleId: string): Promise<SyncRole
   return syncRoleOptionToAirtableImpl(roleId);
 }
 
+export async function getNotificationDefaultsForRole(roleName: string): Promise<NotificationRoleDefaults> {
+  const key = roleName.trim().toLowerCase();
+  if (!key) return getFallbackNotificationDefaults("");
+
+  try {
+    const { records } = await listRecords<Fields>(TABLE, {
+      filterByFormula: `{role_id} = "${key.replace(/"/g, '""')}"`,
+      pageSize: 1,
+    });
+    const row = records[0];
+    if (!row) return getFallbackNotificationDefaults(key);
+    const parsed = parseNotificationDefaultsJson(row.fields.notification_defaults);
+    if (parsed) return parsed;
+    return getFallbackNotificationDefaults(key);
+  } catch {
+    return getFallbackNotificationDefaults(key);
+  }
+}
+
 export type UpsertRoleInput = {
   role_id: string;
   label: string;
   description?: string;
   permissions: Permission[];
+  notification_defaults?: NotificationRoleDefaults;
   is_system_role?: boolean;
   color?: string;
 };
@@ -142,11 +171,15 @@ export async function upsertRole(
   existingRecordId?: string
 ): Promise<RoleRecord> {
   const now = new Date().toISOString();
+  const roleId = input.role_id.trim().toLowerCase();
+  const notificationDefaults =
+    input.notification_defaults ?? getFallbackNotificationDefaults(roleId);
   const fields: Fields = {
-    role_id: input.role_id.trim().toLowerCase(),
+    role_id: roleId,
     label: input.label.trim(),
     description: input.description?.trim() ?? "",
     permissions: JSON.stringify(input.permissions),
+    notification_defaults: JSON.stringify(notificationDefaults),
     is_system_role: input.is_system_role ?? false,
     color: input.color?.trim() ?? "",
     updated_at: now,

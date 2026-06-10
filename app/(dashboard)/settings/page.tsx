@@ -142,7 +142,7 @@ export default async function SettingsPage() {
               Choose which notifications you receive, when quiet hours apply, and how delivery behaves.
             </p>
             <div className="md:contents">
-              <NotificationSettingsForm prefs={prefs} />
+              <NotificationSettingsForm prefs={prefs} userRole={user.role} />
             </div>
           </>
         ) : (

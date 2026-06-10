@@ -12,6 +12,7 @@
 
 import "dotenv/config";
 import { DEFAULT_ROLE_PERMISSIONS } from "../lib/permissions";
+import { DEFAULT_NOTIFICATION_DEFAULTS } from "../lib/notification-role-defaults";
 import type { UserRole } from "../types";
 
 const META_BASE = "https://api.airtable.com/v0/meta/bases";
@@ -117,6 +118,7 @@ function buildFieldsPayload(): Array<Record<string, unknown>> {
     { name: "label", type: "singleLineText" },
     { name: "description", type: "multilineText" },
     { name: "permissions", type: "multilineText" },
+    { name: "notification_defaults", type: "multilineText" },
     {
       name: "is_system_role",
       type: "checkbox",
@@ -143,6 +145,7 @@ async function seedSystemRoles(baseId: string, token: string): Promise<void> {
   for (const roleId of roles) {
     const meta = SYSTEM_ROLE_META[roleId];
     const permissions = JSON.stringify(DEFAULT_ROLE_PERMISSIONS[roleId]);
+    const notification_defaults = JSON.stringify(DEFAULT_NOTIFICATION_DEFAULTS[roleId]);
 
     const listRes = await dataFetch(
       token,
@@ -161,6 +164,7 @@ async function seedSystemRoles(baseId: string, token: string): Promise<void> {
       label: meta.label,
       description: meta.description,
       permissions,
+      notification_defaults,
       is_system_role: true,
       color: meta.color,
       updated_at: now,

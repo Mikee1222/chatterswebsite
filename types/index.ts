@@ -7,6 +7,21 @@ export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "
 /** Alias for permission strings used in RBAC checks. */
 export type PermissionKey = Permission;
 
+/** Role-level notification category defaults (stored as JSON on roles table). */
+export type NotificationRoleDefaults = {
+  shift: boolean;
+  whale: boolean;
+  model: boolean;
+  system: boolean;
+  task: boolean;
+  mistake: boolean;
+  fine_bonus: boolean;
+  period: boolean;
+  marketing: boolean;
+  phase: boolean;
+  reward: boolean;
+};
+
 /** Airtable `roles` table row. */
 export interface RoleRecord {
   id: string;
@@ -14,6 +29,7 @@ export interface RoleRecord {
   label: string;
   description: string;
   permissions: Permission[];
+  notification_defaults?: NotificationRoleDefaults;
   is_system_role: boolean;
   color: string;
   created_at: string;

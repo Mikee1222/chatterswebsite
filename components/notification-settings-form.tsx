@@ -25,11 +25,18 @@ import {
   VolumeX,
   XCircle,
 } from "lucide-react";
-import { updateMyNotificationPreferences } from "@/app/actions/notification-preferences";
+import { updateMyNotificationPreferences, resetMyNotificationPreferencesToRoleDefaults } from "@/app/actions/notification-preferences";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
-import type { NotificationPreference } from "@/types";
+import { ButtonSecondary } from "@/components/ui/form";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import type { NotificationPreference, UserRole } from "@/types";
+import {
+  notificationDefaultsEqual,
+  preferenceCategoryFieldsFromPrefs,
+  type NotificationRoleDefaults,
+} from "@/lib/notification-role-defaults";
 import { cn } from "@/lib/utils";
 
 function SettingsSection({
@@ -126,6 +133,7 @@ function NotificationToggleField({
   icon,
   checked,
   onChange,
+  modified,
 }: {
   name: string;
   label: string;
@@ -133,18 +141,50 @@ function NotificationToggleField({
   icon: React.ReactNode;
   checked: boolean;
   onChange: (v: boolean) => void;
+  modified?: boolean;
 }) {
   const switchId = `notif-switch-${name}`;
   return (
     <FormField label={label} icon={icon} description={description} htmlFor={switchId}>
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        {modified ? (
+          <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-200 ring-1 ring-amber-400/30">
+            Modified
+          </span>
+        ) : null}
         <Switch id={switchId} checked={checked} onChange={onChange} />
       </div>
     </FormField>
   );
 }
 
-export function NotificationSettingsForm({ prefs }: { prefs: NotificationPreference }) {
+const CATEGORY_TOGGLES: Array<{
+  key: keyof NotificationRoleDefaults;
+  name: string;
+  label: string;
+  group: string;
+  icon: LucideIcon;
+}> = [
+  { key: "shift", name: "shift_alerts", label: "Shift alerts", group: "Operations", icon: CalendarClock },
+  { key: "whale", name: "whale_alerts", label: "Whale alerts", group: "Operations", icon: Fish },
+  { key: "model", name: "model_alerts", label: "Model alerts", group: "Operations", icon: UserRound },
+  { key: "period", name: "period_alerts", label: "Period alerts", group: "Operations", icon: CalendarClock },
+  { key: "task", name: "task_alerts", label: "Task alerts", group: "Team", icon: ListTodo },
+  { key: "phase", name: "phase_alerts", label: "Phase alerts", group: "Team", icon: Layers },
+  { key: "mistake", name: "mistake_alerts", label: "Mistake alerts", group: "Team", icon: ShieldAlert },
+  { key: "marketing", name: "marketing_alerts", label: "Marketing alerts", group: "Team", icon: Megaphone },
+  { key: "reward", name: "reward_alerts", label: "Reward alerts", group: "Performance", icon: Trophy },
+  { key: "fine_bonus", name: "fine_bonus_alerts", label: "Fine/bonus alerts", group: "Performance", icon: Coins },
+  { key: "system", name: "system_alerts", label: "System alerts", group: "Performance", icon: Cpu },
+];
+
+export function NotificationSettingsForm({
+  prefs,
+  userRole,
+}: {
+  prefs: NotificationPreference;
+  userRole: UserRole | string;
+}) {
   const router = useRouter();
   const reduceMotion = useReducedMotion();
 
@@ -167,8 +207,71 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
   const [quietEnd, setQuietEnd] = React.useState(prefs.quiet_hours_end?.trim() ?? "");
 
   const [submitting, setSubmitting] = React.useState(false);
+  const [resetting, setResetting] = React.useState(false);
+  const [resetOpen, setResetOpen] = React.useState(false);
+  const [roleDefaults, setRoleDefaults] = React.useState<NotificationRoleDefaults | null>(null);
   const [message, setMessage] = React.useState<{ type: "success" | "error"; text: string } | null>(null);
   const [savePulse, setSavePulse] = React.useState(false);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/notification-role-defaults?role=${encodeURIComponent(userRole)}`
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { defaults?: NotificationRoleDefaults };
+        if (!cancelled && data.defaults) setRoleDefaults(data.defaults);
+      } catch {
+        /* ignore — form still works without role defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userRole]);
+
+  const currentCategories = React.useMemo(
+    () =>
+      preferenceCategoryFieldsFromPrefs({
+        ...prefs,
+        shift_alerts: shiftAlerts,
+        whale_alerts: whaleAlerts,
+        model_alerts: modelAlerts,
+        system_alerts: systemAlerts,
+        task_alerts: taskAlerts,
+        mistake_alerts: mistakeAlerts,
+        fine_bonus_alerts: fineBonusAlerts,
+        period_alerts: periodAlerts,
+        marketing_alerts: marketingAlerts,
+        phase_alerts: phaseAlerts,
+        reward_alerts: rewardAlerts,
+      }),
+    [
+      prefs,
+      shiftAlerts,
+      whaleAlerts,
+      modelAlerts,
+      systemAlerts,
+      taskAlerts,
+      mistakeAlerts,
+      fineBonusAlerts,
+      periodAlerts,
+      marketingAlerts,
+      phaseAlerts,
+      rewardAlerts,
+    ]
+  );
+
+  const categoryModified = React.useCallback(
+    (key: keyof NotificationRoleDefaults) =>
+      roleDefaults != null && currentCategories[key] !== roleDefaults[key],
+    [roleDefaults, currentCategories]
+  );
+
+  const hasCategoryOverrides =
+    roleDefaults != null && !notificationDefaultsEqual(currentCategories, roleDefaults);
 
   React.useEffect(() => {
     setPushEnabled(prefs.push_enabled);
@@ -229,6 +332,55 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
     }
   }
 
+  async function handleResetToRoleDefaults() {
+    setMessage(null);
+    setResetting(true);
+    try {
+      const res = await resetMyNotificationPreferencesToRoleDefaults();
+      if (!res.ok) {
+        setMessage({ type: "error", text: res.error });
+        return;
+      }
+      if (roleDefaults) {
+        setShiftAlerts(roleDefaults.shift);
+        setWhaleAlerts(roleDefaults.whale);
+        setModelAlerts(roleDefaults.model);
+        setSystemAlerts(roleDefaults.system);
+        setTaskAlerts(roleDefaults.task);
+        setMistakeAlerts(roleDefaults.mistake);
+        setFineBonusAlerts(roleDefaults.fine_bonus);
+        setPeriodAlerts(roleDefaults.period);
+        setMarketingAlerts(roleDefaults.marketing);
+        setPhaseAlerts(roleDefaults.phase);
+        setRewardAlerts(roleDefaults.reward);
+      }
+      setMessage({ type: "success", text: "Category preferences reset to your role defaults." });
+      setResetOpen(false);
+      router.refresh();
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  const categoryState: Record<
+    keyof NotificationRoleDefaults,
+    { value: boolean; setter: (v: boolean) => void }
+  > = {
+    shift: { value: shiftAlerts, setter: setShiftAlerts },
+    whale: { value: whaleAlerts, setter: setWhaleAlerts },
+    model: { value: modelAlerts, setter: setModelAlerts },
+    system: { value: systemAlerts, setter: setSystemAlerts },
+    task: { value: taskAlerts, setter: setTaskAlerts },
+    mistake: { value: mistakeAlerts, setter: setMistakeAlerts },
+    fine_bonus: { value: fineBonusAlerts, setter: setFineBonusAlerts },
+    period: { value: periodAlerts, setter: setPeriodAlerts },
+    marketing: { value: marketingAlerts, setter: setMarketingAlerts },
+    phase: { value: phaseAlerts, setter: setPhaseAlerts },
+    reward: { value: rewardAlerts, setter: setRewardAlerts },
+  };
+
+  const categoryGroups = ["Operations", "Team", "Performance"] as const;
+
   return (
     <>
       <form onSubmit={handleSubmit} className="notification-settings-page space-y-8 md:space-y-10">
@@ -270,102 +422,43 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
           title="Categories"
           subtitle="Fine-tune what kinds of updates you care about."
         >
+          {roleDefaults ? (
+            <div className="mb-6 rounded-xl border border-sky-500/25 bg-sky-500/10 px-4 py-3 text-sm leading-relaxed text-sky-100/90">
+              Your role (<span className="font-semibold text-white/90">{userRole.replace(/_/g, " ")}</span>)
+              has default notification categories. Changes here are personal overrides and stay on your account.
+            </div>
+          ) : null}
           <div className="space-y-6">
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">Operations</p>
-              <div className="space-y-4">
-                <NotificationToggleField
-                  name="shift_alerts"
-                  label="Shift alerts"
-                  icon={<CalendarClock />}
-                  checked={shiftAlerts}
-                  onChange={setShiftAlerts}
-                />
-                <NotificationToggleField
-                  name="whale_alerts"
-                  label="Whale alerts"
-                  icon={<Fish />}
-                  checked={whaleAlerts}
-                  onChange={setWhaleAlerts}
-                />
-                <NotificationToggleField
-                  name="model_alerts"
-                  label="Model alerts"
-                  icon={<UserRound />}
-                  checked={modelAlerts}
-                  onChange={setModelAlerts}
-                />
-                <NotificationToggleField
-                  name="period_alerts"
-                  label="Period alerts"
-                  icon={<CalendarClock />}
-                  checked={periodAlerts}
-                  onChange={setPeriodAlerts}
-                />
+            {categoryGroups.map((group) => (
+              <div key={group} className="space-y-3">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">{group}</p>
+                <div className="space-y-4">
+                  {CATEGORY_TOGGLES.filter((item) => item.group === group).map((item) => {
+                    const Icon = item.icon;
+                    const state = categoryState[item.key];
+                    return (
+                      <NotificationToggleField
+                        key={item.name}
+                        name={item.name}
+                        label={item.label}
+                        icon={<Icon />}
+                        checked={state.value}
+                        onChange={state.setter}
+                        modified={categoryModified(item.key)}
+                      />
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">Team</p>
-              <div className="space-y-4">
-                <NotificationToggleField
-                  name="task_alerts"
-                  label="Task alerts"
-                  icon={<ListTodo />}
-                  checked={taskAlerts}
-                  onChange={setTaskAlerts}
-                />
-                <NotificationToggleField
-                  name="phase_alerts"
-                  label="Phase alerts"
-                  icon={<Layers />}
-                  checked={phaseAlerts}
-                  onChange={setPhaseAlerts}
-                />
-                <NotificationToggleField
-                  name="mistake_alerts"
-                  label="Mistake alerts"
-                  icon={<ShieldAlert />}
-                  checked={mistakeAlerts}
-                  onChange={setMistakeAlerts}
-                />
-                <NotificationToggleField
-                  name="marketing_alerts"
-                  label="Marketing alerts"
-                  icon={<Megaphone />}
-                  checked={marketingAlerts}
-                  onChange={setMarketingAlerts}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">Performance</p>
-              <div className="space-y-4">
-                <NotificationToggleField
-                  name="reward_alerts"
-                  label="Reward alerts"
-                  icon={<Trophy />}
-                  checked={rewardAlerts}
-                  onChange={setRewardAlerts}
-                />
-                <NotificationToggleField
-                  name="fine_bonus_alerts"
-                  label="Fine/bonus alerts"
-                  icon={<Coins />}
-                  checked={fineBonusAlerts}
-                  onChange={setFineBonusAlerts}
-                />
-                <NotificationToggleField
-                  name="system_alerts"
-                  label="System alerts"
-                  icon={<Cpu />}
-                  checked={systemAlerts}
-                  onChange={setSystemAlerts}
-                />
-              </div>
-            </div>
+            ))}
           </div>
+          {hasCategoryOverrides ? (
+            <div className="mt-6 border-t border-white/[0.08] pt-5">
+              <ButtonSecondary type="button" onClick={() => setResetOpen(true)} disabled={resetting}>
+                Reset to role defaults
+              </ButtonSecondary>
+            </div>
+          ) : null}
         </SettingsSection>
 
         <SettingsSection
@@ -472,6 +565,16 @@ export function NotificationSettingsForm({ prefs }: { prefs: NotificationPrefere
           </motion.div>
         </div>
       </form>
+
+      <ConfirmDialog
+        open={resetOpen}
+        onClose={() => setResetOpen(false)}
+        title="Reset to role defaults?"
+        description="This restores all category toggles to your role's defaults. Delivery settings (push, quiet hours, mute) are unchanged."
+        confirmLabel="Reset categories"
+        loading={resetting}
+        onConfirm={handleResetToRoleDefaults}
+      />
 
       <style jsx global>{`
         .notification-settings-page .settings-time-input {

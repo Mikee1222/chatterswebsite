@@ -22,6 +22,7 @@ import {
   type CreateUserInput,
   type UpdateUserInput,
 } from "@/services/users";
+import { createDefaultPreferencesForUser } from "@/services/notification-preferences";
 import type { VaType } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import { hasPermission } from "@/lib/rbac";
@@ -100,7 +101,10 @@ export async function createAccount(formData: FormData) {
     input.va_type = vaType;
   }
   try {
-    await createUser(input);
+    const created = await createUser(input);
+    await createDefaultPreferencesForUser(created.id, role).catch((err) => {
+      console.error("[createAccount] notification prefs init failed", err);
+    });
     revalidateAccountsPaths();
     redirect(ACCOUNTS_LIST + "?success=created");
   } catch (err) {

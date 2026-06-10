@@ -19,6 +19,14 @@ import {
   createDefaultPreferencesForUser,
   updateNotificationPreference,
 } from "@/services/notification-preferences";
+import {
+  getNotificationDefaultsForRole,
+} from "@/services/roles";
+import {
+  notificationDefaultsToPreferenceFields,
+  notificationDefaultsEqual,
+  preferenceCategoryFieldsFromPrefs,
+} from "@/lib/notification-role-defaults";
 import type { NotificationPreference } from "@/types";
 
 export async function getMyNotificationPreferences(): Promise<NotificationPreference | null> {
@@ -27,7 +35,7 @@ export async function getMyNotificationPreferences(): Promise<NotificationPrefer
   const userId = user.airtableUserId ?? user.id;
   let prefs = await getPreferencesByUserId(userId);
   if (!prefs) {
-    prefs = await createDefaultPreferencesForUser(userId);
+    prefs = await createDefaultPreferencesForUser(userId, user.role);
   }
   return prefs;
 }
@@ -42,7 +50,7 @@ export async function updateMyNotificationPreferences(
     if (!user) redirect(ROUTES.login);
     const userId = user.airtableUserId ?? user.id;
     let prefs = await getPreferencesByUserId(userId);
-    if (!prefs) prefs = await createDefaultPreferencesForUser(userId);
+    if (!prefs) prefs = await createDefaultPreferencesForUser(userId, user.role);
 
     const push_enabled = formData.get("push_enabled") === "on";
     const in_app_enabled = formData.get("in_app_enabled") === "on";
@@ -87,6 +95,28 @@ export async function updateMyNotificationPreferences(
   } catch (e) {
     if (isRedirectError(e)) throw e;
     const msg = e instanceof Error ? e.message : "Something went wrong while saving.";
+    return { ok: false, error: msg };
+  }
+}
+
+export async function resetMyNotificationPreferencesToRoleDefaults(): Promise<UpdateNotificationPreferencesResult> {
+  try {
+    const user = await getSessionFromCookies();
+    if (!user) redirect(ROUTES.login);
+    const userId = user.airtableUserId ?? user.id;
+    let prefs = await getPreferencesByUserId(userId);
+    if (!prefs) prefs = await createDefaultPreferencesForUser(userId, user.role);
+
+    const roleDefaults = await getNotificationDefaultsForRole(user.role);
+    const categoryFields = notificationDefaultsToPreferenceFields(roleDefaults);
+
+    await updateNotificationPreference(prefs.id, categoryFields);
+    revalidatePath(ROUTES.settings);
+    revalidatePath(ROUTES.client.settings);
+    return { ok: true };
+  } catch (e) {
+    if (isRedirectError(e)) throw e;
+    const msg = e instanceof Error ? e.message : "Something went wrong while resetting.";
     return { ok: false, error: msg };
   }
 }

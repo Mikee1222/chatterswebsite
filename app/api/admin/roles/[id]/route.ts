@@ -8,11 +8,20 @@ const permissionSchema = z
   .string()
   .refine((v): v is Permission => (ALL_PERMISSIONS as readonly string[]).includes(v));
 import { deleteRole, getRoleById, upsertRole } from "@/services/roles";
+import { NOTIFICATION_ROLE_DEFAULT_KEYS } from "@/lib/notification-role-defaults";
+
+const notificationDefaultsSchema = z.object(
+  Object.fromEntries(NOTIFICATION_ROLE_DEFAULT_KEYS.map((key) => [key, z.boolean()])) as Record<
+    (typeof NOTIFICATION_ROLE_DEFAULT_KEYS)[number],
+    z.ZodBoolean
+  >
+);
 
 const patchSchema = z.object({
   label: z.string().trim().min(1).max(120).optional(),
   description: z.string().max(2000).optional(),
   permissions: z.array(permissionSchema).optional(),
+  notification_defaults: notificationDefaultsSchema.optional(),
   color: z.string().max(32).optional(),
 });
 
@@ -79,6 +88,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         label: parsed.data.label ?? existing.label,
         description: parsed.data.description ?? existing.description,
         permissions: parsed.data.permissions ?? existing.permissions,
+        notification_defaults: parsed.data.notification_defaults ?? existing.notification_defaults,
         is_system_role: existing.is_system_role,
         color: parsed.data.color ?? existing.color,
       },

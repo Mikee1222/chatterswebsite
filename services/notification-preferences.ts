@@ -9,6 +9,11 @@ import {
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
+import {
+  getFallbackNotificationDefaults,
+  notificationDefaultsToPreferenceFields,
+} from "@/lib/notification-role-defaults";
+import { getNotificationDefaultsForRole } from "@/services/roles";
 import type { NotificationPreference } from "@/types";
 
 const TABLE = "notification_preferences";
@@ -86,37 +91,38 @@ export async function updateNotificationPreference(recordId: string, fields: Par
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
-const DEFAULT_PREFERENCES: Partial<Fields> = {
+const BASE_PREFERENCES: Partial<Fields> = {
   push_enabled: true,
   in_app_enabled: true,
   critical_only: false,
-  whale_alerts: true,
-  shift_alerts: true,
-  model_alerts: true,
-  system_alerts: true,
-  task_alerts: true,
-  mistake_alerts: true,
-  fine_bonus_alerts: true,
-  period_alerts: true,
-  marketing_alerts: true,
-  phase_alerts: true,
-  reward_alerts: true,
   mute_all: false,
   quiet_hours_start: "",
   quiet_hours_end: "",
 };
 
+async function resolveCategoryDefaults(roleName?: string): Promise<Partial<Fields>> {
+  const defaults = roleName
+    ? await getNotificationDefaultsForRole(roleName)
+    : getFallbackNotificationDefaults("");
+  return notificationDefaultsToPreferenceFields(defaults);
+}
+
 /**
  * Create default notification_preferences for a user.
  * Call this when a new user is created in the users table (e.g. from Accounts or D1 sync).
  */
-export async function createDefaultPreferencesForUser(userId: string): Promise<NotificationPreference> {
+export async function createDefaultPreferencesForUser(
+  userId: string,
+  roleName?: string
+): Promise<NotificationPreference> {
   const existing = await getPreferencesByUserId(userId);
   if (existing) return existing;
   const preferenceId = `pref_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const categoryDefaults = await resolveCategoryDefaults(roleName);
   return createNotificationPreference({
     preference_id: preferenceId,
     user_id: userId,
-    ...DEFAULT_PREFERENCES,
+    ...BASE_PREFERENCES,
+    ...categoryDefaults,
   });
 }

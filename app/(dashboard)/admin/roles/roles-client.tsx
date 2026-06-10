@@ -19,6 +19,12 @@ import {
   PERMISSION_LABELS,
   type Permission,
 } from "@/lib/permissions";
+import {
+  getFallbackNotificationDefaults,
+  NOTIFICATION_CATEGORY_GROUPS,
+  notificationDefaultsEqual,
+  type NotificationRoleDefaults,
+} from "@/lib/notification-role-defaults";
 import { cn } from "@/lib/utils";
 import type { RoleRecord } from "@/types";
 
@@ -53,6 +59,7 @@ type RoleDraft = {
   label: string;
   description: string;
   permissions: Permission[];
+  notification_defaults: NotificationRoleDefaults;
   is_system_role: boolean;
   color: string;
   isNew?: boolean;
@@ -73,6 +80,9 @@ function toDraft(role: RoleRecord): RoleDraft {
     label: role.label,
     description: role.description,
     permissions: [...role.permissions],
+    notification_defaults: role.notification_defaults
+      ? { ...role.notification_defaults }
+      : getFallbackNotificationDefaults(role.role_id),
     is_system_role: role.is_system_role,
     color: role.color || "gray",
   };
@@ -85,7 +95,8 @@ function draftsEqual(a: RoleDraft, b: RoleDraft): boolean {
     a.description === b.description &&
     a.color === b.color &&
     a.permissions.length === b.permissions.length &&
-    a.permissions.every((p) => b.permissions.includes(p))
+    a.permissions.every((p) => b.permissions.includes(p)) &&
+    notificationDefaultsEqual(a.notification_defaults, b.notification_defaults)
   );
 }
 
@@ -162,6 +173,7 @@ export function AdminRolesClient({
     initialRoles[0] ? toDraft(initialRoles[0]) : null
   );
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
+  const [activeTab, setActiveTab] = React.useState<"permissions" | "notifications">("permissions");
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
@@ -187,6 +199,7 @@ export function AdminRolesClient({
       label: "New role",
       description: "",
       permissions: [],
+      notification_defaults: getFallbackNotificationDefaults(role_id),
       is_system_role: false,
       color: "pink",
       isNew: true,
@@ -213,6 +226,18 @@ export function AdminRolesClient({
     });
   }
 
+  function toggleNotificationCategory(key: keyof NotificationRoleDefaults, enabled: boolean) {
+    if (!draft) return;
+    setDraft((prev) =>
+      prev
+        ? {
+            ...prev,
+            notification_defaults: { ...prev.notification_defaults, [key]: enabled },
+          }
+        : prev
+    );
+  }
+
   function toggleGroup(key: string) {
     setExpandedGroups((prev) => ({ ...prev, [key]: !prev[key] }));
   }
@@ -226,6 +251,7 @@ export function AdminRolesClient({
         label: draft.label.trim(),
         description: draft.description.trim(),
         permissions: draft.permissions,
+        notification_defaults: draft.notification_defaults,
         color: draft.color,
       };
 
@@ -490,6 +516,34 @@ export function AdminRolesClient({
                   </div>
                 </div>
 
+                <div className="mb-6 flex gap-2 border-b border-white/10">
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("permissions")}
+                    className={cn(
+                      "border-b-2 px-4 py-2.5 text-sm font-semibold transition",
+                      activeTab === "permissions"
+                        ? "border-pink-400 text-pink-200"
+                        : "border-transparent text-white/45 hover:text-white/70"
+                    )}
+                  >
+                    Permissions
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab("notifications")}
+                    className={cn(
+                      "border-b-2 px-4 py-2.5 text-sm font-semibold transition",
+                      activeTab === "notifications"
+                        ? "border-pink-400 text-pink-200"
+                        : "border-transparent text-white/45 hover:text-white/70"
+                    )}
+                  >
+                    Notifications
+                  </button>
+                </div>
+
+                {activeTab === "permissions" ? (
                 <div>
                   <h3 className="mb-3 text-sm font-semibold uppercase tracking-wider text-white/55">Permissions</h3>
                   <div className="space-y-2">
@@ -560,6 +614,47 @@ export function AdminRolesClient({
                     })}
                   </div>
                 </div>
+                ) : (
+                <div>
+                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-white/55">
+                    Notification defaults
+                  </h3>
+                  <p className="mb-5 text-sm text-white/45">
+                    Default category toggles for new users with this role. Users can override these in Settings.
+                  </p>
+                  <div className="space-y-6">
+                    {NOTIFICATION_CATEGORY_GROUPS.map((group) => (
+                      <div key={group.key}>
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-pink-100/55">
+                          {group.label}
+                        </p>
+                        <ul className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2">
+                          {group.categories.map((cat) => {
+                            const checked = draft.notification_defaults[cat.key];
+                            const switchId = `notif-default-${draft.id}-${cat.key}`;
+                            return (
+                              <li
+                                key={cat.key}
+                                className="flex items-center justify-between gap-3 rounded-lg px-2 py-2.5"
+                              >
+                                <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
+                                  <p className="text-sm font-medium text-white/80">{cat.label}</p>
+                                  <p className="mt-0.5 text-xs text-white/40">{cat.description}</p>
+                                </label>
+                                <PermissionSwitch
+                                  id={switchId}
+                                  checked={checked}
+                                  onChange={(next) => toggleNotificationCategory(cat.key, next)}
+                                />
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                )}
               </div>
             )}
           </section>

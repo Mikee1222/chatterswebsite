@@ -152,7 +152,7 @@ export async function login(formData: FormData) {
             path: "/",
             ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
           });
-          void createDefaultPreferencesForUser(clientRecord.id).catch((err) => {
+          void createDefaultPreferencesForUser(clientRecord.id, "client").catch((err) => {
             console.error(`${logPrefix} client notification prefs init failed`, err);
           });
           console.log(`${logPrefix} login success (client)`, { email: obfuscatedEmail });
