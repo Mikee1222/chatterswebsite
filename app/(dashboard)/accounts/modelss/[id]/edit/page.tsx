@@ -6,6 +6,8 @@ import { getModelById } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditModelForm } from "@/components/edit-model-form";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export default async function EditModelPage({
   params,
@@ -13,7 +15,7 @@ export default async function EditModelPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_EDIT))) redirect(ROUTES.dashboard);
 
   const { id } = await params;
   const [model, clientAssignments, allUsers] = await Promise.all([

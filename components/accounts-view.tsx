@@ -26,7 +26,7 @@ export function AccountsView({ users, modelss, success, error }: Props) {
     const params = new URLSearchParams(searchParams.toString());
     if (s === "users") params.delete("section");
     else params.set("section", "modelss");
-    router.push(`${ROUTES.accounts}${params.toString() ? `?${params}` : ""}`);
+    router.push(`${ROUTES.admin.accounts}${params.toString() ? `?${params}` : ""}`);
   }
 
   return (

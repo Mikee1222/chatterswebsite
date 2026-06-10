@@ -6,7 +6,7 @@ import { runPushEnableFlow } from "@/components/push-permission-prompt";
 import { Download, BellPlus, Bell, BellOff, Send } from "lucide-react";
 import type { UserRole } from "@/types";
 
-export function SettingsPwaActions({ role }: { role?: UserRole | null }) {
+export function SettingsPwaActions({ role }: { role?: UserRole | (string & {}) | null }) {
   const { canInstall, needsAddToHomeScreen, isStandalone, setInstallSheetOpen } = usePwa();
   const [notificationPermission, setNotificationPermission] = React.useState<NotificationPermission | null>(null);
   const [subscriptionSaved, setSubscriptionSaved] = React.useState<boolean | null>(null);

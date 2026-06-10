@@ -120,7 +120,7 @@ export function getHiddenNavForVaType(
 
 /** Resolve hidden nav hrefs for the active session role (va_type-aware for virtual_assistant). */
 export function resolveHiddenNavItemsForSession(
-  role: NavRole,
+  role: NavRoleKey,
   config: ParsedHiddenNavConfig,
   vaType?: VaType | null
 ): string[] {
@@ -178,9 +178,30 @@ export type NavItem = {
 
 export type NavRole = "chatter" | "virtual_assistant" | "admin" | "manager" | "model";
 
-export function navStorageProfileForRole(role: NavRole): NavStorageProfile {
+const SYSTEM_NAV_ROLES = new Set<string>([
+  "admin",
+  "manager",
+  "chatter",
+  "virtual_assistant",
+  "model",
+  "client",
+]);
+
+/** Session role slug — system roles or a custom role_id from Airtable. */
+export type NavRoleKey = NavRole | (string & {});
+
+export function isSystemNavRole(role: string): boolean {
+  return SYSTEM_NAV_ROLES.has(role.trim().toLowerCase());
+}
+
+export function isCustomNavRole(role: string): boolean {
+  return !isSystemNavRole(role);
+}
+
+export function navStorageProfileForRole(role: NavRoleKey): NavStorageProfile {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   if (r === "admin" || r === "manager") return "admin";
+  if (!isSystemNavRole(r)) return "admin";
   if (r === "virtual_assistant") return "virtual_assistant";
   if (r === "model") return "model";
   return "chatter";
@@ -226,62 +247,243 @@ const vaNav: NavItem[] = [
 const adminNav: NavItem[] = [
   // ── OVERVIEW ──
   { href: ROUTES.admin.home, label: "Home", iconKey: "Home", navSection: "OVERVIEW" },
-  { href: ROUTES.admin.liveShifts, label: "Live shifts", iconKey: "Radio" },
-  { href: ROUTES.admin.shiftActivity, label: "Shift activity", iconKey: "Clock" },
-  { href: ROUTES.admin.modelSchedulesOverview, label: "Schedule overview", iconKey: "CalendarDays" },
+  {
+    href: ROUTES.admin.liveShifts,
+    label: "Live shifts",
+    iconKey: "Radio",
+    requiresPermission: PERMISSIONS.SHIFTS_ACTIVE_VIEW,
+  },
+  {
+    href: ROUTES.admin.shiftActivity,
+    label: "Shift activity",
+    iconKey: "Clock",
+    requiresPermission: PERMISSIONS.SHIFTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.modelSchedulesOverview,
+    label: "Schedule overview",
+    iconKey: "CalendarDays",
+    requiresPermission: PERMISSIONS.MODELS_SCHEDULES,
+  },
 
   // ── PROGRAMS ──
-  { href: ROUTES.admin.weeklyProgram, label: "Weekly program", iconKey: "Calendar", navSection: "PROGRAMS" },
-  { href: ROUTES.admin.weeklyProgramVa, label: "VA weekly program", iconKey: "CalendarCheck" },
-  { href: ROUTES.admin.vaTasks, label: "VA tasks", iconKey: "ListTodo" },
-  { href: ROUTES.admin.modelAvailability, label: "Model availability", iconKey: "CalendarCheck" },
-  { href: ROUTES.admin.modelSchedules, label: "Model schedules", iconKey: "Calendar" },
-  { href: ROUTES.admin.modelTasks, label: "Model tasks", iconKey: "FileText" },
+  {
+    href: ROUTES.admin.weeklyProgram,
+    label: "Weekly program",
+    iconKey: "Calendar",
+    navSection: "PROGRAMS",
+    requiresPermission: PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+  },
+  {
+    href: ROUTES.admin.weeklyProgramVa,
+    label: "VA weekly program",
+    iconKey: "CalendarCheck",
+    requiresPermission: PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+  },
+  {
+    href: ROUTES.admin.vaTasks,
+    label: "VA tasks",
+    iconKey: "ListTodo",
+    requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
+  },
+  {
+    href: ROUTES.admin.modelAvailability,
+    label: "Model availability",
+    iconKey: "CalendarCheck",
+    requiresPermission: PERMISSIONS.MODELS_AVAILABILITY,
+  },
+  {
+    href: ROUTES.admin.modelSchedules,
+    label: "Model schedules",
+    iconKey: "Calendar",
+    requiresPermission: PERMISSIONS.MODELS_SCHEDULES,
+  },
+  {
+    href: ROUTES.admin.modelTasks,
+    label: "Model tasks",
+    iconKey: "FileText",
+    requiresPermission: PERMISSIONS.MODELS_MANAGE,
+  },
 
   // ── CREATORS & CLIENTS ──
-  { href: ROUTES.admin.models, label: "Models", iconKey: "UserCheck", navSection: "CREATORS & CLIENTS" },
-  { href: ROUTES.admin.clients, label: "Clients", iconKey: "Users" },
-  { href: ROUTES.admin.whales, label: "Whales", iconKey: "Users" },
-  { href: ROUTES.admin.accounts, label: "Accounts", iconKey: "UserCog" },
-  { href: ROUTES.admin.modelLiveStreams, label: "Model live streams", iconKey: "Radio", beta: true },
-  { href: ROUTES.admin.modelCustoms, label: "Model customs", iconKey: "Package" },
+  {
+    href: ROUTES.admin.models,
+    label: "Models",
+    iconKey: "UserCheck",
+    navSection: "CREATORS & CLIENTS",
+    requiresPermission: PERMISSIONS.MODELS_VIEW,
+  },
+  {
+    href: ROUTES.admin.clients,
+    label: "Clients",
+    iconKey: "Users",
+    requiresPermission: PERMISSIONS.CLIENTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.whales,
+    label: "Whales",
+    iconKey: "Users",
+    requiresPermission: PERMISSIONS.WHALES_MANAGE,
+  },
+  {
+    href: ROUTES.admin.accounts,
+    label: "Accounts",
+    iconKey: "UserCog",
+    requiresPermission: PERMISSIONS.ACCOUNTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.modelLiveStreams,
+    label: "Model live streams",
+    iconKey: "Radio",
+    beta: true,
+    requiresPermission: PERMISSIONS.MODELS_VIEW,
+  },
+  {
+    href: ROUTES.admin.modelCustoms,
+    label: "Model customs",
+    iconKey: "Package",
+    requiresPermission: PERMISSIONS.CUSTOM_REQUESTS_VIEW,
+  },
 
   // ── MARKETING ──
-  { href: ROUTES.admin.marketing, label: "Marketing", iconKey: "TrendingUp", navSection: "MARKETING" },
+  {
+    href: ROUTES.admin.marketing,
+    label: "Marketing",
+    iconKey: "TrendingUp",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.MARKETING_VIEW,
+  },
   { href: ROUTES.admin.informations, label: "Informations", iconKey: "Info", navSection: undefined },
-  { href: ROUTES.admin.sopLibrary, label: "SOP Library", iconKey: "BookOpen" },
-  { href: ROUTES.admin.vaContentAssignments, label: "VA Content", iconKey: "FileText" },
-  { href: ROUTES.admin.modelContentRequests, label: "Model content requests", iconKey: "FileText" },
+  {
+    href: ROUTES.admin.sopLibrary,
+    label: "SOP Library",
+    iconKey: "BookOpen",
+    requiresPermission: PERMISSIONS.SOPS_MANAGE,
+  },
+  {
+    href: ROUTES.admin.vaContentAssignments,
+    label: "VA Content",
+    iconKey: "FileText",
+    requiresPermission: PERMISSIONS.CONTENT_ASSIGN,
+  },
+  {
+    href: ROUTES.admin.modelContentRequests,
+    label: "Model content requests",
+    iconKey: "FileText",
+    requiresPermission: PERMISSIONS.CONTENT_VIEW,
+  },
 
   // ── FINANCE ──
-  { href: ROUTES.admin.billing, label: "Billing", iconKey: "Receipt", navSection: "FINANCE" },
-  { href: ROUTES.admin.paymentMethods, label: "Payment Methods", iconKey: "CreditCard" },
-  { href: ROUTES.admin.submissions, label: "Submissions", iconKey: "FileText" },
-  { href: ROUTES.admin.partnership, label: "Partnership", iconKey: "TrendingUp" },
-  { href: ROUTES.admin.customRequests, label: "Custom requests", iconKey: "Receipt" },
-  { href: ROUTES.admin.rebillsTips, label: "Rebills & Tips", iconKey: "Receipt" },
-  { href: ROUTES.admin.expenseRequests, label: "Expense requests", iconKey: "Receipt" },
-  { href: ROUTES.admin.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins" },
-  { href: ROUTES.admin.earnings, label: "Earnings", iconKey: "LineChart", adminOnly: true },
+  {
+    href: ROUTES.admin.billing,
+    label: "Billing",
+    iconKey: "Receipt",
+    navSection: "FINANCE",
+    requiresPermission: PERMISSIONS.BILLING_VIEW,
+  },
+  {
+    href: ROUTES.admin.paymentMethods,
+    label: "Payment Methods",
+    iconKey: "CreditCard",
+    requiresPermission: PERMISSIONS.PAYMENTS_MANAGE,
+  },
+  {
+    href: ROUTES.admin.submissions,
+    label: "Submissions",
+    iconKey: "FileText",
+    requiresPermission: PERMISSIONS.PAYMENTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.partnership,
+    label: "Partnership",
+    iconKey: "TrendingUp",
+    requiresPermission: PERMISSIONS.CLIENTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.customRequests,
+    label: "Custom requests",
+    iconKey: "Receipt",
+    requiresPermission: PERMISSIONS.CUSTOM_REQUESTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.rebillsTips,
+    label: "Rebills & Tips",
+    iconKey: "Receipt",
+    requiresPermission: PERMISSIONS.BILLING_VIEW,
+  },
+  {
+    href: ROUTES.admin.expenseRequests,
+    label: "Expense requests",
+    iconKey: "Receipt",
+    requiresPermission: PERMISSIONS.PAYMENTS_MANAGE,
+  },
+  {
+    href: ROUTES.admin.finesBonuses,
+    label: "Fines & Bonuses",
+    iconKey: "Coins",
+    requiresPermission: PERMISSIONS.FINES_VIEW,
+  },
+  {
+    href: ROUTES.admin.earnings,
+    label: "Earnings",
+    iconKey: "LineChart",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.EARNINGS_VIEW,
+  },
   // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.
   // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
 
   // ── PERFORMANCE ──
-  { href: ROUTES.admin.mistakes, label: "Mistakes", iconKey: "AlertTriangle", navSection: "PERFORMANCE" },
-  { href: ROUTES.admin.mistakeReasons, label: "Mistake reasons", iconKey: "Settings2", adminOnly: true },
-  { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy" },
-  { href: ROUTES.admin.spinResults, label: "Spin results", iconKey: "Sparkles" },
-  { href: ROUTES.admin.rewardsConfig, label: "Rewards Config", iconKey: "Sparkles", adminOnly: true },
-  { href: ROUTES.admin.challenges, label: "Challenges", iconKey: "Target", adminOnly: true },
+  {
+    href: ROUTES.admin.mistakes,
+    label: "Mistakes",
+    iconKey: "AlertTriangle",
+    navSection: "PERFORMANCE",
+    requiresPermission: PERMISSIONS.MISTAKES_VIEW,
+  },
+  {
+    href: ROUTES.admin.mistakeReasons,
+    label: "Mistake reasons",
+    iconKey: "Settings2",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.MISTAKES_REASONS_MANAGE,
+  },
+  { href: ROUTES.admin.rewards, label: "Rewards", iconKey: "Trophy", requiresPermission: PERMISSIONS.REWARDS_VIEW },
+  {
+    href: ROUTES.admin.spinResults,
+    label: "Spin results",
+    iconKey: "Sparkles",
+    requiresPermission: PERMISSIONS.SPIN_WHEEL_VIEW,
+  },
+  {
+    href: ROUTES.admin.rewardsConfig,
+    label: "Rewards Config",
+    iconKey: "Sparkles",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.REWARDS_CONFIG,
+  },
+  {
+    href: ROUTES.admin.challenges,
+    label: "Challenges",
+    iconKey: "Target",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.CHALLENGES_MANAGE,
+  },
 
   // ── SUPPORT ──
-  { href: ROUTES.admin.feedback, label: "Feedback", iconKey: "MessageSquarePlus", navSection: "SUPPORT" },
+  {
+    href: ROUTES.admin.feedback,
+    label: "Feedback",
+    iconKey: "MessageSquarePlus",
+    navSection: "SUPPORT",
+    requiresPermission: PERMISSIONS.FEEDBACK_VIEW,
+  },
   {
     href: ROUTES.admin.roles,
     label: "Roles",
     iconKey: "Settings2",
     adminOnly: true,
-    requiresPermission: PERMISSIONS.ROLES_MANAGE,
+    requiresPermission: PERMISSIONS.ROLES_VIEW,
   },
   { href: ROUTES.activityLogs, label: "Activity logs", iconKey: "Activity" },
   {
@@ -290,6 +492,7 @@ const adminNav: NavItem[] = [
     iconKey: "Activity",
     adminOnly: true,
     excludeFromMobileMainTabs: true,
+    requiresPermission: PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC,
   },
   { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
@@ -312,8 +515,13 @@ const modelNav: NavItem[] = [
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
+/** Shared admin nav items shown to custom roles regardless of grants (Home, Settings, etc.). */
+function getCustomRoleSharedAdminNavItems(): NavItem[] {
+  return adminNav.filter((item) => !item.requiresPermission && !item.adminOnly);
+}
+
 /** Canonical lists before hide filter (settings UI + internal). */
-export function getBaseNavItemsForRole(role: NavRole): NavItem[] {
+export function getBaseNavItemsForRole(role: NavRoleKey): NavItem[] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   if (r === "chatter") return [...chatterNav];
   if (r === "virtual_assistant") return [...vaNav];
@@ -323,6 +531,9 @@ export function getBaseNavItemsForRole(role: NavRole): NavItem[] {
     return items;
   }
   if (r === "model") return [...modelNav];
+  if (!isSystemNavRole(r)) {
+    return [...adminNav.filter((item) => item.requiresPermission), ...getCustomRoleSharedAdminNavItems()];
+  }
   return [{ href: ROUTES.dashboard, label: "Dashboard", iconKey: "LayoutDashboard" }];
 }
 
@@ -330,11 +541,24 @@ export function getBaseNavItemsForRole(role: NavRole): NavItem[] {
  * All nav items for the given role, minus hrefs listed in `hiddenItems` for this role’s storage profile.
  * When `hiddenItems` is omitted or empty, no items are filtered out.
  */
-export function getNavItemsForRole(role: NavRole, hiddenItems?: string[]): NavItem[] {
+export function getNavItemsForRole(role: NavRoleKey, hiddenItems?: string[]): NavItem[] {
   const base = getBaseNavItemsForRole(role);
   if (hiddenItems == null || hiddenItems.length === 0) return base;
   const hidden = new Set(hiddenItems);
   return base.filter((item) => !hidden.has(item.href));
+}
+
+/** Server-side nav builder: role base list → hidden-nav filter → permission filter. */
+export async function getNavItemsForUser(
+  user: { role: string; secondary_role?: "chatter" | "virtual_assistant" | null; active_role?: "chatter" | "virtual_assistant" | null; va_type?: import("@/types").VaType | null },
+  hiddenItems?: string[]
+): Promise<NavItem[]> {
+  const { getNavRoleForSession } = await import("@/lib/staff-session-role");
+  const { getUserPermissions } = await import("@/lib/rbac");
+  const role = getNavRoleForSession(user as import("@/lib/auth-config").AuthUser);
+  const base = getNavItemsForRole(role, hiddenItems);
+  const perms = await getUserPermissions(user as import("@/lib/auth-config").AuthUser);
+  return filterNavItemsByPermissions(base, perms);
 }
 
 /** Hide nav items the user lacks `requiresPermission` for. */
@@ -350,7 +574,7 @@ export function filterNavItemsByPermissions(
  * The 4 hrefs used for the mobile bottom bar tabs (before the fixed "More" button).
  * Chatter: Home, Calendar (weekly program), Shift (center CTA), Whales — Settings is More-only.
  */
-export function getMainTabHrefs(role: NavRole): [string, string, string, string] {
+export function getMainTabHrefs(role: NavRoleKey): [string, string, string, string] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   if (r === "chatter") {
     return [ROUTES.chatter.home, ROUTES.chatter.weeklyProgram, ROUTES.chatter.shift, ROUTES.chatter.myWhales];
@@ -358,7 +582,7 @@ export function getMainTabHrefs(role: NavRole): [string, string, string, string]
   if (r === "virtual_assistant") {
     return [ROUTES.va.home, ROUTES.va.tasks, ROUTES.va.weeklyAvailability, ROUTES.settings];
   }
-  if (r === "admin" || r === "manager") {
+  if (r === "admin" || r === "manager" || !isSystemNavRole(r)) {
     return [ROUTES.admin.home, ROUTES.admin.weeklyProgram, ROUTES.admin.liveShifts, ROUTES.admin.models];
   }
   if (r === "model") {
@@ -373,11 +597,11 @@ export function getMainTabHrefs(role: NavRole): [string, string, string, string]
 }
 
 /** Labels for the 4 main mobile tabs (short uppercase; chatter uses captions in shell). */
-export function getMainTabLabels(role: NavRole): [string, string, string, string] {
+export function getMainTabLabels(role: NavRoleKey): [string, string, string, string] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
   if (r === "chatter") return ["HOME", "CALENDAR", "SHIFT", "WHALES"];
   if (r === "virtual_assistant") return ["HOME", "TASKS", "AVAIL.", "SETTINGS"];
-  if (r === "admin" || r === "manager") return ["HOME", "PROGRAM", "LIVE", "MODELS"];
+  if (r === "admin" || r === "manager" || !isSystemNavRole(r)) return ["HOME", "PROGRAM", "LIVE", "MODELS"];
   if (r === "model") return ["HOME", "EARNINGS", "CALENDAR", "SCHEDULE"];
   return ["HOME", "DASHBOARD", "DASHBOARD", "MORE"];
 }
@@ -386,7 +610,7 @@ export function getMainTabLabels(role: NavRole): [string, string, string, string
  * After applying hidden-nav filter, up to 4 main-tab entries for the mobile bottom bar.
  * Prefers canonical main tabs when visible; fills remaining slots from nav order.
  */
-export function getMobileMainTabs(role: NavRole, hiddenItems?: string[]): NavItem[] {
+export function getMobileMainTabs(role: NavRoleKey, hiddenItems?: string[]): NavItem[] {
   const visible = getNavItemsForRole(role, hiddenItems);
   const visibleSet = new Set(visible.map((i) => i.href));
   const canonical = [...getMainTabHrefs(role)];
@@ -407,7 +631,7 @@ export function getMobileMainTabs(role: NavRole, hiddenItems?: string[]): NavIte
 const CHATTER_MOBILE_TAB_CAPTIONS: [string, string, string, string] = ["Home", "Calendar", "Shift", "Whales"];
 
 export function getMobileMainTabDisplays(
-  role: NavRole,
+  role: NavRoleKey,
   hiddenItems?: string[]
 ): { item: NavItem; shortLabel: string; mobileCaption?: string }[] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;

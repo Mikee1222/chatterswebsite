@@ -15,7 +15,7 @@ type CacheEntry = {
 
 const rolePermissionsCache = new Map<string, CacheEntry>();
 
-function resolveRoleForPermissions(user: AuthUser): UserRole {
+function resolveRoleForPermissions(user: AuthUser): string {
   const staff = getEffectiveStaffRole(user);
   if (staff) return staff;
   return user.role;

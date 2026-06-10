@@ -6,6 +6,8 @@ import { CreateAccountForm } from "@/components/create-account-form";
 import { listAllModelss } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { getRoles } from "@/services/roles";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export default async function NewAccountPage({
   searchParams,
@@ -13,7 +15,7 @@ export default async function NewAccountPage({
   searchParams: Promise<{ role?: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_CREATE))) redirect(ROUTES.dashboard);
 
   const { role: roleParam } = await searchParams;
   const defaultRole =

@@ -4,8 +4,25 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { hasPermission } from "@/lib/rbac";
+import { hasAnyPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+
+const ADMIN_AREA_PERMISSIONS = [
+  PERMISSIONS.ACCOUNTS_VIEW,
+  PERMISSIONS.ACCOUNTS_CREATE,
+  PERMISSIONS.BILLING_VIEW,
+  PERMISSIONS.EARNINGS_VIEW,
+  PERMISSIONS.MODELS_VIEW,
+  PERMISSIONS.SHIFTS_MANAGE,
+  PERMISSIONS.MARKETING_VIEW,
+  PERMISSIONS.WHALES_MANAGE,
+  PERMISSIONS.VA_TASKS_VIEW,
+  PERMISSIONS.SOPS_MANAGE,
+  PERMISSIONS.ROLES_VIEW,
+  PERMISSIONS.CHALLENGES_MANAGE,
+  PERMISSIONS.REWARDS_CONFIG,
+  PERMISSIONS.NOTIFICATIONS_VIEW,
+] as const;
 
 export default async function AdminLayout({
   children,
@@ -14,7 +31,7 @@ export default async function AdminLayout({
 }) {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
-  if (await hasPermission(user, PERMISSIONS.ROLES_VIEW)) {
+  if (await hasAnyPermission(user, [...ADMIN_AREA_PERMISSIONS])) {
     return <>{children}</>;
   }
   if (getEffectiveStaffRole(user) === "virtual_assistant") {

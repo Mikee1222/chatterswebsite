@@ -15,7 +15,7 @@ function pushLog(...args: unknown[]) {
   }
 }
 
-function getRoleCopy(role?: UserRole | null): string {
+function getRoleCopy(role?: UserRole | (string & {}) | null): string {
   switch (role) {
     case "chatter":
       return "Get alerts for shifts, breaks, whale sessions, and customs.";
@@ -38,7 +38,7 @@ export type PushEnableResult =
   | { status: "error"; message: string };
 
 /** Shared push-enable flow: register SW → request permission → subscribe → POST /api/push/subscribe. Logs every step; never fails silently. */
-export async function runPushEnableFlow(role?: UserRole | null): Promise<PushEnableResult> {
+export async function runPushEnableFlow(role?: UserRole | (string & {}) | null): Promise<PushEnableResult> {
   pushLog("Button clicked – starting enable flow");
 
   if (typeof window === "undefined") {
@@ -151,7 +151,7 @@ function urlBase64ToUint8Array(base64: string): Uint8Array {
 }
 
 type Props = {
-  role?: UserRole | null;
+  role?: UserRole | (string & {}) | null;
   onSubscribed?: () => void;
 };
 

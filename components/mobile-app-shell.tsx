@@ -52,6 +52,7 @@ import {
   filterNavItemsByPermissions,
   getMobileMainTabDisplays,
   getNavItemsForRole,
+  isCustomNavRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
   type NavIconKey,
@@ -358,7 +359,7 @@ export function MobileAppShell({
 
         {role === "chatter" ? (
           <FloatingActionButton user={user} />
-        ) : user.role === "admin" || user.role === "manager" ? (
+        ) : user.role === "admin" || user.role === "manager" || isCustomNavRole(user.role) ? (
           <AdminFloatingQuickActionsButton user={user} />
         ) : user.role === "model" ? null : role === "virtual_assistant" ? (
           <VaFloatingActionButton user={user} />

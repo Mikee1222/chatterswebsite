@@ -949,7 +949,7 @@ export interface WeeklyAvailabilityRequest {
 export interface SessionUser {
   id: string;
   email: string;
-  role: UserRole;
+  role: UserRole | (string & {});
   airtableUserId: string | null;
   fullName: string | null;
   secondary_role?: "chatter" | "virtual_assistant" | null;

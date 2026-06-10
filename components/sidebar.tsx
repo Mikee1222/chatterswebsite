@@ -47,6 +47,7 @@ import type { Permission } from "@/lib/permissions";
 import {
   filterNavItemsByPermissions,
   getNavItemsForRole,
+  isCustomNavRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
   type NavIconKey,
@@ -150,6 +151,9 @@ export function Sidebar({
     });
   }, [baseItems, role, modelUiLanguage]);
 
+  const isAdminAreaUser =
+    user.role === "admin" || user.role === "manager" || isCustomNavRole(user.role);
+
   const brandHref =
     role === "chatter"
       ? ROUTES.chatter.home
@@ -157,7 +161,7 @@ export function Sidebar({
         ? ROUTES.va.home
         : user.role === "model"
           ? ROUTES.model.home
-          : user.role === "admin" || user.role === "manager"
+          : isAdminAreaUser
             ? ROUTES.admin.home
             : ROUTES.dashboard;
   const brandLabel =
@@ -167,7 +171,7 @@ export function Sidebar({
         ? modelUiLanguage
           ? getModelT(modelUiLanguage)("nav.sidebarBrand")
           : "Model"
-        : user.role === "admin" || user.role === "manager"
+        : isAdminAreaUser
           ? "Admin"
           : "Chatter";
 

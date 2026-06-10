@@ -5,6 +5,8 @@ import { redirect, notFound } from "next/navigation";
 import { EditAccountForm } from "@/components/edit-account-form";
 import { listAllModelss } from "@/services/modelss";
 import { getRoles } from "@/services/roles";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export default async function EditAccountPage({
   params,
@@ -12,7 +14,7 @@ export default async function EditAccountPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_EDIT))) redirect(ROUTES.dashboard);
 
   const { id } = await params;
   const record = await getUserByAirtableId(id);

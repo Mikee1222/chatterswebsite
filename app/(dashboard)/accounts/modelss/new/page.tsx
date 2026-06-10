@@ -4,10 +4,12 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { FormCard } from "@/components/ui/form";
 import { CreateModelForm } from "@/components/create-model-form";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export default async function NewModelPage() {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_CREATE))) redirect(ROUTES.dashboard);
 
   return (
     <div className="max-w-md space-y-4">

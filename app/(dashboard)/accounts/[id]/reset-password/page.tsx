@@ -3,6 +3,8 @@ import { ROUTES } from "@/lib/routes";
 import { getUserByAirtableId } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { ResetPasswordForm } from "@/components/reset-password-form";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export default async function ResetPasswordPage({
   params,
@@ -10,7 +12,7 @@ export default async function ResetPasswordPage({
   params: Promise<{ id: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (user?.role !== "admin") redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_RESET_PASSWORD))) redirect(ROUTES.dashboard);
 
   const { id } = await params;
   const record = await getUserByAirtableId(id);

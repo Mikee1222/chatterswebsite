@@ -4,6 +4,8 @@ import { listAllUsers } from "@/services/users";
 import { listAllModelss } from "@/services/modelss";
 import { redirect } from "next/navigation";
 import { AccountsView } from "@/components/accounts-view";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export default async function AdminAccountsPage({
   searchParams,
@@ -11,7 +13,7 @@ export default async function AdminAccountsPage({
   searchParams: Promise<{ success?: string; error?: string; section?: string }>;
 }) {
   const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  if (!user || !(await hasPermission(user, PERMISSIONS.ACCOUNTS_VIEW))) redirect(ROUTES.dashboard);
 
   const [users, modelss, params] = await Promise.all([
     listAllUsers().catch(() => []),
