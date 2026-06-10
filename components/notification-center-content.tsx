@@ -180,9 +180,9 @@ export function NotificationCenterContent({
   const handleItemActivate = useCallback(
     async (n: AppNotification) => {
       if (!n.read_at) await onMarkRead(n.id);
-      onNavigate?.();
+      if (getEntityUrl(n, role)) onNavigate?.();
     },
-    [onMarkRead, onNavigate]
+    [onMarkRead, onNavigate, role]
   );
 
   const handleBulkDelete = useCallback(async () => {

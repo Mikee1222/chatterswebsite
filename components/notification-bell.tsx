@@ -41,6 +41,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
   const [fallbackList, setFallbackList] = useState<AppNotification[]>([]);
   const [localOpen, setLocalOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const mobilePanelRef = useRef<HTMLDivElement>(null);
   const bellMotion = useAnimation();
   const prevUnreadRef = useRef<number | null>(null);
 
@@ -114,7 +115,10 @@ export function NotificationBell({ role }: NotificationBellProps) {
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target)) return;
+      if (mobilePanelRef.current?.contains(target)) return;
+      setOpen(false);
     }
     if (open) {
       document.addEventListener("click", handleClickOutside);
@@ -222,45 +226,50 @@ export function NotificationBell({ role }: NotificationBellProps) {
   };
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        type="button"
-        onClick={() => setOpen(!open)}
-        className="relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-white/10"
-        aria-label="Notifications"
-      >
-        <motion.div animate={bellMotion}>
-          <Bell className="h-5 w-5 text-white/70" />
-        </motion.div>
-        {showBadge && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-bold text-white shadow-lg shadow-pink-500/30">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </button>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="notif-dropdown-desktop"
-            className="absolute right-0 top-12 z-50 hidden w-[400px] overflow-hidden rounded-2xl border border-white/10 bg-[#0f0a1a]/95 shadow-2xl shadow-black/50 backdrop-blur-xl md:block"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Notification center"
-            onClick={(e) => e.stopPropagation()}
-            initial={{ opacity: 0, y: -8, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -8, scale: 0.96 }}
-            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
-          >
-            <NotificationCenterContent {...contentProps} compact />
+    <>
+      <div className="relative" ref={ref}>
+        <button
+          type="button"
+          onClick={() => setOpen(!open)}
+          className="relative flex h-9 w-9 items-center justify-center rounded-xl transition-colors hover:bg-white/10"
+          aria-label="Notifications"
+        >
+          <motion.div animate={bellMotion}>
+            <Bell className="h-5 w-5 text-white/70" />
           </motion.div>
-        )}
-      </AnimatePresence>
+          {showBadge && (
+            <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-pink-500 px-1 text-[10px] font-bold text-white shadow-lg shadow-pink-500/30">
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </span>
+          )}
+        </button>
+
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              key="notif-dropdown-desktop"
+              className="absolute right-0 top-12 z-50 hidden w-[400px] overflow-hidden rounded-2xl border border-white/10 bg-[#0f0a1a]/95 shadow-2xl shadow-black/50 backdrop-blur-xl md:block"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Notification center"
+              initial={{ opacity: 0, y: -8, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -8, scale: 0.96 }}
+              transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            >
+              <NotificationCenterContent {...contentProps} compact />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
 
       <AnimatePresence>
         {open && (
-          <div key="notif-mobile-panel" className="fixed inset-0 z-50 md:hidden">
+          <div
+            key="notif-mobile-panel"
+            ref={mobilePanelRef}
+            className="fixed inset-0 z-50 md:hidden"
+          >
             <motion.div
               key="notif-mobile-backdrop"
               className="absolute inset-0 bg-black/75 backdrop-blur-md"
@@ -273,11 +282,10 @@ export function NotificationBell({ role }: NotificationBellProps) {
             />
             <motion.div
               key="notif-mobile-sheet"
-              className="absolute bottom-0 left-0 right-0 flex w-full max-h-[92vh] flex-col overflow-hidden rounded-t-3xl bg-[#0f0a1a] shadow-2xl"
+              className="absolute bottom-0 left-0 right-0 flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-3xl bg-[#0f0a1a] shadow-2xl"
               role="dialog"
               aria-modal="true"
               aria-label="Notification center"
-              onClick={(e) => e.stopPropagation()}
               drag="y"
               dragConstraints={{ top: 0, bottom: 0 }}
               dragElastic={{ top: 0, bottom: 0.45 }}
@@ -292,12 +300,12 @@ export function NotificationBell({ role }: NotificationBellProps) {
                 aria-hidden
               />
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0px,env(safe-area-inset-bottom))]">
-                <NotificationCenterContent {...contentProps} compact isMobile />
+                <NotificationCenterContent {...contentProps} compact={false} isMobile />
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
-    </div>
+    </>
   );
 }
