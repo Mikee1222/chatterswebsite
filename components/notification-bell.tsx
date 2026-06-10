@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useAnimation } from "framer-motion";
-import { Bell, X } from "lucide-react";
+import { Bell } from "lucide-react";
 import { useSWRConfig } from "swr";
 import {
   getMyUnreadCount,
@@ -17,7 +17,6 @@ import { ROUTES } from "@/lib/routes";
 import { useRealtime } from "@/contexts/realtime-context";
 import { useNotificationCenter } from "@/contexts/notification-center-context";
 import { NotificationCenterContent } from "@/components/notification-center-content";
-import { RefreshingIndicator } from "@/components/refreshing-indicator";
 import {
   dashboardSwrKeys,
   useAdaptiveRefreshInterval,
@@ -232,34 +231,6 @@ export function NotificationBell({ role }: NotificationBellProps) {
                   "0 0 0 1px rgba(236,72,153,0.08), 0 0 40px -8px rgba(236,72,153,0.12), 0 24px 56px -16px rgba(0,0,0,0.75)",
               }}
             >
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] bg-gradient-to-r from-white/[0.04] to-transparent px-4 py-3">
-                <span className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
-                  Notifications
-                  <RefreshingIndicator
-                    isRefreshing={unreadQuery.isValidating && !realtime}
-                    label="Syncing"
-                  />
-                </span>
-                <div className="flex shrink-0 items-center gap-2">
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void handleMarkAllRead()}
-                      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-pink-200 transition-colors hover:bg-pink-500/20 hover:text-white"
-                    >
-                      Mark all as read
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={closePanel}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                    aria-label="Close"
-                  >
-                    <X className="h-5 w-5" strokeWidth={2} />
-                  </button>
-                </div>
-              </div>
               <div className="flex min-h-0 flex-1 flex-col">
                 <NotificationCenterContent
                   list={list}
@@ -268,10 +239,11 @@ export function NotificationBell({ role }: NotificationBellProps) {
                   onMarkAllRead={handleMarkAllRead}
                   onDelete={handleDelete}
                   onNavigate={closePanel}
+                  onClose={closePanel}
                   role={role ?? null}
                   compact
-                  omitTitleAndMarkAll
                   isAdmin={isAdmin}
+                  settingsHref={settingsHref}
                 />
               </div>
             </div>
@@ -310,35 +282,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
             >
               <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-white/20" aria-hidden />
-              <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] px-4 py-3.5">
-                <span className="inline-flex items-center gap-2 text-lg font-semibold tracking-tight text-white">
-                  Notifications
-                  <RefreshingIndicator
-                    isRefreshing={unreadQuery.isValidating && !realtime}
-                    label="Syncing"
-                  />
-                </span>
-                <div className="flex shrink-0 items-center gap-2">
-                  {unreadCount > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => void handleMarkAllRead()}
-                      className="rounded-lg px-3 py-1.5 text-xs font-semibold text-pink-200 transition-colors hover:bg-pink-500/20 hover:text-white"
-                    >
-                      Mark all as read
-                    </button>
-                  )}
-                  <button
-                    type="button"
-                    onClick={closePanel}
-                    className="flex h-10 w-10 items-center justify-center rounded-xl text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                    aria-label="Close"
-                  >
-                    <X className="h-5 w-5" strokeWidth={2} />
-                  </button>
-                </div>
-              </div>
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+              <div className="min-h-0 flex-1 overflow-hidden flex flex-col">
                 <NotificationCenterContent
                   list={list}
                   unreadCount={unreadCount}
@@ -346,12 +290,13 @@ export function NotificationBell({ role }: NotificationBellProps) {
                   onMarkAllRead={handleMarkAllRead}
                   onDelete={handleDelete}
                   onNavigate={closePanel}
+                  onClose={closePanel}
                   role={role ?? null}
                   compact={false}
-                  omitTitleAndMarkAll
                   omitSettingsFooter
                   isMobile
                   isAdmin={isAdmin}
+                  settingsHref={settingsHref}
                 />
               </div>
               <div className="shrink-0 border-t border-white/[0.08] bg-[#0c0c0c] pb-[max(12px,env(safe-area-inset-bottom))]">

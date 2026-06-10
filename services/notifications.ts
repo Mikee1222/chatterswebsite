@@ -171,19 +171,26 @@ export async function getUnreadCount(userId: string): Promise<number> {
   const escaped = userId.replace(/"/g, '""');
   const formula = `AND({${NOTIFICATION_FIELDS.user_id}} = "${escaped}", ${unreadReadAtFormula()})`;
   devLog(NOTIFY_UI_DEBUG, "getUnreadCount", JSON.stringify({ airtable_filter: formula, recipient_user_id: userId }));
-  const all = await listAllRecords<Fields>(NOTIFICATIONS_TABLE, {
+  const { records } = await listRecords<Fields>(NOTIFICATIONS_TABLE, {
     filterByFormula: formula,
+    pageSize: 100,
+    fields: [NOTIFICATION_FIELDS.notification_id],
   });
-  devLog(NOTIFY_UI_DEBUG, "getUnreadCount_result", JSON.stringify({ recipient_user_id: userId, unread_count: all.length }));
-  return all.length;
+  devLog(NOTIFY_UI_DEBUG, "getUnreadCount_result", JSON.stringify({ recipient_user_id: userId, unread_count: records.length }));
+  return records.length;
 }
 
-export async function markAsRead(recordId: string) {
+export async function markAsRead(recordId: string, userId: string) {
+  const existing = await getRecord<Fields>(NOTIFICATIONS_TABLE, recordId);
+  const ownerId = String((existing.fields as Fields)[NOTIFICATION_FIELDS.user_id] ?? "");
+  if (ownerId !== userId) {
+    throw new Error("Forbidden");
+  }
   const readAtValue = new Date().toISOString();
   const rec = await updateRecord<Fields>(NOTIFICATIONS_TABLE, recordId, {
     [NOTIFICATION_FIELDS.read_at]: readAtValue,
   });
-  devLog(NOTIFY_UI_DEBUG, "mark_single_read", JSON.stringify({ recordId }));
+  devLog(NOTIFY_UI_DEBUG, "mark_single_read", JSON.stringify({ recordId, userId }));
   return mapRecord(rec);
 }
 

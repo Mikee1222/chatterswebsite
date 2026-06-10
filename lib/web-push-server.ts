@@ -52,7 +52,7 @@ export async function sendWebPush(
   const run = pushSendQueue.then(async (): Promise<boolean> => {
     devLog(PUSH_DEBUG, "using workers-compatible send path");
     const vapid = {
-      subject: "mailto:support@example.com",
+      subject: "mailto:support@gunzoteam.com",
       publicKey: keys.publicKey,
       privateKey: keys.privateKey,
     };

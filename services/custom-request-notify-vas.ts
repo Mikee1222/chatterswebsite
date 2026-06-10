@@ -5,11 +5,8 @@
  */
 
 import { customRequestAdmin } from "@/lib/notification-copy";
-import { ROUTES } from "@/lib/routes";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { notify } from "@/services/notification-service";
-import { createNotification } from "@/services/notifications";
-import { sendPushToUser } from "@/services/push-subscriptions";
 import { listAllUsers } from "@/services/users";
 
 export async function notifyActiveVirtualAssistantsCustomCreated(input: {
@@ -57,19 +54,15 @@ export async function notifyAssignedVirtualAssistantCustomUploaded(input: {
   const actorPrefix = input.actor_name?.trim() ? `${input.actor_name.trim()} uploaded ` : "Uploaded ";
   const title = "✅ Custom request uploaded";
   const body = `✅ ${actorPrefix}“${customTitle}”.`;
-  await createNotification({
+  await notify({
     user_id: vaId,
-    category: "custom_request",
     event_type: NOTIFICATION_EVENT.CUSTOM_REQUEST_UPLOADED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
     title,
     body,
     entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
     entity_id: input.custom_request_id,
+    actor_name: input.actor_name,
+    _triggerSource: "notifyAssignedVirtualAssistantCustomUploaded",
   }).catch((e) => console.error("[notify] VA custom_request_uploaded failed", e));
-  await sendPushToUser(vaId, {
-    title,
-    body,
-    url: ROUTES.va.customRequests,
-  }).catch((e) => console.error("[push] VA custom_request_uploaded failed", e));
 }

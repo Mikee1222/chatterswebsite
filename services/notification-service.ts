@@ -140,7 +140,7 @@ const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceG
 const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {
   billing_due_reminder: "system_alerts",
   billing_cycle_announced: "period_alerts",
-  payment_confirmed: "task_alerts",
+  payment_confirmed: "system_alerts",
   payment_rejected: "task_alerts",
   period_3_day_reminder: "period_alerts",
   period_predicted_day: "period_alerts",
@@ -190,10 +190,13 @@ function isInQuietHours(prefs: { quiet_hours_start: string; quiet_hours_end: str
   const start = prefs.quiet_hours_start?.trim();
   const end = prefs.quiet_hours_end?.trim();
   if (!start || !end) return false;
-  const now = new Date();
+  const athensTime = new Date().toLocaleString("en-US", { timeZone: "Europe/Athens" });
+  const athensDate = new Date(athensTime);
+  const currentHour = athensDate.getHours();
+  const currentMinute = athensDate.getMinutes();
   const [startH, startM] = start.split(":").map(Number);
   const [endH, endM] = end.split(":").map(Number);
-  const nowMins = now.getHours() * 60 + now.getMinutes();
+  const nowMins = currentHour * 60 + currentMinute;
   const startMins = startH * 60 + (startM || 0);
   let endMins = endH * 60 + (endM || 0);
   if (endMins <= startMins) endMins += 24 * 60;

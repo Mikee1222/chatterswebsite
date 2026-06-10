@@ -53,7 +53,9 @@ export async function getMyNotifications(unreadOnly = false, pageSize = 50, sinc
 export async function markNotificationRead(recordId: string) {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
-  await markAsRead(recordId);
+  const userId = getNotificationUserId(user);
+  if (userId == null) return;
+  await markAsRead(recordId, userId);
   revalidatePath("/", "layout");
   revalidatePath("/notifications");
 }

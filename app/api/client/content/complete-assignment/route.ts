@@ -4,8 +4,7 @@ import { z } from "zod";
 import { requireClientModelAccess } from "@/lib/client-content-auth";
 import { ROUTES } from "@/lib/routes";
 import { NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { createNotification } from "@/services/notifications";
-import { sendPushToUser } from "@/services/push-subscriptions";
+import { notify } from "@/services/notification-service";
 import { getModelById } from "@/services/modelss";
 import {
   completeVAContentAssignmentForModel,
@@ -60,20 +59,16 @@ export async function POST(request: Request) {
   if (vaId) {
     const title = "Content Marked Complete";
     const body = `${access.actorName} marked “${updated.title}” as complete for ${modelName}.`;
-    await createNotification({
+    await notify({
       user_id: vaId,
-      category: "task",
       event_type: "va_content_completed",
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title,
       body,
       entity_type: "va_content_assignment",
       entity_id: assignment_id,
-    }).catch(() => {});
-    await sendPushToUser(vaId, {
-      title,
-      body,
-      url: ROUTES.va.contentAssignments,
+      actor_name: access.actorName,
+      _triggerSource: "complete-assignment",
     }).catch(() => {});
   }
 

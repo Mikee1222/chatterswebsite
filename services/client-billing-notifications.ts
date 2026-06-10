@@ -4,7 +4,6 @@ import { linkedRecordIds } from "@/lib/airtable-linked";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { notify } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
-import { sendPushToUser } from "@/services/push-subscriptions";
 import { getBillingCycleRevenues } from "@/services/client-billing";
 import type { BillingCycleKind } from "@/types/client-portal";
 
@@ -12,10 +11,6 @@ const TABLES = {
   billing_cycles: "billing_cycles",
   billing_cycle_revenues: "billing_cycle_revenues",
 } as const;
-
-function payUrlForKind(kind: BillingCycleKind): string {
-  return kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm";
-}
 
 export function kindLabelFor(kind: BillingCycleKind): string {
   return kind === "chatting_weekly" ? "Chatting" : "CRM";
@@ -210,14 +205,6 @@ export async function sendBillingDueReminders() {
         entity_type: "billing_cycle",
         entity_id: rec.id,
         _triggerSource: "sendBillingDueReminders",
-      });
-
-      await sendPushToUser(clientId, {
-        title: reminderTitle,
-        body: isOverdue
-          ? `🚨 ${kindLabel}: 💰 ${amount} overdue (due ${dueDate})`
-          : `⏰ ${kindLabel}: 💰 ${amount} due ${dueDate}`,
-        url: payUrlForKind(kind),
       });
 
       await new Promise((r) => setTimeout(r, 200));
