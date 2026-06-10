@@ -260,10 +260,10 @@ export function NotificationBell({ role }: NotificationBellProps) {
 
       <AnimatePresence>
         {open && (
-          <>
+          <div key="notif-mobile-panel" className="fixed inset-0 z-50 md:hidden">
             <motion.div
               key="notif-mobile-backdrop"
-              className="fixed inset-0 z-[59] bg-black/75 backdrop-blur-md md:hidden"
+              className="absolute inset-0 bg-black/75 backdrop-blur-md"
               aria-hidden
               onClick={closePanel}
               initial={{ opacity: 0 }}
@@ -273,7 +273,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
             />
             <motion.div
               key="notif-mobile-sheet"
-              className="fixed bottom-0 left-0 right-0 z-[60] flex h-[92vh] max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border border-white/10 border-b-0 bg-[#0f0a1a] shadow-2xl md:hidden"
+              className="absolute bottom-0 left-0 right-0 flex w-full max-h-[92vh] flex-col overflow-hidden rounded-t-3xl bg-[#0f0a1a] shadow-2xl"
               role="dialog"
               aria-modal="true"
               aria-label="Notification center"
@@ -287,12 +287,15 @@ export function NotificationBell({ role }: NotificationBellProps) {
               exit={{ y: "100%" }}
               transition={{ type: "spring", damping: 28, stiffness: 320 }}
             >
-              <div className="mx-auto mt-2 h-1 w-10 shrink-0 cursor-grab rounded-full bg-white/20 active:cursor-grabbing" aria-hidden />
+              <div
+                className="mx-auto mt-2 h-1 w-10 shrink-0 cursor-grab rounded-full bg-white/20 active:cursor-grabbing"
+                aria-hidden
+              />
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden pb-[max(0px,env(safe-area-inset-bottom))]">
-                <NotificationCenterContent {...contentProps} compact={false} isMobile />
+                <NotificationCenterContent {...contentProps} compact isMobile />
               </div>
             </motion.div>
-          </>
+          </div>
         )}
       </AnimatePresence>
     </div>

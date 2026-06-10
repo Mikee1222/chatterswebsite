@@ -244,7 +244,9 @@ export function NotificationCenterContent({
         </div>
       </div>
 
-      <div className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-white/[0.06] px-3 py-2">
+      <div
+        className="scrollbar-none flex shrink-0 gap-1 overflow-x-auto border-b border-white/[0.06] px-3 py-2 [-webkit-overflow-scrolling:touch]"
+      >
         {FILTER_TABS.map((tab) => (
           <button
             key={tab.key}
@@ -270,7 +272,9 @@ export function NotificationCenterContent({
         ))}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+      <div
+        className={`min-h-0 flex-1 overflow-y-auto overscroll-contain ${isMobile ? "max-h-[60vh]" : "max-h-[440px]"}`}
+      >
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <div className="h-5 w-5 animate-spin rounded-full border-2 border-pink-500/30 border-t-pink-500" />
@@ -295,7 +299,7 @@ export function NotificationCenterContent({
               const isSelected = selectedIds.has(n.id);
               const url = getEntityUrl(n, role);
 
-              const rowClass = `group relative flex cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors hover:bg-white/[0.03] ${
+              const rowClass = `group relative flex min-h-[56px] cursor-pointer items-start gap-3 px-4 py-3.5 transition-colors hover:bg-white/[0.03] ${
                 isUnread ? "bg-white/[0.02]" : ""
               } ${isSelected ? "bg-pink-500/5" : ""}`;
 
