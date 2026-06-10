@@ -36,31 +36,45 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
+  // Check for active stream
+  let active: Awaited<ReturnType<typeof getActiveLiveStreamForModel>>;
   try {
-    const active = await getActiveLiveStreamForModel(ctx.linkedModelId);
-    if (active) {
-      return NextResponse.json({ error: "Invalid request" }, { status: 409 });
-    }
-    const nowIso = new Date().toISOString();
-    /** Airtable uses `in_progress` + `actual_start` (not spec names `live` / `started_at`). */
-    const row = await createModelLiveStream({
+    active = await getActiveLiveStreamForModel(ctx.linkedModelId);
+  } catch {
+    active = null;
+  }
+  if (active) {
+    return NextResponse.json({ error: "A live stream is already active" }, { status: 409 });
+  }
+
+  // Create the live stream
+  let row: Awaited<ReturnType<typeof createModelLiveStream>>;
+  try {
+    row = await createModelLiveStream({
       model_id: ctx.linkedModelId,
       date: getTodayYmd(),
       platform,
       status: "in_progress",
-      actual_start: nowIso,
+      actual_start: new Date().toISOString(),
     });
-    const modelRecord = await getModelById(ctx.linkedModelId);
-    if (modelRecord) {
-      await notifyModelLiveStarted(modelRecord, row.id);
-    }
-    return NextResponse.json({
-      success: true,
-      live_id: row.id,
-      stream_id: row.id,
-      platform: parsed.data.platform,
-    });
-  } catch {
-    return NextResponse.json({ error: "Request failed" }, { status: 500 });
+  } catch (e) {
+    console.error("[live/start] createModelLiveStream failed:", e);
+    return NextResponse.json({ error: "Failed to start live stream" }, { status: 500 });
   }
+
+  // Notify after returning success (fire and forget)
+  getModelById(ctx.linkedModelId)
+    .then((modelRecord) => {
+      if (modelRecord) {
+        return notifyModelLiveStarted(modelRecord, row.id);
+      }
+    })
+    .catch((e) => console.error("[live/start] notification failed:", e));
+
+  return NextResponse.json({
+    success: true,
+    live_id: row.id,
+    stream_id: row.id,
+    platform: parsed.data.platform,
+  });
 }

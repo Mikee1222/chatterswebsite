@@ -100,7 +100,13 @@ export function ModelHomeClient({
         return;
       }
       if (!res.ok) {
-        setActionError(data.error ?? t("home.couldNotStartLive"));
+        if (res.status === 409) {
+          setActionError("A live stream is already active. Please end it first.");
+        } else if (res.status === 403) {
+          setActionError("You don't have permission to start a live stream.");
+        } else {
+          setActionError(data.error ?? "Could not start live stream. Please try again.");
+        }
         return;
       }
       router.refresh();

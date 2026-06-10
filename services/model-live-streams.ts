@@ -1,11 +1,12 @@
 import {
   listAllRecords,
+  listRecords,
   getRecord,
   createRecord,
   updateRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
-import { firstLinkedId } from "@/lib/airtable-linked";
+import { firstLinkedId, formulaLinkedContains } from "@/lib/airtable-linked";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { ModelLiveStreamRecord } from "@/types";
 
@@ -88,8 +89,14 @@ export function isActiveLiveStreamRecord(r: Pick<ModelLiveStreamRecord, "status"
 }
 
 export async function getActiveLiveStreamForModel(modelId: string): Promise<ModelLiveStreamRecord | null> {
-  const all = await listModelLiveStreams(modelId);
-  return all.find((s) => isActiveLiveStreamRecord(s)) ?? null;
+  if (!modelId) return null;
+  const formula = `AND(${formulaLinkedContains("model", modelId)}, OR({status} = "in_progress", {status} = "live"), {actual_end} = "")`;
+  const { records } = await listRecords<Fields>(TABLE, {
+    filterByFormula: formula,
+    pageSize: 1,
+    _caller: "getActiveLiveStreamForModel",
+  });
+  return records.length > 0 ? mapRecord(records[0] as AirtableRecord<Fields>) : null;
 }
 
 export async function createModelLiveStream(input: {
