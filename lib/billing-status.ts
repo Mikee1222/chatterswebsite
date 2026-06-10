@@ -106,3 +106,14 @@ export function canSubmitPayment(
 export function isPendingReviewStatus(status?: string | null): boolean {
   return normalizeBillingCycleStatus(status) === "pending_review";
 }
+
+/** Effective cycle status for UI when a payment submission may override billing_cycles.status. */
+export function resolveCycleDisplayStatus(
+  cycleStatus?: BillingCycleStatus | string | null,
+  latestSubmissionStatus?: PaymentSubmissionStatus | string | null
+): BillingCycleStatus {
+  const submissionStatus = normalizeSubmissionStatus(latestSubmissionStatus ?? undefined);
+  if (submissionStatus === "approved") return "confirmed_paid";
+  if (submissionStatus === "pending_review") return "pending_review";
+  return normalizeBillingCycleStatus(cycleStatus);
+}

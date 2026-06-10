@@ -17,7 +17,7 @@ import {
   getStatusTone,
   getSubmissionStatusLabel,
   getSubmissionStatusTone,
-  isPendingReviewStatus,
+  resolveCycleDisplayStatus,
 } from "@/lib/billing-status";
 import { formatDateEuropean } from "@/lib/format";
 import { getChattingWeeklyDueWindow, getCycleAmountDue } from "@/lib/client-portal-utils";
@@ -80,12 +80,12 @@ export default async function ClientHomePage() {
 
   const chattingSubmissionStatus = chattingLatestSubmission?.status;
   const crmSubmissionStatus = crmLatestSubmission?.status;
+  const crmDisplayStatus = resolveCycleDisplayStatus(crmCycle?.status, crmSubmissionStatus);
   const chattingPendingReview =
     chattingSubmissionStatus === "pending_review" || chattingDisplayStatus === "pending_review";
-  const crmPendingReview =
-    crmSubmissionStatus === "pending_review" || isPendingReviewStatus(crmCycle?.status);
+  const crmPendingReview = crmDisplayStatus === "pending_review";
   const chattingCanSubmit = canSubmitPayment(chattingDisplayStatus, chattingSubmissionStatus);
-  const crmCanSubmit = canSubmitPayment(crmCycle?.status, crmSubmissionStatus);
+  const crmCanSubmit = canSubmitPayment(crmDisplayStatus, crmSubmissionStatus);
 
   const chattingStatusLabel =
     chattingSubmissionStatus && chattingSubmissionStatus !== "rejected"
@@ -95,14 +95,8 @@ export default async function ClientHomePage() {
     chattingSubmissionStatus && chattingSubmissionStatus !== "rejected"
       ? getSubmissionStatusTone(chattingSubmissionStatus)
       : getStatusTone(chattingDisplayStatus);
-  const crmStatusLabel =
-    crmSubmissionStatus && crmSubmissionStatus !== "rejected"
-      ? getSubmissionStatusLabel(crmSubmissionStatus)
-      : getStatusLabel(crmCycle?.status);
-  const crmStatusTone =
-    crmSubmissionStatus && crmSubmissionStatus !== "rejected"
-      ? getSubmissionStatusTone(crmSubmissionStatus)
-      : getStatusTone(crmCycle?.status);
+  const crmStatusLabel = getStatusLabel(crmDisplayStatus);
+  const crmStatusTone = getStatusTone(crmDisplayStatus);
 
   const formatAmount = (amount: number, currency?: string | null) => {
     const safeAmount = Number.isFinite(amount) ? amount : 0;
