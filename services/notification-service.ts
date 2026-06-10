@@ -9,7 +9,7 @@ import {
   DEFAULT_PRIORITY_BY_EVENT as DEFAULT_PRIORITY_BY_EVENT_BASE,
   NOTIFICATION_ENTITY,
 } from "@/lib/notification-types";
-import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
+import { CATEGORY_TO_AIRTABLE, EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { broadcastRealtimeEvent } from "@/lib/realtime-broadcast";
 import { sendWebPush } from "@/lib/web-push-server";
 import { getPushTargetPath } from "@/lib/notification-routes";
@@ -428,9 +428,10 @@ export async function notify(options: NotifyOptions) {
     })
   );
 
+  const airtableCategory = CATEGORY_TO_AIRTABLE[category] ?? category;
   const notification = await createNotification({
     user_id: options.user_id,
-    category,
+    category: airtableCategory,
     event_type: eventTypeAirtable,
     priority,
     title: options.title,

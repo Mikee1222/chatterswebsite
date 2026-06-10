@@ -72,8 +72,17 @@ export async function createNotification(fields: {
   metadata?: NotificationMetadataItem[];
 }): Promise<AppNotification | null> {
   const NOTIF = "[NOTIF]";
+  const airtableCategory = CATEGORY_TO_AIRTABLE[fields.category] ?? fields.category;
+  console.log(
+    "[createNotification] user_id:",
+    fields.user_id,
+    "category:",
+    airtableCategory,
+    "title:",
+    fields.title
+  );
 
-  const validation = validateNotificationPayload(fields);
+  const validation = validateNotificationPayload({ ...fields, category: airtableCategory });
   if (!validation.valid) {
     devLog(NOTIF, "skip", JSON.stringify({
       reason: "invalid payload",
@@ -86,7 +95,6 @@ export async function createNotification(fields: {
   }
 
   const notificationId = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const airtableCategory = CATEGORY_TO_AIRTABLE[fields.category] ?? fields.category;
   // Only include fields that exist in the Airtable notifications table. Do not send "metadata"// unless the table has a Long text column named "metadata" (Airtable returns Unknown field name otherwise).
   const payload: Record<string, unknown> = {
     [NOTIFICATION_FIELDS.notification_id]: notificationId,

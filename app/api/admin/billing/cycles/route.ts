@@ -6,12 +6,7 @@ import {
   getAllBillingCycles,
   getBillingCycleClientCounts,
 } from "@/services/client-billing";
-import {
-  formatBillingPeriod,
-  formatDueDateElGr,
-  kindLabelFor,
-} from "@/services/client-billing-notifications";
-import { notify } from "@/services/notification-service";
+import { formatDueDateElGr, kindLabelFor } from "@/services/client-billing-notifications";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
   return session != null && (session.role === "admin" || session.role === "manager");
@@ -89,6 +84,7 @@ export async function POST(req: Request) {
     const amountDue = parsed.data.amount ?? parsed.data.amount_crm ?? cycle.amount ?? 0;
     const amount = `${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"}`;
     const dueDateFormatted = formatDueDateElGr(cycle.due_date);
+    const { notify } = await import("@/services/notification-service");
 
     for (const clientId of clientIds) {
       if (!clientId) continue;

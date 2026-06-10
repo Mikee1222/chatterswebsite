@@ -7,12 +7,7 @@ import {
   getBillingCycleById,
   updateBillingCycle,
 } from "@/services/client-billing";
-import {
-  formatBillingPeriod,
-  formatDueDateElGr,
-  kindLabelFor,
-} from "@/services/client-billing-notifications";
-import { notify } from "@/services/notification-service";
+import { formatDueDateElGr, kindLabelFor } from "@/services/client-billing-notifications";
 import { findExistingNotification } from "@/services/notifications";
 
 function isAdminOrManager(session: Awaited<ReturnType<typeof getSessionFromCookies>>) {
@@ -84,9 +79,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         ).catch(() => false);
 
         if (!exists) {
+          const { notify } = await import("@/services/notification-service");
           const kindLabel = kindLabelFor(cycle.kind);
           const amountDue = cycle.amount_due ?? cycle.amount ?? 0;
-          const amount = `${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"}`;
           const dueDateFormatted = formatDueDateElGr(cycle.due_date);
 
           await notify({
@@ -98,7 +93,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
             entity_type: "billing_cycle",
             entity_id: cycle.id,
             _triggerSource: "admin.billing.cycles.PATCH",
-          }).catch((err) => console.error("[billing] notify on announce failed", clientId, err));
+          })
+            .then(() => console.log("[billing] notified client on announce", clientId))
+            .catch((err) => console.error("[billing] notify on announce failed", clientId, err));
         }
       }
     }
