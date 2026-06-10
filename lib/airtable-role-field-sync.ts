@@ -1,14 +1,17 @@
 /**
- * Sync RBAC role slugs into the Airtable `users.role` single-select field via Meta API.
+ * Sync RBAC role slugs into the Airtable `users.role` single-select field.
+ * Tries Meta API PATCH first (options.choices only, id+name for existing choices).
+ * Falls back to a typecast probe record when choice PATCH is rejected (422 on some bases).
  * Custom roles created in the RBAC UI must exist as select options or user create/update fails
  * with INVALID_MULTIPLE_CHOICE_OPTIONS.
  */
 
 const META_BASE = "https://api.airtable.com/v0/meta/bases";
+const DATA_API = "https://api.airtable.com/v0";
 const USERS_TABLE_NAME = "users";
 const ROLE_FIELD_NAME = "role";
 
-type MetaChoice = { id?: string; name: string; color?: string };
+type MetaChoice = { id?: string; name: string };
 
 type MetaField = {
   id: string;
@@ -49,10 +52,9 @@ function choiceNamesSet(choices: MetaChoice[]): Set<string> {
   return new Set(choices.map((c) => (c.name ?? "").trim().toLowerCase()).filter(Boolean));
 }
 
-function preserveChoice(choice: MetaChoice): MetaChoice {
+function preserveChoice(choice: { id?: string; name: string }): MetaChoice {
   const out: MetaChoice = { name: choice.name };
   if (choice.id) out.id = choice.id;
-  if (choice.color) out.color = choice.color;
   return out;
 }
 
@@ -63,7 +65,7 @@ function mergeRoleChoices(existing: MetaChoice[], roleIds: string[]): MetaChoice
     const roleId = normalizeRoleId(raw);
     if (!roleId || seen.has(roleId)) continue;
     seen.add(roleId);
-    merged.push({ name: roleId, color: "grayLight2" });
+    merged.push({ name: roleId });
   }
   return merged;
 }
@@ -122,24 +124,83 @@ export function clearUsersRoleFieldCache(): void {
   cachedUsersRoleField = null;
 }
 
+async function dataFetch(
+  token: string,
+  baseId: string,
+  path: string,
+  init: RequestInit = {}
+): Promise<Response> {
+  return fetch(`${DATA_API}/${baseId}/${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      ...init.headers,
+    },
+  });
+}
+
+/** Meta API PATCH for singleSelect choices. Returns false on 422 (use typecast fallback). */
 async function patchUsersRoleChoices(
   ref: UsersRoleFieldRef,
   token: string,
   nextChoices: MetaChoice[]
-): Promise<void> {
+): Promise<boolean> {
   const res = await metaFetch(
     token,
     `/${ref.baseId}/tables/${ref.tableId}/fields/${ref.fieldId}`,
     {
       method: "PATCH",
       body: JSON.stringify({
-        type: "singleSelect",
-        options: { ...(ref.field.options ?? {}), choices: nextChoices },
+        options: { choices: nextChoices },
       }),
     }
   );
-  if (!res.ok) {
-    throw new Error(`PATCH users.role field failed (${res.status}): ${await res.text()}`);
+  if (res.ok) {
+    clearUsersRoleFieldCache();
+    return true;
+  }
+  const body = await res.text();
+  if (res.status === 422) {
+    return false;
+  }
+  throw new Error(`PATCH users.role field failed (${res.status}): ${body}`);
+}
+
+/** Add one select option via typecast create + delete (no Meta API choice PATCH needed). */
+async function addRoleOptionViaTypecast(
+  ref: UsersRoleFieldRef,
+  token: string,
+  roleSlug: string
+): Promise<void> {
+  const createRes = await dataFetch(token, ref.baseId, encodeURIComponent(USERS_TABLE_NAME), {
+    method: "POST",
+    body: JSON.stringify({
+      typecast: true,
+      records: [{ fields: { [ROLE_FIELD_NAME]: roleSlug } }],
+    }),
+  });
+  if (!createRes.ok) {
+    throw new Error(
+      `typecast create users.role="${roleSlug}" failed (${createRes.status}): ${await createRes.text()}`
+    );
+  }
+  const created = (await createRes.json()) as { records?: Array<{ id: string }> };
+  const probeId = created.records?.[0]?.id;
+  if (!probeId) {
+    throw new Error(`typecast create users.role="${roleSlug}" returned no record id`);
+  }
+
+  const deleteRes = await dataFetch(
+    token,
+    ref.baseId,
+    `${encodeURIComponent(USERS_TABLE_NAME)}/${probeId}`,
+    { method: "DELETE" }
+  );
+  if (!deleteRes.ok) {
+    throw new Error(
+      `failed to delete typecast probe record ${probeId} (${deleteRes.status}): ${await deleteRes.text()}`
+    );
   }
   clearUsersRoleFieldCache();
 }
@@ -168,8 +229,17 @@ export async function syncRoleOptionsToAirtable(roleIds: string[]): Promise<Sync
   }
 
   const nextChoices = mergeRoleChoices(existing, toAdd);
-  await patchUsersRoleChoices(ref, token, nextChoices);
-  return { added: toAdd, skipped };
+  const patched = await patchUsersRoleChoices(ref, token, nextChoices);
+  if (patched) {
+    return { added: toAdd, skipped };
+  }
+
+  const added: string[] = [];
+  for (const roleId of toAdd) {
+    await addRoleOptionViaTypecast(ref, token, roleId);
+    added.push(roleId);
+  }
+  return { added, skipped };
 }
 
 export type SyncRoleOptionResult = {
