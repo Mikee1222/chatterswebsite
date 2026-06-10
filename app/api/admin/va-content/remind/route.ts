@@ -49,7 +49,7 @@ export async function POST(req: Request) {
     user_id: modelUserId,
     event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "Reminder: pending VA content assignment",
+    title: "⏰ Reminder: Pending VA Content Assignment",
     body: `${title} — please review your VA content assignments.`,
     entity_type: "va_content_assignment",
     entity_id: assignment.id,

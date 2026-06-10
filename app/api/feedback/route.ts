@@ -77,12 +77,11 @@ export async function POST(req: Request) {
     created_at: new Date().toISOString(),
   });
 
-  const typeEmoji = allowedType === "bug" ? "" : allowedType === "suggestion" ? "" : "";
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: `${typeEmoji} New ${allowedType} report`,
-    body: `${reporterName} (${session.role}): "${title}" on ${page || "unknown page"}`,
+    title: "💬 New Feedback Submitted",
+    body: `💬 ${reporterName} (${session.role}): "${title}" on ${page || "unknown page"}`,
     entity_type: "system",
     entity_id: feedbackId,
     actor_user_id: session.airtableUserId ?? session.id,

@@ -136,10 +136,10 @@ export async function agencyEditCustomRequest(
   await patchCustomRequestRecord(recordId, fields);
 
   const customTitle = (before.request_title || "Custom request").trim() || "Custom request";
-  const genericBody = `${customTitle}: description, price, or deadline was updated.`;
+  const genericBody = `📝 ${customTitle}: description, price, or deadline was updated.`;
   const fan = (before.fan_username || "fan").trim() || "fan";
   const editorWord = editor === "virtual_assistant" ? "VA" : "Admin";
-  const modelPipelineBody = `${editorWord} edited request for ${fan} - review changes.`;
+  const modelPipelineBody = `📝 ${editorWord} edited request for ${fan} - review changes.`;
 
   const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(before.assigned_model_id);
   const modelNeedsPipelineNote =
@@ -150,7 +150,7 @@ export async function agencyEditCustomRequest(
       user_id: before.requested_by_chatter_id,
       event_type: NOTIFICATION_EVENT.CUSTOM_EDITED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "Custom request updated",
+      title: "📝 Custom Request Updated",
       body: genericBody,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: recordId,
@@ -163,7 +163,7 @@ export async function agencyEditCustomRequest(
       user_id: before.requested_by_chatter_id,
       event_type: NOTIFICATION_EVENT.CUSTOM_EDITED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "Custom request updated",
+      title: "📝 Custom Request Updated",
       body: genericBody,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: recordId,
@@ -177,7 +177,7 @@ export async function agencyEditCustomRequest(
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_EDITED,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "Custom request updated",
+        title: "📝 Custom Request Updated",
         body: modelPipelineBody,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: recordId,
@@ -188,7 +188,7 @@ export async function agencyEditCustomRequest(
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_EDITED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "Custom request updated",
+        title: "📝 Custom Request Updated",
         body: genericBody,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: recordId,

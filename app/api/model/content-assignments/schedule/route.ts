@@ -62,7 +62,7 @@ export async function POST(request: Request) {
   const dateLabel = scheduled_date;
   if (before.va_id) {
     const title =
-      ctx.language === "es" ? "Entrega de contenido programada" : "Content delivery scheduled";
+      ctx.language === "es" ? "Entrega de contenido programada" : "📅 Content Delivery Scheduled";
     const body =
       ctx.language === "es"? `${modelName} programó «${updated.title}» para el ${dateLabel}.`
         : `${modelName} scheduled “${updated.title}” for ${dateLabel}.`;

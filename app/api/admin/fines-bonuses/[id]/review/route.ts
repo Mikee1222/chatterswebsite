@@ -63,8 +63,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         user_id: record.user_id,
         event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Extra revenue approved",
-        body: `Your €${record.amount.toFixed(2)} extra revenue for ${record.model_name || "a model"} was approved.`,
+        title: "✅ Extra Revenue Approved",
+        body: `✅ Your €${record.amount.toFixed(2)} extra revenue for ${record.model_name || "a model"} was approved.`,
         entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
         entity_id: record.id,
         actor_user_id: adminId,
@@ -76,10 +76,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         user_id: record.user_id,
         event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "❌ Extra revenue rejected",
-        body:
+        title: "❌ Extra Revenue Rejected",
+        body: `❌ ${
           parsed.data.reject_reason?.trim() ||
-          `Your extra revenue submission for ${record.model_name || "a model"} was rejected.`,
+          `Your extra revenue submission for ${record.model_name || "a model"} was rejected.`
+        }`,
         entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
         entity_id: record.id,
         actor_user_id: adminId,

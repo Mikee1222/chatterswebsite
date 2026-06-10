@@ -80,8 +80,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         user_id: reportedById,
         event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "Shadowban report approved",
-        body: `Your shadowban report for @${f.username ?? ""} (${f.platform ?? ""}) was approved. The account was marked as shadowbanned.`,
+        title: "✅ Shadowban Report Approved",
+        body: `✅ Your shadowban report for @${f.username ?? ""} (${f.platform ?? ""}) was approved. The account was marked as shadowbanned.`,
         entity_type: "shadowban_report",
         entity_id: String((f as { report_id?: string }).report_id ?? id),
       }).catch(() => {});

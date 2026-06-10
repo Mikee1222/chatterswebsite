@@ -50,8 +50,8 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: `🏠 Airbnb request from ${modelName}`,
-    body: `${parsed.data.airbnb_link} for '${assignmentTitle}'`,
+    title: `💰 Expense Request Submitted`,
+    body: `💰 ${parsed.data.airbnb_link} for '${assignmentTitle}'`,
     entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
     entity_id: row.id,
     actor_user_id: ctx.userRecordId,

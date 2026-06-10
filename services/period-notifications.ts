@@ -72,7 +72,7 @@ export async function sendPeriodPredictedDayNotification({ modelId, predictedDat
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTED_DAY,
     title: "🌸 Predicted Period Day",
-    body: `🔔 Today is your predicted period day (${predictedDate}).`,
+    body: `🌸 Today is your predicted period day (${predictedDate}).`,
     entityId: `period:predicted:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.HIGH,
   });

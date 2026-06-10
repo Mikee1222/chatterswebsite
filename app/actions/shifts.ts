@@ -48,8 +48,8 @@ export async function startChattingShift() {
     user_id: userId,
     event_type: "shift_started",
     priority: "normal",
-    title: "Shift started",
-    body: "Your chatting shift has started.",
+    title: "🟢 Shift Started",
+    body: "🟢 Your chatting shift has started.",
     entity_type: "shift",
     entity_id: shift.id,
   }).catch(() => {});
@@ -87,8 +87,8 @@ export async function endChattingShift() {
     user_id: userId,
     event_type: "shift_ended",
     priority: "normal",
-    title: "Shift ended",
-    body: "Your chatting shift has ended.",
+    title: "✅ Shift Ended",
+    body: "✅ Your chatting shift has ended.",
     entity_type: "shift",
     entity_id: myActive.id,
   }).catch(() => {});
@@ -168,8 +168,8 @@ export async function startTaskShift(formData: FormData) {
     user_id: userId,
     event_type: "task_started",
     priority: "normal",
-    title: "Task shift started",
-    body: `Task shift: ${shiftType}${taskLabel ? ` (${taskLabel})` : ""}`,
+    title: "📋 Task Shift Started",
+    body: `📋 Task shift: ${shiftType}${taskLabel ? ` (${taskLabel})` : ""}`,
     entity_type: "task_shift",
     entity_id: shift.id,
   }).catch(() => {});
@@ -207,8 +207,8 @@ export async function endTaskShift() {
     user_id: userId,
     event_type: "task_finished",
     priority: "normal",
-    title: "Task shift ended",
-    body: "Your task shift has ended.",
+    title: "✅ Task Shift Ended",
+    body: "✅ Your task shift has ended.",
     entity_type: "task_shift",
     entity_id: myActive.id,
   }).catch(() => {});

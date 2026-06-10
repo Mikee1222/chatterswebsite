@@ -93,10 +93,10 @@ export async function POST(req: Request) {
   try {
     const { id, record } = await createFineBonus(input);
     const amt = record.amount.toFixed(2);
-    const title = parsed.data.type === "bonus" ? " Bonus added!" : " Fine issued";
+    const title = parsed.data.type === "bonus" ? "🎁 Bonus Added" : "⚠️ Fine Issued";
     const bodyText =
-      parsed.data.type === "bonus"? `You received a €${amt} bonus: ${parsed.data.reason}`
-        : `A €${amt} fine was applied: ${parsed.data.reason}`;
+      parsed.data.type === "bonus"? `🎁 You received a €${amt} bonus: ${parsed.data.reason}`
+        : `⚠️ A €${amt} fine was applied: ${parsed.data.reason}`;
 
     await notify({
       user_id: parsed.data.user_id,

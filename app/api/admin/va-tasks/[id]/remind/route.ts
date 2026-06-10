@@ -42,8 +42,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: `Task reminder: ${task.title}`,
-        body: `An admin asked you to review this task. ${dueLine}`,
+        title: `📋 Task Reminder: ${task.title}`,
+        body: `📋 An admin asked you to review this task. ${dueLine}`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_admin_remind:${task.id}:${slot}:${userId}`,
       }).catch(() => {})

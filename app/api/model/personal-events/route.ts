@@ -64,7 +64,7 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: `📅 ${modelName} added a personal event`,
+    title: "📅 Personal Event Added",
     body: `${eventEmoji} ${eventLabel} on ${formattedDate}`,
     entity_type: "system",
     entity_id: row.id,
@@ -80,7 +80,7 @@ export async function POST(req: Request) {
         user_id: vaId,
         event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: `📅 ${modelName} added a personal event`,
+        title: "📅 Personal Event Added",
         body: `${eventEmoji} ${eventLabel} on ${formattedDate} — plan content around this.`,
         entity_type: "system",
         entity_id: row.id,

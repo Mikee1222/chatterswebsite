@@ -92,7 +92,7 @@ export async function POST(req: Request) {
       event_type: "payment_submitted",
       priority: "high",
       title: "💳 Payment Submitted",
-      body: `✅ Your ${cycleKind} payment proof has been submitted and is pending review.`,
+      body: `✅ Your payment proof has been submitted and is pending review.`,
       entity_type: "payment_submission",
       entity_id: result.submissionId ?? billingCycleId,
       _triggerSource: "submitClientPayment",

@@ -120,7 +120,7 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
           event_type: NOTIFICATION_EVENT.SHIFT_STARTING_SOON,
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: "⏰ Shift starting soon",
-          body: "Your shift starts in 30 minutes. Get ready!",
+          body: "⏰ Your shift starts in 30 minutes. Get ready!",
           entity_type: NOTIFICATION_ENTITY.SHIFT,
           entity_id: soonEntityId,
           actor_user_id: program.chatter_id,

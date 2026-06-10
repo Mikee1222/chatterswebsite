@@ -54,7 +54,7 @@ export async function POST(request: Request) {
   const modelName = ctx.modelRecord.model_name || ctx.user.fullName || "Model";
   if (before.va_id) {
     const title =
-      ctx.language === "es" ? "Contenido marcado como completado" : "Content marked complete";
+      ctx.language === "es" ? "Contenido marcado como completado" : "✅ Content Delivery Complete";
     const body =
       ctx.language === "es"? `${modelName} marcó como hecha la entrega «${updated.title}».`
         : `${modelName} marked the delivery “${updated.title}” as complete.`;

@@ -85,7 +85,6 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
         if (!exists) {
           const kindLabel = kindLabelFor(cycle.kind);
-          const period = formatBillingPeriod(cycle.period_start, cycle.period_end);
           const amountDue = cycle.amount_due ?? cycle.amount ?? 0;
           const amount = `${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"}`;
           const dueDateFormatted = formatDueDateElGr(cycle.due_date);
@@ -94,8 +93,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
             user_id: clientId,
             event_type: "billing_cycle_announced",
             priority: "high",
-            title: `📋 Payment Due — ${kindLabel} ${period}`,
-            body: `⏰ Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,
+            title: "📋 Payment Due",
+            body: `⏰ Your ${kindLabel} payment of $${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"} is due on ${dueDateFormatted}.`,
             entity_type: "billing_cycle",
             entity_id: cycle.id,
             _triggerSource: "admin.billing.cycles.PATCH",
