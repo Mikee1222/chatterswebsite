@@ -63,6 +63,9 @@ export default async function AdminHomePage({
 }) {
   const user = await requireAdminRoute(await getSessionFromCookies());
 
+  const SYSTEM_ROLES = ["admin", "manager", "chatter", "virtual_assistant", "model", "client"];
+  if (!SYSTEM_ROLES.includes(user.role)) redirect(ROUTES.admin.customRoleHome);
+
   const params = await searchParams;
   const monthParam = params.month?.trim() || "";
   const now = new Date();

@@ -162,7 +162,9 @@ export function Sidebar({
         : user.role === "model"
           ? ROUTES.model.home
           : isAdminAreaUser
-            ? ROUTES.admin.home
+            ? isCustomNavRole(user.role)
+              ? ROUTES.admin.customRoleHome
+              : ROUTES.admin.home
             : ROUTES.dashboard;
   const brandLabel =
     role === "virtual_assistant"

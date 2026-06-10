@@ -517,7 +517,11 @@ const modelNav: NavItem[] = [
 
 /** Shared admin nav items shown to custom roles regardless of grants (Home, Settings, etc.). */
 function getCustomRoleSharedAdminNavItems(): NavItem[] {
-  return adminNav.filter((item) => !item.requiresPermission && !item.adminOnly);
+  return adminNav
+    .filter((item) => !item.requiresPermission && !item.adminOnly)
+    .map((item) =>
+      item.href === ROUTES.admin.home ? { ...item, href: ROUTES.admin.customRoleHome } : item
+    );
 }
 
 /** Canonical lists before hide filter (settings UI + internal). */
@@ -582,8 +586,11 @@ export function getMainTabHrefs(role: NavRoleKey): [string, string, string, stri
   if (r === "virtual_assistant") {
     return [ROUTES.va.home, ROUTES.va.tasks, ROUTES.va.weeklyAvailability, ROUTES.settings];
   }
-  if (r === "admin" || r === "manager" || !isSystemNavRole(r)) {
+  if (r === "admin" || r === "manager") {
     return [ROUTES.admin.home, ROUTES.admin.weeklyProgram, ROUTES.admin.liveShifts, ROUTES.admin.models];
+  }
+  if (!isSystemNavRole(r)) {
+    return [ROUTES.admin.customRoleHome, ROUTES.admin.weeklyProgram, ROUTES.admin.liveShifts, ROUTES.admin.models];
   }
   if (r === "model") {
     return [
