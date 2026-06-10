@@ -66,6 +66,34 @@ export async function POST(req: Request) {
 
   try {
     const revenue = await createBillingCycleRevenue(parsed.data);
+
+    const { getBillingCycleById } = await import("@/services/client-billing");
+    const cycle = await getBillingCycleById(parsed.data.billing_cycle[0]);
+
+    if (cycle) {
+      const clientIds = Array.isArray(cycle.client) ? cycle.client : [cycle.client];
+      const clientId = clientIds[0];
+
+      if (clientId) {
+        const { notify } = await import("@/services/notification-service");
+        const amount = parsed.data.turnover_usd
+          ? `$${((parsed.data.turnover_usd * parsed.data.fee_percent) / 100).toFixed(2)}`
+          : "";
+
+        console.log("[billing/revenues POST] notifying client:", clientId);
+
+        await notify({
+          user_id: String(clientId),
+          event_type: "billing_cycle_announced",
+          priority: "high",
+          title: "📋 New Revenue Entry",
+          body: `💳 A new revenue entry has been added to your billing cycle.${amount ? ` Fee: ${amount}` : ""}`,
+          entity_type: "billing_cycle",
+          entity_id: String(parsed.data.billing_cycle[0]),
+        }).catch((e) => console.error("[billing/revenues POST] notify failed:", e));
+      }
+    }
+
     return NextResponse.json({ ok: true, data: revenue });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to add revenue";
