@@ -4,10 +4,11 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getNavRoleForSession } from "@/lib/staff-session-role";
-import { isCustomNavRole } from "@/lib/nav-config";
-import { getUserPermissions, hasPermission } from "@/lib/rbac";
+import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listAllUsers } from "@/services/users";
+
+const SYSTEM_ROLES = ["admin", "manager", "chatter", "virtual_assistant", "model", "client"];
 
 export default async function DashboardPage() {
   const [user, users] = await Promise.all([
@@ -16,16 +17,15 @@ export default async function DashboardPage() {
   ]);
 
   const canManageAccounts = user ? await hasPermission(user, PERMISSIONS.ACCOUNTS_VIEW) : false;
-  const customRolePerms =
-    user && isCustomNavRole(user.role) ? await getUserPermissions(user).catch(() => []) : [];
 
   const navRole = user ? getNavRoleForSession(user) : null;
   if (navRole === "chatter") redirect(ROUTES.chatter.home);
   if (navRole === "virtual_assistant") redirect(ROUTES.va.home);
   if (user?.role === "model") redirect(ROUTES.model.home);
   if (user?.role === "admin" || user?.role === "manager") redirect(ROUTES.admin.home);
-  if (customRolePerms.length > 0) redirect(ROUTES.admin.home);
-  if (canManageAccounts) redirect(ROUTES.admin.accounts);
+  if (user?.role === "client") redirect(ROUTES.client.home);
+  const isSystemRole = user ? SYSTEM_ROLES.includes(user.role) : false;
+  if (user && !isSystemRole) redirect(ROUTES.admin.customRoleHome);
 
   return (
     <div className="space-y-6">
@@ -55,7 +55,7 @@ export default async function DashboardPage() {
 
       {!canManageAccounts && (
         <p className="rounded-lg border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/70">
-          You’re signed in as <span className="font-medium text-white/90">{String(user?.role ?? "").replace("_", "")}</span>. Account management requires the accounts:view permission.
+          You&apos;re signed in as <span className="font-medium text-white/90">{String(user?.role ?? "").replace("_", "")}</span>. Account management requires the accounts:view permission.
         </p>
       )}
     </div>

@@ -73,6 +73,7 @@ export const ROUTES = {
   /** Admin / manager (role: admin | manager) */
   admin: {
     home: "/admin",
+    customRoleHome: "/admin/custom-role-home",
     weeklyProgram: "/admin/weekly-program",
     weeklyProgramVa: "/admin/weekly-program-va",
     liveShifts: "/admin/live-shifts",
