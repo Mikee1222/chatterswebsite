@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getInflowwModels } from "@/lib/infloww-api";
 import { listEarningsAgencyCutConfig } from "@/services/earnings-config";
@@ -7,7 +9,7 @@ import { AdminEarningsConfigClient } from "@/components/admin-earnings-config-cl
 
 export default async function AdminEarningsConfigPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
+  
 
   const [models, percents] = await Promise.all([
     getInflowwModels().catch(() => []),

@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getLiveShifts, getActiveShiftModels } from "@/services/shifts";
@@ -8,8 +10,7 @@ import { AdminLiveShiftsClient } from "@/components/admin-live-shifts-client";
 import type { AdminShiftQueueRow } from "@/types";
 
 export default async function AdminLiveShiftsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SHIFTS_ACTIVE_VIEW);
 
   const shifts = await getLiveShifts().catch(() => []);
   const users = await listAllUsers().catch(() => []);

@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelContentRequests } from "@/services/model-content-requests";
 import { listAllModelss } from "@/services/modelss";
 import { AdminModelContentRequestsClient } from "@/components/admin-model-content-requests-client";
 
 export default async function AdminModelContentRequestsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CONTENT_VIEW);
 
   const [rows, models] = await Promise.all([
     listAllModelContentRequests().catch(() => []),

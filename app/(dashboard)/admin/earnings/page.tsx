@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { LineChart } from "lucide-react";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { AdminEarningsDashboard } from "@/components/admin-earnings-dashboard";
 
@@ -29,10 +31,7 @@ function last30DaysRange() {
 }
 
 export default async function AdminEarningsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const user = await requireAdminRoute(await getSessionFromCookies(), { permission: PERMISSIONS.EARNINGS_VIEW, adminOnly: true });
 
   if (ADMIN_EARNINGS_COMING_SOON) {
     return (

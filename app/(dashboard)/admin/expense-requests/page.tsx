@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelExpenseRequests } from "@/services/model-expense-requests";
 import { listAllModelss } from "@/services/modelss";
 import { AdminExpenseRequestsClient } from "@/components/admin-expense-requests-client";
 
 export default async function AdminExpenseRequestsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.PAYMENTS_MANAGE);
   const [rows, models] = await Promise.all([
     listAllModelExpenseRequests().catch(() => []),
     listAllModelss().catch(() => []),

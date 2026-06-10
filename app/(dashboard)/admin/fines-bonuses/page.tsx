@@ -1,15 +1,14 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listFinesBonuses } from "@/services/fines-bonuses";
 import { listAllUsers } from "@/services/users";
 import { AdminFinesBonusesClient } from "@/components/admin-fines-bonuses-client";
 
 export default async function AdminFinesBonusesPage() {
-  const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.FINES_VIEW);
 
   const [entries, users] = await Promise.all([
     listFinesBonuses({}).catch(() => []),

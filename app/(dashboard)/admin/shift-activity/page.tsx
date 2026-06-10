@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { listAllShifts } from "@/services/shifts";
@@ -83,8 +85,7 @@ export default async function AdminShiftActivityPage({
 }: {
   searchParams: Promise<{ range?: string; from?: string; to?: string }>;
 }) {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SHIFTS_VIEW);
 
   const params = await searchParams;
   const range = (params.range as "daily" | "weekly" | "monthly" | "custom") || "weekly";

@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { getAllMassListsAdmin } from "@/services/mass-lists";
 import { getAllModelTiersAdmin } from "@/services/model-tiers";
@@ -7,10 +8,7 @@ import { getAllPricingRowsAdmin, getAllPricingSpecialsAdmin } from "@/services/p
 import { AdminInformationsClient } from "@/components/admin-informations-client";
 
 export default async function AdminInformationsPage() {
-  const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    redirect(ROUTES.admin.home);
-  }
+  const session = await requireAdminRoute(await getSessionFromCookies());
 
   const [lists, tiers, pricingRows, pricingSpecials] = await Promise.all([
     getAllMassListsAdmin().catch(() => []),

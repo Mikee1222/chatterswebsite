@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getPointsConfig } from "@/services/points-config";
@@ -8,7 +10,7 @@ import { RewardsConfigClient } from "@/components/rewards-config-client";
 
 export default async function AdminRewardsConfigPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
+  
 
   const [config, users, spinPrizes] = await Promise.all([
     getPointsConfig(),

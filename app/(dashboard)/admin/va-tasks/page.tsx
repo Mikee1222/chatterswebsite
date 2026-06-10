@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllVaTasks } from "@/services/va-tasks";
 import { listAllModelss } from "@/services/modelss";
@@ -7,8 +9,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminVaTasksClient } from "@/components/admin-va-tasks-client";
 
 export default async function AdminVaTasksPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.VA_TASKS_VIEW);
 
   const [tasks, allUsers, modelss] = await Promise.all([
     getAllVaTasks(),

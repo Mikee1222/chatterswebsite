@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { listAllRecords } from "@/lib/airtable-server";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
@@ -11,8 +13,7 @@ import {
 } from "@/services/client-billing";
 
 export default async function AdminBillingPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.BILLING_VIEW);
 
   const [cycles, clients, models, clientModelsRecs] = await Promise.all([
     getAllBillingCycles(),

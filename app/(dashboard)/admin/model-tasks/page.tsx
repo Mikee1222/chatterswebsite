@@ -1,11 +1,12 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { AdminModelOpsPlaceholder } from "@/components/admin-model-ops-placeholder";
 
 export default async function AdminModelTasksPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_MANAGE);
 
   return (
     <AdminModelOpsPlaceholder

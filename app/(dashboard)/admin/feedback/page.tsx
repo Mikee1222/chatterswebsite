@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { AdminFeedbackClient, type AdminFeedbackRow } from "@/components/admin-feedback-client";
@@ -41,10 +43,7 @@ function mapFeedbackRow(rec: AirtableRecord<FeedbackFields>): AdminFeedbackRow {
 }
 
 export default async function AdminFeedbackPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.FEEDBACK_VIEW);
 
   const records = await listAllRecords<FeedbackFields>("feedback", {
     sort: [{ field: "created_at", direction: "desc" }],

@@ -1,9 +1,9 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { isCustomNavRole } from "@/lib/nav-config";
 import { ROUTES } from "@/lib/routes";
 import { getNavRoleForSession } from "@/lib/staff-session-role";
-import { hasPermission } from "@/lib/rbac";
-import { PERMISSIONS } from "@/lib/permissions";
+import { getUserPermissions } from "@/lib/rbac";
 
 /** Logged-in: chatter → home, VA → va-home, admin/manager → admin, others → dashboard. Unauthenticated → login. */
 export default async function Home() {
@@ -14,6 +14,9 @@ export default async function Home() {
   if (navRole === "virtual_assistant") redirect(ROUTES.va.home);
   if (user.role === "admin" || user.role === "manager") redirect(ROUTES.admin.home);
   if (user.role === "client") redirect(ROUTES.client.home);
-  if (await hasPermission(user, PERMISSIONS.ACCOUNTS_VIEW)) redirect(ROUTES.admin.accounts);
+  if (isCustomNavRole(user.role)) {
+    const perms = await getUserPermissions(user);
+    if (perms.length > 0) redirect(ROUTES.admin.home);
+  }
   redirect(ROUTES.dashboard);
 }

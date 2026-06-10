@@ -1,10 +1,53 @@
 import { redirect } from "next/navigation";
 import type { AuthUser } from "@/lib/auth-config";
+import { isCustomNavRole } from "@/lib/nav-config";
 import { ROUTES } from "@/lib/routes";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 import { getRolePermissions } from "@/services/roles";
 import type { UserRole } from "@/types";
+
+/** Admin, manager, or a custom role slug from Airtable `roles`. */
+export function isAdminAreaUser(user: AuthUser | null | undefined): boolean {
+  if (!user) return false;
+  const role = user.role.trim().toLowerCase();
+  return role === "admin" || role === "manager" || isCustomNavRole(user.role);
+}
+
+export function isSystemAdmin(user: AuthUser | null | undefined): boolean {
+  return user?.role.trim().toLowerCase() === "admin";
+}
+
+type RequireAdminRouteOptions = {
+  permission?: Permission;
+  /** Matches nav `adminOnly` — system admin role required. */
+  adminOnly?: boolean;
+};
+
+/**
+ * Guard admin routes: admin-area role, optional permission, optional admin-only flag.
+ * Redirects to login or dashboard when access is denied.
+ */
+export async function requireAdminRoute(
+  user: AuthUser | null | undefined,
+  permissionOrOptions?: Permission | RequireAdminRouteOptions
+): Promise<AuthUser> {
+  if (!user) redirect(ROUTES.login);
+  if (!isAdminAreaUser(user)) redirect(ROUTES.dashboard);
+
+  let permission: Permission | undefined;
+  let adminOnly = false;
+  if (typeof permissionOrOptions === "string") {
+    permission = permissionOrOptions;
+  } else if (permissionOrOptions) {
+    permission = permissionOrOptions.permission;
+    adminOnly = permissionOrOptions.adminOnly ?? false;
+  }
+
+  if (adminOnly && !isSystemAdmin(user)) redirect(ROUTES.dashboard);
+  if (permission && !(await hasPermission(user, permission))) redirect(ROUTES.dashboard);
+  return user;
+}
 
 const CACHE_TTL_MS = 60_000;
 

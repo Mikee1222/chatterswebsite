@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
@@ -60,8 +61,7 @@ export default async function AdminHomePage({
 }: {
   searchParams: Promise<{ month?: string }>;
 }) {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies());
 
   const params = await searchParams;
   const monthParam = params.month?.trim() || "";

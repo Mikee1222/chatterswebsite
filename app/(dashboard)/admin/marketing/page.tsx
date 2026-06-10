@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllAccounts, getAllFunnels, getAllPlatforms } from "@/services/marketing";
 import { listAllModelss } from "@/services/modelss";
@@ -7,10 +9,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminMarketingClient } from "@/components/admin-marketing-client";
 
 export default async function AdminMarketingPage() {
-  const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    redirect(ROUTES.admin.home);
-  }
+  const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_VIEW);
 
   const [platforms, accounts, funnels, models, allUsers] = await Promise.all([
     getAllPlatforms().catch(() => []),

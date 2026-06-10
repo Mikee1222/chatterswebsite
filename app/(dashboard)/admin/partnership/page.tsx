@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { AdminPartnershipClient } from "@/components/admin-partnership-client";
@@ -29,8 +31,7 @@ type SearchParams = Promise<{
 }>;
 
 export default async function AdminPartnershipPage({ searchParams }: { searchParams: SearchParams }) {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CLIENTS_VIEW);
 
   const params = await searchParams;
   const selectedMonth = params.month ?? new Date().toISOString().slice(0, 7);

@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { AdminSubmissionsClient } from "@/components/admin-submissions-client";
@@ -12,8 +14,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function AdminSubmissionsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.PAYMENTS_VIEW);
 
   const [allSubmissions, clients, billingCycles] = await Promise.all([
     getAllPaymentSubmissions(),

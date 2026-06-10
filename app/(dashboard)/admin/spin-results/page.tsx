@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllSpinsForAdmin, type AdminSpinRow } from "@/services/spin-wheel";
 import { AdminSpinResultsClient } from "@/components/admin-spin-results-client";
@@ -35,8 +37,7 @@ function computeStats(rows: AdminSpinRow[]) {
 }
 
 export default async function AdminSpinResultsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SPIN_WHEEL_VIEW);
 
   const rows = await getAllSpinsForAdmin().catch(() => []);
   const stats = computeStats(rows);

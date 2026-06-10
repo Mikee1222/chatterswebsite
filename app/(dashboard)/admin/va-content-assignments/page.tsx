@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listAllModelss } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
@@ -9,10 +11,7 @@ import { AdminVaContentClient, type AdminVaContentAssignmentDTO } from "@/compon
 export const dynamic = "force-dynamic";
 
 export default async function AdminVaContentAssignmentsPage() {
-  const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CONTENT_ASSIGN);
 
   const [assignments, users, models] = await Promise.all([
     listAllVAContentAssignments(),

@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import {
@@ -12,7 +14,7 @@ import { AdminChallengesClient } from "@/components/admin-challenges-client";
 
 export default async function AdminChallengesPage() {
   const user = await getSessionFromCookies();
-  if (!user || user.role !== "admin") redirect(ROUTES.dashboard);
+  
 
   const todayYmd = getTodayYmdAthens();
   const [challenges, completionByChallenge, activeChatterDenominator, users] = await Promise.all([

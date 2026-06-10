@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getNavRoleForSession } from "@/lib/staff-session-role";
-import { hasPermission } from "@/lib/rbac";
+import { isCustomNavRole } from "@/lib/nav-config";
+import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listAllUsers } from "@/services/users";
 
@@ -15,12 +16,15 @@ export default async function DashboardPage() {
   ]);
 
   const canManageAccounts = user ? await hasPermission(user, PERMISSIONS.ACCOUNTS_VIEW) : false;
+  const customRolePerms =
+    user && isCustomNavRole(user.role) ? await getUserPermissions(user).catch(() => []) : [];
 
   const navRole = user ? getNavRoleForSession(user) : null;
   if (navRole === "chatter") redirect(ROUTES.chatter.home);
   if (navRole === "virtual_assistant") redirect(ROUTES.va.home);
   if (user?.role === "model") redirect(ROUTES.model.home);
   if (user?.role === "admin" || user?.role === "manager") redirect(ROUTES.admin.home);
+  if (customRolePerms.length > 0) redirect(ROUTES.admin.home);
   if (canManageAccounts) redirect(ROUTES.admin.accounts);
 
   return (

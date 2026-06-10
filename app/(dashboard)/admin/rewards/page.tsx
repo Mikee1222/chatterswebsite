@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import {
   calculateLevel,
@@ -11,8 +13,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminRewardsClient } from "@/components/admin-rewards-client";
 
 export default async function AdminRewardsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.REWARDS_VIEW);
 
   const [summaries, users, ledger] = await Promise.all([
     getAllChatterPointsSummaries().catch(() => []),

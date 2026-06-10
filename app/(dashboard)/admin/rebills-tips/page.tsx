@@ -1,5 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import {
@@ -80,10 +82,7 @@ function mapTip(rec: AirtableRecord<TipFields>): AdminTipRow {
 }
 
 export default async function AdminRebillsTipsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) {
-    redirect(ROUTES.dashboard);
-  }
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.BILLING_VIEW);
 
   const sort = [{ field: "created_at", direction: "desc" as const }];
 

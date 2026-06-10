@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getModelById } from "@/services/modelss";
 import { AdminModelPeriodTrackingToggle } from "@/components/admin-model-period-tracking-toggle";
@@ -8,8 +10,7 @@ import { ModelOFSubscribers } from "@/components/model-of-subscribers";
 import { SyncOFSubscribersButton } from "@/components/sync-of-subscribers-button";
 
 export default async function AdminModelDetailPage({ params }: { params: { id: string } }) {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_VIEW);
 
   const id = params.id?.trim();
   if (!id) notFound();

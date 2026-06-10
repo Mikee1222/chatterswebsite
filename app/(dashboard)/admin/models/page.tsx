@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getCachedModelss } from "@/services/modelss";
@@ -14,8 +16,7 @@ export const revalidate = 30;
 const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 export default async function AdminModelsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_VIEW);
 
   const modelss = await getCachedModelss();
   await stagger(150);

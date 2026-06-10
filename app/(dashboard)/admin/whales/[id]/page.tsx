@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getWhaleById } from "@/services/whales";
 import { listAllRecords } from "@/lib/airtable-server";
@@ -12,9 +14,7 @@ const TRANSACTIONS_TABLE = "whale_transactions";
 
 export default async function AdminWhaleDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const user = await getSessionFromCookies();
-  if (!user) redirect(ROUTES.login);
-  if (user.role !== "admin" && user.role !== "manager") redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WHALES_MANAGE);
 
   const whale = await getWhaleById(id);
   if (!whale) notFound();

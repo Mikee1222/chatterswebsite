@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { normalizeWeekStart, getThisWeekMonday, formatWeekLabel, addDays } from "@/lib/weekly-program";
@@ -22,8 +24,7 @@ export default async function AdminWeeklyProgramPage({
 }: {
   searchParams: { week_start?: string };
 }) {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WEEKLY_PROGRAM_MANAGE);
 
   const rawWeek = searchParams.week_start?.trim();
   const weekStart = normalizeWeekStart(rawWeek || getThisWeekMonday());

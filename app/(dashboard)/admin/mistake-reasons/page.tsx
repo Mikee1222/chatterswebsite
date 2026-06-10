@@ -1,14 +1,16 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllMistakeReasons } from "@/services/chatter-mistakes";
 import { AdminMistakeReasonsClient } from "@/components/admin-mistake-reasons-client";
 
 export default async function AdminMistakeReasonsPage() {
-  const session = await getSessionFromCookies();
-  if (!session || session.role !== "admin") {
-    redirect(ROUTES.dashboard);
-  }
+  await requireAdminRoute(await getSessionFromCookies(), {
+    permission: PERMISSIONS.MISTAKES_REASONS_MANAGE,
+    adminOnly: true,
+  });
 
   const reasons = await getAllMistakeReasons().catch(() => []);
 

@@ -1,4 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
 import { ROUTES } from "@/lib/routes";
@@ -28,8 +30,7 @@ function mapPaymentMethod(rec: AirtableRecord<Record<string, unknown>>): Payment
 }
 
 export default async function AdminPaymentMethodsPage() {
-  const user = await getSessionFromCookies();
-  if (!user || (user.role !== "admin" && user.role !== "manager")) redirect(ROUTES.dashboard);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.PAYMENTS_MANAGE);
 
   const [records, clients] = await Promise.all([
     listAllRecords<Record<string, unknown>>("payment_methods", {
