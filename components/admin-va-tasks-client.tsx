@@ -1263,12 +1263,12 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           <p className="mt-2 max-w-sm text-sm text-white/50">Adjust search or filters, or create a new task.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {regularTasks.map((task) => (
             <React.Fragment key={task.id}>{renderAdminTaskCard(task)}</React.Fragment>
           ))}
           {recurringGroups.map((group) => (
-            <div key={group.title} className="mb-3 lg:col-span-2">
+            <div key={group.title} className="mb-3 md:col-span-2">
               {group.currentTask ? (
                 <React.Fragment key={group.currentTask.id}>{renderAdminTaskCard(group.currentTask)}</React.Fragment>
               ) : (

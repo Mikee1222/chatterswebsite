@@ -13,6 +13,7 @@ export default async function VaTasksPage() {
 
   const vaId = user.airtableUserId ?? user.id;
   const tasks = await getVaTasksForUser(vaId).catch(() => []);
+  const userName = (user.fullName || user.email || "").trim();
 
-  return <VaTasksClient tasks={tasks} />;
+  return <VaTasksClient tasks={tasks} userName={userName} />;
 }

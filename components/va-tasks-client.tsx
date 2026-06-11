@@ -4,8 +4,8 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  Calendar,
   Check,
-  ChevronDown,
   ChevronRight,
   ClipboardList,
   ExternalLink,
@@ -30,7 +30,7 @@ import type { SocialAccount } from "@/services/marketing";
 import { cn } from "@/lib/utils";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
 
-type Props = { tasks: VaTaskRecord[] };
+type Props = { tasks: VaTaskRecord[]; userName?: string };
 
 type ActiveShift = { id: string; start_time: string; status: string };
 
@@ -142,6 +142,13 @@ function phaseProgressColor(status: TaskPhase["status"]) {
   return "bg-[#374151]";
 }
 
+function assigneeLabel(task: VaTaskRecord, userName: string): string {
+  if (task.assigned_to_ids.length === 0) return "All VAs";
+  if (task.assigned_to_ids.length === 1) return userName.trim() || "Assigned VA";
+  const extra = task.assigned_to_ids.length - 1;
+  return userName.trim() ? `${userName.trim()} + ${extra} more` : `${task.assigned_to_ids.length} VAs`;
+}
+
 const fieldMotion = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
@@ -159,7 +166,7 @@ const SOCIAL_COLORS: Record<string, string> = {
   GetMyLinks: "#9333EA",
 };
 
-export function VaTasksClient({ tasks: initialTasks }: Props) {
+export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   const router = useRouter();
   const tasks = initialTasks;
   const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
@@ -511,7 +518,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
       >
         <button
           type="button"
-          className="flex w-full items-start justify-between gap-4 p-5 text-left"
+          className="flex w-full items-start justify-between gap-4 p-5 pb-3 text-left"
           onClick={() => void toggleTaskExpanded(task)}
         >
           <div className="min-w-0 flex-1">
@@ -534,13 +541,57 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
             </h3>
           </div>
           <div className="mt-1 flex shrink-0 items-center">
-            {expanded ? (
-              <ChevronDown className="h-5 w-5 text-white/40 transition-transform duration-300" />
-            ) : (
-              <ChevronRight className="h-5 w-5 text-white/40 transition-transform duration-300" />
-            )}
+            <ChevronRight
+              className={cn(
+                "h-5 w-5 text-white/40 transition-transform duration-300",
+                expanded && "rotate-90",
+              )}
+            />
           </div>
         </button>
+
+        <div className="space-y-2 px-5 pb-4">
+          {task.due_date ? (
+            <div
+              className={cn(
+                "flex items-center gap-1.5 text-xs tabular-nums",
+                overdue ? "font-medium text-red-400" : "text-white/40",
+              )}
+            >
+              <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              <span>
+                Due {formatDateEuropean(task.due_date)}
+                {overdue ? " · Overdue" : ""}
+              </span>
+            </div>
+          ) : null}
+          {modelNames.length > 0 ? (
+            <div className="flex flex-wrap gap-1.5">
+              {modelNames.map((name) => (
+                <span
+                  key={name}
+                  className="rounded-full bg-pink-500/[0.15] px-2.5 py-0.5 text-xs font-medium text-pink-300"
+                >
+                  {name}
+                </span>
+              ))}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[13px] text-white/45">{assigneeLabel(task, userName)}</p>
+            {showDoneButton(task) ? (
+              <button
+                type="button"
+                onClick={(e) => void handleMarkComplete(task, e)}
+                disabled={!onShift || completing === task.id}
+                title={!onShift ? "Start your shift to mark tasks done" : undefined}
+                className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {completing === task.id ? "Saving…" : "Mark done"}
+              </button>
+            ) : null}
+          </div>
+        </div>
 
         <div
           className={cn(
@@ -549,38 +600,6 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
           )}
         >
           <div className="border-t border-[#1f1f1f]">
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 pb-4 pt-1">
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                {task.due_date ? (
-                  <span className={cn("text-sm tabular-nums", overdue ? "font-medium text-red-400" : "text-white/45")}>
-                    Due {formatDateEuropean(task.due_date)}
-                    {overdue ? " · Overdue" : ""}
-                  </span>
-                ) : (
-                  <span className="text-sm text-white/30">No due date</span>
-                )}
-                {modelNames.map((name) => (
-                  <span
-                    key={name}
-                    className="rounded-full bg-pink-500/[0.15] px-2.5 py-0.5 text-xs font-medium text-pink-300"
-                  >
-                    {name}
-                  </span>
-                ))}
-              </div>
-              {showDoneButton(task) ? (
-                <button
-                  type="button"
-                  onClick={(e) => void handleMarkComplete(task, e)}
-                  disabled={!onShift || completing === task.id}
-                  title={!onShift ? "Start your shift to mark tasks done" : undefined}
-                  className="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  {completing === task.id ? "Saving…" : "Mark done"}
-                </button>
-              ) : null}
-            </div>
-
             {task.description ? (
               <div className="border-t border-[#1f1f1f] px-5 py-5">
                 <p className="mb-2 text-xs font-medium text-white/40">Description</p>
