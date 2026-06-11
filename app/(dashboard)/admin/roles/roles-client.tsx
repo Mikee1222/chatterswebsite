@@ -678,7 +678,7 @@ export function AdminRolesClient({
                         Notification defaults
                       </h3>
                       <p className="mt-1 text-sm text-white/45">
-                        Default category and event toggles for new users with this role. Users can override categories in Settings.
+                        Control exactly who receives each notification. Personal events (blue) are sent to the specific user involved. Monitoring events (amber) are sent to all users of that role. Turn ON a role to include them as recipients.
                       </p>
                     </div>
                     <button

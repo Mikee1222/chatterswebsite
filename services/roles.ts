@@ -20,6 +20,7 @@ import {
   type NotificationRoleDefaults,
 } from "@/lib/notification-role-defaults";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { clearRoleNotificationCache } from "@/lib/role-notification-cache";
 import { listAllUsers } from "@/services/users";
 import type { RoleRecord, UserRole } from "@/types";
 
@@ -28,6 +29,7 @@ const TABLE = "roles";
 async function invalidateRbacCache(roleName?: string): Promise<void> {
   const { clearRbacCache } = await import("@/lib/rbac");
   clearRbacCache(roleName);
+  clearRoleNotificationCache(roleName);
 }
 
 type Fields = {

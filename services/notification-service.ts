@@ -3,9 +3,8 @@
 /**
  * NOTIFICATION AUTHORITY HIERARCHY:
  *
- * 1. ROUTING RULES (lib/notification-routing.ts)
- *    → Determines recipient list (who to notify) at send time
- *    → Also gates push via shouldSendPushByRouting() for scope alignment
+ * 1. ROLE CONFIG (notifyByRoleConfig + lib/notification-role-defaults.ts)
+ *    → Admin sets per-role event toggles in /admin/roles; determines recipients at send time
  *
  * 2. ROLE DEFAULTS (lib/notification-role-defaults.ts)
  *    → Admin sets defaults per role in /admin/roles (personal vs monitoring scope)
@@ -30,7 +29,10 @@ import {
   EVENT_TO_ROLE_CATEGORY,
   getEventDefaultValue,
 } from "@/lib/notification-role-defaults";
-import { NOTIFICATION_ROUTING } from "@/lib/notification-routing";
+import {
+  getCachedRoles,
+  isRoleEventEnabled,
+} from "@/lib/role-notification-cache";
 import { broadcastRealtimeEvent } from "@/lib/realtime-broadcast";
 import { sendWebPush } from "@/lib/web-push-server";
 import { getPushTargetPath } from "@/lib/notification-routes";
@@ -267,76 +269,29 @@ async function getRecipientPushContext(userId: string): Promise<{
   }
 }
 
-function isAdminOrManager(role: UserRole | undefined): boolean {
-  return role === "admin" || role === "manager";
+function isMonitoringRoleSlug(roleSlug: string): boolean {
+  return roleSlug === "admin" || roleSlug === "manager";
 }
 
-/** Enforce NOTIFICATION_ROUTING scope before web push; in-app notifications are not gated here. */
-function shouldSendPushByRouting(
-  eventType: NotificationEventType,
-  recipientUserId: string,
-  recipientRole: UserRole | undefined,
-  actorUserId?: string
-): { send: boolean; skipReason?: string } {
-  const entry = NOTIFICATION_ROUTING[eventType];
-  if (!entry) return { send: true };
+function isActiveLoginUser(user: {
+  id?: string;
+  status?: string;
+  can_login?: boolean;
+}): user is { id: string; status?: string; can_login?: boolean } {
+  const id = user.id?.trim();
+  if (!id) return false;
+  return (user.status ?? "").toLowerCase() === "active" && user.can_login === true;
+}
 
-  const rule = entry.rule;
-  switch (rule) {
-    case "all_users":
-      return { send: true };
-    case "assigned_user_only":
-    case "assigned_party_only":
-      return { send: true };
-    case "admin_only":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule admin_only blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "assigned_chatter_only":
-      if (recipientRole === "chatter") return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule assigned_chatter_only blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "assigned_model_only":
-      if (recipientRole === "model") return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule assigned_model_only blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "admin_and_actor":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      if (actorUserId && actorUserId === recipientUserId) return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule admin_and_actor blocks role "${recipientRole ?? "unknown"}" (not actor)`,
-      };
-    case "admin_and_assigned_chatter":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      if (recipientRole === "chatter") return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule admin_and_assigned_chatter blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "admin_and_assigned_party":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      if (
-        recipientRole === "chatter" ||
-        recipientRole === "model" ||
-        recipientRole === "virtual_assistant" ||
-        recipientRole === "client"
-      ) {
-        return { send: true };
-      }
-      return {
-        send: false,
-        skipReason: `routing rule admin_and_assigned_party blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    default:
-      return { send: true };
-  }
+let activeUsersCache: { users: Awaited<ReturnType<typeof listAllUsers>>; expiresAt: number } | null =
+  null;
+
+async function getCachedActiveUsers(): Promise<Awaited<ReturnType<typeof listAllUsers>>> {
+  const now = Date.now();
+  if (activeUsersCache && now < activeUsersCache.expiresAt) return activeUsersCache.users;
+  const users = await listAllUsers();
+  activeUsersCache = { users, expiresAt: now + 60_000 };
+  return users;
 }
 
 function isInQuietHours(prefs: { quiet_hours_start: string; quiet_hours_end: string }): boolean {
@@ -400,17 +355,8 @@ function shouldSendPush(
   roleDefaults?: NotificationRoleDefaults | null,
   recipientUserId?: string,
   recipientRole?: UserRole,
-  actorUserId?: string
+  _actorUserId?: string
 ): { send: boolean; skipReason?: string } {
-  if (recipientUserId) {
-    const routingDecision = shouldSendPushByRouting(
-      eventType,
-      recipientUserId,
-      recipientRole,
-      actorUserId
-    );
-    if (!routingDecision.send) return routingDecision;
-  }
   if (prefs.mute_all) return { send: false, skipReason: "mute_all is true" };
   if (!prefs.push_enabled) return { send: false, skipReason: "push_enabled is false" };
   const categoryKey = resolvePreferenceKey(eventType, category, entityType, triggerSource);
@@ -806,7 +752,6 @@ export async function notify(options: NotifyOptions) {
     JSON.stringify({
       recipient_user_id: options.user_id,
       recipient_role: recipientRole ?? null,
-      routing_rule: NOTIFICATION_ROUTING[options.event_type]?.rule ?? null,
       category,
       preference_key: preferenceKey,
       send: pushDecision.send,
@@ -937,6 +882,104 @@ export async function notify(options: NotifyOptions) {
   return { notification, pushSent };
 }
 
+export type NotifyByRoleConfigOptions = {
+  personal_user_id?: string;
+  /** Batch personal recipients (e.g. multiple chatters on model live). */
+  personal_user_ids?: string[];
+  /** Default `all`: monitoring roles broadcast + personal user when role matches. */
+  recipient_mode?: "all" | "monitoring_only" | "personal_only";
+  /** Optional per-recipient gate (e.g. cron dedup). */
+  should_notify_user?: (userId: string) => Promise<boolean>;
+  actor_user_id?: string;
+  actor_name?: string;
+  entity_type?: string;
+  entity_id?: string;
+  title?: string;
+  body?: string;
+  priority?: "low" | "normal" | "high" | "critical";
+  context?: Record<string, unknown>;
+};
+
+/**
+ * Resolve recipients from /admin/roles notification toggles, then call notify() for each.
+ */
+export async function notifyByRoleConfig(
+  eventType: NotificationEventType,
+  options: NotifyByRoleConfigOptions
+): Promise<void> {
+  const mode = options.recipient_mode ?? "all";
+  const personalIds = [
+    ...new Set(
+      [options.personal_user_id, ...(options.personal_user_ids ?? [])]
+        .map((id) => id?.trim())
+        .filter((id): id is string => !!id)
+    ),
+  ];
+
+  const [roles, users] = await Promise.all([getCachedRoles(), getCachedActiveUsers()]);
+  const activeUsers = users.filter(isActiveLoginUser);
+  const usersById = new Map(activeUsers.map((u) => [u.id, u]));
+  const recipientIds = new Set<string>();
+
+  for (const role of roles) {
+    if (!isRoleEventEnabled(role, eventType)) continue;
+    const roleSlug = role.role_id.trim().toLowerCase();
+    if (!roleSlug) continue;
+
+    if (isMonitoringRoleSlug(roleSlug)) {
+      if (mode === "personal_only") continue;
+      for (const user of activeUsers) {
+        if ((user.role ?? "").trim().toLowerCase() === roleSlug) {
+          recipientIds.add(user.id);
+        }
+      }
+    } else if (mode !== "monitoring_only") {
+      for (const personalId of personalIds) {
+        const user = usersById.get(personalId);
+        if (user && (user.role ?? "").trim().toLowerCase() === roleSlug) {
+          recipientIds.add(personalId);
+        }
+      }
+    }
+  }
+
+  const entityType = options.entity_type?.trim() ?? "";
+  const entityId = options.entity_id?.trim() ?? "";
+  const title = options.title?.trim() ?? "";
+  const body = options.body?.trim() ?? "";
+  if (!entityType || !entityId || !title || !body) {
+    devLog(
+      NOTIF,
+      "notifyByRoleConfig_skip",
+      JSON.stringify({ eventType, reason: "missing entity_type, entity_id, title, or body" })
+    );
+    return;
+  }
+
+  const priority = options.priority as NotificationPriority | undefined;
+  let sent = 0;
+  for (const userId of recipientIds) {
+    if (options.should_notify_user) {
+      const ok = await options.should_notify_user(userId).catch(() => false);
+      if (!ok) continue;
+    }
+    await notify({
+      user_id: userId,
+      event_type: eventType,
+      priority,
+      title,
+      body,
+      entity_type: entityType,
+      entity_id: entityId,
+      actor_user_id: options.actor_user_id,
+      actor_name: options.actor_name,
+      _triggerSource: "notifyByRoleConfig",
+    }).catch(() => {});
+    sent += 1;
+  }
+
+  console.log(`[notifyByRoleConfig] event=${eventType} recipients=${sent}`);
+}
 
 export type NotifyAdminsOptions = Omit<NotifyOptions, "user_id"> & {
   /** When set, only these user IDs (must each appear in the resolved admin recipient list) receive the notification. */

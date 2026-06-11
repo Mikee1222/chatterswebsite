@@ -29,7 +29,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createActivityLog } from "@/services/activity-logs";
-import { notify, notifyAdmins } from "@/services/notification-service";
+import { notify, notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { awardShiftEndPoints } from "@/services/points-engine";
 
 const MAX_BREAK_MINUTES_PER_SHIFT = 45;
@@ -208,30 +208,8 @@ export async function startShiftWithModels(
       const selfCopy = shiftStartedSelf(startTime, modelNames);
       const adminCopy = shiftStartedAdmin(chatterName, startTime, modelNames);
       try {
-        await notify({
-          user_id: chatterRecordId,
-          event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
-          priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: selfCopy.title,
-          body: selfCopy.body,
-          entity_type: NOTIFICATION_ENTITY.SHIFT,
-          entity_id: created.id,
-          actor_user_id: chatterRecordId,
-          actor_name: chatterName,
-          _triggerSource: "startShiftWithModels",
-        });
-      } catch (e) {
-        console.error("[notify] shift_started chatter failed", e);
-      }
-      try {
-        devLog("[shift_started_debug]", {
-          chatterRecordId,
-          chatterName,
-          modelNames,
-          event: NOTIFICATION_EVENT.SHIFT_STARTED,
-        });
-        const notifyAdminsReturn = await notifyAdmins({
-          event_type: NOTIFICATION_EVENT.SHIFT_STARTED,
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_STARTED, {
+          recipient_mode: "monitoring_only",
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: adminCopy.title,
           body: adminCopy.body,
@@ -239,15 +217,21 @@ export async function startShiftWithModels(
           entity_id: created.id,
           actor_user_id: chatterRecordId,
           actor_name: chatterName,
+          personal_user_id: chatterRecordId,
         });
-        devLog(
-          "[startShiftWithModels] notifyAdmins finished",
-          JSON.stringify({
-            returnValue: notifyAdminsReturn === undefined ? "undefined (notifyAdmins returns void)" : notifyAdminsReturn,
-          })
-        );
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_STARTED, {
+          recipient_mode: "personal_only",
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: selfCopy.title,
+          body: selfCopy.body,
+          entity_type: NOTIFICATION_ENTITY.SHIFT,
+          entity_id: created.id,
+          actor_user_id: chatterRecordId,
+          actor_name: chatterName,
+          personal_user_id: chatterRecordId,
+        });
       } catch (e) {
-        console.error("[notify] shift_started admin failed", e);
+        console.error("[notify] shift_started failed", e);
       }
     }
 
@@ -557,26 +541,10 @@ export async function removeModelFromShift(
       revalidatePath(ROUTES.chatter.shift);
       if (endedShift?.chatter_id) {
         const selfCopy = shiftCompletedSelf(now, endedModelNames, endedShift.worked_minutes ?? undefined);
-        try {
-          await notify({
-            user_id: endedShift.chatter_id,
-            event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
-            priority: NOTIFICATION_PRIORITY.NORMAL,
-            title: selfCopy.title,
-            body: selfCopy.body,
-            entity_type: NOTIFICATION_ENTITY.SHIFT,
-            entity_id: shiftRecordId,
-            actor_user_id: endedShift.chatter_id,
-            actor_name: endedShift.chatter_name ?? undefined,
-            _triggerSource: "removeModelFromShift_autoEnd",
-          });
-        } catch (e) {
-          console.error("[notify] removeModelFromShift shift_ended self failed", e);
-        }
         const adminCopy = shiftCompletedAdmin(endedShift.chatter_name ?? "Staff", now, endedModelNames, endedShift.worked_minutes ?? undefined);
         try {
-          await notifyAdmins({
-            event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
+          await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_ENDED, {
+            recipient_mode: "monitoring_only",
             priority: NOTIFICATION_PRIORITY.NORMAL,
             title: adminCopy.title,
             body: adminCopy.body,
@@ -584,9 +552,21 @@ export async function removeModelFromShift(
             entity_id: shiftRecordId,
             actor_user_id: endedShift.chatter_id,
             actor_name: endedShift.chatter_name ?? undefined,
+            personal_user_id: endedShift.chatter_id,
+          });
+          await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_ENDED, {
+            recipient_mode: "personal_only",
+            priority: NOTIFICATION_PRIORITY.NORMAL,
+            title: selfCopy.title,
+            body: selfCopy.body,
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: shiftRecordId,
+            actor_user_id: endedShift.chatter_id,
+            actor_name: endedShift.chatter_name ?? undefined,
+            personal_user_id: endedShift.chatter_id,
           });
         } catch (e) {
-          console.error("[notify] removeModelFromShift shift_ended notifyAdmins failed", e);
+          console.error("[notify] removeModelFromShift shift_ended failed", e);
         }
       }
       return { success: true, shiftEnded: true };
@@ -1043,21 +1023,8 @@ export async function endShift(shiftRecordId: string) {
     const selfCopy = shiftCompletedSelf(now, modelNames, workedMinutes);
     const adminCopy = shiftCompletedAdmin(chatterNameForNotify, now, modelNames, workedMinutes);
     try {
-      await notify({
-        user_id: chatterIdForNotify,
-        event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: selfCopy.title,
-        body: selfCopy.body,
-        entity_type: NOTIFICATION_ENTITY.SHIFT,
-        entity_id: shiftRecordId,
-      });
-    } catch (e) {
-      console.error("[notify] endShift notify failed", e);
-    }
-    try {
-      await notifyAdmins({
-        event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_ENDED, {
+        recipient_mode: "monitoring_only",
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: adminCopy.title,
         body: adminCopy.body,
@@ -1065,9 +1032,21 @@ export async function endShift(shiftRecordId: string) {
         entity_id: shiftRecordId,
         actor_user_id: chatterIdForNotify,
         actor_name: chatterNameForNotify,
+        personal_user_id: chatterIdForNotify,
+      });
+      await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_ENDED, {
+        recipient_mode: "personal_only",
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: selfCopy.title,
+        body: selfCopy.body,
+        entity_type: NOTIFICATION_ENTITY.SHIFT,
+        entity_id: shiftRecordId,
+        actor_user_id: chatterIdForNotify,
+        actor_name: chatterNameForNotify,
+        personal_user_id: chatterIdForNotify,
       });
     } catch (e) {
-      console.error("[notify] endShift notifyAdmins failed", e);
+      console.error("[notify] endShift failed", e);
     }
   }
   if (shift?.staff_role === "chatter" && chatterIdForNotify) {
@@ -1174,21 +1153,8 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
     if (chatterIdForNotify) {
       await broadcastRealtimeToAll({ type: "shift_ended", chatter_id: chatterIdForNotify, shift_id: id }).catch(() => {});
       try {
-        await notify({
-          user_id: chatterIdForNotify,
-          event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
-          priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: "✅ Shift Ended by Admin",
-          body: `✅ An administrator ended your shift at ${formatTimeAthens(now)}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
-          entity_type: NOTIFICATION_ENTITY.SHIFT,
-          entity_id: id,
-        });
-      } catch (e) {
-        console.error("[notify] adminForceEndShift chatter notify failed", e);
-      }
-      try {
-        await notifyAdmins({
-          event_type: NOTIFICATION_EVENT.SHIFT_ENDED,
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_ENDED, {
+          recipient_mode: "monitoring_only",
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: `✅ Shift Force-Ended: ${chatterNameForNotify}`,
           body: `✅ Admin ended shift ${id} at ${formatTimeAthens(now)}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
@@ -1196,9 +1162,19 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
           entity_id: id,
           actor_user_id: session.airtableUserId ?? session.id,
           actor_name: session.fullName ?? session.email ?? undefined,
+          personal_user_id: chatterIdForNotify,
+        });
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_ENDED, {
+          recipient_mode: "personal_only",
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "✅ Shift Ended by Admin",
+          body: `✅ An administrator ended your shift at ${formatTimeAthens(now)}.${reasonLine ? ` Reason:${reasonLine}` : ""}`,
+          entity_type: NOTIFICATION_ENTITY.SHIFT,
+          entity_id: id,
+          personal_user_id: chatterIdForNotify,
         });
       } catch (e) {
-        console.error("[notify] adminForceEndShift notifyAdmins failed", e);
+        console.error("[notify] adminForceEndShift failed", e);
       }
     }
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { notify } from "@/services/notification-service";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import { awardPoints } from "@/services/points-engine";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
@@ -55,15 +55,14 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
 
       if (mistake.va_id) {
-        await notify({
-          user_id: mistake.va_id,
-          event_type: NOTIFICATION_EVENT.CHATTER_MISTAKE,
+        await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
+          recipient_mode: "personal_only",
+          personal_user_id: mistake.va_id,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: "❌ Mistake Rejected",
           body: `❌ Your report for ${mistake.chatter_name} was rejected: ${adminNotes || "—"}`,
           entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
           entity_id: id,
-          _triggerSource: "admin_mistake_reject",
         }).catch(() => {});
       }
 
@@ -95,28 +94,26 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (mistake.chatter_id) {
-      await notify({
-        user_id: mistake.chatter_id,
-        event_type: NOTIFICATION_EVENT.CHATTER_MISTAKE,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
+        recipient_mode: "personal_only",
+        personal_user_id: mistake.chatter_id,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: "⚠️ Mistake approved",
         body: `⚠️ A ${category} mistake was recorded: ${reasonLabel}. Points deducted: ${points}.`,
         entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
         entity_id: id,
-        _triggerSource: "admin_mistake_approve_chatter",
       }).catch(() => {});
     }
 
     if (mistake.va_id) {
-      await notify({
-        user_id: mistake.va_id,
-        event_type: NOTIFICATION_EVENT.CHATTER_MISTAKE,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
+        recipient_mode: "personal_only",
+        personal_user_id: mistake.va_id,
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: "✅ Mistake Approved",
         body: `✅ Your mistake report for ${mistake.chatter_name} was approved.`,
         entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
         entity_id: id,
-        _triggerSource: "admin_mistake_approve_va",
       }).catch(() => {});
     }
 

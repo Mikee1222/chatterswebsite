@@ -3,7 +3,7 @@
 import { getProgramsForWeek } from "@/services/weekly-program";
 import { getShiftsForDate, getLiveShifts } from "@/services/shifts";
 import { findExistingNotification } from "@/services/notifications";
-import { notifyAdminsOnce, notify } from "@/services/notification-service";
+import { notify, notifyAdminsOnce, notifyByRoleConfig } from "@/services/notification-service";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
@@ -143,9 +143,9 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
         airtableShiftLate
       ).catch(() => true);
       if (!dupChatter) {
-        await notify({
-          user_id: program.chatter_id,
-          event_type: NOTIFICATION_EVENT.SHIFT_LATE,
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_LATE, {
+          recipient_mode: "personal_only",
+          personal_user_id: program.chatter_id,
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: "🚨 You're late for your shift",
           body: `🚨 Your shift was supposed to start ${minsLate} minutes ago. Please log in now.`,
@@ -157,20 +157,21 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
         shiftScheduledLateChatterCount++;
       }
 
-      await notifyAdminsOnce(
-        {
-          event_type: NOTIFICATION_EVENT.SHIFT_LATE,
-          priority: NOTIFICATION_PRIORITY.HIGH,
-          title: `🚨 ${chatterName} is late`,
-          body: `🚨 ${chatterName} hasn't started their shift yet — ${minsLate} minutes late.`,
-          entity_type: NOTIFICATION_ENTITY.SHIFT,
-          entity_id: adminEntityId,
-          actor_user_id: program.chatter_id,
-          actor_name: program.chatter_name ?? undefined,
-        },
-        (userId) =>
-          findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, adminEntityId, airtableShiftLate)
-      );
+      await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_LATE, {
+        recipient_mode: "monitoring_only",
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: `🚨 ${chatterName} is late`,
+        body: `🚨 ${chatterName} hasn't started their shift yet — ${minsLate} minutes late.`,
+        entity_type: NOTIFICATION_ENTITY.SHIFT,
+        entity_id: adminEntityId,
+        actor_user_id: program.chatter_id,
+        actor_name: program.chatter_name ?? undefined,
+        personal_user_id: program.chatter_id,
+        should_notify_user: (userId) =>
+          findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, adminEntityId, airtableShiftLate).then(
+            (exists) => !exists
+          ),
+      }).catch(() => {});
       if (!dupChatter) shiftLateNotStartedAdminCount++;
     }
   }
@@ -193,19 +194,21 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
     const actualMs = new Date(shift.start_time).getTime();
     if (actualMs - scheduledMs < LATE_THRESHOLD_MS) continue;
 
-    await notifyAdminsOnce(
-      {
-        event_type: NOTIFICATION_EVENT.SHIFT_LATE,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "⏱️ Shift Started Late",
-        body: `⏱️ ${shift.chatter_name ?? "Staff"} started ${Math.round((actualMs - scheduledMs) / 60000)} min late.`,
-        entity_type: NOTIFICATION_ENTITY.SHIFT,
-        entity_id: shift.id,
-        actor_user_id: shift.chatter_id,
-        actor_name: shift.chatter_name ?? undefined,
-      },
-      (userId) => findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, shift.id, airtableShiftLate)
-    );
+    await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_LATE, {
+      recipient_mode: "monitoring_only",
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "⏱️ Shift Started Late",
+      body: `⏱️ ${shift.chatter_name ?? "Staff"} started ${Math.round((actualMs - scheduledMs) / 60000)} min late.`,
+      entity_type: NOTIFICATION_ENTITY.SHIFT,
+      entity_id: shift.id,
+      actor_user_id: shift.chatter_id,
+      actor_name: shift.chatter_name ?? undefined,
+      personal_user_id: shift.chatter_id,
+      should_notify_user: (userId) =>
+        findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, shift.id, airtableShiftLate).then(
+          (exists) => !exists
+        ),
+    }).catch(() => {});
     lateCount++;
   }
 

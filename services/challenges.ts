@@ -283,17 +283,16 @@ async function completeChallengeIfNeeded(userId: string, ch: ChallengeRow, curre
   }
 
   try {
-    const { notify } = await import("@/services/notification-service");
+    const { notifyByRoleConfig } = await import("@/services/notification-service");
     const { NOTIFICATION_EVENT } = await import("@/lib/notification-types");
     const safeTitle = ch.title.replace(/'/g, "ʼ");
-    await notify({
-      user_id: userId,
-      event_type: NOTIFICATION_EVENT.CHALLENGE_COMPLETED,
+    await notifyByRoleConfig(NOTIFICATION_EVENT.CHALLENGE_COMPLETED, {
+      recipient_mode: "personal_only",
+      personal_user_id: userId,
       title: "🏆 Challenge Completed!",
       body: `🎉 You completed '${safeTitle}' and earned ${reward} pts!`,
       entity_type: "challenge",
       entity_id: ch.id,
-      _triggerSource: "completeChallengeIfNeeded",
     });
   } catch (e) {
     console.error("[challenges] challenge_completed notify failed", e);

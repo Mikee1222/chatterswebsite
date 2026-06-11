@@ -4,7 +4,7 @@ import { getTodayYmd } from "@/lib/weekly-program";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { getAdminNotificationIds } from "@/services/admin-notification-settings";
-import { notify, notifyAdmins } from "@/services/notification-service";
+import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import {
   buildProgressUserSummaries,
@@ -74,15 +74,14 @@ async function sendAcademyReminderOnce(input: {
   const title = "📚 SOP Academy";
   const body = `📚 Ολοκλήρωσε το training σου (${input.completed}/${input.total})`;
 
-  await notify({
-    user_id: input.userId,
-    event_type: NOTIFICATION_EVENT.SOP_ACADEMY_REMINDER,
+  await notifyByRoleConfig(NOTIFICATION_EVENT.SOP_ACADEMY_REMINDER, {
+    recipient_mode: "personal_only",
+    personal_user_id: input.userId,
     priority: NOTIFICATION_PRIORITY.NORMAL,
     title,
     body,
     entity_type: ENTITY_TYPE,
     entity_id: entityId,
-    _triggerSource: "sopAcademyReminderCron",
   });
   return true;
 }

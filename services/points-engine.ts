@@ -120,32 +120,30 @@ async function notifyAfterPointsAwarded(params: {
   if (!userId?.trim()) return;
   const entityId = referenceId?.trim() || userId;
   try {
-    const [{ notify }, { NOTIFICATION_EVENT }] = await Promise.all([
+    const [{ notify, notifyByRoleConfig }, { NOTIFICATION_EVENT }] = await Promise.all([
       import("@/services/notification-service"),
       import("@/lib/notification-types"),
     ]);
 
     if (points > 0) {
-      await notify({
-        user_id: userId,
-        event_type: NOTIFICATION_EVENT.POINTS_AWARDED,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.POINTS_AWARDED, {
+        recipient_mode: "personal_only",
+        personal_user_id: userId,
         title: "⭐ Points earned!",
         body: `+${points} pts — ${reason}`,
         entity_type: "points_transaction",
         entity_id: entityId,
-        _triggerSource: "awardPoints",
       });
     }
 
     if (levelRank(finalLevel) > levelRank(prevLevelStored)) {
-      await notify({
-        user_id: userId,
-        event_type: NOTIFICATION_EVENT.LEVEL_UP,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.LEVEL_UP, {
+        recipient_mode: "personal_only",
+        personal_user_id: userId,
         title: "🚀 Level Up!",
         body: `🚀 You reached ${finalLevel}! Keep it up.`,
         entity_type: "chatter_points",
         entity_id: userId,
-        _triggerSource: "awardPoints",
       });
     }
 
