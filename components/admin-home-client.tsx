@@ -11,6 +11,7 @@ import {
   Clock,
   DollarSign,
   FileText,
+  Medal,
   StickyNote,
   TrendingDown,
   TrendingUp,
@@ -67,11 +68,28 @@ const MONTH_OPTIONS = (() => {
   return out;
 })();
 
+const PINK = "#ec4899";
+
 function formatMonth(ym: string): string {
   const [y, m] = ym.split("-");
   const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const month = monthNames[parseInt(m ?? "1", 10) - 1] ?? m;
   return `${month} ${y}`;
+}
+
+function formatHeaderDate(d: Date): string {
+  return d.toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getGreeting(hour: number): string {
+  if (hour < 12) return "Good morning";
+  if (hour < 17) return "Good afternoon";
+  return "Good evening";
 }
 
 function formatRelativeTime(iso: string): string {
@@ -91,49 +109,84 @@ function formatRelativeTime(iso: string): string {
 function BarRow({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = max > 0 ? Math.min(100, (value / max) * 100) : 0;
   return (
-    <div className="flex items-center gap-3 py-1.5">
-      <span className="w-32 shrink-0 truncate text-sm text-white/80" title={label}>
+    <div className="group flex items-center gap-3 py-2">
+      <span className="w-28 shrink-0 truncate text-sm text-white/70 sm:w-36" title={label}>
         {label}
       </span>
-      <div className="min-w-0 flex-1 rounded-full bg-white/10">
-        <div className="h-2 rounded-full bg-pink-500/80 transition-all" style={{ width: `${pct}%` }} />
+      <div className="relative min-w-0 flex-1">
+        <div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-pink-600 to-pink-400 transition-all duration-500 ease-out"
+            style={{ width: `${pct}%` }}
+          />
+        </div>
       </div>
-      <span className="w-20 shrink-0 text-right text-sm font-medium text-white/90">
+      <span className="w-[5.5rem] shrink-0 text-right text-sm font-medium tabular-nums text-white/90">
         ${value.toLocaleString("en-US", { minimumFractionDigits: 2 })}
       </span>
     </div>
   );
 }
 
-const statCardClass = cn(
-  "relative overflow-hidden rounded-2xl border border-white/10 p-5",
-  "bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-pink-950/25",
-  "shadow-[0_8px_32px_-12px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.06)]"
+const cardClass = cn(
+  "rounded-xl border border-white/[0.08] bg-zinc-950/80",
+  "shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)]"
 );
+
+const sectionTitleClass = "text-base font-medium text-white/90";
 
 const listStagger = {
   hidden: { opacity: 0 },
   show: (reduced: boolean) => ({
     opacity: 1,
     transition: {
-      staggerChildren: reduced ? 0 : 0.07,
-      delayChildren: reduced ? 0 : 0.04,
+      staggerChildren: reduced ? 0 : 0.06,
+      delayChildren: reduced ? 0 : 0.03,
     },
   }),
 };
 
 const listItem = {
-  hidden: { opacity: 0, y: 10 },
+  hidden: { opacity: 0, y: 8 },
   show: (reduced: boolean) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: reduced ? 0 : 0.22, ease: "easeOut" as const },
+    transition: { duration: reduced ? 0 : 0.2, ease: "easeOut" as const },
   }),
 };
 
 function activityHref(item: AdminRecentActivityItem): string {
   if (item.kind === "custom_request") return ROUTES.admin.customs;
   return ROUTES.chatter.logTransaction;
+}
+
+function LeaderboardMedal({ rank }: { rank: number }) {
+  if (rank === 0) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-400/20 ring-1 ring-amber-400/40">
+        <Medal className="h-4 w-4 text-amber-300" aria-hidden />
+      </span>
+    );
+  }
+  if (rank === 1) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-300/15 ring-1 ring-zinc-300/30">
+        <Medal className="h-4 w-4 text-zinc-300" aria-hidden />
+      </span>
+    );
+  }
+  if (rank === 2) {
+    return (
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-orange-400/15 ring-1 ring-orange-400/30">
+        <Medal className="h-4 w-4 text-orange-300" aria-hidden />
+      </span>
+    );
+  }
+  return (
+    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-xs font-medium tabular-nums text-white/50">
+      {rank + 1}
+    </span>
+  );
 }
 
 export function AdminHomeClient(props: Props) {
@@ -220,44 +273,55 @@ export function AdminHomeClient(props: Props) {
   const showWowPct = wow !== null && Number.isFinite(wow);
   const noPriorWeek = sparklineWow.prevWeekUsd === 0;
 
+  const now = new Date();
+  const greeting = getGreeting(now.getHours());
+  const headerDate = formatHeaderDate(now);
+
+  const totalRevenueDisplay =
+    typeof props.totalRevenue !== "number" || Number.isNaN(props.totalRevenue) || (props.sessionCount === 0 && props.totalRevenue === 0)
+      ? "—"
+      : `$${props.totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const recentItems = props.recentActivity.slice(0, 10);
+
   return (
-    <div className="space-y-10">
-      <div className="flex flex-wrap items-center justify-between gap-6">
+    <div className="space-y-6">
+      {/* 1. Header */}
+      <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white md:text-3xl">Admin control center</h1>
-          <p className="mt-1 text-sm text-white/55">Whale earnings and operations overview</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-white md:text-[1.75rem]">{greeting}</h1>
+          <p className="mt-1 text-sm text-white/50">{headerDate}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={handleOpenTargetModal}
-            className="rounded-2xl border border-pink-500/40 bg-pink-500/15 px-4 py-2.5 text-sm font-medium text-pink-200 shadow-[0_0_20px_-6px_rgba(236,72,153,0.25)] transition-all hover:border-pink-400/60 hover:bg-pink-500/25 hover:shadow-[0_0_24px_-4px_rgba(236,72,153,0.35)]"
-          >
-            Set monthly target
-          </button>
-          <span className="text-sm text-white/55">Month</span>
-          <Select value={month} onChange={handleMonthChange} className="min-w-[160px]">
+          <Select value={month} onChange={handleMonthChange} className="min-w-[160px]" aria-label="Select month">
             {MONTH_OPTIONS.map((ym) => (
               <option key={ym} value={ym} className={selectOptionClass}>
                 {formatMonth(ym)}
               </option>
             ))}
           </Select>
+          <button
+            type="button"
+            onClick={handleOpenTargetModal}
+            className="rounded-xl border border-pink-500/35 bg-pink-500/10 px-4 py-2.5 text-sm font-medium text-pink-200 transition-colors hover:border-pink-400/50 hover:bg-pink-500/20"
+          >
+            Set monthly target
+          </button>
         </div>
-      </div>
+      </header>
 
       {targetModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="monthly-target-title">
-          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-hidden onClick={() => !targetSaving && setTargetModalOpen(false)} />
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden onClick={() => !targetSaving && setTargetModalOpen(false)} />
           <div
-            className="relative w-full max-w-md rounded-2xl border border-white/10 bg-black/95 shadow-2xl backdrop-blur-xl"
-            style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 48px -12px rgba(0,0,0,0.6)" }}
+            className="relative w-full max-w-md rounded-xl border border-white/10 bg-zinc-950 shadow-2xl"
+            style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 24px 48px -12px rgba(0,0,0,0.7)" }}
           >
-            <div className="border-b border-white/10 px-6 py-4">
+            <div className="border-b border-white/[0.08] px-6 py-4">
               <h2 id="monthly-target-title" className="text-lg font-semibold text-white">
                 Set monthly target
               </h2>
-              <p className="mt-0.5 text-sm text-white/55">Target amount in USD for a chatter this month</p>
+              <p className="mt-0.5 text-sm text-white/50">Target amount in USD for a chatter this month</p>
             </div>
             <form onSubmit={handleSubmitMonthlyTarget} className={cn("p-6", formSpace)}>
               {targetError && (
@@ -354,7 +418,7 @@ export function AdminHomeClient(props: Props) {
         </div>
       )}
 
-      {/* Hero stats */}
+      {/* 2. Hero stats */}
       <motion.ul
         className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4"
         variants={listStagger}
@@ -369,7 +433,7 @@ export function AdminHomeClient(props: Props) {
             value: props.totalModelsCount,
             sub: `${props.freeModelsCount} free · ${props.takenModelsCount} taken`,
             Icon: Users,
-            accent: "from-emerald-500/15 to-transparent",
+            border: "border-l-emerald-500/80",
           },
           {
             key: "shifts",
@@ -377,14 +441,14 @@ export function AdminHomeClient(props: Props) {
             value: activeShiftsTotal,
             sub: `${props.activeChatterShifts} chatter · ${props.activeVaShifts} VA`,
             Icon: Clock,
-            accent: "from-sky-500/15 to-transparent",
+            border: "border-l-sky-500/80",
           },
           {
             key: "today",
             label: "Today's earnings",
             sub: "Infloww · gross",
             Icon: DollarSign,
-            accent: "from-pink-500/25 to-transparent",
+            border: "border-l-pink-500",
             embeddedEarnings: true as const,
           },
           {
@@ -393,32 +457,27 @@ export function AdminHomeClient(props: Props) {
             value: props.pendingCustomsCount,
             sub: "Customs queue",
             Icon: AlertCircle,
-            accent: "from-amber-500/15 to-transparent",
+            border: "border-l-amber-500/80",
           },
         ].map((s, i) => (
           <motion.li key={s.key} variants={listItem} custom={reduced} transition={{ delay: reduced ? 0 : i * 0.03 }}>
             <motion.div
-              className={cn(statCardClass, "h-full")}
-              whileHover={reduced ? undefined : { scale: 1.02, y: -2 }}
+              className={cn(cardClass, "h-full border-l-[3px] p-5", s.border)}
+              whileHover={reduced ? undefined : { y: -2 }}
               transition={{ type: "spring", stiffness: 400, damping: 28 }}
-              style={{
-                boxShadow:
-                  "0 12px 40px -16px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px rgba(236,72,153,0.08)",
-              }}
             >
-              <div className={cn("pointer-events-none absolute inset-0 bg-gradient-to-br opacity-90", s.accent)} />
-              <div className="relative flex gap-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-300">
-                  <s.Icon className="h-6 w-6" />
+              <div className="flex gap-4">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] text-pink-300">
+                  <s.Icon className="h-5 w-5" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-white/50">{s.label}</p>
+                  <p className="text-sm text-white/50">{s.label}</p>
                   {"embeddedEarnings" in s && s.embeddedEarnings ? (
                     <TodayEarningsCard embedded />
                   ) : (
                     <>
-                      <p className="mt-1 text-3xl font-bold tabular-nums text-white">{"value" in s ? s.value : ""}</p>
-                      <p className="mt-0.5 text-xs text-white/45">{s.sub}</p>
+                      <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{"value" in s ? s.value : ""}</p>
+                      <p className="mt-0.5 text-xs text-white/40">{s.sub}</p>
                     </>
                   )}
                 </div>
@@ -428,28 +487,28 @@ export function AdminHomeClient(props: Props) {
         ))}
       </motion.ul>
 
-      {/* Quick stats: sparkline + WoW */}
-      <section className="grid gap-6 lg:grid-cols-2">
+      {/* 3. Revenue overview 60/40 */}
+      <section className="grid gap-6 lg:grid-cols-5">
         <motion.div
-          initial={reduced ? false : { opacity: 0, y: 12 }}
+          initial={reduced ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, delay: reduced ? 0 : 0.12 }}
-          className={cn(statCardClass, "p-6")}
+          transition={{ duration: 0.22 }}
+          className={cn(cardClass, "p-5 lg:col-span-3")}
         >
-          <div className="relative z-[1] flex items-start justify-between gap-4">
+          <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-[11px] font-semibold uppercase tracking-wider text-white/50">Whale revenue trend</h2>
-              <p className="mt-1 text-sm text-white/60">Last 7 days (logged sessions · USD)</p>
+              <h2 className={sectionTitleClass}>Revenue trend</h2>
+              <p className="mt-0.5 text-sm text-white/45">Last 7 days · logged sessions</p>
             </div>
           </div>
-          <div className="relative z-[1] mt-4 h-20 w-full">
-            <ResponsiveContainer width="100%" height={80}>
-              <LineChart data={sparklineWow.sparkline7} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+          <div className="mt-4 h-28 w-full">
+            <ResponsiveContainer width="100%" height={112}>
+              <LineChart data={sparklineWow.sparkline7} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                 <Tooltip
                   contentStyle={{
-                    background: "rgba(10,10,12,0.95)",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: 12,
+                    background: "rgba(9,9,11,0.96)",
+                    border: "1px solid rgba(255,255,255,0.08)",
+                    borderRadius: 10,
                     fontSize: 12,
                   }}
                   formatter={(v) => [
@@ -458,39 +517,48 @@ export function AdminHomeClient(props: Props) {
                   ]}
                   labelFormatter={(l) => `Day ${l}`}
                 />
-                <Line type="monotone" dataKey="usd" stroke="#f472b6" strokeWidth={2} dot={false} activeDot={{ r: 4, fill: "#fbcfe8" }} />
+                <Line
+                  type="monotone"
+                  dataKey="usd"
+                  stroke={PINK}
+                  strokeWidth={2.5}
+                  dot={false}
+                  activeDot={{ r: 4, fill: PINK, stroke: "#fce7f3", strokeWidth: 2 }}
+                />
               </LineChart>
             </ResponsiveContainer>
           </div>
         </motion.div>
 
         <motion.div
-          initial={reduced ? false : { opacity: 0, y: 12 }}
+          initial={reduced ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.25, delay: reduced ? 0 : 0.16 }}
-          className={cn(statCardClass, "flex flex-col justify-center p-6")}
+          transition={{ duration: 0.22, delay: reduced ? 0 : 0.05 }}
+          className={cn(cardClass, "flex flex-col p-5 lg:col-span-2")}
         >
-          <h2 className="text-[11px] font-semibold uppercase tracking-wider text-white/50">Week over week</h2>
-          <p className="mt-2 text-sm text-white/55">Trailing 7 days vs previous 7 days (same whale transaction dates)</p>
-          <div className="mt-6 flex flex-wrap items-end gap-6">
-            <div>
-              <p className="text-xs text-white/45">This week</p>
-              <p className="mt-0.5 text-2xl font-bold tabular-nums text-white">
-                ${sparklineWow.thisWeekUsd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </p>
+          <h2 className={sectionTitleClass}>Week over week</h2>
+          <p className="mt-0.5 text-sm text-white/45">Trailing 7 days vs prior 7 days</p>
+          <div className="mt-5 flex flex-1 flex-col justify-center gap-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs text-white/40">This week</p>
+                <p className="mt-0.5 text-xl font-semibold tabular-nums text-white">
+                  ${sparklineWow.thisWeekUsd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-white/40">Prior week</p>
+                <p className="mt-0.5 text-lg font-medium tabular-nums text-white/65">
+                  ${sparklineWow.prevWeekUsd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                </p>
+              </div>
             </div>
             <div>
-              <p className="text-xs text-white/45">Prior week</p>
-              <p className="mt-0.5 text-xl font-semibold tabular-nums text-white/70">
-                ${sparklineWow.prevWeekUsd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 pb-0.5">
               {showWowPct ? (
                 <span
                   className={cn(
-                    "inline-flex items-center gap-1 rounded-full px-3 py-1 text-sm font-semibold tabular-nums",
-                    wowPositive ? "bg-emerald-500/20 text-emerald-300" : "bg-rose-500/20 text-rose-300"
+                    "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium tabular-nums",
+                    wowPositive ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
                   )}
                 >
                   {wowPositive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
@@ -498,18 +566,237 @@ export function AdminHomeClient(props: Props) {
                   {wow!.toFixed(1)}%
                 </span>
               ) : noPriorWeek && sparklineWow.thisWeekUsd > 0 ? (
-                <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/60">No prior-week baseline</span>
+                <span className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-sm text-white/55">No prior-week baseline</span>
               ) : (
-                <span className="rounded-full bg-white/10 px-3 py-1 text-sm text-white/50">—</span>
+                <span className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-sm text-white/45">—</span>
               )}
             </div>
           </div>
         </motion.div>
+
+        <motion.div
+          initial={reduced ? false : { opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.22, delay: reduced ? 0 : 0.08 }}
+          className={cn(cardClass, "p-5 lg:col-span-5")}
+        >
+          <h2 className={sectionTitleClass}>Monthly summary · {formatMonth(month)}</h2>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+            {[
+              {
+                k: "rev",
+                label: "Total revenue",
+                body: totalRevenueDisplay,
+                hint: "Whale transactions",
+                highlight: true,
+              },
+              {
+                k: "sess",
+                label: "Sessions",
+                body: typeof props.sessionCount !== "number" ? "—" : String(props.sessionCount),
+                hint: "Whale sessions",
+              },
+              {
+                k: "avg",
+                label: "Avg per session",
+                body:
+                  props.sessionCount === 0
+                    ? "—"
+                    : `$${props.avgRevenuePerSession.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                hint: "Revenue average",
+              },
+              {
+                k: "tm",
+                label: "Top model",
+                body: props.sessionCount === 0 ? "—" : props.topModelName,
+                hint:
+                  props.sessionCount === 0
+                    ? "—"
+                    : `$${(props.topModelRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              },
+              {
+                k: "tc",
+                label: "Top chatter",
+                body: props.sessionCount === 0 ? "—" : props.topChatterName,
+                hint:
+                  props.sessionCount === 0
+                    ? "—"
+                    : `$${(props.topChatterRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+              },
+            ].map((c) => (
+              <div
+                key={c.k}
+                className={cn(
+                  "rounded-lg border border-white/[0.06] p-4",
+                  c.highlight ? "bg-pink-500/[0.08] ring-1 ring-pink-500/20" : "bg-white/[0.02]"
+                )}
+              >
+                <p className="text-xs text-white/45">{c.label}</p>
+                <p className={cn("mt-1.5 font-semibold text-white/95", c.highlight ? "text-xl text-pink-200" : "text-lg")}>{c.body}</p>
+                <p className="mt-1 truncate text-xs text-white/35" title={c.hint}>
+                  {c.hint}
+                </p>
+              </div>
+            ))}
+          </div>
+        </motion.div>
       </section>
 
-      {/* Recent activity */}
+      {/* 4. Operations */}
       <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/50">Recent activity</h2>
+        <h2 className={sectionTitleClass}>Operations</h2>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {(
+            [
+              {
+                label: "Chatter hours",
+                value: props.chatterHoursThisMonth.toFixed(1),
+                hint: formatMonth(month),
+                accent: "text-white/95",
+              },
+              {
+                label: "VA hours",
+                value: props.vaHoursThisMonth.toFixed(1),
+                hint: formatMonth(month),
+                accent: "text-white/95",
+              },
+              {
+                label: "Free models",
+                value: String(props.freeModelsCount),
+                hint: "Currently available",
+                accent: "text-emerald-300",
+              },
+              {
+                label: "Taken models",
+                value: String(props.takenModelsCount),
+                hint: "Currently assigned",
+                accent: "text-amber-300",
+              },
+            ] as const
+          ).map((op) => (
+            <motion.div
+              key={op.label}
+              className={cn(cardClass, "p-5")}
+              whileHover={reduced ? undefined : { y: -2 }}
+              transition={{ type: "spring", stiffness: 400, damping: 28 }}
+            >
+              <p className="text-sm text-white/45">{op.label}</p>
+              <p className={cn("mt-2 text-2xl font-semibold tabular-nums", op.accent)}>{op.value}</p>
+              <p className="mt-1 text-xs text-white/35">{op.hint}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
+
+      {/* 5. Revenue breakdown */}
+      <section className="grid gap-6 lg:grid-cols-5">
+        <div className={cn(cardClass, "p-5 lg:col-span-3")}>
+          <h3 className={sectionTitleClass}>Revenue by model</h3>
+          <div className="mt-3 max-h-72 space-y-0 overflow-y-auto overscroll-contain pr-1">
+            {props.byModel.length === 0 ? (
+              <p className="py-8 text-center text-sm text-white/45">No data for this month</p>
+            ) : (
+              props.byModel.slice(0, 12).map(([name, value]) => <BarRow key={name} label={name} value={value} max={maxModel} />)
+            )}
+          </div>
+        </div>
+        <div className={cn(cardClass, "p-5 lg:col-span-2")}>
+          <h3 className={sectionTitleClass}>Revenue by chatter</h3>
+          <div className="mt-3 max-h-72 space-y-0 overflow-y-auto overscroll-contain pr-1">
+            {props.byChatter.length === 0 ? (
+              <p className="py-8 text-center text-sm text-white/45">No data for this month</p>
+            ) : (
+              props.byChatter.slice(0, 10).map(([name, value]) => <BarRow key={name} label={name} value={value} max={maxChatter} />)
+            )}
+          </div>
+        </div>
+      </section>
+
+      {/* 6. Daily trend */}
+      <section className={cn(cardClass, "p-5")}>
+        <h3 className={sectionTitleClass}>Daily revenue · {formatMonth(month)}</h3>
+        <p className="mt-0.5 text-sm text-white/45">Last 14 days with logged revenue</p>
+        <div className="mt-5 flex items-end gap-2 overflow-x-auto pb-1 sm:gap-3">
+          {props.byDay.length === 0 ? (
+            <p className="py-4 text-sm text-white/45">No daily data</p>
+          ) : (
+            props.byDay.slice(-14).map(([day, value]) => (
+              <div key={day} className="flex min-w-[2.25rem] flex-1 flex-col items-center gap-2">
+                <span className="text-[10px] tabular-nums text-white/40 sm:text-xs">
+                  {day.slice(8)}/{day.slice(5, 7)}
+                </span>
+                <div className="flex h-20 w-full items-end justify-center">
+                  <div
+                    className="w-full max-w-[2.5rem] rounded-t-md bg-gradient-to-t from-pink-600 to-pink-400 transition-all"
+                    style={{ height: `${Math.max(4, maxDay > 0 ? (value / maxDay) * 80 : 0)}px` }}
+                    title={`${day}: $${value.toFixed(2)}`}
+                  />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </section>
+
+      {/* 7. Leaderboards */}
+      <section className="grid gap-6 lg:grid-cols-2">
+        <div className={cn(cardClass, "p-5")}>
+          <h3 className={sectionTitleClass}>Top chatters</h3>
+          <p className="mt-0.5 text-sm text-white/45">By revenue · {formatMonth(month)}</p>
+          <ul className="mt-4 space-y-2">
+            {props.byChatter.length === 0 ? (
+              <li className="py-6 text-center text-sm text-white/45">No data for this month</li>
+            ) : (
+              props.byChatter.slice(0, 5).map(([name, value], i) => (
+                <li
+                  key={name}
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition-colors hover:border-pink-500/25 hover:bg-pink-500/[0.04] sm:px-4"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <LeaderboardMedal rank={i} />
+                    <span className="truncate font-medium text-white/85" title={name}>
+                      {name}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-medium tabular-nums text-pink-300">
+                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+        <div className={cn(cardClass, "p-5")}>
+          <h3 className={sectionTitleClass}>Top models</h3>
+          <p className="mt-0.5 text-sm text-white/45">By revenue · {formatMonth(month)}</p>
+          <ul className="mt-4 space-y-2">
+            {props.byModel.length === 0 ? (
+              <li className="py-6 text-center text-sm text-white/45">No data for this month</li>
+            ) : (
+              props.byModel.slice(0, 5).map(([name, value], i) => (
+                <li
+                  key={name}
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition-colors hover:border-pink-500/25 hover:bg-pink-500/[0.04] sm:px-4"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <LeaderboardMedal rank={i} />
+                    <span className="truncate font-medium text-white/85" title={name}>
+                      {name}
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-sm font-medium tabular-nums text-pink-300">
+                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </section>
+
+      {/* 8. Recent activity */}
+      <section className="space-y-4">
+        <h2 className={sectionTitleClass}>Recent activity</h2>
         <motion.ul
           className="grid gap-3 sm:grid-cols-2"
           variants={listStagger}
@@ -518,30 +805,29 @@ export function AdminHomeClient(props: Props) {
           viewport={{ once: true, margin: "-40px" }}
           custom={reduced}
         >
-          {props.recentActivity.length === 0 ? (
-            <li className="col-span-full rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-8 text-center text-sm text-white/45">
+          {recentItems.length === 0 ? (
+            <li className="col-span-full rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-10 text-center text-sm text-white/45">
               No recent sessions or customs yet.
             </li>
           ) : (
-            props.recentActivity.map((item) => {
+            recentItems.map((item) => {
               const Icon = item.kind === "whale_session" ? DollarSign : item.pending ? AlertCircle : FileText;
               return (
                 <motion.li key={item.id} variants={listItem} custom={reduced}>
                   <Link
                     href={activityHref(item)}
                     className={cn(
-                      "group flex gap-4 rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/90 to-black/40 p-4",
-                      "shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] transition-all",
-                      "hover:border-pink-500/30 hover:shadow-[0_8px_28px_-12px_rgba(236,72,153,0.25)]"
+                      "group flex gap-4 rounded-xl border border-white/[0.08] bg-zinc-950/60 p-4",
+                      "transition-all hover:border-pink-500/30 hover:bg-pink-500/[0.04]"
                     )}
                   >
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-pink-500/15 text-pink-300 transition-colors group-hover:bg-pink-500/25">
-                      <Icon className="h-5 w-5" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 text-pink-300 transition-colors group-hover:bg-pink-500/20">
+                      <Icon className="h-4 w-4" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="font-medium text-white/95">{item.title}</p>
-                      <p className="mt-0.5 truncate text-sm text-white/50">{item.subtitle}</p>
-                      <p className="mt-2 text-xs text-pink-300/80">{formatRelativeTime(item.atIso)}</p>
+                      <p className="font-medium text-white/90">{item.title}</p>
+                      <p className="mt-0.5 truncate text-sm text-white/45">{item.subtitle}</p>
+                      <p className="mt-2 text-xs text-pink-300/70">{formatRelativeTime(item.atIso)}</p>
                     </div>
                   </Link>
                 </motion.li>
@@ -549,237 +835,6 @@ export function AdminHomeClient(props: Props) {
             })
           )}
         </motion.ul>
-      </section>
-
-      {/* Month earnings */}
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/50">Earnings (whale_transactions)</h2>
-        <motion.div
-          className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5"
-          variants={listStagger}
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: "-24px" }}
-          custom={reduced}
-        >
-          {[
-            {
-              k: "rev",
-              label: "Total whale revenue",
-              body:
-                typeof props.totalRevenue !== "number" || Number.isNaN(props.totalRevenue) || (props.sessionCount === 0 && props.totalRevenue === 0)
-                  ? "—"
-                  : `$${props.totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              hint: formatMonth(month),
-              highlight: true,
-            },
-            {
-              k: "sess",
-              label: "Whale sessions",
-              body: typeof props.sessionCount !== "number" ? "—" : String(props.sessionCount),
-              hint: formatMonth(month),
-            },
-            {
-              k: "avg",
-              label: "Avg revenue / session",
-              body:
-                props.sessionCount === 0
-                  ? "—"
-                  : `$${props.avgRevenuePerSession.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-              hint: formatMonth(month),
-            },
-            {
-              k: "tm",
-              label: "Top model",
-              body: props.sessionCount === 0 ? "—" : props.topModelName,
-              hint:
-                props.sessionCount === 0
-                  ? "—"
-                  : `$${(props.topModelRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            },
-            {
-              k: "tc",
-              label: "Top chatter",
-              body: props.sessionCount === 0 ? "—" : props.topChatterName,
-              hint:
-                props.sessionCount === 0
-                  ? "—"
-                  : `$${(props.topChatterRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-            },
-          ].map((c, i) => (
-            <motion.div key={c.k} variants={listItem} custom={reduced} transition={{ delay: reduced ? 0 : i * 0.02 }}>
-              <motion.div
-                className={cn(
-                  "h-full rounded-2xl border border-white/10 p-5",
-                  c.highlight
-                    ? "bg-gradient-to-br from-pink-950/40 via-zinc-900/90 to-zinc-950 ring-1 ring-pink-500/20"
-                    : "bg-gradient-to-br from-zinc-900/95 to-black/50"
-                )}
-                whileHover={reduced ? undefined : { scale: 1.02 }}
-                transition={{ type: "spring", stiffness: 420, damping: 30 }}
-              >
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/50">{c.label}</p>
-                <p className={cn("mt-2 font-semibold text-white/95", c.highlight ? "text-2xl text-pink-200" : "text-xl")}>{c.body}</p>
-                <p className="mt-1 text-xs text-white/45">{c.hint}</p>
-              </motion.div>
-            </motion.div>
-          ))}
-        </motion.div>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-3">
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black/40 p-5 lg:col-span-2">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">Revenue by model</h3>
-          <div className="mt-4 max-h-64 space-y-0 overflow-y-auto overscroll-contain pr-2">
-            {props.byModel.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/50">No data for this month</p>
-            ) : (
-              props.byModel.slice(0, 12).map(([name, value]) => <BarRow key={name} label={name} value={value} max={maxModel} />)
-            )}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black/40 p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">Revenue by chatter</h3>
-          <div className="mt-4 max-h-64 space-y-0 overflow-y-auto overscroll-contain pr-2">
-            {props.byChatter.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/50">No data for this month</p>
-            ) : (
-              props.byChatter.slice(0, 10).map(([name, value]) => <BarRow key={name} label={name} value={value} max={maxChatter} />)
-            )}
-          </div>
-        </div>
-      </section>
-
-      <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/90 via-zinc-950 to-pink-950/20 p-5">
-        <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">Revenue trend ({formatMonth(month)})</h3>
-        <div className="mt-4 flex flex-wrap gap-4">
-          {props.byDay.length === 0 ? (
-            <p className="py-4 text-sm text-white/50">No daily data</p>
-          ) : (
-            props.byDay.slice(-14).map(([day, value]) => (
-              <div key={day} className="flex flex-col items-center gap-1">
-                <span className="text-xs text-white/50">
-                  {day.slice(8)}/{day.slice(5, 7)}
-                </span>
-                <div
-                  className="flex w-8 min-w-[2rem] items-end justify-center rounded-t bg-pink-500/75 transition-all"
-                  style={{ height: `${Math.max(4, maxDay > 0 ? (value / maxDay) * 64 : 0)}px` }}
-                  title={`${day}: $${value.toFixed(2)}`}
-                />
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      <section className="space-y-4">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-white/50">Operations</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-          {(
-            [
-              {
-                label: "Chatter hours",
-                value: props.chatterHoursThisMonth.toFixed(1),
-                hint: formatMonth(month),
-                valueClass: "text-white/95",
-                boxClass: "bg-white/10",
-              },
-              {
-                label: "VA hours",
-                value: props.vaHoursThisMonth.toFixed(1),
-                hint: formatMonth(month),
-                valueClass: "text-white/95",
-                boxClass: "bg-white/10",
-              },
-              {
-                label: "Free models",
-                value: String(props.freeModelsCount),
-                hint: "Now",
-                valueClass: "text-emerald-300",
-                boxClass: "bg-emerald-500/20",
-              },
-              {
-                label: "Taken models",
-                value: String(props.takenModelsCount),
-                hint: "Now",
-                valueClass: "text-amber-300",
-                boxClass: "bg-amber-500/20",
-              },
-            ] as const
-          ).map((op) => (
-            <motion.div
-              key={op.label}
-              className="flex items-center gap-4 rounded-2xl border border-white/10 bg-zinc-900/60 p-5"
-              whileHover={reduced ? undefined : { scale: 1.02 }}
-              transition={{ type: "spring", stiffness: 400, damping: 28 }}
-            >
-              <div className={cn("rounded-xl p-3", op.boxClass)}>
-                <span className={cn("block text-2xl font-bold tabular-nums", op.valueClass)}>{op.value}</span>
-              </div>
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-white/50">{op.label}</p>
-                <p className="mt-0.5 text-sm text-white/80">{op.hint}</p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black/40 p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">Top 5 chatters by revenue</h3>
-          <ul className="mt-4 space-y-2">
-            {props.byChatter.length === 0 ? (
-              <li className="py-4 text-center text-sm text-white/50">No data for this month</li>
-            ) : (
-              props.byChatter.slice(0, 5).map(([name, value], i) => (
-                <li
-                  key={name}
-                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-pink-500/20 hover:bg-pink-500/[0.06] sm:px-4"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-full bg-pink-500/25 text-xs font-bold text-pink-200">
-                      {i + 1}
-                    </span>
-                    <span className="truncate font-medium text-white/90" title={name}>
-                      {name}
-                    </span>
-                  </span>
-                  <span className="shrink-0 text-sm font-semibold tabular-nums text-pink-200">
-                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-b from-zinc-900/80 to-black/40 p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">Top 5 models by revenue</h3>
-          <ul className="mt-4 space-y-2">
-            {props.byModel.length === 0 ? (
-              <li className="py-4 text-center text-sm text-white/50">No data for this month</li>
-            ) : (
-              props.byModel.slice(0, 5).map(([name, value], i) => (
-                <li
-                  key={name}
-                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-white/5 bg-white/[0.04] px-3 py-2.5 transition-colors hover:border-pink-500/20 hover:bg-pink-500/[0.06] sm:px-4"
-                >
-                  <span className="flex min-w-0 items-center gap-2">
-                    <span className="flex h-8 min-w-[2rem] shrink-0 items-center justify-center rounded-full bg-pink-500/25 text-xs font-bold text-pink-200">
-                      {i + 1}
-                    </span>
-                    <span className="truncate font-medium text-white/90" title={name}>
-                      {name}
-                    </span>
-                  </span>
-                  <span className="ml-2 shrink-0 text-sm font-semibold tabular-nums text-pink-200">
-                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </li>
-              ))
-            )}
-          </ul>
-        </div>
       </section>
     </div>
   );
