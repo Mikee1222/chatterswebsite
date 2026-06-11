@@ -1,5 +1,26 @@
 "use server";
 
+/**
+ * NOTIFICATION AUTHORITY HIERARCHY:
+ *
+ * 1. ROUTING RULES (lib/notification-routing.ts)
+ *    → Used ONLY to determine recipient list (who to notify)
+ *    → Never used to block push for an already-targeted recipient
+ *
+ * 2. ROLE DEFAULTS (lib/notification-role-defaults.ts)
+ *    → Admin sets defaults per role in /admin/roles
+ *    → Applied when user is created or resets preferences
+ *
+ * 3. USER PREFERENCES (notification_preferences Airtable table)
+ *    → User can override role defaults in /settings
+ *    → This is the FINAL authority on push delivery
+ *    → If preference says ON → push sent
+ *    → If preference says OFF → push blocked
+ *
+ * Routing rules do NOT override user preferences.
+ * Admin controls defaults via roles. Users control their own.
+ */
+
 import { createNotification, getUnreadCount } from "./notifications";
 import { getPreferencesByUserId } from "./notification-preferences";
 import { getActiveSubscriptionsForUser } from "./push-subscriptions";
@@ -17,7 +38,6 @@ import {
 import { broadcastRealtimeEvent } from "@/lib/realtime-broadcast";
 import { sendWebPush } from "@/lib/web-push-server";
 import { getPushTargetPath } from "@/lib/notification-routes";
-import { NOTIFICATION_ROUTING } from "@/lib/notification-routing";
 import type {
   NotificationCategory,
   NotificationEventType,
@@ -251,65 +271,6 @@ async function getRecipientPushContext(userId: string): Promise<{
   }
 }
 
-function isAdminOrManager(role: UserRole | undefined): boolean {
-  return role === "admin" || role === "manager";
-}
-
-/** Enforce NOTIFICATION_ROUTING before web push; in-app notifications are not gated here. */
-function shouldSendPushByRouting(
-  eventType: NotificationEventType,
-  recipientUserId: string,
-  recipientRole: UserRole | undefined,
-  actorUserId?: string
-): { send: boolean; skipReason?: string } {
-  const entry = NOTIFICATION_ROUTING[eventType];
-  if (!entry) return { send: true };
-
-  const rule = entry.rule;
-  switch (rule) {
-    case "all_users":
-      return { send: true };
-    case "assigned_user_only":
-    case "assigned_party_only":
-      // Caller already targeted the assigned user via user_id.
-      return { send: true };
-    case "admin_only":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule admin_only blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "assigned_chatter_only":
-      if (recipientRole === "chatter") return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule assigned_chatter_only blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "assigned_model_only":
-      if (recipientRole === "model") return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule assigned_model_only blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    case "admin_and_actor":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      if (actorUserId && actorUserId === recipientUserId) return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule admin_and_actor blocks role "${recipientRole ?? "unknown"}" (not actor)`,
-      };
-    case "admin_and_assigned_chatter":
-      if (isAdminOrManager(recipientRole)) return { send: true };
-      if (recipientRole === "chatter") return { send: true };
-      return {
-        send: false,
-        skipReason: `routing rule admin_and_assigned_chatter blocks role "${recipientRole ?? "unknown"}"`,
-      };
-    default:
-      return { send: true };
-  }
-}
-
 function isInQuietHours(prefs: { quiet_hours_start: string; quiet_hours_end: string }): boolean {
   const start = prefs.quiet_hours_start?.trim();
   const end = prefs.quiet_hours_end?.trim();
@@ -368,20 +329,8 @@ function shouldSendPush(
   eventType: NotificationEventType,
   entityType?: string,
   triggerSource?: string,
-  roleDefaults?: NotificationRoleDefaults | null,
-  recipientUserId?: string,
-  recipientRole?: UserRole,
-  actorUserId?: string
+  roleDefaults?: NotificationRoleDefaults | null
 ): { send: boolean; skipReason?: string } {
-  if (recipientUserId) {
-    const routingDecision = shouldSendPushByRouting(
-      eventType,
-      recipientUserId,
-      recipientRole,
-      actorUserId
-    );
-    if (!routingDecision.send) return routingDecision;
-  }
   if (prefs.mute_all) return { send: false, skipReason: "mute_all is true" };
   if (!prefs.push_enabled) return { send: false, skipReason: "push_enabled is false" };
   const categoryKey = resolvePreferenceKey(eventType, category, entityType, triggerSource);
@@ -635,7 +584,7 @@ export async function notify(options: NotifyOptions) {
 
   const prefs = await getPreferencesByUserId(options.user_id);
   console.log("[notify] user preferences lookup for:", options.user_id);
-  const { role: recipientRole, roleDefaults } = await getRecipientPushContext(options.user_id);
+  const { roleDefaults } = await getRecipientPushContext(options.user_id);
 
   devLog(PUSH_DEBUG, "recipient user id", JSON.stringify({ recipient_user_id: options.user_id }));
   devLog(PUSH_DEBUG, "preferences loaded", JSON.stringify({ has_prefs: !!prefs }));
@@ -692,10 +641,7 @@ export async function notify(options: NotifyOptions) {
       options.event_type,
       options.entity_type,
       options._triggerSource,
-      roleDefaults,
-      options.user_id,
-      recipientRole,
-      options.actor_user_id
+      roleDefaults
     );
     devLog(NOTIF, "shift_started_admin_shift_alerts_pref", JSON.stringify({
       recipient_user_id: options.user_id,
@@ -766,19 +712,13 @@ export async function notify(options: NotifyOptions) {
     options.event_type,
     options.entity_type,
     options._triggerSource,
-    roleDefaults,
-    options.user_id,
-    recipientRole,
-    options.actor_user_id
+    roleDefaults
   );
-  const routingRule = NOTIFICATION_ROUTING[options.event_type]?.rule ?? null;
   devLog(
     PUSH_AUDIT,
     "shouldSendPush_evaluation",
     JSON.stringify({
       recipient_user_id: options.user_id,
-      recipient_role: recipientRole ?? null,
-      routing_rule: routingRule,
       category,
       preference_key: preferenceKey,
       send: pushDecision.send,
@@ -787,16 +727,15 @@ export async function notify(options: NotifyOptions) {
     })
   );
   if (!pushDecision.send) {
-    const blockedByRouting = pushDecision.skipReason?.startsWith("routing rule ");
     devLog(PUSH_DEBUG, "push skipped with exact reason", JSON.stringify({ reason: pushDecision.skipReason, rule: pushDecision.skipReason, recipient_user_id: options.user_id }));
     devLog(NOTIF, "skip", JSON.stringify({ reason: pushDecision.skipReason ?? "shouldSendPush false", recipient_user_id: options.user_id }));
-    logShiftStartedAdminOutcome(options, { pushSent: false, stage: blockedByRouting ? "push_routing_blocked" : "push_prefs_blocked", detail: pushDecision.skipReason });
+    logShiftStartedAdminOutcome(options, { pushSent: false, stage: "push_prefs_blocked", detail: pushDecision.skipReason });
     if (isLiveNotificationEvent(options.event_type, options._triggerSource)) {
       devLog(LIVE_NOTIF, "push_send_result", JSON.stringify({ recipient_user_id: options.user_id, push_sent: false, reason: pushDecision.skipReason ?? "shouldSendPush_false" }));
     }
     logNotifyPushOutcome(options, {
       push_sent: false,
-      outcome_stage: blockedByRouting ? "skipped_routing_rule" : "skipped_prefs_shouldSendPush_false",
+      outcome_stage: "skipped_prefs_shouldSendPush_false",
       detail: pushDecision.skipReason,
     });
     return { notification, pushSent: false };
