@@ -8,6 +8,14 @@ const permissionSchema = z
   .refine((v): v is Permission => (ALL_PERMISSIONS as readonly string[]).includes(v));
 import { hasPermission } from "@/lib/rbac";
 import { getRoles, syncRoleOptionToAirtable, upsertRole } from "@/services/roles";
+import { NOTIFICATION_ROLE_DEFAULT_KEYS } from "@/lib/notification-role-defaults";
+
+const notificationDefaultsSchema = z.object(
+  Object.fromEntries(NOTIFICATION_ROLE_DEFAULT_KEYS.map((key) => [key, z.boolean()])) as Record<
+    (typeof NOTIFICATION_ROLE_DEFAULT_KEYS)[number],
+    z.ZodBoolean
+  >
+);
 
 const postSchema = z.object({
   role_id: z
@@ -19,6 +27,7 @@ const postSchema = z.object({
   label: z.string().trim().min(1).max(120),
   description: z.string().max(2000).optional().default(""),
   permissions: z.array(permissionSchema).optional().default([]),
+  notification_defaults: notificationDefaultsSchema.optional(),
   color: z.string().max(32).optional().default("gray"),
 });
 
@@ -61,6 +70,7 @@ export async function POST(req: Request) {
       label: parsed.data.label,
       description: parsed.data.description,
       permissions: parsed.data.permissions,
+      notification_defaults: parsed.data.notification_defaults,
       is_system_role: false,
       color: parsed.data.color,
     });
