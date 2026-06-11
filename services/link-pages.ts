@@ -249,7 +249,7 @@ export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlock
   })();
 }
 
-export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
+function customDomainLookupFormula(domain: string): { formula: string; normalizedDomain: string } | null {
   const raw = domain.trim().toLowerCase().split(":")[0] ?? "";
   if (!raw) return null;
   const normalizedDomain = raw.replace(/^www\./, "");
@@ -260,13 +260,42 @@ export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPag
   const domainMatches = lookupVariants
     .map((d) => `LOWER({custom_domain})="${escapeFormulaString(d)}"`)
     .join(",");
-  const formula = `AND({status}="published", OR(${domainMatches}))`;
+  return { formula: `AND({status}="published", OR(${domainMatches}))`, normalizedDomain };
+}
 
-  const tag = linkPageDomainTag(normalizedDomain);
-  return unstable_cache(() => fetchPageByFormula(formula), [tag, ...lookupVariants], {
-    revalidate: 30,
-    tags: [tag],
-  })();
+async function loadLinkPageByCustomDomain(
+  domain: string,
+  options?: { skipCache?: boolean }
+): Promise<LinkPageRecord | null> {
+  const lookup = customDomainLookupFormula(domain);
+  if (!lookup) return null;
+  return fetchPageByFormula(lookup.formula, options);
+}
+
+/** Uncached read for middleware (Edge) — unstable_cache is not available there. */
+export async function getLinkPageByCustomDomainFresh(domain: string): Promise<LinkPageRecord | null> {
+  console.log("[custom-domain] looking for:", domain);
+  const result = await loadLinkPageByCustomDomain(domain, { skipCache: true });
+  console.log("[custom-domain] result:", result);
+  return result;
+}
+
+export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
+  console.log("[custom-domain] looking for:", domain);
+  const lookup = customDomainLookupFormula(domain);
+  if (!lookup) {
+    console.log("[custom-domain] result:", null);
+    return null;
+  }
+
+  const tag = linkPageDomainTag(lookup.normalizedDomain);
+  const result = await unstable_cache(
+    () => loadLinkPageByCustomDomain(domain),
+    [tag, lookup.normalizedDomain],
+    { revalidate: 30, tags: [tag] }
+  )();
+  console.log("[custom-domain] result:", result);
+  return result;
 }
 
 export async function listLinkPages(modelId?: string): Promise<LinkPageRecord[]> {

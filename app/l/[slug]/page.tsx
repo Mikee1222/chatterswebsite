@@ -128,6 +128,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   try {
     page = await getLinkPageBySlugFresh(slug);
   } catch (err) {
+    console.error("[l/slug] error:", err);
     if (isAirtableRateLimitError(err)) {
       return { title: "Just a moment…", robots: { index: false, follow: false } };
     }
@@ -171,6 +172,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
   try {
     page = await getLinkPageBySlugFresh(slug);
   } catch (err) {
+    console.error("[l/slug] error:", err);
     if (isAirtableRateLimitError(err)) {
       return <LinkPageRateLimited />;
     }

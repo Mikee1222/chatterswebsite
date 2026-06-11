@@ -5,7 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { verifySessionToken } from "@/lib/session-token";
 import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { getLinkPageByCustomDomain } from "@/services/link-pages";
+import { getLinkPageByCustomDomainFresh } from "@/services/link-pages";
 
 const PUBLIC_PATHS = [ROUTES.login, "/l/", "/r/", "/api/l/"];
 
@@ -50,6 +50,7 @@ function isGunzoDomain(host: string): boolean {
 export async function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   const { pathname } = request.nextUrl;
+  console.log("[middleware] host:", host, "isGunzo:", isGunzoDomain(host));
 
   // Custom domains — never run auth; rewrite root to /l/{slug} when configured
   if (!isGunzoDomain(host)) {
@@ -58,7 +59,7 @@ export async function middleware(request: NextRequest) {
     }
     if (!pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
       try {
-        const page = await getLinkPageByCustomDomain(host);
+        const page = await getLinkPageByCustomDomainFresh(host);
         if (page) {
           return NextResponse.rewrite(new URL(`/l/${page.slug}`, request.url));
         }
