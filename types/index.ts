@@ -1348,12 +1348,26 @@ export interface LinkPageAnalyticsRecord {
   utm_campaign: string;
 }
 
+export interface LinkRedirectRecord {
+  id: string;
+  redirect_id: string;
+  page_id: string;
+  slug: string;
+  destination_url: string;
+  label: string;
+  click_count: number;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface AnalyticsSummary {
   pageViews: number;
   linkClicks: number;
   uniqueVisitors: number;
   ctr: number;
   topLinks: Array<{ block_id: string; label: string; url: string; clicks: number }>;
+  redirectClicks: Array<{ redirect_id: string; slug: string; label: string; clicks: number }>;
   viewsByDay: Array<{ date: string; views: number; clicks: number }>;
   deviceBreakdown: Array<{ device: string; count: number }>;
   countryBreakdown: Array<{ country: string; count: number }>;

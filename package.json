@@ -34,6 +34,7 @@
     "create:model-groups-table": "tsx scripts/create-model-groups-table.ts",
     "add:custom-requests-audit-fields": "tsx scripts/add-custom-requests-audit-fields.ts",
     "setup:link-pages-tables": "tsx scripts/setup-link-pages-tables.ts",
+    "setup:link-redirects-table": "tsx scripts/setup-link-redirects-table.ts",
     "add:link-pages-fields": "tsx scripts/add-link-pages-fields.ts",
     "add:link-page-fonts": "tsx scripts/add-link-page-fonts.ts",
     "db:generate": "drizzle-kit generate",

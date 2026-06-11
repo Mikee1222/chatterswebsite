@@ -10,6 +10,7 @@ import type {
   LinkPageDeviceType,
 } from "@/types";
 import { getLinkPageBlocksFresh, listLinkPages } from "@/services/link-pages";
+import { listRedirectsForPage } from "@/services/link-redirects";
 
 type AnalyticsFields = {
   event_id?: string;
@@ -238,13 +239,14 @@ export async function getPageAnalytics(pageId: string, days = 30): Promise<Analy
   since.setDate(since.getDate() - days);
   const sinceIso = since.toISOString();
 
-  const [records, blocks] = await Promise.all([
+  const [records, blocks, redirects] = await Promise.all([
     listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
       filterByFormula: `AND({page_id}='${pid.replace(/'/g, "\\'")}', IS_AFTER({timestamp}, '${sinceIso}'))`,
       sort: [{ field: LINK_PAGE_ANALYTICS_FIELDS.timestamp, direction: "desc" }],
       _caller: "link-page-analytics",
     }).catch(() => []),
     getLinkPageBlocksFresh(pid).catch(() => []),
+    listRedirectsForPage(pid).catch(() => []),
   ]);
 
   const blockMap = new Map(blocks.map((b) => [b.block_id, b]));
@@ -272,6 +274,15 @@ export async function getPageAnalytics(pageId: string, days = 30): Promise<Analy
     })
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, 10);
+
+  const redirectClicks = redirects
+    .map((r) => ({
+      redirect_id: r.redirect_id,
+      slug: r.slug,
+      label: r.label?.trim() || r.slug,
+      clicks: r.click_count,
+    }))
+    .sort((a, b) => b.clicks - a.clicks);
 
   const viewsByDayMap = new Map<string, { views: number; clicks: number }>();
   for (const e of events) {
@@ -364,6 +375,7 @@ export async function getPageAnalytics(pageId: string, days = 30): Promise<Analy
     uniqueVisitors,
     ctr,
     topLinks,
+    redirectClicks,
     viewsByDay,
     deviceBreakdown,
     countryBreakdown,

@@ -47,6 +47,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LINK_PAGE_FONTS, LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
+import { buildRedirectPublicUrl } from "@/lib/link-redirects-schema";
 import { PLATFORM_BRANDING, detectLinkPlatform, fontFamilyMap, fontLabels, GOOGLE_FONTS_STYLESHEET } from "@/lib/link-page-styles";
 import { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
 import { ROUTES } from "@/lib/routes";
@@ -59,6 +60,7 @@ import type {
   LinkPageBlockType,
   LinkPageRecord,
   LinkPageWithBlocks,
+  LinkRedirectRecord,
   ModelRecord,
 } from "@/types";
 
@@ -284,6 +286,8 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [realtime, setRealtime] = React.useState(0);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [dragIndex, setDragIndex] = React.useState<number | null>(null);
+  const [redirects, setRedirects] = React.useState<LinkRedirectRecord[]>([]);
+  const [redirectFormOpen, setRedirectFormOpen] = React.useState(false);
 
   /* UI-only state */
   const [globalAnalyticsOpen, setGlobalAnalyticsOpen] = React.useState(false);
@@ -303,7 +307,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   draftRef.current = draft;
   savedRef.current = saved;
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
-    () => new Set(["identity", "profile", "appearance", "blocks"])
+    () => new Set(["identity", "profile", "appearance", "blocks", "redirects"])
   );
   const [pageStatsMap, setPageStatsMap] = React.useState<Record<string, { views: number; clicks: number }>>({});
   const [analyticsDays, setAnalyticsDays] = React.useState(30);
@@ -621,6 +625,28 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     }
   }, [selectedId, addToast]);
 
+  const refreshRedirects = React.useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}/redirects`);
+      const data = (await res.json()) as { redirects?: LinkRedirectRecord[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to refresh redirects");
+      if (data.redirects) setRedirects(data.redirects);
+    } catch (err) {
+      addToast(
+        localToast(
+          "Redirect refresh failed",
+          err instanceof Error ? err.message : "Could not refresh redirects",
+          "high"
+        )
+      );
+    }
+  }, [selectedId, addToast]);
+
+  React.useEffect(() => {
+    if (selectedId) void refreshRedirects();
+  }, [selectedId, refreshRedirects]);
+
   async function addBlock(type: LinkPageBlockType) {
     if (!selectedId || !selectedPage) return;
     try {
@@ -693,6 +719,66 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     if (target < 0 || target >= next.length) return;
     [next[index], next[target]] = [next[target], next[index]];
     void reorderBlocks(next);
+  }
+
+  async function createRedirect(input: { label: string; slug: string; destination_url: string }) {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}/redirects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(input),
+      });
+      const data = (await res.json()) as { redirect?: LinkRedirectRecord; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Create redirect failed");
+      await refreshRedirects();
+      setRedirectFormOpen(false);
+      addToast(localToast("Redirect created", data.redirect?.label ?? "New redirect", "normal"));
+    } catch (err) {
+      addToast(localToast("Create redirect failed", err instanceof Error ? err.message : "Error", "high"));
+    }
+  }
+
+  async function updateRedirectRow(redirectId: string, patch: Partial<LinkRedirectRecord>) {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(
+        `/api/admin/link-pages/${encodeURIComponent(selectedId)}/redirects/${encodeURIComponent(redirectId)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        }
+      );
+      const data = (await res.json()) as { redirect?: LinkRedirectRecord; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      await refreshRedirects();
+      return data.redirect;
+    } catch (err) {
+      addToast(localToast("Redirect save failed", err instanceof Error ? err.message : "Error", "high"));
+    }
+  }
+
+  async function removeRedirect(redirectId: string) {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(
+        `/api/admin/link-pages/${encodeURIComponent(selectedId)}/redirects/${encodeURIComponent(redirectId)}`,
+        { method: "DELETE" }
+      );
+      if (!res.ok) throw new Error("Delete failed");
+      setRedirects((prev) => prev.filter((r) => r.id !== redirectId));
+      addToast(localToast("Redirect deleted", "Short URL removed", "normal"));
+    } catch (err) {
+      addToast(localToast("Delete redirect failed", err instanceof Error ? err.message : "Error", "high"));
+    }
+  }
+
+  function copyRedirectUrl(page: LinkPageRecord, redirectSlug: string) {
+    const origin = typeof window !== "undefined" ? window.location.origin : "https://gunzoteam.com";
+    const url = buildRedirectPublicUrl(page, redirectSlug, origin);
+    void navigator.clipboard.writeText(url);
+    addToast(localToast("Copied", "Short URL copied to clipboard", "normal"));
   }
 
   async function uploadPhoto(file: File, onUrl: (url: string) => void) {
@@ -991,6 +1077,13 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                       setDragIndex={setDragIndex}
                       onReorder={(blocks) => void reorderBlocks(blocks)}
                       blockClickMap={blockClickMap}
+                      redirects={redirects}
+                      redirectFormOpen={redirectFormOpen}
+                      onToggleRedirectForm={() => setRedirectFormOpen((v) => !v)}
+                      onCreateRedirect={(input) => void createRedirect(input)}
+                      onUpdateRedirect={(id, patch) => void updateRedirectRow(id, patch)}
+                      onDeleteRedirect={(id) => void removeRedirect(id)}
+                      onCopyRedirectUrl={(slug) => selectedPage && copyRedirectUrl(selectedPage, slug)}
                     />
                   ) : (
                     <div className="p-4">
@@ -1620,6 +1713,13 @@ function EditorPanel({
   setDragIndex,
   onReorder,
   blockClickMap,
+  redirects,
+  redirectFormOpen,
+  onToggleRedirectForm,
+  onCreateRedirect,
+  onUpdateRedirect,
+  onDeleteRedirect,
+  onCopyRedirectUrl,
 }: {
   page: LinkPageWithBlocks;
   pageId: string;
@@ -1641,6 +1741,13 @@ function EditorPanel({
   setDragIndex: (i: number | null) => void;
   onReorder: (blocks: LinkPageBlockRecord[]) => void;
   blockClickMap: Record<string, number>;
+  redirects: LinkRedirectRecord[];
+  redirectFormOpen: boolean;
+  onToggleRedirectForm: () => void;
+  onCreateRedirect: (input: { label: string; slug: string; destination_url: string }) => void;
+  onUpdateRedirect: (redirectId: string, patch: Partial<LinkRedirectRecord>) => void;
+  onDeleteRedirect: (redirectId: string) => void;
+  onCopyRedirectUrl: (slug: string) => void;
 }) {
   const sorted = dedupeBlocks(page.blocks);
 
@@ -1938,7 +2045,150 @@ function EditorPanel({
           ) : null}
         </div>
       </AccordionSection>
+
+      <AccordionSection
+        id="redirects"
+        title="Redirects"
+        expanded={expandedSections.has("redirects")}
+        onToggle={onToggleSection}
+      >
+        <p className="mb-3 text-[11px] text-white/40">
+          Safe short URLs — destinations are never exposed on the public page.
+        </p>
+        <button
+          type="button"
+          onClick={onToggleRedirectForm}
+          className="mb-4 inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] font-medium text-white/70 transition-colors hover:border-pink-500/30 hover:text-pink-200"
+          style={{ borderColor: BORDER, background: BG }}
+        >
+          <Plus className="h-3.5 w-3.5" />
+          {redirectFormOpen ? "Cancel" : "Add redirect"}
+        </button>
+
+        {redirectFormOpen ? (
+          <RedirectAddForm onSubmit={onCreateRedirect} onCancel={onToggleRedirectForm} />
+        ) : null}
+
+        <div className="space-y-2">
+          {redirects.map((redirect) => {
+            const shortUrl = buildRedirectPublicUrl(page, redirect.slug);
+            const destPreview =
+              redirect.destination_url.length > 48
+                ? `${redirect.destination_url.slice(0, 45)}…`
+                : redirect.destination_url;
+            return (
+              <div
+                key={redirect.id}
+                className="rounded-xl border p-3"
+                style={{ borderColor: BORDER, background: BG }}
+              >
+                <div className="mb-2 flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white/80">{redirect.label || redirect.slug}</p>
+                    <p className="mt-0.5 truncate font-mono text-[10px] text-pink-300/80">{shortUrl}</p>
+                    <p className="mt-1 truncate text-[10px] text-white/30" title={redirect.destination_url}>
+                      → {destPreview}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => onCopyRedirectUrl(redirect.slug)}
+                      className="rounded-lg border p-1.5 text-white/40 transition-colors hover:text-white/80"
+                      style={{ borderColor: BORDER }}
+                      title="Copy short URL"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onDeleteRedirect(redirect.id)}
+                      className="rounded-lg p-1.5 text-rose-400/50 transition-colors hover:text-rose-300"
+                      title="Delete redirect"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px]">
+                  <label className="flex items-center gap-2 text-white/45">
+                    <input
+                      type="checkbox"
+                      checked={redirect.is_active}
+                      onChange={(e) => onUpdateRedirect(redirect.id, { is_active: e.target.checked })}
+                    />
+                    Active
+                  </label>
+                  <span className="tabular-nums text-white/35">{redirect.click_count} clicks</span>
+                </div>
+              </div>
+            );
+          })}
+          {redirects.length === 0 ? (
+            <p className="py-6 text-center text-xs text-white/25">No redirects yet</p>
+          ) : null}
+        </div>
+      </AccordionSection>
     </div>
+  );
+}
+
+function RedirectAddForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (input: { label: string; slug: string; destination_url: string }) => void;
+  onCancel: () => void;
+}) {
+  const [label, setLabel] = React.useState("");
+  const [slug, setSlug] = React.useState("");
+  const [destination, setDestination] = React.useState("");
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!destination.trim()) return;
+    onSubmit({
+      label: label.trim() || slug.trim() || "Redirect",
+      slug: slug.trim() ? slugify(slug) : slugify(label || "link"),
+      destination_url: destination.trim(),
+    });
+    setLabel("");
+    setSlug("");
+    setDestination("");
+  }
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="mb-4 space-y-2 rounded-xl border p-3"
+      style={{ borderColor: BORDER, background: "rgba(255,255,255,0.02)" }}
+    >
+      <FormInput value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Label (e.g. Instagram promo)" />
+      <FormInput
+        value={slug}
+        onChange={(e) => setSlug(slugify(e.target.value))}
+        placeholder="Short slug (optional)"
+      />
+      <FormInput
+        value={destination}
+        onChange={(e) => setDestination(e.target.value)}
+        placeholder="https://destination-url.com/…"
+        required
+      />
+      <div className="flex gap-2 pt-1">
+        <button type="submit" className="rounded-lg px-3 py-1.5 text-[11px] font-medium text-white" style={{ background: ACCENT }}>
+          Create redirect
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="rounded-lg border px-3 py-1.5 text-[11px] text-white/50"
+          style={{ borderColor: BORDER }}
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }
 
@@ -2315,6 +2565,24 @@ function AnalyticsPanel({
           </ChartCard>
         ) : null}
       </div>
+
+      {summary.redirectClicks.length > 0 ? (
+        <ChartCard title="Redirect clicks">
+          <ul className="space-y-2">
+            {summary.redirectClicks.map((r) => (
+              <li key={r.redirect_id} className="flex items-center justify-between gap-2 text-sm">
+                <span className="truncate text-white/65">
+                  {r.label}
+                  <span className="text-white/30"> · /{r.slug}</span>
+                </span>
+                <span className="shrink-0 tabular-nums font-semibold" style={{ color: ACCENT }}>
+                  {r.clicks}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </ChartCard>
+      ) : null}
 
       {summary.countryBreakdown.length > 0 ? (
         <ChartCard title="Top countries">
