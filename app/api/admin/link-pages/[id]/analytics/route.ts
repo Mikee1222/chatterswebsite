@@ -18,7 +18,7 @@ export async function GET(request: Request, ctx: Ctx) {
   if (!page) return NextResponse.json({ error: "Not found" }, { status: 404 });
 
   const url = new URL(request.url);
-  const days = Number.parseInt(url.searchParams.get("days") ?? "30", 10);
-  const summary = await getPageAnalytics(page.page_id, Number.isFinite(days) ? days : 30);
+  const days = Number.parseInt(url.searchParams.get("days") ?? "1", 10);
+  const summary = await getPageAnalytics(page.page_id, Number.isFinite(days) && days > 0 ? days : 1);
   return NextResponse.json({ summary });
 }

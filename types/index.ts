@@ -1367,33 +1367,78 @@ export interface LinkRedirectRecord {
   updated_at: string;
 }
 
+export type AnalyticsTrendDirection = "up" | "down" | "flat";
+
+export interface AnalyticsTrend {
+  current: number;
+  previous: number;
+  changePercent: number;
+  direction: AnalyticsTrendDirection;
+}
+
+export interface AnalyticsPeriodMetrics {
+  pageViews: number;
+  linkClicks: number;
+  uniqueVisitors: number;
+  visitsWithClicks: number;
+  ctr: number;
+}
+
 export interface AnalyticsSummary {
   pageViews: number;
   linkClicks: number;
   uniqueVisitors: number;
+  visitsWithClicks: number;
   ctr: number;
-  topLinks: Array<{ block_id: string; label: string; url: string; clicks: number }>;
+  topLinks: Array<{
+    block_id: string;
+    label: string;
+    url: string;
+    clicks: number;
+    platform: string;
+    sparkline: number[];
+  }>;
   redirectClicks: Array<{ redirect_id: string; slug: string; label: string; clicks: number }>;
   viewsByDay: Array<{ date: string; views: number; clicks: number }>;
-  deviceBreakdown: Array<{ device: string; count: number }>;
-  countryBreakdown: Array<{ country: string; count: number }>;
-  cityBreakdown: Array<{ city: string; count: number }>;
-  referrerBreakdown: Array<{ referrer: string; count: number }>;
+  deviceBreakdown: Array<{ device: string; count: number; percent: number }>;
+  countryBreakdown: Array<{ country: string; count: number; percent: number; flag: string }>;
+  cityBreakdown: Array<{ city: string; count: number; percent: number }>;
+  referrerBreakdown: Array<{ referrer: string; label: string; icon: string; count: number; percent: number }>;
   utmBreakdown: Array<{ source: string; campaign: string; count: number }>;
   hourlyDistribution: Array<{ hour: number; views: number; clicks: number }>;
+  peakHour: number;
+  previousPeriodComparison: {
+    pageViews: AnalyticsTrend;
+    linkClicks: AnalyticsTrend;
+    uniqueVisitors: AnalyticsTrend;
+    visitsWithClicks: AnalyticsTrend;
+    ctr: AnalyticsTrend;
+  };
 }
 
 export interface GlobalAnalyticsSummary {
   totalPageViews: number;
   totalLinkClicks: number;
   totalUniqueVisitors: number;
+  visitsWithClicks: number;
+  ctr: number;
   viewsByDayByPage: Array<{ date: string; pages: Record<string, number> }>;
+  viewsByDay: Array<{ date: string; views: number; clicks: number }>;
   leaderboard: Array<{ page_id: string; title: string; slug: string; views: number; clicks: number }>;
-  deviceBreakdown: Array<{ device: string; count: number }>;
+  deviceBreakdown: Array<{ device: string; count: number; percent: number }>;
   pageBreakdown: Array<{ page_id: string; title: string; views: number }>;
-  countryBreakdown: Array<{ country: string; count: number }>;
-  referrerBreakdown: Array<{ referrer: string; count: number }>;
+  countryBreakdown: Array<{ country: string; count: number; percent: number; flag: string }>;
+  referrerBreakdown: Array<{ referrer: string; label: string; icon: string; count: number; percent: number }>;
+  hourlyDistribution: Array<{ hour: number; views: number; clicks: number }>;
+  peakHour: number;
   bestDayOfWeek: Array<{ day: string; views: number; clicks: number }>;
+  previousPeriodComparison: {
+    pageViews: AnalyticsTrend;
+    linkClicks: AnalyticsTrend;
+    uniqueVisitors: AnalyticsTrend;
+    visitsWithClicks: AnalyticsTrend;
+    ctr: AnalyticsTrend;
+  };
 }
 
 export interface LinkPageWithBlocks extends LinkPageRecord {

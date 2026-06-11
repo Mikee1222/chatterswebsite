@@ -13,15 +13,19 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Globe,
   GripVertical,
   Link2,
   Loader2,
+  Minus,
   Monitor,
   Plus,
   QrCode,
   RefreshCw,
   Search,
   Smartphone,
+  TrendingDown,
+  TrendingUp,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -37,10 +41,10 @@ import {
   XAxis,
   YAxis,
   Tooltip,
-  PieChart,
-  Pie,
-  Cell,
   Legend,
+  RadialBarChart,
+  RadialBar,
+  PolarAngleAxis,
 } from "recharts";
 import { useToast } from "@/contexts/toast-context";
 import { FormInput } from "@/components/ui/form-input";
@@ -60,12 +64,12 @@ import {
   fontLabels,
   GOOGLE_FONTS_STYLESHEET,
 } from "@/lib/link-page-styles";
-import { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type {
   AppNotification,
   AnalyticsSummary,
+  AnalyticsTrend,
   GlobalAnalyticsSummary,
   LinkPageBackgroundType,
   LinkPageBlockRecord,
@@ -78,10 +82,11 @@ import type {
 
 /* ── Design tokens ── */
 const BG = "#050505";
-const PANEL = "#0a0a0a";
+const PANEL = "#0d0d0d";
 const BORDER = "rgba(255,255,255,0.08)";
 const ACCENT = "#ec4899";
-const PIE_COLORS = ["#ec4899", "#a855f7", "#38bdf8", "#34d399", "#fbbf24", "#f97316"];
+const PURPLE = "#8b5cf6";
+const PIE_COLORS = ["#ec4899", "#8b5cf6", "#38bdf8", "#34d399", "#fbbf24", "#f97316"];
 
 function localToast(title: string, body: string, priority: "normal" | "high"): AppNotification {
   const id = `toast-${Date.now()}`;
@@ -866,8 +871,8 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     () => new Set(["identity", "profile", "appearance", "blocks", "redirects"])
   );
   const [pageStatsMap, setPageStatsMap] = React.useState<Record<string, { views: number; clicks: number }>>({});
-  const [analyticsDays, setAnalyticsDays] = React.useState(30);
-  const [globalAnalyticsDays, setGlobalAnalyticsDays] = React.useState(30);
+  const [analyticsDays, setAnalyticsDays] = React.useState(1);
+  const [globalAnalyticsDays, setGlobalAnalyticsDays] = React.useState(1);
 
   React.useEffect(() => {
     const id = "link-page-google-fonts";
@@ -2974,7 +2979,12 @@ function BlockEditor({
   );
 }
 
-const ANALYTICS_DAY_OPTIONS = [7, 14, 30, 90] as const;
+const ANALYTICS_DAY_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: "Today" },
+  { value: 7, label: "7d" },
+  { value: 30, label: "30d" },
+  { value: 90, label: "90d" },
+];
 
 function AnalyticsDaysPicker({
   days,
@@ -2985,25 +2995,58 @@ function AnalyticsDaysPicker({
 }) {
   return (
     <div className="flex flex-wrap gap-2">
-      {ANALYTICS_DAY_OPTIONS.map((d) => (
+      {ANALYTICS_DAY_OPTIONS.map(({ value, label }) => (
         <button
-          key={d}
+          key={value}
           type="button"
-          onClick={() => onDaysChange(d)}
+          onClick={() => onDaysChange(value)}
           className={cn(
             "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-            days === d ? "border-pink-500/40 text-pink-200" : "text-white/50 hover:text-white/80"
+            days === value ? "border-pink-500/40 text-pink-200" : "text-white/50 hover:text-white/80"
           )}
           style={{
-            background: days === d ? "rgba(236,72,153,0.12)" : BG,
-            borderColor: days === d ? ACCENT : BORDER,
+            background: days === value ? "rgba(236,72,153,0.12)" : BG,
+            borderColor: days === value ? ACCENT : BORDER,
           }}
         >
-          {d}d
+          {label}
         </button>
       ))}
     </div>
   );
+}
+
+function TrendBadge({ trend, suffix }: { trend: AnalyticsTrend; suffix?: string }) {
+  const Icon = trend.direction === "up" ? TrendingUp : trend.direction === "down" ? TrendingDown : Minus;
+  const color =
+    trend.direction === "up" ? "#34d399" : trend.direction === "down" ? "#f87171" : "rgba(255,255,255,0.35)";
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-medium" style={{ color }}>
+      <Icon className="h-3 w-3" />
+      {trend.changePercent}%
+      {suffix ? <span className="text-white/30">{suffix}</span> : null}
+    </span>
+  );
+}
+
+function MiniSparkline({ data }: { data: number[] }) {
+  const chartData = data.map((value, i) => ({ i, value }));
+  return (
+    <div className="h-8 w-20">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={chartData}>
+          <Line type="monotone" dataKey="value" stroke={ACCENT} strokeWidth={1.5} dot={false} />
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+function formatPeakHour(hour: number): string {
+  const h = hour % 24;
+  const suffix = h >= 12 ? "PM" : "AM";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}:00 ${suffix}`;
 }
 
 function AnalyticsPanel({
@@ -3019,6 +3062,34 @@ function AnalyticsPanel({
   days: number;
   onDaysChange: (days: number) => void;
 }) {
+  const trendLabel = days === 1 ? "vs yesterday" : "vs prev period";
+
+  const hourlyRadialData = React.useMemo(() => {
+    if (!summary) return [];
+    const maxClicks = Math.max(1, ...summary.hourlyDistribution.map((h) => h.clicks));
+    return summary.hourlyDistribution.map((h) => ({
+      hour: h.hour,
+      label: `${h.hour}`,
+      clicks: h.clicks,
+      fill: h.hour === summary.peakHour ? ACCENT : PURPLE,
+      opacity: 0.35 + (h.clicks / maxClicks) * 0.65,
+    }));
+  }, [summary]);
+
+  const socialReferrerTotal = React.useMemo(() => {
+    if (!summary) return 0;
+    return summary.referrerBreakdown
+      .filter((r) => r.label !== "Direct")
+      .reduce((s, r) => s + r.count, 0);
+  }, [summary]);
+
+  const directReferrerTotal = React.useMemo(() => {
+    if (!summary) return 0;
+    return summary.referrerBreakdown.find((r) => r.label === "Direct")?.count ?? 0;
+  }, [summary]);
+
+  const referrerBarTotal = socialReferrerTotal + directReferrerTotal;
+
   if (!summary) {
     return (
       <div className="flex min-h-[300px] items-center justify-center text-white/35">
@@ -3037,68 +3108,270 @@ function AnalyticsPanel({
         )}
         <AnalyticsDaysPicker days={days} onDaysChange={onDaysChange} />
       </div>
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-        <LuxuryStatCard label="Page views" value={summary.pageViews} />
-        <LuxuryStatCard label="Link clicks" value={summary.linkClicks} />
-        <LuxuryStatCard label="Unique visitors" value={summary.uniqueVisitors} />
-        <LuxuryStatCard label="CTR" value={summary.ctr} suffix="%" accent />
-        <LuxuryStatCard label="Live (5 min)" value={realtime} pulse />
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <LuxuryStatCard
+          label="Page views"
+          value={summary.pageViews}
+          trend={summary.previousPeriodComparison.pageViews}
+          trendLabel={trendLabel}
+        />
+        <LuxuryStatCard
+          label="Link clicks"
+          value={summary.linkClicks}
+          trend={summary.previousPeriodComparison.linkClicks}
+          trendLabel={trendLabel}
+        />
+        <LuxuryStatCard
+          label="Unique visitors"
+          value={summary.uniqueVisitors}
+          trend={summary.previousPeriodComparison.uniqueVisitors}
+          trendLabel={trendLabel}
+        />
+        <LuxuryStatCard
+          label="CTR"
+          value={summary.ctr}
+          suffix="%"
+          accent
+          trend={summary.previousPeriodComparison.ctr}
+          trendLabel={trendLabel}
+        />
+      </div>
+
+      <div className="flex items-center gap-2 text-xs text-white/40">
+        <span className="inline-flex h-2 w-2 animate-pulse rounded-full" style={{ background: ACCENT }} />
+        {realtime} live {realtime === 1 ? "visitor" : "visitors"} · last 5 min
       </div>
 
       {summary.viewsByDay.length > 0 ? (
-        <ChartCard title="Views & clicks">
+        <ChartCard title="Page views over time">
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={summary.viewsByDay}>
                 <defs>
                   <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor={ACCENT} stopOpacity={0.3} />
+                    <stop offset="0%" stopColor={ACCENT} stopOpacity={0.35} />
                     <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                <XAxis
+                  dataKey="date"
+                  tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
+                  tickFormatter={(d) => String(d).slice(5)}
+                />
                 <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                <Tooltip contentStyle={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
                 <Area type="monotone" dataKey="views" stroke={ACCENT} fill="url(#viewsGrad)" name="Views" strokeWidth={2} />
-                <Area type="monotone" dataKey="clicks" stroke="#a855f7" fill="#a855f722" name="Clicks" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
         </ChartCard>
       ) : null}
 
+      {summary.topLinks.length > 0 ? (
+        <ChartCard title="Top links">
+          <ul className="space-y-3">
+            {summary.topLinks.map((link, i) => {
+              const branding = PLATFORM_BRANDING[link.platform as keyof typeof PLATFORM_BRANDING];
+              return (
+                <li key={link.block_id} className="flex items-center gap-3">
+                  <span className="w-6 shrink-0 text-center text-xs tabular-nums text-white/25">#{i + 1}</span>
+                  <div
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"
+                    style={{ background: branding?.pillColor ?? "rgba(255,255,255,0.08)" }}
+                    dangerouslySetInnerHTML={{ __html: branding?.svg ?? "🔗" }}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white/80">{link.label}</p>
+                    <p className="truncate text-[10px] text-white/30">{link.url}</p>
+                  </div>
+                  <MiniSparkline data={link.sparkline} />
+                  <span className="shrink-0 tabular-nums text-sm font-semibold" style={{ color: ACCENT }}>
+                    {link.clicks}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </ChartCard>
+      ) : null}
+
+      {hourlyRadialData.some((h) => h.clicks > 0) ? (
+        <ChartCard title="When your audience clicks">
+          <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+            <div className="relative h-64 w-64 shrink-0">
+              <ResponsiveContainer width="100%" height="100%">
+                <RadialBarChart
+                  cx="50%"
+                  cy="50%"
+                  innerRadius="18%"
+                  outerRadius="95%"
+                  barSize={8}
+                  data={hourlyRadialData}
+                  startAngle={90}
+                  endAngle={-270}
+                >
+                  <PolarAngleAxis type="number" domain={[0, 23]} dataKey="hour" tick={false} />
+                  <RadialBar dataKey="clicks" cornerRadius={4} background={{ fill: "rgba(255,255,255,0.04)" }} />
+                  <Tooltip
+                    contentStyle={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }}
+                    formatter={(value) => [`${value ?? 0} clicks`, ""]}
+                    labelFormatter={(h) => `${h}:00 Athens`}
+                  />
+                </RadialBarChart>
+              </ResponsiveContainer>
+              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                <p className="text-[10px] uppercase tracking-wider text-white/35">Peak hour</p>
+                <p className="text-xl font-bold text-white">{formatPeakHour(summary.peakHour)}</p>
+                <p className="text-[10px] text-white/30">Europe/Athens</p>
+              </div>
+            </div>
+            <div className="grid flex-1 grid-cols-4 gap-2 sm:grid-cols-6">
+              {summary.hourlyDistribution.map((h) => {
+                const max = Math.max(1, ...summary.hourlyDistribution.map((x) => x.clicks));
+                const intensity = h.clicks / max;
+                return (
+                  <div key={h.hour} className="text-center">
+                    <div
+                      className="mx-auto mb-1 h-8 w-full rounded"
+                      style={{
+                        background: `rgba(236,72,153,${0.1 + intensity * 0.7})`,
+                        boxShadow: h.hour === summary.peakHour ? `0 0 8px ${ACCENT}` : undefined,
+                      }}
+                    />
+                    <span className="text-[9px] text-white/35">{h.hour}h</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </ChartCard>
+      ) : null}
+
+      {summary.referrerBreakdown.length > 0 ? (
+        <ChartCard title="Top referrers">
+          {referrerBarTotal > 0 ? (
+            <div className="mb-4">
+              <div className="mb-2 flex justify-between text-xs text-white/50">
+                <span>Social & search</span>
+                <span>Direct</span>
+              </div>
+              <div className="flex h-3 overflow-hidden rounded-full">
+                <div
+                  className="h-full"
+                  style={{
+                    width: `${Math.round((socialReferrerTotal / referrerBarTotal) * 100)}%`,
+                    background: `linear-gradient(90deg, ${PURPLE}, ${ACCENT})`,
+                  }}
+                />
+                <div
+                  className="h-full flex-1"
+                  style={{ background: "rgba(255,255,255,0.12)" }}
+                />
+              </div>
+              <div className="mt-1 flex justify-between text-[10px] text-white/35">
+                <span>{Math.round((socialReferrerTotal / referrerBarTotal) * 100)}%</span>
+                <span>{Math.round((directReferrerTotal / referrerBarTotal) * 100)}%</span>
+              </div>
+            </div>
+          ) : null}
+          <ul className="space-y-2">
+            {summary.referrerBreakdown.map((r) => (
+              <li key={r.label}>
+                <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                  <span className="flex items-center gap-2 text-white/70">
+                    <span className="text-base">{r.icon}</span>
+                    {r.label}
+                  </span>
+                  <span className="tabular-nums text-white/40">
+                    {r.count} ({r.percent}%)
+                  </span>
+                </div>
+                <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                  <div
+                    className="h-full rounded-full"
+                    style={{
+                      width: `${r.percent}%`,
+                      background: r.label === "Direct" ? "rgba(255,255,255,0.25)" : `linear-gradient(90deg, ${PURPLE}, ${ACCENT})`,
+                    }}
+                  />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </ChartCard>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-2">
         {summary.deviceBreakdown.length > 0 ? (
           <ChartCard title="Devices">
-            <div className="h-48">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie data={summary.deviceBreakdown} dataKey="count" nameKey="device" cx="50%" cy="50%" innerRadius={40} outerRadius={70}>
-                    {summary.deviceBreakdown.map((_, i) => (
-                      <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
+            <ul className="space-y-3">
+              {summary.deviceBreakdown.map((d, i) => (
+                <li key={d.device}>
+                  <div className="mb-1.5 flex items-center justify-between text-sm">
+                    <span className="flex items-center gap-2 capitalize text-white/70">
+                      {d.device === "mobile" ? (
+                        <Smartphone className="h-4 w-4 text-white/40" />
+                      ) : d.device === "tablet" ? (
+                        <Monitor className="h-4 w-4 text-white/40" />
+                      ) : (
+                        <Monitor className="h-4 w-4 text-white/40" />
+                      )}
+                      {d.device}
+                    </span>
+                    <span className="tabular-nums text-white/40">
+                      {d.count.toLocaleString()} ({d.percent}%)
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                    <div
+                      className="h-full rounded-full"
+                      style={{ width: `${d.percent}%`, background: PIE_COLORS[i % PIE_COLORS.length] }}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
           </ChartCard>
         ) : null}
 
-        {summary.topLinks.length > 0 ? (
-          <ChartCard title="Top links">
+        {summary.countryBreakdown.length > 0 ? (
+          <ChartCard title="Countries">
             <ul className="space-y-2">
-              {summary.topLinks.map((l) => (
-                <li key={l.block_id} className="flex items-center justify-between text-sm">
-                  <span className="truncate text-white/65">{l.label || l.block_id}</span>
-                  <span className="tabular-nums font-semibold" style={{ color: ACCENT }}>{l.clicks}</span>
+              {summary.countryBreakdown.map((c) => (
+                <li key={c.country} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="flex items-center gap-2 text-white/70">
+                    <span className="text-base">{c.flag}</span>
+                    {c.country}
+                  </span>
+                  <span className="tabular-nums text-white/40">
+                    {c.count} ({c.percent}%)
+                  </span>
                 </li>
               ))}
             </ul>
           </ChartCard>
         ) : null}
       </div>
+
+      {summary.cityBreakdown.length > 0 ? (
+        <ChartCard title="Top cities">
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {summary.cityBreakdown.map((c) => (
+              <li key={c.city} className="flex items-center justify-between gap-2 text-sm">
+                <span className="flex items-center gap-2 text-white/70">
+                  <Globe className="h-3.5 w-3.5 text-white/30" />
+                  {c.city}
+                </span>
+                <span className="tabular-nums text-white/40">
+                  {c.count} ({c.percent}%)
+                </span>
+              </li>
+            ))}
+          </ul>
+        </ChartCard>
+      ) : null}
 
       {summary.redirectClicks.length > 0 ? (
         <ChartCard title="Redirect clicks">
@@ -3118,61 +3391,6 @@ function AnalyticsPanel({
         </ChartCard>
       ) : null}
 
-      {summary.countryBreakdown.length > 0 ? (
-        <ChartCard title="Top countries">
-          <ul className="grid gap-2 sm:grid-cols-2">
-            {summary.countryBreakdown.map((c) => (
-              <li key={c.country} className="flex justify-between text-sm text-white/60">
-                <span>{c.country}</span>
-                <span className="tabular-nums text-white/35">{c.count}</span>
-              </li>
-            ))}
-          </ul>
-        </ChartCard>
-      ) : null}
-
-      <div className="grid gap-4 lg:grid-cols-2">
-        {summary.cityBreakdown.length > 0 ? (
-          <ChartCard title="Top cities">
-            <ul className="space-y-2">
-              {summary.cityBreakdown.map((c) => (
-                <li key={c.city} className="flex justify-between text-sm text-white/60">
-                  <span>{c.city}</span>
-                  <span className="tabular-nums text-white/35">{c.count}</span>
-                </li>
-              ))}
-            </ul>
-          </ChartCard>
-        ) : null}
-
-        {summary.referrerBreakdown.length > 0 ? (
-          <ChartCard title="Traffic sources">
-            <ul className="space-y-2">
-              {summary.referrerBreakdown.map((r) => {
-                const total = summary.referrerBreakdown.reduce((s, x) => s + x.count, 0);
-                const pct = total ? Math.round((r.count / total) * 100) : 0;
-                return (
-                  <li key={r.referrer}>
-                    <div className="mb-1 flex justify-between text-sm text-white/60">
-                      <span>{cleanReferrerLabel(r.referrer)}</span>
-                      <span className="tabular-nums text-white/35">
-                        {r.count} ({pct}%)
-                      </span>
-                    </div>
-                    <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${pct}%`, background: ACCENT }}
-                      />
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </ChartCard>
-        ) : null}
-      </div>
-
       {summary.utmBreakdown.length > 0 ? (
         <ChartCard title="UTM campaigns">
           <ul className="space-y-2">
@@ -3186,27 +3404,6 @@ function AnalyticsPanel({
               </li>
             ))}
           </ul>
-        </ChartCard>
-      ) : null}
-
-      {summary.hourlyDistribution.some((h) => h.views > 0 || h.clicks > 0) ? (
-        <ChartCard title="Peak hours">
-          <div className="h-48">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={summary.hourlyDistribution}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                <XAxis
-                  dataKey="hour"
-                  tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
-                  tickFormatter={(h) => `${h}h`}
-                />
-                <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
-                <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
-                <Bar dataKey="views" fill={ACCENT} name="Views" radius={[2, 2, 0, 0]} />
-                <Bar dataKey="clicks" fill="#a855f7" name="Clicks" radius={[2, 2, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
         </ChartCard>
       ) : null}
     </div>
@@ -3256,6 +3453,19 @@ function GlobalAnalyticsPanel({
     });
   }, [summary]);
 
+  const trendLabel = days === 1 ? "vs yesterday" : "vs prev period";
+
+  const hourlyRadialData = React.useMemo(() => {
+    if (!summary) return [];
+    const maxClicks = Math.max(1, ...summary.hourlyDistribution.map((h) => h.clicks));
+    return summary.hourlyDistribution.map((h) => ({
+      hour: h.hour,
+      clicks: h.clicks,
+      fill: h.hour === summary.peakHour ? ACCENT : PURPLE,
+      opacity: 0.35 + (h.clicks / maxClicks) * 0.65,
+    }));
+  }, [summary]);
+
   if (loading && !summary) {
     return <LoadingState />;
   }
@@ -3269,7 +3479,9 @@ function GlobalAnalyticsPanel({
       <div className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-4" style={{ borderColor: BORDER }}>
         <div>
           <h2 className="text-lg font-bold text-white">All Pages Analytics</h2>
-          <p className="text-xs text-white/40">Last {days} days · combined performance</p>
+          <p className="text-xs text-white/40">
+            {days === 1 ? "Today" : `Last ${days} days`} · combined performance
+          </p>
         </div>
         <div className="flex items-center gap-3">
           <AnalyticsDaysPicker days={days} onDaysChange={onDaysChange} />
@@ -3287,11 +3499,60 @@ function GlobalAnalyticsPanel({
 
       <div className="flex-1 overflow-y-auto p-6">
         <div className="mx-auto max-w-6xl space-y-6">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <LuxuryStatCard label="Total page views" value={summary.totalPageViews} />
-            <LuxuryStatCard label="Total link clicks" value={summary.totalLinkClicks} />
-            <LuxuryStatCard label="Unique visitors" value={summary.totalUniqueVisitors} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <LuxuryStatCard
+              label="Total page views"
+              value={summary.totalPageViews}
+              trend={summary.previousPeriodComparison.pageViews}
+              trendLabel={trendLabel}
+            />
+            <LuxuryStatCard
+              label="Total link clicks"
+              value={summary.totalLinkClicks}
+              trend={summary.previousPeriodComparison.linkClicks}
+              trendLabel={trendLabel}
+            />
+            <LuxuryStatCard
+              label="Unique visitors"
+              value={summary.totalUniqueVisitors}
+              trend={summary.previousPeriodComparison.uniqueVisitors}
+              trendLabel={trendLabel}
+            />
+            <LuxuryStatCard
+              label="CTR"
+              value={summary.ctr}
+              suffix="%"
+              accent
+              trend={summary.previousPeriodComparison.ctr}
+              trendLabel={trendLabel}
+            />
           </div>
+
+          {summary.viewsByDay.length > 0 ? (
+            <ChartCard title="Page views over time">
+              <div className="h-56">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={summary.viewsByDay}>
+                    <defs>
+                      <linearGradient id="globalViewsGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={ACCENT} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
+                      tickFormatter={(d) => String(d).slice(5)}
+                    />
+                    <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                    <Tooltip contentStyle={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                    <Area type="monotone" dataKey="views" stroke={ACCENT} fill="url(#globalViewsGrad)" name="Views" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          ) : null}
 
           {stackedData.length > 0 ? (
             <ChartCard title="Views by page (daily)">
@@ -3301,7 +3562,7 @@ function GlobalAnalyticsPanel({
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
                     <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
-                    <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                    <Tooltip contentStyle={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
                     <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
                     {summary.leaderboard.slice(0, 6).map((p) => (
                       <Line
@@ -3321,7 +3582,6 @@ function GlobalAnalyticsPanel({
           ) : null}
 
           <div className="grid gap-4 lg:grid-cols-2">
-            {/* Leaderboard */}
             <ChartCard title="Leaderboard">
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
@@ -3361,80 +3621,91 @@ function GlobalAnalyticsPanel({
               </div>
             </ChartCard>
 
-            <div className="space-y-4">
-              {summary.pageBreakdown.length > 0 ? (
-                <ChartCard title="Views by page">
-                  <div className="h-48">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={summary.pageBreakdown.slice(0, 8)}
-                          dataKey="views"
-                          nameKey="title"
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={35}
-                          outerRadius={70}
-                        >
-                          {summary.pageBreakdown.slice(0, 8).map((_, i) => (
-                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                          ))}
-                        </Pie>
-                        <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
-                </ChartCard>
-              ) : null}
-
-              {summary.deviceBreakdown.length > 0 ? (
-                <ChartCard title="Device breakdown">
-                  <ul className="space-y-2">
-                    {summary.deviceBreakdown.map((d, i) => {
-                      const total = summary.deviceBreakdown.reduce((s, x) => s + x.count, 0);
-                      const pct = total ? Math.round((d.count / total) * 100) : 0;
-                      return (
-                        <li key={d.device}>
-                          <div className="mb-1 flex justify-between text-xs">
-                            <span className="capitalize text-white/60">{d.device}</span>
-                            <span className="tabular-nums text-white/40">{d.count.toLocaleString()} ({pct}%)</span>
-                          </div>
-                          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
-                            <div
-                              className="h-full rounded-full"
-                              style={{ width: `${pct}%`, background: PIE_COLORS[i % PIE_COLORS.length] }}
-                            />
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </ChartCard>
-              ) : null}
-            </div>
+            {summary.deviceBreakdown.length > 0 ? (
+              <ChartCard title="Devices">
+                <ul className="space-y-3">
+                  {summary.deviceBreakdown.map((d, i) => (
+                    <li key={d.device}>
+                      <div className="mb-1.5 flex justify-between text-sm">
+                        <span className="capitalize text-white/70">{d.device}</span>
+                        <span className="tabular-nums text-white/40">{d.count.toLocaleString()} ({d.percent}%)</span>
+                      </div>
+                      <div className="h-2 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${d.percent}%`, background: PIE_COLORS[i % PIE_COLORS.length] }}
+                        />
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </ChartCard>
+            ) : null}
           </div>
 
+          {hourlyRadialData.some((h) => h.clicks > 0) ? (
+            <ChartCard title="When your audience clicks">
+              <div className="flex flex-col items-center gap-4 sm:flex-row">
+                <div className="relative h-56 w-56 shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadialBarChart
+                      cx="50%"
+                      cy="50%"
+                      innerRadius="18%"
+                      outerRadius="95%"
+                      barSize={8}
+                      data={hourlyRadialData}
+                      startAngle={90}
+                      endAngle={-270}
+                    >
+                      <PolarAngleAxis type="number" domain={[0, 23]} dataKey="hour" tick={false} />
+                      <RadialBar dataKey="clicks" cornerRadius={4} background={{ fill: "rgba(255,255,255,0.04)" }} />
+                    </RadialBarChart>
+                  </ResponsiveContainer>
+                  <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                    <p className="text-[10px] uppercase tracking-wider text-white/35">Peak hour</p>
+                    <p className="text-lg font-bold text-white">{formatPeakHour(summary.peakHour)}</p>
+                  </div>
+                </div>
+              </div>
+            </ChartCard>
+          ) : null}
+
           <div className="grid gap-4 lg:grid-cols-2">
-            {summary.countryBreakdown.length > 0 ? (
-              <ChartCard title="Top countries">
+            {summary.referrerBreakdown.length > 0 ? (
+              <ChartCard title="Top referrers">
                 <ul className="space-y-2">
-                  {summary.countryBreakdown.map((c) => (
-                    <li key={c.country} className="flex justify-between text-sm text-white/60">
-                      <span>{c.country}</span>
-                      <span className="tabular-nums text-white/35">{c.count.toLocaleString()}</span>
+                  {summary.referrerBreakdown.map((r) => (
+                    <li key={r.label}>
+                      <div className="mb-1 flex items-center justify-between gap-2 text-sm">
+                        <span className="flex items-center gap-2 text-white/70">
+                          <span>{r.icon}</span>
+                          {r.label}
+                        </span>
+                        <span className="tabular-nums text-white/40">{r.count} ({r.percent}%)</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                        <div
+                          className="h-full rounded-full"
+                          style={{ width: `${r.percent}%`, background: `linear-gradient(90deg, ${PURPLE}, ${ACCENT})` }}
+                        />
+                      </div>
                     </li>
                   ))}
                 </ul>
               </ChartCard>
             ) : null}
 
-            {summary.referrerBreakdown.length > 0 ? (
-              <ChartCard title="Traffic sources">
+            {summary.countryBreakdown.length > 0 ? (
+              <ChartCard title="Top countries">
                 <ul className="space-y-2">
-                  {summary.referrerBreakdown.map((r) => (
-                    <li key={r.referrer} className="flex justify-between text-sm text-white/60">
-                      <span>{cleanReferrerLabel(r.referrer)}</span>
-                      <span className="tabular-nums text-white/35">{r.count.toLocaleString()}</span>
+                  {summary.countryBreakdown.map((c) => (
+                    <li key={c.country} className="flex items-center justify-between gap-2 text-sm text-white/60">
+                      <span className="flex items-center gap-2">
+                        <span>{c.flag}</span>
+                        {c.country}
+                      </span>
+                      <span className="tabular-nums text-white/35">{c.count.toLocaleString()} ({c.percent}%)</span>
                     </li>
                   ))}
                 </ul>
@@ -3450,9 +3721,9 @@ function GlobalAnalyticsPanel({
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
                     <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
                     <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
-                    <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                    <Tooltip contentStyle={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
                     <Bar dataKey="views" fill={ACCENT} name="Views" radius={[2, 2, 0, 0]} />
-                    <Bar dataKey="clicks" fill="#a855f7" name="Clicks" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="clicks" fill={PURPLE} name="Clicks" radius={[2, 2, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -3470,12 +3741,16 @@ function LuxuryStatCard({
   accent,
   pulse,
   suffix,
+  trend,
+  trendLabel,
 }: {
   label: string;
   value: number;
   accent?: boolean;
   pulse?: boolean;
   suffix?: string;
+  trend?: AnalyticsTrend;
+  trendLabel?: string;
 }) {
   return (
     <div
@@ -3493,6 +3768,11 @@ function LuxuryStatCard({
         {value.toLocaleString()}
         {suffix ? <span className="text-lg">{suffix}</span> : null}
       </p>
+      {trend ? (
+        <div className="mt-2">
+          <TrendBadge trend={trend} suffix={trendLabel} />
+        </div>
+      ) : null}
     </div>
   );
 }
