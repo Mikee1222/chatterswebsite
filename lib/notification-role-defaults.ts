@@ -131,6 +131,8 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   task: [
     eventEntry("task_started", "VA starts a task shift", "monitoring"),
     eventEntry("task_finished", "VA ends a task shift", "monitoring"),
+    eventEntry("task_shift_started", "VA task shift session started", "monitoring"),
+    eventEntry("task_shift_ended", "VA task shift session ended", "monitoring"),
     eventEntry("task_completed", "VA completes an assigned task", "personal"),
     eventEntry("task_overdue", "VA task past due date", "personal"),
     eventEntry("tasks_not_started", "Tasks not started on schedule", "monitoring"),
@@ -218,6 +220,7 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     eventEntry("billing_cycle_announced", "Client billing cycle announced", "monitoring"),
     eventEntry("billing_due_reminder", "Client payment due reminder", "monitoring"),
     eventEntry("payment_submitted", "Client payment proof submitted", "monitoring"),
+    eventEntry("billing_payment_submitted", "Client payment proof submitted (legacy)", "monitoring"),
     eventEntry("payment_confirmed", "Client payment confirmed", "monitoring"),
     eventEntry("payment_rejected", "Client payment rejected", "monitoring"),
     eventEntry("expense_approved", "Expense request approved", "monitoring"),

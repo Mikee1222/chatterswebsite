@@ -82,6 +82,7 @@ export const NOTIFICATION_EVENT = {
   BILLING_CYCLE_ANNOUNCED: "billing_cycle_announced" as const,
   BILLING_DUE_REMINDER: "billing_due_reminder" as const,
   PAYMENT_SUBMITTED: "payment_submitted" as const,
+  BILLING_PAYMENT_SUBMITTED: "billing_payment_submitted" as const,
   PAYMENT_CONFIRMED: "payment_confirmed" as const,
   PAYMENT_REJECTED: "payment_rejected" as const,
   EXPENSE_APPROVED: "expense_approved" as const,
