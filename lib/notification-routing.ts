@@ -1,18 +1,24 @@
 /**
  * Role-based notification routing matrix.
  *
- * Recipient selection must depend on event type, role, operational relevance,
- * and current assignment. "All users" is rare, not default.
- *
- * When adding or changing notifications, update this matrix and ensure callers
- * use the correct recipient set (admin_only, admin_and_actor, assigned_user_only, etc.).
+ * Recipient selection depends on event type, role, operational relevance,
+ * and current assignment. Rules align with notification scope (personal /
+ * monitoring / both) defined in lib/notification-role-defaults.ts.
  */
 
 import type { NotificationEventType } from "@/types";
 
 /** Who receives the notification. Use these when implementing or auditing send paths. */
 export type NotificationRecipientRule =
-  | "admin_only"| "assigned_user_only"| "assigned_chatter_only"| "assigned_model_only"| "admin_and_actor"| "admin_and_assigned_chatter"| "assigned_party_only"| "all_users";
+  | "admin_only"
+  | "assigned_user_only"
+  | "assigned_chatter_only"
+  | "assigned_model_only"
+  | "admin_and_actor"
+  | "admin_and_assigned_chatter"
+  | "admin_and_assigned_party"
+  | "assigned_party_only"
+  | "all_users";
 
 export type RoutingEntry = {
   rule: NotificationRecipientRule;
@@ -24,88 +30,111 @@ export type RoutingEntry = {
  * Callers must send only to the recipients implied by the rule (e.g. admin_only → notifyAdmins only).
  */
 export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> = {
-  // ---- Shift ----
+  // ---- Shift (monitoring except personal reminders) ----
   shift_started: {
-    rule: "admin_and_actor",
-    description: "Admins + the chatter/VA who started the shift (operational user).",
+    rule: "admin_only",
+    description: "Admins/managers monitor when a chatter/VA starts a shift.",
   },
   shift_ended: {
-    rule: "admin_and_actor",
-    description: "Admins + the chatter/VA who ended the shift.",
+    rule: "admin_only",
+    description: "Admins/managers monitor when a chatter/VA ends a shift.",
   },
   shift_late: {
-    rule: "admin_and_assigned_chatter",
-    description: "Scheduled late: chatter + admins (check-late-shifts). Started-late path: admins only (notifyAdminsOnce).",
+    rule: "assigned_chatter_only",
+    description: "The scheduled chatter who was late.",
   },
   shift_no_show: { rule: "admin_only", description: "Admins only (oversight)." },
   shift_overtime: { rule: "admin_only", description: "Admins only." },
   shift_running_long: { rule: "admin_only", description: "Admins only." },
   shift_starting_soon: {
     rule: "assigned_user_only",
-    description: "Scheduled chatter only (~30 min before weekly_program shift; cron).",
+    description: "Scheduled chatter/VA only (~30 min before shift; cron).",
   },
   chatter_no_models: { rule: "admin_only", description: "Admins only (chatter on shift with no models)." },
   break_started: {
-    rule: "admin_and_actor",
-    description: "Admins + the chatter who started the break.",
+    rule: "admin_only",
+    description: "Admins monitor break start.",
   },
   break_ended: {
-    rule: "admin_and_actor",
-    description: "Admins + the chatter who ended the break.",
+    rule: "admin_only",
+    description: "Admins monitor break end.",
   },
   break_exceeded: {
-    rule: "admin_and_actor",
-    description:
-      "notifyAdminsOnce to admins when break >45m; separate deduped notify to the chatter on shift (check-late-shifts).",
+    rule: "assigned_chatter_only",
+    description: "The chatter whose break exceeded 45 minutes.",
   },
-  break_too_long: { rule: "admin_only", description: "Admins only." },
+  break_too_long: {
+    rule: "assigned_chatter_only",
+    description: "The chatter whose break duration limit was exceeded.",
+  },
 
   // ---- Task shift ----
   task_shift_started: {
-    rule: "admin_and_actor",
-    description: "Admins + the VA who started the task shift.",
+    rule: "admin_only",
+    description: "Admins monitor VA task shift start.",
   },
   task_shift_ended: {
-    rule: "admin_and_actor",
-    description: "Admins + the VA who ended the task shift.",
+    rule: "admin_only",
+    description: "Admins monitor VA task shift end.",
   },
-  task_started: { rule: "admin_and_actor", description: "Admins + assigned VA." },
-  task_finished: { rule: "admin_and_actor", description: "Admins + assigned VA." },
-  task_completed: { rule: "admin_and_actor", description: "Admins + assigned user." },
-  task_overdue: { rule: "admin_only", description: "Admins only." },
+  task_started: { rule: "admin_only", description: "Admins monitor VA task start." },
+  task_finished: { rule: "admin_only", description: "Admins monitor VA task end." },
+  task_completed: {
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA + admins when a task is completed.",
+  },
+  task_overdue: {
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA reminded + admins monitor overdue task.",
+  },
   tasks_not_started: { rule: "admin_only", description: "Admins only." },
   va_task_reminder: {
     rule: "assigned_user_only",
     description: "The VA assigned to the task (reminder before due).",
   },
   phase_task_completed: { rule: "admin_only", description: "Admins only (VA checklist progress)." },
-  phase_completed: { rule: "admin_only", description: "Admins only (VA finished all items in a phase)." },
-  phase_overdue: { rule: "admin_only", description: "Admins only (scheduled phase missed)." },
-  all_phases_completed: { rule: "admin_only", description: "Admins only (all phases for a VA task done)." },
+  phase_completed: {
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA + admins when a phase is completed.",
+  },
+  phase_overdue: {
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA + admins when a phase is overdue.",
+  },
+  all_phases_completed: {
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA + admins when all phases are done.",
+  },
 
   // ---- Model (session / live) ----
   model_became_free: {
-    rule: "assigned_user_only",
-    description: "The chatter who left the model (confirmation only).",
+    rule: "admin_only",
+    description: "Admins monitor model availability on floor.",
   },
   model_taken: {
-    rule: "assigned_user_only",
-    description: "The chatter who entered the model (confirmation only).",
+    rule: "admin_only",
+    description: "Admins monitor chatter entering a model session.",
   },
   model_live_started: {
-    rule: "admin_and_assigned_chatter",
+    rule: "admin_and_assigned_party",
     description: "Admins + the chatter who currently has that model on shift.",
   },
   model_live_ended: {
-    rule: "admin_and_assigned_chatter",
+    rule: "admin_and_assigned_party",
     description: "Admins + the chatter who had that model on shift.",
   },
-  model_live_scheduled: { rule: "admin_only", description: "Admins only." },
+  model_live_scheduled: {
+    rule: "assigned_model_only",
+    description: "The model user for upcoming live stream reminder.",
+  },
   model_missed_live: { rule: "admin_only", description: "Admins only." },
-  model_content_completed: { rule: "admin_and_actor", description: "Admins + assigned party." },
+  model_content_completed: {
+    rule: "admin_and_assigned_party",
+    description: "Assigned party + admins when model content is completed.",
+  },
   model_content_scheduled: {
-    rule: "assigned_user_only",
-    description: "Assigned VA when the model picks a date for VA-delivered content.",
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA/model + admins when content is scheduled.",
   },
   va_content_assigned: {
     rule: "assigned_model_only",
@@ -113,11 +142,11 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   va_content_scheduled: {
     rule: "assigned_user_only",
-    description: "Assigned VA when a client or model schedules VA-delivered content.",
+    description: "Assigned VA when content delivery is scheduled.",
   },
   va_content_completed: {
-    rule: "assigned_user_only",
-    description: "Assigned VA when a client or model marks VA-delivered content complete.",
+    rule: "admin_and_assigned_party",
+    description: "Assigned VA + admins when content is marked complete.",
   },
   period_3_day_reminder: {
     rule: "assigned_model_only",
@@ -125,7 +154,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   period_predicted_day: {
     rule: "assigned_model_only",
-    description: "The linked model user on predicted period start day (period tracking).",
+    description: "The linked model user on predicted period start day.",
   },
   period_confirmed_early: {
     rule: "assigned_model_only",
@@ -133,7 +162,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   period_overdue: {
     rule: "assigned_model_only",
-    description: "The linked model user when expected period window needs logging (period tracking).",
+    description: "The linked model user when expected period window needs logging.",
   },
   period_prediction_reset: {
     rule: "assigned_model_only",
@@ -142,15 +171,17 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
 
   // ---- Whale ----
   whale_registered: {
-    rule: "admin_and_actor",
-    description: "Admins + the chatter who registered the whale (same dual path as shift_started).",
+    rule: "admin_only",
+    description: "Admins monitor new whale registration.",
   },
   whale_assigned: {
-    rule: "admin_and_assigned_chatter",
-    description:
-      "On chatter assignment: notifyAdmins + notify(assigned chatter). Model-only assignment: admins only. Unassign path may notify previous chatter (same Airtable event_type).",
+    rule: "assigned_chatter_only",
+    description: "The chatter assigned to the whale.",
   },
-  whale_followup: { rule: "admin_only", description: "Admins only." },
+  whale_followup: {
+    rule: "assigned_chatter_only",
+    description: "The assigned chatter when whale follow-up is due.",
+  },
   whale_spent: { rule: "admin_only", description: "Admins only." },
   whale_session_submitted: {
     rule: "admin_only",
@@ -159,50 +190,82 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
 
   // ---- Custom request ----
   custom_request_created: {
-    rule: "admin_only",
-    description:
-      "notifyAdmins for admins; **also** all active VAs receive the same event via custom-request-notify-vas.ts (queue visibility).",
+    rule: "admin_and_assigned_party",
+    description: "Admins + requesting party when a custom request is created.",
   },
-  custom_request_updated: { rule: "admin_only", description: "Admins only." },
-  custom_request_submitted: { rule: "admin_only", description: "Admins only." },
+  custom_request_updated: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom details are updated.",
+  },
+  custom_request_submitted: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom is submitted to agency.",
+  },
   custom_status_changed: {
-    rule: "assigned_party_only",
-    description: "The chatter who requested the custom (status update from admin).",
+    rule: "admin_and_assigned_party",
+    description: "Admins + the chatter who requested the custom.",
   },
-  custom_approved: { rule: "assigned_party_only", description: "Assigned party." },
-  custom_rejected: { rule: "assigned_party_only", description: "Assigned party." },
-  custom_declined: { rule: "assigned_chatter_only", description: "Chatter who requested the custom (agency decline)." },
-  custom_edited: { rule: "assigned_party_only", description: "Chatter and/or model when agency edits terms." },
+  custom_approved: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom is approved.",
+  },
+  custom_rejected: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom is rejected.",
+  },
+  custom_declined: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + chatter who requested the custom (agency decline).",
+  },
+  custom_edited: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + chatter/model when agency edits terms.",
+  },
   custom_uploaded: {
-    rule: "assigned_party_only",
-    description: "Chatter (if requester), admins, linked model user, assigned VA when model uploads (see model/custom/uploaded + notify-vas).",
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom content is uploaded.",
   },
   custom_request_uploaded: {
-    rule: "assigned_user_only",
-    description: "Assigned VA when a client or model marks a custom request as uploaded.",
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned VA when custom request file is uploaded.",
   },
   custom_scheduled: {
-    rule: "assigned_party_only",
-    description: "Chatter (if requester), admins, linked model user when model schedules (see model/custom/schedule).",
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom delivery is scheduled.",
   },
   custom_deadline_approaching: {
-    rule: "assigned_party_only",
-    description: "Requesting chatter (if any) and admins for 48h deadline window (cron-notification-jobs).",
+    rule: "admin_and_assigned_party",
+    description: "Admins + requesting party for 48h deadline window.",
   },
-  custom_overdue: { rule: "admin_only", description: "Admins only." },
+  custom_overdue: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + assigned party when custom is past deadline.",
+  },
 
   // ---- Forms / system ----
   form_submitted: { rule: "admin_only", description: "Admins only." },
-  schedule_updated: { rule: "admin_only", description: "Admins only." },
+  schedule_updated: {
+    rule: "assigned_user_only",
+    description: "Chatters/VAs when weekly schedule is updated.",
+  },
   weekly_availability_friday_reminder: {
     rule: "assigned_user_only",
-    description: "Active chatters/VAs missing next-week availability (Friday GMT+3 morning/evening cron).",
+    description: "Active chatters/VAs missing next-week availability (Friday cron).",
   },
   availability_submitted: { rule: "admin_only", description: "Admins only." },
-  system_alert: { rule: "admin_only", description: "Admins only (or all_users if broadcast)." },
-  account_update: { rule: "assigned_user_only", description: "The user whose account changed." },
+  system_alert: {
+    rule: "admin_and_assigned_party",
+    description: "Admins + targeted user for system alerts.",
+  },
+  account_update: {
+    rule: "assigned_user_only",
+    description: "The user whose account changed.",
+  },
   user_created: { rule: "admin_only", description: "Admins only." },
-  role_changed: { rule: "admin_only", description: "Admins only." },
+  role_changed: {
+    rule: "assigned_user_only",
+    description: "The user whose role changed.",
+  },
   account_deleted: { rule: "admin_only", description: "Admins only." },
   daily_summary: { rule: "admin_only", description: "Cron daily ops summary for admins." },
 
@@ -252,76 +315,94 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Learner reminded to continue SOP Academy training.",
   },
   sop_academy_training_complete: {
-    rule: "admin_only",
-    description: "Admins when a learner completes all academy steps for a role.",
+    rule: "admin_and_assigned_party",
+    description: "Admins + learner when academy training is complete.",
   },
   sop_academy_signed_off: {
-    rule: "admin_only",
-    description: "Admins when a learner signs off on academy training.",
+    rule: "admin_and_assigned_party",
+    description: "Admins + learner when academy training is signed off.",
   },
   expense_approved: {
-    rule: "assigned_party_only",
-    description: "The linked model user when an expense request is approved.",
+    rule: "admin_and_assigned_party",
+    description: "Admins + linked model when an expense request is approved.",
   },
   expense_rejected: {
-    rule: "assigned_party_only",
-    description: "The linked model user when an expense request is rejected.",
+    rule: "admin_and_assigned_party",
+    description: "Admins + linked model when an expense request is rejected.",
   },
   chatter_mistake: {
     rule: "assigned_chatter_only",
-    description: "The chatter who received the mistake; VA reporter on approve/reject flows.",
+    description: "The chatter who received the mistake.",
   },
   shadowban_report: {
-    rule: "assigned_party_only",
-    description: "The user who submitted the shadowban report.",
+    rule: "admin_and_assigned_party",
+    description: "Admins + the user who submitted the shadowban report.",
   },
 };
 
 /**
- * Subset of events where **typical** paths are admin-only. Some names here also have non-admin
- * recipients in specific flows — always prefer `NOTIFICATION_ROUTING` per event when auditing.
+ * Subset of events where **typical** paths are admin-only.
+ * Always prefer `NOTIFICATION_ROUTING` per event when auditing.
  */
 export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
-  "whale_session_submitted",
-  "whale_followup",
-  "whale_spent",
-  "custom_request_updated",
-  "custom_request_submitted",
-  "custom_overdue",
-  "form_submitted",
-  "schedule_updated",
-  "availability_submitted",
+  "shift_started",
+  "shift_ended",
   "shift_no_show",
   "shift_overtime",
   "shift_running_long",
   "chatter_no_models",
-  "break_too_long",
-  "task_overdue",
+  "break_started",
+  "break_ended",
+  "task_started",
+  "task_finished",
+  "task_shift_started",
+  "task_shift_ended",
   "tasks_not_started",
-  "phase_overdue",
-  "model_live_scheduled",
-  "model_missed_live",
-  "system_alert",
-  "user_created",
-  "role_changed",
-  "account_deleted",
-  "daily_summary",
-];
-
-/** Event types that go only to the assigned/acting user (no admins unless also admin_and_actor). */
-export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
+  "phase_task_completed",
   "model_became_free",
   "model_taken",
-  "account_update",
+  "model_missed_live",
+  "whale_registered",
+  "whale_spent",
+  "whale_session_submitted",
+  "availability_submitted",
+  "form_submitted",
+  "user_created",
+  "account_deleted",
+  "daily_summary",
+  "payment_submitted",
+  "billing_payment_submitted",
+];
+
+/** Event types that go only to the assigned/acting user (no admins). */
+export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "shift_starting_soon",
+  "shift_late",
+  "break_exceeded",
+  "break_too_long",
+  "account_update",
+  "role_changed",
   "weekly_availability_friday_reminder",
   "va_task_reminder",
+  "va_content_scheduled",
   "points_awarded",
   "level_up",
   "spin_available",
   "challenge_completed",
-  "model_content_scheduled",
   "va_content_assigned",
-  "va_content_scheduled",
-  "va_content_completed",
+  "model_live_scheduled",
+  "period_3_day_reminder",
+  "period_predicted_day",
+  "period_confirmed_early",
+  "period_overdue",
+  "period_prediction_reset",
+  "billing_cycle_announced",
+  "billing_due_reminder",
+  "payment_confirmed",
+  "payment_rejected",
+  "sop_academy_reminder",
+  "schedule_updated",
+  "whale_assigned",
+  "whale_followup",
+  "chatter_mistake",
 ];

@@ -48,34 +48,60 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<
   schedule_alerts: { en: "Schedule & availability", el: "Ειδοποιήσεις για πρόγραμμα και διαθεσιμότητα." },
 };
 
-export type NotificationCategoryEventEntry =
-  | string
-  | { key: string; label: string; note?: string };
+export type NotificationScope = "personal" | "monitoring" | "both";
 
-/** Parse event key from string entries or object entries. */
-export function parseEventKeyFromEntry(entry: NotificationCategoryEventEntry): string {
-  if (typeof entry === "object") return entry.key;
-  return entry.split(" — ")[0]?.trim() ?? entry.trim();
+export type NotificationEventEntry = {
+  key: string;
+  label: string;
+  note?: string;
+  scope: NotificationScope;
+};
+
+/** @deprecated Legacy string entries — all events use NotificationEventEntry objects now. */
+export type NotificationCategoryEventEntry = NotificationEventEntry;
+
+function eventEntry(
+  key: string,
+  label: string,
+  scope: NotificationScope,
+  note?: string
+): NotificationEventEntry {
+  return note ? { key, label, scope, note } : { key, label, scope };
 }
 
-/** Parse human label from object entries or description from string entries. */
+/** Parse event key from entries. */
+export function parseEventKeyFromEntry(entry: NotificationCategoryEventEntry): string {
+  return entry.key;
+}
+
+/** Parse human label from entries. */
 export function parseEventLabelFromEntry(entry: NotificationCategoryEventEntry): string {
-  if (typeof entry === "object") return entry.label;
-  return parseEventDescriptionFromEntry(entry);
+  return entry.label;
 }
 
 /** Optional admin note (entity-only pseudo-events). */
 export function parseEventNoteFromEntry(entry: NotificationCategoryEventEntry): string {
-  if (typeof entry === "object") return entry.note?.trim() ?? "";
-  return "";
+  return entry.note?.trim() ?? "";
 }
 
-/** Parse description from strings like "shift_started — description". */
-export function parseEventDescriptionFromEntry(entry: NotificationCategoryEventEntry): string {
-  if (typeof entry === "object") return entry.label;
-  const idx = entry.indexOf(" — ");
-  return idx >= 0 ? entry.slice(idx + 3).trim() : "";
+/** Scope: personal (assigned user), monitoring (admins), or both. */
+export function parseEventScopeFromEntry(entry: NotificationCategoryEventEntry): NotificationScope {
+  return entry.scope;
 }
+
+/** Parse description (alias for label on object entries). */
+export function parseEventDescriptionFromEntry(entry: NotificationCategoryEventEntry): string {
+  return entry.label;
+}
+
+export const NOTIFICATION_SCOPE_LABELS: Record<
+  NotificationScope,
+  { badge: string; className: string }
+> = {
+  personal: { badge: "Personal", className: "bg-blue-500/20 text-blue-200 border-blue-400/30" },
+  monitoring: { badge: "Monitor", className: "bg-amber-500/20 text-amber-200 border-amber-400/30" },
+  both: { badge: "Both", className: "bg-purple-500/20 text-purple-200 border-purple-400/30" },
+};
 
 export function isNotificationRoleCategoryKey(key: string): key is NotificationRoleCategoryKey {
   return (NOTIFICATION_ROLE_DEFAULT_KEYS as readonly string[]).includes(key);
@@ -87,205 +113,251 @@ export function isNotificationRoleCategoryKey(key: string): key is NotificationR
  */
 export const NOTIFICATION_CATEGORY_EVENTS: Record<
   NotificationRoleCategoryKey,
-  readonly NotificationCategoryEventEntry[]
+  readonly NotificationEventEntry[]
 > = {
   shift: [
-    "shift_started — Chatter/VA starts a shift",
-    "shift_ended — Chatter/VA ends a shift",
-    "shift_late — Late for a scheduled shift",
-    "shift_no_show — No-show on scheduled shift",
-    "shift_overtime — Shift overtime alert",
-    "shift_running_long — Shift running longer than expected",
-    "shift_starting_soon — Reminder before shift starts",
-    "chatter_no_models — Chatter on shift with no models",
-    "break_started — Break started",
-    "break_ended — Break ended",
-    "break_exceeded — Break over 45 minutes",
-    "break_too_long — Break duration limit exceeded",
+    eventEntry("shift_started", "Chatter/VA starts a shift", "monitoring"),
+    eventEntry("shift_ended", "Chatter/VA ends a shift", "monitoring"),
+    eventEntry("shift_late", "Late for a scheduled shift", "personal"),
+    eventEntry("shift_no_show", "No-show on scheduled shift", "monitoring"),
+    eventEntry("shift_overtime", "Shift overtime alert", "monitoring"),
+    eventEntry("shift_running_long", "Shift running longer than expected", "monitoring"),
+    eventEntry("shift_starting_soon", "Reminder before shift starts", "personal"),
+    eventEntry("chatter_no_models", "Chatter on shift with no models", "monitoring"),
+    eventEntry("break_started", "Break started", "monitoring"),
+    eventEntry("break_ended", "Break ended", "monitoring"),
+    eventEntry("break_exceeded", "Break over 45 minutes", "personal"),
+    eventEntry("break_too_long", "Break duration limit exceeded", "personal"),
   ],
   task: [
-    "task_started — VA starts a task shift",
-    "task_finished — VA ends a task shift",
-    "task_completed — VA completes an assigned task",
-    "task_overdue — VA task past due date",
-    "tasks_not_started — Tasks not started on schedule",
-    "va_task_reminder — Reminder before VA task due",
-    "model_content_scheduled — Model schedules content assignment",
-    "model_content_completed — Model marks content complete",
-    "va_content_assigned — VA receives a content assignment",
-    "va_content_scheduled — VA content delivery scheduled",
-    "va_content_completed — VA content marked complete",
-    "custom_request_uploaded — Custom request file uploaded",
+    eventEntry("task_started", "VA starts a task shift", "monitoring"),
+    eventEntry("task_finished", "VA ends a task shift", "monitoring"),
+    eventEntry("task_completed", "VA completes an assigned task", "both"),
+    eventEntry("task_overdue", "VA task past due date", "both"),
+    eventEntry("tasks_not_started", "Tasks not started on schedule", "monitoring"),
+    eventEntry("va_task_reminder", "Reminder before VA task due", "personal"),
+    eventEntry("model_content_scheduled", "Model schedules content assignment", "both"),
+    eventEntry("model_content_completed", "Model marks content complete", "both"),
+    eventEntry("va_content_assigned", "VA receives a content assignment", "personal"),
+    eventEntry("va_content_scheduled", "VA content delivery scheduled", "personal"),
+    eventEntry("va_content_completed", "VA content marked complete", "both"),
+    eventEntry("custom_request_uploaded", "Custom request file uploaded", "both"),
   ],
   phase: [
-    "phase_task_completed — VA completes a phase checklist item",
-    "phase_completed — VA completes all items in a phase",
-    "phase_overdue — VA phase missed deadline",
-    "all_phases_completed — All phases done for a VA task",
+    eventEntry("phase_task_completed", "VA completes a phase checklist item", "monitoring"),
+    eventEntry("phase_completed", "VA completes all items in a phase", "both"),
+    eventEntry("phase_overdue", "VA phase missed deadline", "both"),
+    eventEntry("all_phases_completed", "All phases done for a VA task", "both"),
   ],
   model: [
-    "model_became_free — Model becomes available on floor",
-    "model_taken — Chatter enters a model session",
-    "model_live_started — Model goes live",
-    "model_live_ended — Model live stream ended",
-    "model_live_scheduled — Upcoming live stream reminder",
-    "model_missed_live — Model missed scheduled live",
+    eventEntry("model_became_free", "Model becomes available on floor", "monitoring"),
+    eventEntry("model_taken", "Chatter enters a model session", "monitoring"),
+    eventEntry("model_live_started", "Model goes live", "both"),
+    eventEntry("model_live_ended", "Model live stream ended", "both"),
+    eventEntry("model_live_scheduled", "Upcoming live stream reminder", "personal"),
+    eventEntry("model_missed_live", "Model missed scheduled live", "monitoring"),
   ],
   period: [
-    "period_3_day_reminder — Period expected in ~3 days",
-    "period_predicted_day — Predicted period start today",
-    "period_confirmed_early — Period logged earlier than predicted",
-    "period_overdue — Period logging overdue",
-    "period_prediction_reset — Period prediction reset",
+    eventEntry("period_3_day_reminder", "Period expected in ~3 days", "personal"),
+    eventEntry("period_predicted_day", "Predicted period start today", "personal"),
+    eventEntry("period_confirmed_early", "Period logged earlier than predicted", "personal"),
+    eventEntry("period_overdue", "Period logging overdue", "personal"),
+    eventEntry("period_prediction_reset", "Period prediction reset", "personal"),
   ],
   whale: [
-    "whale_registered — New whale registered",
-    "whale_assigned — Whale assigned to chatter or model",
-    "whale_spent — Whale spending logged",
-    "whale_followup — Whale follow-up due",
-    "whale_session_submitted — Chatter logs a whale session",
+    eventEntry("whale_registered", "New whale registered", "monitoring"),
+    eventEntry("whale_assigned", "Whale assigned to chatter or model", "personal"),
+    eventEntry("whale_spent", "Whale spending logged", "monitoring"),
+    eventEntry("whale_followup", "Whale follow-up due", "personal"),
+    eventEntry("whale_session_submitted", "Chatter logs a whale session", "monitoring"),
   ],
   mistake: [
-    {
-      key: "chatter_mistake",
-      label: "Mistake logged or updated",
-      note: "Entity-gated: uses chatter_mistake entity_type; event_type is chatter_mistake on approve/reject.",
-    },
+    eventEntry(
+      "chatter_mistake",
+      "Mistake logged or updated",
+      "personal",
+      "Entity-gated: uses chatter_mistake entity_type; event_type is chatter_mistake on approve/reject."
+    ),
   ],
   fine_bonus: [
-    {
-      key: "fine_bonus",
-      label: "Fine or bonus submitted or reviewed",
-      note: "Entity-gated only — no standalone event_type; preference follows fine_bonus entity_type.",
-    },
+    eventEntry(
+      "fine_bonus",
+      "Fine or bonus submitted or reviewed",
+      "personal",
+      "Entity-gated only — no standalone event_type; preference follows fine_bonus entity_type."
+    ),
   ],
   reward: [
-    "points_awarded — Points earned",
-    "level_up — Rewards tier level up",
-    "spin_available — Spin wheel credit available",
-    "challenge_completed — Live challenge completed",
+    eventEntry("points_awarded", "Points earned", "personal"),
+    eventEntry("level_up", "Rewards tier level up", "personal"),
+    eventEntry("spin_available", "Spin wheel credit available", "personal"),
+    eventEntry("challenge_completed", "Live challenge completed", "personal"),
   ],
   marketing: [
-    {
-      key: "shadowban_report",
-      label: "Shadowban report submitted or reviewed",
-      note: "Entity-gated: event_type shadowban_report on review; entity_type shadowban_report.",
-    },
+    eventEntry(
+      "shadowban_report",
+      "Shadowban report submitted or reviewed",
+      "both",
+      "Entity-gated: event_type shadowban_report on review; entity_type shadowban_report."
+    ),
   ],
   custom_request_alerts: [
-    "custom_request_created — New custom request submitted",
-    "custom_request_submitted — Custom request sent to agency",
-    "custom_request_updated — Custom request details updated",
-    "custom_status_changed — Custom request status changed",
-    "custom_approved — Custom request approved by agency",
-    "custom_rejected — Custom request rejected",
-    "custom_declined — Custom request declined by agency",
-    "custom_edited — Custom request terms edited",
-    "custom_uploaded — Custom content uploaded",
-    "custom_scheduled — Custom delivery scheduled",
-    "custom_deadline_approaching — Custom deadline in 48h",
-    "custom_overdue — Custom request past deadline",
+    eventEntry("custom_request_created", "New custom request submitted", "both"),
+    eventEntry("custom_request_submitted", "Custom request sent to agency", "both"),
+    eventEntry("custom_request_updated", "Custom request details updated", "both"),
+    eventEntry("custom_status_changed", "Custom request status changed", "both"),
+    eventEntry("custom_approved", "Custom request approved by agency", "both"),
+    eventEntry("custom_rejected", "Custom request rejected", "both"),
+    eventEntry("custom_declined", "Custom request declined by agency", "both"),
+    eventEntry("custom_edited", "Custom request terms edited", "both"),
+    eventEntry("custom_uploaded", "Custom content uploaded", "both"),
+    eventEntry("custom_scheduled", "Custom delivery scheduled", "both"),
+    eventEntry("custom_deadline_approaching", "Custom deadline in 48h", "both"),
+    eventEntry("custom_overdue", "Custom request past deadline", "both"),
   ],
   billing_alerts: [
-    "billing_cycle_announced — Client billing cycle announced",
-    "billing_due_reminder — Client payment due reminder",
-    "payment_submitted — Client payment proof submitted",
-    "payment_confirmed — Client payment confirmed",
-    "payment_rejected — Client payment rejected",
-    "expense_approved — Expense request approved",
-    "expense_rejected — Expense request declined",
+    eventEntry("billing_cycle_announced", "Client billing cycle announced", "monitoring"),
+    eventEntry("billing_due_reminder", "Client payment due reminder", "monitoring"),
+    eventEntry("payment_submitted", "Client payment proof submitted", "monitoring"),
+    eventEntry("payment_confirmed", "Client payment confirmed", "monitoring"),
+    eventEntry("payment_rejected", "Client payment rejected", "monitoring"),
+    eventEntry("expense_approved", "Expense request approved", "monitoring"),
+    eventEntry("expense_rejected", "Expense request declined", "monitoring"),
   ],
   training_alerts: [
-    "sop_academy_reminder — SOP Academy training reminder",
-    "sop_academy_training_complete — SOP Academy training complete",
-    "sop_academy_signed_off — SOP Academy sign-off",
+    eventEntry("sop_academy_reminder", "SOP Academy training reminder", "personal"),
+    eventEntry("sop_academy_training_complete", "SOP Academy training complete", "both"),
+    eventEntry("sop_academy_signed_off", "SOP Academy sign-off", "both"),
   ],
   schedule_alerts: [
-    "schedule_updated — Weekly schedule updated",
-    "weekly_availability_friday_reminder — Friday availability reminder",
-    "availability_submitted — Availability submitted",
+    eventEntry("schedule_updated", "Weekly schedule updated", "personal"),
+    eventEntry("weekly_availability_friday_reminder", "Friday availability reminder", "personal"),
+    eventEntry("availability_submitted", "Availability submitted", "monitoring"),
   ],
   system: [
-    "system_alert — General system message",
-    "user_created — New user account created",
-    "role_changed — User role changed",
-    "account_deleted — Account deleted",
-    "account_update — Account settings changed",
-    "daily_summary — Daily operations summary",
-    "form_submitted — Form submitted",
+    eventEntry("system_alert", "General system message", "both"),
+    eventEntry("user_created", "New user account created", "monitoring"),
+    eventEntry("role_changed", "User role changed", "personal"),
+    eventEntry("account_deleted", "Account deleted", "monitoring"),
+    eventEntry("account_update", "Account settings changed", "personal"),
+    eventEntry("daily_summary", "Daily operations summary", "monitoring"),
+    eventEntry("form_submitted", "Form submitted", "monitoring"),
   ],
 };
 
-function buildCategoryOnlyDefaults(
-  categories: Record<NotificationRoleCategoryKey, boolean>
-): NotificationRoleDefaults {
-  return { ...categories };
+/** Roles that receive personal/both events by default (non-admin assigned party). */
+export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = {
+  shift_late: ["chatter", "virtual_assistant"],
+  shift_starting_soon: ["chatter", "virtual_assistant"],
+  break_exceeded: ["chatter"],
+  break_too_long: ["chatter"],
+  va_task_reminder: ["virtual_assistant"],
+  va_content_assigned: ["model"],
+  va_content_scheduled: ["virtual_assistant"],
+  va_content_completed: ["virtual_assistant"],
+  model_content_scheduled: ["model", "virtual_assistant"],
+  model_content_completed: ["model", "virtual_assistant"],
+  task_completed: ["virtual_assistant"],
+  task_overdue: ["virtual_assistant"],
+  custom_request_uploaded: ["chatter", "model", "virtual_assistant"],
+  custom_request_created: ["chatter", "model", "virtual_assistant"],
+  custom_request_submitted: ["chatter", "model", "virtual_assistant"],
+  custom_request_updated: ["chatter", "model", "virtual_assistant"],
+  custom_status_changed: ["chatter", "model", "virtual_assistant"],
+  custom_approved: ["chatter", "model", "virtual_assistant"],
+  custom_rejected: ["chatter", "model", "virtual_assistant"],
+  custom_declined: ["chatter", "model", "virtual_assistant"],
+  custom_edited: ["chatter", "model", "virtual_assistant"],
+  custom_uploaded: ["chatter", "model", "virtual_assistant"],
+  custom_scheduled: ["chatter", "model", "virtual_assistant"],
+  custom_deadline_approaching: ["chatter", "model", "virtual_assistant"],
+  custom_overdue: ["chatter", "model", "virtual_assistant"],
+  phase_completed: ["virtual_assistant"],
+  phase_overdue: ["virtual_assistant"],
+  all_phases_completed: ["virtual_assistant"],
+  model_live_started: ["chatter"],
+  model_live_ended: ["chatter"],
+  model_live_scheduled: ["model"],
+  period_3_day_reminder: ["model"],
+  period_predicted_day: ["model"],
+  period_confirmed_early: ["model"],
+  period_overdue: ["model"],
+  period_prediction_reset: ["model"],
+  whale_assigned: ["chatter"],
+  whale_followup: ["chatter"],
+  chatter_mistake: ["chatter"],
+  fine_bonus: ["chatter"],
+  points_awarded: ["chatter"],
+  level_up: ["chatter"],
+  spin_available: ["chatter"],
+  challenge_completed: ["chatter"],
+  shadowban_report: ["chatter", "virtual_assistant", "model"],
+  billing_cycle_announced: ["client"],
+  billing_due_reminder: ["client"],
+  payment_confirmed: ["client"],
+  payment_rejected: ["client"],
+  expense_approved: ["model"],
+  expense_rejected: ["model"],
+  sop_academy_reminder: ["chatter", "virtual_assistant"],
+  sop_academy_training_complete: ["chatter", "virtual_assistant"],
+  sop_academy_signed_off: ["chatter", "virtual_assistant"],
+  schedule_updated: ["chatter", "virtual_assistant"],
+  weekly_availability_friday_reminder: ["chatter", "virtual_assistant"],
+  role_changed: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
+  account_update: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
+  system_alert: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
+};
+
+function isAdminRole(role: UserRole): boolean {
+  return role === "admin" || role === "manager";
 }
 
-function withEventDefaults(
-  categories: Record<NotificationRoleCategoryKey, boolean>
-): NotificationRoleDefaults {
-  const result = buildCategoryOnlyDefaults(categories);
+/** Derive per-event default from scope and target role. */
+export function deriveEventDefaultForRole(
+  scope: NotificationScope,
+  role: UserRole,
+  eventKey: string
+): boolean {
+  const targets = EVENT_TARGET_ROLES[eventKey];
+  const isTarget = targets?.includes(role) ?? false;
+  switch (scope) {
+    case "monitoring":
+      return isAdminRole(role) || isTarget;
+    case "personal":
+      return isTarget;
+    case "both":
+      return isAdminRole(role) || isTarget;
+  }
+}
+
+function buildScopedRoleDefaults(role: UserRole): NotificationRoleDefaults {
+  const categories = {} as Record<NotificationRoleCategoryKey, boolean>;
+  const result = {} as NotificationRoleDefaults;
+
   for (const catKey of NOTIFICATION_ROLE_DEFAULT_KEYS) {
+    let catOn = false;
     for (const entry of NOTIFICATION_CATEGORY_EVENTS[catKey]) {
       const eventKey = parseEventKeyFromEntry(entry);
-      (result as Record<string, boolean>)[eventKey] = categories[catKey];
+      const scope = parseEventScopeFromEntry(entry);
+      const eventOn = deriveEventDefaultForRole(scope, role, eventKey);
+      (result as Record<string, boolean>)[eventKey] = eventOn;
+      if (eventOn) catOn = true;
     }
+    categories[catKey] = catOn;
+    result[catKey] = catOn;
   }
+
   return result;
 }
 
-const ALL_TRUE_CATEGORIES = Object.fromEntries(
-  NOTIFICATION_ROLE_DEFAULT_KEYS.map((k) => [k, true])
-) as Record<NotificationRoleCategoryKey, boolean>;
-
-const ALL_FALSE_CATEGORIES = Object.fromEntries(
-  NOTIFICATION_ROLE_DEFAULT_KEYS.map((k) => [k, false])
-) as Record<NotificationRoleCategoryKey, boolean>;
-
-const ALL_TRUE = withEventDefaults(ALL_TRUE_CATEGORIES);
-const ALL_FALSE = withEventDefaults(ALL_FALSE_CATEGORIES);
-
-/** Built-in defaults per system role slug (lowercase). */
+/** Built-in defaults per system role slug (lowercase), derived from event scope. */
 export const DEFAULT_NOTIFICATION_DEFAULTS: Record<UserRole, NotificationRoleDefaults> = {
-  admin: { ...ALL_TRUE },
-  manager: { ...ALL_TRUE },
-  chatter: withEventDefaults({
-    ...ALL_FALSE_CATEGORIES,
-    shift: true,
-    whale: true,
-    model: true,
-    mistake: true,
-    fine_bonus: true,
-    reward: true,
-    system: true,
-    custom_request_alerts: true,
-    training_alerts: true,
-    schedule_alerts: true,
-  }),
-  virtual_assistant: withEventDefaults({
-    ...ALL_FALSE_CATEGORIES,
-    task: true,
-    phase: true,
-    model: true,
-    system: true,
-    marketing: true,
-    custom_request_alerts: true,
-    training_alerts: true,
-    schedule_alerts: true,
-  }),
-  model: withEventDefaults({
-    ...ALL_FALSE_CATEGORIES,
-    model: true,
-    period: true,
-    system: true,
-    custom_request_alerts: true,
-  }),
-  client: withEventDefaults({
-    ...ALL_FALSE_CATEGORIES,
-    system: true,
-    billing_alerts: true,
-  }),
+  admin: buildScopedRoleDefaults("admin"),
+  manager: buildScopedRoleDefaults("manager"),
+  chatter: buildScopedRoleDefaults("chatter"),
+  virtual_assistant: buildScopedRoleDefaults("virtual_assistant"),
+  model: buildScopedRoleDefaults("model"),
+  client: buildScopedRoleDefaults("client"),
 };
 
 export function getBuiltInNotificationDefaults(roleName: string): NotificationRoleDefaults | null {
@@ -298,7 +370,7 @@ export function getBuiltInNotificationDefaults(roleName: string): NotificationRo
 
 export function getFallbackNotificationDefaults(roleName: string): NotificationRoleDefaults {
   return normalizeNotificationDefaults(
-    getBuiltInNotificationDefaults(roleName) ?? { ...ALL_TRUE }
+    getBuiltInNotificationDefaults(roleName) ?? buildScopedRoleDefaults("admin")
   );
 }
 

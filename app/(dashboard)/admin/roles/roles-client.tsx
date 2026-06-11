@@ -24,10 +24,12 @@ import {
   normalizeNotificationDefaults,
   NOTIFICATION_CATEGORY_EVENTS,
   NOTIFICATION_CATEGORY_GROUPS,
+  NOTIFICATION_SCOPE_LABELS,
   notificationDefaultsEqual,
   parseEventDescriptionFromEntry,
   parseEventKeyFromEntry,
   parseEventNoteFromEntry,
+  parseEventScopeFromEntry,
   getEventDefaultValue,
   type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
@@ -687,6 +689,40 @@ export function AdminRolesClient({
                       {allNotificationCategoriesExpanded ? "Collapse all" : "Expand all"}
                     </button>
                   </div>
+                  <div className="mb-5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
+                      Notification scope
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {(Object.keys(NOTIFICATION_SCOPE_LABELS) as Array<
+                        keyof typeof NOTIFICATION_SCOPE_LABELS
+                      >).map((scopeKey) => {
+                        const scopeStyle = NOTIFICATION_SCOPE_LABELS[scopeKey];
+                        return (
+                          <span
+                            key={scopeKey}
+                            className={cn(
+                              "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                              scopeStyle.className
+                            )}
+                          >
+                            {scopeStyle.badge}
+                          </span>
+                        );
+                      })}
+                    </div>
+                    <ul className="mt-3 space-y-1 text-xs leading-relaxed text-white/40">
+                      <li>
+                        <span className="font-medium text-white/55">Personal</span> — sent only to the user this event is about
+                      </li>
+                      <li>
+                        <span className="font-medium text-white/55">Monitor</span> — sent to admins/managers overseeing the team
+                      </li>
+                      <li>
+                        <span className="font-medium text-white/55">Both</span> — sent to the assigned user and admins
+                      </li>
+                    </ul>
+                  </div>
                   <div className="space-y-6">
                     {NOTIFICATION_CATEGORY_GROUPS.map((group) => (
                       <div key={group.key}>
@@ -736,6 +772,8 @@ export function AdminRolesClient({
                                       const eventKey = parseEventKeyFromEntry(entry);
                                       const eventDescription = parseEventDescriptionFromEntry(entry);
                                       const eventNote = parseEventNoteFromEntry(entry);
+                                      const eventScope = parseEventScopeFromEntry(entry);
+                                      const scopeStyle = NOTIFICATION_SCOPE_LABELS[eventScope];
                                       const eventChecked = getEventDefaultValue(
                                         draft.notification_defaults,
                                         cat.key,
@@ -754,15 +792,20 @@ export function AdminRolesClient({
                                               categoryOn ? "cursor-pointer" : "cursor-not-allowed"
                                             )}
                                           >
-                                            <p className="text-[13px] leading-snug text-white/50">
+                                            <p className="flex flex-wrap items-center gap-2 text-[13px] leading-snug text-white/50">
                                               <span className="font-mono text-[11px] text-white/35">
                                                 {eventKey}
                                               </span>
+                                              <span
+                                                className={cn(
+                                                  "inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                                                  scopeStyle.className
+                                                )}
+                                              >
+                                                {scopeStyle.badge}
+                                              </span>
                                               {eventDescription ? (
-                                                <>
-                                                  {" "}
-                                                  <span className="text-white/45">— {eventDescription}</span>
-                                                </>
+                                                <span className="text-white/45">— {eventDescription}</span>
                                               ) : null}
                                             </p>
                                             {eventNote ? (
