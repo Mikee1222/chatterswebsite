@@ -1,11 +1,31 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { headers as getRequestHeaders } from "next/headers";
 import { getLinkPageBySlug } from "@/services/link-pages";
 import { trackPageView, extractClientIp } from "@/services/link-page-analytics";
 import type { LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
 
 export const dynamic = "force-dynamic";
+
+const LINK_PAGE_CSP = [
+  "default-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "script-src 'self' 'unsafe-inline'",
+  "img-src https: data: blob:",
+  "font-src 'self'",
+  "connect-src 'self'",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join("; ");
+
+export async function headers(): Promise<HeadersInit> {
+  return {
+    "Content-Security-Policy": LINK_PAGE_CSP,
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+  };
+}
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -173,11 +193,14 @@ function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): stri
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const page = await getLinkPageBySlug(slug);
-  if (!page || page.status !== "published") return { title: "Not found" };
+  if (!page || page.status !== "published") {
+    return { title: "Not found", robots: { index: false, follow: false } };
+  }
   const desc = page.meta_description || page.bio || page.title;
   return {
     title: page.title,
     description: desc,
+    robots: { index: false, follow: false },
     openGraph: {
       title: page.title,
       description: desc,
@@ -205,7 +228,7 @@ export default async function LinkPagePublic({ params }: Props) {
     notFound();
   }
 
-  const hdrs = await headers();
+  const hdrs = await getRequestHeaders();
   trackPageView({
     pageId: page.page_id,
     ip: extractClientIp(hdrs),

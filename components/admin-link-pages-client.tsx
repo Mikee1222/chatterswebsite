@@ -42,6 +42,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LinkPageLivePreview } from "@/components/link-pages/link-page-live-preview";
+import { LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type {
@@ -80,14 +81,49 @@ function localToast(title: string, body: string, priority: "normal" | "high"): A
   };
 }
 
-const PLATFORM_PRESETS: Array<{ icon: string; label: string; urlPrefix: string }> = [
-  { icon: "📸", label: "Instagram", urlPrefix: "https://instagram.com/" },
-  { icon: "🎵", label: "TikTok", urlPrefix: "https://tiktok.com/@" },
-  { icon: "🔞", label: "OnlyFans", urlPrefix: "https://onlyfans.com/" },
-  { icon: "𝕏", label: "X / Twitter", urlPrefix: "https://x.com/" },
-  { icon: "▶", label: "YouTube", urlPrefix: "https://youtube.com/" },
-  { icon: "💬", label: "Telegram", urlPrefix: "https://t.me/" },
-];
+const COLOR_SWATCH_STYLE: React.CSSProperties = {
+  width: 48,
+  height: 48,
+  borderRadius: "50%",
+  border: "none",
+  cursor: "pointer",
+  padding: 0,
+  background: "none",
+};
+
+function toColorInputValue(hex: string | undefined, fallback: string): string {
+  if (!hex) return fallback;
+  const trimmed = hex.trim();
+  const full = trimmed.match(/^#([0-9a-fA-F]{6})$/);
+  if (full) return `#${full[1].toLowerCase()}`;
+  const short = trimmed.match(/^#([0-9a-fA-F]{3})$/);
+  if (short) {
+    const [r, g, b] = short[1].split("");
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return fallback;
+}
+
+function NativeColorSwatch({
+  value,
+  fallback,
+  onChange,
+}: {
+  value: string | undefined;
+  fallback: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <input
+      type="color"
+      value={toColorInputValue(value, fallback)}
+      onChange={(e) => onChange(e.target.value)}
+      style={COLOR_SWATCH_STYLE}
+    />
+  );
+}
+
+const PLATFORM_PRESETS = LINK_PAGE_PLATFORMS.filter((p) => p.id !== "custom");
 
 const BLOCK_TYPES: Array<{ value: LinkPageBlockType; label: string; icon: string }> = [
   { value: "link", label: "Link", icon: "🔗" },
@@ -1078,34 +1114,34 @@ function EditorPanel({
           </select>
         </Field>
         <Field label="Background value">
-          <FormInput
-            value={page.background_value}
-            onChange={(e) => onSave({ background_value: e.target.value })}
-            placeholder="#0a0a0a or linear-gradient(...) or image URL"
-          />
+          {page.background_type === "color" ? (
+            <NativeColorSwatch
+              value={page.background_value}
+              fallback="#0a0a0a"
+              onChange={(v) => onSave({ background_value: v })}
+            />
+          ) : (
+            <FormInput
+              value={page.background_value}
+              onChange={(e) => onSave({ background_value: e.target.value })}
+              placeholder={page.background_type === "gradient" ? "linear-gradient(...)" : "Image URL"}
+            />
+          )}
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Primary color">
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={page.primary_color || ACCENT}
-                onChange={(e) => onSave({ primary_color: e.target.value })}
-                className="h-9 w-9 cursor-pointer rounded border-0 bg-transparent"
-              />
-              <FormInput value={page.primary_color} onChange={(e) => onSave({ primary_color: e.target.value })} />
-            </div>
+            <NativeColorSwatch
+              value={page.primary_color}
+              fallback={ACCENT}
+              onChange={(v) => onSave({ primary_color: v })}
+            />
           </Field>
           <Field label="Accent color">
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={page.accent_color || "#a855f7"}
-                onChange={(e) => onSave({ accent_color: e.target.value })}
-                className="h-9 w-9 cursor-pointer rounded border-0 bg-transparent"
-              />
-              <FormInput value={page.accent_color} onChange={(e) => onSave({ accent_color: e.target.value })} />
-            </div>
+            <NativeColorSwatch
+              value={page.accent_color}
+              fallback="#a855f7"
+              onChange={(v) => onSave({ accent_color: v })}
+            />
           </Field>
         </div>
       </AccordionSection>
@@ -1234,6 +1270,34 @@ function BlockEditor({
         <>
           <FormInput value={block.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Label" />
           <FormInput value={block.url} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://…" />
+          <div className="space-y-1">
+            <p className="text-[10px] text-white/30">Platform icon</p>
+            <div className="flex flex-wrap gap-1">
+              {LINK_PAGE_PLATFORMS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  title={p.label}
+                  onClick={() => {
+                    const patch: Partial<LinkPageBlockRecord> = { icon: p.icon };
+                    if (p.id !== "custom" && p.urlPrefix && !block.url) {
+                      patch.label = block.label || p.label;
+                      patch.url = p.urlPrefix;
+                    }
+                    onChange(patch);
+                  }}
+                  className={cn(
+                    "inline-flex h-8 w-8 items-center justify-center rounded-lg border text-base transition-colors",
+                    block.icon === p.icon
+                      ? "border-pink-500/40 bg-pink-500/10"
+                      : "border-white/10 hover:border-pink-500/30"
+                  )}
+                >
+                  {p.icon}
+                </button>
+              ))}
+            </div>
+          </div>
           <FormInput value={block.icon} onChange={(e) => onChange({ icon: e.target.value })} placeholder="Icon (emoji or text)" />
           {block.block_type === "link" ? (
             <FormInput value={block.sublabel} onChange={(e) => onChange({ sublabel: e.target.value })} placeholder="Sublabel (optional)" />

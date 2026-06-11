@@ -82,3 +82,19 @@ export const LINK_PAGE_BLOCK_TYPES = [
 export const LINK_PAGE_BLOCK_STYLES = ["default", "prominent", "subtle", "pill", "card"] as const;
 export const LINK_PAGE_ANALYTICS_EVENT_TYPES = ["page_view", "link_click"] as const;
 export const LINK_PAGE_DEVICE_TYPES = ["mobile", "desktop", "tablet"] as const;
+
+/** Allowed social platforms for link-page presets and icon pickers (no adult platforms). */
+export const LINK_PAGE_PLATFORMS = [
+  { id: "instagram", label: "Instagram", icon: "📸", urlPrefix: "https://instagram.com/" },
+  { id: "tiktok", label: "TikTok", icon: "🎵", urlPrefix: "https://tiktok.com/@" },
+  { id: "telegram", label: "Telegram", icon: "💬", urlPrefix: "https://t.me/" },
+  { id: "twitter", label: "X / Twitter", icon: "𝕏", urlPrefix: "https://x.com/" },
+  { id: "youtube", label: "YouTube", icon: "▶", urlPrefix: "https://youtube.com/" },
+  { id: "snapchat", label: "Snapchat", icon: "👻", urlPrefix: "https://snapchat.com/add/" },
+  { id: "pinterest", label: "Pinterest", icon: "📌", urlPrefix: "https://pinterest.com/" },
+  { id: "discord", label: "Discord", icon: "🎮", urlPrefix: "https://discord.gg/" },
+  { id: "whatsapp", label: "WhatsApp", icon: "📱", urlPrefix: "https://wa.me/" },
+  { id: "custom", label: "Custom", icon: "🔗", urlPrefix: "" },
+] as const;
+
+export type LinkPagePlatformId = (typeof LINK_PAGE_PLATFORMS)[number]["id"];
