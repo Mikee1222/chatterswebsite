@@ -73,13 +73,13 @@ export function AccountsView({ users, modelss, roles, stats, canCreate, success,
             <Plus className="h-4 w-4" aria-hidden />
             New user
           </Link>
-        ) : section === "modelss" ? (
+        ) : section === "modelss" && canCreate ? (
           <Link
             href={ROUTES.accountsModelssNew}
-            className="inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-xl bg-[hsl(330,80%,55%)] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-[hsl(330,80%,50%)]"
+            className="inline-flex min-h-[44px] items-center justify-center gap-2 self-start rounded-xl bg-[hsl(330,80%,55%)] px-5 py-2.5 text-sm font-medium text-white shadow-[0_0_28px_-8px_rgba(236,72,153,0.45)] transition hover:bg-[hsl(330,80%,50%)]"
           >
             <Plus className="h-4 w-4" aria-hidden />
-            Create model
+            New model
           </Link>
         ) : null}
       </div>
@@ -158,9 +158,10 @@ export function AccountsView({ users, modelss, roles, stats, canCreate, success,
       {section === "modelss" && (
         <>
           <p className="text-sm text-white/55">
-            Create and manage modelss. Current status and current chatter are shown when a model is in use.
+            {modelss.length} model{modelss.length === 1 ? "" : "s"} · create and manage models, chatter
+            occupancy, and payment details
           </p>
-          <div className="glass-card overflow-hidden">
+          <div className="glass-card overflow-hidden p-4 sm:p-5">
             <ModelssTable modelss={modelss} />
           </div>
         </>
