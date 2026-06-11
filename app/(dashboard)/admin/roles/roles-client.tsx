@@ -21,6 +21,7 @@ import {
 } from "@/lib/permissions";
 import {
   getFallbackNotificationDefaults,
+  NOTIFICATION_CATEGORY_EVENTS,
   NOTIFICATION_CATEGORY_GROUPS,
   notificationDefaultsEqual,
   type NotificationRoleDefaults,
@@ -632,20 +633,40 @@ export function AdminRolesClient({
                           {group.categories.map((cat) => {
                             const checked = draft.notification_defaults[cat.key];
                             const switchId = `notif-default-${draft.id}-${cat.key}`;
+                            const categoryEvents = NOTIFICATION_CATEGORY_EVENTS[cat.key];
                             return (
-                              <li
-                                key={cat.key}
-                                className="flex items-center justify-between gap-3 rounded-lg px-2 py-2.5"
-                              >
-                                <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
-                                  <p className="text-sm font-medium text-white/80">{cat.label}</p>
-                                  <p className="mt-0.5 text-xs text-white/40">{cat.description}</p>
-                                </label>
-                                <PermissionSwitch
-                                  id={switchId}
-                                  checked={checked}
-                                  onChange={(next) => toggleNotificationCategory(cat.key, next)}
-                                />
+                              <li key={cat.key} className="rounded-lg px-2 py-2.5">
+                                <div className="flex items-center justify-between gap-3">
+                                  <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
+                                    <p className="text-sm font-medium text-white/80">{cat.label}</p>
+                                    <p className="mt-0.5 text-xs text-white/40">{cat.description}</p>
+                                  </label>
+                                  <PermissionSwitch
+                                    id={switchId}
+                                    checked={checked}
+                                    onChange={(next) => toggleNotificationCategory(cat.key, next)}
+                                  />
+                                </div>
+                                <ul className="mt-2 space-y-1 border-l border-white/10 pl-3">
+                                  {categoryEvents.map((entry) => (
+                                    <li
+                                      key={entry}
+                                      className="flex items-start gap-2 text-[11px] leading-snug text-white/38"
+                                    >
+                                      <span
+                                        className={cn(
+                                          "mt-1.5 h-1 w-1 shrink-0 rounded-full",
+                                          checked ? "bg-pink-400/70" : "bg-white/25"
+                                        )}
+                                        aria-hidden
+                                      />
+                                      <span>{entry}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                                <p className="mt-2 pl-3 text-[10px] text-white/30">
+                                  When ON: user receives these notifications
+                                </p>
                               </li>
                             );
                           })}
