@@ -24,6 +24,7 @@ import {
   normalizeNotificationDefaults,
   NOTIFICATION_CATEGORY_EVENTS,
   NOTIFICATION_CATEGORY_GROUPS,
+  NOTIFICATION_CATEGORY_LABELS,
   NOTIFICATION_SCOPE_LABELS,
   notificationDefaultsEqual,
   parseEventDescriptionFromEntry,
@@ -33,6 +34,7 @@ import {
   getEventDefaultValue,
   type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
+  type NotificationScope,
 } from "@/lib/notification-role-defaults";
 import { cn } from "@/lib/utils";
 import type { RoleRecord } from "@/types";
@@ -164,6 +166,71 @@ function PermissionSwitch({
 function RoleColorDot({ color }: { color: string }) {
   const cfg = SOP_COLOR_STYLES[(color as RoleColor) in SOP_COLOR_STYLES ? (color as RoleColor) : "gray"];
   return <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", cfg.dot)} />;
+}
+
+function isOversightRole(roleId: string): boolean {
+  const slug = roleId.toLowerCase();
+  return slug === "admin" || slug === "manager";
+}
+
+function getScopeTooltip(scope: NotificationScope, roleLabel: string): string {
+  switch (scope) {
+    case "personal":
+      return `Sent only to the specific ${roleLabel} this event is about`;
+    case "monitoring":
+      return `Sent to all ${roleLabel}s when this happens to anyone`;
+    case "both":
+      return `Sent to the ${roleLabel} involved + other roles that have it ON`;
+  }
+}
+
+const ROLE_CATEGORY_DESCRIPTION_PATTERNS: Record<NotificationRoleCategoryKey, string> = {
+  shift: "Ειδοποιήσεις για βάρδιες που αφορούν τον {role}",
+  task: "Ειδοποιήσεις για εργασίες VA που αφορούν τον {role}",
+  phase: "Ειδοποιήσεις για φάσεις onboarding που αφορούν τον {role}",
+  model: "Ειδοποιήσεις για μοντέλα που αφορούν τον {role}",
+  period: "Ειδοποιήσεις για περίοδο που αφορούν τον {role}",
+  whale: "Ειδοποιήσεις για whales που αφορούν τον {role}",
+  mistake: "Ειδοποιήσεις για λάθη που αφορούν τον {role}",
+  fine_bonus: "Ειδοποιήσεις για πρόστιμα και μπόνους που αφορούν τον {role}",
+  reward: "Ειδοποιήσεις για πόντους και ανταμοιβές που αφορούν τον {role}",
+  marketing: "Ειδοποιήσεις για marketing που αφορούν τον {role}",
+  system: "Γενικές ειδοποιήσεις συστήματος που αφορούν τον {role}",
+  custom_request_alerts: "Ειδοποιήσεις για custom requests που αφορούν τον {role}",
+  billing_alerts: "Ειδοποιήσεις για τιμολόγηση και πληρωμές που αφορούν τον {role}",
+  training_alerts: "Ειδοποιήσεις για εκπαίδευση SOP Academy που αφορούν τον {role}",
+  schedule_alerts: "Ειδοποιήσεις για πρόγραμμα και διαθεσιμότητα που αφορούν τον {role}",
+};
+
+function getRoleCategoryDescription(
+  categoryKey: NotificationRoleCategoryKey,
+  roleLabel: string
+): string {
+  const pattern =
+    ROLE_CATEGORY_DESCRIPTION_PATTERNS[categoryKey] ??
+    NOTIFICATION_CATEGORY_LABELS[categoryKey].el.replace(/\.$/, "") + " που αφορούν τον {role}";
+  return pattern.replace("{role}", roleLabel);
+}
+
+function ScopeBadge({
+  scope,
+  roleLabel,
+}: {
+  scope: NotificationScope;
+  roleLabel: string;
+}) {
+  const scopeStyle = NOTIFICATION_SCOPE_LABELS[scope];
+  return (
+    <span
+      title={getScopeTooltip(scope, roleLabel)}
+      className={cn(
+        "inline-flex cursor-help rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+        scopeStyle.className
+      )}
+    >
+      {scopeStyle.badge}
+    </span>
+  );
 }
 
 export function AdminRolesClient({
@@ -672,6 +739,14 @@ export function AdminRolesClient({
                 </div>
                 ) : (
                 <div>
+                  <div className="mb-4 rounded-xl border border-pink-500/35 bg-pink-500/10 px-4 py-3">
+                    <p className="text-sm font-semibold text-pink-100">
+                      Editing: {draft.label} notifications
+                    </p>
+                    <p className="mt-1 text-sm text-pink-100/70">
+                      Toggles below control what the {draft.label} role receives. Other roles are not affected.
+                    </p>
+                  </div>
                   <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">
@@ -694,32 +769,22 @@ export function AdminRolesClient({
                       Notification scope
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {(Object.keys(NOTIFICATION_SCOPE_LABELS) as Array<
-                        keyof typeof NOTIFICATION_SCOPE_LABELS
-                      >).map((scopeKey) => {
-                        const scopeStyle = NOTIFICATION_SCOPE_LABELS[scopeKey];
-                        return (
-                          <span
-                            key={scopeKey}
-                            className={cn(
-                              "inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                              scopeStyle.className
-                            )}
-                          >
-                            {scopeStyle.badge}
-                          </span>
-                        );
-                      })}
+                      {(Object.keys(NOTIFICATION_SCOPE_LABELS) as NotificationScope[]).map((scopeKey) => (
+                        <ScopeBadge key={scopeKey} scope={scopeKey} roleLabel={draft.label} />
+                      ))}
                     </div>
                     <ul className="mt-3 space-y-1 text-xs leading-relaxed text-white/40">
                       <li>
-                        <span className="font-medium text-white/55">Personal</span> — sent only to the user this event is about
+                        <span className="font-medium text-white/55">Personal</span> —{" "}
+                        {getScopeTooltip("personal", draft.label)}
                       </li>
                       <li>
-                        <span className="font-medium text-white/55">Monitor</span> — sent to admins/managers overseeing the team
+                        <span className="font-medium text-white/55">Monitor</span> —{" "}
+                        {getScopeTooltip("monitoring", draft.label)}
                       </li>
                       <li>
-                        <span className="font-medium text-white/55">Both</span> — sent to the assigned user and admins
+                        <span className="font-medium text-white/55">Both</span> —{" "}
+                        {getScopeTooltip("both", draft.label)}
                       </li>
                     </ul>
                   </div>
@@ -736,6 +801,20 @@ export function AdminRolesClient({
                             const categoryEvents = NOTIFICATION_CATEGORY_EVENTS[cat.key];
                             const categoryExpanded =
                               expandedNotificationCategories[cat.key] ?? allNotificationCategoriesExpanded;
+                            const roleLabel = draft.label;
+                            const oversightRole = isOversightRole(draft.role_id);
+                            const scopesInCategory = new Set(
+                              categoryEvents.map((entry) => parseEventScopeFromEntry(entry))
+                            );
+                            const monitoringEventOn = categoryEvents.some((entry) => {
+                              if (parseEventScopeFromEntry(entry) !== "monitoring") return false;
+                              return getEventDefaultValue(
+                                draft.notification_defaults,
+                                cat.key,
+                                parseEventKeyFromEntry(entry)
+                              );
+                            });
+                            const roleCategoryDescription = getRoleCategoryDescription(cat.key, roleLabel);
                             return (
                               <li key={cat.key} className="rounded-lg px-2 py-2.5">
                                 <div className="flex items-center justify-between gap-3">
@@ -752,7 +831,7 @@ export function AdminRolesClient({
                                     />
                                     <span className="min-w-0 flex-1">
                                       <p className="text-base font-bold text-white/90">{cat.label}</p>
-                                      <p className="mt-0.5 text-xs text-white/40">{cat.description}</p>
+                                      <p className="mt-0.5 text-xs text-white/40">{roleCategoryDescription}</p>
                                     </span>
                                   </button>
                                   <PermissionSwitch
@@ -761,6 +840,25 @@ export function AdminRolesClient({
                                     onChange={(next) => toggleNotificationCategory(cat.key, next)}
                                   />
                                 </div>
+                                {categoryExpanded && (scopesInCategory.has("personal") || scopesInCategory.has("monitoring")) ? (
+                                  <div className="mt-2 space-y-1 border-l border-white/10 pl-4">
+                                    {scopesInCategory.has("personal") ? (
+                                      <p className="text-[11px] leading-snug text-blue-200/70">
+                                        Personal — only the specific {roleLabel} involved receives these events.
+                                      </p>
+                                    ) : null}
+                                    {scopesInCategory.has("monitoring") ? (
+                                      <p className="text-[11px] leading-snug text-amber-200/70">
+                                        Monitoring — all {roleLabel}s receive these when they happen to anyone.
+                                        {!oversightRole && monitoringEventOn ? (
+                                          <span className="mt-0.5 block font-medium text-amber-300">
+                                            ⚠️ This will notify ALL {roleLabel}s, not just the one involved
+                                          </span>
+                                        ) : null}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                ) : null}
                                 {categoryExpanded ? (
                                   <ul
                                     className={cn(
@@ -773,13 +871,16 @@ export function AdminRolesClient({
                                       const eventDescription = parseEventDescriptionFromEntry(entry);
                                       const eventNote = parseEventNoteFromEntry(entry);
                                       const eventScope = parseEventScopeFromEntry(entry);
-                                      const scopeStyle = NOTIFICATION_SCOPE_LABELS[eventScope];
                                       const eventChecked = getEventDefaultValue(
                                         draft.notification_defaults,
                                         cat.key,
                                         eventKey
                                       );
                                       const eventSwitchId = `notif-event-${draft.id}-${eventKey}`;
+                                      const showMonitoringWarning =
+                                        eventScope === "monitoring" &&
+                                        eventChecked &&
+                                        !oversightRole;
                                       return (
                                         <li
                                           key={eventKey}
@@ -796,18 +897,16 @@ export function AdminRolesClient({
                                               <span className="font-mono text-[11px] text-white/35">
                                                 {eventKey}
                                               </span>
-                                              <span
-                                                className={cn(
-                                                  "inline-flex rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
-                                                  scopeStyle.className
-                                                )}
-                                              >
-                                                {scopeStyle.badge}
-                                              </span>
+                                              <ScopeBadge scope={eventScope} roleLabel={roleLabel} />
                                               {eventDescription ? (
                                                 <span className="text-white/45">— {eventDescription}</span>
                                               ) : null}
                                             </p>
+                                            {showMonitoringWarning ? (
+                                              <p className="mt-0.5 text-[11px] font-medium leading-snug text-amber-300">
+                                                ⚠️ Sends to all {roleLabel}s
+                                              </p>
+                                            ) : null}
                                             {eventNote ? (
                                               <p className="mt-0.5 text-[11px] leading-snug text-white/30">
                                                 {eventNote}
