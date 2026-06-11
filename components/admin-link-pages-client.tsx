@@ -13,6 +13,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  FlaskConical,
   Globe,
   GripVertical,
   Link2,
@@ -68,6 +69,7 @@ import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type {
   AppNotification,
+  AbTestResults,
   AnalyticsSummary,
   AnalyticsTrend,
   GlobalAnalyticsSummary,
@@ -206,6 +208,11 @@ function previewPageFromFields(
     show_powered_by: false,
     meta_description: "",
     verified: false,
+    ab_test_enabled: false,
+    ab_variant_id: "",
+    ab_test_name: "",
+    ab_winner: "none",
+    ab_started_at: null,
     created_at: "",
     updated_at: "",
     blocks: [],
@@ -831,7 +838,7 @@ type Props = {
   models: ModelRecord[];
 };
 
-type Tab = "editor" | "analytics";
+type Tab = "editor" | "analytics" | "ab_test";
 
 export function AdminLinkPagesClient({ initialPages, modelById, models }: Props) {
   const { addToast } = useToast();
@@ -873,6 +880,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [pageStatsMap, setPageStatsMap] = React.useState<Record<string, { views: number; clicks: number }>>({});
   const [analyticsDays, setAnalyticsDays] = React.useState(1);
   const [globalAnalyticsDays, setGlobalAnalyticsDays] = React.useState(1);
+  const [abTest, setAbTest] = React.useState<AbTestResults | null>(null);
+  const [abTestLoading, setAbTestLoading] = React.useState(false);
+  const [abSetupOpen, setAbSetupOpen] = React.useState(false);
+  const [abTestName, setAbTestName] = React.useState("");
+  const [abActionLoading, setAbActionLoading] = React.useState(false);
 
   React.useEffect(() => {
     const id = "link-page-google-fonts";
@@ -1069,6 +1081,35 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   React.useEffect(() => {
     if (selectedId) void loadAnalytics(selectedId, analyticsDays);
   }, [selectedId, analyticsDays, loadAnalytics]);
+
+  const loadAbTest = React.useCallback(async (id: string) => {
+    setAbTestLoading(true);
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/ab-test`);
+      const data = (await res.json()) as { results?: AbTestResults; page?: LinkPageRecord; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load A/B test");
+      setAbTest(data.results ?? null);
+      if (data.page) {
+        setSelectedPage((prev) => (prev ? { ...prev, ...data.page } : prev));
+        setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
+      }
+    } catch (err) {
+      addToast(localToast("A/B test load failed", err instanceof Error ? err.message : "Error", "high"));
+    } finally {
+      setAbTestLoading(false);
+    }
+  }, [addToast]);
+
+  React.useEffect(() => {
+    if (tab === "ab_test" && selectedId) void loadAbTest(selectedId);
+  }, [tab, selectedId, loadAbTest]);
+
+  React.useEffect(() => {
+    if (tab !== "ab_test" || !selectedId) return;
+    const t = setInterval(() => void loadAbTest(selectedId), 30_000);
+    return () => clearInterval(t);
+  }, [tab, selectedId, loadAbTest]);
+
 
   React.useEffect(() => {
     if (tab === "analytics" && selectedId) void loadAnalytics(selectedId, analyticsDays);
@@ -1391,6 +1432,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     : "";
 
   const showPreview = !globalAnalyticsOpen && tab === "editor";
+  const isWideTab = tab === "analytics" || tab === "ab_test";
 
   return (
     <div className="flex h-[calc(100vh-4rem)] overflow-hidden" style={{ background: BG }}>
@@ -1540,7 +1582,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
           {/* ── CENTER PANEL ── */}
           <section
             className="flex shrink-0 flex-col overflow-hidden border-r"
-            style={{ width: tab === "analytics" ? undefined : 400, flex: tab === "analytics" ? 1 : undefined, background: PANEL, borderColor: BORDER }}
+            style={{ width: isWideTab ? undefined : 400, flex: isWideTab ? 1 : undefined, background: PANEL, borderColor: BORDER }}
           >
             {!selectedPage && !loading ? (
               <EmptyState message="Select or create a page" />
@@ -1558,6 +1600,10 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                       <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
                         <BarChart3 className="mr-1 inline h-3.5 w-3.5" />
                         Analytics
+                      </TabBtn>
+                      <TabBtn active={tab === "ab_test"} onClick={() => setTab("ab_test")}>
+                        <FlaskConical className="mr-1 inline h-3.5 w-3.5" />
+                        A/B Test
                       </TabBtn>
                     </div>
                     {tab === "editor" ? (
@@ -1646,7 +1692,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                       onDeleteRedirect={(id) => void removeRedirect(id)}
                       onCopyRedirectUrl={(slug) => selectedPage && copyRedirectUrl(selectedPage, slug)}
                     />
-                  ) : (
+                  ) : tab === "analytics" ? (
                     <div className="p-4">
                       <AnalyticsPanel
                         summary={analytics}
@@ -1654,6 +1700,100 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                         pageTitle={selectedPage.title}
                         days={analyticsDays}
                         onDaysChange={setAnalyticsDays}
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-4">
+                      <AbTestPanel
+                        page={selectedPage}
+                        results={abTest}
+                        loading={abTestLoading}
+                        actionLoading={abActionLoading}
+                        setupOpen={abSetupOpen}
+                        testName={abTestName}
+                        onTestNameChange={setAbTestName}
+                        onOpenSetup={() => setAbSetupOpen(true)}
+                        onCloseSetup={() => setAbSetupOpen(false)}
+                        onRefresh={() => selectedId && void loadAbTest(selectedId)}
+                        onCreateVariant={async () => {
+                          if (!selectedId) return;
+                          setAbActionLoading(true);
+                          try {
+                            const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}/ab-test`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ action: "create_variant" }),
+                            });
+                            const data = (await res.json()) as { error?: string };
+                            if (!res.ok) throw new Error(data.error ?? "Failed to create variant");
+                            addToast(localToast("Variant created", "Variant B page cloned from current design", "normal"));
+                            await loadAbTest(selectedId);
+                          } catch (err) {
+                            addToast(localToast("Create variant failed", err instanceof Error ? err.message : "Error", "high"));
+                          } finally {
+                            setAbActionLoading(false);
+                          }
+                        }}
+                        onStartTest={async () => {
+                          if (!selectedId) return;
+                          setAbActionLoading(true);
+                          try {
+                            const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}/ab-test`, {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ testName: abTestName || "A/B Test" }),
+                            });
+                            const data = (await res.json()) as { error?: string };
+                            if (!res.ok) throw new Error(data.error ?? "Failed to start test");
+                            setAbSetupOpen(false);
+                            addToast(localToast("A/B test started", "Traffic is now split 50/50", "normal"));
+                            await loadAbTest(selectedId);
+                          } catch (err) {
+                            addToast(localToast("Start test failed", err instanceof Error ? err.message : "Error", "high"));
+                          } finally {
+                            setAbActionLoading(false);
+                          }
+                        }}
+                        onStopTest={async () => {
+                          if (!selectedId) return;
+                          setAbActionLoading(true);
+                          try {
+                            const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}/ab-test`, {
+                              method: "DELETE",
+                            });
+                            const data = (await res.json()) as { error?: string };
+                            if (!res.ok) throw new Error(data.error ?? "Failed to stop test");
+                            addToast(localToast("A/B test stopped", "Traffic split disabled", "normal"));
+                            await loadAbTest(selectedId);
+                          } catch (err) {
+                            addToast(localToast("Stop test failed", err instanceof Error ? err.message : "Error", "high"));
+                          } finally {
+                            setAbActionLoading(false);
+                          }
+                        }}
+                        onDeclareWinner={async (winner) => {
+                          if (!selectedId) return;
+                          setAbActionLoading(true);
+                          try {
+                            const res = await fetch(
+                              `/api/admin/link-pages/${encodeURIComponent(selectedId)}/ab-test/winner`,
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ winner }),
+                              }
+                            );
+                            const data = (await res.json()) as { error?: string };
+                            if (!res.ok) throw new Error(data.error ?? "Failed to declare winner");
+                            addToast(localToast("Winner declared", `Variant ${winner.toUpperCase()} applied`, "normal"));
+                            await loadPage(selectedId);
+                            await loadAbTest(selectedId);
+                          } catch (err) {
+                            addToast(localToast("Declare winner failed", err instanceof Error ? err.message : "Error", "high"));
+                          } finally {
+                            setAbActionLoading(false);
+                          }
+                        }}
                       />
                     </div>
                   )}
@@ -3047,6 +3187,258 @@ function formatPeakHour(hour: number): string {
   const suffix = h >= 12 ? "PM" : "AM";
   const display = h % 12 === 0 ? 12 : h % 12;
   return `${display}:00 ${suffix}`;
+}
+
+function AbTestPanel({
+  page,
+  results,
+  loading,
+  actionLoading,
+  setupOpen,
+  testName,
+  onTestNameChange,
+  onOpenSetup,
+  onCloseSetup,
+  onRefresh,
+  onCreateVariant,
+  onStartTest,
+  onStopTest,
+  onDeclareWinner,
+}: {
+  page: LinkPageRecord;
+  results: AbTestResults | null;
+  loading: boolean;
+  actionLoading: boolean;
+  setupOpen: boolean;
+  testName: string;
+  onTestNameChange: (name: string) => void;
+  onOpenSetup: () => void;
+  onCloseSetup: () => void;
+  onRefresh: () => void;
+  onCreateVariant: () => Promise<void>;
+  onStartTest: () => Promise<void>;
+  onStopTest: () => Promise<void>;
+  onDeclareWinner: (winner: "a" | "b") => Promise<void>;
+}) {
+  const formatPct = (n: number) => `${(n * 100).toFixed(1)}%`;
+
+  if (loading && !results) {
+    return (
+      <div className="flex min-h-[300px] items-center justify-center text-white/35">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" style={{ color: ACCENT }} /> Loading A/B test…
+      </div>
+    );
+  }
+
+  const enabled = page.ab_test_enabled;
+  const hasVariant = !!page.ab_variant_id;
+  const confidence = results?.confidence ?? 0;
+  const suggested = results?.suggestedWinner;
+
+  const chartData = (results?.viewsByDay ?? []).map((d) => ({
+    date: d.date.slice(5),
+    a: d.a,
+    b: d.b,
+  }));
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-white">{results?.testName || "A/B Test"}</h2>
+          <p className="mt-0.5 text-xs text-white/40">
+            {enabled ? "Test running — 50/50 traffic split" : page.ab_winner !== "none" ? `Winner: Variant ${page.ab_winner.toUpperCase()}` : "No active test"}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRefresh}
+            className="rounded-lg border p-2 text-white/50 hover:text-white/80"
+            style={{ borderColor: BORDER }}
+            title="Refresh"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+          </button>
+          {!enabled ? (
+            <button
+              type="button"
+              onClick={onOpenSetup}
+              disabled={actionLoading || page.status !== "published"}
+              className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+              style={{ background: ACCENT }}
+            >
+              {hasVariant ? "Start test" : "Set up test"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void onStopTest()}
+              disabled={actionLoading}
+              className="rounded-lg border px-3 py-1.5 text-xs font-medium text-rose-300 disabled:opacity-40"
+              style={{ borderColor: "rgba(244,63,94,0.3)" }}
+            >
+              Stop test
+            </button>
+          )}
+        </div>
+      </div>
+
+      {page.status !== "published" && !enabled ? (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
+          Publish this page before starting an A/B test.
+        </div>
+      ) : null}
+
+      {setupOpen ? (
+        <div className="rounded-xl border p-4" style={{ borderColor: BORDER, background: BG }}>
+          <h3 className="text-sm font-semibold text-white">Set up A/B test</h3>
+          <p className="mt-1 text-xs text-white/40">
+            Variant A is your live page. Create Variant B, edit it, then start the test.
+          </p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <Label className="text-xs text-white/60">Test name</Label>
+              <FormInput
+                value={testName}
+                onChange={(e) => onTestNameChange(e.target.value)}
+                placeholder="e.g. Hero button color test"
+                className="mt-1"
+              />
+            </div>
+            {!hasVariant ? (
+              <button
+                type="button"
+                onClick={() => void onCreateVariant()}
+                disabled={actionLoading}
+                className="flex w-full items-center justify-center gap-2 rounded-lg border py-2.5 text-xs font-medium text-white/80 hover:bg-white/[0.04]"
+                style={{ borderColor: BORDER }}
+              >
+                {actionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                Create new variant (clone page + blocks)
+              </button>
+            ) : (
+              <p className="text-xs text-emerald-400/80">Variant B ready — edit the cloned page from the page list, then start the test.</p>
+            )}
+            <div className="flex justify-end gap-2 pt-2">
+              <button type="button" onClick={onCloseSetup} className="rounded-lg px-3 py-1.5 text-xs text-white/50 hover:text-white/80">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void onStartTest()}
+                disabled={actionLoading || !hasVariant}
+                className="rounded-lg px-3 py-1.5 text-xs font-medium text-white disabled:opacity-40"
+                style={{ background: ACCENT }}
+              >
+                Start test
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 lg:grid-cols-2">
+        {(["a", "b"] as const).map((v) => {
+          const metrics = v === "a" ? results?.variantA : results?.variantB;
+          const isSuggested = suggested === v;
+          const isWinner = page.ab_winner === v;
+          return (
+            <div
+              key={v}
+              className={cn(
+                "rounded-xl border p-4",
+                isSuggested && enabled ? "border-pink-500/40" : "",
+                isWinner ? "border-emerald-500/40 bg-emerald-500/[0.06]" : ""
+              )}
+              style={{ borderColor: isSuggested && enabled ? undefined : BORDER, background: isWinner ? undefined : BG }}
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-sm font-semibold text-white">
+                  Variant {v.toUpperCase()}
+                  {v === "a" ? " (Control)" : " (Challenger)"}
+                </span>
+                {isWinner ? (
+                  <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Winner</span>
+                ) : isSuggested && enabled ? (
+                  <span className="rounded-full bg-pink-500/20 px-2 py-0.5 text-[10px] font-medium text-pink-300">Leading</span>
+                ) : null}
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-white/35">Views</p>
+                  <p className="text-lg font-bold tabular-nums text-white">{metrics?.views.toLocaleString() ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-white/35">Clicks</p>
+                  <p className="text-lg font-bold tabular-nums text-white">{metrics?.clicks.toLocaleString() ?? "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-white/35">CTR</p>
+                  <p className="text-lg font-bold tabular-nums text-white">{metrics ? formatPct(metrics.ctr) : "—"}</p>
+                </div>
+              </div>
+              <p className="mt-2 text-[10px] text-white/30">{metrics?.sessions ?? 0} sessions</p>
+              {enabled ? (
+                <button
+                  type="button"
+                  onClick={() => void onDeclareWinner(v)}
+                  disabled={actionLoading}
+                  className="mt-3 w-full rounded-lg border py-1.5 text-[11px] font-medium text-white/60 hover:text-white/90 disabled:opacity-40"
+                  style={{ borderColor: BORDER }}
+                >
+                  Declare {v.toUpperCase()} winner
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-xl border p-4" style={{ borderColor: BORDER, background: BG }}>
+        <div className="mb-3 flex items-center justify-between">
+          <span className="text-sm font-semibold text-white">Statistical confidence</span>
+          <span className="text-sm font-bold tabular-nums text-white">{confidence}%</span>
+        </div>
+        <div className="h-2 overflow-hidden rounded-full bg-white/10">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{
+              width: `${confidence}%`,
+              background: confidence >= 95 ? "#34d399" : confidence >= 80 ? ACCENT : PURPLE,
+            }}
+          />
+        </div>
+        <p className="mt-2 text-[11px] text-white/40">
+          {confidence >= 95
+            ? "High confidence — results are statistically significant."
+            : suggested
+              ? "Early signal detected — collect more sessions for higher confidence."
+              : "Need >100 sessions and >5% CTR difference, or chi-square significance at 95%."}
+        </p>
+      </div>
+
+      {chartData.length > 0 ? (
+        <div className="rounded-xl border p-4" style={{ borderColor: BORDER, background: BG }}>
+          <h3 className="mb-3 text-sm font-semibold text-white">Views by day</h3>
+          <ResponsiveContainer width="100%" height={220}>
+            <LineChart data={chartData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+              <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} />
+              <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 10 }} width={32} />
+              <Tooltip
+                contentStyle={{ background: PANEL, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }}
+                labelStyle={{ color: "rgba(255,255,255,0.6)" }}
+              />
+              <Legend wrapperStyle={{ fontSize: 11 }} />
+              <Line type="monotone" dataKey="a" name="Variant A" stroke={ACCENT} strokeWidth={2} dot={false} />
+              <Line type="monotone" dataKey="b" name="Variant B" stroke={PURPLE} strokeWidth={2} dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function AnalyticsPanel({

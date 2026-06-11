@@ -26,6 +26,7 @@ import type {
   LinkPageFont,
   LinkPageBlockType,
   LinkPageBlockStyle,
+  LinkPageAbWinner,
 } from "@/types";
 
 type PageFields = {
@@ -46,6 +47,11 @@ type PageFields = {
   show_powered_by?: boolean;
   meta_description?: string;
   verified?: boolean;
+  ab_test_enabled?: boolean;
+  ab_variant_id?: string;
+  ab_test_name?: string;
+  ab_winner?: string;
+  ab_started_at?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -130,6 +136,13 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
     show_powered_by: f.show_powered_by === true,
     meta_description: f.meta_description ?? "",
     verified: f.verified === true,
+    ab_test_enabled: f.ab_test_enabled === true,
+    ab_variant_id: f.ab_variant_id ?? "",
+    ab_test_name: f.ab_test_name ?? "",
+    ab_winner: (["none", "a", "b"] as const).includes(f.ab_winner as LinkPageAbWinner)
+      ? (f.ab_winner as LinkPageAbWinner)
+      : "none",
+    ab_started_at: f.ab_started_at ?? null,
     created_at: f.created_at ?? rec.createdTime ?? "",
     updated_at: f.updated_at ?? "",
   };
@@ -183,7 +196,7 @@ function linkPageBlocksTag(pageId: string): string {
   return `link-page-blocks-${pageId.trim()}`;
 }
 
-function invalidateLinkPagePublicCache(
+export function invalidateLinkPagePublicCache(
   page: Pick<LinkPageRecord, "slug" | "custom_domain" | "page_id">
 ): void {
   if (page.slug) revalidateTag(linkPageSlugTag(page.slug));
@@ -243,6 +256,16 @@ async function loadLinkPageBySlug(
 /** Uncached read for public link pages — always hits Airtable. */
 export async function getLinkPageBySlugFresh(slug: string): Promise<LinkPageWithBlocks | null> {
   return loadLinkPageBySlug(slug, { skipCache: true });
+}
+
+/** Uncached page + blocks by logical page_id (for A/B variant B). */
+export async function getLinkPageWithBlocksByPageIdFresh(pageId: string): Promise<LinkPageWithBlocks | null> {
+  const pid = pageId.trim();
+  if (!pid) return null;
+  const page = await fetchPageByFormula(`{page_id}="${escapeFormulaString(pid)}"`, { skipCache: true });
+  if (!page) return null;
+  const blocks = await fetchBlocksForPage(pid, { skipCache: true });
+  return { ...page, blocks: blocks.filter((b) => b.is_visible) };
 }
 
 /** Next.js Data Cache TTL for admin/middleware cached reads (not used on public pages). */

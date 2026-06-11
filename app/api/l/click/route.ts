@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { trackLinkClick, extractClientIp } from "@/services/link-page-analytics";
+import { trackAbEvent } from "@/services/link-ab-testing";
+import type { LinkPageAbVariant } from "@/types";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -23,17 +25,29 @@ export async function GET(request: Request) {
   }
 
   const hdrs = await headers();
+  const sessionId = url.searchParams.get("session") ?? "";
   trackLinkClick({
     pageId,
     blockId,
     ip: extractClientIp(hdrs),
     userAgent: hdrs.get("user-agent") ?? "",
     referrer: hdrs.get("referer") ?? "",
-    sessionId: url.searchParams.get("session") ?? "",
+    sessionId,
     utmSource: url.searchParams.get("utm_source") ?? "",
     utmMedium: url.searchParams.get("utm_medium") ?? "",
     utmCampaign: url.searchParams.get("utm_campaign") ?? "",
   });
+
+  const variantParam = url.searchParams.get("variant");
+  if (pageId && sessionId && (variantParam === "a" || variantParam === "b")) {
+    trackAbEvent({
+      pageId,
+      variant: variantParam as LinkPageAbVariant,
+      eventType: "click",
+      sessionId,
+      blockId,
+    });
+  }
 
   return NextResponse.redirect(parsed.toString(), 301);
 }

@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { headers as getRequestHeaders } from "next/headers";
-import { getLinkPageBySlugFresh } from "@/services/link-pages";
+import { cookies, headers as getRequestHeaders } from "next/headers";
+import { getLinkPageBySlugFresh, getLinkPageWithBlocksByPageIdFresh } from "@/services/link-pages";
 import { trackPageView, extractClientIp } from "@/services/link-page-analytics";
+import { getAbVariantForSession, trackAbEvent } from "@/services/link-ab-testing";
 import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml, GOOGLE_FONTS_STYLESHEET } from "@/lib/link-page-styles";
-import type { LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
+import type { LinkPageAbVariant, LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -44,22 +45,46 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function clickUrl(pageId: string, blockId: string, url: string, sessionId: string): string {
+function clickUrl(
+  pageId: string,
+  blockId: string,
+  url: string,
+  sessionId: string,
+  variant?: LinkPageAbVariant,
+  abEnabled?: boolean
+): string {
   const params = new URLSearchParams({ page: pageId, block: blockId, url, session: sessionId });
+  if (abEnabled && variant) params.set("variant", variant);
   return `/api/l/click?${params.toString()}`;
 }
 
-function renderLinkBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord, sessionId: string): string {
-  const href = block.url ? clickUrl(page.page_id, block.block_id, block.url, sessionId) : "#";
+function renderLinkBlock(
+  page: LinkPageWithBlocks,
+  block: LinkPageBlockRecord,
+  sessionId: string,
+  controlPageId: string,
+  variant: LinkPageAbVariant,
+  abEnabled: boolean
+): string {
+  const href = block.url
+    ? clickUrl(controlPageId, block.block_id, block.url, sessionId, variant, abEnabled)
+    : "#";
   return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml);
 }
 
-function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord, sessionId: string): string {
+function renderBlock(
+  page: LinkPageWithBlocks,
+  block: LinkPageBlockRecord,
+  sessionId: string,
+  controlPageId: string,
+  variant: LinkPageAbVariant,
+  abEnabled: boolean
+): string {
   if (!block.is_visible) return "";
 
   switch (block.block_type) {
     case "link":
-      return renderLinkBlock(page, block, sessionId);
+      return renderLinkBlock(page, block, sessionId, controlPageId, variant, abEnabled);
     case "heading":
       return `<div class="block-heading">${escapeHtml(block.heading_text || block.label || "")}</div>`;
     case "bio_text":
@@ -81,7 +106,7 @@ function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord, sessi
       const urls = block.photo_urls.length ? block.photo_urls : block.url ? [block.url] : [];
       const items = urls
         .map((u) => {
-          const href = clickUrl(page.page_id, block.block_id, u, sessionId);
+          const href = clickUrl(controlPageId, block.block_id, u, sessionId, variant, abEnabled);
           return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
         })
         .join("");
@@ -163,6 +188,21 @@ function randomSessionId(): string {
   return `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function getOrCreateSessionId(controlPageId: string): string {
+  const cookieStore = cookies();
+  const cookieName = `lp_sid_${controlPageId}`;
+  const existing = cookieStore.get(cookieName)?.value;
+  if (existing) return existing;
+  const sessionId = randomSessionId();
+  cookieStore.set(cookieName, sessionId, {
+    maxAge: 60 * 60 * 24 * 365,
+    httpOnly: true,
+    sameSite: "lax",
+    path: "/",
+  });
+  return sessionId;
+}
+
 export default async function LinkPagePublic({ params, searchParams }: Props) {
   const { slug } = await params;
   const { preview } = await searchParams;
@@ -183,23 +223,46 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
     notFound();
   }
 
-  const sessionId = randomSessionId();
+  const controlPage = page;
+  const sessionId = getOrCreateSessionId(controlPage.page_id);
+  const abEnabled = !isPreview && controlPage.ab_test_enabled && !!controlPage.ab_variant_id;
+  let variant: LinkPageAbVariant = "a";
+  let activePage: LinkPageWithBlocks = controlPage;
+
+  if (abEnabled) {
+    variant = getAbVariantForSession(sessionId, controlPage.page_id);
+    if (variant === "b") {
+      const variantPage = await getLinkPageWithBlocksByPageIdFresh(controlPage.ab_variant_id);
+      if (variantPage) activePage = variantPage;
+    }
+  }
 
   if (!isPreview) {
     const hdrs = await getRequestHeaders();
     trackPageView({
-      pageId: page.page_id,
+      pageId: controlPage.page_id,
       ip: extractClientIp(hdrs),
       userAgent: hdrs.get("user-agent") ?? "",
       referrer: hdrs.get("referer") ?? "",
       sessionId,
     }).catch(() => {});
+
+    if (abEnabled) {
+      trackAbEvent({
+        pageId: controlPage.page_id,
+        variant,
+        eventType: "view",
+        sessionId,
+      });
+    }
   }
 
-  const sortedBlocks = [...page.blocks].sort((a, b) => a.sort_order - b.sort_order);
-  const blocksHtml = sortedBlocks.map((b) => renderBlock(page, b, sessionId)).join("\n");
+  const sortedBlocks = [...activePage.blocks].sort((a, b) => a.sort_order - b.sort_order);
+  const blocksHtml = sortedBlocks
+    .map((b) => renderBlock(activePage, b, sessionId, controlPage.page_id, variant, abEnabled))
+    .join("\n");
   const hasCountdown = sortedBlocks.some((b) => b.block_type === "countdown" && b.is_visible);
-  const initial = (page.title || "?").charAt(0).toUpperCase();
+  const initial = (activePage.title || "?").charAt(0).toUpperCase();
 
   return (
     <div className="link-page-root">
@@ -208,16 +271,16 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link href={GOOGLE_FONTS_STYLESHEET} rel="stylesheet" />
       </head>
-      <style dangerouslySetInnerHTML={{ __html: linkPageThemeCss(page) }} />
+      <style dangerouslySetInnerHTML={{ __html: linkPageThemeCss(activePage) }} />
       <main className="page-wrap">
-        {isPreview && page.status === "draft" ? (
+        {isPreview && controlPage.status === "draft" ? (
           <div className="preview-banner">Draft preview — not visible to the public</div>
         ) : null}
         <div className="avatar-wrap">
           <div className="avatar-ring" aria-hidden="true" />
-          {page.profile_photo_url ? (
+          {activePage.profile_photo_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img className="avatar" src={page.profile_photo_url} alt={page.title} />
+            <img className="avatar" src={activePage.profile_photo_url} alt={activePage.title} />
           ) : (
             <div className="avatar-placeholder" aria-hidden="true">
               {initial}
@@ -225,14 +288,14 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
           )}
         </div>
         <div className="title-row">
-          <h1 className="title">{page.title}</h1>
-          {page.verified ? (
+          <h1 className="title">{activePage.title}</h1>
+          {activePage.verified ? (
             <span dangerouslySetInnerHTML={{ __html: verifiedBadgeHtml() }} />
           ) : null}
         </div>
-        {page.bio ? <p className="bio">{page.bio}</p> : null}
+        {activePage.bio ? <p className="bio">{activePage.bio}</p> : null}
         <div className="blocks" dangerouslySetInnerHTML={{ __html: blocksHtml }} />
-        {page.show_powered_by ? <p className="powered-by">Powered by Link Pages</p> : null}
+        {activePage.show_powered_by ? <p className="powered-by">Powered by Link Pages</p> : null}
       </main>
       {hasCountdown ? (
         <script

@@ -353,6 +353,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
       "bold",
       "minimal",
     ]),
+    ab_winner: new Set(["none", "a", "b"]),
   },
   link_page_blocks: {
     block_type: new Set([
@@ -369,6 +370,10 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   link_page_analytics: {
     event_type: new Set(["page_view", "link_click"]),
     device_type: new Set(["mobile", "desktop", "tablet"]),
+  },
+  link_ab_results: {
+    variant: new Set(["a", "b"]),
+    event_type: new Set(["view", "click"]),
   },
   va_task_phases: {
     status: new Set(["pending", "in_progress", "completed", "overdue"]),

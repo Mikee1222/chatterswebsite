@@ -1287,6 +1287,9 @@ export type LinkPageBlockType =
 export type LinkPageBlockStyle = "default" | "prominent" | "subtle" | "pill" | "card";
 export type LinkPageAnalyticsEventType = "page_view" | "link_click";
 export type LinkPageDeviceType = "mobile" | "desktop" | "tablet";
+export type LinkPageAbWinner = "none" | "a" | "b";
+export type LinkPageAbVariant = "a" | "b";
+export type LinkPageAbEventType = "view" | "click";
 
 export interface LinkPageRecord {
   id: string;
@@ -1307,6 +1310,11 @@ export interface LinkPageRecord {
   show_powered_by: boolean;
   meta_description: string;
   verified: boolean;
+  ab_test_enabled: boolean;
+  ab_variant_id: string;
+  ab_test_name: string;
+  ab_winner: LinkPageAbWinner;
+  ab_started_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1443,4 +1451,38 @@ export interface GlobalAnalyticsSummary {
 
 export interface LinkPageWithBlocks extends LinkPageRecord {
   blocks: LinkPageBlockRecord[];
+}
+
+export interface LinkPageAbResultRecord {
+  id: string;
+  event_id: string;
+  page_id: string;
+  variant: LinkPageAbVariant;
+  event_type: LinkPageAbEventType;
+  session_id: string;
+  block_id: string;
+  timestamp: string;
+}
+
+export interface AbVariantMetrics {
+  variant: LinkPageAbVariant;
+  views: number;
+  clicks: number;
+  sessions: number;
+  sessionsWithClicks: number;
+  ctr: number;
+}
+
+export interface AbTestResults {
+  pageId: string;
+  testName: string;
+  enabled: boolean;
+  winner: LinkPageAbWinner;
+  startedAt: string | null;
+  variantPageId: string;
+  variantA: AbVariantMetrics;
+  variantB: AbVariantMetrics;
+  confidence: number;
+  suggestedWinner: LinkPageAbVariant | null;
+  viewsByDay: Array<{ date: string; a: number; b: number }>;
 }

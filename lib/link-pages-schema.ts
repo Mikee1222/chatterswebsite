@@ -5,6 +5,7 @@
 export const LINK_PAGES_TABLE = "link_pages" as const;
 export const LINK_PAGE_BLOCKS_TABLE = "link_page_blocks" as const;
 export const LINK_PAGE_ANALYTICS_TABLE = "link_page_analytics" as const;
+export const LINK_AB_RESULTS_TABLE = "link_ab_results" as const;
 
 export const LINK_PAGE_FIELDS = {
   page_id: "page_id",
@@ -24,8 +25,23 @@ export const LINK_PAGE_FIELDS = {
   show_powered_by: "show_powered_by",
   meta_description: "meta_description",
   verified: "verified",
+  ab_test_enabled: "ab_test_enabled",
+  ab_variant_id: "ab_variant_id",
+  ab_test_name: "ab_test_name",
+  ab_winner: "ab_winner",
+  ab_started_at: "ab_started_at",
   created_at: "created_at",
   updated_at: "updated_at",
+} as const;
+
+export const LINK_AB_RESULT_FIELDS = {
+  event_id: "event_id",
+  page_id: "page_id",
+  variant: "variant",
+  event_type: "event_type",
+  session_id: "session_id",
+  block_id: "block_id",
+  timestamp: "timestamp",
 } as const;
 
 export const LINK_PAGE_BLOCK_FIELDS = {
@@ -107,6 +123,9 @@ export const LINK_PAGE_BLOCK_TYPES = [
 export const LINK_PAGE_BLOCK_STYLES = ["default", "prominent", "subtle", "pill", "card"] as const;
 export const LINK_PAGE_ANALYTICS_EVENT_TYPES = ["page_view", "link_click"] as const;
 export const LINK_PAGE_DEVICE_TYPES = ["mobile", "desktop", "tablet"] as const;
+export const LINK_PAGE_AB_WINNERS = ["none", "a", "b"] as const;
+export const LINK_PAGE_AB_VARIANTS = ["a", "b"] as const;
+export const LINK_PAGE_AB_EVENT_TYPES = ["view", "click"] as const;
 
 /** Allowed social platforms for link-page presets and icon pickers (no adult platforms). */
 export const LINK_PAGE_PLATFORMS = [
