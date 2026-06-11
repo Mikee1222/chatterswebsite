@@ -17,6 +17,7 @@ import {
   Monitor,
   Plus,
   QrCode,
+  RefreshCw,
   Search,
   Smartphone,
   Trash2,
@@ -41,7 +42,6 @@ import { useToast } from "@/contexts/toast-context";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LinkPageLivePreview } from "@/components/link-pages/link-page-live-preview";
 import { LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
@@ -142,6 +142,55 @@ const STATUS_FILTERS = [
   { value: "archived" as const, label: "Archived" },
 ];
 
+type SaveablePageFields = Pick<
+  LinkPageRecord,
+  | "title"
+  | "slug"
+  | "model_id"
+  | "custom_domain"
+  | "meta_description"
+  | "show_powered_by"
+  | "bio"
+  | "profile_photo_url"
+  | "theme"
+  | "font"
+  | "background_type"
+  | "background_value"
+  | "primary_color"
+  | "accent_color"
+>;
+
+function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
+  return {
+    title: page.title,
+    slug: page.slug,
+    model_id: page.model_id,
+    custom_domain: page.custom_domain,
+    meta_description: page.meta_description,
+    show_powered_by: page.show_powered_by,
+    bio: page.bio,
+    profile_photo_url: page.profile_photo_url,
+    theme: page.theme,
+    font: page.font,
+    background_type: page.background_type,
+    background_value: page.background_value,
+    primary_color: page.primary_color,
+    accent_color: page.accent_color,
+  };
+}
+
+function diffSaveableFields(baseline: SaveablePageFields, current: SaveablePageFields): Partial<LinkPageRecord> {
+  const patch: Partial<LinkPageRecord> = {};
+  (Object.keys(baseline) as Array<keyof SaveablePageFields>).forEach((key) => {
+    if (current[key] !== baseline[key]) {
+      patch[key] = current[key] as never;
+    }
+  });
+  return patch;
+}
+
+type FieldSaveStatus = "idle" | "pending" | "saving" | "saved";
+
 type Props = {
   initialPages: LinkPageRecord[];
   modelById: Record<string, string>;
@@ -170,8 +219,17 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [globalAnalytics, setGlobalAnalytics] = React.useState<GlobalAnalyticsSummary | null>(null);
   const [globalAnalyticsLoading, setGlobalAnalyticsLoading] = React.useState(false);
   const [previewDevice, setPreviewDevice] = React.useState<"mobile" | "desktop">("mobile");
-  const [debouncedPage, setDebouncedPage] = React.useState<LinkPageWithBlocks | null>(null);
+  const [previewKey, setPreviewKey] = React.useState(0);
+  const [fieldDraft, setFieldDraft] = React.useState<Partial<LinkPageRecord>>({});
+  const [fieldSaveStatus, setFieldSaveStatus] = React.useState<FieldSaveStatus>("idle");
+  const [lastSaveAt, setLastSaveAt] = React.useState<number | null>(null);
   const [showQr, setShowQr] = React.useState(false);
+  const saveBaselineRef = React.useRef<SaveablePageFields | null>(null);
+  const fieldDraftRef = React.useRef(fieldDraft);
+  const saveDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedFadeRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  fieldDraftRef.current = fieldDraft;
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => new Set(["identity", "profile", "appearance", "blocks"])
   );
@@ -209,12 +267,79 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
 
   React.useEffect(() => {
     if (!selectedPage) {
-      setDebouncedPage(null);
+      saveBaselineRef.current = null;
+      setFieldDraft({});
+      setFieldSaveStatus("idle");
       return;
     }
-    const t = setTimeout(() => setDebouncedPage(selectedPage), 500);
+    saveBaselineRef.current = pickSaveableFields(selectedPage);
+    setFieldDraft({});
+    setFieldSaveStatus("idle");
+  }, [selectedPage?.id]);
+
+  React.useEffect(() => {
+    if (lastSaveAt == null) return;
+    const t = setTimeout(() => setPreviewKey((k) => k + 1), 2000);
     return () => clearTimeout(t);
-  }, [selectedPage]);
+  }, [lastSaveAt]);
+
+  React.useEffect(() => {
+    return () => {
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+      if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
+    };
+  }, []);
+
+  const flushDebouncedSave = React.useCallback(async () => {
+    if (!selectedId || !selectedPage || !saveBaselineRef.current) return;
+
+    const current = { ...saveBaselineRef.current, ...fieldDraftRef.current };
+    const patch = diffSaveableFields(saveBaselineRef.current, current as SaveablePageFields);
+    if (Object.keys(patch).length === 0) {
+      setFieldSaveStatus("idle");
+      return;
+    }
+
+    setFieldSaveStatus("saving");
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      const data = (await res.json()) as { page?: LinkPageRecord; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Save failed");
+      if (data.page) {
+        saveBaselineRef.current = pickSaveableFields(data.page);
+        setFieldDraft({});
+        setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
+        setSelectedPage((prev) => (prev ? { ...prev, ...data.page! } : prev));
+        setLastSaveAt(Date.now());
+        setFieldSaveStatus("saved");
+        if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
+        savedFadeRef.current = setTimeout(() => {
+          setFieldSaveStatus((s) => (s === "saved" ? "idle" : s));
+        }, 2500);
+      } else {
+        setFieldSaveStatus("idle");
+      }
+    } catch (err) {
+      setFieldSaveStatus("idle");
+      addToast(localToast("Save failed", err instanceof Error ? err.message : "Error", "high"));
+    }
+  }, [selectedId, selectedPage, addToast]);
+
+  const patchFieldDraft = React.useCallback(
+    (patch: Partial<LinkPageRecord>) => {
+      setFieldDraft((prev) => ({ ...prev, ...patch }));
+      setFieldSaveStatus("pending");
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+      saveDebounceRef.current = setTimeout(() => {
+        void flushDebouncedSave();
+      }, 1000);
+    },
+    [flushDebouncedSave]
+  );
 
   const loadAnalytics = React.useCallback(async (id: string) => {
     try {
@@ -286,28 +411,6 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
       }
     } catch (err) {
       addToast(localToast("Create failed", err instanceof Error ? err.message : "Error", "high"));
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function savePage(patch: Partial<LinkPageRecord>) {
-    if (!selectedId || !selectedPage) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = (await res.json()) as { page?: LinkPageRecord; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
-      if (data.page) {
-        setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
-        setSelectedPage((prev) => (prev ? { ...prev, ...data.page! } : prev));
-      }
-    } catch (err) {
-      addToast(localToast("Save failed", err instanceof Error ? err.message : "Error", "high"));
     } finally {
       setSaving(false);
     }
@@ -475,8 +578,14 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     addToast(localToast("Copied", "Link copied to clipboard", "normal"));
   }
 
-  const publicUrl = selectedPage?.slug
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}${ROUTES.linkPage(selectedPage.slug)}`
+  const editingPage = selectedPage ? { ...selectedPage, ...fieldDraft } : null;
+
+  const publicUrl = editingPage?.slug
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}${ROUTES.linkPage(editingPage.slug)}`
+    : "";
+
+  const previewUrl = editingPage?.slug
+    ? `${ROUTES.linkPage(editingPage.slug)}?preview=true`
     : "";
 
   const qrUrl = publicUrl
@@ -641,14 +750,17 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
               <>
                 {/* Tab bar + actions */}
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: BORDER }}>
-                  <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
-                    <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
-                      Editor
-                    </TabBtn>
-                    <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
-                      <BarChart3 className="mr-1 inline h-3.5 w-3.5" />
-                      Analytics
-                    </TabBtn>
+                  <div className="flex items-center gap-2">
+                    <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
+                      <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
+                        Editor
+                      </TabBtn>
+                      <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
+                        <BarChart3 className="mr-1 inline h-3.5 w-3.5" />
+                        Analytics
+                      </TabBtn>
+                    </div>
+                    {tab === "editor" ? <FieldSaveIndicator status={fieldSaveStatus} /> : null}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <StatusToggle
@@ -692,12 +804,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                 <div className="flex-1 overflow-y-auto">
                   {tab === "editor" ? (
                     <EditorPanel
-                      page={selectedPage}
+                      page={{ ...selectedPage, ...fieldDraft }}
                       models={models}
-                      saving={saving}
                       expandedSections={expandedSections}
                       onToggleSection={toggleSection}
-                      onSave={(patch) => void savePage(patch)}
+                      onPatchField={patchFieldDraft}
                       onAddBlock={(t) => void addBlock(t)}
                       onUpdateBlock={updateBlock}
                       onRemoveBlock={(id) => void removeBlock(id)}
@@ -726,6 +837,17 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             >
               <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: BORDER }}>
                 <span className="text-sm font-semibold text-white/80">Preview</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setPreviewKey((k) => k + 1)}
+                    disabled={!previewUrl}
+                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] text-white/55 transition-colors hover:text-white/85 disabled:opacity-40"
+                    style={{ borderColor: BORDER }}
+                    title="Refresh preview"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Refresh
+                  </button>
                 <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
                   <button
                     type="button"
@@ -751,6 +873,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                   >
                     <Monitor className="h-3.5 w-3.5" />
                   </button>
+                </div>
                 </div>
               </div>
 
@@ -797,28 +920,56 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
 
               {/* Preview frame */}
               <div className="flex flex-1 items-start justify-center overflow-y-auto p-4">
-                {debouncedPage ? (
+                {previewUrl ? (
                   previewDevice === "mobile" ? (
                     <div
                       className="relative overflow-hidden rounded-[2rem] border-[3px] shadow-2xl"
-                      style={{ width: 375, borderColor: "#1a1a1a", background: "#000" }}
+                      style={{
+                        width: 375 * 0.85,
+                        height: 667 * 0.85,
+                        borderColor: "#1a1a1a",
+                        background: "#000",
+                      }}
                     >
-                      <div className="flex h-6 items-center justify-center" style={{ background: "#111" }}>
-                        <div className="h-1 w-16 rounded-full bg-white/20" />
-                      </div>
-                      <div className="max-h-[calc(100vh-18rem)] overflow-y-auto">
-                        <LinkPageLivePreview page={debouncedPage} device="mobile" />
-                      </div>
+                      <iframe
+                        key={previewKey}
+                        src={previewUrl}
+                        title="Mobile preview"
+                        className="border-0"
+                        style={{
+                          width: 375,
+                          height: 667,
+                          transform: "scale(0.85)",
+                          transformOrigin: "top left",
+                        }}
+                      />
                     </div>
                   ) : (
-                    <div className="w-full max-w-[360px]">
-                      <LinkPageLivePreview page={debouncedPage} device="desktop" />
+                    <div
+                      className="overflow-hidden rounded-xl border shadow-2xl"
+                      style={{
+                        width: 1024 * 0.4,
+                        height: 768 * 0.4,
+                        borderColor: BORDER,
+                        background: "#000",
+                      }}
+                    >
+                      <iframe
+                        key={previewKey}
+                        src={previewUrl}
+                        title="Desktop preview"
+                        className="border-0"
+                        style={{
+                          width: 1024,
+                          height: 768,
+                          transform: "scale(0.4)",
+                          transformOrigin: "top left",
+                        }}
+                      />
                     </div>
                   )
                 ) : (
-                  <div className="flex items-center gap-2 text-xs text-white/30">
-                    <Loader2 className="h-4 w-4 animate-spin" /> Updating preview…
-                  </div>
+                  <div className="flex items-center gap-2 text-xs text-white/30">Add a slug to preview</div>
                 )}
               </div>
             </aside>
@@ -952,13 +1103,24 @@ function AccordionSection({
   );
 }
 
+function FieldSaveIndicator({ status }: { status: FieldSaveStatus }) {
+  if (status === "idle") return null;
+  if (status === "pending" || status === "saving") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-white/45">
+        <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+      </span>
+    );
+  }
+  return <span className="text-[10px] font-medium text-emerald-400/90">Saved ✓</span>;
+}
+
 function EditorPanel({
   page,
   models,
-  saving,
   expandedSections,
   onToggleSection,
-  onSave,
+  onPatchField,
   onAddBlock,
   onUpdateBlock,
   onRemoveBlock,
@@ -971,10 +1133,9 @@ function EditorPanel({
 }: {
   page: LinkPageWithBlocks;
   models: ModelRecord[];
-  saving: boolean;
   expandedSections: Set<string>;
   onToggleSection: (id: string) => void;
-  onSave: (patch: Partial<LinkPageRecord>) => void;
+  onPatchField: (patch: Partial<LinkPageRecord>) => void;
   onAddBlock: (t: LinkPageBlockType) => void;
   onUpdateBlock: (b: LinkPageBlockRecord) => Promise<void>;
   onRemoveBlock: (id: string) => void;
@@ -996,15 +1157,15 @@ function EditorPanel({
         onToggle={onToggleSection}
       >
         <Field label="Title">
-          <FormInput value={page.title} onChange={(e) => onSave({ title: e.target.value })} disabled={saving} />
+          <FormInput value={page.title} onChange={(e) => onPatchField({ title: e.target.value })} />
         </Field>
         <Field label="Slug">
-          <FormInput value={page.slug} onChange={(e) => onSave({ slug: e.target.value })} disabled={saving} />
+          <FormInput value={page.slug} onChange={(e) => onPatchField({ slug: e.target.value })} />
         </Field>
         <Field label="Model">
           <select
             value={page.model_id}
-            onChange={(e) => onSave({ model_id: e.target.value })}
+            onChange={(e) => onPatchField({ model_id: e.target.value })}
             className="w-full rounded-lg border px-3 py-2 text-sm text-white"
             style={{ background: BG, borderColor: BORDER }}
           >
@@ -1019,19 +1180,18 @@ function EditorPanel({
         <Field label="Custom domain">
           <FormInput
             value={page.custom_domain}
-            onChange={(e) => onSave({ custom_domain: e.target.value })}
+            onChange={(e) => onPatchField({ custom_domain: e.target.value })}
             placeholder="links.example.com"
-            disabled={saving}
           />
         </Field>
         <Field label="Meta description">
-          <Textarea value={page.meta_description} onChange={(e) => onSave({ meta_description: e.target.value })} rows={2} />
+          <Textarea value={page.meta_description} onChange={(e) => onPatchField({ meta_description: e.target.value })} rows={2} />
         </Field>
         <label className="flex items-center gap-2 text-xs text-white/60">
           <input
             type="checkbox"
             checked={page.show_powered_by}
-            onChange={(e) => onSave({ show_powered_by: e.target.checked })}
+            onChange={(e) => onPatchField({ show_powered_by: e.target.checked })}
             className="rounded border-white/20"
           />
           Show powered-by badge
@@ -1045,13 +1205,13 @@ function EditorPanel({
         onToggle={onToggleSection}
       >
         <Field label="Bio">
-          <Textarea value={page.bio} onChange={(e) => onSave({ bio: e.target.value })} rows={3} />
+          <Textarea value={page.bio} onChange={(e) => onPatchField({ bio: e.target.value })} rows={3} />
         </Field>
         <Field label="Profile photo URL">
           <div className="flex gap-2">
             <FormInput
               value={page.profile_photo_url}
-              onChange={(e) => onSave({ profile_photo_url: e.target.value })}
+              onChange={(e) => onPatchField({ profile_photo_url: e.target.value })}
             />
             <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-2 text-xs text-white/60 hover:bg-white/5" style={{ borderColor: BORDER }}>
               <Upload className="h-3.5 w-3.5" />
@@ -1061,7 +1221,7 @@ function EditorPanel({
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) void onUpload(f, (url) => onSave({ profile_photo_url: url }));
+                  if (f) void onUpload(f, (url) => onPatchField({ profile_photo_url: url }));
                 }}
               />
             </label>
@@ -1079,7 +1239,7 @@ function EditorPanel({
           <Field label="Theme">
             <select
               value={page.theme}
-              onChange={(e) => onSave({ theme: e.target.value as LinkPageRecord["theme"] })}
+              onChange={(e) => onPatchField({ theme: e.target.value as LinkPageRecord["theme"] })}
               className="w-full rounded-lg border px-3 py-2 text-sm text-white"
               style={{ background: BG, borderColor: BORDER }}
             >
@@ -1091,7 +1251,7 @@ function EditorPanel({
           <Field label="Font">
             <select
               value={page.font}
-              onChange={(e) => onSave({ font: e.target.value as LinkPageRecord["font"] })}
+              onChange={(e) => onPatchField({ font: e.target.value as LinkPageRecord["font"] })}
               className="w-full rounded-lg border px-3 py-2 text-sm text-white"
               style={{ background: BG, borderColor: BORDER }}
             >
@@ -1104,7 +1264,7 @@ function EditorPanel({
         <Field label="Background type">
           <select
             value={page.background_type}
-            onChange={(e) => onSave({ background_type: e.target.value as LinkPageRecord["background_type"] })}
+            onChange={(e) => onPatchField({ background_type: e.target.value as LinkPageRecord["background_type"] })}
             className="w-full rounded-lg border px-3 py-2 text-sm text-white"
             style={{ background: BG, borderColor: BORDER }}
           >
@@ -1118,12 +1278,12 @@ function EditorPanel({
             <NativeColorSwatch
               value={page.background_value}
               fallback="#0a0a0a"
-              onChange={(v) => onSave({ background_value: v })}
+              onChange={(v) => onPatchField({ background_value: v })}
             />
           ) : (
             <FormInput
               value={page.background_value}
-              onChange={(e) => onSave({ background_value: e.target.value })}
+              onChange={(e) => onPatchField({ background_value: e.target.value })}
               placeholder={page.background_type === "gradient" ? "linear-gradient(...)" : "Image URL"}
             />
           )}
@@ -1133,14 +1293,14 @@ function EditorPanel({
             <NativeColorSwatch
               value={page.primary_color}
               fallback={ACCENT}
-              onChange={(v) => onSave({ primary_color: v })}
+              onChange={(v) => onPatchField({ primary_color: v })}
             />
           </Field>
           <Field label="Accent color">
             <NativeColorSwatch
               value={page.accent_color}
               fallback="#a855f7"
-              onChange={(v) => onSave({ accent_color: v })}
+              onChange={(v) => onPatchField({ accent_color: v })}
             />
           </Field>
         </div>
