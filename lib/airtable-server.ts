@@ -12,6 +12,16 @@ const AIRTABLE_META_API = "https://api.airtable.com/v0/meta";
 
 /** Short-lived dedupe cache for identical listRecords GETs (reduces 429s from parallel refreshes). */
 const LIST_RECORDS_CACHE_TTL_MS = 30_000;
+/** Per-table TTL overrides for hot tables fetched on every dashboard navigation. */
+const LIST_RECORDS_TABLE_CACHE_TTL_MS: Record<string, number> = {
+  shifts: 120_000,
+  model_periods: 120_000,
+  weekly_program_va: 120_000,
+};
+
+function getListRecordsCacheTtlMs(tableName: string): number {
+  return LIST_RECORDS_TABLE_CACHE_TTL_MS[tableName] ?? LIST_RECORDS_CACHE_TTL_MS;
+}
 type ListRecordsCacheEntry = {
   expiresAt: number;
   payload: { records: AirtableRecord<unknown>[]; offset?: string };
@@ -252,7 +262,7 @@ export async function listRecords<T = Record<string, unknown>>(
     const data = await airtableFetch<{ records: AirtableRecord<T>[]; offset?: string }>(url.toString());
     const snapshot = cloneListRecordsPayload<T>(data);
     listRecordsReadCache.set(cacheKey, {
-      expiresAt: Date.now() + LIST_RECORDS_CACHE_TTL_MS,
+      expiresAt: Date.now() + getListRecordsCacheTtlMs(tableName),
       payload: snapshot as { records: AirtableRecord<unknown>[]; offset?: string },
     });
     return snapshot;

@@ -195,7 +195,7 @@ export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlock
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
   return unstable_cache(() => _getLinkPageBySlug(normalized), [`link-page-slug-${normalized}`], {
-    revalidate: 30,
+    revalidate: 60,
   })();
 }
 

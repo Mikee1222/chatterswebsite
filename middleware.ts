@@ -9,10 +9,11 @@ import { getLinkPageByCustomDomain } from "@/services/link-pages";
 
 const PUBLIC_PATHS = [ROUTES.login, "/l/"];
 
-/** Paths that must never be blocked by auth (PWA, static assets). Bypass auth and return next() immediately. */
+/** Paths that must never be blocked by auth (PWA, static assets, public link pages). Bypass auth and return next() immediately. */
 const PUBLIC_ASSET_PREFIXES = [
   "/_next/static",
   "/_next/image",
+  "/api/l/",
   "/api/",
   "/favicon.ico",
   "/apple-touch-icon",
@@ -62,7 +63,8 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const host = request.headers.get("host") ?? "";
 
-  if (isPublicAssetPath(pathname)) {
+  // Public link pages — bypass auth before any session or custom-domain work
+  if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
     return NextResponse.next();
   }
 
@@ -78,10 +80,6 @@ export async function middleware(request: NextRequest) {
     } catch {
       // fall through to normal auth
     }
-  }
-
-  if (isPublicAppPath(pathname)) {
-    return NextResponse.next();
   }
 
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
@@ -127,6 +125,6 @@ export async function middleware(request: NextRequest) {
 // Run middleware for app routes only; do NOT run for static/PWA assets (they bypass auth via isPublicAssetPath if they ever hit middleware)
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon\\.ico|api|apple-touch-icon|icon\\.svg|icon-\\d|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
+    "/((?!_next/static|_next/image|favicon\\.ico|api|l/|apple-touch-icon|icon\\.svg|icon-\\d|icons/|manifest|sw\\.js|workbox-|fonts/|images/).*)",
   ],
 };
