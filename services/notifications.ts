@@ -109,8 +109,9 @@ export async function createNotification(fields: {
     [NOTIFICATION_FIELDS.entity_type]: fields.entity_type,
     [NOTIFICATION_FIELDS.entity_id]: fields.entity_id,
   };
-  // Omit metadata from Airtable create; in-app/realtime still get metadata from notification-service payload.
-  // When the notifications table has a "metadata" column, you can add: if (fields.metadata?.length) payload[NOTIFICATION_FIELDS.metadata] = JSON.stringify(fields.metadata);
+  if (fields.metadata?.length) {
+    payload[NOTIFICATION_FIELDS.metadata] = JSON.stringify(fields.metadata);
+  }
 
   // 6. Right before creating the airtable notification record
   devLog(NOTIF, "6 before_airtable_create", JSON.stringify({ table: NOTIFICATIONS_TABLE, payload }));

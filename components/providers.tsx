@@ -13,11 +13,11 @@ import { FeedbackModalProvider } from "@/contexts/feedback-modal-context";
 /**
  * Toast + realtime + notification center + PWA + notification prompt (for re-entry from More/settings).
  */
-export function Providers(props: { children: React.ReactNode }) {
+export function Providers(props: { children: React.ReactNode; initialUnreadCount?: number }) {
   return (
     <DashboardSwrProvider>
       <ToastProvider>
-        <RealtimeProviderWrapper>
+        <RealtimeProviderWrapper initialUnreadCount={props.initialUnreadCount}>
           <NotificationCenterProvider>
             <NotificationPromptProvider>
               <PwaProvider>

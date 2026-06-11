@@ -1,4 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
+import { getNotificationUserId } from "@/lib/notification-user";
 import { ROUTES } from "@/lib/routes";
 import { AnimatedBackground } from "@/components/animated-background";
 import { Sidebar, type SidebarQuickStats } from "@/components/sidebar";
@@ -24,6 +25,7 @@ import type { ModelLang } from "@/lib/model-i18n";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { getUnreadCount } from "@/services/notifications";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({
@@ -96,8 +98,13 @@ export default async function DashboardLayout({
     modelUiLanguage = await getModelDashboardLanguage(user);
   }
 
+  const notificationUserId = getNotificationUserId(user);
+  const initialUnreadCount = notificationUserId
+    ? await getUnreadCount(notificationUserId).catch(() => 0)
+    : 0;
+
   return (
-    <Providers>
+    <Providers initialUnreadCount={initialUnreadCount}>
       <SidebarProvider>
         <div className="relative min-h-screen dashboard-bg">
           <AnimatedBackground />

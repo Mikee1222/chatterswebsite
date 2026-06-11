@@ -27,6 +27,7 @@ export type PushPayload = {
   body: string;
   url: string;
   tag?: string;
+  notification_id?: string;
 };
 
 /**
@@ -47,6 +48,7 @@ export async function sendWebPush(
     body: payload.body,
     url: payload.url,
     tag: payload.tag ?? "chatter",
+    ...(payload.notification_id ? { notification_id: payload.notification_id } : {}),
   });
 
   const run = pushSendQueue.then(async (): Promise<boolean> => {

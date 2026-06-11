@@ -349,10 +349,14 @@ function isInQuietHours(prefs: { quiet_hours_start: string; quiet_hours_end: str
   const start = prefs.quiet_hours_start?.trim();
   const end = prefs.quiet_hours_end?.trim();
   if (!start || !end) return false;
-  const athensTime = new Date().toLocaleString("en-US", { timeZone: "Europe/Athens" });
-  const athensDate = new Date(athensTime);
-  const currentHour = athensDate.getHours();
-  const currentMinute = athensDate.getMinutes();
+  const athensParts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Athens",
+    hour: "numeric",
+    minute: "numeric",
+    hour12: false,
+  }).formatToParts(new Date());
+  const currentHour = Number(athensParts.find((p) => p.type === "hour")?.value ?? 0);
+  const currentMinute = Number(athensParts.find((p) => p.type === "minute")?.value ?? 0);
   const [startH, startM] = start.split(":").map(Number);
   const [endH, endM] = end.split(":").map(Number);
   const nowMins = currentHour * 60 + currentMinute;
@@ -466,19 +470,25 @@ function logNotifyPushOutcome(
 /** Send web push to one subscription (VAPID). Payload includes url for tap-to-open. Returns true if sent successfully. */
 async function sendPushToSubscription(
   subscription: { endpoint: string; p256dh: string; auth: string; role?: string },
-  payload: { title: string; body: string; entity_type: string }
+  payload: { title: string; body: string; entity_type: string; notification_id?: string }
 ): Promise<boolean> {
   const path = getPushTargetPath(payload.entity_type, subscription.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined);
   return sendWebPush(
     { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth },
-    { title: payload.title, body: payload.body, url: path, tag: payload.entity_type }
+    {
+      title: payload.title,
+      body: payload.body,
+      url: path,
+      tag: payload.entity_type,
+      notification_id: payload.notification_id,
+    }
   );
 }
 
 /** One subscription at a time (no Promise.all) to stay under Cloudflare Worker subrequest limits. */
 async function sendWebPushToSubscriptionsSequentially(
   subscriptions: Array<{ endpoint: string; p256dh: string; auth: string; role?: string }>,
-  payload: { title: string; body: string; entity_type: string },
+  payload: { title: string; body: string; entity_type: string; notification_id?: string },
   logRecipientUserId: string,
   eventType?: NotificationEventType
 ): Promise<number> {
@@ -486,7 +496,13 @@ async function sendWebPushToSubscriptionsSequentially(
   let index = 0;
   for (const sub of subscriptions) {
     const path = getPushTargetPath(payload.entity_type, sub.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined);
-    const innerPayload = { title: payload.title, body: payload.body, url: path, tag: payload.entity_type };
+    const innerPayload = {
+      title: payload.title,
+      body: payload.body,
+      url: path,
+      tag: payload.entity_type,
+      notification_id: payload.notification_id,
+    };
     if (eventType === "shift_started") {
       devLog(NOTIF, "web_push_full_payload", JSON.stringify({
         recipient_user_id: logRecipientUserId,
@@ -608,6 +624,59 @@ export async function notify(options: NotifyOptions) {
   );
 
   const airtableCategory = CATEGORY_TO_AIRTABLE[category] ?? category;
+
+  // 4. Load preferences once — gates in-app creation and later push delivery
+  devLog(NOTIF, "4 before_load_preferences", JSON.stringify({ recipient_user_id: options.user_id }));
+
+  const [prefs, { role: recipientRole, roleDefaults }] = await Promise.all([
+    getPreferencesByUserId(options.user_id),
+    getRecipientPushContext(options.user_id),
+  ]);
+
+  devLog(NOTIF, "5 after_load_preferences", JSON.stringify({
+    recipient_user_id: options.user_id,
+    in_app_enabled: prefs?.in_app_enabled ?? null,
+    push_enabled: prefs?.push_enabled ?? null,
+    mute_all: prefs?.mute_all ?? null,
+    critical_only: prefs?.critical_only ?? null,
+  }));
+
+  if (prefs?.in_app_enabled === false) {
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "in_app_enabled is false", recipient_user_id: options.user_id }));
+    logNotifyPushOutcome(options, {
+      push_sent: false,
+      outcome_stage: "skipped_in_app_disabled",
+      detail: "in_app_enabled false; notification and push skipped",
+    });
+    return { notification: null, pushSent: false };
+  }
+
+  if (prefs?.mute_all) {
+    devLog(NOTIF, "skip", JSON.stringify({ reason: "mute_all is true", recipient_user_id: options.user_id }));
+    logNotifyPushOutcome(options, {
+      push_sent: false,
+      outcome_stage: "skipped_mute_all",
+      detail: "mute_all true; notification and push skipped",
+    });
+    return { notification: null, pushSent: false };
+  }
+
+  if (prefs) {
+    const categoryKey = preferenceKey;
+    if (categoryKey && !(prefs[categoryKey] as boolean)) {
+      devLog(NOTIF, "skip", JSON.stringify({
+        reason: `category preference ${categoryKey} is false`,
+        recipient_user_id: options.user_id,
+      }));
+      logNotifyPushOutcome(options, {
+        push_sent: false,
+        outcome_stage: "skipped_category_pref_false",
+        detail: `category preference ${categoryKey} is false; notification and push skipped`,
+      });
+      return { notification: null, pushSent: false };
+    }
+  }
+
   const notification = await createNotification({
     user_id: options.user_id,
     category: airtableCategory,
@@ -656,12 +725,7 @@ export async function notify(options: NotifyOptions) {
 
   devLog(PUSH_DEBUG, "event entered push decision branch", JSON.stringify({ event_type: options.event_type, recipient_user_id: options.user_id, priority }));
 
-  // 4. Right before loading notification_preferences
-  devLog(NOTIF, "4 before_load_preferences", JSON.stringify({ recipient_user_id: options.user_id }));
-
-  const prefs = await getPreferencesByUserId(options.user_id);
   console.log("[notify] user preferences lookup for:", options.user_id);
-  const { role: recipientRole, roleDefaults } = await getRecipientPushContext(options.user_id);
 
   devLog(PUSH_DEBUG, "recipient user id", JSON.stringify({ recipient_user_id: options.user_id }));
   devLog(PUSH_DEBUG, "preferences loaded", JSON.stringify({ has_prefs: !!prefs }));
@@ -671,15 +735,6 @@ export async function notify(options: NotifyOptions) {
     devLog(PUSH_DEBUG, "critical_only value", JSON.stringify({ critical_only: prefs.critical_only }));
     devLog(PUSH_DEBUG, "event_type and priority being evaluated", JSON.stringify({ event_type: options.event_type, priority, category }));
   }
-
-  // 5. Right after loading notification_preferences
-  devLog(NOTIF, "5 after_load_preferences", JSON.stringify({
-    recipient_user_id: options.user_id,
-    in_app_enabled: prefs?.in_app_enabled ?? null,
-    push_enabled: prefs?.push_enabled ?? null,
-    mute_all: prefs?.mute_all ?? null,
-    critical_only: prefs?.critical_only ?? null,
-  }));
 
   if (prefs) {
     logCategoryPrefKeyReference();
@@ -765,7 +820,7 @@ export async function notify(options: NotifyOptions) {
         quiet_hours_start_raw: prefs.quiet_hours_start ?? "",
         quiet_hours_end_raw: prefs.quiet_hours_end ?? "",
         in_quiet_hours: inQuiet,
-        note: "isInQuietHours uses getHours/getMinutes (worker local clock, often UTC on Cloudflare)",
+        note: "isInQuietHours uses Intl.DateTimeFormat with Europe/Athens",
       })
     );
   }
@@ -902,7 +957,12 @@ export async function notify(options: NotifyOptions) {
       auth: sub.auth,
       role: sub.role,
     })),
-    { title: options.title, body: options.body, entity_type: options.entity_type },
+    {
+      title: options.title,
+      body: options.body,
+      entity_type: options.entity_type,
+      notification_id: notification.id,
+    },
     options.user_id,
     options.event_type
   );

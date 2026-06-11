@@ -32,6 +32,7 @@ self.addEventListener("push", (event) => {
     data: {
       url: payload.url || "/",
       tag: payload.tag,
+      notification_id: payload.notification_id,
     },
   };
   event.waitUntil(self.registration.showNotification(title, options));
@@ -40,8 +41,22 @@ self.addEventListener("push", (event) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = event.notification.data?.url || "/";
+  const notificationId = event.notification.data?.notification_id;
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+    Promise.resolve().then(async () => {
+      if (notificationId) {
+        try {
+          await fetch("/api/notifications/mark-read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ notification_id: notificationId }),
+          });
+        } catch {
+          /* non-blocking */
+        }
+      }
+      const clientList = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
       for (const client of clientList) {
         if (client.url && "focus" in client) {
           client.navigate(url);
