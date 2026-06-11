@@ -169,9 +169,16 @@ function linkPageDomainTag(domain: string): string {
   return `link-page-domain-${domain.trim().toLowerCase().replace(/^www\./, "")}`;
 }
 
-function invalidateLinkPagePublicCache(page: Pick<LinkPageRecord, "slug" | "custom_domain">): void {
+function linkPageBlocksTag(pageId: string): string {
+  return `link-page-blocks-${pageId.trim()}`;
+}
+
+function invalidateLinkPagePublicCache(
+  page: Pick<LinkPageRecord, "slug" | "custom_domain" | "page_id">
+): void {
   if (page.slug) revalidateTag(linkPageSlugTag(page.slug));
   if (page.custom_domain) revalidateTag(linkPageDomainTag(page.custom_domain));
+  if (page.page_id) revalidateTag(linkPageBlocksTag(page.page_id));
 }
 
 function slugify(input: string): string {
@@ -214,10 +221,16 @@ async function _getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | nu
   return { ...page, blocks: blocks.filter((b) => b.is_visible) };
 }
 
+const LINK_PAGE_PUBLIC_CACHE_SECONDS = 120;
+
 export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  return _getLinkPageBySlug(normalized);
+  const tag = linkPageSlugTag(normalized);
+  return unstable_cache(() => _getLinkPageBySlug(normalized), [tag], {
+    revalidate: LINK_PAGE_PUBLIC_CACHE_SECONDS,
+    tags: [tag],
+  })();
 }
 
 export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
@@ -265,15 +278,23 @@ export async function getLinkPageByPageId(pageId: string): Promise<LinkPageRecor
   return fetchPageByFormula(`{page_id}="${escapeFormulaString(pid)}"`);
 }
 
-export async function listBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
-  const pid = pageId.trim();
-  if (!pid) return [];
+async function fetchBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
   const records = await listAllRecords<BlockFields>(LINK_PAGE_BLOCKS_TABLE, {
-    filterByFormula: `{page_id}="${escapeFormulaString(pid)}"`,
+    filterByFormula: `{page_id}="${escapeFormulaString(pageId)}"`,
     sort: [{ field: LINK_PAGE_BLOCK_FIELDS.sort_order, direction: "asc" }],
     _caller: "link-page-blocks",
   });
   return records.map(mapBlock);
+}
+
+export async function listBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
+  const pid = pageId.trim();
+  if (!pid) return [];
+  const tag = linkPageBlocksTag(pid);
+  return unstable_cache(() => fetchBlocksForPage(pid), [tag], {
+    revalidate: LINK_PAGE_PUBLIC_CACHE_SECONDS,
+    tags: [tag],
+  })();
 }
 
 export type CreateLinkPageInput = {

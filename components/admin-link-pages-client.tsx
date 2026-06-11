@@ -257,6 +257,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [globalAnalyticsLoading, setGlobalAnalyticsLoading] = React.useState(false);
   const [previewDevice, setPreviewDevice] = React.useState<"mobile" | "desktop">("mobile");
   const [previewKey, setPreviewKey] = React.useState(0);
+  const [lastPreviewRefresh, setLastPreviewRefresh] = React.useState(0);
   const [draft, setDraft] = React.useState<SaveablePageFields | null>(null);
   const [saved, setSaved] = React.useState<SaveablePageFields | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -322,6 +323,13 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     return Object.keys(diffSaveableFields(saved, draft)).length > 0;
   }, [draft, saved]);
 
+  const refreshPreview = React.useCallback(() => {
+    const now = Date.now();
+    if (now - lastPreviewRefresh < 10000) return;
+    setLastPreviewRefresh(now);
+    setTimeout(() => setPreviewKey((prev) => prev + 1), 2000);
+  }, [lastPreviewRefresh]);
+
   const handleSave = React.useCallback(
     async (data?: SaveablePageFields) => {
       if (!selectedId || !selectedPage || !savedRef.current) return;
@@ -368,7 +376,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             prev.map((p) => (p.id === responseData.page!.id ? { ...p, ...responseData.page } : p))
           );
           setSelectedPage((prev) => (prev ? { ...prev, ...responseData.page! } : prev));
-          setPreviewKey((prev) => prev + 1);
+          refreshPreview();
         }
       } catch (err) {
         addToast(localToast("Save failed", err instanceof Error ? err.message : "Error", "high"));
@@ -376,7 +384,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
         setIsSaving(false);
       }
     },
-    [selectedId, selectedPage, addToast]
+    [selectedId, selectedPage, addToast, refreshPreview]
   );
 
   const updateTextDraft = React.useCallback((patch: Partial<SaveablePageFields>) => {

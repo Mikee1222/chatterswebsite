@@ -96,11 +96,43 @@ function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): stri
   }
 }
 
+function isAirtableRateLimitError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return msg.includes("429") || /rate limit/i.test(msg);
+}
+
+function LinkPageRateLimited() {
+  return (
+    <div className="link-page-root">
+      <head>
+        <meta httpEquiv="refresh" content="3" />
+      </head>
+      <main className="page-wrap" style={{ textAlign: "center", padding: "3rem 1.5rem" }}>
+        <h1 className="title" style={{ fontSize: "1.25rem", marginBottom: "0.75rem" }}>
+          Just a moment…
+        </h1>
+        <p className="bio" style={{ opacity: 0.7 }}>
+          This page is loading. It will refresh automatically.
+        </p>
+      </main>
+    </div>
+  );
+}
+
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug } = await params;
   const { preview } = await searchParams;
   const isPreview = preview === "true";
-  const page = await getLinkPageBySlug(slug);
+
+  let page: LinkPageWithBlocks | null;
+  try {
+    page = await getLinkPageBySlug(slug);
+  } catch (err) {
+    if (isAirtableRateLimitError(err)) {
+      return { title: "Just a moment…", robots: { index: false, follow: false } };
+    }
+    return { title: "Not found", robots: { index: false, follow: false } };
+  }
 
   if (!page || (!isPreview && page.status !== "published")) {
     return { title: "Not found", robots: { index: false, follow: false } };
@@ -134,7 +166,16 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
   const { slug } = await params;
   const { preview } = await searchParams;
   const isPreview = preview === "true";
-  const page = await getLinkPageBySlug(slug);
+
+  let page: LinkPageWithBlocks | null;
+  try {
+    page = await getLinkPageBySlug(slug);
+  } catch (err) {
+    if (isAirtableRateLimitError(err)) {
+      return <LinkPageRateLimited />;
+    }
+    notFound();
+  }
 
   if (!page || (!isPreview && page.status !== "published")) {
     notFound();
@@ -148,7 +189,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
       userAgent: hdrs.get("user-agent") ?? "",
       referrer: hdrs.get("referer") ?? "",
       sessionId: randomSessionId(),
-    });
+    }).catch(() => {});
   }
 
   const sortedBlocks = [...page.blocks].sort((a, b) => a.sort_order - b.sort_order);

@@ -146,8 +146,8 @@ async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackConte
 }
 
 /** Fire-and-forget page view tracking. Never throws. */
-export function trackPageView(ctx: TrackContext): void {
-  void writeEvent("page_view", ctx);
+export function trackPageView(ctx: TrackContext): Promise<void> {
+  return writeEvent("page_view", ctx);
 }
 
 /** Fire-and-forget link click tracking. Never throws. */

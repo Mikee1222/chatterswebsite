@@ -11,9 +11,13 @@ const AIRTABLE_API = "https://api.airtable.com/v0";
 const AIRTABLE_META_API = "https://api.airtable.com/v0/meta";
 
 /** Short-lived dedupe cache for identical listRecords GETs (reduces 429s from parallel refreshes). */
-const LIST_RECORDS_CACHE_TTL_MS = 30_000;
+const LIST_RECORDS_CACHE_TTL_MS = 60_000;
 /** Per-table TTL overrides for hot tables fetched on every dashboard navigation. */
 const LIST_RECORDS_TABLE_CACHE_TTL_MS: Record<string, number> = {
+  link_pages: 120_000,
+  link_page_blocks: 120_000,
+  roles: 120_000,
+  shift_models: 120_000,
   shifts: 120_000,
   model_periods: 120_000,
   weekly_program_va: 120_000,
