@@ -324,31 +324,21 @@ function randomSessionId(): string {
   return `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function getOrCreateSessionId(controlPageId: string): string {
+/** Read-only in RSC — cookie writes happen via POST /api/l/session from the client. */
+function readSessionId(controlPageId: string): string | null {
   const cookieStore = cookies();
-  const cookieName = `lp_sid_${controlPageId}`;
-  const existing = cookieStore.get(cookieName)?.value;
-  if (existing) return existing;
-  const sessionId = randomSessionId();
-  cookieStore.set(cookieName, sessionId, {
-    maxAge: 60 * 60 * 24 * 365,
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-  });
-  return sessionId;
+  return cookieStore.get(`lp_sid_${controlPageId}`)?.value ?? null;
+}
+
+function sessionCookieBootstrapScript(pageId: string, sessionId: string): string {
+  const pid = pageId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const sid = sessionId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return `(function(){
+  fetch('/api/l/session',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({page_id:'${pid}',session_id:'${sid}'}),credentials:'same-origin'}).catch(function(){});
+})();`;
 }
 
 export default async function LinkPagePublic({ params, searchParams }: Props) {
-  try {
-    return await renderLinkPagePublic({ params, searchParams });
-  } catch (err) {
-    console.error("[l/slug] render error:", err);
-    notFound();
-  }
-}
-
-async function renderLinkPagePublic({ params, searchParams }: Props) {
   const { slug } = await params;
   const { preview } = await searchParams;
   const isPreview = preview === "true";
@@ -369,7 +359,9 @@ async function renderLinkPagePublic({ params, searchParams }: Props) {
   }
 
   const controlPage = page;
-  const sessionId = getOrCreateSessionId(controlPage.page_id);
+  const existingSessionId = readSessionId(controlPage.page_id);
+  const sessionId = existingSessionId ?? randomSessionId();
+  const needsSessionCookie = !isPreview && !existingSessionId;
   const abEnabled = !isPreview && controlPage.ab_test_enabled && !!controlPage.ab_variant_id;
   let variant: LinkPageAbVariant = "a";
   let activePage: LinkPageWithBlocks = controlPage;
@@ -482,6 +474,13 @@ async function renderLinkPagePublic({ params, searchParams }: Props) {
       ) : null}
       {!isPreview ? (
         <>
+          {needsSessionCookie ? (
+            <script
+              dangerouslySetInnerHTML={{
+                __html: sessionCookieBootstrapScript(controlPage.page_id, sessionId),
+              }}
+            />
+          ) : null}
           <script dangerouslySetInnerHTML={{ __html: fingerprintTrackingScript(controlPage.page_id) }} />
           <script dangerouslySetInnerHTML={{ __html: LINK_CLICK_TRACKING_SCRIPT }} />
         </>

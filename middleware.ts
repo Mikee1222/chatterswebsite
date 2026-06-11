@@ -54,17 +54,28 @@ export async function middleware(request: NextRequest) {
 
   // Custom domains — never run auth; rewrite root to /l/{slug} when configured
   if (!isGunzoDomain(host)) {
+    const bareHost = host.split(":")[0]?.toLowerCase() ?? "";
+
+    // Canonicalize www → apex so Airtable apex-only custom_domain values always match
+    if (bareHost.startsWith("www.") && !pathname.startsWith("/api/")) {
+      const apexUrl = new URL(request.url);
+      apexUrl.host = bareHost.slice(4);
+      return NextResponse.redirect(apexUrl, 301);
+    }
+
     if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
       return NextResponse.next();
     }
     if (!pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
       try {
-        const page = await getLinkPageByCustomDomainFresh(host);
+        const page = await getLinkPageByCustomDomainFresh(bareHost || host);
         if (page) {
+          console.log("[middleware] custom domain rewrite:", bareHost || host, "→", page.slug);
           return NextResponse.rewrite(new URL(`/l/${page.slug}`, request.url));
         }
+        console.warn("[middleware] custom domain no match:", bareHost || host);
       } catch (error) {
-        console.error("[middleware] custom domain lookup failed:", error);
+        console.error("[middleware] custom domain lookup failed:", bareHost || host, error);
       }
     }
     return NextResponse.next();
