@@ -228,11 +228,6 @@ function validateSlug(slug: string): string | null {
   return null;
 }
 
-const SAVE_DEBOUNCE_MS = 1500;
-const PREVIEW_REFRESH_DELAY_MS = 3000;
-
-type FieldSaveStatus = "idle" | "saving" | "saved";
-
 type Props = {
   initialPages: LinkPageRecord[];
   modelById: Record<string, string>;
@@ -264,14 +259,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [previewKey, setPreviewKey] = React.useState(0);
   const [draft, setDraft] = React.useState<SaveablePageFields | null>(null);
   const [saved, setSaved] = React.useState<SaveablePageFields | null>(null);
-  const [fieldSaveStatus, setFieldSaveStatus] = React.useState<FieldSaveStatus>("idle");
+  const [isSaving, setIsSaving] = React.useState(false);
   const [slugError, setSlugError] = React.useState<string | null>(null);
   const [showQr, setShowQr] = React.useState(false);
   const draftRef = React.useRef(draft);
   const savedRef = React.useRef(saved);
-  const saveDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const savedFadeRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const previewRefreshRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   draftRef.current = draft;
   savedRef.current = saved;
@@ -314,119 +306,100 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     if (!selectedPage) {
       setDraft(null);
       setSaved(null);
-      setFieldSaveStatus("idle");
+      setIsSaving(false);
       setSlugError(null);
       return;
     }
     const fields = pickSaveableFields(selectedPage);
     setDraft(fields);
     setSaved(fields);
-    setFieldSaveStatus("idle");
+    setIsSaving(false);
     setSlugError(null);
   }, [selectedPage?.id]);
-
-  React.useEffect(() => {
-    return () => {
-      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-      if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
-      if (previewRefreshRef.current) clearTimeout(previewRefreshRef.current);
-    };
-  }, []);
 
   const hasUnsavedChanges = React.useMemo(() => {
     if (!draft || !saved) return false;
     return Object.keys(diffSaveableFields(saved, draft)).length > 0;
   }, [draft, saved]);
 
-  const savePageFields = React.useCallback(async () => {
-    if (!selectedId || !selectedPage || !draftRef.current || !savedRef.current) return;
+  const handleSave = React.useCallback(
+    async (data?: SaveablePageFields) => {
+      if (!selectedId || !selectedPage || !savedRef.current) return;
 
-    const currentDraft = { ...draftRef.current };
-    if ("slug" in diffSaveableFields(savedRef.current, currentDraft)) {
-      const normalizedSlug = slugify(currentDraft.slug);
-      const slugValidation = validateSlug(normalizedSlug);
-      if (slugValidation) {
-        setSlugError(slugValidation);
-        addToast(localToast("Invalid slug", slugValidation, "high"));
+      const source = data ?? draftRef.current;
+      if (!source) return;
+
+      let currentDraft = { ...source };
+      if ("slug" in diffSaveableFields(savedRef.current, currentDraft)) {
+        const normalizedSlug = slugify(currentDraft.slug);
+        const slugValidation = validateSlug(normalizedSlug);
+        if (slugValidation) {
+          setSlugError(slugValidation);
+          addToast(localToast("Invalid slug", slugValidation, "high"));
+          return;
+        }
+        currentDraft.slug = normalizedSlug;
+        if (normalizedSlug !== source.slug) {
+          setDraft(currentDraft);
+        }
+      }
+
+      const patch = diffSaveableFields(savedRef.current, currentDraft);
+      if (Object.keys(patch).length === 0) {
+        setSlugError(null);
         return;
       }
-      currentDraft.slug = normalizedSlug;
-      if (normalizedSlug !== draftRef.current.slug) {
-        setDraft(currentDraft);
-      }
-    }
 
-    const patch = diffSaveableFields(savedRef.current, currentDraft);
-    if (Object.keys(patch).length === 0) {
-      setFieldSaveStatus("idle");
       setSlugError(null);
-      return;
-    }
-
-    setSlugError(null);
-    setFieldSaveStatus("saving");
-    try {
-      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(patch),
-      });
-      const data = (await res.json()) as { page?: LinkPageRecord; error?: string };
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
-      if (data.page) {
-        const savedFields = pickSaveableFields(data.page);
-        setSaved(savedFields);
-        setDraft(savedFields);
-        setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
-        setSelectedPage((prev) => (prev ? { ...prev, ...data.page! } : prev));
-        setFieldSaveStatus("saved");
-        if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
-        savedFadeRef.current = setTimeout(() => {
-          setFieldSaveStatus((s) => (s === "saved" ? "idle" : s));
-        }, 2500);
-        if (previewRefreshRef.current) clearTimeout(previewRefreshRef.current);
-        previewRefreshRef.current = setTimeout(() => {
-          setPreviewKey((k) => k + 1);
-        }, PREVIEW_REFRESH_DELAY_MS);
-      } else {
-        setFieldSaveStatus("idle");
+      setIsSaving(true);
+      try {
+        const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        const responseData = (await res.json()) as { page?: LinkPageRecord; error?: string };
+        if (!res.ok) throw new Error(responseData.error ?? "Save failed");
+        if (responseData.page) {
+          const savedFields = pickSaveableFields(responseData.page);
+          setSaved(savedFields);
+          setDraft(savedFields);
+          setPages((prev) =>
+            prev.map((p) => (p.id === responseData.page!.id ? { ...p, ...responseData.page } : p))
+          );
+          setSelectedPage((prev) => (prev ? { ...prev, ...responseData.page! } : prev));
+          setPreviewKey((prev) => prev + 1);
+        }
+      } catch (err) {
+        addToast(localToast("Save failed", err instanceof Error ? err.message : "Error", "high"));
+      } finally {
+        setIsSaving(false);
       }
-    } catch (err) {
-      setFieldSaveStatus("idle");
-      addToast(localToast("Save failed", err instanceof Error ? err.message : "Error", "high"));
-    }
-  }, [selectedId, selectedPage, addToast]);
-
-  const scheduleDebouncedSave = React.useCallback(() => {
-    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-    saveDebounceRef.current = setTimeout(() => {
-      void savePageFields();
-    }, SAVE_DEBOUNCE_MS);
-  }, [savePageFields]);
-
-  const updateDraft = React.useCallback(
-    (patch: Partial<SaveablePageFields>) => {
-      setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
-      if ("slug" in patch) {
-        const normalized = slugify(patch.slug ?? "");
-        setSlugError(validateSlug(normalized));
-      }
-      scheduleDebouncedSave();
     },
-    [scheduleDebouncedSave]
+    [selectedId, selectedPage, addToast]
+  );
+
+  const updateTextDraft = React.useCallback((patch: Partial<SaveablePageFields>) => {
+    setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+    if ("slug" in patch) {
+      const normalized = slugify(patch.slug ?? "");
+      setSlugError(validateSlug(normalized));
+    }
+  }, []);
+
+  const updateImmediateField = React.useCallback(
+    (patch: Partial<SaveablePageFields>) => {
+      const next = draftRef.current ? { ...draftRef.current, ...patch } : null;
+      if (!next) return;
+      setDraft(next);
+      void handleSave(next);
+    },
+    [handleSave]
   );
 
   const handleFieldBlur = React.useCallback(() => {
-    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-    saveDebounceRef.current = null;
-    void savePageFields();
-  }, [savePageFields]);
-
-  const handleSaveClick = React.useCallback(() => {
-    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-    saveDebounceRef.current = null;
-    void savePageFields();
-  }, [savePageFields]);
+    void handleSave();
+  }, [handleSave]);
 
   const handleDomainUpdated = React.useCallback(
     (domain: string) => {
@@ -860,21 +833,16 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                     </div>
                     {tab === "editor" ? (
                       <>
-                        {hasUnsavedChanges ? (
-                          <span className="text-[10px] font-medium text-amber-400">● Unsaved changes</span>
-                        ) : null}
-                        <FieldSaveIndicator status={fieldSaveStatus} />
+                        <SaveStatusIndicator isSaving={isSaving} hasUnsavedChanges={hasUnsavedChanges} />
                         <button
                           type="button"
-                          onClick={handleSaveClick}
-                          disabled={!hasUnsavedChanges || fieldSaveStatus === "saving"}
+                          onClick={() => void handleSave()}
+                          disabled={isSaving}
                           className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
                           style={{ background: ACCENT }}
                         >
-                          {fieldSaveStatus === "saving" ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : null}
-                          Save changes
+                          {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          Save
                         </button>
                       </>
                     ) : null}
@@ -926,7 +894,8 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                       models={models}
                       expandedSections={expandedSections}
                       onToggleSection={toggleSection}
-                      onPatchField={updateDraft}
+                      onPatchTextField={updateTextDraft}
+                      onPatchImmediateField={updateImmediateField}
                       onFieldBlur={handleFieldBlur}
                       slugError={slugError}
                       onDomainUpdated={handleDomainUpdated}
@@ -958,17 +927,6 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             >
               <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: BORDER }}>
                 <span className="text-sm font-semibold text-white/80">Preview</span>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewKey((k) => k + 1)}
-                    disabled={!previewUrl}
-                    className="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[10px] text-white/55 transition-colors hover:text-white/85 disabled:opacity-40"
-                    style={{ borderColor: BORDER }}
-                    title="Refresh preview"
-                  >
-                    <RefreshCw className="h-3 w-3" /> Refresh
-                  </button>
                 <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
                   <button
                     type="button"
@@ -995,7 +953,20 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                     <Monitor className="h-3.5 w-3.5" />
                   </button>
                 </div>
-                </div>
+              </div>
+
+              <div className="shrink-0 border-b px-4 py-2.5" style={{ borderColor: BORDER }}>
+                <button
+                  type="button"
+                  onClick={() => setPreviewKey((k) => k + 1)}
+                  disabled={!previewUrl}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium text-white/75 transition-colors hover:border-pink-500/40 hover:bg-pink-500/[0.06] hover:text-pink-200 disabled:opacity-40"
+                  style={{ borderColor: BORDER, background: BG }}
+                  title="Refresh preview"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  ↺ Refresh preview
+                </button>
               </div>
 
               {/* URL bar */}
@@ -1224,16 +1195,24 @@ function AccordionSection({
   );
 }
 
-function FieldSaveIndicator({ status }: { status: FieldSaveStatus }) {
-  if (status === "idle") return null;
-  if (status === "saving") {
+function SaveStatusIndicator({
+  isSaving,
+  hasUnsavedChanges,
+}: {
+  isSaving: boolean;
+  hasUnsavedChanges: boolean;
+}) {
+  if (isSaving) {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] text-white/45">
         <Loader2 className="h-3 w-3 animate-spin" /> Saving…
       </span>
     );
   }
-  return <span className="text-[10px] font-medium text-emerald-400/90">Saved ✓</span>;
+  if (hasUnsavedChanges) {
+    return <span className="text-[10px] font-medium text-amber-400">● Unsaved</span>;
+  }
+  return <span className="text-[10px] font-medium text-emerald-400/90">✓ Saved</span>;
 }
 
 function DnsCopyButton({ value, label }: { value: string; label: string }) {
@@ -1537,7 +1516,8 @@ function EditorPanel({
   models,
   expandedSections,
   onToggleSection,
-  onPatchField,
+  onPatchTextField,
+  onPatchImmediateField,
   onFieldBlur,
   slugError,
   onDomainUpdated,
@@ -1556,7 +1536,8 @@ function EditorPanel({
   models: ModelRecord[];
   expandedSections: Set<string>;
   onToggleSection: (id: string) => void;
-  onPatchField: (patch: Partial<SaveablePageFields>) => void;
+  onPatchTextField: (patch: Partial<SaveablePageFields>) => void;
+  onPatchImmediateField: (patch: Partial<SaveablePageFields>) => void;
   onFieldBlur: () => void;
   slugError: string | null;
   onDomainUpdated: (domain: string) => void;
@@ -1583,14 +1564,14 @@ function EditorPanel({
         <Field label="Title">
           <FormInput
             value={page.title}
-            onChange={(e) => onPatchField({ title: e.target.value })}
+            onChange={(e) => onPatchTextField({ title: e.target.value })}
             onBlur={onFieldBlur}
           />
         </Field>
         <Field label="Slug">
           <FormInput
             value={page.slug}
-            onChange={(e) => onPatchField({ slug: slugify(e.target.value) })}
+            onChange={(e) => onPatchTextField({ slug: slugify(e.target.value) })}
             onBlur={onFieldBlur}
             error={slugError ?? undefined}
           />
@@ -1598,7 +1579,7 @@ function EditorPanel({
         <Field label="Model">
           <select
             value={page.model_id}
-            onChange={(e) => onPatchField({ model_id: e.target.value })}
+            onChange={(e) => onPatchImmediateField({ model_id: e.target.value })}
             className="w-full rounded-lg border px-3 py-2 text-sm text-white"
             style={{ background: BG, borderColor: BORDER }}
           >
@@ -1620,7 +1601,7 @@ function EditorPanel({
         <Field label="Meta description">
           <Textarea
             value={page.meta_description}
-            onChange={(e) => onPatchField({ meta_description: e.target.value })}
+            onChange={(e) => onPatchTextField({ meta_description: e.target.value })}
             onBlur={onFieldBlur}
             rows={2}
           />
@@ -1629,7 +1610,7 @@ function EditorPanel({
           <input
             type="checkbox"
             checked={page.show_powered_by}
-            onChange={(e) => onPatchField({ show_powered_by: e.target.checked })}
+            onChange={(e) => onPatchImmediateField({ show_powered_by: e.target.checked })}
             className="rounded border-white/20"
           />
           Show powered-by badge
@@ -1645,7 +1626,7 @@ function EditorPanel({
         <Field label="Bio">
           <Textarea
             value={page.bio}
-            onChange={(e) => onPatchField({ bio: e.target.value })}
+            onChange={(e) => onPatchTextField({ bio: e.target.value })}
             onBlur={onFieldBlur}
             rows={3}
           />
@@ -1654,7 +1635,7 @@ function EditorPanel({
           <div className="flex gap-2">
             <FormInput
               value={page.profile_photo_url}
-              onChange={(e) => onPatchField({ profile_photo_url: e.target.value })}
+              onChange={(e) => onPatchTextField({ profile_photo_url: e.target.value })}
               onBlur={onFieldBlur}
             />
             <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-2 text-xs text-white/60 hover:bg-white/5" style={{ borderColor: BORDER }}>
@@ -1665,7 +1646,7 @@ function EditorPanel({
                 className="hidden"
                 onChange={(e) => {
                   const f = e.target.files?.[0];
-                  if (f) void onUpload(f, (url) => onPatchField({ profile_photo_url: url }));
+                  if (f) void onUpload(f, (url) => onPatchImmediateField({ profile_photo_url: url }));
                 }}
               />
             </label>
@@ -1675,7 +1656,7 @@ function EditorPanel({
           <input
             type="checkbox"
             checked={page.verified}
-            onChange={(e) => onPatchField({ verified: e.target.checked })}
+            onChange={(e) => onPatchImmediateField({ verified: e.target.checked })}
             className="rounded border-white/20"
           />
           Verified badge
@@ -1692,7 +1673,7 @@ function EditorPanel({
           <Field label="Theme">
             <select
               value={page.theme}
-              onChange={(e) => onPatchField({ theme: e.target.value as LinkPageRecord["theme"] })}
+              onChange={(e) => onPatchImmediateField({ theme: e.target.value as LinkPageRecord["theme"] })}
               className="w-full rounded-lg border px-3 py-2 text-sm text-white"
               style={{ background: BG, borderColor: BORDER }}
             >
@@ -1704,7 +1685,7 @@ function EditorPanel({
           <Field label="Font">
             <select
               value={page.font}
-              onChange={(e) => onPatchField({ font: e.target.value as LinkPageRecord["font"] })}
+              onChange={(e) => onPatchImmediateField({ font: e.target.value as LinkPageRecord["font"] })}
               className="w-full rounded-lg border px-3 py-2 text-sm text-white"
               style={{ background: BG, borderColor: BORDER }}
             >
@@ -1717,7 +1698,9 @@ function EditorPanel({
         <Field label="Background type">
           <select
             value={page.background_type}
-            onChange={(e) => onPatchField({ background_type: e.target.value as LinkPageRecord["background_type"] })}
+            onChange={(e) =>
+              onPatchImmediateField({ background_type: e.target.value as LinkPageRecord["background_type"] })
+            }
             className="w-full rounded-lg border px-3 py-2 text-sm text-white"
             style={{ background: BG, borderColor: BORDER }}
           >
@@ -1731,12 +1714,12 @@ function EditorPanel({
             <NativeColorSwatch
               value={page.background_value}
               fallback="#0a0a0a"
-              onChange={(v) => onPatchField({ background_value: v })}
+              onChange={(v) => onPatchImmediateField({ background_value: v })}
             />
           ) : (
             <FormInput
               value={page.background_value}
-              onChange={(e) => onPatchField({ background_value: e.target.value })}
+              onChange={(e) => onPatchTextField({ background_value: e.target.value })}
               onBlur={onFieldBlur}
               placeholder={page.background_type === "gradient" ? "linear-gradient(...)" : "Image URL"}
             />
@@ -1747,14 +1730,14 @@ function EditorPanel({
             <NativeColorSwatch
               value={page.primary_color}
               fallback={ACCENT}
-              onChange={(v) => onPatchField({ primary_color: v })}
+              onChange={(v) => onPatchImmediateField({ primary_color: v })}
             />
           </Field>
           <Field label="Accent color">
             <NativeColorSwatch
               value={page.accent_color}
               fallback="#a855f7"
-              onChange={(v) => onPatchField({ accent_color: v })}
+              onChange={(v) => onPatchImmediateField({ accent_color: v })}
             />
           </Field>
         </div>
