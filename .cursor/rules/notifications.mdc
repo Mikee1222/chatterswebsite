@@ -1,0 +1,85 @@
+---
+name: Notifications — register every new event
+description: Enforces that every new notification event is fully registered across all required files
+globs:
+  - lib/notification-types.ts
+  - lib/notifications-schema.ts
+  - lib/notification-routing.ts
+  - lib/notification-role-defaults.ts
+  - lib/notification-routes.ts
+  - services/notification-service.ts
+alwaysApply: true
+---
+
+## Notification rules — always follow when adding a new notification event
+
+### When adding a new notification event type, update ALL of these files:
+
+1. **lib/notification-types.ts**
+   - Add to NOTIFICATION_EVENT constant: `NEW_EVENT = "new_event"`
+   - Add to NOTIFICATION_ENTITY if new entity type needed
+
+2. **types/index.ts**
+   - Add "new_event" to NotificationEventType union
+
+3. **lib/notifications-schema.ts**
+   - Add "new_event" to NOTIFICATION_EVENT_TYPES array (for Airtable)
+   - Add EVENT_TYPE_TO_AIRTABLE mapping if needed
+
+4. **lib/notification-routing.ts**
+   - Add routing rule:
+ new_event: { rule: "assigned_party_only" | "admin_only" | "all_users", description: "..." }
+   - Choose correct rule:
+     * admin_only → only admins/managers receive it
+     * assigned_party_only → only the user the event is about
+     * all_users → everyone
+
+5. **lib/notification-role-defaults.ts**
+   - Add to NOTIFICATION_CATEGORY_EVENTS under the correct category:
+ category_alerts: [
+   ...existing,
+   { key: "new_event", label: "Human readable label" }
+ ]
+   - Choose correct category:
+     * shift_alerts → shift/break related
+     * task_alerts → VA tasks, content assignments
+     * phase_alerts → phase checklist items
+     * model_alerts → model live, custom requests, expenses
+     * period_alerts → period tracking
+     * whale_alerts → whale activity
+     * mistake_alerts → mistakes/fines
+     * fine_bonus_alerts → bonuses
+     * reward_alerts → points/rewards
+     * marketing_alerts → shadowban/social
+     * system_alerts → account/billing/system
+
+6. **lib/notification-routes.ts**
+   - Add push deep-link for the new event:
+ new_event: (role) => role === "admin" ? ROUTES.admin.something : ROUTES.chatter.something
+
+7. **services/notification-service.ts**
+   - Add to EVENT_TO_PREF_KEY if event needs specific preference key
+   - Otherwise ensure it maps to correct category via CATEGORY_TO_PREF_KEY
+
+8. **lib/notification-role-defaults.ts DEFAULT_NOTIFICATION_DEFAULTS**
+   - Add individual event default per role:
+     * admin/manager: true
+     * chatter/VA: true only if they need this event
+     * model/client: true only if relevant to them
+
+### Checklist before committing any new notification event
+- [ ] NOTIFICATION_EVENT constant updated
+- [ ] NotificationEventType union updated  
+- [ ] NOTIFICATION_EVENT_TYPES array updated (Airtable)
+- [ ] notification-routing.ts rule added
+- [ ] NOTIFICATION_CATEGORY_EVENTS updated (correct category)
+- [ ] Push deep-link added in notification-routes.ts
+- [ ] Preference key mapped in notification-service.ts
+- [ ] DEFAULT_NOTIFICATION_DEFAULTS updated per role
+- [ ] Roles UI (admin/roles) will auto-reflect via NOTIFICATION_CATEGORY_EVENTS
+
+### The roles UI is automatic
+The /admin/roles Notifications tab reads NOTIFICATION_CATEGORY_EVENTS 
+from lib/notification-role-defaults.ts at runtime.
+Adding an event to NOTIFICATION_CATEGORY_EVENTS automatically makes it 
+appear in the roles UI — no UI changes needed.
