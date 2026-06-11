@@ -244,7 +244,6 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [previewKey, setPreviewKey] = React.useState(0);
   const [fieldDraft, setFieldDraft] = React.useState<Partial<LinkPageRecord>>({});
   const [fieldSaveStatus, setFieldSaveStatus] = React.useState<FieldSaveStatus>("idle");
-  const [lastSaveAt, setLastSaveAt] = React.useState<number | null>(null);
   const [showQr, setShowQr] = React.useState(false);
   const saveBaselineRef = React.useRef<SaveablePageFields | null>(null);
   const fieldDraftRef = React.useRef(fieldDraft);
@@ -300,12 +299,6 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   }, [selectedPage?.id]);
 
   React.useEffect(() => {
-    if (lastSaveAt == null) return;
-    const t = setTimeout(() => setPreviewKey((k) => k + 1), 2000);
-    return () => clearTimeout(t);
-  }, [lastSaveAt]);
-
-  React.useEffect(() => {
     return () => {
       if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
       if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
@@ -336,7 +329,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
         setFieldDraft({});
         setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
         setSelectedPage((prev) => (prev ? { ...prev, ...data.page! } : prev));
-        setLastSaveAt(Date.now());
+        setPreviewKey((k) => k + 1);
         setFieldSaveStatus("saved");
         if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
         savedFadeRef.current = setTimeout(() => {
@@ -618,7 +611,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     : "";
 
   const previewUrl = editingPage?.slug
-    ? `${ROUTES.linkPage(editingPage.slug)}?preview=true`
+    ? `${ROUTES.linkPage(editingPage.slug)}?preview=true&t=${previewKey}`
     : "";
 
   const qrUrl = publicUrl

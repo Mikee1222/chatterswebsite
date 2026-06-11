@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -17,13 +18,16 @@ export async function POST(request: Request, ctx: Ctx) {
   try {
     if (body.action === "archive") {
       const page = await archiveLinkPage(id);
+      revalidatePath(`/l/${page.slug}`);
       return NextResponse.json({ page });
     }
     if (body.action === "unpublish") {
       const page = await unpublishLinkPage(id);
+      revalidatePath(`/l/${page.slug}`);
       return NextResponse.json({ page });
     }
     const page = await publishLinkPage(id);
+    revalidatePath(`/l/${page.slug}`);
     return NextResponse.json({ page });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Publish failed";

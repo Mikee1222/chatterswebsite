@@ -217,11 +217,7 @@ async function _getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | nu
 export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  const tag = linkPageSlugTag(normalized);
-  return unstable_cache(() => _getLinkPageBySlug(normalized), [tag], {
-    revalidate: 60,
-    tags: [tag],
-  })();
+  return _getLinkPageBySlug(normalized);
 }
 
 export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
@@ -474,10 +470,19 @@ export async function upsertBlock(
     rec = await createRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, { ...fields, created_at: now });
   }
   invalidateListRecordsReadCacheForTable(LINK_PAGE_BLOCKS_TABLE);
+  const page = await getLinkPageByPageId(input.page_id);
+  if (page) invalidateLinkPagePublicCache(page);
   return mapBlock(rec);
 }
 
 export async function deleteBlock(recordId: string): Promise<void> {
+  try {
+    const rec = await getRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, recordId);
+    const page = await getLinkPageByPageId(rec.fields.page_id ?? "");
+    if (page) invalidateLinkPagePublicCache(page);
+  } catch {
+    // block may already be gone
+  }
   await deleteRecord(LINK_PAGE_BLOCKS_TABLE, recordId);
   invalidateListRecordsReadCacheForTable(LINK_PAGE_BLOCKS_TABLE);
 }
@@ -500,6 +505,8 @@ export async function reorderBlocks(
 
   await Promise.all(updates);
   invalidateListRecordsReadCacheForTable(LINK_PAGE_BLOCKS_TABLE);
+  const page = await getLinkPageByPageId(pageId);
+  if (page) invalidateLinkPagePublicCache(page);
   return listBlocksForPage(pageId);
 }
 

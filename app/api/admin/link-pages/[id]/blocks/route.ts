@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -34,6 +35,7 @@ export async function POST(request: Request, ctx: Ctx) {
       page_id: page.page_id,
       sort_order: body.sort_order ?? page.blocks.length,
     });
+    revalidatePath(`/l/${page.slug}`);
     return NextResponse.json({ block }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Create block failed";

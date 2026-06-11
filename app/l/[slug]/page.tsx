@@ -7,6 +7,8 @@ import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml } from "@/li
 import type { LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const LINK_PAGE_CSP = [
   "default-src 'self'",

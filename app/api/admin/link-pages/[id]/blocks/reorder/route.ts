@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -19,6 +20,7 @@ export async function POST(request: Request, ctx: Ctx) {
     const body = (await request.json()) as { orderedIds?: string[] };
     const orderedIds = body.orderedIds ?? [];
     const blocks = await reorderBlocks(page.page_id, orderedIds);
+    revalidatePath(`/l/${page.slug}`);
     return NextResponse.json({ blocks });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Reorder failed";

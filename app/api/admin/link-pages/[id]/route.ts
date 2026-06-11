@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -32,8 +33,13 @@ export async function PATCH(request: Request, ctx: Ctx) {
   }
   const { id } = await ctx.params;
   try {
+    const previous = await getLinkPageById(id);
     const body = (await request.json()) as UpdateLinkPageInput;
     const page = await updateLinkPage(id, body);
+    revalidatePath(`/l/${page.slug}`);
+    if (previous?.slug && previous.slug !== page.slug) {
+      revalidatePath(`/l/${previous.slug}`);
+    }
     return NextResponse.json({ page });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Update failed";
