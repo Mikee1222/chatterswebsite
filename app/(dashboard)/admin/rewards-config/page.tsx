@@ -24,10 +24,10 @@ export default async function AdminRewardsConfigPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 px-4 py-8 md:max-w-5xl md:px-6">
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-8 md:px-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Rewards configuration</h1>
-        <p className="mt-1 text-sm text-white/55">Point values used when awarding chatters. Changes apply to new awards only.</p>
+        <p className="mt-1 text-sm text-white/55">Manage point values, level thresholds, and spin wheel prizes.</p>
       </div>
       <RewardsConfigClient initialConfig={config} chatters={chatters} spinPrizes={spinPrizes} />
     </div>
