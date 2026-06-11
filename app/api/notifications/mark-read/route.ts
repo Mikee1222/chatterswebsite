@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getNotificationUserId } from "@/lib/notification-user";
-import { markAsRead } from "@/services/notifications";
+import { broadcastUserUnreadCount } from "@/lib/realtime-broadcast";
+import { getUnreadCount, markAsRead } from "@/services/notifications";
 
 export async function POST(request: Request) {
   const user = await getSessionFromCookies();
@@ -24,6 +25,8 @@ export async function POST(request: Request) {
 
   try {
     await markAsRead(notificationId, userId);
+    const unreadCount = await getUnreadCount(userId);
+    await broadcastUserUnreadCount(userId, unreadCount).catch(() => {});
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
