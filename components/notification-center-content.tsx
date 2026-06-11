@@ -141,6 +141,7 @@ export type NotificationCenterContentProps = {
   omitSettingsFooter?: boolean;
   /** @deprecated Use `notifications` instead. */
   list?: AppNotification[];
+  isMarkingAllRead?: boolean;
 };
 
 export function NotificationCenterContent({
@@ -158,6 +159,7 @@ export function NotificationCenterContent({
   compact = true,
   isMobile = false,
   omitSettingsFooter = false,
+  isMarkingAllRead = false,
 }: NotificationCenterContentProps) {
   const notifications = notificationsProp ?? list ?? [];
   const [activeFilter, setActiveFilter] = useState<string>("all");
@@ -239,10 +241,11 @@ export function NotificationCenterContent({
             <button
               type="button"
               onClick={() => void onMarkAllRead()}
-              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/40 transition-colors hover:bg-white/5 hover:text-white"
+              disabled={isMarkingAllRead}
+              className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs text-white/40 transition-colors hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               <CheckCheck className="h-3.5 w-3.5" />
-              Mark all read
+              {isMarkingAllRead ? "Marking..." : "Mark all read"}
             </button>
           )}
           {selectedIds.size > 0 && (

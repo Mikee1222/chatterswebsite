@@ -48,13 +48,15 @@ export async function broadcastUserUnreadCount(userId: string, unreadCount: numb
   const url = process.env.REALTIME_BROADCAST_URL;
   const secret = process.env.REALTIME_BROADCAST_SECRET;
   if (!url || !secret) return;
+  const endpoint = `${url.replace(/\/$/, "")}/realtime/broadcast`;
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${secret}`,
+  };
   try {
-    const res = await fetch(`${url.replace(/\/$/, "")}/realtime/broadcast`, {
+    const res = await fetch(endpoint, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${secret}`,
-      },
+      headers,
       body: JSON.stringify({
         target: "user",
         userId,
@@ -66,6 +68,24 @@ export async function broadcastUserUnreadCount(userId: string, unreadCount: numb
     }
   } catch (err) {
     console.error("[realtime] unread_count broadcast error", err);
+  }
+  if (unreadCount === 0) {
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          target: "user",
+          userId,
+          payload: { type: "mark_all_read" },
+        }),
+      });
+      if (!res.ok) {
+        console.error("[realtime] mark_all_read broadcast failed", res.status, await res.text());
+      }
+    } catch (err) {
+      console.error("[realtime] mark_all_read broadcast error", err);
+    }
   }
 }
 

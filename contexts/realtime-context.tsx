@@ -165,6 +165,12 @@ export function RealtimeProvider({
           setUnreadCountState(data.unreadCount);
           return;
         }
+        if (data.type === "mark_all_read") {
+          const ts = new Date().toISOString();
+          setNotifications((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || ts })));
+          setUnreadCountState(0);
+          return;
+        }
         if ((data.type === "notification" || data.type === "notification_created") && data.notification) {
           setUnreadCountState((c) => (typeof data.unreadCount === "number" ? data.unreadCount : c + 1));
           addNotification(data.notification as AppNotification);

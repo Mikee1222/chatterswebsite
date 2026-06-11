@@ -224,32 +224,46 @@ export async function markAllAsRead(userId: string) {
     devLog(NOTIFY_UI_DEBUG, "mark_all_read", JSON.stringify({ userId, found: 0, patched: 0 }));
     return 0;
   }
-  try {
-    await batchUpdateRecords(
-      NOTIFICATIONS_TABLE,
-      ownedUnread.map((rec) => ({
-        id: rec.id,
-        fields: { [NOTIFICATION_FIELDS.read_at]: readAtValue },
-      }))
-    );
-  } catch (err) {
+  const updates = ownedUnread.map((rec) => ({
+    id: rec.id,
+    fields: { [NOTIFICATION_FIELDS.read_at]: readAtValue },
+  }));
+  let patched = 0;
+  const chunkErrors: string[] = [];
+  for (let i = 0; i < updates.length; i += 10) {
+    const chunk = updates.slice(i, i + 10);
+    try {
+      await batchUpdateRecords(NOTIFICATIONS_TABLE, chunk);
+      patched += chunk.length;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      chunkErrors.push(message);
+      console.error(
+        NOTIFY_UI_DEBUG,
+        "mark_all_read_chunk_failed",
+        JSON.stringify({ userId, chunkIndex: i / 10, chunkSize: chunk.length, error: message })
+      );
+    }
+  }
+  if (chunkErrors.length > 0) {
     console.error(
       NOTIFY_UI_DEBUG,
-      "mark_all_read_batch_failed",
+      "mark_all_read_partial_failure",
       JSON.stringify({
         userId,
-        count: ownedUnread.length,
-        error: err instanceof Error ? err.message : String(err),
+        found: ownedUnread.length,
+        patched,
+        failedChunks: chunkErrors.length,
+        errors: chunkErrors,
       })
     );
-    throw err;
   }
   devLog(
     NOTIFY_UI_DEBUG,
     "mark_all_read",
-    JSON.stringify({ userId, found: ownedUnread.length, patched: ownedUnread.length })
+    JSON.stringify({ userId, found: ownedUnread.length, patched })
   );
-  return ownedUnread.length;
+  return patched;
 }
 
 export async function getNotificationById(recordId: string): Promise<AppNotification | null> {

@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion, useAnimation } from "framer-motion";
 import { Bell } from "lucide-react";
+import { toast } from "sonner";
 import { useSWRConfig } from "swr";
 import {
   getMyUnreadCount,
@@ -38,6 +39,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
   const [mounted, setMounted] = useState(false);
   const [fallbackList, setFallbackList] = useState<AppNotification[]>([]);
   const [localOpen, setLocalOpen] = useState(false);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const bellMotion = useAnimation();
   const prevUnreadRef = useRef<number | null>(null);
 
@@ -162,7 +164,10 @@ export function NotificationBell({ role }: NotificationBellProps) {
   };
 
   const handleMarkAllRead = async () => {
+    if (isMarkingAllRead) return;
+    setIsMarkingAllRead(true);
     const ts = new Date().toISOString();
+    const prevList = list.map((n) => ({ ...n }));
     setUnreadCount?.(0);
     if (realtime) {
       realtime.setNotifications((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || ts })));
@@ -170,29 +175,26 @@ export function NotificationBell({ role }: NotificationBellProps) {
       setFallbackList((prev) => prev.map((n) => ({ ...n, read_at: n.read_at || ts })));
     }
     try {
-      const { unreadCount } = await markAllMyNotificationsRead();
-      const { notifications: refreshedList } = await getMyNotifications(false);
-      setUnreadCount?.(unreadCount);
-      if (realtime) realtime.setNotifications(refreshedList);
-      else setFallbackList(refreshedList);
-      void mutate(
-        dashboardSwrKeys.notificationsUnreadCount,
-        { count: Math.max(0, unreadCount) },
-        { revalidate: false }
-      );
-    } catch {
-      const [count, { notifications: refreshedList }] = await Promise.all([
-        getMyUnreadCount(),
-        getMyNotifications(false),
-      ]);
+      const { unreadCount: count } = await markAllMyNotificationsRead();
       setUnreadCount?.(count);
-      if (realtime) realtime.setNotifications(refreshedList);
-      else setFallbackList(refreshedList);
       void mutate(
         dashboardSwrKeys.notificationsUnreadCount,
         { count: Math.max(0, count) },
         { revalidate: false }
       );
+    } catch {
+      toast.error("Couldn't mark all as read. Please try again.");
+      if (realtime) realtime.setNotifications(prevList);
+      else setFallbackList(prevList);
+      const count = await getMyUnreadCount();
+      setUnreadCount?.(count);
+      void mutate(
+        dashboardSwrKeys.notificationsUnreadCount,
+        { count: Math.max(0, count) },
+        { revalidate: false }
+      );
+    } finally {
+      setIsMarkingAllRead(false);
     }
     router.refresh();
   };
@@ -210,6 +212,7 @@ export function NotificationBell({ role }: NotificationBellProps) {
     onNavigate: closePanel,
     settingsHref,
     isLoading,
+    isMarkingAllRead,
     role: role ?? null,
   };
 

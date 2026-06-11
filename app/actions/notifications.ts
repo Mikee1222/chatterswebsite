@@ -81,8 +81,8 @@ export async function deleteMyNotifications(recordIds: string[]) {
 export async function markAllMyNotificationsRead() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.login);
-  const userId = getNotificationUserId(user);
-  if (userId == null) return { marked: 0, unreadCount: 0 };
+  const userId = getNotificationUserId(user) ?? user.airtableUserId ?? user.id;
+  if (!userId) return { marked: 0, unreadCount: 0 };
   const marked = await markAllAsRead(userId);
   const unreadCount = await getUnreadCount(userId);
   await broadcastUserUnreadCount(userId, unreadCount).catch(() => {});
