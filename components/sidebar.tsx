@@ -541,32 +541,21 @@ export function Sidebar({
               G
             </Link>
           ) : (
-            <>
-              <Link
-                href={brandHref}
-                prefetch
-                className="flex min-w-0 flex-1 items-center gap-2 text-[15px] font-semibold tracking-tight text-white transition-colors hover:text-pink-100/95"
+            <Link
+              href={brandHref}
+              prefetch
+              className="flex min-w-0 flex-1 items-center gap-2 text-[15px] font-semibold tracking-tight text-white transition-colors hover:text-pink-100/95"
+            >
+              <span className="truncate">Gunzo</span>
+              <span
+                className={cn(
+                  "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                  roleStyle.badge
+                )}
               >
-                <span className="truncate">Gunzo</span>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-                    roleStyle.badge
-                  )}
-                >
-                  {brandRoleLabel}
-                </span>
-              </Link>
-              <button
-                type="button"
-                onClick={toggleCollapsed}
-                className="shrink-0 rounded-lg p-1.5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
-                aria-label="Collapse sidebar"
-                title="Collapse sidebar"
-              >
-                <PanelLeftClose className="h-4 w-4" />
-              </button>
-            </>
+                {brandRoleLabel}
+              </span>
+            </Link>
           )}
         </div>
 
@@ -608,7 +597,7 @@ export function Sidebar({
             )}
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1 border-b border-white/[0.06] py-2">
+          <div className="flex flex-col items-center border-b border-white/[0.06] py-2">
             <button
               type="button"
               onClick={() => setSearchOpen(true)}
@@ -617,15 +606,6 @@ export function Sidebar({
               title="Search (/)"
             >
               <Search className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={toggleCollapsed}
-              className="rounded-lg p-2 text-white/45 hover:bg-white/10 hover:text-white/80"
-              aria-label="Expand sidebar"
-              title="Expand sidebar"
-            >
-              <PanelLeftOpen className="h-4 w-4" />
             </button>
           </div>
         )}
@@ -658,7 +638,7 @@ export function Sidebar({
         ) : null}
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto px-2 py-3">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 py-2 scrollbar-hide">
           {searchOpen && searchQuery.trim() ? (
             <div className="space-y-0.5">
               {searchResults.length === 0 ? (
@@ -684,8 +664,29 @@ export function Sidebar({
           )}
         </nav>
 
-        {/* Quick stats + user */}
+        {/* Collapse + quick stats + user */}
         <div className="shrink-0 border-t border-white/[0.08]">
+          <div
+            className={cn(
+              "flex border-b border-white/[0.06]",
+              collapsed ? "justify-center px-2 py-2" : "px-3 py-2"
+            )}
+          >
+            <button
+              type="button"
+              onClick={toggleCollapsed}
+              className="rounded-lg p-1.5 text-white/45 transition-colors hover:bg-white/10 hover:text-white"
+              aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+              title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {collapsed ? (
+                <PanelLeftOpen className="h-4 w-4" />
+              ) : (
+                <PanelLeftClose className="h-4 w-4" />
+              )}
+            </button>
+          </div>
+
           {quickStats && !collapsed ? (
             <div className="border-b border-white/[0.06] px-4 py-2.5 text-[11px] text-white/50">
               <span className="text-emerald-400">●</span>{" "}
