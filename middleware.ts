@@ -39,47 +39,41 @@ function isPublicAppPath(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
-function getAppHostnames(): Set<string> {
-  const hosts = new Set<string>(["localhost", "127.0.0.1"]);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
-  if (appUrl) {
-    try {
-      hosts.add(new URL(appUrl).hostname.toLowerCase());
-    } catch {
-      // ignore invalid URL
-    }
-  }
-  const vercelUrl = process.env.VERCEL_URL?.trim();
-  if (vercelUrl) hosts.add(vercelUrl.toLowerCase());
-  return hosts;
-}
-
-function isMainAppHost(host: string): boolean {
-  const normalized = host.toLowerCase().replace(/^www\./, "").split(":")[0] ?? "";
-  return getAppHostnames().has(normalized);
+function isGunzoDomain(host: string): boolean {
+  return (
+    host.includes("gunzoteam.com") ||
+    host.includes("localhost") ||
+    host.includes("vercel.app")
+  );
 }
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
   const host = request.headers.get("host") ?? "";
+  const { pathname } = request.nextUrl;
 
-  // Public link pages — bypass auth before any session or custom-domain work
-  if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
+  // Custom domains — never run auth; rewrite root to /l/{slug} when configured
+  if (!isGunzoDomain(host)) {
+    if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
+      return NextResponse.next();
+    }
+    if (!pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
+      try {
+        const page = await getLinkPageByCustomDomain(host);
+        if (page?.slug) {
+          const rewriteUrl = request.nextUrl.clone();
+          rewriteUrl.pathname = `/l/${page.slug}`;
+          return NextResponse.rewrite(rewriteUrl);
+        }
+      } catch {
+        // unknown custom domain — serve without auth
+      }
+    }
     return NextResponse.next();
   }
 
-  // Custom domain → rewrite to /l/{slug}
-  if (host && !isMainAppHost(host) && !pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
-    try {
-      const page = await getLinkPageByCustomDomain(host);
-      if (page?.slug) {
-        const rewriteUrl = request.nextUrl.clone();
-        rewriteUrl.pathname = `/l/${page.slug}`;
-        return NextResponse.rewrite(rewriteUrl);
-      }
-    } catch {
-      // fall through to normal auth
-    }
+  // Gunzo app domain — public paths bypass auth
+  if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
+    return NextResponse.next();
   }
 
   const token = request.cookies.get(AUTH_COOKIE_NAME)?.value;
