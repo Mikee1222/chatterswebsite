@@ -138,23 +138,25 @@ export function ClientSettingsForm({ prefs, profile }: ClientSettingsFormProps) 
   const [saving, setSaving] = React.useState(false);
   const [pushEnabling, setPushEnabling] = React.useState(false);
   const [pushEnabled, setPushEnabled] = React.useState(prefs.push_enabled);
-  const [paymentReminders, setPaymentReminders] = React.useState(prefs.system_alerts);
-  const [paymentStatus, setPaymentStatus] = React.useState(prefs.task_alerts);
-  const [newCycles, setNewCycles] = React.useState(prefs.period_alerts);
+  const [paymentReminders, setPaymentReminders] = React.useState(prefs.billing_alerts);
+  const [paymentStatus, setPaymentStatus] = React.useState(prefs.billing_alerts);
+  const [newCycles, setNewCycles] = React.useState(prefs.billing_alerts);
 
   const savePrefs = async (updates: {
     push_enabled?: boolean;
-    system_alerts?: boolean;
-    task_alerts?: boolean;
-    period_alerts?: boolean;
+    billing_alerts?: boolean;
   }) => {
     setSaving(true);
+    const billingOn =
+      updates.billing_alerts ??
+      (paymentReminders && paymentStatus && newCycles);
     const fd = new FormData();
     fd.set("push_enabled", (updates.push_enabled ?? pushEnabled) ? "on" : "off");
     fd.set("in_app_enabled", prefs.in_app_enabled ? "on" : "off");
-    fd.set("system_alerts", (updates.system_alerts ?? paymentReminders) ? "on" : "off");
-    fd.set("task_alerts", (updates.task_alerts ?? paymentStatus) ? "on" : "off");
-    fd.set("period_alerts", (updates.period_alerts ?? newCycles) ? "on" : "off");
+    fd.set("system_alerts", prefs.system_alerts ? "on" : "off");
+    fd.set("task_alerts", prefs.task_alerts ? "on" : "off");
+    fd.set("period_alerts", prefs.period_alerts ? "on" : "off");
+    fd.set("billing_alerts", billingOn ? "on" : "off");
     fd.set("shift_alerts", prefs.shift_alerts ? "on" : "off");
     fd.set("model_alerts", prefs.model_alerts ? "on" : "off");
     fd.set("whale_alerts", prefs.whale_alerts ? "on" : "off");
@@ -163,6 +165,9 @@ export function ClientSettingsForm({ prefs, profile }: ClientSettingsFormProps) 
     fd.set("marketing_alerts", prefs.marketing_alerts ? "on" : "off");
     fd.set("phase_alerts", prefs.phase_alerts ? "on" : "off");
     fd.set("reward_alerts", prefs.reward_alerts ? "on" : "off");
+    fd.set("custom_request_alerts", prefs.custom_request_alerts ? "on" : "off");
+    fd.set("training_alerts", prefs.training_alerts ? "on" : "off");
+    fd.set("schedule_alerts", prefs.schedule_alerts ? "on" : "off");
     fd.set("critical_only", prefs.critical_only ? "on" : "off");
     fd.set("mute_all", prefs.mute_all ? "on" : "off");
     fd.set("quiet_hours_start", prefs.quiet_hours_start);
@@ -219,7 +224,7 @@ export function ClientSettingsForm({ prefs, profile }: ClientSettingsFormProps) 
             saving={saving}
             onChange={(next) => {
               setPaymentReminders(next);
-              void savePrefs({ system_alerts: next });
+              void savePrefs({ billing_alerts: next && paymentStatus && newCycles });
             }}
           />
           <PrefRow
@@ -230,7 +235,7 @@ export function ClientSettingsForm({ prefs, profile }: ClientSettingsFormProps) 
             saving={saving}
             onChange={(next) => {
               setPaymentStatus(next);
-              void savePrefs({ task_alerts: next });
+              void savePrefs({ billing_alerts: paymentReminders && next && newCycles });
             }}
           />
           <PrefRow
@@ -241,7 +246,7 @@ export function ClientSettingsForm({ prefs, profile }: ClientSettingsFormProps) 
             saving={saving}
             onChange={(next) => {
               setNewCycles(next);
-              void savePrefs({ period_alerts: next });
+              void savePrefs({ billing_alerts: paymentReminders && paymentStatus && next });
             }}
           />
         </div>

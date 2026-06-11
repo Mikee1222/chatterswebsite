@@ -35,6 +35,10 @@ type Fields = {
   marketing_alerts?: boolean;
   phase_alerts?: boolean;
   reward_alerts?: boolean;
+  custom_request_alerts?: boolean;
+  billing_alerts?: boolean;
+  training_alerts?: boolean;
+  schedule_alerts?: boolean;
   quiet_hours_start?: string;
   quiet_hours_end?: string;
   mute_all?: boolean;
@@ -61,6 +65,10 @@ function mapRecord(rec: AirtableRecord<Fields>): NotificationPreference {
     marketing_alerts: f.marketing_alerts !== false,
     phase_alerts: f.phase_alerts !== false,
     reward_alerts: f.reward_alerts !== false,
+    custom_request_alerts: f.custom_request_alerts !== false,
+    billing_alerts: f.billing_alerts !== false,
+    training_alerts: f.training_alerts !== false,
+    schedule_alerts: f.schedule_alerts !== false,
     quiet_hours_start: f.quiet_hours_start ?? "",
     quiet_hours_end: f.quiet_hours_end ?? "",
     mute_all: f.mute_all ?? false,

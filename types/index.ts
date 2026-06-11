@@ -19,7 +19,11 @@ export type NotificationRoleCategoryKey =
   | "period"
   | "marketing"
   | "phase"
-  | "reward";
+  | "reward"
+  | "custom_request_alerts"
+  | "billing_alerts"
+  | "training_alerts"
+  | "schedule_alerts";
 
 /**
  * Role-level notification defaults (stored as JSON on roles table).
@@ -1128,6 +1132,10 @@ export interface NotificationPreference {
   marketing_alerts: boolean;
   phase_alerts: boolean;
   reward_alerts: boolean;
+  custom_request_alerts: boolean;
+  billing_alerts: boolean;
+  training_alerts: boolean;
+  schedule_alerts: boolean;
   quiet_hours_start: string;
   quiet_hours_end: string;
   mute_all: boolean;

@@ -20,7 +20,33 @@ export const NOTIFICATION_ROLE_DEFAULT_KEYS = [
   "marketing",
   "phase",
   "reward",
+  "custom_request_alerts",
+  "billing_alerts",
+  "training_alerts",
+  "schedule_alerts",
 ] as const satisfies readonly NotificationRoleCategoryKey[];
+
+/** English + Greek labels for notification preference categories. */
+export const NOTIFICATION_CATEGORY_LABELS: Record<
+  NotificationRoleCategoryKey,
+  { en: string; el: string }
+> = {
+  shift: { en: "Shift alerts", el: "Ειδοποιήσεις για βάρδιες, καθυστερήσεις και απουσίες." },
+  task: { en: "Task alerts", el: "Ειδοποιήσεις για εργασίες VA και υπενθυμίσεις." },
+  phase: { en: "Phase alerts", el: "Ειδοποιήσεις για φάσεις onboarding και προόδου." },
+  model: { en: "Model alerts", el: "Ειδοποιήσεις για μοντέλα, live και διαθεσιμότητα." },
+  period: { en: "Period alerts", el: "Ειδοποιήσεις για περίοδο και σχετικές υπενθυμίσεις." },
+  whale: { en: "Whale alerts", el: "Ειδοποιήσεις για whales, ανάθεση και δραστηριότητα." },
+  mistake: { en: "Mistake alerts", el: "Ειδοποιήσεις για λάθη και διορθωτικές ενέργειες." },
+  fine_bonus: { en: "Fine/bonus alerts", el: "Ειδοποιήσεις για πρόστιμα, μπόνους και οικονομικές κινήσεις." },
+  reward: { en: "Reward alerts", el: "Ειδοποιήσεις για πόντους, επιπέδα και ανταμοιβές." },
+  marketing: { en: "Marketing alerts", el: "Ειδοποιήσεις για marketing, shadowban και social." },
+  system: { en: "System alerts", el: "Γενικές ειδοποιήσεις συστήματος και λογαριασμού." },
+  custom_request_alerts: { en: "Custom requests", el: "Ειδοποιήσεις για custom requests, έγκριση και παράδοση." },
+  billing_alerts: { en: "Billing & payments", el: "Ειδοποιήσεις για τιμολόγηση, πληρωμές και έξοδα." },
+  training_alerts: { en: "Training & SOPs", el: "Ειδοποιήσεις για εκπαίδευση SOP Academy." },
+  schedule_alerts: { en: "Schedule & availability", el: "Ειδοποιήσεις για πρόγραμμα και διαθεσιμότητα." },
+};
 
 /** Parse event key from strings like "shift_started — description". */
 export function parseEventKeyFromEntry(entry: string): string {
@@ -69,10 +95,6 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<NotificationRoleCategoryKey, r
     "va_content_scheduled — VA content delivery scheduled",
     "va_content_completed — VA content marked complete",
     "custom_request_uploaded — Custom request file uploaded",
-    "custom_request_created — New custom request",
-    "custom_request_updated — Custom request updated",
-    "custom_request_submitted — Custom request submitted",
-    "custom_status_changed — Custom status changed",
   ],
   phase: [
     "phase_task_completed — VA completes a phase checklist item",
@@ -87,16 +109,6 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<NotificationRoleCategoryKey, r
     "model_live_ended — Model live stream ended",
     "model_live_scheduled — Upcoming live stream reminder",
     "model_missed_live — Model missed scheduled live",
-    "custom_approved — Custom approved",
-    "custom_rejected — Custom rejected",
-    "custom_declined — Custom declined by agency",
-    "custom_edited — Custom terms edited",
-    "custom_uploaded — Custom content uploaded",
-    "custom_scheduled — Custom delivery scheduled",
-    "custom_deadline_approaching — Custom deadline in 48h",
-    "custom_overdue — Custom past deadline",
-    "expense_approved — Expense request approved",
-    "expense_rejected — Expense request rejected",
   ],
   period: [
     "period_3_day_reminder — Period expected in ~3 days",
@@ -127,25 +139,47 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<NotificationRoleCategoryKey, r
   marketing: [
     "shadowban_report — Shadowban report submitted or reviewed (entity-gated)",
   ],
-  system: [
-    "form_submitted — Form submitted",
-    "schedule_updated — Weekly schedule updated",
-    "weekly_availability_friday_reminder — Friday availability reminder",
-    "availability_submitted — Availability submitted",
-    "system_alert — General system alerts",
-    "user_created — New user account",
-    "role_changed — User role changed",
-    "account_deleted — Account deleted",
-    "account_update — Account settings changed",
-    "daily_summary — Daily ops summary",
-    "sop_academy_reminder — SOP Academy training reminder",
-    "sop_academy_training_complete — SOP Academy training complete",
-    "sop_academy_signed_off — SOP Academy sign-off",
+  custom_request_alerts: [
+    "custom_request_created — New custom request submitted",
+    "custom_request_submitted — Custom request sent to agency",
+    "custom_request_updated — Custom request details updated",
+    "custom_status_changed — Custom request status changed",
+    "custom_approved — Custom request approved by agency",
+    "custom_rejected — Custom request rejected",
+    "custom_declined — Custom request declined by agency",
+    "custom_edited — Custom request terms edited",
+    "custom_uploaded — Custom content uploaded",
+    "custom_scheduled — Custom delivery scheduled",
+    "custom_deadline_approaching — Custom deadline in 48h",
+    "custom_overdue — Custom request past deadline",
+  ],
+  billing_alerts: [
     "billing_cycle_announced — Client billing cycle announced",
     "billing_due_reminder — Client payment due reminder",
     "payment_submitted — Client payment proof submitted",
     "payment_confirmed — Client payment confirmed",
     "payment_rejected — Client payment rejected",
+    "expense_approved — Expense request approved",
+    "expense_rejected — Expense request declined",
+  ],
+  training_alerts: [
+    "sop_academy_reminder — SOP Academy training reminder",
+    "sop_academy_training_complete — SOP Academy training complete",
+    "sop_academy_signed_off — SOP Academy sign-off",
+  ],
+  schedule_alerts: [
+    "schedule_updated — Weekly schedule updated",
+    "weekly_availability_friday_reminder — Friday availability reminder",
+    "availability_submitted — Availability submitted",
+  ],
+  system: [
+    "system_alert — General system message",
+    "user_created — New user account created",
+    "role_changed — User role changed",
+    "account_deleted — Account deleted",
+    "account_update — Account settings changed",
+    "daily_summary — Daily operations summary",
+    "form_submitted — Form submitted",
   ],
 };
 
@@ -192,6 +226,9 @@ export const DEFAULT_NOTIFICATION_DEFAULTS: Record<UserRole, NotificationRoleDef
     fine_bonus: true,
     reward: true,
     system: true,
+    custom_request_alerts: true,
+    training_alerts: true,
+    schedule_alerts: true,
   }),
   virtual_assistant: withEventDefaults({
     ...ALL_FALSE_CATEGORIES,
@@ -200,17 +237,21 @@ export const DEFAULT_NOTIFICATION_DEFAULTS: Record<UserRole, NotificationRoleDef
     model: true,
     system: true,
     marketing: true,
+    custom_request_alerts: true,
+    training_alerts: true,
+    schedule_alerts: true,
   }),
   model: withEventDefaults({
     ...ALL_FALSE_CATEGORIES,
     model: true,
     period: true,
     system: true,
+    custom_request_alerts: true,
   }),
   client: withEventDefaults({
     ...ALL_FALSE_CATEGORIES,
     system: true,
-    period: true,
+    billing_alerts: true,
   }),
 };
 
@@ -234,6 +275,9 @@ export function normalizeNotificationDefaults(
 ): NotificationRoleDefaults {
   const result = { ...raw } as NotificationRoleDefaults;
   for (const catKey of NOTIFICATION_ROLE_DEFAULT_KEYS) {
+    if (typeof result[catKey] !== "boolean") {
+      result[catKey] = false;
+    }
     const catOn = result[catKey];
     for (const entry of NOTIFICATION_CATEGORY_EVENTS[catKey]) {
       const eventKey = parseEventKeyFromEntry(entry);
@@ -293,6 +337,10 @@ export function notificationDefaultsToPreferenceFields(
   | "marketing_alerts"
   | "phase_alerts"
   | "reward_alerts"
+  | "custom_request_alerts"
+  | "billing_alerts"
+  | "training_alerts"
+  | "schedule_alerts"
 > {
   return {
     shift_alerts: defaults.shift,
@@ -306,6 +354,10 @@ export function notificationDefaultsToPreferenceFields(
     marketing_alerts: defaults.marketing,
     phase_alerts: defaults.phase,
     reward_alerts: defaults.reward,
+    custom_request_alerts: defaults.custom_request_alerts,
+    billing_alerts: defaults.billing_alerts,
+    training_alerts: defaults.training_alerts,
+    schedule_alerts: defaults.schedule_alerts,
   };
 }
 
@@ -324,6 +376,10 @@ export function preferenceCategoryFieldsFromPrefs(
     marketing: prefs.marketing_alerts,
     phase: prefs.phase_alerts,
     reward: prefs.reward_alerts,
+    custom_request_alerts: prefs.custom_request_alerts,
+    billing_alerts: prefs.billing_alerts,
+    training_alerts: prefs.training_alerts,
+    schedule_alerts: prefs.schedule_alerts,
   };
 }
 
@@ -365,18 +421,23 @@ export const NOTIFICATION_CATEGORY_GROUPS: Array<{
     categories: [
       {
         key: "shift",
-        label: "Shift alerts",
-        description: "Ειδοποιήσεις για βάρδιες, καθυστερήσεις και απουσίες.",
+        label: NOTIFICATION_CATEGORY_LABELS.shift.en,
+        description: NOTIFICATION_CATEGORY_LABELS.shift.el,
       },
       {
         key: "task",
-        label: "Task alerts",
-        description: "Ειδοποιήσεις για εργασίες VA και υπενθυμίσεις.",
+        label: NOTIFICATION_CATEGORY_LABELS.task.en,
+        description: NOTIFICATION_CATEGORY_LABELS.task.el,
       },
       {
         key: "phase",
-        label: "Phase alerts",
-        description: "Ειδοποιήσεις για φάσεις onboarding και προόδου.",
+        label: NOTIFICATION_CATEGORY_LABELS.phase.en,
+        description: NOTIFICATION_CATEGORY_LABELS.phase.el,
+      },
+      {
+        key: "schedule_alerts",
+        label: NOTIFICATION_CATEGORY_LABELS.schedule_alerts.en,
+        description: NOTIFICATION_CATEGORY_LABELS.schedule_alerts.el,
       },
     ],
   },
@@ -386,18 +447,23 @@ export const NOTIFICATION_CATEGORY_GROUPS: Array<{
     categories: [
       {
         key: "model",
-        label: "Model alerts",
-        description: "Ειδοποιήσεις για μοντέλα, live και διαθεσιμότητα.",
+        label: NOTIFICATION_CATEGORY_LABELS.model.en,
+        description: NOTIFICATION_CATEGORY_LABELS.model.el,
       },
       {
         key: "period",
-        label: "Period alerts",
-        description: "Ειδοποιήσεις για περίοδο και σχετικές υπενθυμίσεις.",
+        label: NOTIFICATION_CATEGORY_LABELS.period.en,
+        description: NOTIFICATION_CATEGORY_LABELS.period.el,
       },
       {
         key: "whale",
-        label: "Whale alerts",
-        description: "Ειδοποιήσεις για whales, ανάθεση και δραστηριότητα.",
+        label: NOTIFICATION_CATEGORY_LABELS.whale.en,
+        description: NOTIFICATION_CATEGORY_LABELS.whale.el,
+      },
+      {
+        key: "custom_request_alerts",
+        label: NOTIFICATION_CATEGORY_LABELS.custom_request_alerts.en,
+        description: NOTIFICATION_CATEGORY_LABELS.custom_request_alerts.el,
       },
     ],
   },
@@ -407,34 +473,44 @@ export const NOTIFICATION_CATEGORY_GROUPS: Array<{
     categories: [
       {
         key: "mistake",
-        label: "Mistake alerts",
-        description: "Ειδοποιήσεις για λάθη και διορθωτικές ενέργειες.",
+        label: NOTIFICATION_CATEGORY_LABELS.mistake.en,
+        description: NOTIFICATION_CATEGORY_LABELS.mistake.el,
       },
       {
         key: "fine_bonus",
-        label: "Fine/bonus alerts",
-        description: "Ειδοποιήσεις για πρόστιμα, μπόνους και οικονομικές κινήσεις.",
+        label: NOTIFICATION_CATEGORY_LABELS.fine_bonus.en,
+        description: NOTIFICATION_CATEGORY_LABELS.fine_bonus.el,
       },
       {
         key: "reward",
-        label: "Reward alerts",
-        description: "Ειδοποιήσεις για πόντους, επιπέδα και ανταμοιβές.",
+        label: NOTIFICATION_CATEGORY_LABELS.reward.en,
+        description: NOTIFICATION_CATEGORY_LABELS.reward.el,
       },
       {
         key: "marketing",
-        label: "Marketing alerts",
-        description: "Ειδοποιήσεις για marketing, shadowban και social.",
+        label: NOTIFICATION_CATEGORY_LABELS.marketing.en,
+        description: NOTIFICATION_CATEGORY_LABELS.marketing.el,
       },
     ],
   },
   {
-    key: "system",
-    label: "SYSTEM",
+    key: "finance_admin",
+    label: "FINANCE & ADMIN",
     categories: [
       {
+        key: "billing_alerts",
+        label: NOTIFICATION_CATEGORY_LABELS.billing_alerts.en,
+        description: NOTIFICATION_CATEGORY_LABELS.billing_alerts.el,
+      },
+      {
+        key: "training_alerts",
+        label: NOTIFICATION_CATEGORY_LABELS.training_alerts.en,
+        description: NOTIFICATION_CATEGORY_LABELS.training_alerts.el,
+      },
+      {
         key: "system",
-        label: "System alerts",
-        description: "Γενικές ειδοποιήσεις συστήματος και λογαριασμού.",
+        label: NOTIFICATION_CATEGORY_LABELS.system.en,
+        description: NOTIFICATION_CATEGORY_LABELS.system.el,
       },
     ],
   },

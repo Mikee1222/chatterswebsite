@@ -8,11 +8,13 @@ import {
   Bell,
   BellOff,
   BellRing,
+  BookOpen,
   CalendarClock,
   CheckCircle2,
   Clock,
   Coins,
   Cpu,
+  FileText,
   Fish,
   Layers,
   ListTodo,
@@ -33,6 +35,7 @@ import { ButtonSecondary } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { NotificationPreference, UserRole } from "@/types";
 import {
+  NOTIFICATION_CATEGORY_LABELS,
   notificationCategoryDefaultsEqual,
   preferenceCategoryFieldsFromPrefs,
   type NotificationRoleCategoryKey,
@@ -166,17 +169,21 @@ const CATEGORY_TOGGLES: Array<{
   group: string;
   icon: LucideIcon;
 }> = [
-  { key: "shift", name: "shift_alerts", label: "Shift alerts", group: "Operations", icon: CalendarClock },
-  { key: "whale", name: "whale_alerts", label: "Whale alerts", group: "Operations", icon: Fish },
-  { key: "model", name: "model_alerts", label: "Model alerts", group: "Operations", icon: UserRound },
-  { key: "period", name: "period_alerts", label: "Period alerts", group: "Operations", icon: CalendarClock },
-  { key: "task", name: "task_alerts", label: "Task alerts", group: "Team", icon: ListTodo },
-  { key: "phase", name: "phase_alerts", label: "Phase alerts", group: "Team", icon: Layers },
-  { key: "mistake", name: "mistake_alerts", label: "Mistake alerts", group: "Team", icon: ShieldAlert },
-  { key: "marketing", name: "marketing_alerts", label: "Marketing alerts", group: "Team", icon: Megaphone },
-  { key: "reward", name: "reward_alerts", label: "Reward alerts", group: "Performance", icon: Trophy },
-  { key: "fine_bonus", name: "fine_bonus_alerts", label: "Fine/bonus alerts", group: "Performance", icon: Coins },
-  { key: "system", name: "system_alerts", label: "System alerts", group: "Performance", icon: Cpu },
+  { key: "shift", name: "shift_alerts", label: NOTIFICATION_CATEGORY_LABELS.shift.en, group: "SHIFTS & WORK", icon: CalendarClock },
+  { key: "task", name: "task_alerts", label: NOTIFICATION_CATEGORY_LABELS.task.en, group: "SHIFTS & WORK", icon: ListTodo },
+  { key: "phase", name: "phase_alerts", label: NOTIFICATION_CATEGORY_LABELS.phase.en, group: "SHIFTS & WORK", icon: Layers },
+  { key: "schedule_alerts", name: "schedule_alerts", label: NOTIFICATION_CATEGORY_LABELS.schedule_alerts.en, group: "SHIFTS & WORK", icon: CalendarClock },
+  { key: "model", name: "model_alerts", label: NOTIFICATION_CATEGORY_LABELS.model.en, group: "MODELS & CONTENT", icon: UserRound },
+  { key: "period", name: "period_alerts", label: NOTIFICATION_CATEGORY_LABELS.period.en, group: "MODELS & CONTENT", icon: CalendarClock },
+  { key: "whale", name: "whale_alerts", label: NOTIFICATION_CATEGORY_LABELS.whale.en, group: "MODELS & CONTENT", icon: Fish },
+  { key: "custom_request_alerts", name: "custom_request_alerts", label: NOTIFICATION_CATEGORY_LABELS.custom_request_alerts.en, group: "MODELS & CONTENT", icon: FileText },
+  { key: "mistake", name: "mistake_alerts", label: NOTIFICATION_CATEGORY_LABELS.mistake.en, group: "PERFORMANCE", icon: ShieldAlert },
+  { key: "fine_bonus", name: "fine_bonus_alerts", label: NOTIFICATION_CATEGORY_LABELS.fine_bonus.en, group: "PERFORMANCE", icon: Coins },
+  { key: "reward", name: "reward_alerts", label: NOTIFICATION_CATEGORY_LABELS.reward.en, group: "PERFORMANCE", icon: Trophy },
+  { key: "marketing", name: "marketing_alerts", label: NOTIFICATION_CATEGORY_LABELS.marketing.en, group: "PERFORMANCE", icon: Megaphone },
+  { key: "billing_alerts", name: "billing_alerts", label: NOTIFICATION_CATEGORY_LABELS.billing_alerts.en, group: "FINANCE & ADMIN", icon: Coins },
+  { key: "training_alerts", name: "training_alerts", label: NOTIFICATION_CATEGORY_LABELS.training_alerts.en, group: "FINANCE & ADMIN", icon: BookOpen },
+  { key: "system", name: "system_alerts", label: NOTIFICATION_CATEGORY_LABELS.system.en, group: "FINANCE & ADMIN", icon: Cpu },
 ];
 
 export function NotificationSettingsForm({
@@ -203,6 +210,10 @@ export function NotificationSettingsForm({
   const [marketingAlerts, setMarketingAlerts] = React.useState(prefs.marketing_alerts ?? true);
   const [phaseAlerts, setPhaseAlerts] = React.useState(prefs.phase_alerts ?? true);
   const [rewardAlerts, setRewardAlerts] = React.useState(prefs.reward_alerts ?? true);
+  const [customRequestAlerts, setCustomRequestAlerts] = React.useState(prefs.custom_request_alerts ?? true);
+  const [billingAlerts, setBillingAlerts] = React.useState(prefs.billing_alerts ?? true);
+  const [trainingAlerts, setTrainingAlerts] = React.useState(prefs.training_alerts ?? true);
+  const [scheduleAlerts, setScheduleAlerts] = React.useState(prefs.schedule_alerts ?? true);
   const [muteAll, setMuteAll] = React.useState(prefs.mute_all);
   const [quietStart, setQuietStart] = React.useState(prefs.quiet_hours_start?.trim() ?? "");
   const [quietEnd, setQuietEnd] = React.useState(prefs.quiet_hours_end?.trim() ?? "");
@@ -248,6 +259,10 @@ export function NotificationSettingsForm({
         marketing_alerts: marketingAlerts,
         phase_alerts: phaseAlerts,
         reward_alerts: rewardAlerts,
+        custom_request_alerts: customRequestAlerts,
+        billing_alerts: billingAlerts,
+        training_alerts: trainingAlerts,
+        schedule_alerts: scheduleAlerts,
       }),
     [
       prefs,
@@ -262,6 +277,10 @@ export function NotificationSettingsForm({
       marketingAlerts,
       phaseAlerts,
       rewardAlerts,
+      customRequestAlerts,
+      billingAlerts,
+      trainingAlerts,
+      scheduleAlerts,
     ]
   );
 
@@ -289,6 +308,10 @@ export function NotificationSettingsForm({
     setMarketingAlerts(prefs.marketing_alerts ?? true);
     setPhaseAlerts(prefs.phase_alerts ?? true);
     setRewardAlerts(prefs.reward_alerts ?? true);
+    setCustomRequestAlerts(prefs.custom_request_alerts ?? true);
+    setBillingAlerts(prefs.billing_alerts ?? true);
+    setTrainingAlerts(prefs.training_alerts ?? true);
+    setScheduleAlerts(prefs.schedule_alerts ?? true);
     setMuteAll(prefs.mute_all);
     setQuietStart(prefs.quiet_hours_start?.trim() ?? "");
     setQuietEnd(prefs.quiet_hours_end?.trim() ?? "");
@@ -314,6 +337,10 @@ export function NotificationSettingsForm({
       if (marketingAlerts) fd.set("marketing_alerts", "on");
       if (phaseAlerts) fd.set("phase_alerts", "on");
       if (rewardAlerts) fd.set("reward_alerts", "on");
+      if (customRequestAlerts) fd.set("custom_request_alerts", "on");
+      if (billingAlerts) fd.set("billing_alerts", "on");
+      if (trainingAlerts) fd.set("training_alerts", "on");
+      if (scheduleAlerts) fd.set("schedule_alerts", "on");
       if (muteAll) fd.set("mute_all", "on");
       fd.set("quiet_hours_start", quietStart.trim());
       fd.set("quiet_hours_end", quietEnd.trim());
@@ -354,6 +381,10 @@ export function NotificationSettingsForm({
         setMarketingAlerts(roleDefaults.marketing);
         setPhaseAlerts(roleDefaults.phase);
         setRewardAlerts(roleDefaults.reward);
+        setCustomRequestAlerts(roleDefaults.custom_request_alerts);
+        setBillingAlerts(roleDefaults.billing_alerts);
+        setTrainingAlerts(roleDefaults.training_alerts);
+        setScheduleAlerts(roleDefaults.schedule_alerts);
       }
       setMessage({ type: "success", text: "Category preferences reset to your role defaults." });
       setResetOpen(false);
@@ -378,9 +409,13 @@ export function NotificationSettingsForm({
     marketing: { value: marketingAlerts, setter: setMarketingAlerts },
     phase: { value: phaseAlerts, setter: setPhaseAlerts },
     reward: { value: rewardAlerts, setter: setRewardAlerts },
+    custom_request_alerts: { value: customRequestAlerts, setter: setCustomRequestAlerts },
+    billing_alerts: { value: billingAlerts, setter: setBillingAlerts },
+    training_alerts: { value: trainingAlerts, setter: setTrainingAlerts },
+    schedule_alerts: { value: scheduleAlerts, setter: setScheduleAlerts },
   };
 
-  const categoryGroups = ["Operations", "Team", "Performance"] as const;
+  const categoryGroups = ["SHIFTS & WORK", "MODELS & CONTENT", "PERFORMANCE", "FINANCE & ADMIN"] as const;
 
   return (
     <>

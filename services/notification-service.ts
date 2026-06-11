@@ -79,18 +79,18 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   whale_followup: "whale",
   whale_spent: "whale",
   whale_session_submitted: "whale",
-  custom_request_created: "task",
-  custom_request_updated: "task",
-  custom_request_submitted: "task",
-  custom_status_changed: "task",
-  custom_approved: "model",
-  custom_rejected: "model",
-  custom_declined: "model",
-  custom_edited: "model",
-  custom_uploaded: "model",
-  custom_scheduled: "model",
-  custom_deadline_approaching: "model",
-  custom_overdue: "model",
+  custom_request_created: "custom_request",
+  custom_request_updated: "custom_request",
+  custom_request_submitted: "custom_request",
+  custom_status_changed: "custom_request",
+  custom_approved: "custom_request",
+  custom_rejected: "custom_request",
+  custom_declined: "custom_request",
+  custom_edited: "custom_request",
+  custom_uploaded: "custom_request",
+  custom_scheduled: "custom_request",
+  custom_deadline_approaching: "custom_request",
+  custom_overdue: "custom_request",
   form_submitted: "system",
   schedule_updated: "system",
   weekly_availability_friday_reminder: "system",
@@ -105,7 +105,7 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   level_up: "system",
   spin_available: "system",
   challenge_completed: "system",
-  billing_cycle_announced: "system",
+  billing_cycle_announced: "billing",
   billing_due_reminder: "billing",
   billing_payment_submitted: "billing",
   payment_submitted: "billing",
@@ -114,8 +114,8 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   sop_academy_reminder: "system",
   sop_academy_training_complete: "system",
   sop_academy_signed_off: "system",
-  expense_approved: "model",
-  expense_rejected: "model",
+  expense_approved: "billing",
+  expense_rejected: "billing",
 };
 
 /** Service-layer defaults (merges lib/notification-types + model session events). */
@@ -135,24 +135,42 @@ function resolveNotifyPriority(
 
 type NotificationPreferenceGateKey = keyof Pick<
   NotificationPreference,
-  | "whale_alerts"| "shift_alerts"| "model_alerts"| "system_alerts"| "task_alerts"| "mistake_alerts"| "fine_bonus_alerts"| "period_alerts"| "marketing_alerts"| "phase_alerts"| "reward_alerts"
+  | "whale_alerts"
+  | "shift_alerts"
+  | "model_alerts"
+  | "system_alerts"
+  | "task_alerts"
+  | "mistake_alerts"
+  | "fine_bonus_alerts"
+  | "period_alerts"
+  | "marketing_alerts"
+  | "phase_alerts"
+  | "reward_alerts"
+  | "custom_request_alerts"
+  | "billing_alerts"
+  | "training_alerts"
+  | "schedule_alerts"
 >;
 
 const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceGateKey> = {
   shift: "shift_alerts",
   model: "model_alerts",
   whale: "whale_alerts",
-  custom_request: "system_alerts",
+  custom_request: "custom_request_alerts",
   system: "system_alerts",
   task: "task_alerts",
-  billing: "system_alerts",
+  billing: "billing_alerts",
 };
 
 const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {
-  billing_due_reminder: "system_alerts",
-  billing_cycle_announced: "system_alerts",
-  payment_confirmed: "system_alerts",
-  payment_rejected: "task_alerts",
+  billing_due_reminder: "billing_alerts",
+  billing_cycle_announced: "billing_alerts",
+  billing_payment_submitted: "billing_alerts",
+  payment_submitted: "billing_alerts",
+  payment_confirmed: "billing_alerts",
+  payment_rejected: "billing_alerts",
+  expense_approved: "billing_alerts",
+  expense_rejected: "billing_alerts",
   period_3_day_reminder: "period_alerts",
   period_predicted_day: "period_alerts",
   period_confirmed_early: "period_alerts",
@@ -166,20 +184,24 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   level_up: "reward_alerts",
   spin_available: "reward_alerts",
   challenge_completed: "reward_alerts",
-  expense_approved: "model_alerts",
-  expense_rejected: "model_alerts",
-  custom_request_created: "task_alerts",
-  custom_request_updated: "task_alerts",
-  custom_request_submitted: "task_alerts",
-  custom_status_changed: "task_alerts",
-  custom_approved: "model_alerts",
-  custom_rejected: "model_alerts",
-  custom_declined: "model_alerts",
-  custom_edited: "model_alerts",
-  custom_uploaded: "model_alerts",
-  custom_scheduled: "model_alerts",
-  custom_deadline_approaching: "model_alerts",
-  custom_overdue: "model_alerts",
+  custom_request_created: "custom_request_alerts",
+  custom_request_updated: "custom_request_alerts",
+  custom_request_submitted: "custom_request_alerts",
+  custom_status_changed: "custom_request_alerts",
+  custom_approved: "custom_request_alerts",
+  custom_rejected: "custom_request_alerts",
+  custom_declined: "custom_request_alerts",
+  custom_edited: "custom_request_alerts",
+  custom_uploaded: "custom_request_alerts",
+  custom_scheduled: "custom_request_alerts",
+  custom_deadline_approaching: "custom_request_alerts",
+  custom_overdue: "custom_request_alerts",
+  sop_academy_reminder: "training_alerts",
+  sop_academy_training_complete: "training_alerts",
+  sop_academy_signed_off: "training_alerts",
+  schedule_updated: "schedule_alerts",
+  weekly_availability_friday_reminder: "schedule_alerts",
+  availability_submitted: "schedule_alerts",
 };
 
 const ENTITY_TO_PREF_KEY: Record<string, NotificationPreferenceGateKey> = {
