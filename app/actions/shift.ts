@@ -222,6 +222,23 @@ export async function startShiftWithModels(
       } catch (e) {
         console.error("[notify] shift_started failed", e);
       }
+      if (modelNames.length === 0) {
+        try {
+          await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_NO_MODELS, {
+            priority: NOTIFICATION_PRIORITY.HIGH,
+            title: "⚠️ Shift started with no models",
+            body: "⚠️ You're on shift but no models are attached yet. Add models from the shift page.",
+            entity_type: NOTIFICATION_ENTITY.SHIFT,
+            entity_id: created.id,
+            actor_user_id: chatterRecordId,
+            actor_name: chatterName,
+            personal_user_id: chatterRecordId,
+            context: { chatterName },
+          });
+        } catch (e) {
+          console.error("[notify] chatter_no_models failed", e);
+        }
+      }
     }
 
     return { success: true, shiftId: created.id };
@@ -555,9 +572,7 @@ export async function removeModelFromShift(
     revalidatePath(ROUTES.chatter.shift);
     if (chatterIdForNotify) {
       try {
-        await notify({
-          user_id: chatterIdForNotify,
-          event_type: NOTIFICATION_EVENT.MODEL_BECAME_FREE,
+        await notifyByRoleConfig(NOTIFICATION_EVENT.MODEL_BECAME_FREE, {
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: "🔒 Model Removed from Shift",
           body: `🔒 ${modelLabel} is off your shift.`,
@@ -565,7 +580,8 @@ export async function removeModelFromShift(
           entity_id: modelRecordId,
           actor_user_id: chatterIdForNotify,
           actor_name: attachment.chatter_name ?? undefined,
-          _triggerSource: "removeModelFromShift",
+          personal_user_id: chatterIdForNotify,
+          context: { modelName: modelLabel, chatterName: attachment.chatter_name ?? undefined },
         });
       } catch (e) {
         console.error("[notify] removeModelFromShift model_became_free failed", e);

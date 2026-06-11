@@ -448,6 +448,12 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
 export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "shift_starting_soon",
   "shift_late",
+  "shift_no_show",
+  "shift_overtime",
+  "shift_running_long",
+  "chatter_no_models",
+  "model_became_free",
+  "model_live_started",
   "break_exceeded",
   "break_too_long",
   "account_update",
