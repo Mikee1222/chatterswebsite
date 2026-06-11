@@ -337,6 +337,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Λάθος καταχωρήθηκε (admin)",
       "Entity-gated: admin monitoring for chatter mistakes."
     ),
+    ...pairedEvents(
+      "chatter_mistake_reviewed",
+      "Το λάθος σου κρίθηκε από admin",
+      "Λάθος κρίθηκε (admin)"
+    ),
   ],
   fine_bonus: [
     eventEntry(
