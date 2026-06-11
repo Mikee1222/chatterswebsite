@@ -326,6 +326,28 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   model_funnel_links: {
     region: new Set(["USA", "Greek", "Global"]),
   },
+  link_pages: {
+    status: new Set(["draft", "published", "archived"]),
+    background_type: new Set(["color", "gradient", "image"]),
+    theme: new Set(["dark", "light", "minimal", "neon", "gold"]),
+    font: new Set(["modern", "elegant", "bold", "minimal"]),
+  },
+  link_page_blocks: {
+    block_type: new Set([
+      "link",
+      "bio_text",
+      "photo_grid",
+      "countdown",
+      "social_bar",
+      "spacer",
+      "heading",
+    ]),
+    style: new Set(["default", "prominent", "subtle", "pill", "card"]),
+  },
+  link_page_analytics: {
+    event_type: new Set(["page_view", "link_click"]),
+    device_type: new Set(["mobile", "desktop", "tablet"]),
+  },
   va_task_phases: {
     status: new Set(["pending", "in_progress", "completed", "overdue"]),
     region: new Set(["USA", "Greek", "Global"]),
@@ -470,6 +492,8 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   shifts: new Set(["break_reminder_at"]),
   /** Display name / email of who created the whale row (set on create). */
   whales: new Set(["created_by"]),
+  link_pages: new Set(["created_at", "updated_at"]),
+  link_page_blocks: new Set(["created_at", "updated_at"]),
 };
 
 function getNonWritableNormalizedForTable(tableName: string): Set<string> {

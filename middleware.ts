@@ -7,7 +7,7 @@ import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getLinkPageByCustomDomain } from "@/services/link-pages";
 
-const PUBLIC_PATHS = [ROUTES.login, "/l/"];
+const PUBLIC_PATHS = [ROUTES.login, "/l/", "/api/l/"];
 
 /** Paths that must never be blocked by auth (PWA, static assets, public link pages). Bypass auth and return next() immediately. */
 const PUBLIC_ASSET_PREFIXES = [
@@ -35,7 +35,7 @@ function isPublicAssetPath(pathname: string): boolean {
 }
 
 function isPublicAppPath(pathname: string): boolean {
-  if (pathname.startsWith("/l/")) return true;
+  if (pathname.startsWith("/l/") || pathname.startsWith("/api/l/")) return true;
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 

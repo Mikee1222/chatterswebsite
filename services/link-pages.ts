@@ -1,4 +1,4 @@
-import { unstable_cache } from "next/cache";
+import { revalidateTag, unstable_cache } from "next/cache";
 import {
   listRecords,
   listAllRecords,
@@ -151,6 +151,23 @@ function mapBlock(rec: AirtableRecord<BlockFields>): LinkPageBlockRecord {
   };
 }
 
+function escapeFormulaString(s: string): string {
+  return s.replace(/"/g, '""');
+}
+
+function linkPageSlugTag(slug: string): string {
+  return `link-page-slug-${slug.trim().toLowerCase()}`;
+}
+
+function linkPageDomainTag(domain: string): string {
+  return `link-page-domain-${domain.trim().toLowerCase().replace(/^www\./, "")}`;
+}
+
+function invalidateLinkPagePublicCache(page: Pick<LinkPageRecord, "slug" | "custom_domain">): void {
+  if (page.slug) revalidateTag(linkPageSlugTag(page.slug));
+  if (page.custom_domain) revalidateTag(linkPageDomainTag(page.custom_domain));
+}
+
 function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -185,7 +202,7 @@ async function fetchPageByFormula(formula: string): Promise<LinkPageRecord | nul
 async function _getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  const page = await fetchPageByFormula(`LOWER({slug})='${normalized.replace(/'/g, "\\'")}'`);
+  const page = await fetchPageByFormula(`LOWER({slug})="${escapeFormulaString(normalized)}"`);
   if (!page) return null;
   const blocks = await listBlocksForPage(page.page_id);
   return { ...page, blocks: blocks.filter((b) => b.is_visible) };
@@ -194,27 +211,30 @@ async function _getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | nu
 export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  return unstable_cache(() => _getLinkPageBySlug(normalized), [`link-page-slug-${normalized}`], {
+  const tag = linkPageSlugTag(normalized);
+  return unstable_cache(() => _getLinkPageBySlug(normalized), [tag], {
     revalidate: 60,
+    tags: [tag],
   })();
 }
 
 export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
   const normalized = domain.trim().toLowerCase().replace(/^www\./, "");
   if (!normalized) return null;
+  const tag = linkPageDomainTag(normalized);
   return unstable_cache(
     () =>
       fetchPageByFormula(
-        `AND(LOWER({custom_domain})='${normalized.replace(/'/g, "\\'")}', {status}='published')`
+        `AND(LOWER({custom_domain})="${escapeFormulaString(normalized)}", {status}="published")`
       ),
-    [`link-page-domain-${normalized}`],
-    { revalidate: 30 }
+    [tag],
+    { revalidate: 30, tags: [tag] }
   )();
 }
 
 export async function listLinkPages(modelId?: string): Promise<LinkPageRecord[]> {
   const formula = modelId?.trim()
-    ? `{model_id}='${modelId.trim().replace(/'/g, "\\'")}'`
+    ? `{model_id}="${escapeFormulaString(modelId.trim())}"`
     : undefined;
   const records = await listAllRecords<PageFields>(LINK_PAGES_TABLE, {
     filterByFormula: formula,
@@ -240,14 +260,14 @@ export async function getLinkPageById(recordId: string): Promise<LinkPageWithBlo
 export async function getLinkPageByPageId(pageId: string): Promise<LinkPageRecord | null> {
   const pid = pageId.trim();
   if (!pid) return null;
-  return fetchPageByFormula(`{page_id}='${pid.replace(/'/g, "\\'")}'`);
+  return fetchPageByFormula(`{page_id}="${escapeFormulaString(pid)}"`);
 }
 
 export async function listBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
   const pid = pageId.trim();
   if (!pid) return [];
   const records = await listAllRecords<BlockFields>(LINK_PAGE_BLOCKS_TABLE, {
-    filterByFormula: `{page_id}='${pid.replace(/'/g, "\\'")}'`,
+    filterByFormula: `{page_id}="${escapeFormulaString(pid)}"`,
     sort: [{ field: LINK_PAGE_BLOCK_FIELDS.sort_order, direction: "asc" }],
     _caller: "link-page-blocks",
   });
@@ -267,7 +287,7 @@ export async function createLinkPage(input: CreateLinkPageInput = {}): Promise<L
   let slug = slugify(input.slug ?? title);
   if (!slug) slug = `page-${pageId.slice(0, 8)}`;
 
-  const existing = await fetchPageByFormula(`LOWER({slug})='${slug.replace(/'/g, "\\'")}'`);
+  const existing = await fetchPageByFormula(`LOWER({slug})="${escapeFormulaString(slug)}"`);
   if (existing) slug = `${slug}-${pageId.slice(0, 6)}`;
 
   const fields: PageFields = {
@@ -317,6 +337,7 @@ export type UpdateLinkPageInput = Partial<
 >;
 
 export async function updateLinkPage(recordId: string, input: UpdateLinkPageInput): Promise<LinkPageRecord> {
+  const previous = await getLinkPageById(recordId);
   const patch: Partial<PageFields> = {};
   if (input.model_id !== undefined) patch.model_id = input.model_id;
   if (input.slug !== undefined) patch.slug = slugify(input.slug) || input.slug;
@@ -335,20 +356,24 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
 
   const rec = await updateRecord<PageFields>(LINK_PAGES_TABLE, recordId, bumpUpdatedAt(patch));
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
-  return mapPage(rec);
+  const page = mapPage(rec);
+  if (previous) invalidateLinkPagePublicCache(previous);
+  invalidateLinkPagePublicCache(page);
+  return page;
 }
 
 export async function deleteLinkPage(recordId: string): Promise<void> {
   const page = await getLinkPageById(recordId);
   if (page) {
     const blocks = await listAllRecords<BlockFields>(LINK_PAGE_BLOCKS_TABLE, {
-      filterByFormula: `{page_id}='${page.page_id.replace(/'/g, "\\'")}'`,
+      filterByFormula: `{page_id}="${escapeFormulaString(page.page_id)}"`,
       _caller: "link-page-delete-blocks",
     });
     for (const b of blocks) {
       await deleteRecord(LINK_PAGE_BLOCKS_TABLE, b.id);
     }
   }
+  if (page) invalidateLinkPagePublicCache(page);
   await deleteRecord(LINK_PAGES_TABLE, recordId);
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
   invalidateListRecordsReadCacheForTable(LINK_PAGE_BLOCKS_TABLE);
@@ -361,7 +386,9 @@ export async function publishLinkPage(recordId: string): Promise<LinkPageRecord>
     bumpUpdatedAt({ status: "published" })
   );
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
-  return mapPage(rec);
+  const page = mapPage(rec);
+  invalidateLinkPagePublicCache(page);
+  return page;
 }
 
 export async function archiveLinkPage(recordId: string): Promise<LinkPageRecord> {
@@ -371,7 +398,9 @@ export async function archiveLinkPage(recordId: string): Promise<LinkPageRecord>
     bumpUpdatedAt({ status: "archived" })
   );
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
-  return mapPage(rec);
+  const page = mapPage(rec);
+  invalidateLinkPagePublicCache(page);
+  return page;
 }
 
 export async function unpublishLinkPage(recordId: string): Promise<LinkPageRecord> {
@@ -381,7 +410,9 @@ export async function unpublishLinkPage(recordId: string): Promise<LinkPageRecor
     bumpUpdatedAt({ status: "draft" })
   );
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
-  return mapPage(rec);
+  const page = mapPage(rec);
+  invalidateLinkPagePublicCache(page);
+  return page;
 }
 
 export type UpsertBlockInput = {
