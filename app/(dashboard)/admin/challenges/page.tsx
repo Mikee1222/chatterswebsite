@@ -1,8 +1,6 @@
-import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { ROUTES } from "@/lib/routes";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import {
   activeChatterCount,
@@ -13,8 +11,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminChallengesClient } from "@/components/admin-challenges-client";
 
 export default async function AdminChallengesPage() {
-  const user = await getSessionFromCookies();
-  
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CHALLENGES_MANAGE);
 
   const todayYmd = getTodayYmdAthens();
   const [challenges, completionByChallenge, activeChatterDenominator, users] = await Promise.all([
@@ -30,11 +27,7 @@ export default async function AdminChallengesPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 md:max-w-4xl md:px-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">Challenges</h1>
-        <p className="mt-1 text-sm text-white/55">Create and manage rewards challenges. Progress updates from chatters’ activity.</p>
-      </div>
+    <div className="mx-auto max-w-6xl px-4 py-8 md:px-6">
       <AdminChallengesClient
         challenges={challenges}
         completionByChallenge={completionByChallenge}
