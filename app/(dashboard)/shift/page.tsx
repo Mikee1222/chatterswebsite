@@ -72,7 +72,9 @@ const getCachedShiftPageModelss = unstable_cache(
         "current_shift_id",
       ],
     });
-    return records.map(mapSlimModelToModelRecord);
+    return records
+      .map(mapSlimModelToModelRecord)
+      .filter((m) => m.model_name?.trim() && m.model_id?.trim());
   },
   ["shift-page-modelss-slim-v2"],
   { revalidate: 60 }

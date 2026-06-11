@@ -72,6 +72,11 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
   };
 }
 
+/** Both fields required before a model appears in dropdowns / pickers. */
+function filterCompleteModels(modelss: ModelRecord[]): ModelRecord[] {
+  return modelss.filter((m) => m.model_name?.trim() && m.model_id?.trim());
+}
+
 /** Fields we can write for modelss; linked fields as arrays, snapshots as strings. */
 export type ModelssWriteFields = {
   of_user_id?: string;
@@ -98,12 +103,12 @@ export type ModelssWriteFields = {
 
 export async function listModelss(params: ListParams = {}) {
   const { records, offset } = await listRecords<Fields>(TABLE, params);
-  return { modelss: records.map(mapRecord), offset };
+  return { modelss: filterCompleteModels(records.map(mapRecord)), offset };
 }
 
 export async function listAllModelss(filterByFormula?: string) {
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
-  return records.map(mapRecord);
+  return filterCompleteModels(records.map(mapRecord));
 }
 
 /** Full modelss list cached 60s — use on heavy admin pages instead of listAllModelss(). */

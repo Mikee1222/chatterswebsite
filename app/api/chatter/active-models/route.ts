@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { listAllRecords } from "@/lib/airtable-server";
+import { listAllModelss } from "@/services/modelss";
 
 type ModelOption = { id: string; name: string };
 
@@ -14,14 +14,11 @@ export async function GET() {
   if (!(await hasPermission(session, "shifts:active-view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const records = await listAllRecords<{ model_name?: string; model_id?: string }>("modelss", {
-      filterByFormula: `{status} = "active"`,
-      _caller: "api.chatter.active-models",
-    });
-    const models: ModelOption[] = [...records]
-      .map((r) => ({
-        id: r.id,
-        name: (r.fields.model_name || r.fields.model_id || r.id).trim() || r.id,
+    const modelss = await listAllModelss('{status} = "active"');
+    const models: ModelOption[] = modelss
+      .map((m) => ({
+        id: m.id,
+        name: m.model_name.trim(),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
     return NextResponse.json({ models });
