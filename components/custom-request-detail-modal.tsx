@@ -25,6 +25,10 @@ type Props = {
   request: CustomRequest | null;
   language: CustomRequestDetailLanguage;
   variant: CustomRequestDetailVariant;
+  /** Resolve model record ids to display names (admin agency view). */
+  modelById?: Record<string, string>;
+  /** Resolve chatter record ids to display names (admin agency view). */
+  chatterById?: Record<string, string>;
   /** Model: opens schedule flow (e.g. parent closes detail and opens schedule modal). */
   onSchedule?: () => void;
   /** Model: opens mark-uploaded flow. */
@@ -157,16 +161,30 @@ export function CustomRequestDetailModal({
   request,
   language,
   variant,
+  modelById = {},
+  chatterById = {},
   onSchedule,
   onMarkUploaded,
   children,
 }: Props) {
   const headerGradientClass = request ? gradientClassForCustomRequest(request) : undefined;
 
+  const resolvedModelName = request
+    ? modelById[request.assigned_model_id] ||
+      (request.assigned_model_name ?? request.model_name)?.trim() ||
+      "—"
+    : "—";
+
+  const resolvedChatterName = request
+    ? chatterById[request.requested_by_chatter_id] ||
+      (request.requested_by_chatter_name ?? request.chatter_name)?.trim() ||
+      "—"
+    : "—";
+
   const subtitle = request
     ? variant === "model"
-      ? `${request.fan_username?.trim() || "—"} · ${displayType(request)} · ${(request.requested_by_chatter_name ?? request.chatter_name)?.trim() || "—"}`
-      : `${request.fan_username?.trim() || "—"} · ${(request.assigned_model_name ?? request.model_name)?.trim() || request.assigned_model_id || "—"} · ${(request.requested_by_chatter_name ?? request.chatter_name ?? "").trim() || "—"}`
+      ? `${request.fan_username?.trim() || "—"} · ${displayType(request)} · ${resolvedChatterName}`
+      : `${request.fan_username?.trim() || "—"} · ${resolvedModelName} · ${resolvedChatterName}`
     : "";
 
   const stats =
