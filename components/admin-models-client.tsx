@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { Pencil, Search, Settings2, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Search, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
@@ -48,34 +48,144 @@ type Props = {
   periodSummaryByModelId: Record<string, ModelPeriodSummary>;
 };
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(t);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+function teamBadgeClass(team: ModelRecord["team"]): string {
+  return team === "chatting_agency"
+    ? "border-sky-500/35 bg-sky-500/15 text-sky-200"
+    : "border-pink-500/35 bg-pink-500/15 text-pink-200";
+}
+
+function teamLabel(team: ModelRecord["team"]): string {
+  return team === "chatting_agency" ? "Agency" : "Gunzo";
+}
+
+function priorityBadgeClass(priority: string): string {
+  const p = priority.toLowerCase();
+  if (p === "high") return "border-red-500/30 bg-red-500/12 text-red-200";
+  if (p === "low") return "border-white/12 bg-white/[0.05] text-white/60";
+  return "border-amber-500/30 bg-amber-500/12 text-amber-200";
+}
+
+function isInactiveStatus(status: string): boolean {
+  const s = status.trim().toLowerCase();
+  return s === "inactive" || s === "suspended" || s === "disabled" || s === "paused";
+}
+
+function StatPill({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2">
+      <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold tabular-nums text-white">{value}</p>
+    </div>
+  );
+}
+
 function PeriodSection({
   summary,
   onLogClick,
+  historyExpanded,
+  onToggleHistory,
+  deletingId,
+  onRequestDeletePeriod,
 }: {
   summary: ModelPeriodSummary;
   onLogClick: () => void;
+  historyExpanded: boolean;
+  onToggleHistory: () => void;
+  deletingId: string | null;
+  onRequestDeletePeriod: (periodId: string) => void;
 }) {
+  const inPeriod = Boolean(summary.current);
+  const hasPrediction = !inPeriod && Boolean(summary.predictedNextStart);
+  const visibleHistory = historyExpanded ? summary.history : summary.history.slice(0, 5);
+  const hasMoreHistory = summary.history.length > 5;
+
   return (
-    <div className="mt-3 rounded-xl border border-rose-500/20 bg-rose-500/5 px-3 py-3 text-xs text-white/75">
-      <p className="font-semibold uppercase tracking-wider text-rose-200/80">Period</p>
-      {summary.current ? (
-        <p className="mt-1.5">
-          In period until <span className="font-medium text-white">{formatDateEuropean(summary.current.end_date)}</span>
-        </p>
-      ) : summary.predictedNextStart ? (
-        <p className="mt-1.5">
-          Next predicted: <span className="font-medium text-white">{formatDateEuropean(summary.predictedNextStart)}</span>
-        </p>
-      ) : (
-        <p className="mt-1.5 text-white/55">No period data yet.</p>
+    <div className="rounded-xl border border-white/[0.08] bg-black/20 px-3 py-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-white/40">Period</p>
+          <div className="mt-1.5 flex items-center gap-2 text-xs text-white/75">
+            <span
+              className={cn(
+                "h-1.5 w-1.5 shrink-0 rounded-full",
+                inPeriod ? "bg-emerald-400" : hasPrediction ? "bg-amber-400" : "bg-white/30"
+              )}
+              aria-hidden
+            />
+            {inPeriod ? (
+              <span>
+                In period until{" "}
+                <span className="font-medium text-white">{formatDateEuropean(summary.current!.end_date)}</span>
+              </span>
+            ) : hasPrediction ? (
+              <span>
+                Next predicted:{" "}
+                <span className="font-medium text-white">{formatDateEuropean(summary.predictedNextStart!)}</span>
+              </span>
+            ) : (
+              <span className="text-white/50">No period data yet</span>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onLogClick}
+          className="shrink-0 rounded-lg border border-pink-500/35 bg-pink-500/10 px-2.5 py-1 text-[11px] font-medium text-pink-200 hover:bg-pink-500/20"
+        >
+          Log period
+        </button>
+      </div>
+
+      {summary.history.length > 0 && (
+        <div className="mt-2.5 border-t border-white/[0.06] pt-2">
+          <button
+            type="button"
+            onClick={onToggleHistory}
+            className="flex w-full items-center justify-between gap-2 text-left text-[11px] font-medium text-white/50 hover:text-white/70"
+          >
+            <span>History ({summary.history.length})</span>
+            <ChevronDown
+              className={cn("h-3.5 w-3.5 shrink-0 transition-transform", historyExpanded && "rotate-180")}
+              aria-hidden
+            />
+          </button>
+          <ul className="mt-1.5 space-y-1">
+            {visibleHistory.map((p) => (
+              <li key={p.id} className="flex items-center justify-between gap-2 text-[11px] text-white/50">
+                <span>
+                  {formatDateEuropean(p.start_date)} → {formatDateEuropean(p.end_date)}
+                </span>
+                <button
+                  type="button"
+                  disabled={deletingId === p.id}
+                  onClick={() => onRequestDeletePeriod(p.id)}
+                  className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
+                >
+                  {deletingId === p.id ? "…" : "Delete"}
+                </button>
+              </li>
+            ))}
+          </ul>
+          {hasMoreHistory && !historyExpanded && (
+            <button
+              type="button"
+              onClick={onToggleHistory}
+              className="mt-1 text-[11px] font-medium text-pink-300/80 hover:text-pink-200"
+            >
+              Show {summary.history.length - 5} more
+            </button>
+          )}
+        </div>
       )}
-      <button
-        type="button"
-        onClick={onLogClick}
-        className="mt-2 rounded-lg border border-rose-400/40 bg-rose-500/15 px-3 py-1.5 text-[11px] font-medium text-rose-100 hover:bg-rose-500/25"
-      >
-        Log period
-      </button>
     </div>
   );
 }
@@ -88,9 +198,11 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
   const [filterStatus, setFilterStatus] = React.useState("");
   const [filterPriority, setFilterPriority] = React.useState("");
   const [filterChatter, setFilterChatter] = React.useState("");
+  const debouncedFilterChatter = useDebouncedValue(filterChatter, 300);
   const [viewFilter, setViewFilter] = React.useState<"all" | "free" | "taken">("all");
   const [modelPendingDelete, setModelPendingDelete] = React.useState<ModelRecord | null>(null);
   const [confirmingModelDelete, setConfirmingModelDelete] = React.useState(false);
+  const [expandedHistoryByModelId, setExpandedHistoryByModelId] = React.useState<Record<string, boolean>>({});
 
   const [logModel, setLogModel] = React.useState<ModelRecord | null>(null);
   const [logStart, setLogStart] = React.useState("");
@@ -152,11 +264,14 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
     if (filterPlatform) list = list.filter((m) => m.platform === filterPlatform);
     if (filterStatus) list = list.filter((m) => (m.status ?? "") === filterStatus);
     if (filterPriority) list = list.filter((m) => (m.priority ?? "") === filterPriority);
-    if (filterChatter) list = list.filter((m) => (m.current_chatter_name ?? "").toLowerCase().includes(filterChatter.toLowerCase()));
+    if (debouncedFilterChatter)
+      list = list.filter((m) =>
+        (m.current_chatter_name ?? "").toLowerCase().includes(debouncedFilterChatter.toLowerCase())
+      );
     if (viewFilter === "free") list = list.filter((m) => m.current_status === "free");
     if (viewFilter === "taken") list = list.filter((m) => m.current_status === "occupied");
     return list;
-  }, [localModelss, filterPlatform, filterStatus, filterPriority, filterChatter, viewFilter]);
+  }, [localModelss, filterPlatform, filterStatus, filterPriority, debouncedFilterChatter, viewFilter]);
 
   const platforms = React.useMemo(() => [...new Set(localModelss.map((m) => m.platform).filter(Boolean))].sort(), [localModelss]);
   const statuses = React.useMemo(() => [...new Set(localModelss.map((m) => m.status).filter(Boolean))].sort(), [localModelss]);
@@ -186,6 +301,25 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
 
   const freeCount = localModelss.filter((m) => m.current_status === "free").length;
   const takenCount = localModelss.length - freeCount;
+  const inPeriodCount = React.useMemo(
+    () => localModelss.filter((m) => periodSummaryByModelId[m.id]?.current != null).length,
+    [localModelss, periodSummaryByModelId]
+  );
+
+  const hasActiveFilters =
+    viewFilter !== "all" ||
+    Boolean(filterPlatform) ||
+    Boolean(filterStatus) ||
+    Boolean(filterPriority) ||
+    filterChatter.trim().length > 0;
+
+  const clearFilters = () => {
+    setViewFilter("all");
+    setFilterPlatform("");
+    setFilterStatus("");
+    setFilterPriority("");
+    setFilterChatter("");
+  };
 
   const handleConfirmDeleteModel = React.useCallback(async () => {
     if (!modelPendingDelete) return;
@@ -210,32 +344,41 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
     }
   }, [modelPendingDelete, addToast, router]);
 
+  const statusTabs: { id: "all" | "free" | "taken"; label: string; count: number }[] = [
+    { id: "all", label: "All", count: localModelss.length },
+    { id: "free", label: "Free", count: freeCount },
+    { id: "taken", label: "Taken", count: takenCount },
+  ];
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Models</h1>
         <p className="mt-1 text-sm text-white/60">
-          Model availability and current ownership. Table: modelss. Chatter occupancy vs VA presence.
+          {localModelss.length} models · {freeCount} free · {takenCount} occupied
         </p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4">
-        <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
-          {(["all", "free", "taken"] as const).map((v) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setViewFilter(v)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium capitalize ${
-                viewFilter === v
-                  ? "bg-[hsl(330,80%,55%)]/20 text-[hsl(330,90%,65%)]"
-                  : "text-white/70 hover:bg-white/5 hover:text-white"
-              }`}
-            >
-              {v} {v === "free" && `(${freeCount})`} {v === "taken" && `(${takenCount})`}
-            </button>
-          ))}
-        </div>
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] pb-4">
+        {statusTabs.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setViewFilter(tab.id)}
+            className={cn(
+              "inline-flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
+              viewFilter === tab.id
+                ? "border-pink-500/40 bg-pink-500/15 text-pink-100 shadow-[0_0_20px_-8px_rgba(236,72,153,0.35)]"
+                : "border-white/10 bg-white/[0.03] text-white/65 hover:border-white/20 hover:bg-white/[0.06] hover:text-white/90"
+            )}
+          >
+            {tab.label}
+            <span className="rounded-md bg-black/30 px-1.5 py-0.5 text-[11px] font-semibold text-white/70">
+              {tab.count}
+            </span>
+          </button>
+        ))}
+
         <CustomSelect
           value={filterPlatform}
           onChange={setFilterPlatform}
@@ -254,8 +397,12 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
           options={prioritySelectOptions}
           className="w-36"
         />
+
         <div className="relative w-full min-w-[160px] max-w-[220px] sm:w-52">
-          <Search className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 z-[1] h-4 w-4 -translate-y-1/2 text-white/35"
+            aria-hidden
+          />
           <FormInput
             type="text"
             placeholder="Filter by chatter…"
@@ -266,278 +413,207 @@ export function AdminModelsClient({ modelss, modelIdToVaNames, periodSummaryByMo
         </div>
       </div>
 
-      <div className="space-y-4 md:hidden">
-        {filtered.length === 0 ? (
-          <p className="rounded-2xl border border-white/10 bg-white/5 p-6 text-center text-white/50">No models match</p>
-        ) : (
-          filtered.map((m, index) => {
-            const vaNames = modelIdToVaNames[m.id] ?? [];
-            const summary = periodSummaryByModelId[m.id] ?? {
-              current: null,
-              predictedNextStart: null,
-              history: [],
-            };
-            return (
-              <motion.div
-                key={m.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
-                whileHover={{ scale: 1.01 }}
-                className="rounded-2xl border border-white/10 bg-white/[0.06] p-4 transition-[transform,box-shadow,border-color] duration-200 hover:border-pink-500/20 hover:shadow-[0_12px_40px_-24px_rgba(236,72,153,0.25)]"
-                style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
-              >
-                <div className="flex items-start gap-3">
-                  <AdminRowAvatar name={m.model_name || "?"} />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-base font-semibold text-white/95">{m.model_name}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-2">
-                      {m.platform ? (
-                        <span className="rounded-md border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/60">
-                          {m.platform}
-                        </span>
-                      ) : null}
-                      <RecordStatusBadge status={m.status} />
-                      {m.hasLinkedAccount === false ? (
-                        <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                          No account linked
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1.5 ${
-                      m.current_status === "occupied"
-                        ? "rounded-full border border-amber-500/30 bg-amber-500/15 px-2.5 py-1 text-xs font-medium text-amber-300"
-                        : "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300"
-                    }`}
-                  >
-                    <span
-                      className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                        m.current_status === "occupied" ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"
-                      }`}
-                      aria-hidden
-                    />
-                    {m.current_status === "occupied" ? m.current_chatter_name || "Occupied" : "Free"}
-                  </span>
-                  {vaNames.length > 0 && (
-                    <span className="rounded-full border border-[hsl(330,80%,55%)]/30 bg-[hsl(330,80%,55%)]/15 px-2.5 py-1 text-xs text-[hsl(330,90%,75%)]">
-                      VA: {vaNames.join(", ")}
-                    </span>
-                  )}
-                </div>
-                <div className="mt-3 space-y-1 text-sm text-white/70">
-                  {m.entered_at && <p>Entered: {formatDateTimeEuropean(m.entered_at)}</p>}
-                  {m.last_chatter_name && <p>Last chatter: {m.last_chatter_name}</p>}
-                  {m.last_exit_at && <p>Last exit: {formatDateTimeEuropean(m.last_exit_at)}</p>}
-                  {m.priority && <p>Priority: {m.priority}</p>}
-                </div>
-                <PeriodSection summary={summary} onLogClick={() => openLog(m)} />
-                {summary.history.length > 0 && (
-                  <div className="mt-2 space-y-1 border-t border-white/10 pt-2 text-[11px] text-white/50">
-                    {summary.history.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between gap-2">
-                        <span>
-                          {formatDateEuropean(p.start_date)} → {formatDateEuropean(p.end_date)}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={deletingId === p.id}
-                          onClick={() => requestDeletePeriod(p.id)}
-                          className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
-                        >
-                          {deletingId === p.id ? "…" : "Delete"}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-white/10 pt-3">
-                  <Link
-                    href={ROUTES.admin.modelDetail(m.id)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition-colors hover:border-white/25 hover:bg-white/[0.08] hover:text-white"
-                  >
-                    <Settings2 className="h-4 w-4" aria-hidden />
-                    Admin
-                  </Link>
-                  <Link
-                    href={ROUTES.modelEdit(m.id)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-white/85 transition-colors hover:border-pink-500/30 hover:bg-pink-500/10 hover:text-white"
-                  >
-                    <Pencil className="h-4 w-4" aria-hidden />
-                    Edit
-                  </Link>
-                  <button
-                    type="button"
-                    disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
-                    onClick={() => setModelPendingDelete(m)}
-                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/35 px-3 py-2 text-sm text-red-300/90 transition-colors hover:border-red-400/50 hover:bg-red-500/10 hover:text-red-200 disabled:opacity-50"
-                    title="Delete model"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden />
-                    Delete
-                  </button>
-                </div>
-              </motion.div>
-            );
-          })
-        )}
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <StatPill label="Total" value={localModelss.length} />
+        <StatPill label="Free" value={freeCount} />
+        <StatPill label="Occupied" value={takenCount} />
+        <StatPill label="In period" value={inPeriodCount} />
       </div>
 
-      <div className="glass-card hidden overflow-x-auto md:block">
-        <table className="w-full min-w-[960px] text-sm">
-          <thead className="border-b border-white/10 bg-gradient-to-r from-black/60 via-black/50 to-pink-950/20 text-left text-xs font-medium uppercase tracking-wider text-white/50">
-            <tr>
-              <th className="p-3.5 font-medium">Model</th>
-              <th className="p-3.5 font-medium min-w-[200px]">Period</th>
-              <th className="p-3.5 font-medium">Chatter</th>
-              <th className="p-3.5 font-medium">VA in model</th>
-              <th className="p-3.5 font-medium">Entered at</th>
-              <th className="p-3.5 font-medium">Last chatter</th>
-              <th className="p-3.5 font-medium">Last exit</th>
-              <th className="p-3.5 font-medium">Priority</th>
-              <th className="p-3.5 font-medium w-[88px] text-center">Actions</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-white/[0.06]">
-            {filtered.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="p-8 text-center text-white/50">
-                  No models match
-                </td>
-              </tr>
-            ) : (
-              <AnimatePresence mode="popLayout">
-                {filtered.map((m, index) => {
-                const vaNames = modelIdToVaNames[m.id] ?? [];
-                const summary = periodSummaryByModelId[m.id] ?? {
-                  current: null,
-                  predictedNextStart: null,
-                  history: [],
-                };
-                return (
-                  <motion.tr
-                    key={m.id}
-                    layout
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.2, delay: index * 0.04, ease: "easeOut" }}
-                    className={cn(
-                      "group transition-[background-color,box-shadow] duration-200 ease-out",
-                      "hover:bg-gradient-to-r hover:from-white/[0.05] hover:to-pink-500/[0.04] hover:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
-                    )}
-                  >
-                    <td className="p-3.5 align-top">
-                      <div className="flex items-start gap-3">
-                        <AdminRowAvatar name={m.model_name || "?"} className="ring-1 ring-white/10" />
-                        <div className="min-w-0">
-                          <p className="font-semibold text-white/95">{m.model_name}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                            {m.platform ? (
-                              <span className="rounded-md border border-white/10 bg-white/[0.05] px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/55">
-                                {m.platform}
-                              </span>
-                            ) : null}
-                            <RecordStatusBadge status={m.status} />
-                            {m.hasLinkedAccount === false ? (
-                              <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
-                                No account linked
-                              </span>
-                            ) : null}
-                          </div>
-                        </div>
+      {filtered.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-white/12 bg-white/[0.02] p-10 text-center">
+          <p className="text-sm font-medium text-white/70">No models match filters</p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="mt-4 inline-flex items-center rounded-xl border border-pink-500/35 bg-pink-500/10 px-4 py-2 text-sm font-medium text-pink-200 hover:bg-pink-500/20"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <AnimatePresence mode="popLayout">
+            {filtered.map((m, index) => {
+              const vaNames = modelIdToVaNames[m.id] ?? [];
+              const summary = periodSummaryByModelId[m.id] ?? {
+                current: null,
+                predictedNextStart: null,
+                history: [],
+              };
+              const inactive = isInactiveStatus(m.status);
+              const isOccupied = m.current_status === "occupied";
+              const notesPreview = m.notes?.trim()
+                ? m.notes.trim().length > 80
+                  ? `${m.notes.trim().slice(0, 80)}…`
+                  : m.notes.trim()
+                : null;
+
+              return (
+                <motion.article
+                  key={m.id}
+                  layout
+                  initial={{ opacity: 0, y: 12 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.2, delay: index * 0.03, ease: "easeOut" }}
+                  className={cn(
+                    "flex flex-col overflow-hidden rounded-2xl border bg-white/[0.06] transition-[border-color,box-shadow,opacity]",
+                    "hover:border-pink-500/20 hover:shadow-[0_12px_40px_-28px_rgba(236,72,153,0.2)]",
+                    isOccupied ? "border-emerald-500/40" : "border-white/15",
+                    inactive && "opacity-60"
+                  )}
+                  style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.04)" }}
+                >
+                  <header className="flex items-start gap-3 border-b border-white/[0.06] p-4">
+                    <AdminRowAvatar name={m.model_name || "?"} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        {m.platform ? (
+                          <span className="rounded-md border border-white/10 bg-white/[0.05] px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-white/55 capitalize">
+                            {m.platform}
+                          </span>
+                        ) : null}
                       </div>
-                    </td>
-                    <td className="p-3.5 align-top text-xs text-white/70">
-                      <PeriodSection summary={summary} onLogClick={() => openLog(m)} />
-                      {summary.history.length > 0 && (
-                        <ul className="mt-2 max-h-32 space-y-1 overflow-y-auto border-t border-white/10 pt-2 text-[11px] text-white/50">
-                          {summary.history.map((p) => (
-                            <li key={p.id} className="flex items-start justify-between gap-2">
-                              <span>
-                                {formatDateEuropean(p.start_date)} → {formatDateEuropean(p.end_date)}
-                              </span>
-                              <button
-                                type="button"
-                                disabled={deletingId === p.id}
-                                onClick={() => requestDeletePeriod(p.id)}
-                                className="shrink-0 text-rose-300/80 hover:text-rose-200 disabled:opacity-40"
-                              >
-                                {deletingId === p.id ? "…" : "×"}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
-                    </td>
-                    <td className="p-3.5 align-top">
-                      <span
-                        className={`inline-flex items-center gap-1.5 ${
-                          m.current_status === "occupied"
-                            ? "rounded-full border border-amber-500/30 bg-amber-500/15 px-2 py-0.5 text-amber-300"
-                            : "rounded-full border border-emerald-500/30 bg-emerald-500/15 px-2 py-0.5 text-emerald-300"
-                        }`}
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <h3 className="truncate text-base font-semibold text-white/95">{m.model_name}</h3>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <RecordStatusBadge status={m.status} />
+                        {m.priority ? (
+                          <span
+                            className={cn(
+                              "inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize",
+                              priorityBadgeClass(m.priority)
+                            )}
+                          >
+                            {m.priority}
+                          </span>
+                        ) : null}
+                        {m.hasLinkedAccount === false ? (
+                          <span className="rounded-full border border-amber-500/25 bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-300">
+                            No account linked
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-xl border border-white/[0.08] bg-black/25 p-0.5">
+                      <Link
+                        href={ROUTES.admin.modelDetail(m.id)}
+                        className="rounded-lg p-2 text-white/55 hover:bg-white/10 hover:text-white"
+                        title="Admin model settings"
                       >
-                        <span
-                          className={`h-1.5 w-1.5 shrink-0 rounded-full ${
-                            m.current_status === "occupied" ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"
-                          }`}
-                          aria-hidden
-                        />
-                        {m.current_status === "occupied" ? m.current_chatter_name || "Occupied" : "Free"}
-                      </span>
-                    </td>
-                    <td className="p-3.5 align-top">
-                      {vaNames.length > 0 ? (
-                        <span className="rounded-full border border-[hsl(330,80%,55%)]/30 bg-[hsl(330,80%,55%)]/15 px-2 py-0.5 text-[hsl(330,90%,75%)]">
-                          {vaNames.join(", ")}
-                        </span>
-                      ) : (
-                        <span className="text-white/45">—</span>
-                      )}
-                    </td>
-                    <td className="p-3.5 align-top text-white/70">{m.entered_at ? formatDateTimeEuropean(m.entered_at) : "—"}</td>
-                    <td className="p-3.5 align-top text-white/70">{m.last_chatter_name || "—"}</td>
-                    <td className="p-3.5 align-top text-white/70">{m.last_exit_at ? formatDateTimeEuropean(m.last_exit_at) : "—"}</td>
-                    <td className="p-3.5 align-top text-white/60">{m.priority || "—"}</td>
-                    <td className="p-3.5 align-top">
-                      <div className="flex justify-end gap-1 opacity-90 transition-opacity group-hover:opacity-100">
-                        <Link
-                          href={ROUTES.admin.modelDetail(m.id)}
-                          className="rounded-lg p-2 text-white/55 transition-colors hover:bg-white/10 hover:text-white"
-                          title="Admin model settings"
-                        >
-                          <Settings2 className="h-4 w-4" aria-hidden />
-                        </Link>
-                        <Link
-                          href={ROUTES.modelEdit(m.id)}
-                          className="rounded-lg p-2 text-white/55 transition-colors hover:bg-pink-500/15 hover:text-pink-200"
-                          title="Edit model"
-                        >
-                          <Pencil className="h-4 w-4" aria-hidden />
-                        </Link>
-                        <button
-                          type="button"
-                          disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
-                          onClick={() => setModelPendingDelete(m)}
-                          className="rounded-lg p-2 text-white/50 transition-colors hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
-                          title="Delete model"
-                        >
-                          <Trash2 className="h-4 w-4" aria-hidden />
-                        </button>
+                        <Settings2 className="h-4 w-4" aria-hidden />
+                      </Link>
+                      <Link
+                        href={ROUTES.modelEdit(m.id)}
+                        className="rounded-lg p-2 text-white/55 hover:bg-pink-500/15 hover:text-pink-200"
+                        title="Edit model"
+                      >
+                        <Pencil className="h-4 w-4" aria-hidden />
+                      </Link>
+                      <button
+                        type="button"
+                        disabled={confirmingModelDelete && modelPendingDelete?.id === m.id}
+                        onClick={() => setModelPendingDelete(m)}
+                        className="rounded-lg p-2 text-white/50 hover:bg-red-500/15 hover:text-red-300 disabled:opacity-50"
+                        title="Delete model"
+                      >
+                        <Trash2 className="h-4 w-4" aria-hidden />
+                      </button>
+                    </div>
+                  </header>
+
+                  <div className="px-4 pt-3">
+                    <PeriodSection
+                      summary={summary}
+                      onLogClick={() => openLog(m)}
+                      historyExpanded={Boolean(expandedHistoryByModelId[m.id])}
+                      onToggleHistory={() =>
+                        setExpandedHistoryByModelId((prev) => ({
+                          ...prev,
+                          [m.id]: !prev[m.id],
+                        }))
+                      }
+                      deletingId={deletingId}
+                      onRequestDeletePeriod={requestDeletePeriod}
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
+                    <dl className="space-y-2.5 text-sm">
+                      <div>
+                        <dt className="text-[10px] font-medium uppercase tracking-wider text-white/40">Chatter</dt>
+                        <dd className="mt-0.5 flex items-center gap-1.5 text-white/85">
+                          <span
+                            className={cn(
+                              "h-1.5 w-1.5 shrink-0 rounded-full",
+                              isOccupied ? "bg-emerald-400" : "bg-white/25"
+                            )}
+                            aria-hidden
+                          />
+                          {isOccupied ? m.current_chatter_name || "Occupied" : "Free"}
+                        </dd>
                       </div>
-                    </td>
-                  </motion.tr>
-                );
-              })}
-              </AnimatePresence>
-            )}
-          </tbody>
-        </table>
-      </div>
+                      <div>
+                        <dt className="text-[10px] font-medium uppercase tracking-wider text-white/40">VA</dt>
+                        <dd className="mt-0.5 text-white/85">
+                          {vaNames.length > 0 ? vaNames.join(", ") : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] font-medium uppercase tracking-wider text-white/40">Entered at</dt>
+                        <dd className="mt-0.5 text-white/85">
+                          {m.entered_at ? formatDateTimeEuropean(m.entered_at) : "—"}
+                        </dd>
+                      </div>
+                    </dl>
+                    <dl className="space-y-2.5 text-sm">
+                      <div>
+                        <dt className="text-[10px] font-medium uppercase tracking-wider text-white/40">Last chatter</dt>
+                        <dd className="mt-0.5 text-white/85">{m.last_chatter_name?.trim() || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] font-medium uppercase tracking-wider text-white/40">Last exit</dt>
+                        <dd className="mt-0.5 text-white/85">
+                          {m.last_exit_at ? formatDateTimeEuropean(m.last_exit_at) : "—"}
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] font-medium uppercase tracking-wider text-white/40">Priority</dt>
+                        <dd className="mt-0.5 capitalize text-white/85">{m.priority || "—"}</dd>
+                      </div>
+                    </dl>
+                  </div>
+
+                  <footer className="mt-auto flex flex-wrap items-center gap-2 border-t border-white/[0.06] px-4 py-3">
+                    {m.platform ? (
+                      <span className="text-[11px] font-medium capitalize text-white/45">{m.platform}</span>
+                    ) : null}
+                    <span
+                      className={cn(
+                        "inline-flex shrink-0 rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide",
+                        teamBadgeClass(m.team)
+                      )}
+                    >
+                      {teamLabel(m.team)}
+                    </span>
+                    {notesPreview ? (
+                      <span className="min-w-0 flex-1 truncate text-xs text-white/45" title={m.notes}>
+                        {notesPreview}
+                      </span>
+                    ) : (
+                      <span className="flex-1" />
+                    )}
+                  </footer>
+                </motion.article>
+              );
+            })}
+          </AnimatePresence>
+        </div>
+      )}
 
       <ConfirmDialog
         open={modelPendingDelete != null}
