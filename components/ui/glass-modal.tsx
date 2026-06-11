@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { motion } from "framer-motion";
 
 /** Glass modal — single `motion` root so `AnimatePresence` in the parent can run exit. */
@@ -17,9 +18,16 @@ export function GlassModal({
   subtitle?: string;
   className?: string;
 }) {
-  return (
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) return null;
+
+  return createPortal(
     <motion.div
-      className="fixed inset-0 z-50 flex items-end justify-center md:items-center md:p-4"
+      className="fixed inset-0 z-[300] flex items-end justify-center md:items-center md:p-4 md:pb-0"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
@@ -31,10 +39,9 @@ export function GlassModal({
         onClick={onClose}
       />
       <motion.div
-        className={`relative flex max-h-[95dvh] w-full flex-col rounded-t-2xl border border-white/10 border-b-0 bg-black/95 shadow-2xl shadow-black/50 backdrop-blur-xl md:max-h-[calc(100vh-2rem)] md:max-w-md md:rounded-2xl md:border ${className}`}
+        className={`relative flex w-full flex-col rounded-t-2xl border border-white/10 border-b-0 bg-black/95 shadow-2xl shadow-black/50 backdrop-blur-xl max-h-[85vh] overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+76px)] md:max-h-[calc(100vh-2rem)] md:max-w-md md:rounded-2xl md:border md:pb-0 ${className}`}
         style={{
           boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)",
-          paddingBottom: "env(safe-area-inset-bottom)",
         }}
         initial={{ opacity: 0, scale: 0.96 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -51,6 +58,7 @@ export function GlassModal({
         )}
         <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </motion.div>
-    </motion.div>
+    </motion.div>,
+    document.body
   );
 }

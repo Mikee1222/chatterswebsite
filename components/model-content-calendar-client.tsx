@@ -663,6 +663,10 @@ export function ModelContentCalendarClient({
     slot: CalendarDaySlot;
     anchor: HTMLElement;
   } | null>(null);
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const allEvents = React.useMemo(
     () => buildEvents(assignments, customs, tasks),
@@ -1104,9 +1108,10 @@ export function ModelContentCalendarClient({
         deletingPersonalId={deletingEventId}
       />
 
-      {addEventOpen ? (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0f0f1a] p-5">
+      {addEventOpen && mounted
+        ? createPortal(
+            <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/65 p-4 backdrop-blur-sm">
+              <div className="w-full max-w-lg rounded-2xl border border-white/10 bg-[#0f0f1a] p-5 pb-[calc(env(safe-area-inset-bottom)+76px+1.25rem)] md:p-5">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-white">Add personal event</h2>
               <button type="button" onClick={() => setAddEventOpen(false)} className="rounded-lg p-1 text-white/70 hover:bg-white/10 hover:text-white">
@@ -1188,9 +1193,11 @@ export function ModelContentCalendarClient({
                 </button>
               </div>
             </div>
-          </div>
-        </div>
-      ) : null}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

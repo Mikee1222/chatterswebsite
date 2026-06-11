@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AlertTriangle, CalendarClock, CheckCircle2, Clock, Download, Loader2, Home } from "lucide-react";
 import { useSWRConfig } from "swr";
@@ -12,6 +13,39 @@ import { useTranslations } from "@/lib/use-translations";
 import { formatDateTime as formatDateTimeUk } from "@/lib/format-date";
 
 type Filter = "pending" | "scheduled" | "completed";
+
+function ModelBodyModal({
+  open,
+  onBackdropClick,
+  ariaLabelledBy,
+  children,
+}: {
+  open: boolean;
+  onBackdropClick: () => void;
+  ariaLabelledBy: string;
+  children: React.ReactNode;
+}) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!open || !mounted) return null;
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[300] flex items-center justify-center bg-black/75 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={ariaLabelledBy}
+      onClick={onBackdropClick}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+}
+
+const MODEL_MODAL_PANEL_CLASS =
+  "w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 pb-[calc(env(safe-area-inset-bottom)+76px+1.5rem)] shadow-2xl md:p-6";
 
 function deadlineSortKey(iso: string | null): number {
   if (!iso) return Number.POSITIVE_INFINITY;
@@ -368,18 +402,13 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
         </Link>
       </p>
 
-      {scheduleFor ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="schedule-modal-title"
-          onClick={() => !isScheduling && setScheduleFor(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <ModelBodyModal
+        open={scheduleFor != null}
+        ariaLabelledBy="schedule-modal-title"
+        onBackdropClick={() => !isScheduling && setScheduleFor(null)}
+      >
+        {scheduleFor ? (
+          <div className={MODEL_MODAL_PANEL_CLASS} onClick={(e) => e.stopPropagation()}>
             <h3 id="schedule-modal-title" className="text-lg font-semibold text-white">
               {t("assignments.scheduleDelivery")}
             </h3>
@@ -430,21 +459,16 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </ModelBodyModal>
 
-      {completeFor ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="complete-modal-title"
-          onClick={() => !isCompleting && setCompleteFor(null)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          >
+      <ModelBodyModal
+        open={completeFor != null}
+        ariaLabelledBy="complete-modal-title"
+        onBackdropClick={() => !isCompleting && setCompleteFor(null)}
+      >
+        {completeFor ? (
+          <div className={MODEL_MODAL_PANEL_CLASS} onClick={(e) => e.stopPropagation()}>
             <h3 id="complete-modal-title" className="text-lg font-semibold text-white">
               {t("assignments.markCompleteTitle")}
             </h3>
@@ -485,18 +509,16 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </ModelBodyModal>
 
-      {expenseFor ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="expense-modal-title"
-          onClick={() => !isRequestingExpense && setExpenseFor(null)}
-        >
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[hsl(240,10%,8%)] p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+      <ModelBodyModal
+        open={expenseFor != null}
+        ariaLabelledBy="expense-modal-title"
+        onBackdropClick={() => !isRequestingExpense && setExpenseFor(null)}
+      >
+        {expenseFor ? (
+          <div className={MODEL_MODAL_PANEL_CLASS} onClick={(e) => e.stopPropagation()}>
             <h3 id="expense-modal-title" className="inline-flex items-center gap-2 text-lg font-semibold text-white"><Home className="h-5 w-5" aria-hidden />Airbnb request</h3>
             <p className="mt-1 text-sm text-white/55">For: {expenseFor.title}</p>
             <label className="mt-4 block text-xs font-medium uppercase tracking-wide text-white/45">
@@ -545,8 +567,8 @@ export function ModelContentAssignmentsClient({ assignments }: ModelContentAssig
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+        ) : null}
+      </ModelBodyModal>
     </div>
   );
 }

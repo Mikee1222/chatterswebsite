@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Clock3, Droplets, Loader2, Trash2, Droplet } from "lucide-react";
@@ -143,6 +144,21 @@ function ymdInputFromLocalNow(): string {
   const dd = String(now.getDate()).padStart(2, "0");
   return `${yyyy}-${mm}-${dd}`;
 }
+
+function ModelBodyModal({ open, children }: { open: boolean; children: React.ReactNode }) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!open || !mounted) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/75 p-4">{children}</div>,
+    document.body
+  );
+}
+
+const PERIOD_MODAL_PANEL_CLASS =
+  "w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 pb-[calc(env(safe-area-inset-bottom)+76px+1.25rem)] md:p-5";
 
 export function ModelPeriodTrackerWidget({
   modelRecordId: _modelRecordId,
@@ -648,9 +664,8 @@ export function ModelPeriodTrackerWidget({
         {error ? <p className="text-sm text-rose-300">{error}</p> : null}
       </div>
 
-      {customDateOpen ? (
-        <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
+      <ModelBodyModal open={customDateOpen}>
+        <div className={PERIOD_MODAL_PANEL_CLASS}>
             <h3 className="text-lg font-semibold text-white">{t("periodTracker.logNewShort")}</h3>
             <form onSubmit={(e) => void submitLog(e)} className="mt-4 space-y-4">
               <label className="block">
@@ -698,12 +713,10 @@ export function ModelPeriodTrackerWidget({
               </div>
             </form>
           </div>
-        </div>
-      ) : null}
+      </ModelBodyModal>
 
-      {historyOpen ? (
-        <div className="fixed inset-0 z-[190] flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
+      <ModelBodyModal open={historyOpen}>
+        <div className={PERIOD_MODAL_PANEL_CLASS}>
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-white">{t("periodTracker.history")}</h3>
               <button
@@ -806,12 +819,10 @@ export function ModelPeriodTrackerWidget({
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </ModelBodyModal>
 
-      {missedOpen ? (
-        <div className="fixed inset-0 z-[191] flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
+      <ModelBodyModal open={missedOpen}>
+        <div className={PERIOD_MODAL_PANEL_CLASS}>
             <h3 className="text-lg font-semibold text-white">{t("periodTracker.reportMissedTitle")}</h3>
             <p className="mt-2 text-sm text-white/70">{t("periodTracker.reportMissedDescription")}</p>
             <div className="mt-5 flex justify-end gap-2">
@@ -843,8 +854,7 @@ export function ModelPeriodTrackerWidget({
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </ModelBodyModal>
     </section>
   );
 }

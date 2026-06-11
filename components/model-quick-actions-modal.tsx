@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import { Calendar, CalendarClock, Clock, Download, Plus, X } from "lucide-react";
@@ -38,6 +39,11 @@ export function ModelQuickActionsModal({ open, onClose }: ModelQuickActionsModal
   const dragControls = useDragControls();
   const links = useModelQuickActionLinks();
   const { t } = useTranslations();
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   React.useEffect(() => {
     if (typeof document === "undefined" || !open) return;
@@ -59,7 +65,9 @@ export function ModelQuickActionsModal({ open, onClose }: ModelQuickActionsModal
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [open, onClose]);
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div className="md:hidden">
       <AnimatePresence>
         {open ? (
@@ -68,7 +76,7 @@ export function ModelQuickActionsModal({ open, onClose }: ModelQuickActionsModal
               key="model-quick-actions-backdrop"
               type="button"
               aria-label={t("quickActions.close")}
-              className="fixed inset-0 z-[105] cursor-default touch-manipulation bg-black/60 backdrop-blur-md"
+              className="fixed inset-0 z-[300] cursor-default touch-manipulation bg-black/60 backdrop-blur-md"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -81,12 +89,9 @@ export function ModelQuickActionsModal({ open, onClose }: ModelQuickActionsModal
               aria-modal="true"
               aria-labelledby="model-quick-actions-title"
               className={cn(
-                "fixed inset-x-0 bottom-0 z-[106] flex max-h-[min(78dvh,520px)] flex-col overflow-hidden rounded-t-3xl border border-white/10 border-b-0 bg-zinc-900 shadow-[0_-12px_48px_rgba(0,0,0,0.55)]",
+                "fixed inset-x-0 bottom-0 z-[301] flex max-h-[min(78dvh,520px)] flex-col overflow-hidden rounded-t-3xl border border-white/10 border-b-0 bg-zinc-900 pb-[calc(env(safe-area-inset-bottom)+76px)] shadow-[0_-12px_48px_rgba(0,0,0,0.55)] md:pb-0",
                 "touch-manipulation"
               )}
-              style={{
-                paddingBottom: "max(0.75rem, env(safe-area-inset-bottom, 0px))",
-              }}
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
@@ -145,7 +150,8 @@ export function ModelQuickActionsModal({ open, onClose }: ModelQuickActionsModal
           </>
         ) : null}
       </AnimatePresence>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -183,7 +189,7 @@ export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
       <div className="md:hidden">
         <ModelQuickActionsModal open={open} onClose={() => setOpen(false)} />
 
-        <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
+        <div className="fixed z-[302] flex flex-col items-end" style={fabBottomStyle}>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}

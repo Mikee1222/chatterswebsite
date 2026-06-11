@@ -132,7 +132,7 @@ function LogPeriodModal({
   };
 
   return createPortal(
-    <div className="fixed inset-0 z-[200] flex items-end justify-center p-4 md:items-center">
+    <div className="fixed inset-0 z-[300] flex items-end justify-center p-4 md:items-center">
       <button
         type="button"
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
@@ -140,7 +140,7 @@ function LogPeriodModal({
         onClick={() => !busy && onClose()}
       />
       <div
-        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl"
+        className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 pb-[calc(env(safe-area-inset-bottom)+76px+1.25rem)] shadow-2xl md:p-5"
         role="dialog"
         aria-modal="true"
         aria-labelledby="log-period-modal-title"
@@ -203,6 +203,21 @@ function LogPeriodModal({
     document.body
   );
 }
+
+function ModelBodyModal({ open, children }: { open: boolean; children: React.ReactNode }) {
+  const [mounted, setMounted] = React.useState(false);
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!open || !mounted) return null;
+  return createPortal(
+    <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/75 p-4">{children}</div>,
+    document.body
+  );
+}
+
+const PERIOD_MODAL_PANEL_CLASS =
+  "w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5 pb-[calc(env(safe-area-inset-bottom)+76px+1.25rem)] md:p-5";
 
 export function ModelPeriodTracker({
   modelId,
@@ -433,9 +448,8 @@ export function ModelPeriodTracker({
 
       <LogPeriodModal open={customOpen} onClose={() => setCustomOpen(false)} onLogged={() => router.refresh()} />
 
-      {historyOpen ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
+      <ModelBodyModal open={historyOpen}>
+        <div className={PERIOD_MODAL_PANEL_CLASS}>
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-lg font-semibold text-white">{t("periodTracker.history")}</h3>
               <button
@@ -493,12 +507,10 @@ export function ModelPeriodTracker({
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </ModelBodyModal>
 
-      {missedOpen ? (
-        <div className="fixed inset-0 z-[201] flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 p-5">
+      <ModelBodyModal open={missedOpen}>
+        <div className={PERIOD_MODAL_PANEL_CLASS}>
             <h3 className="text-lg font-semibold text-white">{t("periodTracker.reportMissedTitle")}</h3>
             <p className="mt-2 text-sm text-white/70">{t("periodTracker.reportMissedDescription")}</p>
             <div className="mt-5 flex justify-end gap-2">
@@ -527,8 +539,7 @@ export function ModelPeriodTracker({
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
+      </ModelBodyModal>
     </section>
   );
 }
