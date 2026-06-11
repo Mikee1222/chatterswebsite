@@ -250,6 +250,15 @@ function getOrCreateSessionId(controlPageId: string): string {
 }
 
 export default async function LinkPagePublic({ params, searchParams }: Props) {
+  try {
+    return await renderLinkPagePublic({ params, searchParams });
+  } catch (err) {
+    console.error("[l/slug] render error:", err);
+    notFound();
+  }
+}
+
+async function renderLinkPagePublic({ params, searchParams }: Props) {
   const { slug } = await params;
   const { preview } = await searchParams;
   const isPreview = preview === "true";
@@ -309,12 +318,12 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
     .join("\n");
   const hasCountdown = sortedBlocks.some((b) => b.block_type === "countdown" && b.is_visible);
   const initial = (activePage.title || "?").charAt(0).toUpperCase();
-  const metaPixelId = controlPage.meta_pixel_id.trim();
-  const tiktokPixelId = controlPage.tiktok_pixel_id.trim();
+  const metaPixelId = (controlPage.meta_pixel_id ?? "").trim();
+  const tiktokPixelId = (controlPage.tiktok_pixel_id ?? "").trim();
   const hasPixels = !isPreview && !!(metaPixelId || tiktokPixelId);
-  const showCookieNotice = !isPreview && controlPage.cookie_notice_enabled && hasPixels;
+  const showCookieNotice = !isPreview && !!controlPage.cookie_notice_enabled && hasPixels;
   const cookieNoticeText =
-    controlPage.cookie_notice_text.trim() || DEFAULT_COOKIE_NOTICE_TEXT;
+    (controlPage.cookie_notice_text ?? "").trim() || DEFAULT_COOKIE_NOTICE_TEXT;
 
   return (
     <div className="link-page-root">
@@ -372,7 +381,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
               __html: pixelTrackingScript({
                 metaPixelId,
                 tiktokPixelId,
-                cookieNoticeEnabled: controlPage.cookie_notice_enabled,
+                cookieNoticeEnabled: !!controlPage.cookie_notice_enabled,
               }),
             }}
           />

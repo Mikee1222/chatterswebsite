@@ -80,6 +80,16 @@ type BlockFields = {
   updated_at?: string;
 };
 
+function airtableText(value: unknown, fallback = ""): string {
+  if (typeof value === "string") return value;
+  if (value == null) return fallback;
+  return String(value);
+}
+
+function airtableBool(value: unknown): boolean {
+  return value === true || value === "true";
+}
+
 function parsePhotoUrls(raw: string | undefined): string[] {
   if (!raw?.trim()) return [];
   try {
@@ -131,26 +141,26 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
     bio: f.bio ?? "",
     profile_photo_url: f.profile_photo_url ?? "",
     background_type: bgType,
-    background_value: f.background_value ?? "#0a0a0a",
+    background_value: airtableText(f.background_value, "#0a0a0a"),
     theme,
     primary_color: f.primary_color ?? "#ec4899",
     accent_color: f.accent_color ?? "#a855f7",
     font,
-    custom_domain: f.custom_domain ?? "",
-    show_powered_by: f.show_powered_by === true,
-    meta_description: f.meta_description ?? "",
-    verified: f.verified === true,
-    ab_test_enabled: f.ab_test_enabled === true,
-    ab_variant_id: f.ab_variant_id ?? "",
-    ab_test_name: f.ab_test_name ?? "",
+    custom_domain: airtableText(f.custom_domain),
+    show_powered_by: airtableBool(f.show_powered_by),
+    meta_description: airtableText(f.meta_description),
+    verified: airtableBool(f.verified),
+    ab_test_enabled: airtableBool(f.ab_test_enabled),
+    ab_variant_id: airtableText(f.ab_variant_id),
+    ab_test_name: airtableText(f.ab_test_name),
     ab_winner: (["none", "a", "b"] as const).includes(f.ab_winner as LinkPageAbWinner)
       ? (f.ab_winner as LinkPageAbWinner)
       : "none",
     ab_started_at: f.ab_started_at ?? null,
-    meta_pixel_id: f.meta_pixel_id ?? "",
-    tiktok_pixel_id: f.tiktok_pixel_id ?? "",
-    cookie_notice_enabled: f.cookie_notice_enabled !== false,
-    cookie_notice_text: f.cookie_notice_text ?? "",
+    meta_pixel_id: airtableText(f.meta_pixel_id),
+    tiktok_pixel_id: airtableText(f.tiktok_pixel_id),
+    cookie_notice_enabled: airtableBool(f.cookie_notice_enabled),
+    cookie_notice_text: airtableText(f.cookie_notice_text),
     created_at: f.created_at ?? rec.createdTime ?? "",
     updated_at: f.updated_at ?? "",
   };

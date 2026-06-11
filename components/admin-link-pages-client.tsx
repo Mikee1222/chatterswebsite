@@ -779,10 +779,10 @@ function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
     primary_color: page.primary_color,
     accent_color: page.accent_color,
     verified: page.verified,
-    meta_pixel_id: page.meta_pixel_id,
-    tiktok_pixel_id: page.tiktok_pixel_id,
-    cookie_notice_enabled: page.cookie_notice_enabled,
-    cookie_notice_text: page.cookie_notice_text,
+    meta_pixel_id: page.meta_pixel_id ?? "",
+    tiktok_pixel_id: page.tiktok_pixel_id ?? "",
+    cookie_notice_enabled: page.cookie_notice_enabled ?? true,
+    cookie_notice_text: page.cookie_notice_text ?? "",
   };
 }
 
@@ -2749,7 +2749,7 @@ function EditorPanel({
         </p>
         <Field label="Meta Pixel ID">
           <FormInput
-            value={page.meta_pixel_id}
+            value={page.meta_pixel_id ?? ""}
             onChange={(e) => onPatchTextField({ meta_pixel_id: e.target.value })}
             onBlur={onFieldBlur}
             placeholder="e.g. 123456789012345"
@@ -2757,7 +2757,7 @@ function EditorPanel({
         </Field>
         <Field label="TikTok Pixel ID">
           <FormInput
-            value={page.tiktok_pixel_id}
+            value={page.tiktok_pixel_id ?? ""}
             onChange={(e) => onPatchTextField({ tiktok_pixel_id: e.target.value })}
             onBlur={onFieldBlur}
             placeholder="e.g. CXXXXXXXXXXXXXXX"
@@ -2766,7 +2766,7 @@ function EditorPanel({
         <label className="flex items-center gap-2 text-xs text-white/60">
           <input
             type="checkbox"
-            checked={page.cookie_notice_enabled}
+            checked={page.cookie_notice_enabled ?? true}
             onChange={(e) => onPatchImmediateField({ cookie_notice_enabled: e.target.checked })}
             className="rounded border-white/20"
           />
@@ -2774,7 +2774,7 @@ function EditorPanel({
         </label>
         <Field label="Cookie notice text">
           <Textarea
-            value={page.cookie_notice_text}
+            value={page.cookie_notice_text ?? ""}
             onChange={(e) => onPatchTextField({ cookie_notice_text: e.target.value })}
             onBlur={onFieldBlur}
             rows={2}
