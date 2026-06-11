@@ -56,7 +56,7 @@ export type SpendLevel = "low" | "medium" | "high" | "vip" | "whale";
 export type Platform = "onlyfans" | "fanvue" | "other";
 export type ShiftStatus = "active" | "on_break" | "completed" | "cancelled";
 export type StaffRole = "chatter" | "virtual_assistant";
-export type ShiftType = "chatting" | "mistakes" | "vault_cleaning" | "other" | "va_tasks";
+export type ShiftType = "chatting" | "mistakes" | "vault_cleaning" | "other" | "task" | "va_tasks";
 
 /** Airtable `shift_queue` — chatter waits for an active shift to end, then auto-starts. */
 export type ShiftQueueStatus = "waiting" | "started" | "cancelled" | "expired";

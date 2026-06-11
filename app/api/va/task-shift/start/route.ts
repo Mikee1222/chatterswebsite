@@ -16,9 +16,14 @@ export async function POST() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const result = await startVaTaskShiftAction();
-  if ("error" in result && result.error) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
+  try {
+    const result = await startVaTaskShiftAction();
+    if ("error" in result && result.error) {
+      return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    return NextResponse.json({ success: true, shiftId: result.shiftId });
+  } catch (error) {
+    console.error("[task-shift/start]", error);
+    return NextResponse.json({ error: "Could not start shift" }, { status: 500 });
   }
-  return NextResponse.json({ success: true, shiftId: result.shiftId });
 }

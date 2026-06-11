@@ -122,7 +122,7 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
     "Saturday",
     "Sunday",
   ]),
-  shift_type: new Set(["Morning", "Night", "Custom", "mistakes", "vault_cleaning", "other", "chatting", "va_tasks"]),
+  shift_type: new Set(["Morning", "Night", "Custom", "mistakes", "vault_cleaning", "other", "chatting", "task", "va_tasks"]),
   status: new Set([
     "submitted",
     "reviewed",

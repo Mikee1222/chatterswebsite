@@ -186,7 +186,7 @@ function buildCodeSelectExpectations(): Record<string, Record<string, readonly s
       /** Display names may be "On break" — compared normalized. */
       status: ["active", "on_break", "completed", "cancelled"],
       staff_role: ["chatter", "virtual_assistant"],
-      shift_type: ["chatting", "mistakes", "vault_cleaning", "other"],
+      shift_type: ["chatting", "mistakes", "vault_cleaning", "other", "task"],
     },
     weekly_program: {
       day: ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],

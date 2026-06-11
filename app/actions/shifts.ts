@@ -249,7 +249,7 @@ export async function startVaTaskShiftAction() {
     start_time: now.toISOString(),
     status: "active",
     staff_role: "virtual_assistant",
-    shift_type: "va_tasks",
+    shift_type: "task",
     task_label: "",
     models_count: 0,
   });
