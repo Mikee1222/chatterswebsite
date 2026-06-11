@@ -3,7 +3,7 @@
  *
  * Recipient selection depends on event type, role, operational relevance,
  * and current assignment. Rules align with notification scope (personal /
- * monitoring / both) defined in lib/notification-role-defaults.ts.
+ * monitoring) defined in lib/notification-role-defaults.ts.
  */
 
 import type { NotificationEventType } from "@/types";
@@ -80,12 +80,12 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   task_started: { rule: "admin_only", description: "Admins monitor VA task start." },
   task_finished: { rule: "admin_only", description: "Admins monitor VA task end." },
   task_completed: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA + admins when a task is completed.",
+    rule: "assigned_user_only",
+    description: "Assigned VA when a task is completed.",
   },
   task_overdue: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA reminded + admins monitor overdue task.",
+    rule: "assigned_user_only",
+    description: "Assigned VA reminded when a task is overdue.",
   },
   tasks_not_started: { rule: "admin_only", description: "Admins only." },
   va_task_reminder: {
@@ -94,16 +94,16 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   phase_task_completed: { rule: "admin_only", description: "Admins only (VA checklist progress)." },
   phase_completed: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA + admins when a phase is completed.",
+    rule: "assigned_user_only",
+    description: "Assigned VA when a phase is completed.",
   },
   phase_overdue: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA + admins when a phase is overdue.",
+    rule: "assigned_user_only",
+    description: "Assigned VA when a phase is overdue.",
   },
   all_phases_completed: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA + admins when all phases are done.",
+    rule: "assigned_user_only",
+    description: "Assigned VA when all phases are done.",
   },
 
   // ---- Model (session / live) ----
@@ -116,12 +116,12 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Admins monitor chatter entering a model session.",
   },
   model_live_started: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + the chatter who currently has that model on shift.",
+    rule: "admin_only",
+    description: "Admins monitor when a model goes live.",
   },
   model_live_ended: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + the chatter who had that model on shift.",
+    rule: "admin_only",
+    description: "Admins monitor when a model live stream ends.",
   },
   model_live_scheduled: {
     rule: "assigned_model_only",
@@ -129,12 +129,12 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   model_missed_live: { rule: "admin_only", description: "Admins only." },
   model_content_completed: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned party + admins when model content is completed.",
+    rule: "assigned_party_only",
+    description: "Assigned model/VA when model content is completed.",
   },
   model_content_scheduled: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA/model + admins when content is scheduled.",
+    rule: "assigned_party_only",
+    description: "Assigned model/VA when content is scheduled.",
   },
   va_content_assigned: {
     rule: "assigned_model_only",
@@ -145,8 +145,8 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Assigned VA when content delivery is scheduled.",
   },
   va_content_completed: {
-    rule: "admin_and_assigned_party",
-    description: "Assigned VA + admins when content is marked complete.",
+    rule: "assigned_user_only",
+    description: "Assigned VA when content is marked complete.",
   },
   period_3_day_reminder: {
     rule: "assigned_model_only",
@@ -188,58 +188,58 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Admins only. Chatters/VAs do not receive whale session notifications.",
   },
 
-  // ---- Custom request ----
+  // ---- Custom request (personal — assigned party only) ----
   custom_request_created: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + requesting party when a custom request is created.",
+    rule: "assigned_party_only",
+    description: "Requesting party when a custom request is created.",
   },
   custom_request_updated: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom details are updated.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom details are updated.",
   },
   custom_request_submitted: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom is submitted to agency.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom is submitted to agency.",
   },
   custom_status_changed: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + the chatter who requested the custom.",
+    rule: "assigned_party_only",
+    description: "The chatter who requested the custom.",
   },
   custom_approved: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom is approved.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom is approved.",
   },
   custom_rejected: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom is rejected.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom is rejected.",
   },
   custom_declined: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + chatter who requested the custom (agency decline).",
+    rule: "assigned_party_only",
+    description: "Chatter who requested the custom (agency decline).",
   },
   custom_edited: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + chatter/model when agency edits terms.",
+    rule: "assigned_party_only",
+    description: "Chatter/model when agency edits terms.",
   },
   custom_uploaded: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom content is uploaded.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom content is uploaded.",
   },
   custom_request_uploaded: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned VA when custom request file is uploaded.",
+    rule: "assigned_party_only",
+    description: "Assigned VA when custom request file is uploaded.",
   },
   custom_scheduled: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom delivery is scheduled.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom delivery is scheduled.",
   },
   custom_deadline_approaching: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + requesting party for 48h deadline window.",
+    rule: "assigned_party_only",
+    description: "Requesting party for 48h deadline window.",
   },
   custom_overdue: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + assigned party when custom is past deadline.",
+    rule: "assigned_party_only",
+    description: "Assigned party when custom is past deadline.",
   },
 
   // ---- Forms / system ----
@@ -254,8 +254,8 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   availability_submitted: { rule: "admin_only", description: "Admins only." },
   system_alert: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + targeted user for system alerts.",
+    rule: "admin_only",
+    description: "Admins only (general system message).",
   },
   account_update: {
     rule: "assigned_user_only",
@@ -315,12 +315,12 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Learner reminded to continue SOP Academy training.",
   },
   sop_academy_training_complete: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + learner when academy training is complete.",
+    rule: "assigned_user_only",
+    description: "Learner when academy training is complete.",
   },
   sop_academy_signed_off: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + learner when academy training is signed off.",
+    rule: "assigned_user_only",
+    description: "Learner when academy training is signed off.",
   },
   expense_approved: {
     rule: "admin_and_assigned_party",
@@ -335,8 +335,8 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "The chatter who received the mistake.",
   },
   shadowban_report: {
-    rule: "admin_and_assigned_party",
-    description: "Admins + the user who submitted the shadowban report.",
+    rule: "assigned_party_only",
+    description: "The user who submitted the shadowban report.",
   },
 };
 
@@ -361,6 +361,8 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "phase_task_completed",
   "model_became_free",
   "model_taken",
+  "model_live_started",
+  "model_live_ended",
   "model_missed_live",
   "whale_registered",
   "whale_spent",
@@ -370,6 +372,7 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "user_created",
   "account_deleted",
   "daily_summary",
+  "system_alert",
   "payment_submitted",
   "billing_payment_submitted",
 ];
@@ -385,6 +388,30 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "weekly_availability_friday_reminder",
   "va_task_reminder",
   "va_content_scheduled",
+  "task_completed",
+  "task_overdue",
+  "phase_completed",
+  "phase_overdue",
+  "all_phases_completed",
+  "model_content_scheduled",
+  "model_content_completed",
+  "va_content_completed",
+  "custom_request_created",
+  "custom_request_updated",
+  "custom_request_submitted",
+  "custom_status_changed",
+  "custom_approved",
+  "custom_rejected",
+  "custom_declined",
+  "custom_edited",
+  "custom_uploaded",
+  "custom_request_uploaded",
+  "custom_scheduled",
+  "custom_deadline_approaching",
+  "custom_overdue",
+  "sop_academy_training_complete",
+  "sop_academy_signed_off",
+  "shadowban_report",
   "points_awarded",
   "level_up",
   "spin_available",

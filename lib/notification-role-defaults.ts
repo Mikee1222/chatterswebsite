@@ -48,7 +48,7 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<
   schedule_alerts: { en: "Schedule & availability", el: "Ειδοποιήσεις για πρόγραμμα και διαθεσιμότητα." },
 };
 
-export type NotificationScope = "personal" | "monitoring" | "both";
+export type NotificationScope = "personal" | "monitoring";
 
 export type NotificationEventEntry = {
   key: string;
@@ -84,7 +84,7 @@ export function parseEventNoteFromEntry(entry: NotificationCategoryEventEntry): 
   return entry.note?.trim() ?? "";
 }
 
-/** Scope: personal (assigned user), monitoring (admins), or both. */
+/** Scope: personal (assigned user) or monitoring (admins). */
 export function parseEventScopeFromEntry(entry: NotificationCategoryEventEntry): NotificationScope {
   return entry.scope;
 }
@@ -100,7 +100,6 @@ export const NOTIFICATION_SCOPE_LABELS: Record<
 > = {
   personal: { badge: "Personal", className: "bg-blue-500/20 text-blue-200 border-blue-400/30" },
   monitoring: { badge: "Monitor", className: "bg-amber-500/20 text-amber-200 border-amber-400/30" },
-  both: { badge: "Both", className: "bg-purple-500/20 text-purple-200 border-purple-400/30" },
 };
 
 export function isNotificationRoleCategoryKey(key: string): key is NotificationRoleCategoryKey {
@@ -132,28 +131,28 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   task: [
     eventEntry("task_started", "VA starts a task shift", "monitoring"),
     eventEntry("task_finished", "VA ends a task shift", "monitoring"),
-    eventEntry("task_completed", "VA completes an assigned task", "both"),
-    eventEntry("task_overdue", "VA task past due date", "both"),
+    eventEntry("task_completed", "VA completes an assigned task", "personal"),
+    eventEntry("task_overdue", "VA task past due date", "personal"),
     eventEntry("tasks_not_started", "Tasks not started on schedule", "monitoring"),
     eventEntry("va_task_reminder", "Reminder before VA task due", "personal"),
-    eventEntry("model_content_scheduled", "Model schedules content assignment", "both"),
-    eventEntry("model_content_completed", "Model marks content complete", "both"),
+    eventEntry("model_content_scheduled", "Model schedules content assignment", "personal"),
+    eventEntry("model_content_completed", "Model marks content complete", "personal"),
     eventEntry("va_content_assigned", "VA receives a content assignment", "personal"),
     eventEntry("va_content_scheduled", "VA content delivery scheduled", "personal"),
-    eventEntry("va_content_completed", "VA content marked complete", "both"),
-    eventEntry("custom_request_uploaded", "Custom request file uploaded", "both"),
+    eventEntry("va_content_completed", "VA content marked complete", "personal"),
+    eventEntry("custom_request_uploaded", "Custom request file uploaded", "personal"),
   ],
   phase: [
     eventEntry("phase_task_completed", "VA completes a phase checklist item", "monitoring"),
-    eventEntry("phase_completed", "VA completes all items in a phase", "both"),
-    eventEntry("phase_overdue", "VA phase missed deadline", "both"),
-    eventEntry("all_phases_completed", "All phases done for a VA task", "both"),
+    eventEntry("phase_completed", "VA completes all items in a phase", "personal"),
+    eventEntry("phase_overdue", "VA phase missed deadline", "personal"),
+    eventEntry("all_phases_completed", "All phases done for a VA task", "personal"),
   ],
   model: [
     eventEntry("model_became_free", "Model becomes available on floor", "monitoring"),
     eventEntry("model_taken", "Chatter enters a model session", "monitoring"),
-    eventEntry("model_live_started", "Model goes live", "both"),
-    eventEntry("model_live_ended", "Model live stream ended", "both"),
+    eventEntry("model_live_started", "Model goes live", "monitoring"),
+    eventEntry("model_live_ended", "Model live stream ended", "monitoring"),
     eventEntry("model_live_scheduled", "Upcoming live stream reminder", "personal"),
     eventEntry("model_missed_live", "Model missed scheduled live", "monitoring"),
   ],
@@ -197,23 +196,23 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     eventEntry(
       "shadowban_report",
       "Shadowban report submitted or reviewed",
-      "both",
+      "personal",
       "Entity-gated: event_type shadowban_report on review; entity_type shadowban_report."
     ),
   ],
   custom_request_alerts: [
-    eventEntry("custom_request_created", "New custom request submitted", "both"),
-    eventEntry("custom_request_submitted", "Custom request sent to agency", "both"),
-    eventEntry("custom_request_updated", "Custom request details updated", "both"),
-    eventEntry("custom_status_changed", "Custom request status changed", "both"),
-    eventEntry("custom_approved", "Custom request approved by agency", "both"),
-    eventEntry("custom_rejected", "Custom request rejected", "both"),
-    eventEntry("custom_declined", "Custom request declined by agency", "both"),
-    eventEntry("custom_edited", "Custom request terms edited", "both"),
-    eventEntry("custom_uploaded", "Custom content uploaded", "both"),
-    eventEntry("custom_scheduled", "Custom delivery scheduled", "both"),
-    eventEntry("custom_deadline_approaching", "Custom deadline in 48h", "both"),
-    eventEntry("custom_overdue", "Custom request past deadline", "both"),
+    eventEntry("custom_request_created", "New custom request submitted", "personal"),
+    eventEntry("custom_request_submitted", "Custom request sent to agency", "personal"),
+    eventEntry("custom_request_updated", "Custom request details updated", "personal"),
+    eventEntry("custom_status_changed", "Custom request status changed", "personal"),
+    eventEntry("custom_approved", "Custom request approved by agency", "personal"),
+    eventEntry("custom_rejected", "Custom request rejected", "personal"),
+    eventEntry("custom_declined", "Custom request declined by agency", "personal"),
+    eventEntry("custom_edited", "Custom request terms edited", "personal"),
+    eventEntry("custom_uploaded", "Custom content uploaded", "personal"),
+    eventEntry("custom_scheduled", "Custom delivery scheduled", "personal"),
+    eventEntry("custom_deadline_approaching", "Custom deadline in 48h", "personal"),
+    eventEntry("custom_overdue", "Custom request past deadline", "personal"),
   ],
   billing_alerts: [
     eventEntry("billing_cycle_announced", "Client billing cycle announced", "monitoring"),
@@ -226,8 +225,8 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   ],
   training_alerts: [
     eventEntry("sop_academy_reminder", "SOP Academy training reminder", "personal"),
-    eventEntry("sop_academy_training_complete", "SOP Academy training complete", "both"),
-    eventEntry("sop_academy_signed_off", "SOP Academy sign-off", "both"),
+    eventEntry("sop_academy_training_complete", "SOP Academy training complete", "personal"),
+    eventEntry("sop_academy_signed_off", "SOP Academy sign-off", "personal"),
   ],
   schedule_alerts: [
     eventEntry("schedule_updated", "Weekly schedule updated", "personal"),
@@ -235,7 +234,7 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     eventEntry("availability_submitted", "Availability submitted", "monitoring"),
   ],
   system: [
-    eventEntry("system_alert", "General system message", "both"),
+    eventEntry("system_alert", "General system message", "monitoring"),
     eventEntry("user_created", "New user account created", "monitoring"),
     eventEntry("role_changed", "User role changed", "personal"),
     eventEntry("account_deleted", "Account deleted", "monitoring"),
@@ -245,7 +244,7 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   ],
 };
 
-/** Roles that receive personal/both events by default (non-admin assigned party). */
+/** Roles that receive personal events by default (non-admin assigned party). */
 export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = {
   shift_late: ["chatter", "virtual_assistant"],
   shift_starting_soon: ["chatter", "virtual_assistant"],
@@ -275,8 +274,6 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   phase_completed: ["virtual_assistant"],
   phase_overdue: ["virtual_assistant"],
   all_phases_completed: ["virtual_assistant"],
-  model_live_started: ["chatter"],
-  model_live_ended: ["chatter"],
   model_live_scheduled: ["model"],
   period_3_day_reminder: ["model"],
   period_predicted_day: ["model"],
@@ -305,7 +302,6 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   weekly_availability_friday_reminder: ["chatter", "virtual_assistant"],
   role_changed: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
   account_update: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
-  system_alert: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
 };
 
 function isAdminRole(role: UserRole): boolean {
@@ -325,8 +321,6 @@ export function deriveEventDefaultForRole(
       return isAdminRole(role) || isTarget;
     case "personal":
       return isTarget;
-    case "both":
-      return isAdminRole(role) || isTarget;
   }
 }
 

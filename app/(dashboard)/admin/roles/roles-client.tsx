@@ -179,8 +179,6 @@ function getScopeTooltip(scope: NotificationScope, roleLabel: string): string {
       return `Sent only to the specific ${roleLabel} this event is about`;
     case "monitoring":
       return `Sent to all ${roleLabel}s when this happens to anyone`;
-    case "both":
-      return `Sent to the ${roleLabel} involved + other roles that have it ON`;
   }
 }
 
@@ -781,10 +779,6 @@ export function AdminRolesClient({
                       <li>
                         <span className="font-medium text-white/55">Monitor</span> —{" "}
                         {getScopeTooltip("monitoring", draft.label)}
-                      </li>
-                      <li>
-                        <span className="font-medium text-white/55">Both</span> —{" "}
-                        {getScopeTooltip("both", draft.label)}
                       </li>
                     </ul>
                   </div>
