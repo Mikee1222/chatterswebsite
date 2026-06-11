@@ -324,11 +324,190 @@ function themeBackgroundDefault(theme: string): string {
   return theme === "light" ? "#f8fafc" : "#0a0a0a";
 }
 
+export const GRADIENT_PRESETS = [
+  { id: "sunset", label: "Sunset", value: "linear-gradient(135deg, #f97316, #ec4899, #a855f7)" },
+  { id: "ocean", label: "Ocean", value: "linear-gradient(135deg, #0ea5e9, #06b6d4, #0891b2)" },
+  { id: "night", label: "Night", value: "linear-gradient(135deg, #0f172a, #1e1b4b, #0f172a)" },
+  {
+    id: "rose_gold",
+    label: "Rose Gold",
+    value: "linear-gradient(135deg, #fda4af, #f9a8d4, #e9d5ff, #fbbf24)",
+  },
+  { id: "aurora", label: "Aurora", value: "linear-gradient(135deg, #064e3b, #1e1b4b, #4c1d95)" },
+  { id: "candy", label: "Candy", value: "linear-gradient(135deg, #f9a8d4, #c4b5fd, #93c5fd)" },
+  { id: "fire", label: "Fire", value: "linear-gradient(135deg, #dc2626, #ea580c, #eab308)" },
+  { id: "mint", label: "Mint", value: "linear-gradient(135deg, #d1fae5, #a7f3d0, #6ee7b7)" },
+  {
+    id: "luxury",
+    label: "Luxury",
+    value:
+      "linear-gradient(135deg, #0a0a0a, #1a1400, #0a0a0a), radial-gradient(ellipse at top, #854d0e22, transparent)",
+  },
+  { id: "purple_rain", label: "Purple Rain", value: "linear-gradient(135deg, #4c1d95, #1e1b4b, #0c4a6e)" },
+  { id: "peach", label: "Peach", value: "linear-gradient(135deg, #fed7aa, #fda4af, #f9a8d4)" },
+  { id: "forest", label: "Forest", value: "linear-gradient(135deg, #052e16, #064e3b, #0f4c75)" },
+  {
+    id: "golden",
+    label: "Golden Hour",
+    value: "linear-gradient(135deg, #92400e, #b45309, #d97706, #f59e0b)",
+  },
+  { id: "cosmic", label: "Cosmic", value: "linear-gradient(135deg, #0f0c29, #302b63, #24243e)" },
+  { id: "blush", label: "Blush", value: "linear-gradient(135deg, #fce7f3, #fdf2f8, #ede9fe)" },
+] as const;
+
+export const PATTERN_PRESETS = [
+  {
+    id: "dots",
+    label: "Dots",
+    css: `background-color: {color}; background-image: radial-gradient(circle, rgba(255,255,255,0.15) 1px, transparent 1px); background-size: 20px 20px;`,
+  },
+  {
+    id: "grid",
+    label: "Grid",
+    css: `background-color: {color}; background-image: linear-gradient(rgba(255,255,255,0.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.05) 1px, transparent 1px); background-size: 30px 30px;`,
+  },
+  {
+    id: "diagonal",
+    label: "Diagonal",
+    css: `background-color: {color}; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0px, rgba(255,255,255,0.03) 1px, transparent 1px, transparent 50%); background-size: 20px 20px;`,
+  },
+  {
+    id: "noise",
+    label: "Grain",
+    css: `background-color: {color}; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");`,
+  },
+  {
+    id: "waves",
+    label: "Waves",
+    css: `background-color: {color}; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='20'%3E%3Cpath d='M0 10 Q25 0 50 10 Q75 20 100 10' fill='none' stroke='rgba(255,255,255,0.1)' stroke-width='1'/%3E%3C/svg%3E"); background-size: 100px 20px;`,
+  },
+  {
+    id: "hexagon",
+    label: "Hexagon",
+    css: `background-color: {color}; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49'%3E%3Cpolygon points='14,1 27,8 27,22 14,29 1,22 1,8' fill='none' stroke='rgba(255,255,255,0.08)' stroke-width='1'/%3E%3C/svg%3E"); background-size: 28px 49px;`,
+  },
+] as const;
+
+export type ImageBackgroundConfig = {
+  url: string;
+  overlay: number;
+  blur: number;
+};
+
+export function parseImageBackgroundValue(value: string | undefined): ImageBackgroundConfig {
+  const raw = value?.trim() ?? "";
+  if (!raw) return { url: "", overlay: 0.35, blur: 0 };
+  try {
+    const parsed = JSON.parse(raw) as Partial<ImageBackgroundConfig>;
+    if (parsed && typeof parsed.url === "string" && parsed.url.trim()) {
+      return {
+        url: parsed.url.trim(),
+        overlay: typeof parsed.overlay === "number" ? parsed.overlay : 0.35,
+        blur: typeof parsed.blur === "number" ? parsed.blur : 0,
+      };
+    }
+  } catch {
+    /* plain URL legacy */
+  }
+  if (raw.startsWith("http") || raw.startsWith("/") || raw.startsWith("data:")) {
+    return { url: raw, overlay: 0.35, blur: 0 };
+  }
+  return { url: "", overlay: 0.35, blur: 0 };
+}
+
+export function serializeImageBackgroundValue(config: ImageBackgroundConfig): string {
+  return JSON.stringify({
+    url: config.url,
+    overlay: config.overlay,
+    blur: config.blur,
+  });
+}
+
+function animatedDurationFromValue(value: string | undefined): string {
+  const parts = (value ?? "").split(",").map((s) => s.trim());
+  const speed = parts[3]?.toLowerCase();
+  if (speed === "slow") return "12s";
+  if (speed === "fast") return "4s";
+  if (speed === "medium") return "8s";
+  const numeric = Number(speed);
+  if (Number.isFinite(numeric) && numeric > 0) return `${numeric}s`;
+  return "8s";
+}
+
+function animatedColorsFromValue(value: string | undefined): [string, string, string] {
+  const parts = (value ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+  return [parts[0] || "#ec4899", parts[1] || "#8b5cf6", parts[2] || "#3b82f6"];
+}
+
+/** CSS background properties for .link-page-root (excludes overlay pseudo-element). */
+export function getBackgroundCss(
+  page: Pick<LinkPageWithBlocks, "background_type" | "background_value" | "theme">
+): string {
+  const fallback = themeBackgroundDefault(page.theme);
+  const bgValue = page.background_value?.trim() ?? "";
+
+  switch (page.background_type) {
+    case "color":
+      return `background: ${bgValue || fallback};`;
+    case "gradient":
+      return `background: ${bgValue || fallback};`;
+    case "gradient_preset": {
+      const preset = GRADIENT_PRESETS.find((p) => p.id === bgValue);
+      return `background: ${preset?.value || fallback};`;
+    }
+    case "pattern": {
+      const [patternId, baseColor] = (bgValue || "dots,#0a0a0a").split(",");
+      const pattern = PATTERN_PRESETS.find((p) => p.id === patternId?.trim());
+      return pattern?.css.replace("{color}", (baseColor ?? fallback).trim()) || `background: ${fallback};`;
+    }
+    case "animated": {
+      const colors = animatedColorsFromValue(bgValue);
+      const duration = animatedDurationFromValue(bgValue);
+      return `
+        background: linear-gradient(270deg, ${colors.join(", ")});
+        background-size: 400% 400%;
+        animation: gradientShift ${duration} ease infinite;
+      `;
+    }
+    case "image": {
+      const { url } = parseImageBackgroundValue(bgValue);
+      if (!url) return `background: ${fallback};`;
+      return `background-color: ${fallback}; background-image: url(${url}); background-size: cover; background-position: center; background-attachment: fixed;`;
+    }
+    default:
+      return `background: ${fallback};`;
+  }
+}
+
+function backgroundOverlayCss(
+  page: Pick<LinkPageWithBlocks, "background_type" | "background_value" | "theme">,
+  themeOverlay: string
+): string {
+  if (page.background_type === "image") {
+    const { overlay, blur } = parseImageBackgroundValue(page.background_value);
+    const blurCss = blur > 0 ? `backdrop-filter: blur(${blur}px); -webkit-backdrop-filter: blur(${blur}px);` : "";
+    return `background: rgba(0,0,0,${overlay}); ${blurCss}`;
+  }
+  return `background: ${themeOverlay};`;
+}
+
+function backgroundKeyframesCss(
+  page: Pick<LinkPageWithBlocks, "background_type" | "background_value">
+): string {
+  if (page.background_type !== "animated") return "";
+  return `
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+  `;
+}
+
 /** Shared theme CSS for public link-in-bio pages */
 export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   const primary = page.primary_color || "#ec4899";
   const accent = page.accent_color || "#a855f7";
-  const themeBgDefault = themeBackgroundDefault(page.theme);
   const fontFamily = fontFamilyMap[page.font] ?? fontFamilyMap.modern;
 
   const themes: Record<
@@ -378,17 +557,12 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   };
   const t = themes[page.theme] ?? themes.dark;
 
-  const bgValue = page.background_value?.trim() ?? "";
-  const bgRule =
-    page.background_type === "image"
-      ? bgValue
-        ? `background-color: ${themeBgDefault}; background-image: url(${bgValue}); background-size: cover; background-position: center; background-attachment: fixed;`
-        : `background: ${themeBgDefault};`
-      : page.background_type === "gradient"
-        ? `background: ${bgValue || `linear-gradient(160deg, ${themeBgDefault} 0%, #141414 50%, ${themeBgDefault} 100%)`};`
-        : `background: ${bgValue || themeBgDefault};`;
+  const bgRule = getBackgroundCss(page);
+  const overlayRule = backgroundOverlayCss(page, t.overlay);
+  const keyframes = backgroundKeyframesCss(page);
 
   return `
+    ${keyframes}
     .link-page-root {
       --primary: ${primary};
       --accent: ${accent};
@@ -410,7 +584,7 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       content: "";
       position: fixed;
       inset: 0;
-      background: var(--overlay);
+      ${overlayRule}
       pointer-events: none;
       z-index: 0;
     }

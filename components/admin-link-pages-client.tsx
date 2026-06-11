@@ -48,7 +48,18 @@ import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LINK_PAGE_FONTS, LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
 import { buildRedirectPublicUrl } from "@/lib/link-redirects-schema";
-import { PLATFORM_BRANDING, detectLinkPlatform, fontFamilyMap, fontLabels, GOOGLE_FONTS_STYLESHEET } from "@/lib/link-page-styles";
+import {
+  GRADIENT_PRESETS,
+  PATTERN_PRESETS,
+  getBackgroundCss,
+  parseImageBackgroundValue,
+  serializeImageBackgroundValue,
+  PLATFORM_BRANDING,
+  detectLinkPlatform,
+  fontFamilyMap,
+  fontLabels,
+  GOOGLE_FONTS_STYLESHEET,
+} from "@/lib/link-page-styles";
 import { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
@@ -56,6 +67,7 @@ import type {
   AppNotification,
   AnalyticsSummary,
   GlobalAnalyticsSummary,
+  LinkPageBackgroundType,
   LinkPageBlockRecord,
   LinkPageBlockType,
   LinkPageRecord,
@@ -98,6 +110,550 @@ const COLOR_SWATCH_STYLE: React.CSSProperties = {
   padding: 0,
   background: "none",
 };
+
+type BackgroundTab = "color" | "gradient" | "pattern" | "image" | "animated";
+
+const BACKGROUND_TABS: Array<{ id: BackgroundTab; label: string }> = [
+  { id: "color", label: "Color" },
+  { id: "gradient", label: "Gradient" },
+  { id: "pattern", label: "Pattern" },
+  { id: "image", label: "Image" },
+  { id: "animated", label: "Animated" },
+];
+
+const GRADIENT_DIRECTIONS = [
+  { value: "135deg", label: "↘ Diagonal" },
+  { value: "180deg", label: "↓ Down" },
+  { value: "90deg", label: "→ Right" },
+  { value: "0deg", label: "↑ Up" },
+  { value: "45deg", label: "↗ Angle" },
+  { value: "270deg", label: "← Left" },
+] as const;
+
+const ANIMATED_SPEEDS = [
+  { value: "slow", label: "Slow" },
+  { value: "medium", label: "Medium" },
+  { value: "fast", label: "Fast" },
+] as const;
+
+function backgroundTabFromType(type: LinkPageBackgroundType): BackgroundTab {
+  if (type === "gradient" || type === "gradient_preset") return "gradient";
+  if (type === "pattern") return "pattern";
+  if (type === "image") return "image";
+  if (type === "animated") return "animated";
+  return "color";
+}
+
+function parseCustomGradient(value: string): { from: string; to: string; direction: string } {
+  const fallback = { from: "#ec4899", to: "#a855f7", direction: "135deg" };
+  const match = value.match(/linear-gradient\(([^,]+),\s*(#[0-9a-fA-F]{3,8}|[^,]+),\s*(#[0-9a-fA-F]{3,8}|[^)]+)\)/);
+  if (!match) return fallback;
+  return {
+    direction: match[1].trim(),
+    from: match[2].trim(),
+    to: match[3].trim(),
+  };
+}
+
+function buildCustomGradient(from: string, to: string, direction: string): string {
+  return `linear-gradient(${direction}, ${from}, ${to})`;
+}
+
+function parsePatternValue(value: string): { patternId: string; baseColor: string } {
+  const [patternId, baseColor] = (value || "dots,#0a0a0a").split(",");
+  return { patternId: patternId?.trim() || "dots", baseColor: baseColor?.trim() || "#0a0a0a" };
+}
+
+function parseAnimatedValue(value: string): { colors: [string, string, string]; speed: string } {
+  const parts = (value || "").split(",").map((s) => s.trim());
+  return {
+    colors: [parts[0] || "#ec4899", parts[1] || "#8b5cf6", parts[2] || "#3b82f6"],
+    speed: parts[3] || "medium",
+  };
+}
+
+function buildAnimatedValue(colors: [string, string, string], speed: string): string {
+  return `${colors.join(",")},${speed}`;
+}
+
+function previewPageFromFields(
+  page: Pick<
+    LinkPageRecord,
+    "background_type" | "background_value" | "theme" | "primary_color" | "accent_color" | "font"
+  >
+): LinkPageWithBlocks {
+  return {
+    page_id: "",
+    id: "",
+    model_id: "",
+    slug: "",
+    status: "draft",
+    title: "",
+    bio: "",
+    profile_photo_url: "",
+    background_type: page.background_type,
+    background_value: page.background_value,
+    theme: page.theme,
+    primary_color: page.primary_color,
+    accent_color: page.accent_color,
+    font: page.font,
+    custom_domain: "",
+    show_powered_by: false,
+    meta_description: "",
+    verified: false,
+    created_at: "",
+    updated_at: "",
+    blocks: [],
+  };
+}
+
+function BackgroundSection({
+  page,
+  onPatchImmediateField,
+  onPatchTextField,
+  onFieldBlur,
+}: {
+  page: Pick<LinkPageRecord, "background_type" | "background_value" | "theme">;
+  onPatchImmediateField: (patch: Partial<SaveablePageFields>) => void;
+  onPatchTextField: (patch: Partial<SaveablePageFields>) => void;
+  onFieldBlur: () => void;
+}) {
+  const activeTab = backgroundTabFromType(page.background_type);
+  const [gradientMode, setGradientMode] = React.useState<"presets" | "custom">(
+    page.background_type === "gradient" ? "custom" : "presets"
+  );
+
+  React.useEffect(() => {
+    setGradientMode(page.background_type === "gradient" ? "custom" : "presets");
+  }, [page.background_type]);
+
+  const customGradient = parseCustomGradient(page.background_value);
+  const patternState = parsePatternValue(page.background_value);
+  const imageState = parseImageBackgroundValue(page.background_value);
+  const animatedState = parseAnimatedValue(page.background_value);
+
+  const selectTab = (tab: BackgroundTab) => {
+    if (tab === activeTab) return;
+    switch (tab) {
+      case "color":
+        onPatchImmediateField({ background_type: "color", background_value: page.background_value || "#0a0a0a" });
+        break;
+      case "gradient":
+        onPatchImmediateField({
+          background_type: "gradient_preset",
+          background_value: GRADIENT_PRESETS[0]?.id ?? "sunset",
+        });
+        break;
+      case "pattern":
+        onPatchImmediateField({ background_type: "pattern", background_value: "dots,#0a0a0a" });
+        break;
+      case "image":
+        onPatchImmediateField({
+          background_type: "image",
+          background_value: serializeImageBackgroundValue({ url: "", overlay: 0.5, blur: 0 }),
+        });
+        break;
+      case "animated":
+        onPatchImmediateField({
+          background_type: "animated",
+          background_value: buildAnimatedValue(["#ec4899", "#8b5cf6", "#3b82f6"], "medium"),
+        });
+        break;
+    }
+  };
+
+  const previewCss = getBackgroundCss(
+    previewPageFromFields({
+      ...page,
+      primary_color: "#ec4899",
+      accent_color: "#a855f7",
+      font: "modern",
+    })
+  );
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap gap-1">
+        {BACKGROUND_TABS.map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => selectTab(tab.id)}
+            className={cn(
+              "rounded-lg border px-2.5 py-1.5 text-[11px] font-medium transition-colors",
+              activeTab === tab.id ? "text-pink-200" : "text-white/45 hover:text-white/70"
+            )}
+            style={{
+              borderColor: activeTab === tab.id ? ACCENT : BORDER,
+              background: activeTab === tab.id ? `${ACCENT}22` : BG,
+            }}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {activeTab === "color" ? (
+        <div className="flex items-center gap-3">
+          <NativeColorSwatch
+            value={page.background_value}
+            fallback="#0a0a0a"
+            onChange={(v) => onPatchImmediateField({ background_type: "color", background_value: v })}
+          />
+          <span className="text-xs text-white/40">{page.background_value || "#0a0a0a"}</span>
+        </div>
+      ) : null}
+
+      {activeTab === "gradient" ? (
+        <div className="space-y-3">
+          <div className="flex gap-1">
+            {(["presets", "custom"] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                onClick={() => {
+                  setGradientMode(mode);
+                  if (mode === "custom" && page.background_type !== "gradient") {
+                    onPatchImmediateField({
+                      background_type: "gradient",
+                      background_value: buildCustomGradient(
+                        customGradient.from,
+                        customGradient.to,
+                        customGradient.direction
+                      ),
+                    });
+                  }
+                  if (mode === "presets" && page.background_type !== "gradient_preset") {
+                    const presetId =
+                      GRADIENT_PRESETS.some((p) => p.id === page.background_value)
+                        ? page.background_value
+                        : GRADIENT_PRESETS[0]?.id ?? "sunset";
+                    onPatchImmediateField({
+                      background_type: "gradient_preset",
+                      background_value: presetId,
+                    });
+                  }
+                }}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-[10px] uppercase tracking-wide transition-colors",
+                  gradientMode === mode ? "text-pink-200" : "text-white/40 hover:text-white/65"
+                )}
+                style={{
+                  borderColor: gradientMode === mode ? ACCENT : BORDER,
+                  background: gradientMode === mode ? `${ACCENT}18` : "transparent",
+                }}
+              >
+                {mode === "presets" ? "Presets" : "Custom"}
+              </button>
+            ))}
+          </div>
+
+          {gradientMode === "presets" ? (
+            <div className="grid grid-cols-2 gap-2">
+              {GRADIENT_PRESETS.map((preset) => {
+                const selected =
+                  page.background_type === "gradient_preset" && page.background_value === preset.id;
+                return (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() =>
+                      onPatchImmediateField({
+                        background_type: "gradient_preset",
+                        background_value: preset.id,
+                      })
+                    }
+                    className="group text-left"
+                  >
+                    <div
+                      className="h-[60px] w-full rounded-lg border transition-all group-hover:brightness-110"
+                      style={{
+                        background: preset.value,
+                        borderColor: selected ? ACCENT : BORDER,
+                        boxShadow: selected ? `0 0 0 1px ${ACCENT}` : undefined,
+                      }}
+                    />
+                    <span
+                      className={cn(
+                        "mt-1 block text-[10px]",
+                        selected ? "text-pink-200" : "text-white/45"
+                      )}
+                    >
+                      {preset.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3">
+                <Field label="From">
+                  <NativeColorSwatch
+                    value={customGradient.from}
+                    fallback="#ec4899"
+                    onChange={(from) =>
+                      onPatchImmediateField({
+                        background_type: "gradient",
+                        background_value: buildCustomGradient(from, customGradient.to, customGradient.direction),
+                      })
+                    }
+                  />
+                </Field>
+                <Field label="To">
+                  <NativeColorSwatch
+                    value={customGradient.to}
+                    fallback="#a855f7"
+                    onChange={(to) =>
+                      onPatchImmediateField({
+                        background_type: "gradient",
+                        background_value: buildCustomGradient(customGradient.from, to, customGradient.direction),
+                      })
+                    }
+                  />
+                </Field>
+              </div>
+              <Field label="Direction">
+                <select
+                  value={customGradient.direction}
+                  onChange={(e) =>
+                    onPatchImmediateField({
+                      background_type: "gradient",
+                      background_value: buildCustomGradient(
+                        customGradient.from,
+                        customGradient.to,
+                        e.target.value
+                      ),
+                    })
+                  }
+                  className="w-full rounded-lg border px-3 py-2 text-sm text-white"
+                  style={{ background: BG, borderColor: BORDER }}
+                >
+                  {GRADIENT_DIRECTIONS.map((d) => (
+                    <option key={d.value} value={d.value}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <div
+                className="h-[60px] w-full rounded-lg border"
+                style={{
+                  background: buildCustomGradient(
+                    customGradient.from,
+                    customGradient.to,
+                    customGradient.direction
+                  ),
+                  borderColor: BORDER,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      ) : null}
+
+      {activeTab === "pattern" ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            {PATTERN_PRESETS.map((pattern) => {
+              const selected =
+                page.background_type === "pattern" && patternState.patternId === pattern.id;
+              const previewCss = getBackgroundCss({
+                background_type: "pattern",
+                background_value: `${pattern.id},${patternState.baseColor}`,
+                theme: page.theme,
+              });
+              return (
+                <button
+                  key={pattern.id}
+                  type="button"
+                  onClick={() =>
+                    onPatchImmediateField({
+                      background_type: "pattern",
+                      background_value: `${pattern.id},${patternState.baseColor}`,
+                    })
+                  }
+                  className="group text-left"
+                >
+                  <div
+                    className="h-[60px] w-full rounded-lg border transition-all group-hover:brightness-110"
+                    style={{
+                      cssText: previewCss,
+                      borderColor: selected ? ACCENT : BORDER,
+                      boxShadow: selected ? `0 0 0 1px ${ACCENT}` : undefined,
+                    } as React.CSSProperties}
+                  />
+                  <span
+                    className={cn(
+                      "mt-1 block text-[10px]",
+                      selected ? "text-pink-200" : "text-white/45"
+                    )}
+                  >
+                    {pattern.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <Field label="Base color">
+            <NativeColorSwatch
+              value={patternState.baseColor}
+              fallback="#0a0a0a"
+              onChange={(baseColor) =>
+                onPatchImmediateField({
+                  background_type: "pattern",
+                  background_value: `${patternState.patternId},${baseColor}`,
+                })
+              }
+            />
+          </Field>
+        </div>
+      ) : null}
+
+      {activeTab === "image" ? (
+        <div className="space-y-3">
+          <Field label="Image URL">
+            <FormInput
+              value={imageState.url}
+              onChange={(e) =>
+                onPatchTextField({
+                  background_type: "image",
+                  background_value: serializeImageBackgroundValue({
+                    ...imageState,
+                    url: e.target.value,
+                  }),
+                })
+              }
+              onBlur={onFieldBlur}
+              placeholder="https://..."
+            />
+          </Field>
+          {imageState.url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageState.url}
+              alt=""
+              className="h-24 w-full rounded-lg border object-cover"
+              style={{ borderColor: BORDER }}
+            />
+          ) : null}
+          <Field label={`Overlay (${Math.round(imageState.overlay * 100)}%)`}>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(imageState.overlay * 100)}
+              onChange={(e) =>
+                onPatchImmediateField({
+                  background_type: "image",
+                  background_value: serializeImageBackgroundValue({
+                    ...imageState,
+                    overlay: Number(e.target.value) / 100,
+                  }),
+                })
+              }
+              className="w-full accent-pink-500"
+            />
+          </Field>
+          <Field label={`Blur (${imageState.blur}px)`}>
+            <input
+              type="range"
+              min={0}
+              max={20}
+              value={imageState.blur}
+              onChange={(e) =>
+                onPatchImmediateField({
+                  background_type: "image",
+                  background_value: serializeImageBackgroundValue({
+                    ...imageState,
+                    blur: Number(e.target.value),
+                  }),
+                })
+              }
+              className="w-full accent-pink-500"
+            />
+          </Field>
+        </div>
+      ) : null}
+
+      {activeTab === "animated" ? (
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center gap-3">
+            {animatedState.colors.map((color, i) => (
+              <Field key={i} label={`Color ${i + 1}`}>
+                <NativeColorSwatch
+                  value={color}
+                  fallback="#ec4899"
+                  onChange={(next) => {
+                    const colors = [...animatedState.colors] as [string, string, string];
+                    colors[i] = next;
+                    onPatchImmediateField({
+                      background_type: "animated",
+                      background_value: buildAnimatedValue(colors, animatedState.speed),
+                    });
+                  }}
+                />
+              </Field>
+            ))}
+          </div>
+          <Field label="Speed">
+            <div className="flex gap-1">
+              {ANIMATED_SPEEDS.map((speed) => (
+                <button
+                  key={speed.value}
+                  type="button"
+                  onClick={() =>
+                    onPatchImmediateField({
+                      background_type: "animated",
+                      background_value: buildAnimatedValue(animatedState.colors, speed.value),
+                    })
+                  }
+                  className={cn(
+                    "rounded-md border px-2.5 py-1 text-[10px] transition-colors",
+                    animatedState.speed === speed.value ? "text-pink-200" : "text-white/40 hover:text-white/65"
+                  )}
+                  style={{
+                    borderColor: animatedState.speed === speed.value ? ACCENT : BORDER,
+                    background: animatedState.speed === speed.value ? `${ACCENT}18` : "transparent",
+                  }}
+                >
+                  {speed.label}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <div
+            className="h-[60px] w-full rounded-lg border"
+            style={{
+              borderColor: BORDER,
+              background: `linear-gradient(270deg, ${animatedState.colors.join(", ")})`,
+              backgroundSize: "400% 400%",
+              animation: `gradientShiftPreview ${
+                animatedState.speed === "slow" ? "12s" : animatedState.speed === "fast" ? "4s" : "8s"
+              } ease infinite`,
+            }}
+          />
+          <style>{`
+            @keyframes gradientShiftPreview {
+              0% { background-position: 0% 50%; }
+              50% { background-position: 100% 50%; }
+              100% { background-position: 0% 50%; }
+            }
+          `}</style>
+        </div>
+      ) : null}
+
+      <div
+        className="pointer-events-none h-8 w-full rounded-md border opacity-60"
+        style={{
+          cssText: previewCss,
+          borderColor: BORDER,
+        } as React.CSSProperties}
+        aria-hidden
+      />
+    </div>
+  );
+}
 
 function toColorInputValue(hex: string | undefined, fallback: string): string {
   if (!hex) return fallback;
@@ -1898,35 +2454,13 @@ function EditorPanel({
             ))}
           </div>
         </Field>
-        <Field label="Background type">
-          <select
-            value={page.background_type}
-            onChange={(e) =>
-              onPatchImmediateField({ background_type: e.target.value as LinkPageRecord["background_type"] })
-            }
-            className="w-full rounded-lg border px-3 py-2 text-sm text-white"
-            style={{ background: BG, borderColor: BORDER }}
-          >
-            <option value="color">Color</option>
-            <option value="gradient">Gradient</option>
-            <option value="image">Image URL</option>
-          </select>
-        </Field>
-        <Field label="Background value">
-          {page.background_type === "color" ? (
-            <NativeColorSwatch
-              value={page.background_value}
-              fallback="#0a0a0a"
-              onChange={(v) => onPatchImmediateField({ background_value: v })}
-            />
-          ) : (
-            <FormInput
-              value={page.background_value}
-              onChange={(e) => onPatchTextField({ background_value: e.target.value })}
-              onBlur={onFieldBlur}
-              placeholder={page.background_type === "gradient" ? "linear-gradient(...)" : "Image URL"}
-            />
-          )}
+        <Field label="Background">
+          <BackgroundSection
+            page={page}
+            onPatchImmediateField={onPatchImmediateField}
+            onPatchTextField={onPatchTextField}
+            onFieldBlur={onFieldBlur}
+          />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Primary color">

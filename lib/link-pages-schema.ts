@@ -70,7 +70,14 @@ export const LINK_PAGE_ANALYTICS_FIELDS = {
 } as const;
 
 export const LINK_PAGE_STATUSES = ["draft", "published", "archived"] as const;
-export const LINK_PAGE_BACKGROUND_TYPES = ["color", "gradient", "image"] as const;
+export const LINK_PAGE_BACKGROUND_TYPES = [
+  "color",
+  "gradient",
+  "gradient_preset",
+  "pattern",
+  "image",
+  "animated",
+] as const;
 export const LINK_PAGE_THEMES = ["dark", "light", "minimal", "neon", "gold"] as const;
 export const LINK_PAGE_FONTS = [
   "modern",

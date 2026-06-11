@@ -37,6 +37,7 @@
     "setup:link-redirects-table": "tsx scripts/setup-link-redirects-table.ts",
     "add:link-pages-fields": "tsx scripts/add-link-pages-fields.ts",
     "add:link-page-fonts": "tsx scripts/add-link-page-fonts.ts",
+    "add:link-page-backgrounds": "tsx scripts/add-link-page-backgrounds.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 execute chatter-d1 --remote --file=./drizzle/migrations/0000_initial.sql",
     "db:studio": "drizzle-kit studio",

@@ -328,7 +328,14 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   link_pages: {
     status: new Set(["draft", "published", "archived"]),
-    background_type: new Set(["color", "gradient", "image"]),
+    background_type: new Set([
+      "color",
+      "gradient",
+      "gradient_preset",
+      "pattern",
+      "image",
+      "animated",
+    ]),
     theme: new Set(["dark", "light", "minimal", "neon", "gold"]),
     font: new Set([
       "modern",

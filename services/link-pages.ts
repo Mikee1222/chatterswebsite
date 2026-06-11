@@ -93,7 +93,16 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
   const status = (["draft", "published", "archived"] as const).includes(f.status as LinkPageStatus)
     ? (f.status as LinkPageStatus)
     : "draft";
-  const bgType = (["color", "gradient", "image"] as const).includes(f.background_type as LinkPageBackgroundType)
+  const bgType = (
+    [
+      "color",
+      "gradient",
+      "gradient_preset",
+      "pattern",
+      "image",
+      "animated",
+    ] as const
+  ).includes(f.background_type as LinkPageBackgroundType)
     ? (f.background_type as LinkPageBackgroundType)
     : "color";
   const theme = (["dark", "light", "minimal", "neon", "gold"] as const).includes(f.theme as LinkPageTheme)

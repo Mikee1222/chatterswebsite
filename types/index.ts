@@ -1253,7 +1253,13 @@ export interface PushSubscriptionRecord {
 // --- Link-in-Bio pages ---
 
 export type LinkPageStatus = "draft" | "published" | "archived";
-export type LinkPageBackgroundType = "color" | "gradient" | "image";
+export type LinkPageBackgroundType =
+  | "color"
+  | "gradient"
+  | "gradient_preset"
+  | "pattern"
+  | "image"
+  | "animated";
 export type LinkPageTheme = "dark" | "light" | "minimal" | "neon" | "gold";
 export type LinkPageFont =
   | "modern"
