@@ -6,6 +6,9 @@ import { getMemberAccessibleSopRole, isSopMemberSession } from "@/lib/sop-member
 import { recordQuizAttempt } from "@/services/sop-quiz-attempts";
 import { validateQuizAnswers } from "@/services/sop-quiz";
 import { getFunctionsByRole } from "@/services/sops";
+import { notifyByRoleConfig } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { sopQuizFailedPersonal, sopQuizPassedPersonal } from "@/lib/notification-copy";
 
 const answerSchema = z.object({
   question_id: z.string().trim().min(1),
@@ -71,6 +74,34 @@ export async function POST(req: Request) {
         console.error("[sops/quiz/submit] recordQuizAttempt failed:", recordErr);
       }
     }
+    if (userId) {
+      const sopTitle = fn.name?.trim() || "SOP";
+      const entityId = `sop_quiz:${fn.id}:${userId}:${Date.now()}`;
+      if (result.passed) {
+        const copy = sopQuizPassedPersonal(sopTitle);
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SOP_QUIZ_PASSED, {
+          personal_user_id: userId,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: copy.title,
+          body: copy.body,
+          entity_type: "sop_academy",
+          entity_id: entityId,
+          context: { sopTitle, score: result.score },
+        }).catch(() => {});
+      } else {
+        const copy = sopQuizFailedPersonal(sopTitle);
+        await notifyByRoleConfig(NOTIFICATION_EVENT.SOP_QUIZ_FAILED, {
+          personal_user_id: userId,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: copy.title,
+          body: copy.body,
+          entity_type: "sop_academy",
+          entity_id: entityId,
+          context: { sopTitle, score: result.score },
+        }).catch(() => {});
+      }
+    }
+
     return NextResponse.json({
       passed: result.passed,
       score: result.score,

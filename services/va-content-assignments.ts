@@ -2,8 +2,8 @@
 
 import { createRecord, listAllRecords, getRecord, updateRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { notify } from "@/services/notification-service";
-import { getActiveModelUserAirtableIdByLinkedModelRecordId, getUserByAirtableId } from "@/services/users";
+import { notify, notifyByRoleConfig } from "@/services/notification-service";
+import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
 import {
   firstLinkedId,
@@ -894,26 +894,18 @@ export async function reviewVAContentAssignmentByAdmin(
     const rec = await updateRecord<Fields>(TABLE, rid, updateData);
     const row = mapRecord(rec as AirtableRecord<Fields>);
 
-    const modelRecId = await modelssAirtableRecordIdForUserNotify(rid);
-    if (modelRecId) {
-      const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(modelRecId);
-      if (modelUserId) {
-        const displayTitle = (row.title || current.title).trim() || "VA content assignment";
-        await notify({
-          user_id: modelUserId,
-          event_type: NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED,
-          priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: "📋 New VA Content Assignment",
-          body: `📋 ${displayTitle} — open Content assignments or your calendar.`,
-          entity_type: "va_content_assignment",
-          entity_id: rid,
-          _triggerSource: "va_assignment_admin_review",
-        }).catch(() => {});
-      }
-    }
-
     const vaTarget = current.va_id?.trim();
     if (vaTarget) {
+      const displayTitle = (row.title || current.title).trim() || "VA content assignment";
+      await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
+        personal_user_id: vaTarget,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "📋 New VA Content Assignment",
+        body: `📋 ${displayTitle} — open Content assignments or your calendar.`,
+        entity_type: "va_content_assignment",
+        entity_id: rid,
+      }).catch(() => {});
+
       await notify({
         user_id: vaTarget,
         event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,

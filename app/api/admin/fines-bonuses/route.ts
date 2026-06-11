@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { notify } from "@/services/notification-service";
+import { bonusAwardedPersonal, fineIssuedPersonal } from "@/lib/notification-copy";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import { listAllUsers } from "@/services/users";
 import { createFineBonus, listFinesBonuses, type CreateFineBonusInput } from "@/services/fines-bonuses";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -87,23 +88,28 @@ export async function POST(req: Request) {
 
   try {
     const { id, record } = await createFineBonus(input);
-    const amt = record.amount.toFixed(2);
-    const title = parsed.data.type === "bonus" ? "🎁 Bonus Added" : "⚠️ Fine Issued";
-    const bodyText =
-      parsed.data.type === "bonus"? `🎁 You received a €${amt} bonus: ${parsed.data.reason}`
-        : `⚠️ A €${amt} fine was applied: ${parsed.data.reason}`;
+    const amt = record.amount;
+    const isBonus = parsed.data.type === "bonus";
+    const eventType = isBonus ? NOTIFICATION_EVENT.BONUS_AWARDED : NOTIFICATION_EVENT.FINE_ISSUED;
+    const copy = isBonus
+      ? bonusAwardedPersonal(amt, adminName, parsed.data.reason)
+      : fineIssuedPersonal(amt, adminName, parsed.data.reason);
 
-    await notify({
-      user_id: parsed.data.user_id,
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+    await notifyByRoleConfig(eventType, {
+      personal_user_id: parsed.data.user_id,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title,
-      body: bodyText,
+      title: copy.title,
+      body: copy.body,
       entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
       entity_id: id,
       actor_user_id: adminId,
       actor_name: adminName,
-      _triggerSource: "admin_fines_bonuses_post",
+      context: {
+        amount: amt,
+        reason: parsed.data.reason,
+        adminName,
+        chatterName: parsed.data.user_name,
+      },
     }).catch(() => {});
 
     return NextResponse.json({ success: true, id, entry: record });

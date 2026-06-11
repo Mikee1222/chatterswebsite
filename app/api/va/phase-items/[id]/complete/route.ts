@@ -5,7 +5,7 @@ import { hasPermission } from "@/lib/rbac";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
-import { notifyAdmins } from "@/services/notification-service";
+import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
@@ -47,8 +47,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     screenshotAttachments.length ? { screenshotAttachments } : undefined,
   );
 
-  await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.PHASE_TASK_COMPLETED,
+  await notifyByRoleConfig(NOTIFICATION_EVENT.PHASE_TASK_COMPLETED, {
+    personal_user_id: vaId,
+    actor_user_id: vaId,
+    actor_name: vaName,
     priority: NOTIFICATION_PRIORITY.NORMAL,
     title: "✅ Phase Item Done",
     body: `✅ ${vaName} completed: "${itemTitle}"`,

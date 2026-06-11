@@ -1080,6 +1080,7 @@ export type NotificationEventType =
   | "level_up"
   | "spin_available"
   | "challenge_completed"
+  | "spin_result"
   // Billing
   | "billing_cycle_announced"
   | "billing_due_reminder"
@@ -1091,7 +1092,18 @@ export type NotificationEventType =
   | "expense_rejected"
   // Performance / marketing
   | "chatter_mistake"
+  | "chatter_mistake_reviewed"
+  | "fine_issued"
+  | "bonus_awarded"
+  | "fine_bonus_reviewed"
   | "shadowban_report"
+  | "shadowban_submitted"
+  | "shadowban_resolved"
+  | "sop_quiz_passed"
+  | "sop_quiz_failed"
+  | "schedule_published"
+  | "login_new_device"
+  | "password_changed"
   // SOP Academy
   | "sop_academy_reminder"
   | "sop_academy_training_complete"
@@ -1154,6 +1166,7 @@ export type NotificationEventType =
   | "points_awarded_admin"
   | "level_up_admin"
   | "challenge_completed_admin"
+  | "spin_result_admin"
   | "sop_academy_training_complete_admin"
   | "sop_academy_signed_off_admin"
   | "payment_submitted_admin"
@@ -1161,7 +1174,17 @@ export type NotificationEventType =
   | "expense_approved_admin"
   | "expense_rejected_admin"
   | "chatter_mistake_admin"
-  | "shadowban_report_admin";
+  | "chatter_mistake_reviewed_admin"
+  | "fine_issued_admin"
+  | "bonus_awarded_admin"
+  | "fine_bonus_reviewed_admin"
+  | "shadowban_report_admin"
+  | "shadowban_submitted_admin"
+  | "shadowban_resolved_admin"
+  | "period_overdue_admin"
+  | "billing_cycle_announced_admin"
+  | "sop_quiz_passed_admin"
+  | "schedule_published_admin";
 
 /** Optional structured metadata for richer display (e.g. models, shift type, deadline). */
 export type NotificationMetadataItem = { label: string; value: string };

@@ -5,7 +5,7 @@ import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
-import { notifyAdmins } from "@/services/notification-service";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
   createMistakeRow,
@@ -133,14 +133,20 @@ export async function POST(req: Request) {
       }
     }
 
-    await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+    await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
+      personal_user_id: vaId,
       priority: NOTIFICATION_PRIORITY.HIGH,
-      title: "⚠️ New Mistake Logged",
-      body: `⚠️ ${vaName} reported a ${reason.category} mistake for ${parsed.data.chatter_name}.`,
+      title: "⚠️ Mistake report submitted",
+      body: `⚠️ Your ${reason.category} mistake report for ${parsed.data.chatter_name} was submitted.`,
       entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
       entity_id: recordId,
-      _triggerSource: "va_mistakes_post",
+      actor_user_id: vaId,
+      actor_name: vaName,
+      context: {
+        chatterName: parsed.data.chatter_name,
+        mistakeType: reason.category,
+        adminName: vaName,
+      },
     }).catch(() => {});
 
     return NextResponse.json({ success: true, mistake_id, id: recordId });

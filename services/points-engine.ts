@@ -148,14 +148,13 @@ async function notifyAfterPointsAwarded(params: {
     }
 
     if (nextSpins > prevSpins) {
-      await notify({
-        user_id: userId,
-        event_type: NOTIFICATION_EVENT.SPIN_AVAILABLE,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.SPIN_AVAILABLE, {
+        recipient_mode: "personal_only",
+        personal_user_id: userId,
         title: "🎰 Free Spin Available!",
         body: "🎰 You earned a spin! Head to Rewards to claim your prize.",
         entity_type: "chatter_points",
         entity_id: userId,
-        _triggerSource: "awardPoints",
       });
     }
   } catch (e) {

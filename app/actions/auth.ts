@@ -19,6 +19,7 @@ function isRedirectError(err: unknown): boolean {
     String((err as { digest?: string }).digest).startsWith("NEXT_REDIRECT")
   );
 }
+import { headers } from "next/headers";
 import { setSession, getSessionFromCookies, deleteSession, hashPassword, verifyPassword } from "@/lib/auth";
 import { getUserByEmailForAuth } from "@/services/users";
 import { createDefaultPreferencesForUser } from "@/services/notification-preferences";
@@ -101,6 +102,28 @@ export async function login(formData: FormData) {
           ...(rememberMe ? { maxAge: SESSION_REMEMBER_MAX_AGE_SEC } : {}),
         });
         console.log(`${logPrefix} login success (airtable)`, { email: obfuscatedEmail, role: user.role });
+        try {
+          const hdrs = await headers();
+          const ua = hdrs.get("user-agent")?.trim() || "Unknown device";
+          const device =
+            ua.length > 80 ? `${ua.slice(0, 77)}…` : ua;
+          const { notifyByRoleConfig } = await import("@/services/notification-service");
+          const { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } = await import("@/lib/notification-types");
+          const { formatNotificationTimeElGr, loginNewDevicePersonal } = await import("@/lib/notification-copy");
+          const time = formatNotificationTimeElGr(new Date());
+          const copy = loginNewDevicePersonal(device, time);
+          await notifyByRoleConfig(NOTIFICATION_EVENT.LOGIN_NEW_DEVICE, {
+            personal_user_id: user.id,
+            priority: NOTIFICATION_PRIORITY.HIGH,
+            title: copy.title,
+            body: copy.body,
+            entity_type: "account",
+            entity_id: `login:${user.id}:${Date.now()}`,
+            context: { device, time },
+          });
+        } catch (notifyErr) {
+          console.error(`${logPrefix} login_new_device notify failed`, notifyErr);
+        }
         redirect(ROUTES.dashboard);
       }
     }

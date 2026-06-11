@@ -74,12 +74,10 @@ export async function spinWheelAction(): Promise<
     return { success: false, error: msg };
   }
 
-  let pointsAwardedFromSpin = false;
   try {
     if (pt === "points") {
       const pts = Math.max(0, Math.floor(Number.parseFloat(prize.prize_value) || 0));
       if (pts > 0) {
-        pointsAwardedFromSpin = true;
         await awardPoints(userId, pts, `Spin wheel: ${prize.label}`, "spin", spinRec.id);
       }
     }
@@ -88,56 +86,29 @@ export async function spinWheelAction(): Promise<
   }
 
   const chatterName = (user.fullName?.trim() || user.email?.trim() || "Chatter").slice(0, 120);
+  const prizeDetails = prize.prize_value?.trim() || prize.prize_type?.trim() || "";
 
-  if (pt === "custom") {
-    try {
-      const [{ notify, notifyAdmins }, { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY }] = await Promise.all([
-        import("@/services/notification-service"),
-        import("@/lib/notification-types"),
-      ]);
-      await notifyAdmins({
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "🎰 Custom prize won!",
-        body: `🎰 ${chatterName} won: "${prize.label}" — please fulfill manually.`,
-        entity_type: "spin_wheel_spin",
-        entity_id: spinRec.id,
-        actor_user_id: userId,
-        actor_name: chatterName,
-        _triggerSource: "spinWheelAction.customPrize",
-      }).catch(() => {});
-      await notify({
-        user_id: userId,
-        event_type: NOTIFICATION_EVENT.SPIN_AVAILABLE,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "🎉 You won a special prize!",
-        body: `🎉 You won: "${prize.label}" — admin will be in touch!`,
-        entity_type: "spin_wheel_spin",
-        entity_id: spinRec.id,
-        _triggerSource: "spinWheelAction.customPrize",
-      }).catch(() => {});
-    } catch {
-      /* non-blocking */
-    }
-  } else if (!pointsAwardedFromSpin) {
-    try {
-      const [{ notify }, { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY }] = await Promise.all([
-        import("@/services/notification-service"),
-        import("@/lib/notification-types"),
-      ]);
-      await notify({
-        user_id: userId,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "🎰 Spin complete",
-        body: `🎰 You won: ${prize.label}`,
-        entity_type: "spin_wheel_spin",
-        entity_id: spinRec.id,
-        _triggerSource: "spinWheelAction",
-      }).catch(() => {});
-    } catch {
-      /* non-blocking */
-    }
+  try {
+    const [{ notifyByRoleConfig }, { NOTIFICATION_EVENT }, { spinResultSelf }] = await Promise.all([
+      import("@/services/notification-service"),
+      import("@/lib/notification-types"),
+      import("@/lib/notification-copy"),
+    ]);
+    const copy = spinResultSelf(prize.label, prizeDetails);
+    await notifyByRoleConfig(NOTIFICATION_EVENT.SPIN_RESULT, {
+      personal_user_id: userId,
+      actor_user_id: userId,
+      actor_name: chatterName,
+      title: copy.title,
+      body: copy.body,
+      entity_type: "spin_wheel_spin",
+      entity_id: spinRec.id,
+      context: { prizeName: prize.label, prizeDetails, chatterName },
+    }).catch((e) => {
+      console.error("[spin-wheel] spin_result notify failed", e);
+    });
+  } catch (e) {
+    console.error("[spin-wheel] spin_result notify failed", e);
   }
 
   revalidatePath(ROUTES.chatter.rewards);

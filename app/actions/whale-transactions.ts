@@ -5,7 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { notifyAdmins } from "@/services/notification-service";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import {
   deleteWhaleTransactionForChatter,
   peekWhaleTransactionForChatter,
@@ -34,8 +34,8 @@ export async function updateWhaleTransactionAction(
     const whaleName = (before.whale_username || "Whale").trim();
     const prev = Number(before.amount);
     const amountLabel = Number.isFinite(prev) ? prev.toFixed(2) : String(before.amount);
-    await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.WHALE_SPENT,
+    await notifyByRoleConfig(NOTIFICATION_EVENT.WHALE_SPENT, {
+      personal_user_id: chatterId,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "🐋 Whale transaction modified",
       body: `${chatterName} edited a transaction for ${whaleName}. Previous: $${amountLabel}`,
@@ -43,6 +43,7 @@ export async function updateWhaleTransactionAction(
       entity_id: recordId,
       actor_user_id: chatterId,
       actor_name: chatterName,
+      context: { whaleName, whaleUsername: whaleName, chatterName },
     }).catch(() => {});
     revalidatePath(ROUTES.chatter.logTransaction);
     revalidatePath(ROUTES.chatter.home);
@@ -69,15 +70,16 @@ export async function deleteWhaleTransactionAction(recordId: string): Promise<Ac
     const whaleName = (before.whale_username || "Whale").trim();
     const prev = Number(before.amount);
     const amountLabel = Number.isFinite(prev) ? prev.toFixed(2) : String(before.amount);
-    await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.WHALE_SPENT,
+    await notifyByRoleConfig(NOTIFICATION_EVENT.WHALE_SPENT, {
+      personal_user_id: chatterId,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "🐋 Whale transaction modified",
-      body: `${chatterName} deleted a transaction for ${whaleName}. Previous: $${amountLabel}`,
+      body: `${chatterName} removed a transaction for ${whaleName}. Previous: $${amountLabel}`,
       entity_type: NOTIFICATION_ENTITY.WHALE,
       entity_id: recordId,
       actor_user_id: chatterId,
       actor_name: chatterName,
+      context: { whaleName, whaleUsername: whaleName, chatterName },
     }).catch(() => {});
     revalidatePath(ROUTES.chatter.logTransaction);
     revalidatePath(ROUTES.chatter.home);

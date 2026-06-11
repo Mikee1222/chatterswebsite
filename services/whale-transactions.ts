@@ -18,8 +18,9 @@ import type {
   TransactionType,
 } from "@/types";
 import { devLog } from "@/lib/dev-log";
-import { notifyAdmins } from "@/services/notification-service";
-import { whaleSessionSubmittedAdmin } from "@/lib/notification-copy";
+import { notifyByRoleConfig } from "@/services/notification-service";
+import { NOTIFICATION_ENTITY } from "@/lib/notification-types";
+import { whaleSessionSubmittedSelf } from "@/lib/notification-copy";
 
 const TABLE = "whale_transactions";
 
@@ -147,22 +148,28 @@ export async function createWhaleTransaction(fields: CreateWhaleTransactionField
   const transaction = mapRecord(rec as AirtableRecord<Fields>);
 
   const currency = (fields.currency ?? "usd").toLowerCase();
-  const adminCopy = whaleSessionSubmittedAdmin(
-    fields.chatter_name,
+  const selfCopy = whaleSessionSubmittedSelf(
     fields.whale_username,
     fields.amount,
     currency,
     fields.model_name
   );
-  await notifyAdmins({
-    event_type: "whale_session_submitted",
+  await notifyByRoleConfig("whale_session_submitted", {
     priority: "normal",
-    title: adminCopy.title,
-    body: adminCopy.body,
-    entity_type: "whale",
+    title: selfCopy.title,
+    body: selfCopy.body,
+    entity_type: NOTIFICATION_ENTITY.WHALE,
     entity_id: transaction.id,
     actor_user_id: fields.chatter_record_id,
     actor_name: fields.chatter_name,
+    personal_user_id: fields.chatter_record_id,
+    context: {
+      whaleUsername: fields.whale_username,
+      amount: fields.amount,
+      currency,
+      modelName: fields.model_name,
+      chatterName: fields.chatter_name,
+    },
   }).catch(() => {});
 
   try {

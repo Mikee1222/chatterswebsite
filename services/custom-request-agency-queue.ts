@@ -33,11 +33,8 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
   const customTitle = (before.request_title || "Custom request").trim() || "Custom request";
   const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(before.assigned_model_id);
   const modelName = (before.assigned_model_name ?? "Model").trim() || "Model";
-  const chatterRecordId = before.requested_by_chatter_id?.trim();
   if (modelUserId) {
     await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_APPROVED, {
-      skipAdminVariant: true,
-      recipient_mode: "personal_only",
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "✅ Custom request approved",
       body: `✅ A custom request "${customTitle}" has been approved. Please check your schedule.`,
@@ -46,18 +43,6 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
       actor_user_id: modelUserId,
       actor_name: modelName,
       personal_user_id: modelUserId,
-    }).catch(() => {});
-  }
-  if (chatterRecordId) {
-    await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_APPROVED, {
-      priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "✅ Custom request approved",
-      body: `✅ ${customTitle} was approved — your model has been notified.`,
-      entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
-      entity_id: recordId,
-      actor_user_id: modelUserId ?? undefined,
-      actor_name: modelName,
-      personal_user_id: chatterRecordId,
       context: { customTitle, modelName, fanUsername: before.fan_username },
     }).catch(() => {});
   }
@@ -80,16 +65,16 @@ export async function agencyDeclineCustomRequest(
     decline_reason: reason,
   });
   const customTitle = (before.request_title || "Custom request").trim() || "Custom request";
-  if (before.requested_by_chatter_id) {
-    await notify({
-      user_id: before.requested_by_chatter_id,
-      event_type: NOTIFICATION_EVENT.CUSTOM_DECLINED,
+  const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(before.assigned_model_id);
+  if (modelUserId) {
+    await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_DECLINED, {
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "❌ Custom request declined",
       body: `❌ ${customTitle} was declined. Reason: ${reason.slice(0, 280)}${reason.length > 280 ? "…" : ""}`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: recordId,
-      _triggerSource: "agencyDeclineCustomRequest",
+      personal_user_id: modelUserId,
+      context: { customTitle, fanUsername: before.fan_username },
     }).catch(() => {});
   }
   return { ok: true };

@@ -211,23 +211,35 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
   const rec = await createRecord<Fields>(TABLE, bumpCustomRequestWrite(payload as Partial<Fields>) as Fields);
   const request = mapRecord(rec as AirtableRecord<Fields>);
 
-  const { notifyAdmins } = await import("./notification-service");
+  const { notifyByRoleConfig } = await import("./notification-service");
   const { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } = await import("@/lib/notification-types");
   const { customRequestAdmin } = await import("@/lib/notification-copy");
+  const { getActiveModelUserAirtableIdByLinkedModelRecordId } = await import("@/services/users");
   const { title, body } = customRequestAdmin(
     fields.chatter_name ?? "",
     fields.request_title ?? "Custom",
     fields.model_name ?? "",
     fields.fan_username ?? undefined
   );
-  await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.CUSTOM_REQUEST_CREATED,
+  const personalIds = [fields.chatter_record_id?.trim()].filter((id): id is string => !!id);
+  const modelUserId = fields.model_record_id
+    ? await getActiveModelUserAirtableIdByLinkedModelRecordId(fields.model_record_id).catch(() => null)
+    : null;
+  if (modelUserId && !personalIds.includes(modelUserId)) personalIds.push(modelUserId);
+  await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_REQUEST_CREATED, {
+    personal_user_id: personalIds.length > 0 ? personalIds : undefined,
     priority: NOTIFICATION_PRIORITY.NORMAL,
     title,
     body,
     entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
     entity_id: request.id,
     actor_name: fields.chatter_name,
+    context: {
+      modelName: fields.model_name,
+      customTitle: fields.request_title,
+      fanUsername: fields.fan_username,
+      chatterName: fields.chatter_name,
+    },
   }).catch((e) => console.error("[notify] custom_request_created failed", e));
 
   const { notifyActiveVirtualAssistantsCustomCreated } = await import("@/services/custom-request-notify-vas");

@@ -108,26 +108,29 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
 
   // ---- Model (session / live) ----
   model_became_free: {
-    rule: "admin_only",
-    description: "Admins monitor model availability on floor.",
+    rule: "assigned_chatter_only",
+    description: "Assigned chatter when a model becomes available.",
   },
   model_taken: {
-    rule: "admin_only",
-    description: "Admins monitor chatter entering a model session.",
+    rule: "assigned_party_only",
+    description: "Chatter and model when a model session starts.",
   },
   model_live_started: {
-    rule: "admin_only",
-    description: "Admins monitor when a model goes live.",
+    rule: "assigned_party_only",
+    description: "Assigned chatters and model when live starts.",
   },
   model_live_ended: {
-    rule: "admin_only",
-    description: "Admins monitor when a model live stream ends.",
+    rule: "assigned_party_only",
+    description: "Assigned chatters and model when live ends.",
   },
   model_live_scheduled: {
     rule: "assigned_model_only",
     description: "The model user for upcoming live stream reminder.",
   },
-  model_missed_live: { rule: "admin_only", description: "Admins only." },
+  model_missed_live: {
+    rule: "assigned_model_only",
+    description: "The model user when a scheduled live is missed.",
+  },
   model_content_completed: {
     rule: "assigned_party_only",
     description: "Assigned model/VA when model content is completed.",
@@ -137,16 +140,16 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Assigned model/VA when content is scheduled.",
   },
   va_content_assigned: {
-    rule: "assigned_model_only",
-    description: "The model user when a VA creates a content assignment for them.",
+    rule: "assigned_user_only",
+    description: "Assigned VA when they receive a content assignment.",
   },
   va_content_scheduled: {
-    rule: "assigned_user_only",
-    description: "Assigned VA when content delivery is scheduled.",
+    rule: "assigned_model_only",
+    description: "The model user when content delivery is scheduled.",
   },
   va_content_completed: {
-    rule: "assigned_user_only",
-    description: "Assigned VA when content is marked complete.",
+    rule: "assigned_model_only",
+    description: "The model user when content is marked complete.",
   },
   period_3_day_reminder: {
     rule: "assigned_model_only",
@@ -171,8 +174,8 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
 
   // ---- Whale ----
   whale_registered: {
-    rule: "admin_only",
-    description: "Admins monitor new whale registration.",
+    rule: "admin_and_actor",
+    description: "Chatter who registered receives confirmation; admins monitor.",
   },
   whale_assigned: {
     rule: "assigned_chatter_only",
@@ -182,10 +185,13 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_chatter_only",
     description: "The assigned chatter when whale follow-up is due.",
   },
-  whale_spent: { rule: "admin_only", description: "Admins only." },
+  whale_spent: {
+    rule: "admin_and_actor",
+    description: "Chatter who logged spending receives confirmation; admins monitor.",
+  },
   whale_session_submitted: {
-    rule: "admin_only",
-    description: "Admins only. Chatters/VAs do not receive whale session notifications.",
+    rule: "admin_and_actor",
+    description: "Chatter who submitted the session receives confirmation; admins monitor.",
   },
 
   // ---- Custom request (personal — assigned party only) ----
@@ -286,6 +292,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_user_only",
     description: "The chatter who completed a live challenge.",
   },
+  spin_result: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA notified of spin wheel prize.",
+  },
   billing_cycle_announced: {
     rule: "assigned_user_only",
     description: "The B2B client when a billing cycle is announced.",
@@ -299,8 +309,8 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "Admins when a client submits payment proof.",
   },
   payment_submitted: {
-    rule: "admin_only",
-    description: "Admins when a client submits payment proof.",
+    rule: "admin_and_actor",
+    description: "Client receives confirmation; admins monitor payment proof.",
   },
   payment_confirmed: {
     rule: "assigned_user_only",
@@ -334,9 +344,53 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_chatter_only",
     description: "The chatter who received the mistake.",
   },
+  chatter_mistake_reviewed: {
+    rule: "assigned_party_only",
+    description: "Chatter or VA when a mistake report is approved or rejected.",
+  },
+  fine_issued: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA notified when fine is issued",
+  },
+  bonus_awarded: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA notified when bonus is awarded",
+  },
+  fine_bonus_reviewed: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA notified when fine/bonus is reviewed",
+  },
   shadowban_report: {
     rule: "assigned_party_only",
-    description: "The user who submitted the shadowban report.",
+    description: "VA or model linked to the shadowban report (legacy).",
+  },
+  shadowban_submitted: {
+    rule: "assigned_party_only",
+    description: "VA or model when a shadowban report is filed.",
+  },
+  shadowban_resolved: {
+    rule: "assigned_party_only",
+    description: "Reporter when a shadowban report is approved or dismissed.",
+  },
+  sop_quiz_passed: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA when they pass an SOP quiz.",
+  },
+  sop_quiz_failed: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA when they fail an SOP quiz.",
+  },
+  schedule_published: {
+    rule: "assigned_party_only",
+    description: "Chatter/VA when the weekly schedule is published.",
+  },
+  login_new_device: {
+    rule: "assigned_party_only",
+    description: "User notified when logging in from a new device.",
+  },
+  password_changed: {
+    rule: "assigned_party_only",
+    description: "User notified when their password is changed.",
   },
 
   // ---- Admin monitoring variants (_admin suffix) ----
@@ -397,6 +451,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   points_awarded_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   level_up_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   challenge_completed_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  spin_result_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   sop_academy_training_complete_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   sop_academy_signed_off_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   payment_submitted_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
@@ -404,7 +459,17 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   expense_approved_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   expense_rejected_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   chatter_mistake_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  chatter_mistake_reviewed_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  fine_issued_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  bonus_awarded_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  fine_bonus_reviewed_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   shadowban_report_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  shadowban_submitted_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  shadowban_resolved_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  period_overdue_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  billing_cycle_announced_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  sop_quiz_passed_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  schedule_published_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
 };
 
 /**
@@ -502,7 +567,21 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "payment_rejected",
   "sop_academy_reminder",
   "schedule_updated",
+  "whale_registered",
   "whale_assigned",
+  "whale_spent",
   "whale_followup",
+  "whale_session_submitted",
   "chatter_mistake",
+  "chatter_mistake_reviewed",
+  "fine_issued",
+  "bonus_awarded",
+  "fine_bonus_reviewed",
+  "shadowban_submitted",
+  "shadowban_resolved",
+  "sop_quiz_passed",
+  "sop_quiz_failed",
+  "schedule_published",
+  "login_new_device",
+  "password_changed",
 ];

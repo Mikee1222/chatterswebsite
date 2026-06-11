@@ -9,11 +9,10 @@ import { firstLinkedId } from "@/lib/airtable-linked";
 import { createWhale, updateWhale, getWhaleById, type WhaleWriteFields } from "@/services/whales";
 import { awardPoints, maybeAwardWhaleUpdatePoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
-import { notify, notifyAdmins } from "@/services/notification-service";
+import { notify, notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
   whaleSubmittedAwaitingAssignmentChatter,
-  whaleNeedsChatterAssignmentAdmin,
   whaleAssignedToYou,
 } from "@/lib/notification-copy";
 import { devLog } from "@/lib/dev-log";
@@ -100,11 +99,8 @@ export async function createWhaleAction(input: {
     }, 100);
 
     const chatterSubmitted = whaleSubmittedAwaitingAssignmentChatter(username);
-    const adminNeedsAssign = whaleNeedsChatterAssignmentAdmin(chatterName, username);
     try {
-      await notify({
-        user_id: chatterRecordId,
-        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.WHALE_REGISTERED, {
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: chatterSubmitted.title,
         body: chatterSubmitted.body,
@@ -112,23 +108,15 @@ export async function createWhaleAction(input: {
         entity_id: rec.id,
         actor_user_id: chatterRecordId,
         actor_name: chatterName,
+        personal_user_id: chatterRecordId,
+        context: {
+          whaleUsername: username,
+          whaleName: username,
+          chatterName,
+        },
       });
     } catch (e) {
-      console.error("[notify] createWhaleAction notify chatter failed", e);
-    }
-    try {
-      await notifyAdmins({
-        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
-        priority: NOTIFICATION_PRIORITY.HIGH,
-        title: adminNeedsAssign.title,
-        body: adminNeedsAssign.body,
-        entity_type: NOTIFICATION_ENTITY.WHALE,
-        entity_id: rec.id,
-        actor_user_id: chatterRecordId,
-        actor_name: chatterName,
-      });
-    } catch (e) {
-      console.error("[notify] createWhaleAction notifyAdmins failed", e);
+      console.error("[notify] createWhaleAction notifyByRoleConfig failed", e);
     }
 
     revalidatePath(ROUTES.chatter.myWhales);
@@ -190,11 +178,8 @@ export async function createWhaleWithModelAction(input: {
     });
 
     const chatterSubmitted = whaleSubmittedAwaitingAssignmentChatter(u);
-    const adminNeedsAssign = whaleNeedsChatterAssignmentAdmin(chatterName, u, modelNameTrim);
     try {
-      await notify({
-        user_id: chatterId,
-        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
+      await notifyByRoleConfig(NOTIFICATION_EVENT.WHALE_REGISTERED, {
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: chatterSubmitted.title,
         body: chatterSubmitted.body,
@@ -202,23 +187,16 @@ export async function createWhaleWithModelAction(input: {
         entity_id: whale.id,
         actor_user_id: chatterId,
         actor_name: chatterName,
+        personal_user_id: chatterId,
+        context: {
+          whaleUsername: u,
+          whaleName: u,
+          chatterName,
+          modelName: modelNameTrim,
+        },
       });
     } catch (e) {
-      console.error("[notify] createWhaleWithModelAction notify chatter failed", e);
-    }
-    try {
-      await notifyAdmins({
-        event_type: NOTIFICATION_EVENT.WHALE_REGISTERED,
-        priority: NOTIFICATION_PRIORITY.HIGH,
-        title: adminNeedsAssign.title,
-        body: adminNeedsAssign.body,
-        entity_type: NOTIFICATION_ENTITY.WHALE,
-        entity_id: whale.id,
-        actor_user_id: chatterId,
-        actor_name: chatterName,
-      });
-    } catch (e) {
-      console.error("[notify] createWhaleWithModelAction notifyAdmins failed", e);
+      console.error("[notify] createWhaleWithModelAction notifyByRoleConfig failed", e);
     }
 
     setTimeout(() => {

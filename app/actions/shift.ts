@@ -312,9 +312,13 @@ export async function addModelToShift(params: {
     devLog("[addModelToShift] attached model", { modelRecordId: params.modelRecordId, modelName: params.modelName });
     revalidatePath(ROUTES.chatter.shift);
     try {
-      await notify({
-        user_id: params.chatterRecordId,
-        event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
+      const { getActiveModelUserAirtableIdByLinkedModelRecordId } = await import("@/services/users");
+      const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(params.modelRecordId).catch(
+        () => null
+      );
+      const personalIds = [params.chatterRecordId, modelUserId].filter((id): id is string => !!id);
+      await notifyByRoleConfig(NOTIFICATION_EVENT.MODEL_TAKEN, {
+        personal_user_id: personalIds,
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: "🟢 Model Added to Shift",
         body: params.modelName.trim()
@@ -324,7 +328,7 @@ export async function addModelToShift(params: {
         entity_id: params.modelRecordId,
         actor_user_id: params.chatterRecordId,
         actor_name: params.chatterName,
-        _triggerSource: "addModelToShift",
+        context: { modelName: params.modelName, chatterName: params.chatterName },
       });
     } catch (e) {
       console.error("[notify] addModelToShift failed", e);
@@ -470,9 +474,18 @@ export async function bulkAddModelsToShift(params: {
             : "A model was added to your shift.": `${eligible.length} models were added to your shift.`;
 
       try {
-        await notify({
-          user_id: chatterRecordId,
-          event_type: NOTIFICATION_EVENT.MODEL_TAKEN,
+        const { getActiveModelUserAirtableIdByLinkedModelRecordId } = await import("@/services/users");
+        const modelUserIds = await Promise.all(
+          eligible.map((e) =>
+            getActiveModelUserAirtableIdByLinkedModelRecordId(e.modelRecordId).catch(() => null)
+          )
+        );
+        const personalIds = [
+          chatterRecordId,
+          ...modelUserIds.filter((id): id is string => !!id),
+        ];
+        await notifyByRoleConfig(NOTIFICATION_EVENT.MODEL_TAKEN, {
+          personal_user_id: personalIds,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: eligible.length === 1 ? "Model added to shift" : "Models added to shift",
           body,
@@ -480,7 +493,7 @@ export async function bulkAddModelsToShift(params: {
           entity_id: eligible[0]?.modelRecordId ?? shiftRecordId,
           actor_user_id: chatterRecordId,
           actor_name: chatterName,
-          _triggerSource: "bulkAddModelsToShift",
+          context: { chatterName },
         });
       } catch (e) {
         console.error("[notify] bulkAddModelsToShift failed", e);

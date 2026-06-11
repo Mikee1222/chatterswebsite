@@ -3,8 +3,9 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getRecord, listAllRecords } from "@/lib/airtable-server";
 import { updateAccount, updateShadowbanReport } from "@/services/marketing";
-import { notify } from "@/services/notification-service";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { shadowbanResolvedPersonal } from "@/lib/notification-copy";
 
 function esc(s: string): string {
   return String(s ?? "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -76,14 +77,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     const reportedById = String(f.reported_by_id ?? "").trim();
     if (reportedById) {
-      await notify({
-        user_id: reportedById,
-        event_type: NOTIFICATION_EVENT.SHADOWBAN_REPORT,
+      const copy = shadowbanResolvedPersonal(String(f.username ?? ""), String(f.platform ?? ""), true);
+      await notifyByRoleConfig(NOTIFICATION_EVENT.SHADOWBAN_RESOLVED, {
+        personal_user_id: reportedById,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Shadowban Report Approved",
-        body: `✅ Your shadowban report for @${f.username ?? ""} (${f.platform ?? ""}) was approved. The account was marked as shadowbanned.`,
+        title: copy.title,
+        body: copy.body,
         entity_type: "shadowban_report",
         entity_id: String((f as { report_id?: string }).report_id ?? id),
+        actor_user_id: session.airtableUserId ?? session.id,
+        actor_name: reviewer,
+        context: {
+          username: f.username,
+          platform: f.platform,
+          approved: true,
+        },
       }).catch(() => {});
     }
   } else {
@@ -92,6 +100,26 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       reviewed_by: reviewer,
       reviewed_at: now,
     });
+
+    const reportedById = String(f.reported_by_id ?? "").trim();
+    if (reportedById) {
+      const copy = shadowbanResolvedPersonal(String(f.username ?? ""), String(f.platform ?? ""), false);
+      await notifyByRoleConfig(NOTIFICATION_EVENT.SHADOWBAN_RESOLVED, {
+        personal_user_id: reportedById,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: copy.title,
+        body: copy.body,
+        entity_type: "shadowban_report",
+        entity_id: String((f as { report_id?: string }).report_id ?? id),
+        actor_user_id: session.airtableUserId ?? session.id,
+        actor_name: reviewer,
+        context: {
+          username: f.username,
+          platform: f.platform,
+          approved: false,
+        },
+      }).catch(() => {});
+    }
   }
 
   return NextResponse.json({ success: true });

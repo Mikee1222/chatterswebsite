@@ -95,12 +95,16 @@ async function notifyModelLiveByRoleConfig(params: {
       ? modelLiveStartedChatter(modelName, platform)
       : modelLiveEndedChatter(modelName, platform);
   const chatterIds = await resolveChatterIdsForModelLive(modelRecord);
+  const personalIds = [
+    ...chatterIds,
+    ...(modelActorUserId ? [modelActorUserId] : []),
+  ].filter((id, i, arr) => id && arr.indexOf(id) === i);
 
   await notifyByRoleConfig(eventType, {
-    personal_user_ids: chatterIds.length > 0 ? chatterIds : undefined,
+    personal_user_id: personalIds.length > 0 ? personalIds : undefined,
     priority: NOTIFICATION_PRIORITY.HIGH,
-    title: chatterIds.length > 0 ? chatterCopy.title : adminCopy.title,
-    body: chatterIds.length > 0 ? chatterCopy.body : adminCopy.body,
+    title: personalIds.length > 0 ? chatterCopy.title : adminCopy.title,
+    body: personalIds.length > 0 ? chatterCopy.body : adminCopy.body,
     entity_type: "model_live_stream",
     entity_id: liveStreamRecordId,
     actor_user_id: modelActorUserId,

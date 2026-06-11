@@ -210,6 +210,24 @@ export async function setAccountPassword(formData: FormData) {
   const hash = await hashPassword(password);
   try {
     await setPasswordHash(recordId, hash);
+    try {
+      const { notifyByRoleConfig } = await import("@/services/notification-service");
+      const { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } = await import("@/lib/notification-types");
+      const { formatNotificationTimeElGr, passwordChangedPersonal } = await import("@/lib/notification-copy");
+      const time = formatNotificationTimeElGr(new Date());
+      const copy = passwordChangedPersonal(time);
+      await notifyByRoleConfig(NOTIFICATION_EVENT.PASSWORD_CHANGED, {
+        personal_user_id: recordId,
+        priority: NOTIFICATION_PRIORITY.HIGH,
+        title: copy.title,
+        body: copy.body,
+        entity_type: "account",
+        entity_id: `password_changed:${recordId}:${Date.now()}`,
+        context: { time },
+      });
+    } catch (notifyErr) {
+      console.error("[setAccountPassword] password_changed notify failed", notifyErr);
+    }
     revalidateAccountsPaths();
     redirect(ACCOUNTS_LIST + "?success=password_reset");
   } catch (err) {

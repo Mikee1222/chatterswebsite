@@ -443,6 +443,300 @@ export function whaleSessionSubmittedAdmin(
   };
 }
 
+function formatFineBonusAmount(amount: number | string): string {
+  if (typeof amount === "number") return amount.toFixed(2);
+  const n = Number.parseFloat(String(amount));
+  return Number.isFinite(n) ? n.toFixed(2) : String(amount);
+}
+
+/** Fine issued — personal (chatter/VA). */
+export function fineIssuedPersonal(
+  amount: number | string,
+  adminName: string,
+  reason: string
+): { title: string; body: string } {
+  const amt = formatFineBonusAmount(amount);
+  return {
+    title: "Σου επιβλήθηκε πρόστιμο",
+    body: `Πρόστιμο ${amt}€ από ${adminName}. Λόγος: ${reason}`,
+  };
+}
+
+/** Fine issued — admin monitoring. */
+export function fineIssuedAdmin(
+  chatterName: string,
+  adminName: string,
+  amount: number | string,
+  reason: string
+): { title: string; body: string } {
+  const amt = formatFineBonusAmount(amount);
+  return {
+    title: `Πρόστιμο — ${chatterName}`,
+    body: `${adminName} επέβαλε πρόστιμο ${amt}€ στον ${chatterName}. Λόγος: ${reason}`,
+  };
+}
+
+/** Bonus awarded — personal (chatter/VA). */
+export function bonusAwardedPersonal(
+  amount: number | string,
+  adminName: string,
+  reason: string
+): { title: string; body: string } {
+  const amt = formatFineBonusAmount(amount);
+  return {
+    title: "Πήρες μπόνους!",
+    body: `Μπόνους ${amt}€ από ${adminName}. Λόγος: ${reason}`,
+  };
+}
+
+/** Bonus awarded — admin monitoring. */
+export function bonusAwardedAdmin(
+  chatterName: string,
+  adminName: string,
+  amount: number | string,
+  reason: string
+): { title: string; body: string } {
+  const amt = formatFineBonusAmount(amount);
+  return {
+    title: `Μπόνους — ${chatterName}`,
+    body: `${adminName} έδωσε μπόνους ${amt}€ στον ${chatterName}. Λόγος: ${reason}`,
+  };
+}
+
+/** Fine/bonus reviewed — personal (chatter/VA). */
+export function fineBonusReviewedPersonal(
+  decision: string,
+  adminName?: string
+): { title: string; body: string } {
+  const admin = adminName?.trim() || "admin";
+  const approved = decision === "Εγκρίθηκε";
+  return {
+    title: "Το πρόστιμο/μπόνους σου κρίθηκε",
+    body: approved ? `Εγκρίθηκε από ${admin}.` : `Απορρίφθηκε από ${admin}.`,
+  };
+}
+
+/** Fine/bonus reviewed — admin monitoring. */
+export function fineBonusReviewedAdmin(
+  chatterName: string,
+  adminName: string,
+  decision: string
+): { title: string; body: string } {
+  return {
+    title: `Πρόστιμο/μπόνους κρίθηκε — ${chatterName}`,
+    body: `${adminName} έκρινε πρόστιμο/μπόνους του ${chatterName}: ${decision}`,
+  };
+}
+
+/** Mistake review decision — personal (chatter or VA). */
+export function chatterMistakeReviewedSelf(
+  decision: string,
+  opts: {
+    isVaReport?: boolean;
+    chatterName?: string;
+    reasonLabel?: string;
+    points?: number;
+    adminNotes?: string;
+  } = {}
+): { title: string; body: string } {
+  const approved = decision === "Εγκρίθηκε";
+  if (approved) {
+    if (opts.isVaReport) {
+      return {
+        title: "✅ Λάθος εγκρίθηκε",
+        body: `✅ Η αναφορά σου για ${opts.chatterName ?? "chatter"} εγκρίθηκε.`,
+      };
+    }
+    return {
+      title: "⚠️ Καταχωρήθηκε λάθος",
+      body: `⚠️ Καταχωρήθηκε λάθος: ${opts.reasonLabel ?? "—"}. Πόντοι που αφαιρέθηκαν: ${opts.points ?? 0}.`,
+    };
+  }
+  return {
+    title: "❌ Αναφορά απορρίφθηκε",
+    body: `❌ Η αναφορά σου${opts.chatterName ? ` για ${opts.chatterName}` : ""} απορρίφθηκε: ${opts.adminNotes?.trim() || "—"}`,
+  };
+}
+
+/** Spin wheel result — self (chatter/VA). */
+export function spinResultSelf(
+  prizeName: string,
+  prizeDetails?: string
+): { title: string; body: string } {
+  const details = prizeDetails?.trim();
+  return {
+    title: `Κέρδισες ${prizeName}! 🎉`,
+    body: details
+      ? `Το spin wheel σου έδωσε: ${prizeName}. ${details}`
+      : `Το spin wheel σου έδωσε: ${prizeName}.`,
+  };
+}
+
+/** Spin wheel result — admin. */
+export function spinResultAdmin(
+  chatterName: string,
+  prizeName: string
+): { title: string; body: string } {
+  return {
+    title: `Spin wheel — ${chatterName}`,
+    body: `${chatterName} έκανε spin και κέρδισε: ${prizeName}`,
+  };
+}
+
+/** Period overdue — admin monitoring. */
+export function periodOverdueAdmin(modelName: string): { title: string; body: string } {
+  const name = modelName.trim() || "Model";
+  return {
+    title: `Περίοδος — ${name}`,
+    body: `${name} δεν έχει καταχωρήσει περίοδο`,
+  };
+}
+
+/** Billing cycle announced — admin monitoring. */
+export function billingCycleAnnouncedAdmin(
+  clientName: string,
+  amount: string
+): { title: string; body: string } {
+  const client = clientName.trim() || "Client";
+  return {
+    title: `Χρέωση — ${client}`,
+    body: `Νέος κύκλος χρέωσης — ${client}: ${amount}`,
+  };
+}
+
+/** Shadowban submitted — personal. */
+export function shadowbanSubmittedPersonal(
+  username: string,
+  platform: string
+): { title: string; body: string } {
+  return {
+    title: "Αναφορά shadowban υποβλήθηκε",
+    body: `Η αναφορά σου για @${username} (${platform}) καταχωρήθηκε.`,
+  };
+}
+
+/** Shadowban submitted — admin. */
+export function shadowbanSubmittedAdmin(
+  reporterName: string,
+  username: string,
+  platform: string,
+  modelName: string
+): { title: string; body: string } {
+  return {
+    title: `Shadowban — @${username}`,
+    body: `${reporterName} ανέφερε shadowban στο ${platform} για ${modelName || "model"} (@${username})`,
+  };
+}
+
+/** Shadowban resolved — personal. */
+export function shadowbanResolvedPersonal(
+  username: string,
+  platform: string,
+  approved: boolean
+): { title: string; body: string } {
+  return approved
+    ? {
+        title: "✅ Αναφορά shadowban εγκρίθηκε",
+        body: `Η αναφορά σου για @${username} (${platform}) εγκρίθηκε.`,
+      }
+    : {
+        title: "Αναφορά shadowban απορρίφθηκε",
+        body: `Η αναφορά σου για @${username} (${platform}) απορρίφθηκε.`,
+      };
+}
+
+/** Shadowban resolved — admin. */
+export function shadowbanResolvedAdmin(
+  reviewerName: string,
+  username: string,
+  approved: boolean
+): { title: string; body: string } {
+  return {
+    title: `Shadowban ${approved ? "εγκρίθηκε" : "απορρίφθηκε"} — @${username}`,
+    body: `${reviewerName} ${approved ? "επικύρωσε" : "απέρριψε"} αναφορά shadowban για @${username}.`,
+  };
+}
+
+/** SOP quiz passed — personal. */
+export function sopQuizPassedPersonal(sopTitle: string): { title: string; body: string } {
+  const title = sopTitle.trim() || "SOP";
+  return {
+    title: "✅ Quiz ολοκληρώθηκε",
+    body: `Πέρασες το quiz του ${title}`,
+  };
+}
+
+/** SOP quiz passed — admin. */
+export function sopQuizPassedAdmin(
+  userName: string,
+  sopTitle: string,
+  score: number
+): { title: string; body: string } {
+  const title = sopTitle.trim() || "SOP";
+  return {
+    title: `Quiz — ${userName}`,
+    body: `${userName} πέρασε το quiz του ${title} (${score}%)`,
+  };
+}
+
+/** SOP quiz failed — personal. */
+export function sopQuizFailedPersonal(sopTitle: string): { title: string; body: string } {
+  const title = sopTitle.trim() || "SOP";
+  return {
+    title: "❌ Quiz απέτυχε",
+    body: `Απέτυχες στο quiz του ${title}. Δοκίμασε ξανά.`,
+  };
+}
+
+/** Schedule published — personal. */
+export function schedulePublishedPersonal(): { title: string; body: string } {
+  return {
+    title: "📅 Πρόγραμμα δημοσιεύτηκε",
+    body: "Το εβδομαδιαίο πρόγραμμα δημοσιεύτηκε",
+  };
+}
+
+/** Schedule published — admin. */
+export function schedulePublishedAdmin(weekLabel: string): { title: string; body: string } {
+  return {
+    title: "Πρόγραμμα δημοσιεύτηκε",
+    body: `Το εβδομαδιαίο πρόγραμμα (${weekLabel}) δημοσιεύτηκε.`,
+  };
+}
+
+/** Login from new device — personal. */
+export function loginNewDevicePersonal(device: string, time: string): { title: string; body: string } {
+  return {
+    title: "🔐 Νέα σύνδεση",
+    body: `Νέα σύνδεση από ${device} στις ${time}`,
+  };
+}
+
+/** Password changed — personal. */
+export function passwordChangedPersonal(time: string): { title: string; body: string } {
+  return {
+    title: "🔑 Κωδικός άλλαξε",
+    body: `Ο κωδικός σου άλλαξε στις ${time}`,
+  };
+}
+
+export function formatNotificationTimeElGr(isoOrDate?: string | Date): string {
+  const d =
+    isoOrDate instanceof Date
+      ? isoOrDate
+      : isoOrDate
+        ? new Date(isoOrDate)
+        : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("el-GR", {
+    timeZone: "Europe/Athens",
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 /** Context passed to admin notification copy builders from notifyByRoleConfig. */
 export type AdminNotificationContext = Record<string, unknown> & {
   actor_name?: string;
@@ -465,6 +759,7 @@ export type AdminNotificationContext = Record<string, unknown> & {
   chatterName?: string;
   mistakeType?: string;
   adminName?: string;
+  reason?: string;
   status?: string;
   customTitle?: string;
   formName?: string;
@@ -473,6 +768,16 @@ export type AdminNotificationContext = Record<string, unknown> & {
   level?: number | string;
   assigneeName?: string;
   submittedAt?: string | Date;
+  decision?: string;
+  sopTitle?: string;
+  score?: number | string;
+  weekLabel?: string;
+  device?: string;
+  time?: string;
+  approved?: boolean;
+  username?: string;
+  reporterName?: string;
+  clientName?: string;
 };
 
 function ctxActor(ctx: AdminNotificationContext, fallback?: string): string {
@@ -506,10 +811,68 @@ export function buildAdminTitle(
       return `${ctx.modelName ?? actor} πήγε live`;
     case "custom_approved":
       return `Custom εγκρίθηκε — ${ctx.modelName ?? "model"}`;
+    case "whale_registered": {
+      const whale = String(ctx.whaleUsername ?? ctx.whaleName ?? "Whale");
+      if (ctx.modelName) {
+        return whaleRegisteredAdminFromChatterWithModel(actor, whale, String(ctx.modelName)).title;
+      }
+      if (actor !== "Someone") {
+        return whaleNeedsChatterAssignmentAdmin(actor, whale).title;
+      }
+      return whaleRegisteredAdmin(whale).title;
+    }
     case "whale_spent":
       return `${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} έκανε αγορά`;
     case "chatter_mistake":
       return `Λάθος καταχωρήθηκε — ${actor}`;
+    case "chatter_mistake_reviewed":
+      return `Λάθος ${ctx.decision ?? "—"} — ${actor}`;
+    case "fine_issued":
+      return fineIssuedAdmin(
+        String(ctx.chatterName ?? actor),
+        String(ctx.adminName ?? actor),
+        ctx.amount ?? "?",
+        String(ctx.reason ?? "—")
+      ).title;
+    case "bonus_awarded":
+      return bonusAwardedAdmin(
+        String(ctx.chatterName ?? actor),
+        String(ctx.adminName ?? actor),
+        ctx.amount ?? "?",
+        String(ctx.reason ?? "—")
+      ).title;
+    case "fine_bonus_reviewed":
+      return fineBonusReviewedAdmin(
+        String(ctx.chatterName ?? actor),
+        String(ctx.adminName ?? actor),
+        String(ctx.decision ?? "—")
+      ).title;
+    case "spin_result":
+      return spinResultAdmin(actor, String(ctx.prizeName ?? "prize")).title;
+    case "period_overdue":
+      return periodOverdueAdmin(String(ctx.modelName ?? actor)).title;
+    case "billing_cycle_announced":
+      return billingCycleAnnouncedAdmin(
+        String(ctx.clientName ?? actor),
+        String(ctx.amount ?? "—")
+      ).title;
+    case "shadowban_submitted":
+      return shadowbanSubmittedAdmin(
+        actor,
+        String(ctx.username ?? "—"),
+        String(ctx.platform ?? "—"),
+        String(ctx.modelName ?? "")
+      ).title;
+    case "shadowban_resolved":
+      return shadowbanResolvedAdmin(
+        actor,
+        String(ctx.username ?? "—"),
+        ctx.approved === true
+      ).title;
+    case "sop_quiz_passed":
+      return sopQuizPassedAdmin(actor, String(ctx.sopTitle ?? "SOP"), Number(ctx.score ?? 0)).title;
+    case "schedule_published":
+      return schedulePublishedAdmin(String(ctx.weekLabel ?? "εβδομάδα")).title;
     default:
       return fallbackTitle?.trim() || `${actor} — ${baseEventType.replace(/_/g, " ")}`;
   }
@@ -601,6 +964,30 @@ export function buildAdminBody(
     }
     case "chatter_mistake":
       return `${actor} έκανε λάθος: ${ctx.mistakeType ?? "—"}. Καταχωρήθηκε από ${ctx.adminName ?? "admin"}`;
+    case "chatter_mistake_reviewed":
+      return ctx.decision === "Εγκρίθηκε"
+        ? `${actor} επικύρωσε λάθος${ctx.chatterName ? ` για ${ctx.chatterName}` : ""}.`
+        : `${actor} απέρριψε αναφορά λάθους${ctx.chatterName ? ` για ${ctx.chatterName}` : ""}.`;
+    case "fine_issued":
+      return fineIssuedAdmin(
+        String(ctx.chatterName ?? actor),
+        String(ctx.adminName ?? actor),
+        ctx.amount ?? "?",
+        String(ctx.reason ?? "—")
+      ).body;
+    case "bonus_awarded":
+      return bonusAwardedAdmin(
+        String(ctx.chatterName ?? actor),
+        String(ctx.adminName ?? actor),
+        ctx.amount ?? "?",
+        String(ctx.reason ?? "—")
+      ).body;
+    case "fine_bonus_reviewed":
+      return fineBonusReviewedAdmin(
+        String(ctx.chatterName ?? actor),
+        String(ctx.adminName ?? actor),
+        String(ctx.decision ?? "—")
+      ).body;
     case "form_submitted": {
       const copy = formSubmittedAdmin(
         String(ctx.formName ?? "Form"),
@@ -609,6 +996,34 @@ export function buildAdminBody(
       );
       return copy.body;
     }
+    case "spin_result": {
+      const copy = spinResultAdmin(actor, String(ctx.prizeName ?? "prize"));
+      return copy.body;
+    }
+    case "period_overdue":
+      return periodOverdueAdmin(String(ctx.modelName ?? actor)).body;
+    case "billing_cycle_announced":
+      return billingCycleAnnouncedAdmin(
+        String(ctx.clientName ?? actor),
+        String(ctx.amount ?? "—")
+      ).body;
+    case "shadowban_submitted":
+      return shadowbanSubmittedAdmin(
+        actor,
+        String(ctx.username ?? "—"),
+        String(ctx.platform ?? "—"),
+        String(ctx.modelName ?? "")
+      ).body;
+    case "shadowban_resolved":
+      return shadowbanResolvedAdmin(
+        actor,
+        String(ctx.username ?? "—"),
+        ctx.approved === true
+      ).body;
+    case "sop_quiz_passed":
+      return sopQuizPassedAdmin(actor, String(ctx.sopTitle ?? "SOP"), Number(ctx.score ?? 0)).body;
+    case "schedule_published":
+      return schedulePublishedAdmin(String(ctx.weekLabel ?? "εβδομάδα")).body;
     default:
       return fallbackBody?.trim() || `${actor}. Models: ${modelList}.`;
   }

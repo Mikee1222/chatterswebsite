@@ -6,7 +6,9 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { createShadowbanReport } from "@/services/marketing";
-import { notifyAdmins } from "@/services/notification-service";
+import { notifyByRoleConfig } from "@/services/notification-service";
+import { shadowbanSubmittedPersonal } from "@/lib/notification-copy";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 export async function POST(req: Request) {
@@ -76,16 +78,27 @@ export async function POST(req: Request) {
     screenshot: screenshotAttachment,
   });
 
-  const who = reporterName;
-  const isBan = report_type === "banned";
-  await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+  const personalIds = [reporterId];
+  if (model_id) {
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(model_id).catch(() => null);
+    if (modelUserId && !personalIds.includes(modelUserId)) personalIds.push(modelUserId);
+  }
+  const selfCopy = shadowbanSubmittedPersonal(username, platform);
+  await notifyByRoleConfig(NOTIFICATION_EVENT.SHADOWBAN_SUBMITTED, {
+    personal_user_id: personalIds,
     priority: NOTIFICATION_PRIORITY.HIGH,
-    title: `${isBan ? "" : ""} ${isBan ? "Ban" : "Shadowban"} reported: @${username}`,
-    body: `${who} reported ${report_type} on ${platform} for ${model_name || "model"} (@${username})`,
-    entity_type: NOTIFICATION_ENTITY.ACCOUNT,
+    title: selfCopy.title,
+    body: selfCopy.body,
+    entity_type: "shadowban_report",
     entity_id: report.report_id,
-    _triggerSource: "va_marketing_report_shadowban",
+    actor_user_id: reporterId,
+    actor_name: reporterName,
+    context: {
+      username,
+      platform,
+      modelName: model_name,
+      reporterName,
+    },
   }).catch(() => {});
 
   return NextResponse.json({ success: true, report });

@@ -1,7 +1,7 @@
 "use server";
 
 import { getTodayYmd } from "@/lib/weekly-program";
-import { notify } from "@/services/notification-service";
+import { notify, notifyByRoleConfig } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -11,7 +11,6 @@ import { getUpcomingPeriod } from "@/services/model-periods";
 import type { ModelRecord } from "@/types";
 import { listDistinctVaUserIdsForModel } from "@/services/va-content-assignments";
 import { getAdminNotificationIds } from "@/services/admin-notification-settings";
-
 type NotifyArgs = {
   modelId: string;
   predictedDate: string;
@@ -94,14 +93,33 @@ export async function sendPeriodOverdueNotification({
   predictedDate,
   overdueDays,
 }: NotifyArgs & { overdueDays: number }): Promise<boolean> {
-  return notifyModelOnce({
-    modelId,
-    eventType: NOTIFICATION_EVENT.PERIOD_OVERDUE,
+  const userId = await getActiveModelUserAirtableIdByLinkedModelRecordId(modelId);
+  if (!userId) return false;
+  const entityId = `period:overdue:${predictedDate}:d${overdueDays}`;
+  const eventAirtable = EVENT_TYPE_TO_AIRTABLE[NOTIFICATION_EVENT.PERIOD_OVERDUE] ?? NOTIFICATION_EVENT.PERIOD_OVERDUE;
+  const exists = await findExistingNotification(
+    userId,
+    NOTIFICATION_ENTITY.PERIOD,
+    entityId,
+    eventAirtable
+  ).catch(() => false);
+  if (exists) return false;
+
+  const models = await listAllModelss().catch(() => []);
+  const modelRecord = models.find((m) => m.id === modelId);
+  const modelName = (modelRecord?.model_name ?? "Model").trim() || "Model";
+
+  await notifyByRoleConfig(NOTIFICATION_EVENT.PERIOD_OVERDUE, {
+    personal_user_id: userId,
+    priority: NOTIFICATION_PRIORITY.HIGH,
     title: "⚠️ Period Overdue",
     body: `⚠️ Your period appears overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`,
-    entityId: `period:overdue:${predictedDate}:d${overdueDays}`,
-    priority: NOTIFICATION_PRIORITY.HIGH,
-  });
+    entity_type: NOTIFICATION_ENTITY.PERIOD,
+    entity_id: entityId,
+    context: { modelName },
+  }).catch(() => {});
+
+  return true;
 }
 
 export async function sendPeriodPredictionResetNotification({

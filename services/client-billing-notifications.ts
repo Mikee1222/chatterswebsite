@@ -3,7 +3,7 @@ import { listAllRecords } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
 import { NOTIFICATION_EVENT } from "@/lib/notification-types";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
-import { notify } from "@/services/notification-service";
+import { notify, notifyByRoleConfig } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
 import { getBillingCycleRevenues } from "@/services/client-billing";
 import type { BillingCycleKind } from "@/types/client-portal";
@@ -93,15 +93,19 @@ export async function notifyClientBillingAnnounced(
   const amount = `${amountDue.toFixed(2)} ${cycleData.currency}`;
   const dueDateFormatted = formatDueDateElGr(cycleData.due_date);
 
-  await notify({
-    user_id: clientId,
-    event_type: NOTIFICATION_EVENT.BILLING_CYCLE_ANNOUNCED,
+  const clients = await import("@/services/users").then((m) => m.listAllUsers()).catch(() => []);
+  const clientUser = clients.find((u) => u.id === clientId);
+  const clientName =
+    clientUser?.full_name?.trim() || clientUser?.email?.trim() || "Client";
+
+  await notifyByRoleConfig(NOTIFICATION_EVENT.BILLING_CYCLE_ANNOUNCED, {
+    personal_user_id: clientId,
     priority: "high",
     title: `📋 Payment Due — ${kindLabel} ${period}`,
     body: `💳 Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,
     entity_type: "billing_cycle",
     entity_id: cycleId,
-    _triggerSource: "notifyClientBillingAnnounced",
+    context: { clientName, amount },
   });
 
   return true;

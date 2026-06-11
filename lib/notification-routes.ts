@@ -207,9 +207,19 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
       return "Model";
     case "form_submitted":
     case "schedule_updated":
+    case "schedule_published":
     case "weekly_availability_friday_reminder":
     case "availability_submitted":
       return "Form";
+    case "sop_quiz_passed":
+    case "sop_quiz_failed":
+      return "Training";
+    case "shadowban_submitted":
+    case "shadowban_resolved":
+      return "Marketing";
+    case "login_new_device":
+    case "password_changed":
+      return "System";
     case "billing_cycle_announced":
     case "billing_due_reminder":
     case "billing_payment_submitted":
@@ -220,6 +230,16 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "expense_approved":
     case "expense_rejected":
       return "Expense";
+    case "fine_issued":
+    case "fine_issued_admin":
+    case "bonus_awarded":
+    case "bonus_awarded_admin":
+    case "fine_bonus_reviewed":
+    case "fine_bonus_reviewed_admin":
+      return "Fine/Bonus";
+    case "chatter_mistake":
+    case "chatter_mistake_reviewed":
+      return "Mistake";
     case "user_created":
     case "role_changed":
     case "account_deleted":

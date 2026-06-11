@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { chatterMistakeReviewedSelf } from "@/lib/notification-copy";
 import { notifyByRoleConfig } from "@/services/notification-service";
 import { awardPoints } from "@/services/points-engine";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -16,11 +17,40 @@ const patchSchema = z.object({
   admin_notes: z.string().max(8000).optional().default(""),
 });
 
+async function notifyMistakeReviewed(
+  personalUserId: string,
+  opts: {
+    adminId: string;
+    adminName: string;
+    mistakeId: string;
+    approved: boolean;
+    copyOpts: Parameters<typeof chatterMistakeReviewedSelf>[1];
+    priority: (typeof NOTIFICATION_PRIORITY)[keyof typeof NOTIFICATION_PRIORITY];
+    context: Record<string, unknown>;
+  }
+) {
+  const decision = opts.approved ? "Εγκρίθηκε" : "Απορρίφθηκε";
+  const copy = chatterMistakeReviewedSelf(decision, opts.copyOpts);
+  await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE_REVIEWED, {
+    recipient_mode: "personal_only",
+    personal_user_id: personalUserId,
+    priority: opts.priority,
+    title: copy.title,
+    body: copy.body,
+    entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
+    entity_id: opts.mistakeId,
+    actor_user_id: opts.adminId,
+    actor_name: opts.adminName,
+    context: { decision, ...opts.context },
+  }).catch(() => {});
+}
+
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!(await hasPermission(session, "mistakes:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const adminId = (session!.airtableUserId ?? session!.id)?.trim();
   if (!adminId) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const adminName = (session!.fullName ?? "Admin").trim() || "Admin";
 
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
@@ -44,9 +74,10 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const reviewedAt = new Date().toISOString();
   const adminNotes = parsed.data.admin_notes ?? "";
+  const approved = parsed.data.action === "approve";
 
   try {
-    if (parsed.data.action === "reject") {
+    if (!approved) {
       await updateMistakeRow(id, {
         status: "rejected",
         admin_notes: adminNotes,
@@ -55,15 +86,22 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
 
       if (mistake.va_id) {
-        await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
-          recipient_mode: "personal_only",
-          personal_user_id: mistake.va_id,
+        await notifyMistakeReviewed(mistake.va_id, {
+          adminId,
+          adminName,
+          mistakeId: id,
+          approved: false,
           priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: "❌ Mistake Rejected",
-          body: `❌ Your report for ${mistake.chatter_name} was rejected: ${adminNotes || "—"}`,
-          entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
-          entity_id: id,
-        }).catch(() => {});
+          copyOpts: {
+            isVaReport: true,
+            chatterName: mistake.chatter_name,
+            adminNotes,
+          },
+          context: {
+            chatterName: mistake.chatter_name,
+            adminNotes,
+          },
+        });
       }
 
       const updated = await getMistakeById(id);
@@ -94,27 +132,40 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     if (mistake.chatter_id) {
-      await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
-        recipient_mode: "personal_only",
-        personal_user_id: mistake.chatter_id,
+      await notifyMistakeReviewed(mistake.chatter_id, {
+        adminId,
+        adminName,
+        mistakeId: id,
+        approved: true,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⚠️ Mistake approved",
-        body: `⚠️ A ${category} mistake was recorded: ${reasonLabel}. Points deducted: ${points}.`,
-        entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
-        entity_id: id,
-      }).catch(() => {});
+        copyOpts: {
+          reasonLabel,
+          points,
+        },
+        context: {
+          chatterName: mistake.chatter_name,
+          reasonLabel,
+          points,
+          category,
+        },
+      });
     }
 
     if (mistake.va_id) {
-      await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE, {
-        recipient_mode: "personal_only",
-        personal_user_id: mistake.va_id,
+      await notifyMistakeReviewed(mistake.va_id, {
+        adminId,
+        adminName,
+        mistakeId: id,
+        approved: true,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Mistake Approved",
-        body: `✅ Your mistake report for ${mistake.chatter_name} was approved.`,
-        entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
-        entity_id: id,
-      }).catch(() => {});
+        copyOpts: {
+          isVaReport: true,
+          chatterName: mistake.chatter_name,
+        },
+        context: {
+          chatterName: mistake.chatter_name,
+        },
+      });
     }
 
     const updated = await getMistakeById(id);

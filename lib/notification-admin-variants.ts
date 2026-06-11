@@ -63,6 +63,7 @@ export const NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT = [
   "points_awarded",
   "level_up",
   "challenge_completed",
+  "spin_result",
   "sop_academy_training_complete",
   "sop_academy_signed_off",
   "payment_submitted",
@@ -70,7 +71,17 @@ export const NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT = [
   "expense_approved",
   "expense_rejected",
   "chatter_mistake",
+  "chatter_mistake_reviewed",
+  "fine_issued",
+  "bonus_awarded",
+  "fine_bonus_reviewed",
   "shadowban_report",
+  "shadowban_submitted",
+  "shadowban_resolved",
+  "period_overdue",
+  "billing_cycle_announced",
+  "sop_quiz_passed",
+  "schedule_published",
 ] as const satisfies readonly NotificationEventType[];
 
 export type NotificationEventWithAdminVariant =

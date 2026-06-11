@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { notify } from "@/services/notification-service";
+import { fineBonusReviewedPersonal } from "@/lib/notification-copy";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import {
   isChatterExtraRevenueSubmission,
   reviewExtraRevenueSubmission,
@@ -54,36 +55,25 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       return NextResponse.json({ error: "Not an extra revenue submission" }, { status: 400 });
     }
 
-    if (parsed.data.action === "approve") {
-      await notify({
-        user_id: record.user_id,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Extra Revenue Approved",
-        body: `✅ Your €${record.amount.toFixed(2)} extra revenue for ${record.model_name || "a model"} was approved.`,
-        entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
-        entity_id: record.id,
-        actor_user_id: adminId,
-        actor_name: adminName,
-        _triggerSource: "admin_extra_revenue_approve",
-      }).catch(() => {});
-    } else {
-      await notify({
-        user_id: record.user_id,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "❌ Extra Revenue Rejected",
-        body: `❌ ${
-          parsed.data.reject_reason?.trim() ||
-          `Your extra revenue submission for ${record.model_name || "a model"} was rejected.`
-        }`,
-        entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
-        entity_id: record.id,
-        actor_user_id: adminId,
-        actor_name: adminName,
-        _triggerSource: "admin_extra_revenue_reject",
-      }).catch(() => {});
-    }
+    const approved = parsed.data.action === "approve";
+    const decision = approved ? "Εγκρίθηκε" : "Απορρίφθηκε";
+    const copy = fineBonusReviewedPersonal(decision, adminName);
+
+    await notifyByRoleConfig(NOTIFICATION_EVENT.FINE_BONUS_REVIEWED, {
+      personal_user_id: record.user_id,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: copy.title,
+      body: copy.body,
+      entity_type: NOTIFICATION_ENTITY.FINE_BONUS,
+      entity_id: record.id,
+      actor_user_id: adminId,
+      actor_name: adminName,
+      context: {
+        decision,
+        adminName,
+        chatterName: record.user_name,
+      },
+    }).catch(() => {});
 
     return NextResponse.json({ success: true, entry: record });
   } catch (e) {

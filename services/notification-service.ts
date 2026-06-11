@@ -131,6 +131,7 @@ const BASE_EVENT_TO_CATEGORY = {
   level_up: "system",
   spin_available: "system",
   challenge_completed: "system",
+  spin_result: "system",
   billing_cycle_announced: "billing",
   billing_due_reminder: "billing",
   billing_payment_submitted: "billing",
@@ -143,7 +144,18 @@ const BASE_EVENT_TO_CATEGORY = {
   expense_approved: "billing",
   expense_rejected: "billing",
   chatter_mistake: "system",
+  chatter_mistake_reviewed: "system",
+  fine_issued: "system",
+  bonus_awarded: "system",
+  fine_bonus_reviewed: "system",
   shadowban_report: "system",
+  shadowban_submitted: "system",
+  shadowban_resolved: "system",
+  sop_quiz_passed: "system",
+  sop_quiz_failed: "system",
+  schedule_published: "system",
+  login_new_device: "system",
+  password_changed: "system",
 };
 
 const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
@@ -228,6 +240,7 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   level_up: "reward_alerts",
   spin_available: "reward_alerts",
   challenge_completed: "reward_alerts",
+  spin_result: "reward_alerts",
   custom_request_created: "custom_request_alerts",
   custom_request_updated: "custom_request_alerts",
   custom_request_submitted: "custom_request_alerts",
@@ -247,7 +260,18 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   weekly_availability_friday_reminder: "schedule_alerts",
   availability_submitted: "schedule_alerts",
   chatter_mistake: "mistake_alerts",
+  chatter_mistake_reviewed: "mistake_alerts",
+  fine_issued: "fine_bonus_alerts",
+  bonus_awarded: "fine_bonus_alerts",
+  fine_bonus_reviewed: "fine_bonus_alerts",
   shadowban_report: "marketing_alerts",
+  shadowban_submitted: "marketing_alerts",
+  shadowban_resolved: "marketing_alerts",
+  sop_quiz_passed: "training_alerts",
+  sop_quiz_failed: "training_alerts",
+  schedule_published: "schedule_alerts",
+  login_new_device: "system_alerts",
+  password_changed: "system_alerts",
 };
 
 for (const base of NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT) {
@@ -910,8 +934,9 @@ export async function notify(options: NotifyOptions) {
 }
 
 export type NotifyByRoleConfigOptions = {
-  personal_user_id?: string;
-  /** Batch personal recipients (e.g. multiple chatters on model live). */
+  /** Single user or batch (e.g. multiple chatters on model live). */
+  personal_user_id?: string | string[];
+  /** @deprecated Prefer `personal_user_id` as string[]. */
   personal_user_ids?: string[];
   /** Default `all`: broadcast-scope roles get all users; personal-scope roles get assigned users. */
   recipient_mode?: "all" | "monitoring_only" | "personal_only";
@@ -937,9 +962,15 @@ async function fireNotifyByRoleConfig(
   options: NotifyByRoleConfigOptions
 ): Promise<number> {
   const mode = options.recipient_mode ?? "all";
+  const personalIdRaw = options.personal_user_id;
+  const personalFromSingle = Array.isArray(personalIdRaw)
+    ? personalIdRaw
+    : personalIdRaw
+      ? [personalIdRaw]
+      : [];
   const personalIds = [
     ...new Set(
-      [options.personal_user_id, ...(options.personal_user_ids ?? [])]
+      [...personalFromSingle, ...(options.personal_user_ids ?? [])]
         .map((id) => id?.trim())
         .filter((id): id is string => !!id)
     ),
