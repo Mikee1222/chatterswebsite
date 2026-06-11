@@ -20,8 +20,12 @@ export type RealtimeEvent =
   | { type: "shift_started"; chatter_id: string; shift_id: string }
   | { type: "shift_ended"; chatter_id: string; shift_id: string }
   | { type: "model_status_changed"; model_id: string; status: string }
+  | { type: "model_live_started"; model_id: string; live_id: string; platform: string }
+  | { type: "model_live_ended"; model_id: string; live_id: string }
   | { type: "whale_registered"; whale_id: string; username?: string }
   | { type: "custom_request_created"; [key: string]: unknown };
+
+type RealtimeEventListener = (event: RealtimeEvent) => void;
 
 type RealtimeContextValue = {
   connectionStatus: ConnectionStatus;
@@ -31,6 +35,7 @@ type RealtimeContextValue = {
   setNotifications: Dispatch<SetStateAction<AppNotification[]>>;
   addNotification: (n: AppNotification) => void;
   refreshUnreadCount: () => Promise<void>;
+  subscribe: (listener: RealtimeEventListener) => () => void;
 };
 
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
@@ -65,6 +70,7 @@ export function RealtimeProvider({
 }) {
   const onRealtimeEventRef = useRef(onRealtimeEvent);
   onRealtimeEventRef.current = onRealtimeEvent;
+  const subscribersRef = useRef(new Set<RealtimeEventListener>());
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>("idle");
   const [unreadCount, setUnreadCountState] = useState(initialUnreadCount);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
@@ -89,6 +95,18 @@ export function RealtimeProvider({
   const lastRefreshRef = useRef(0);
   const inFlightRef = useRef(false);
   const REFRESH_MIN_MS = 5000;
+
+  const dispatchRealtimeEvent = useCallback((event: RealtimeEvent) => {
+    onRealtimeEventRef.current?.(event);
+    subscribersRef.current.forEach((listener) => listener(event));
+  }, []);
+
+  const subscribe = useCallback((listener: RealtimeEventListener) => {
+    subscribersRef.current.add(listener);
+    return () => {
+      subscribersRef.current.delete(listener);
+    };
+  }, []);
 
   const refreshUnreadCount = useCallback(async () => {
     const now = Date.now();
@@ -155,10 +173,12 @@ export function RealtimeProvider({
           data.type === "shift_started" ||
           data.type === "shift_ended" ||
           data.type === "model_status_changed" ||
+          data.type === "model_live_started" ||
+          data.type === "model_live_ended" ||
           data.type === "whale_registered" ||
           data.type === "custom_request_created"
         ) {
-          onRealtimeEventRef.current?.(data as RealtimeEvent);
+          dispatchRealtimeEvent(data as RealtimeEvent);
         }
       } catch {
         // ignore parse errors
@@ -183,7 +203,7 @@ export function RealtimeProvider({
     ws.onerror = () => {
       setConnectionStatus("error");
     };
-  }, [addNotification]);
+  }, [addNotification, dispatchRealtimeEvent]);
 
   // When WebSocket is not configured, poll unread count at a stable interval (no storm on failure)
   const POLL_INTERVAL_MS = 30000;
@@ -215,6 +235,7 @@ export function RealtimeProvider({
     setNotifications,
     addNotification,
     refreshUnreadCount,
+    subscribe,
   };
 
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;

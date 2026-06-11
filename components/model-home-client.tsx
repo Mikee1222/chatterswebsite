@@ -13,6 +13,7 @@ import {
 } from "@/lib/airtable-options";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "@/lib/use-translations";
+import { useRealtime } from "@/contexts/realtime-context";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 16 },
@@ -50,18 +51,33 @@ function formatLiveDuration(totalSec: number): string {
 export function ModelHomeClient({
   displayName,
   userEmail,
-  activeLive,
+  activeLive: activeLiveProp,
   pendingCustomRequestsCount,
   pendingVaAssignmentsCount,
 }: ModelHomeClientProps) {
   const { t } = useTranslations();
   const reduceMotion = useReducedMotion();
   const router = useRouter();
+  const realtime = useRealtime();
+  const [activeLive, setActiveLive] = React.useState<ModelHomeActiveLive | null>(activeLiveProp);
   const [platform, setPlatform] = React.useState<ModelGoLivePlatformOption>("instagram");
   const [isStarting, setIsStarting] = React.useState(false);
   const [isEnding, setIsEnding] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = React.useState(0);
+
+  React.useEffect(() => {
+    setActiveLive(activeLiveProp);
+  }, [activeLiveProp]);
+
+  React.useEffect(() => {
+    if (!realtime?.subscribe) return;
+    return realtime.subscribe((event) => {
+      if (event.type === "model_live_started" || event.type === "model_live_ended") {
+        router.refresh();
+      }
+    });
+  }, [realtime, router]);
 
   const startedMs = React.useMemo(() => {
     if (!activeLive?.started_at) return null;
@@ -92,9 +108,9 @@ export function ModelHomeClient({
         body: JSON.stringify({ platform }),
       });
       const raw = await res.text();
-      let data: { error?: string } = {};
+      let data: { error?: string; live_id?: string; platform?: string; started_at?: string } = {};
       try {
-        data = raw ? (JSON.parse(raw) as { error?: string }) : {};
+        data = raw ? (JSON.parse(raw) as typeof data) : {};
       } catch {
         setActionError(t("common.invalidResponse"));
         return;
@@ -108,6 +124,13 @@ export function ModelHomeClient({
           setActionError(data.error ?? "Could not start live stream. Please try again.");
         }
         return;
+      }
+      if (data.live_id) {
+        setActiveLive({
+          id: data.live_id,
+          platform: data.platform ?? platform,
+          started_at: data.started_at ?? new Date().toISOString(),
+        });
       }
       router.refresh();
     } finally {
@@ -136,6 +159,7 @@ export function ModelHomeClient({
         setActionError(data.error ?? t("home.couldNotEndLive"));
         return;
       }
+      setActiveLive(null);
       router.refresh();
     } finally {
       setIsEnding(false);

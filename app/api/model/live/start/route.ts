@@ -1,6 +1,9 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
+import { broadcastRealtimeToAll } from "@/lib/realtime-broadcast";
+import { ROUTES } from "@/lib/routes";
 import { getTodayYmd } from "@/lib/weekly-program";
 import { isModelLiveStreamPlatform, type ModelLiveStreamPlatformOption } from "@/lib/airtable-options";
 import { createModelLiveStream, getActiveLiveStreamForModel } from "@/services/model-live-streams";
@@ -62,6 +65,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Failed to start live stream" }, { status: 500 });
   }
 
+  revalidatePath(ROUTES.model.home);
+  revalidatePath(ROUTES.admin.liveShifts);
+
+  await broadcastRealtimeToAll({
+    type: "model_live_started",
+    model_id: ctx.linkedModelId,
+    live_id: row.id,
+    platform,
+  }).catch(() => {});
+
   // Notify after returning success (fire and forget)
   getModelById(ctx.linkedModelId)
     .then((modelRecord) => {
@@ -76,5 +89,6 @@ export async function POST(req: Request) {
     live_id: row.id,
     stream_id: row.id,
     platform: parsed.data.platform,
+    started_at: row.actual_start ?? new Date().toISOString(),
   });
 }

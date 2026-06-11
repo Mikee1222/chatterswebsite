@@ -4,6 +4,7 @@ import { getModelContext } from "@/lib/model-context-server";
 import { MobileDashboardLayout } from "@/components/mobile-dashboard-layout";
 import { ModelPeriodHomeStatusCard } from "@/components/model-period-home-status-card";
 import { ModelHomeClient } from "@/components/model-home-client";
+import { RouterRefreshInterval } from "@/components/router-refresh-interval";
 import { ModelContentRequestsSection } from "@/components/model-content-requests-section";
 import { ModelExpenseRequestsSection } from "@/components/model-expense-requests-section";
 import { countApprovedCustomRequestsWaitingSchedule } from "@/services/custom-requests";
@@ -99,6 +100,7 @@ export default async function ModelHomePage() {
 
   return (
     <MobileDashboardLayout>
+      <RouterRefreshInterval intervalMs={60_000}>
       <div className="space-y-10 pb-6 md:space-y-12 md:pb-8">
         <ModelHomeClient
           displayName={displayName}
@@ -119,6 +121,7 @@ export default async function ModelHomePage() {
         <ModelContentRequestsSection initialRequests={contentRequests} />
         <ModelExpenseRequestsSection />
       </div>
+      </RouterRefreshInterval>
     </MobileDashboardLayout>
   );
 }

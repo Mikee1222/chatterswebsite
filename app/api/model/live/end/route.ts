@@ -1,6 +1,9 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
+import { broadcastRealtimeToAll } from "@/lib/realtime-broadcast";
+import { ROUTES } from "@/lib/routes";
 import {
   getActiveLiveStreamForModel,
   getModelLiveStreamById,
@@ -56,6 +59,15 @@ export async function POST(req: Request) {
       status: "ended",
       actual_end: nowIso,
     });
+    revalidatePath(ROUTES.model.home);
+    revalidatePath(ROUTES.admin.liveShifts);
+
+    await broadcastRealtimeToAll({
+      type: "model_live_ended",
+      model_id: ctx.linkedModelId,
+      live_id: liveId,
+    }).catch(() => {});
+
     const modelRecord = await getModelById(ctx.linkedModelId);
     if (modelRecord) {
       await notifyModelLiveEnded(modelRecord, liveId);
