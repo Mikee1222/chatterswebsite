@@ -416,7 +416,14 @@ export function Sidebar({
 
     const labelContent = (
       <>
-        <Icon className={iconClass} aria-hidden />
+        <span className="relative shrink-0">
+          <Icon className={iconClass} aria-hidden />
+          {collapsed && badgeCount > 0 ? (
+            <span className="absolute -right-1.5 -top-1 inline-flex min-h-[0.875rem] min-w-[0.875rem] items-center justify-center rounded-full border border-amber-500/45 bg-amber-500/90 px-0.5 text-[9px] font-bold leading-none tabular-nums text-amber-950">
+              {badgeCount > 9 ? "9+" : badgeCount}
+            </span>
+          ) : null}
+        </span>
         {!collapsed ? (
           <span className="min-w-0 flex-1 truncate leading-snug">
             {item.label}
@@ -519,7 +526,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "glass-panel fixed left-0 top-0 z-40 hidden h-screen border-r border-white/[0.08] bg-black/50 shadow-[4px_0_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-[width] duration-200 md:block relative",
+        "glass-panel fixed left-0 top-0 z-40 hidden h-screen border-r border-white/[0.08] bg-black/50 shadow-[4px_0_40px_-12px_rgba(0,0,0,0.65)] backdrop-blur-xl transition-[width] duration-200 md:block",
         collapsed ? "w-14" : "w-64"
       )}
     >
