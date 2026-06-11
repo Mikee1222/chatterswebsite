@@ -2,8 +2,8 @@
  * Role-based notification routing matrix.
  *
  * Recipient selection depends on event type, role, operational relevance,
- * and current assignment. Rules align with notification scope (personal /
- * monitoring) defined in lib/notification-role-defaults.ts.
+ * and current assignment. Rules align with per-role notification scope (personal /
+ * broadcast / none) defined in lib/notification-role-defaults.ts.
  */
 
 import type { NotificationEventType } from "@/types";

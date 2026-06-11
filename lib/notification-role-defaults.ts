@@ -48,26 +48,28 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<
   schedule_alerts: { en: "Schedule & availability", el: "Ειδοποιήσεις για πρόγραμμα και διαθεσιμότητα." },
 };
 
-export type NotificationScope = "personal" | "monitoring";
+export const NOTIFICATION_SCOPE_ROLES = [
+  "admin",
+  "manager",
+  "chatter",
+  "virtual_assistant",
+  "model",
+  "client",
+] as const satisfies readonly UserRole[];
+
+export type NotificationScopeRole = (typeof NOTIFICATION_SCOPE_ROLES)[number];
+export type NotificationRoleScope = "broadcast" | "personal" | "none";
 
 export type NotificationEventEntry = {
   key: string;
   label: string;
   note?: string;
-  scope: NotificationScope;
+  scope: Record<NotificationScopeRole, NotificationRoleScope>;
 };
 
 /** @deprecated Legacy string entries — all events use NotificationEventEntry objects now. */
 export type NotificationCategoryEventEntry = NotificationEventEntry;
 
-function eventEntry(
-  key: string,
-  label: string,
-  scope: NotificationScope,
-  note?: string
-): NotificationEventEntry {
-  return note ? { key, label, scope, note } : { key, label, scope };
-}
 
 /** Parse event key from entries. */
 export function parseEventKeyFromEntry(entry: NotificationCategoryEventEntry): string {
@@ -84,9 +86,14 @@ export function parseEventNoteFromEntry(entry: NotificationCategoryEventEntry): 
   return entry.note?.trim() ?? "";
 }
 
-/** Scope: personal (assigned user) or monitoring (admins). */
-export function parseEventScopeFromEntry(entry: NotificationCategoryEventEntry): NotificationScope {
-  return entry.scope;
+/** Scope for a specific role on an event entry. */
+export function getScopeForRole(
+  entry: NotificationCategoryEventEntry,
+  roleId: string
+): NotificationRoleScope {
+  const slug = normalizeRoleSlug(roleId);
+  if (!slug) return "none";
+  return entry.scope[slug];
 }
 
 /** Parse description (alias for label on object entries). */
@@ -95,12 +102,109 @@ export function parseEventDescriptionFromEntry(entry: NotificationCategoryEventE
 }
 
 export const NOTIFICATION_SCOPE_LABELS: Record<
-  NotificationScope,
+  NotificationRoleScope,
   { badge: string; className: string }
 > = {
   personal: { badge: "Personal", className: "bg-blue-500/20 text-blue-200 border-blue-400/30" },
-  monitoring: { badge: "Monitor", className: "bg-amber-500/20 text-amber-200 border-amber-400/30" },
+  broadcast: { badge: "Broadcast", className: "bg-amber-500/20 text-amber-200 border-amber-400/30" },
+  none: { badge: "—", className: "bg-white/5 text-white/30 border-white/10" },
 };
+
+function normalizeRoleSlug(roleId: string): NotificationScopeRole | null {
+  const slug = roleId.trim().toLowerCase();
+  return (NOTIFICATION_SCOPE_ROLES as readonly string[]).includes(slug)
+    ? (slug as NotificationScopeRole)
+    : null;
+}
+
+/** Roles that receive personal (assigned-party) notifications for each event. */
+export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = {
+  shift_late: ["chatter", "virtual_assistant"],
+  shift_starting_soon: ["chatter", "virtual_assistant"],
+  break_exceeded: ["chatter"],
+  break_too_long: ["chatter"],
+  va_task_reminder: ["virtual_assistant"],
+  va_content_assigned: ["model"],
+  va_content_scheduled: ["virtual_assistant"],
+  va_content_completed: ["virtual_assistant"],
+  model_content_scheduled: ["model", "virtual_assistant"],
+  model_content_completed: ["model", "virtual_assistant"],
+  task_completed: ["virtual_assistant"],
+  task_overdue: ["virtual_assistant"],
+  custom_request_uploaded: ["chatter", "model", "virtual_assistant"],
+  custom_request_created: ["chatter", "model", "virtual_assistant"],
+  custom_request_submitted: ["chatter", "model", "virtual_assistant"],
+  custom_request_updated: ["chatter", "model", "virtual_assistant"],
+  custom_status_changed: ["chatter", "model", "virtual_assistant"],
+  custom_approved: ["chatter", "model", "virtual_assistant"],
+  custom_rejected: ["chatter", "model", "virtual_assistant"],
+  custom_declined: ["chatter", "model", "virtual_assistant"],
+  custom_edited: ["chatter", "model", "virtual_assistant"],
+  custom_uploaded: ["chatter", "model", "virtual_assistant"],
+  custom_scheduled: ["chatter", "model", "virtual_assistant"],
+  custom_deadline_approaching: ["chatter", "model", "virtual_assistant"],
+  custom_overdue: ["chatter", "model", "virtual_assistant"],
+  phase_completed: ["virtual_assistant"],
+  phase_overdue: ["virtual_assistant"],
+  all_phases_completed: ["virtual_assistant"],
+  model_live_scheduled: ["model"],
+  period_3_day_reminder: ["model"],
+  period_predicted_day: ["model"],
+  period_confirmed_early: ["model"],
+  period_overdue: ["model"],
+  period_prediction_reset: ["model"],
+  whale_assigned: ["chatter"],
+  whale_followup: ["chatter"],
+  chatter_mistake: ["chatter"],
+  fine_bonus: ["chatter"],
+  points_awarded: ["chatter"],
+  level_up: ["chatter"],
+  spin_available: ["chatter"],
+  challenge_completed: ["chatter"],
+  shadowban_report: ["chatter", "virtual_assistant", "model"],
+  billing_cycle_announced: ["client"],
+  billing_due_reminder: ["client"],
+  payment_confirmed: ["client"],
+  payment_rejected: ["client"],
+  expense_approved: ["model"],
+  expense_rejected: ["model"],
+  sop_academy_reminder: ["chatter", "virtual_assistant"],
+  sop_academy_training_complete: ["chatter", "virtual_assistant"],
+  sop_academy_signed_off: ["chatter", "virtual_assistant"],
+  schedule_updated: ["chatter", "virtual_assistant"],
+  weekly_availability_friday_reminder: ["chatter", "virtual_assistant"],
+  role_changed: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
+  account_update: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
+};
+
+/** Build per-role scope from legacy personal/monitoring + target roles. */
+function buildEventScope(
+  legacyScope: "personal" | "monitoring",
+  eventKey: string
+): NotificationEventEntry["scope"] {
+  const targets = EVENT_TARGET_ROLES[eventKey];
+  const scope = {} as NotificationEventEntry["scope"];
+  for (const role of NOTIFICATION_SCOPE_ROLES) {
+    if (targets?.includes(role)) {
+      scope[role] = "personal";
+    } else if (legacyScope === "monitoring" && (role === "admin" || role === "manager")) {
+      scope[role] = "broadcast";
+    } else {
+      scope[role] = "none";
+    }
+  }
+  return scope;
+}
+
+function eventEntry(
+  key: string,
+  label: string,
+  legacyScope: "personal" | "monitoring",
+  note?: string
+): NotificationEventEntry {
+  const scope = buildEventScope(legacyScope, key);
+  return note ? { key, label, scope, note } : { key, label, scope };
+}
 
 export function isNotificationRoleCategoryKey(key: string): key is NotificationRoleCategoryKey {
   return (NOTIFICATION_ROLE_DEFAULT_KEYS as readonly string[]).includes(key);
@@ -247,84 +351,17 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   ],
 };
 
-/** Roles that receive personal events by default (non-admin assigned party). */
-export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = {
-  shift_late: ["chatter", "virtual_assistant"],
-  shift_starting_soon: ["chatter", "virtual_assistant"],
-  break_exceeded: ["chatter"],
-  break_too_long: ["chatter"],
-  va_task_reminder: ["virtual_assistant"],
-  va_content_assigned: ["model"],
-  va_content_scheduled: ["virtual_assistant"],
-  va_content_completed: ["virtual_assistant"],
-  model_content_scheduled: ["model", "virtual_assistant"],
-  model_content_completed: ["model", "virtual_assistant"],
-  task_completed: ["virtual_assistant"],
-  task_overdue: ["virtual_assistant"],
-  custom_request_uploaded: ["chatter", "model", "virtual_assistant"],
-  custom_request_created: ["chatter", "model", "virtual_assistant"],
-  custom_request_submitted: ["chatter", "model", "virtual_assistant"],
-  custom_request_updated: ["chatter", "model", "virtual_assistant"],
-  custom_status_changed: ["chatter", "model", "virtual_assistant"],
-  custom_approved: ["chatter", "model", "virtual_assistant"],
-  custom_rejected: ["chatter", "model", "virtual_assistant"],
-  custom_declined: ["chatter", "model", "virtual_assistant"],
-  custom_edited: ["chatter", "model", "virtual_assistant"],
-  custom_uploaded: ["chatter", "model", "virtual_assistant"],
-  custom_scheduled: ["chatter", "model", "virtual_assistant"],
-  custom_deadline_approaching: ["chatter", "model", "virtual_assistant"],
-  custom_overdue: ["chatter", "model", "virtual_assistant"],
-  phase_completed: ["virtual_assistant"],
-  phase_overdue: ["virtual_assistant"],
-  all_phases_completed: ["virtual_assistant"],
-  model_live_scheduled: ["model"],
-  period_3_day_reminder: ["model"],
-  period_predicted_day: ["model"],
-  period_confirmed_early: ["model"],
-  period_overdue: ["model"],
-  period_prediction_reset: ["model"],
-  whale_assigned: ["chatter"],
-  whale_followup: ["chatter"],
-  chatter_mistake: ["chatter"],
-  fine_bonus: ["chatter"],
-  points_awarded: ["chatter"],
-  level_up: ["chatter"],
-  spin_available: ["chatter"],
-  challenge_completed: ["chatter"],
-  shadowban_report: ["chatter", "virtual_assistant", "model"],
-  billing_cycle_announced: ["client"],
-  billing_due_reminder: ["client"],
-  payment_confirmed: ["client"],
-  payment_rejected: ["client"],
-  expense_approved: ["model"],
-  expense_rejected: ["model"],
-  sop_academy_reminder: ["chatter", "virtual_assistant"],
-  sop_academy_training_complete: ["chatter", "virtual_assistant"],
-  sop_academy_signed_off: ["chatter", "virtual_assistant"],
-  schedule_updated: ["chatter", "virtual_assistant"],
-  weekly_availability_friday_reminder: ["chatter", "virtual_assistant"],
-  role_changed: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
-  account_update: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
-};
-
-function isAdminRole(role: UserRole): boolean {
-  return role === "admin" || role === "manager";
+/** Derive per-event default from role-specific scope. */
+export function deriveEventDefaultForRole(scope: NotificationRoleScope): boolean {
+  return scope !== "none";
 }
 
-/** Derive per-event default from scope and target role. */
-export function deriveEventDefaultForRole(
-  scope: NotificationScope,
-  role: UserRole,
-  eventKey: string
-): boolean {
-  const targets = EVENT_TARGET_ROLES[eventKey];
-  const isTarget = targets?.includes(role) ?? false;
-  switch (scope) {
-    case "monitoring":
-      return isAdminRole(role) || isTarget;
-    case "personal":
-      return isTarget;
+export function getNotificationEventEntry(eventKey: string): NotificationEventEntry | undefined {
+  for (const catKey of NOTIFICATION_ROLE_DEFAULT_KEYS) {
+    const found = NOTIFICATION_CATEGORY_EVENTS[catKey].find((e) => e.key === eventKey);
+    if (found) return found;
   }
+  return undefined;
 }
 
 function buildScopedRoleDefaults(role: UserRole): NotificationRoleDefaults {
@@ -335,8 +372,8 @@ function buildScopedRoleDefaults(role: UserRole): NotificationRoleDefaults {
     let catOn = false;
     for (const entry of NOTIFICATION_CATEGORY_EVENTS[catKey]) {
       const eventKey = parseEventKeyFromEntry(entry);
-      const scope = parseEventScopeFromEntry(entry);
-      const eventOn = deriveEventDefaultForRole(scope, role, eventKey);
+      const scope = getScopeForRole(entry, role);
+      const eventOn = deriveEventDefaultForRole(scope);
       (result as Record<string, boolean>)[eventKey] = eventOn;
       if (eventOn) catOn = true;
     }

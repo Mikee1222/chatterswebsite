@@ -7,7 +7,7 @@
  *    → Admin sets per-role event toggles in /admin/roles; determines recipients at send time
  *
  * 2. ROLE DEFAULTS (lib/notification-role-defaults.ts)
- *    → Admin sets defaults per role in /admin/roles (personal vs monitoring scope)
+ *    → Admin sets defaults per role in /admin/roles (personal / broadcast / none per role)
  *    → Applied when user is created or resets preferences
  *
  * 3. USER PREFERENCES (notification_preferences Airtable table)
@@ -28,6 +28,8 @@ import { CATEGORY_TO_AIRTABLE, EVENT_TYPE_TO_AIRTABLE } from "@/lib/notification
 import {
   EVENT_TO_ROLE_CATEGORY,
   getEventDefaultValue,
+  getNotificationEventEntry,
+  getScopeForRole,
 } from "@/lib/notification-role-defaults";
 import {
   getCachedRoles,
@@ -267,10 +269,6 @@ async function getRecipientPushContext(userId: string): Promise<{
   } catch {
     return { role: undefined, roleDefaults: null };
   }
-}
-
-function isMonitoringRoleSlug(roleSlug: string): boolean {
-  return roleSlug === "admin" || roleSlug === "manager";
 }
 
 function isActiveLoginUser(user: {
@@ -886,7 +884,7 @@ export type NotifyByRoleConfigOptions = {
   personal_user_id?: string;
   /** Batch personal recipients (e.g. multiple chatters on model live). */
   personal_user_ids?: string[];
-  /** Default `all`: monitoring roles broadcast + personal user when role matches. */
+  /** Default `all`: broadcast-scope roles get all users; personal-scope roles get assigned users. */
   recipient_mode?: "all" | "monitoring_only" | "personal_only";
   /** Optional per-recipient gate (e.g. cron dedup). */
   should_notify_user?: (userId: string) => Promise<boolean>;
@@ -920,13 +918,17 @@ export async function notifyByRoleConfig(
   const activeUsers = users.filter(isActiveLoginUser);
   const usersById = new Map(activeUsers.map((u) => [u.id, u]));
   const recipientIds = new Set<string>();
+  const eventEntry = getNotificationEventEntry(eventType);
 
   for (const role of roles) {
     if (!isRoleEventEnabled(role, eventType)) continue;
     const roleSlug = role.role_id.trim().toLowerCase();
     if (!roleSlug) continue;
 
-    if (isMonitoringRoleSlug(roleSlug)) {
+    const roleScope = eventEntry ? getScopeForRole(eventEntry, roleSlug) : "none";
+    if (roleScope === "none") continue;
+
+    if (roleScope === "broadcast") {
       if (mode === "personal_only") continue;
       for (const user of activeUsers) {
         if ((user.role ?? "").trim().toLowerCase() === roleSlug) {

@@ -30,11 +30,11 @@ import {
   parseEventDescriptionFromEntry,
   parseEventKeyFromEntry,
   parseEventNoteFromEntry,
-  parseEventScopeFromEntry,
+  getScopeForRole,
   getEventDefaultValue,
   type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
-  type NotificationScope,
+  type NotificationRoleScope,
 } from "@/lib/notification-role-defaults";
 import { cn } from "@/lib/utils";
 import type { RoleRecord } from "@/types";
@@ -168,17 +168,14 @@ function RoleColorDot({ color }: { color: string }) {
   return <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", cfg.dot)} />;
 }
 
-function isOversightRole(roleId: string): boolean {
-  const slug = roleId.toLowerCase();
-  return slug === "admin" || slug === "manager";
-}
-
-function getScopeTooltip(scope: NotificationScope, roleLabel: string): string {
+function getScopeTooltip(scope: NotificationRoleScope, roleLabel: string): string {
   switch (scope) {
     case "personal":
       return `Sent only to the specific ${roleLabel} this event is about`;
-    case "monitoring":
+    case "broadcast":
       return `Sent to all ${roleLabel}s when this happens to anyone`;
+    case "none":
+      return `This event does not apply to the ${roleLabel} role`;
   }
 }
 
@@ -214,7 +211,7 @@ function ScopeBadge({
   scope,
   roleLabel,
 }: {
-  scope: NotificationScope;
+  scope: NotificationRoleScope;
   roleLabel: string;
 }) {
   const scopeStyle = NOTIFICATION_SCOPE_LABELS[scope];
@@ -258,6 +255,7 @@ export function AdminRolesClient({
     Record<string, boolean>
   >({});
   const [allNotificationCategoriesExpanded, setAllNotificationCategoriesExpanded] = React.useState(false);
+  const [showAllNotificationEvents, setShowAllNotificationEvents] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<"permissions" | "notifications">("permissions");
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
@@ -751,23 +749,32 @@ export function AdminRolesClient({
                         Notification defaults
                       </h3>
                       <p className="mt-1 text-sm text-white/45">
-                        Control exactly who receives each notification. Personal events (blue) are sent to the specific user involved. Monitoring events (amber) are sent to all users of that role. Turn ON a role to include them as recipients.
+                        Control exactly who receives each notification. Personal events (blue) go to the specific user involved. Broadcast events (amber) go to all users with this role. Events that do not apply to this role are hidden unless you show all.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => toggleAllNotificationCategories(!allNotificationCategoriesExpanded)}
-                      className="rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/60 transition hover:bg-white/[0.08] hover:text-white/85"
-                    >
-                      {allNotificationCategoriesExpanded ? "Collapse all" : "Expand all"}
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAllNotificationEvents((prev) => !prev)}
+                        className="rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/60 transition hover:bg-white/[0.08] hover:text-white/85"
+                      >
+                        {showAllNotificationEvents ? "Hide non-applicable" : "Show all events"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleAllNotificationCategories(!allNotificationCategoriesExpanded)}
+                        className="rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/60 transition hover:bg-white/[0.08] hover:text-white/85"
+                      >
+                        {allNotificationCategoriesExpanded ? "Collapse all" : "Expand all"}
+                      </button>
+                    </div>
                   </div>
                   <div className="mb-5 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wider text-white/45">
                       Notification scope
                     </p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      {(Object.keys(NOTIFICATION_SCOPE_LABELS) as NotificationScope[]).map((scopeKey) => (
+                      {(["personal", "broadcast", "none"] as NotificationRoleScope[]).map((scopeKey) => (
                         <ScopeBadge key={scopeKey} scope={scopeKey} roleLabel={draft.label} />
                       ))}
                     </div>
@@ -777,8 +784,12 @@ export function AdminRolesClient({
                         {getScopeTooltip("personal", draft.label)}
                       </li>
                       <li>
-                        <span className="font-medium text-white/55">Monitor</span> —{" "}
-                        {getScopeTooltip("monitoring", draft.label)}
+                        <span className="font-medium text-white/55">Broadcast</span> —{" "}
+                        {getScopeTooltip("broadcast", draft.label)}
+                      </li>
+                      <li>
+                        <span className="font-medium text-white/55">—</span> —{" "}
+                        {getScopeTooltip("none", draft.label)}
                       </li>
                     </ul>
                   </div>
@@ -796,18 +807,22 @@ export function AdminRolesClient({
                             const categoryExpanded =
                               expandedNotificationCategories[cat.key] ?? allNotificationCategoriesExpanded;
                             const roleLabel = draft.label;
-                            const oversightRole = isOversightRole(draft.role_id);
+                            const roleId = draft.role_id;
                             const scopesInCategory = new Set(
-                              categoryEvents.map((entry) => parseEventScopeFromEntry(entry))
+                              categoryEvents.map((entry) => getScopeForRole(entry, roleId))
                             );
-                            const monitoringEventOn = categoryEvents.some((entry) => {
-                              if (parseEventScopeFromEntry(entry) !== "monitoring") return false;
+                            const broadcastEventOn = categoryEvents.some((entry) => {
+                              if (getScopeForRole(entry, roleId) !== "broadcast") return false;
                               return getEventDefaultValue(
                                 draft.notification_defaults,
                                 cat.key,
                                 parseEventKeyFromEntry(entry)
                               );
                             });
+                            const applicableEvents = categoryEvents.filter(
+                              (entry) => getScopeForRole(entry, roleId) !== "none"
+                            );
+                            const hiddenEventCount = categoryEvents.length - applicableEvents.length;
                             const roleCategoryDescription = getRoleCategoryDescription(cat.key, roleLabel);
                             return (
                               <li key={cat.key} className="rounded-lg px-2 py-2.5">
@@ -834,17 +849,17 @@ export function AdminRolesClient({
                                     onChange={(next) => toggleNotificationCategory(cat.key, next)}
                                   />
                                 </div>
-                                {categoryExpanded && (scopesInCategory.has("personal") || scopesInCategory.has("monitoring")) ? (
+                                {categoryExpanded && (scopesInCategory.has("personal") || scopesInCategory.has("broadcast")) ? (
                                   <div className="mt-2 space-y-1 border-l border-white/10 pl-4">
                                     {scopesInCategory.has("personal") ? (
                                       <p className="text-[11px] leading-snug text-blue-200/70">
                                         Personal — only the specific {roleLabel} involved receives these events.
                                       </p>
                                     ) : null}
-                                    {scopesInCategory.has("monitoring") ? (
+                                    {scopesInCategory.has("broadcast") ? (
                                       <p className="text-[11px] leading-snug text-amber-200/70">
-                                        Monitoring — all {roleLabel}s receive these when they happen to anyone.
-                                        {!oversightRole && monitoringEventOn ? (
+                                        Broadcast — all {roleLabel}s receive these when they happen to anyone.
+                                        {broadcastEventOn ? (
                                           <span className="mt-0.5 block font-medium text-amber-300">
                                             ⚠️ This will notify ALL {roleLabel}s, not just the one involved
                                           </span>
@@ -852,6 +867,11 @@ export function AdminRolesClient({
                                       </p>
                                     ) : null}
                                   </div>
+                                ) : null}
+                                {categoryExpanded && hiddenEventCount > 0 && !showAllNotificationEvents ? (
+                                  <p className="mt-2 border-l border-white/10 pl-4 text-[11px] text-white/30">
+                                    {hiddenEventCount} event{hiddenEventCount === 1 ? "" : "s"} hidden (not applicable to {roleLabel}).
+                                  </p>
                                 ) : null}
                                 {categoryExpanded ? (
                                   <ul
@@ -864,27 +884,32 @@ export function AdminRolesClient({
                                       const eventKey = parseEventKeyFromEntry(entry);
                                       const eventDescription = parseEventDescriptionFromEntry(entry);
                                       const eventNote = parseEventNoteFromEntry(entry);
-                                      const eventScope = parseEventScopeFromEntry(entry);
+                                      const eventScope = getScopeForRole(entry, roleId);
+                                      if (eventScope === "none" && !showAllNotificationEvents) return null;
                                       const eventChecked = getEventDefaultValue(
                                         draft.notification_defaults,
                                         cat.key,
                                         eventKey
                                       );
                                       const eventSwitchId = `notif-event-${draft.id}-${eventKey}`;
-                                      const showMonitoringWarning =
-                                        eventScope === "monitoring" &&
-                                        eventChecked &&
-                                        !oversightRole;
+                                      const showBroadcastWarning =
+                                        eventScope === "broadcast" && eventChecked;
+                                      const isNonApplicable = eventScope === "none";
                                       return (
                                         <li
                                           key={eventKey}
-                                          className="flex items-center justify-between gap-3 py-1.5"
+                                          className={cn(
+                                            "flex items-center justify-between gap-3 py-1.5",
+                                            isNonApplicable && "opacity-50"
+                                          )}
                                         >
                                           <label
                                             htmlFor={eventSwitchId}
                                             className={cn(
                                               "min-w-0 flex-1",
-                                              categoryOn ? "cursor-pointer" : "cursor-not-allowed"
+                                              categoryOn && !isNonApplicable
+                                                ? "cursor-pointer"
+                                                : "cursor-not-allowed"
                                             )}
                                           >
                                             <p className="flex flex-wrap items-center gap-2 text-[13px] leading-snug text-white/50">
@@ -896,7 +921,7 @@ export function AdminRolesClient({
                                                 <span className="text-white/45">— {eventDescription}</span>
                                               ) : null}
                                             </p>
-                                            {showMonitoringWarning ? (
+                                            {showBroadcastWarning ? (
                                               <p className="mt-0.5 text-[11px] font-medium leading-snug text-amber-300">
                                                 ⚠️ Sends to all {roleLabel}s
                                               </p>
@@ -910,7 +935,7 @@ export function AdminRolesClient({
                                           <PermissionSwitch
                                             id={eventSwitchId}
                                             checked={eventChecked}
-                                            disabled={!categoryOn}
+                                            disabled={!categoryOn || isNonApplicable}
                                             size="small"
                                             onChange={(next) =>
                                               toggleNotificationEvent(cat.key, eventKey, next)
