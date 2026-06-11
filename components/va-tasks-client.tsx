@@ -3,8 +3,20 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Check, Clock, ExternalLink, ListChecks, StickyNote, X, Smartphone, Camera, ImageIcon, ClipboardList } from "lucide-react";
-import { formatDateTimeAthens } from "@/lib/format";
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  ExternalLink,
+  ImageIcon,
+  ListChecks,
+  Camera,
+  Smartphone,
+  StickyNote,
+  X,
+} from "lucide-react";
+import { formatDateEuropean } from "@/lib/format";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
@@ -19,15 +31,7 @@ import { groupRecurringTasks } from "@/lib/recurring-utils";
 
 type Props = { tasks: VaTaskRecord[] };
 
-function toLocalYmd(isoLike: string | null): string {
-  if (!isoLike?.trim()) return "";
-  const d = new Date(isoLike.trim());
-  if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
+type ActiveShift = { id: string; start_time: string; status: string };
 
 function isPastDue(isoLike: string | null | undefined): boolean {
   if (!isoLike?.trim()) return false;
@@ -36,34 +40,60 @@ function isPastDue(isoLike: string | null | undefined): boolean {
   return t < Date.now();
 }
 
+function formatShiftElapsed(startTime: string): string {
+  const ms = Math.max(0, Date.now() - new Date(startTime).getTime());
+  const totalMinutes = Math.floor(ms / 60000);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}h ${m}m`;
+}
+
 function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
   const k = (priority || "normal").toLowerCase();
   const variant =
     k === "urgent"
-      ? "border border-red-500/30 bg-red-500/20 text-red-300"
+      ? "border-red-500/30 bg-red-500/20 text-red-300"
       : k === "high"
-        ? "border border-amber-500/30 bg-amber-500/20 text-amber-300"
-        : "border border-white/15 bg-white/10 text-white/65";
+        ? "border-amber-500/30 bg-amber-500/20 text-amber-300"
+        : "border-white/15 bg-white/10 text-white/65";
   return (
-    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
+    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
       {priority}
     </span>
   );
 }
 
-function StatusBadge({ status }: { status: VaTaskStatus }) {
+function TaskStatusBadge({ status }: { status: VaTaskStatus }) {
   const k = (status || "").toLowerCase();
   const variant =
     k === "pending"
-      ? "border border-amber-500/30 bg-amber-500/20 text-amber-300"
+      ? "border-white/20 bg-white/10 text-white/60"
       : k === "done"
-        ? "border border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
+        ? "border-emerald-500/30 bg-emerald-500/20 text-emerald-300"
         : k === "skipped"
-          ? "border border-red-500/30 bg-red-500/20 text-red-300"
-          : "border border-sky-500/30 bg-sky-500/15 text-sky-200";
+          ? "border-red-500/30 bg-red-500/20 text-red-300"
+          : "border-sky-500/30 bg-sky-500/15 text-sky-200";
   return (
-    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
-      {status.replace(/_/g, "")}
+    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
+
+function PhaseStatusBadge({ status }: { status: TaskPhase["status"] }) {
+  const variant =
+    status === "completed"
+      ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+      : status === "overdue"
+        ? "border-red-500/30 bg-red-500/15 text-red-300"
+        : status === "in_progress"
+          ? "border-blue-500/30 bg-blue-500/15 text-blue-300"
+          : "border-white/15 bg-white/10 text-white/50";
+  return (
+    <span className={cn("inline-flex rounded-full border px-2 py-0.5 text-[10px] font-medium capitalize", variant)}>
+      {status.replace(/_/g, " ")}
     </span>
   );
 }
@@ -83,17 +113,6 @@ const SOCIAL_COLORS: Record<string, string> = {
   Snapchat: "#FFFC00",
   Telegram: "#229ED9",
   GetMyLinks: "#9333EA",
-};
-
-const SOCIAL_ICONS: Record<string, string> = {
-  Instagram: "",
-  Facebook: "",
-  TikTok: "",
-  Twitter: "",
-  YouTube: "▶",
-  Snapchat: "",
-  Telegram: "",
-  GetMyLinks: "",
 };
 
 export function VaTasksClient({ tasks: initialTasks }: Props) {
@@ -142,6 +161,70 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     };
   }, [shadowbanPreviewUrl]);
 
+  const [activeShift, setActiveShift] = React.useState<ActiveShift | null>(null);
+  const [shiftLoading, setShiftLoading] = React.useState(true);
+  const [shiftBusy, setShiftBusy] = React.useState(false);
+  const [shiftDuration, setShiftDuration] = React.useState("0m");
+
+  const fetchActiveShift = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/va/task-shift/active", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { shift?: ActiveShift | null };
+      if (res.ok) setActiveShift(data.shift ?? null);
+    } finally {
+      setShiftLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void fetchActiveShift();
+  }, [fetchActiveShift]);
+
+  React.useEffect(() => {
+    if (!activeShift?.start_time) {
+      setShiftDuration("0m");
+      return;
+    }
+    const tick = () => setShiftDuration(formatShiftElapsed(activeShift.start_time));
+    tick();
+    const id = window.setInterval(tick, 1000);
+    return () => window.clearInterval(id);
+  }, [activeShift?.start_time]);
+
+  async function handleStartShift() {
+    setShiftBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/va/task-shift/start", { method: "POST", credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setErr(data.error?.trim() || "Could not start shift");
+        return;
+      }
+      await fetchActiveShift();
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  async function handleEndShift() {
+    setShiftBusy(true);
+    setErr(null);
+    try {
+      const res = await fetch("/api/va/task-shift/end", { method: "POST", credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setErr(data.error?.trim() || "Could not end shift");
+        return;
+      }
+      setActiveShift(null);
+    } finally {
+      setShiftBusy(false);
+    }
+  }
+
+  const onShift = !!activeShift;
+
   React.useEffect(() => {
     function onPaste(e: ClipboardEvent) {
       const found = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
@@ -155,14 +238,25 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     return () => document.removeEventListener("paste", onPaste);
   }, [completingItem, shadowbanReportTarget]);
 
+  const taskStats = React.useMemo(() => {
+    let pending = 0;
+    let inProgress = 0;
+    let done = 0;
+    let overdue = 0;
+    for (const t of tasks) {
+      if (t.status === "pending") pending++;
+      else if (t.status === "in_progress") inProgress++;
+      else if (t.status === "done") done++;
+      if (isPastDue(t.due_date) && t.status !== "done" && t.status !== "skipped") overdue++;
+    }
+    return { pending, inProgress, done, overdue };
+  }, [tasks]);
+
   const filteredTasks = React.useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = [...tasks];
     if (q) {
-      list = list.filter((t) => {
-        const blob = `${t.title} ${t.description}`.toLowerCase();
-        return blob.includes(q);
-      });
+      list = list.filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(q));
     }
     if (filterStatus) list = list.filter((t) => t.status === filterStatus);
     if (filterPriority) list = list.filter((t) => t.priority === filterPriority);
@@ -325,406 +419,372 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
     }
   }
 
+  function phaseCardClass(status: TaskPhase["status"]) {
+    if (status === "completed") return "border-emerald-500/20 bg-emerald-500/[0.04]";
+    if (status === "overdue") return "border-red-500/20 bg-red-500/[0.04]";
+    if (status === "in_progress") return "border-blue-500/20 bg-blue-500/[0.04]";
+    return "border-white/10 bg-white/[0.02]";
+  }
+
   function renderVaTaskCard(task: VaTaskRecord) {
+    const expanded = expandedTaskId === task.id;
+    const overdue = isPastDue(task.due_date) && task.status !== "done" && task.status !== "skipped";
+    const modelNames = task.assigned_model_names ?? [];
+
     return (
-                <div
-                  className={cn(
-                    "relative rounded-2xl border p-5 transition-all",
-                    task.status === "done"
-                      ? "border-emerald-500/15 opacity-60"
-                      : task.priority === "urgent"
-                        ? "border-red-500/25 bg-red-500/[0.02]"
-                        : task.priority === "high"
-                          ? "border-amber-500/20"
-                          : "border-white/8 hover:border-white/15",
-                  )}
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 cursor-pointer rounded-xl text-left outline-none ring-purple-500/40 focus-visible:ring-2"
-                      onClick={async () => {
-                        if (expandedTaskId === task.id) {
-                          setExpandedTaskId(null);
-                          return;
-                        }
-                        setExpandedTaskId(task.id);
-                        await loadPhasesAndAccounts(task);
-                      }}
-                    >
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <StatusBadge status={task.status} />
-                        <PriorityBadge priority={task.priority} />
-                        {task.is_recurring ? (
-                          <span className="inline-flex items-center rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-400">
-                            {""}
-                            {task.recurrence_interval != null && task.recurrence_interval > 1
-                              ? `Every ${task.recurrence_interval} ${
-                                  task.recurrence_type === "daily"
-                                    ? "days"
-                                    : task.recurrence_type === "weekly"
-                                      ? "weeks"
-                                      : task.recurrence_type === "monthly"
-                                        ? "months"
-                                        : "times"
-                                }`
-                              : task.recurrence_type || "recurring"}
+      <div
+        key={task.id}
+        className={cn(
+          "overflow-hidden rounded-2xl border transition-all",
+          task.status === "done"
+            ? "border-emerald-500/15 opacity-70"
+            : overdue
+              ? "border-red-500/25"
+              : task.priority === "urgent"
+                ? "border-red-500/20"
+                : "border-white/10 hover:border-white/20",
+        )}
+      >
+        <button
+          type="button"
+          className="flex w-full items-start gap-3 p-4 text-left"
+          onClick={async () => {
+            if (expanded) {
+              setExpandedTaskId(null);
+              return;
+            }
+            setExpandedTaskId(task.id);
+            await loadPhasesAndAccounts(task);
+          }}
+        >
+          <span className="mt-1 text-white/30">
+            {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <PriorityBadge priority={task.priority} />
+              <TaskStatusBadge status={task.status} />
+              {task.is_recurring ? (
+                <span className="rounded-full border border-purple-500/25 bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-300">
+                  Recurring
+                </span>
+              ) : null}
+            </div>
+            <h3
+              className={cn(
+                "text-base font-semibold text-white",
+                task.status === "done" && "text-white/40 line-through",
+              )}
+            >
+              {task.title}
+            </h3>
+            <p className="mt-1 text-xs text-white/35">
+              {task.due_date ? (
+                <span className={overdue ? "text-red-400" : ""}>
+                  Due {formatDateEuropean(task.due_date)}
+                  {overdue ? " · Overdue" : ""}
+                </span>
+              ) : (
+                "No due date"
+              )}
+            </p>
+          </div>
+          {task.status !== "done" && task.status !== "skipped" ? (
+            <button
+              type="button"
+              onClick={(e) => void handleMarkComplete(task, e)}
+              disabled={completing === task.id}
+              className="shrink-0 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
+            >
+              {completing === task.id ? "Saving…" : "Done"}
+            </button>
+          ) : null}
+        </button>
+
+        {expanded ? (
+          <div className="border-t border-white/8 px-4 pb-4 pt-3">
+            {task.description ? <p className="mb-3 text-sm text-white/50">{task.description}</p> : null}
+
+            {modelNames.length > 0 ? (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {modelNames.map((name) => (
+                  <span
+                    key={name}
+                    className="rounded-full border border-rose-500/25 bg-rose-500/10 px-2.5 py-0.5 text-xs text-rose-300"
+                  >
+                    {name}
+                  </span>
+                ))}
+              </div>
+            ) : null}
+
+            <button
+              type="button"
+              onClick={() => openTask(task)}
+              className="mb-4 text-xs font-medium text-purple-300 hover:text-purple-200"
+            >
+              Details &amp; notes
+            </button>
+
+            {(taskPhases[task.id] ?? []).length === 0 ? (
+              <p className="rounded-xl border border-white/8 bg-white/[0.02] py-8 text-center text-sm text-white/25">
+                No phases for this task
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
+                  const accs = phase.assigned_model_id ? (modelAccounts[phase.assigned_model_id] ?? []) : [];
+                  const items = phase.items ?? [];
+                  const doneCount = items.filter((i) => i.status === "completed").length;
+                  const total = items.length;
+                  const progress = total > 0 ? (doneCount / total) * 100 : 0;
+
+                  return (
+                    <div key={phase.id} className={cn("rounded-xl border p-4", phaseCardClass(phase.status))}>
+                      <div className="mb-3 flex items-start gap-3">
+                        <div
+                          className={cn(
+                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sm font-bold",
+                            phase.status === "completed"
+                              ? "bg-emerald-500 text-white"
+                              : phase.status === "overdue"
+                                ? "bg-red-500 text-white"
+                                : phase.status === "in_progress"
+                                  ? "bg-blue-500 text-white"
+                                  : "bg-white/10 text-white/50",
+                          )}
+                        >
+                          {phaseIndex + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-medium text-white">{phase.title || `Phase ${phaseIndex + 1}`}</p>
+                            <PhaseStatusBadge status={phase.status} />
+                          </div>
+                          {phase.region ? (
+                            <p className="mt-0.5 text-xs text-white/30">
+                              {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : ""} {phase.region}
+                            </p>
+                          ) : null}
+                        </div>
+                        {total > 0 ? (
+                          <span className="shrink-0 text-xs font-semibold tabular-nums text-white/50">
+                            {doneCount}/{total}
                           </span>
                         ) : null}
-                        <span className="text-xs text-white/25">
-                          {expandedTaskId === task.id ? "▼" : "▶"} Phases
-                        </span>
                       </div>
-                      <h3
-                        className={cn(
-                          "font-semibold",
-                          task.status === "done" ? "text-white/40 line-through" : "text-white",
-                        )}
-                      >
-                        {task.title}
-                      </h3>
-                      {task.description ? <p className="mt-1 text-sm text-white/40">{task.description}</p> : null}
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-white/30">
-                        {task.due_date ? (
-                          <span className={isPastDue(task.due_date) && task.status !== "done" ? "text-red-400" : ""}>
-                            {formatDateTimeAthens(task.due_date)}
-                            {isPastDue(task.due_date) && task.status !== "done" ? "· Overdue" : ""}
-                          </span>
-                        ) : (
-                          <span>No due date</span>
-                        )}
-                      </div>
-                    </button>
-                    <div className="flex shrink-0 flex-col items-end gap-2">
-                      {task.status !== "done" && task.status !== "skipped" ? (
-                        <button
-                          type="button"
-                          onClick={(e) => void handleMarkComplete(task, e)}
-                          disabled={completing === task.id}
-                          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/15 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-500/25 disabled:opacity-40"
-                        >
-                          <Check className="h-4 w-4" aria-hidden />
-                          {completing === task.id ? "Saving…" : "Done"}
-                        </button>
-                      ) : (
-                        <div className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-400">
-                          <Check className="h-3.5 w-3.5" aria-hidden />
-                          Completed
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openTask(task);
-                        }}
-                        className="text-xs font-medium text-purple-300/90 underline-offset-2 hover:text-purple-200 hover:underline"
-                      >
-                        Details &amp; notes
-                      </button>
-                    </div>
-                  </div>
 
-                  {expandedTaskId === task.id ? (
-                    <div className="mt-5 border-t border-white/10 pt-5">
-                      {(taskPhases[task.id] ?? []).length === 0 ? (
-                        <p className="rounded-2xl border border-white/8 bg-white/[0.02] py-10 text-center text-sm text-white/25">
-                          No phases for this task
-                        </p>
+                      {total > 0 ? (
+                        <div className="mb-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                          <div
+                            className={cn(
+                              "h-full rounded-full transition-all",
+                              phase.status === "completed"
+                                ? "bg-emerald-500"
+                                : phase.status === "overdue"
+                                  ? "bg-red-500"
+                                  : "bg-blue-500",
+                            )}
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
                       ) : null}
 
-                      {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
-                        const accs = phase.assigned_model_id
-                          ? (modelAccounts[phase.assigned_model_id] ?? [])
-                          : [];
-                        const items = phase.items ?? [];
-                        const doneCount = items.filter((i) => i.status === "completed").length;
-                        const total = items.length;
-                        const progress = total > 0 ? (doneCount / Math.max(total, 1)) * 100 : 0;
-                        const schedStart = (phase.start_time ?? phase.scheduled_time)?.trim();
-                        const schedMs = schedStart ? new Date(schedStart).getTime() : NaN;
-                        const schedLate =
-                          Number.isFinite(schedMs) && schedMs < Date.now() && phase.status !== "completed";
-                        const schedEnd = phase.end_time?.trim();
-
-                        return (
-                          <div key={phase.id} className="mb-6 last:mb-0">
-                            {accs.length > 0 ? (
-                              <div className="mb-5">
-                                <p className="mb-3 flex items-center gap-2 text-xs uppercase tracking-widest text-white/25">
-                                  <Smartphone className="h-4 w-4" aria-hidden />
-                                  {phase.assigned_model_name?.trim() || "Creator"} — Quick links
-                                </p>
-                                <div className="flex flex-wrap gap-2">
-                                  {accs.map((acc) => {
-                                    const plat = acc.platform?.trim() || "";
-                                    const color = SOCIAL_COLORS[plat] ?? "#888888";
-                                    const href = acc.account_link?.trim() || "#";
-                                    const st = acc.account_status ?? "active";
-                                    return (
-                                      <div key={acc.id} className="group/acc relative pb-6">
-                                        <a
-                                          href={href}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="flex select-none cursor-pointer items-center gap-2.5 rounded-2xl border px-4 py-3 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                                          style={{
-                                            backgroundColor: `${color}12`,
-                                            borderColor: `${color}35`,
-                                          }}
-                                          onClick={(e) => {
-                                            if (!acc.account_link?.trim()) e.preventDefault();
-                                          }}
-                                        >
-                                          <span className="text-2xl">{SOCIAL_ICONS[plat] ?? ""}</span>
-                                          <div className="min-w-0">
-                                            <p className="text-xs font-bold text-white">@{acc.username}</p>
-                                            <p className="text-[10px]" style={{ color: `${color}aa` }}>
-                                              {acc.account_type === "main" ? "⭐ Main" : "Secondary"}
-                                              {"· "}
-                                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : ""}
-                                            </p>
-                                          </div>
-                                          <ExternalLink className="ml-1 h-3 w-3 shrink-0 text-white/20" aria-hidden />
-                                        </a>
-                                        {st !== "active" ? (
-                                          <div
-                                            className={cn(
-                                              "absolute -right-1 -top-1 rounded-full px-2 py-0.5 text-[10px] font-bold text-white shadow-md",
-                                              st === "shadowbanned" ? "bg-amber-500" : "bg-red-500",
-                                            )}
-                                          >
-                                            {st === "shadowbanned" ? "" : ""}
-                                          </div>
-                                        ) : null}
-                                        {st === "active" ? (
-                                          <button
-                                            type="button"
-                                            onClick={(e) => {
-                                              e.preventDefault();
-                                              e.stopPropagation();
-                                              setShadowbanReportTarget(acc);
-                                              setShadowbanFile(null);
-                                              setShadowbanNotes("");
-                                            }}
-                                            className="absolute bottom-0 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full border border-amber-500/30 bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400 opacity-0 transition-all hover:bg-amber-500/30 group-hover/acc:opacity-100"
-                                          >
-                                            Report
-                                          </button>
-                                        ) : null}
-                                      </div>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ) : null}
-
-                            <div
-                              className={cn(
-                                "overflow-hidden rounded-2xl border",
-                                phase.status === "completed"
-                                  ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.04] to-transparent"
-                                  : phase.status === "overdue"
-                                    ? "border-red-500/20 bg-gradient-to-br from-red-500/[0.04] to-transparent"
-                                    : phase.status === "in_progress"
-                                      ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.04] to-transparent"
-                                      : "border-white/10 bg-white/[0.02]",
-                              )}
-                            >
-                              <div className="flex items-center gap-3 px-5 py-4">
-                                <div
-                                  className={cn(
-                                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold",
-                                    phase.status === "completed"
-                                      ? "bg-green-500 text-white shadow-md shadow-green-500/25"
-                                      : phase.status === "overdue"
-                                        ? "bg-red-500 text-white shadow-md shadow-red-500/25"
-                                        : phase.status === "in_progress"
-                                          ? "bg-blue-500 text-white"
-                                          : "bg-white/10 text-white/50",
-                                  )}
-                                >
-                                  {phaseIndex + 1}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <p className="font-semibold text-white">
-                                    {phase.title || `Phase ${phaseIndex + 1}`}
-                                  </p>
-                                  <div className="mt-0.5 flex flex-wrap items-center gap-3">
-                                    {schedStart || schedEnd ? (
-                                      <div
-                                        className={cn(
-                                          "flex flex-wrap items-center gap-2 text-xs",
-                                          schedLate ? "text-red-400" : "text-white/30",
-                                        )}
-                                      >
-                                        <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                                        {schedStart ? (
-                                          <span className="flex items-center gap-1">
-                                            ▶{""}
-                                            {new Date(schedStart).toLocaleString("el-GR", {
-                                              timeZone: "Europe/Athens",
-                                              day: "numeric",
-                                              month: "short",
-                                              hour: "2-digit",
-                                              minute: "2-digit",
-                                            })}
-                                          </span>
-                                        ) : null}
-                                        {schedStart && schedEnd ? <span className="text-white/20">→</span> : null}
-                                        {schedEnd ? (
-                                          <span className="flex items-center gap-1">
-                                            ⏹{""}
-                                            {new Date(schedEnd).toLocaleString("el-GR", {
-                                              timeZone: "Europe/Athens",
-                                              day: "numeric",
-                                              month: "short",
-                                              hour: "2-digit",
-                                              minute: "2-digit",
-                                            })}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    ) : null}
-                                    {phase.region ? (
-                                      <span className="text-xs text-white/25">
-                                        {phase.region === "Greek" ? "🇬🇷" : phase.region === "USA" ? "🇺🇸" : ""}{""}
-                                        {phase.region}
-                                      </span>
-                                    ) : null}
-                                  </div>
-                                </div>
-                                {total > 0 ? (
-                                  <div className="shrink-0 text-right">
-                                    <p
-                                      className={cn(
-                                        "text-sm font-bold tabular-nums",
-                                        phase.status === "completed"
-                                          ? "text-green-400"
-                                          : phase.status === "overdue"
-                                            ? "text-red-400"
-                                            : "text-white/60",
-                                      )}
-                                    >
-                                      {doneCount}/{total}
-                                    </p>
-                                    <div className="mt-1 h-2 w-20 rounded-full bg-white/10">
-                                      <div
-                                        className={cn(
-                                          "h-2 rounded-full transition-all",
-                                          phase.status === "completed"
-                                            ? "bg-green-500"
-                                            : phase.status === "overdue"
-                                              ? "bg-red-500"
-                                              : "bg-gradient-to-r from-pink-500 to-rose-500",
-                                        )}
-                                        style={{ width: `${progress}%` }}
-                                      />
-                                    </div>
-                                  </div>
-                                ) : null}
-                              </div>
-
-                              <div className="space-y-2 px-5 pb-5">
-                                {items.map((item) => (
-                                  <div
-                                    key={item.id}
-                                    className={cn(
-                                      "flex items-center gap-3 rounded-xl border p-3.5 transition-all",
-                                      item.status === "completed"
-                                        ? "border-green-500/15 bg-green-500/[0.04]"
-                                        : "border-white/8 bg-white/[0.02] hover:bg-white/[0.04]",
-                                    )}
+                      {accs.length > 0 ? (
+                        <div className="mb-3">
+                          <p className="mb-2 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-white/25">
+                            <Smartphone className="h-3.5 w-3.5" />
+                            {phase.assigned_model_name?.trim() || "Creator"} links
+                          </p>
+                          <div className="flex flex-wrap gap-2">
+                            {accs.map((acc) => {
+                              const plat = acc.platform?.trim() || "";
+                              const color = SOCIAL_COLORS[plat] ?? "#888888";
+                              const href = acc.account_link?.trim() || "#";
+                              const st = acc.account_status ?? "active";
+                              return (
+                                <div key={acc.id} className="group/acc relative">
+                                  <a
+                                    href={href}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center gap-2 rounded-xl border px-3 py-2 text-xs transition hover:scale-[1.02]"
+                                    style={{ backgroundColor: `${color}12`, borderColor: `${color}35` }}
+                                    onClick={(e) => {
+                                      if (!acc.account_link?.trim()) e.preventDefault();
+                                    }}
                                   >
+                                    <span className="font-semibold text-white">@{acc.username}</span>
+                                    <ExternalLink className="h-3 w-3 text-white/30" />
+                                  </a>
+                                  {st === "active" ? (
                                     <button
                                       type="button"
-                                      onClick={() => {
-                                        if (item.status === "completed" || phase.status === "overdue") return;
-                                        setCompletingItem({ item, taskId: task.id });
-                                        setProofFile(null);
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        setShadowbanReportTarget(acc);
+                                        setShadowbanFile(null);
+                                        setShadowbanNotes("");
                                       }}
-                                      disabled={item.status === "completed" || phase.status === "overdue"}
-                                      className={cn(
-                                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border-2 transition-all",
-                                        item.status === "completed"
-                                          ? "cursor-default border-green-500 bg-green-500"
-                                          : "cursor-pointer border-white/20 hover:border-pink-500/60 hover:bg-pink-500/10 active:scale-95",
-                                      )}
+                                      className="mt-1 text-[10px] text-amber-400/70 opacity-0 transition group-hover/acc:opacity-100 hover:text-amber-400"
                                     >
-                                      {item.status === "completed" ? (
-                                        <Check className="h-4 w-4 text-white" aria-hidden />
-                                      ) : (
-                                        <div className="h-2 w-2 rounded-full bg-white/20" aria-hidden />
-                                      )}
+                                      Report shadowban
                                     </button>
-                                    <div className="min-w-0 flex-1">
-                                      <p
-                                        className={cn(
-                                          "text-sm font-medium",
-                                          item.status === "completed" ? "text-white/30 line-through" : "text-white",
-                                        )}
-                                      >
-                                        {item.title || "—"}
-                                      </p>
-                                      {item.requires_screenshot && item.status !== "completed" ? (
-                                        <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-400/60">
-                                          <Camera className="h-4 w-4" aria-hidden />
-                                          Screenshot required
-                                        </p>
-                                      ) : null}
-                                      {item.screenshot?.[0]?.url ? (
-                                        <a
-                                          href={item.screenshot[0].url}
-                                          target="_blank"
-                                          rel="noreferrer"
-                                          className="mt-0.5 flex items-center gap-1 text-xs text-blue-400/70 hover:text-blue-400"
-                                        >
-                                          <span className="inline-flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" aria-hidden />View proof</span>
-                                        </a>
-                                      ) : null}
-                                      {item.status === "completed" && item.completed_by_va_name ? (
-                                        <p className="mt-0.5 text-xs text-white/20">{item.completed_by_va_name}</p>
-                                      ) : null}
-                                    </div>
-                                    {item.status === "completed" ? (
-                                      <Check className="h-4 w-4 shrink-0 text-green-400" aria-hidden />
-                                    ) : null}
-                                  </div>
-                                ))}
-                                {items.length === 0 ? (
-                                  <p className="py-4 text-center text-xs text-white/20">No items in this phase</p>
+                                  ) : null}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="space-y-1.5">
+                        {items.map((item) => {
+                          const itemDisabled =
+                            !onShift || item.status === "completed" || phase.status === "overdue";
+                          return (
+                            <div
+                              key={item.id}
+                              className={cn(
+                                "flex items-center gap-3 rounded-lg border px-3 py-2.5",
+                                item.status === "completed"
+                                  ? "border-emerald-500/15 bg-emerald-500/[0.03]"
+                                  : "border-white/8 bg-white/[0.02]",
+                              )}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (itemDisabled) return;
+                                  setCompletingItem({ item, taskId: task.id });
+                                  setProofFile(null);
+                                }}
+                                disabled={itemDisabled}
+                                title={!onShift ? "Start your shift to complete items" : undefined}
+                                className={cn(
+                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border-2 transition",
+                                  item.status === "completed"
+                                    ? "border-emerald-500 bg-emerald-500"
+                                    : itemDisabled
+                                      ? "cursor-not-allowed border-white/10 bg-white/5 opacity-40"
+                                      : "border-white/25 hover:border-purple-500/50",
+                                )}
+                              >
+                                {item.status === "completed" ? (
+                                  <Check className="h-3.5 w-3.5 text-white" />
+                                ) : null}
+                              </button>
+                              <div className="min-w-0 flex-1">
+                                <p
+                                  className={cn(
+                                    "text-sm",
+                                    item.status === "completed" ? "text-white/30 line-through" : "text-white/85",
+                                  )}
+                                >
+                                  {item.title || "—"}
+                                </p>
+                                {item.requires_screenshot && item.status !== "completed" ? (
+                                  <p className="mt-0.5 flex items-center gap-1 text-[10px] text-amber-400/70">
+                                    <Camera className="h-3 w-3" /> Screenshot required
+                                  </p>
+                                ) : null}
+                                {item.screenshot?.[0]?.url ? (
+                                  <a
+                                    href={item.screenshot[0].url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="mt-0.5 flex items-center gap-1 text-[10px] text-blue-400/80 hover:text-blue-400"
+                                  >
+                                    <ImageIcon className="h-3 w-3" /> View proof
+                                  </a>
                                 ) : null}
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
+                          );
+                        })}
+                        {items.length === 0 ? (
+                          <p className="py-2 text-center text-xs text-white/20">No items in this phase</p>
+                        ) : null}
+                      </div>
                     </div>
-                  ) : null}
-                </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-4xl space-y-6 px-4 py-6 md:px-6">
+      {/* Shift bar */}
+      {onShift ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+          <p className="text-sm font-semibold text-emerald-300">
+            <span className="mr-1.5 inline-block h-2 w-2 rounded-full bg-emerald-400" />
+            On shift · {shiftDuration}
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleEndShift()}
+            disabled={shiftBusy}
+            className="rounded-xl border border-red-500/40 bg-transparent px-4 py-2 text-sm font-semibold text-red-300 transition hover:bg-red-500/10 disabled:opacity-40"
+          >
+            {shiftBusy ? "Ending…" : "End shift"}
+          </button>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+          <p className="mb-3 text-sm text-white/50">
+            Start your shift to check off phase items. You can browse tasks anytime.
+          </p>
+          <button
+            type="button"
+            onClick={() => void handleStartShift()}
+            disabled={shiftBusy || shiftLoading}
+            className="w-full rounded-2xl bg-emerald-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400 disabled:opacity-40 sm:w-auto"
+          >
+            {shiftBusy ? "Starting…" : "Start shift"}
+          </button>
+        </div>
+      )}
+
+      {/* Header + stats */}
       <div>
-        <p className="text-xs font-bold uppercase tracking-widest text-purple-400/60">My work</p>
-        <h1 className="mt-1 text-3xl font-bold text-white">VA tasks</h1>
-        <p className="mt-1 text-sm text-white/40">Your assigned tasks and to-dos</p>
+        <h1 className="text-2xl font-bold text-white">My tasks</h1>
+        <p className="mt-1 text-sm text-white/40">Your assigned work and phase checklists</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {[
+            { label: "Pending", value: taskStats.pending, cls: "text-white/60 border-white/15" },
+            { label: "In progress", value: taskStats.inProgress, cls: "text-blue-300 border-blue-500/30" },
+            { label: "Done", value: taskStats.done, cls: "text-emerald-300 border-emerald-500/30" },
+            { label: "Overdue", value: taskStats.overdue, cls: "text-red-300 border-red-500/30" },
+          ].map((s) => (
+            <span
+              key={s.label}
+              className={cn("inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium", s.cls)}
+            >
+              {s.label}
+              <span className="font-bold tabular-nums">{s.value}</span>
+            </span>
+          ))}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap gap-2">
         <input
           type="search"
           placeholder="Search tasks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/20 focus:border-purple-500/50"
+          className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white outline-none placeholder:text-white/25 focus:border-purple-500/40"
         />
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-purple-500/50"
+          className="h-10 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none"
         >
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
@@ -735,7 +795,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
         <select
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
-          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-purple-500/50"
+          className="h-10 rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none"
         >
           <option value="">All priorities</option>
           <option value="urgent">Urgent</option>
@@ -752,32 +812,20 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
       ) : null}
 
       {regularTasks.length === 0 && recurringGroups.length === 0 ? (
-        <p className="rounded-xl border border-white/10 bg-white/[0.04] px-4 py-10 text-center text-sm text-white/50">
-          No tasks match your filters.
-        </p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-16 text-center">
+          <ClipboardList className="mb-4 h-10 w-10 text-white/20" />
+          <p className="text-base font-semibold text-white/70">No tasks match</p>
+          <p className="mt-1 text-sm text-white/35">Try adjusting filters or check back later.</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {regularTasks.map((task) => (
-            <React.Fragment key={task.id}>{renderVaTaskCard(task)}</React.Fragment>
-          ))}
+          {regularTasks.map((task) => renderVaTaskCard(task))}
           {recurringGroups.map((group) => (
-            <div key={group.title} className="mb-4">
-              {group.currentTask ? (
-                <React.Fragment key={group.currentTask.id}>{renderVaTaskCard(group.currentTask)}</React.Fragment>
-              ) : (
-                <div className="rounded-2xl border border-purple-500/15 bg-white/[0.02] px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-xl" aria-hidden>
-                      
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-semibold text-white/50">{group.title}</p>
-                      <p className="text-xs text-white/25">Next occurrence pending...</p>
-                    </div>
-                    <span className="rounded-full border border-purple-500/20 bg-purple-500/10 px-2 py-0.5 text-xs text-purple-400">
-                      {group.totalCompleted} done
-                    </span>
-                  </div>
+            <div key={group.title}>
+              {group.currentTask ? renderVaTaskCard(group.currentTask) : (
+                <div className="rounded-2xl border border-purple-500/15 bg-white/[0.02] px-4 py-3">
+                  <p className="text-sm font-medium text-white/50">{group.title}</p>
+                  <p className="text-xs text-white/25">Next occurrence pending… · {group.totalCompleted} done</p>
                 </div>
               )}
               {group.history.length > 0 ? (
@@ -791,72 +839,23 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                       return next;
                     });
                   }}
-                  className="ml-2 mt-2 flex items-center gap-2 text-xs text-white/25 transition-colors hover:text-white/50"
+                  className="ml-2 mt-1 text-xs text-white/25 hover:text-white/50"
                 >
-                  <span
-                    className={cn(
-                      "inline-block transition-transform",
-                      expandedVaRecurringHistory.has(group.title) ? "rotate-90" : "",
-                    )}
-                  >
-                    ▶
-                  </span>
-                  <span>
-                    {expandedVaRecurringHistory.has(group.title) ? "Hide" : "Show"} history (
-                    {group.totalCompleted} completed)
-                  </span>
+                  {expandedVaRecurringHistory.has(group.title) ? "Hide" : "Show"} history ({group.totalCompleted})
                 </button>
               ) : null}
               {expandedVaRecurringHistory.has(group.title) ? (
-                <div className="ml-3 mt-2 space-y-2 border-l-2 border-purple-500/20 pl-4">
-                  {group.history.map((histTask, idx) => (
-                    <div
-                      key={histTask.id}
-                      className={cn(
-                        "flex items-center gap-3 rounded-xl border border-white/6 bg-white/[0.01] px-4 py-3 transition-all",
-                        idx === 0 ? "opacity-60" : "opacity-40",
-                      )}
-                    >
-                      <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl bg-green-500/15">
-                        <Check className="h-4 w-4 text-green-400" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm text-white/40 line-through">{histTask.title}</p>
-                        {histTask.completed_notes ? (
-                          <p className="mt-0.5 truncate text-xs italic text-white/20">
-                            &ldquo;{histTask.completed_notes}&rdquo;
-                          </p>
-                        ) : null}
-                      </div>
-                      <div className="shrink-0 text-right">
-                        <p className="text-xs text-green-400/40">
-                          {""}
-                          {histTask.completed_at
-                            ? new Date(histTask.completed_at).toLocaleDateString("el-GR", {
-                                timeZone: "Europe/Athens",
-                                day: "numeric",
-                                month: "short",
-                              })
-                            : "—"}
-                        </p>
-                        {histTask.due_date ? (
-                          <p className="text-xs text-white/20">
-                            Due{""}
-                            {new Date(histTask.due_date).toLocaleDateString("el-GR", {
-                              timeZone: "Europe/Athens",
-                              day: "numeric",
-                              month: "short",
-                            })}
-                          </p>
-                        ) : null}
-                      </div>
+                <div className="ml-3 mt-2 space-y-1 border-l border-purple-500/20 pl-3">
+                  {group.history.map((histTask) => (
+                    <div key={histTask.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 opacity-50">
+                      <Check className="h-3.5 w-3.5 text-emerald-400" />
+                      <span className="truncate text-sm text-white/40 line-through">{histTask.title}</span>
                     </div>
                   ))}
                 </div>
               ) : null}
             </div>
           ))}
-
         </div>
       )}
 
@@ -866,28 +865,27 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-[0_24px_80px_-24px_rgba(0,0,0,0.85)]"
+            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal
           >
             <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold tracking-tight text-white">{selected.title}</h3>
+                <h3 className="text-lg font-semibold text-white">{selected.title}</h3>
                 {selected.description ? (
-                  <p className="mt-1 text-sm leading-relaxed text-white/55">{selected.description}</p>
+                  <p className="mt-1 text-sm text-white/55">{selected.description}</p>
                 ) : null}
               </div>
               <button
                 type="button"
                 onClick={() => setSelected(null)}
-                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/70 transition hover:bg-white/10 hover:text-white"
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white/70 hover:bg-white/10"
                 aria-label="Close"
               >
-                <X className="h-5 w-5" aria-hidden />
+                <X className="h-5 w-5" />
               </button>
             </div>
-
             <form
               className="space-y-4 p-5"
               onSubmit={(e) => {
@@ -896,11 +894,10 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
               }}
             >
               {err ? (
-                <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
+                <div className="rounded-xl border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
                   {err}
                 </div>
               ) : null}
-
               <motion.div {...fieldMotion}>
                 <FormField label="Status" icon={<ListChecks />} htmlFor="va-task-status" staggerIndex={0}>
                   <FormSelect
@@ -908,28 +905,19 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                     value={statusPick}
                     onChange={(e) => setStatusPick(e.target.value as VaTaskStatus)}
                   >
-                    <option value="in_progress" className={selectOptionClass}>
-                      In progress
-                    </option>
-                    <option value="done" className={selectOptionClass}>
-                      Done
-                    </option>
-                    <option value="skipped" className={selectOptionClass}>
-                      Skipped
-                    </option>
-                    <option value="pending" className={selectOptionClass}>
-                      Pending
-                    </option>
+                    <option value="in_progress" className={selectOptionClass}>In progress</option>
+                    <option value="done" className={selectOptionClass}>Done</option>
+                    <option value="skipped" className={selectOptionClass}>Skipped</option>
+                    <option value="pending" className={selectOptionClass}>Pending</option>
                   </FormSelect>
                 </FormField>
               </motion.div>
-
               <motion.div {...fieldMotion} transition={{ ...fieldMotion.transition, delay: 0.05 }}>
                 <FormField
                   label="Completion notes"
                   icon={<StickyNote />}
                   htmlFor="va-task-notes"
-                  description="Optional — visible to admins on this task."
+                  description="Optional — visible to admins."
                   staggerIndex={1}
                 >
                   <FormTextarea
@@ -941,16 +929,15 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                   />
                 </FormField>
               </motion.div>
-
               <div className="flex flex-col gap-2 pt-1 sm:flex-row sm:justify-end">
                 <button
                   type="button"
                   onClick={() => setSelected(null)}
-                  className="order-2 rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 sm:order-1"
+                  className="rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm text-white/85 hover:bg-white/10"
                 >
                   Cancel
                 </button>
-                <FormSubmitButton disabled={busy} loading={busy} className="order-1 sm:order-2 sm:min-w-[140px]">
+                <FormSubmitButton disabled={busy} loading={busy} className="sm:min-w-[140px]">
                   Save update
                 </FormSubmitButton>
               </div>
@@ -963,36 +950,27 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Report shadowban</h3>
-            <div className="mt-1 flex items-center gap-2">
-              <span className="text-xl">{SOCIAL_ICONS[shadowbanReportTarget.platform?.trim() ?? ""] ?? ""}</span>
-              <p className="text-sm text-white/50">
-                @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
-              </p>
-            </div>
+            <p className="mt-1 text-sm text-white/50">
+              @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
+            </p>
             <div className="mt-5">
-              <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">
+              <label className="mb-2 block text-xs text-white/40">
                 Screenshot <span className="text-amber-400">*</span>
               </label>
               <button
                 type="button"
                 onClick={() => shadowbanProofRef.current?.click()}
                 className={cn(
-                  "w-full cursor-pointer rounded-2xl border-2 border-dashed p-5 text-center transition-all",
-                  shadowbanFile
-                    ? "border-amber-500/40 bg-amber-500/5"
-                    : "border-white/15 hover:border-amber-500/40 hover:bg-amber-500/5",
+                  "w-full rounded-2xl border-2 border-dashed p-5 text-center",
+                  shadowbanFile ? "border-amber-500/40 bg-amber-500/5" : "border-white/15 hover:border-amber-500/40",
                 )}
               >
                 {shadowbanPreviewUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={shadowbanPreviewUrl}
-                    alt="Evidence preview"
-                    className="mx-auto max-h-28 rounded-xl object-contain"
-                  />
+                  <img src={shadowbanPreviewUrl} alt="Evidence" className="mx-auto max-h-28 rounded-xl object-contain" />
                 ) : (
                   <>
-                    <p className="mb-1 flex justify-center"><ClipboardList className="h-8 w-8 text-white/30" aria-hidden /></p>
+                    <ClipboardList className="mx-auto mb-1 h-8 w-8 text-white/30" />
                     <p className="text-sm text-white/40">Paste (Ctrl+V) or click</p>
                   </>
                 )}
@@ -1005,22 +983,19 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                 onChange={(e) => setShadowbanFile(e.target.files?.[0] ?? null)}
               />
             </div>
-            <div className="mt-4">
-              <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">Notes</label>
-              <textarea
-                value={shadowbanNotes}
-                onChange={(e) => setShadowbanNotes(e.target.value)}
-                rows={2}
-                placeholder="What happened? What did you notice?"
-                className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:border-amber-500/50 focus:outline-none"
-              />
-            </div>
+            <textarea
+              value={shadowbanNotes}
+              onChange={(e) => setShadowbanNotes(e.target.value)}
+              rows={2}
+              placeholder="What did you notice?"
+              className="mt-4 w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none"
+            />
             <div className="mt-5 flex gap-2">
               <button
                 type="button"
                 onClick={() => void handleSubmitShadowbanReport()}
                 disabled={!shadowbanFile || shadowbanSubmitting}
-                className="flex-1 rounded-2xl border border-amber-500/30 bg-amber-500/20 py-3 font-bold text-amber-400 hover:bg-amber-500/30 disabled:opacity-40"
+                className="flex-1 rounded-2xl border border-amber-500/30 bg-amber-500/20 py-3 font-bold text-amber-400 disabled:opacity-40"
               >
                 {shadowbanSubmitting ? "Submitting…" : "Submit report"}
               </button>
@@ -1031,7 +1006,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                   setShadowbanFile(null);
                   setShadowbanNotes("");
                 }}
-                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-white/50 hover:bg-white/10"
+                className="rounded-2xl border border-white/10 px-5 py-3 text-white/50"
               >
                 Cancel
               </button>
@@ -1045,34 +1020,24 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
           <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <h3 className="text-lg font-bold text-white">Complete item</h3>
             <p className="mt-1 text-sm text-white/50">{completingItem.item.title || "Checklist item"}</p>
-
             {completingItem.item.requires_screenshot ? (
               <div className="mt-5">
-                <p className="mb-2 flex items-center gap-1 text-xs font-semibold text-amber-400">
-                  Screenshot proof required
-                </p>
+                <p className="mb-2 text-xs font-semibold text-amber-400">Screenshot proof required</p>
                 <button
                   type="button"
                   onClick={() => proofRef.current?.click()}
                   className={cn(
-                    "w-full rounded-2xl border-2 border-dashed p-6 text-center transition-all",
-                    proofFile
-                      ? "border-green-500/40 bg-green-500/5"
-                      : "border-amber-500/30 bg-amber-500/5 hover:border-amber-500/50",
+                    "w-full rounded-2xl border-2 border-dashed p-6 text-center",
+                    proofFile ? "border-emerald-500/40 bg-emerald-500/5" : "border-amber-500/30 bg-amber-500/5",
                   )}
                 >
                   {proofFile && proofPreviewUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={proofPreviewUrl}
-                      alt="Proof preview"
-                      className="mx-auto max-h-32 rounded-xl object-contain"
-                    />
+                    <img src={proofPreviewUrl} alt="Proof" className="mx-auto max-h-32 rounded-xl object-contain" />
                   ) : (
                     <>
-                      <p className="mb-2 flex justify-center"><Camera className="h-10 w-10 text-white/30" aria-hidden /></p>
-                      <p className="text-sm font-medium text-amber-400/80">Paste (Ctrl+V) or click to upload</p>
-                      <p className="mt-1 text-xs text-white/25">Image from clipboard is accepted</p>
+                      <Camera className="mx-auto mb-2 h-10 w-10 text-white/30" />
+                      <p className="text-sm text-amber-400/80">Paste (Ctrl+V) or click to upload</p>
                     </>
                   )}
                   <input
@@ -1085,15 +1050,12 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                 </button>
               </div>
             ) : null}
-
             <div className="mt-6 flex gap-2">
               <button
                 type="button"
                 onClick={() => void handleCompleteItem()}
-                disabled={
-                  submitting || (completingItem.item.requires_screenshot && !proofFile)
-                }
-                className="flex-1 rounded-2xl bg-gradient-to-r from-green-500 to-emerald-500 py-3 text-sm font-bold text-white shadow-lg shadow-green-500/20 disabled:opacity-40"
+                disabled={submitting || (completingItem.item.requires_screenshot && !proofFile)}
+                className="flex-1 rounded-2xl bg-emerald-500 py-3 text-sm font-bold text-white disabled:opacity-40"
               >
                 {submitting ? "Saving…" : "Mark complete"}
               </button>
@@ -1103,7 +1065,7 @@ export function VaTasksClient({ tasks: initialTasks }: Props) {
                   setCompletingItem(null);
                   setProofFile(null);
                 }}
-                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3 text-sm text-white/50 hover:bg-white/10"
+                className="rounded-2xl border border-white/10 px-5 py-3 text-sm text-white/50"
               >
                 Cancel
               </button>

@@ -23,6 +23,8 @@ export interface TaskPhase {
   assigned_model_name: string;
   region: "USA" | "Greek" | "Global";
   completed_at: string | null;
+  actual_start_time: string | null;
+  actual_end_time: string | null;
   created_at: string;
   items: PhaseItem[];
 }
@@ -62,6 +64,8 @@ type PhaseFields = {
   assigned_model_name?: string;
   region?: string;
   completed_at?: string | null;
+  actual_start_time?: string | null;
+  actual_end_time?: string | null;
   created_at?: string;
 };
 
@@ -127,6 +131,8 @@ function mapPhase(rec: AirtableRecord<PhaseFields>, items: PhaseItem[] = []): Ta
     assigned_model_name: (f.assigned_model_name as string) ?? "",
     region: asRegion(f.region),
     completed_at: (f.completed_at as string | null) ?? null,
+    actual_start_time: (f.actual_start_time as string | null) ?? null,
+    actual_end_time: (f.actual_end_time as string | null) ?? null,
     created_at: (f.created_at as string) ?? "",
     items,
   };
@@ -201,9 +207,6 @@ export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> 
     phase_number: data.phase_number ?? 1,
     title: data.title ?? `Phase ${data.phase_number ?? 1}`,
     description: data.description ?? "",
-    scheduled_time: data.scheduled_time ?? null,
-    start_time: data.start_time ?? null,
-    end_time: data.end_time ?? null,
     status: "pending",
     assigned_va_id: data.assigned_va_id ?? "",
     assigned_va_name: data.assigned_va_name ?? "",
@@ -219,10 +222,9 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   const patch: Record<string, unknown> = {};
   if (data.title !== undefined) patch.title = data.title;
   if (data.description !== undefined) patch.description = data.description;
-  if (data.scheduled_time !== undefined) patch.scheduled_time = data.scheduled_time;
-  if (data.start_time !== undefined) patch.start_time = data.start_time;
-  if (data.end_time !== undefined) patch.end_time = data.end_time;
   if (data.status !== undefined) patch.status = data.status;
+  if (data.actual_start_time !== undefined) patch.actual_start_time = data.actual_start_time;
+  if (data.actual_end_time !== undefined) patch.actual_end_time = data.actual_end_time;
   if (data.assigned_va_id !== undefined) patch.assigned_va_id = data.assigned_va_id;
   if (data.assigned_va_name !== undefined) patch.assigned_va_name = data.assigned_va_name;
   if (data.assigned_model_id !== undefined) patch.assigned_model_id = data.assigned_model_id;
@@ -308,28 +310,39 @@ export async function completePhaseItem(
   const allItems = await listAllRecords<ItemFields>(TABLE_ITEMS, {
     filterByFormula: `{phase_id} = "${escPhase}"`,
   });
-  const allItemsDone = allItems.every((r) => r.fields.status === "completed");
+  const completedCount = allItems.filter((r) => r.fields.status === "completed").length;
+  const allItemsDone = allItems.length > 0 && completedCount === allItems.length;
 
   let phaseCompleted = false;
   let allPhasesCompleted = false;
   let phaseAirtableId = "";
 
+  const escTask = taskId ? airtableFormulaString(taskId) : "";
+  const phaseRows =
+    taskId && escTask
+      ? await listAllRecords<PhaseFields>(TABLE_PHASES, {
+          filterByFormula: `{task_id} = "${escTask}"`,
+        })
+      : [];
+  const phaseRow = phaseRows.find(
+    (p) => p.id === phaseStableId || ((p.fields.phase_id as string) ?? p.id) === phaseStableId,
+  );
+  phaseAirtableId = phaseRow?.id ?? "";
+
+  if (phaseAirtableId && completedCount === 1 && phaseRow?.fields.status === "pending") {
+    await updateRecord(TABLE_PHASES, phaseAirtableId, {
+      status: "in_progress",
+      actual_start_time: now,
+    });
+  }
+
   if (allItemsDone && taskId && phaseStableId) {
     phaseCompleted = true;
-    const escTask = airtableFormulaString(taskId);
-    const phaseRows = await listAllRecords<PhaseFields>(TABLE_PHASES, {
-      filterByFormula: `{task_id} = "${escTask}"`,
-    });
-    const phaseRow = phaseRows.find(
-      (p) =>
-        p.id === phaseStableId ||
-        ((p.fields.phase_id as string) ?? p.id) === phaseStableId,
-    );
-    phaseAirtableId = phaseRow?.id ?? "";
     if (phaseAirtableId) {
       await updateRecord(TABLE_PHASES, phaseAirtableId, {
         status: "completed",
         completed_at: now,
+        actual_end_time: now,
       });
     }
 

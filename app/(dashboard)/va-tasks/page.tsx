@@ -14,13 +14,5 @@ export default async function VaTasksPage() {
   const vaId = user.airtableUserId ?? user.id;
   const tasks = await getVaTasksForUser(vaId).catch(() => []);
 
-  return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">My VA tasks</h1>
-        <p className="mt-1 text-sm text-white/60">Tap a task to update status and add notes. Today is highlighted.</p>
-      </div>
-      <VaTasksClient tasks={tasks} />
-    </div>
-  );
+  return <VaTasksClient tasks={tasks} />;
 }

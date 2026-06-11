@@ -361,6 +361,14 @@ export async function getActiveShiftByChatter(chatterRecordId: string) {
   return getActiveShiftByStaff(chatterRecordId, "chatter");
 }
 
+/** Active VA tasks shift for this user (`shift_type` = va_tasks). */
+export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift | null> {
+  const trimmed = userRecordId.trim();
+  if (!trimmed) return null;
+  const shifts = await getActiveShifts("virtual_assistant");
+  return shifts.find((s) => s.chatter_id === trimmed && s.shift_type === "va_tasks") ?? null;
+}
+
 export type ShiftWriteFields = Partial<{
   shift_id: string;
   chatter: string[];

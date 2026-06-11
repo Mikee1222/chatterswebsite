@@ -4,7 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createShift, updateShift, getActiveShifts } from "@/services/shifts";
+import { createShift, updateShift, getActiveShifts, getActiveVaTaskShift } from "@/services/shifts";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
 
@@ -224,4 +224,72 @@ function getWeekStart(date: Date): string {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
   return d.toISOString().split("T")[0];
+}
+
+/** Start a VA tasks shift (virtual assistant). */
+export async function startVaTaskShiftAction() {
+  const user = await getSessionFromCookies();
+  if (!user) return { error: "Not authenticated" };
+  if (getEffectiveStaffRole(user) !== "virtual_assistant" && !(await hasPermission(user, PERMISSIONS.SHIFTS_MANAGE)))
+    return { error: "Only virtual assistants can start VA task shifts" };
+
+  const vaId = user.airtableUserId ?? user.id;
+  const existing = await getActiveVaTaskShift(vaId);
+  if (existing) return { error: "You already have an active VA tasks shift" };
+
+  const now = new Date();
+  const date = now.toISOString().split("T")[0];
+  const weekStart = getWeekStart(now);
+  const shift = await createShift({
+    chatter: user.airtableUserId ? [user.airtableUserId] : [],
+    chatter_name: user.fullName ?? user.email ?? "",
+    week_start: weekStart,
+    date,
+    scheduled_shift: "",
+    start_time: now.toISOString(),
+    status: "active",
+    staff_role: "virtual_assistant",
+    shift_type: "va_tasks",
+    task_label: "",
+    models_count: 0,
+  });
+
+  await createActivityLog({
+    actor_user_id: user.id,
+    actor_name: user.fullName ?? user.email,
+    action_type: "task_shift_started",
+    entity_type: "shift",
+    entity_id: shift.id,
+    summary: `${user.fullName ?? user.email} started a VA tasks shift`,
+  });
+
+  return { success: true, shiftId: shift.id };
+}
+
+/** End the current VA tasks shift (virtual assistant). */
+export async function endVaTaskShiftAction() {
+  const user = await getSessionFromCookies();
+  if (!user) return { error: "Not authenticated" };
+
+  const vaId = user.airtableUserId ?? user.id;
+  const myActive = await getActiveVaTaskShift(vaId);
+  if (!myActive) return { error: "No active VA tasks shift found" };
+
+  const endTime = new Date().toISOString();
+
+  await updateShift(myActive.id, {
+    end_time: endTime,
+    status: "completed",
+  });
+
+  await createActivityLog({
+    actor_user_id: user.id,
+    actor_name: user.fullName ?? user.email,
+    action_type: "task_shift_ended",
+    entity_type: "shift",
+    entity_id: myActive.id,
+    summary: `${user.fullName ?? user.email} ended a VA tasks shift`,
+  });
+
+  return { success: true };
 }

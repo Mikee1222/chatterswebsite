@@ -61,10 +61,6 @@ interface DraftPhase {
   tempId: string;
   serverId?: string;
   title: string;
-  start_date: string;
-  start_time_only: string;
-  end_date: string;
-  end_time_only: string;
   assigned_va_id: string;
   assigned_va_name: string;
   assigned_model_id: string;
@@ -155,37 +151,11 @@ function ModalToggle({ value, onChange }: { value: boolean; onChange: (v: boolea
   );
 }
 
-function splitLocalDateTime(isoOrLocal: string | null | undefined): { date: string; time: string } {
-  const v = toDatetimeLocalValue(isoOrLocal);
-  if (!v || v.length < 16) return { date: "", time: "" };
-  return { date: v.slice(0, 10), time: v.slice(11, 16) };
-}
-
-/** Merge date + time with existing instant for the other component (local `YYYY-MM-DDTHH:mm`). */
-function mergeLocalDateTime(isoOrLocal: string | null | undefined, date: string, time: string): string | null {
-  if (!date?.trim()) return null;
-  const v = toDatetimeLocalValue(isoOrLocal);
-  const t = time?.trim().length >= 5 ? time.trim().slice(0, 5) : v.length >= 16 ? v.slice(11, 16) : "00:00";
-  return `${date.trim()}T${t}`;
-}
-
-function combineDateTime(date: string, time: string): string | null {
-  if (!date?.trim()) return null;
-  const t = time?.trim().length >= 5 ? time.trim().slice(0, 5) : "00:00";
-  return fromDatetimeLocal(`${date.trim()}T${t}`) ?? null;
-}
-
 function phaseToDraft(p: TaskPhase): DraftPhase {
-  const sd = splitLocalDateTime(p.start_time);
-  const ed = splitLocalDateTime(p.end_time);
   return {
     tempId: p.id,
     serverId: p.id,
     title: p.title,
-    start_date: sd.date,
-    start_time_only: sd.time,
-    end_date: ed.date,
-    end_time_only: ed.time,
     assigned_va_id: p.assigned_va_id ?? "",
     assigned_va_name: p.assigned_va_name ?? "",
     assigned_model_id: p.assigned_model_id ?? "",
@@ -198,6 +168,20 @@ function phaseToDraft(p: TaskPhase): DraftPhase {
       requires_screenshot: i.requires_screenshot,
     })),
   };
+}
+
+function formatPhaseActualTime(iso: string | null | undefined): string {
+  if (!iso?.trim()) return "";
+  const d = new Date(iso.trim());
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleString("en-GB", {
+    timeZone: "Europe/Athens",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
@@ -427,10 +411,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       {
         tempId: `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         title: "",
-        start_date: "",
-        start_time_only: "",
-        end_date: "",
-        end_time_only: "",
         assigned_va_id: "",
         assigned_va_name: "",
         assigned_model_id: "",
@@ -500,15 +480,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
     for (let phaseIndex = 0; phaseIndex < draftPhases.length; phaseIndex++) {
       const dp = draftPhases[phaseIndex];
-      const start_time = combineDateTime(dp.start_date, dp.start_time_only);
-      const end_time = combineDateTime(dp.end_date, dp.end_time_only);
       const phaseBody = {
         task_id: taskId,
         task_title: taskTitle,
         phase_number: phaseIndex + 1,
         title: dp.title.trim() || `Phase ${phaseIndex + 1}`,
-        start_time,
-        end_time,
         assigned_va_id: dp.assigned_va_id || "",
         assigned_va_name: dp.assigned_va_name || "",
         assigned_model_id: dp.assigned_model_id || "",
@@ -524,8 +500,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           credentials: "include",
           body: JSON.stringify({
             title: phaseBody.title,
-            start_time: phaseBody.start_time,
-            end_time: phaseBody.end_time,
             assigned_va_id: phaseBody.assigned_va_id,
             assigned_va_name: phaseBody.assigned_va_name,
             assigned_model_id: phaseBody.assigned_model_id,
@@ -723,27 +697,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   }
 
   function normalizePhasePatch(updates: Partial<TaskPhase>): Partial<TaskPhase> {
-    const out = { ...updates };
-    const normalizeDt = (key: "scheduled_time" | "start_time" | "end_time") => {
-      const s = out[key];
-      if (s === undefined) return;
-      if (s == null || (typeof s === "string" && s.trim() === "")) {
-        out[key] = null;
-        return;
-      }
-      if (typeof s !== "string") return;
-      const t = s.trim();
-      if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(t)) {
-        out[key] = fromDatetimeLocal(t) ?? null;
-        return;
-      }
-      const d = new Date(t);
-      if (!Number.isNaN(d.getTime())) out[key] = d.toISOString();
-    };
-    normalizeDt("scheduled_time");
-    normalizeDt("start_time");
-    normalizeDt("end_time");
-    return out;
+    return { ...updates };
   }
 
   async function handleUpdatePhase(phaseId: string, taskId: string, updates: Partial<TaskPhase>) {
@@ -825,13 +779,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
     setTaskPhases((prev) => ({
       ...prev,
       [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, title } : p)),
-    }));
-  }
-
-  function updatePhaseLocal(phaseId: string, taskId: string, patch: Partial<TaskPhase>) {
-    setTaskPhases((prev) => ({
-      ...prev,
-      [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, ...patch } : p)),
     }));
   }
 
@@ -987,24 +934,36 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                       </button>
 
                       {expandedTaskId === task.id ? (
-                        <div className="mt-5 space-y-1">
+                        <div className="relative mt-5 space-y-0 pl-4">
+                          <div className="absolute bottom-2 left-[1.125rem] top-2 w-px bg-white/10" aria-hidden />
                           {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
                             const items = phase.items ?? [];
                             const doneItems = items.filter((i) => i.status === "completed").length;
                             const progressPct = items.length > 0 ? (doneItems / items.length) * 100 : 0;
-                            const startParts = splitLocalDateTime(phase.start_time);
-                            const endParts = splitLocalDateTime(phase.end_time);
+                            const isLast = phaseIndex === (taskPhases[task.id]?.length ?? 0) - 1;
                             return (
+                              <div key={phase.id} className={cn("relative pb-6", isLast && "pb-0")}>
+                                <div
+                                  className={cn(
+                                    "absolute -left-4 top-4 z-10 h-3 w-3 rounded-full border-2 border-[#0a0a14]",
+                                    phase.status === "completed"
+                                      ? "bg-emerald-500"
+                                      : phase.status === "overdue"
+                                        ? "bg-red-500"
+                                        : phase.status === "in_progress"
+                                          ? "bg-blue-500"
+                                          : "bg-white/30",
+                                  )}
+                                />
                               <div
-                                key={phase.id}
                                 className={cn(
-                                  "mb-3 overflow-hidden rounded-2xl border transition-all",
+                                  "overflow-hidden rounded-2xl border transition-all",
                                   phase.status === "completed"
-                                    ? "border-green-500/20 bg-gradient-to-br from-green-500/[0.05] to-transparent"
+                                    ? "border-emerald-500/20 bg-emerald-500/[0.04]"
                                     : phase.status === "overdue"
-                                      ? "border-red-500/25 bg-gradient-to-br from-red-500/[0.05] to-transparent"
+                                      ? "border-red-500/25 bg-red-500/[0.04]"
                                       : phase.status === "in_progress"
-                                        ? "border-blue-500/20 bg-gradient-to-br from-blue-500/[0.05] to-transparent"
+                                        ? "border-blue-500/20 bg-blue-500/[0.04]"
                                         : "border-white/10 bg-white/[0.02]",
                                 )}
                               >
@@ -1069,109 +1028,18 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   </button>
                                 </div>
 
-                                {(phase.start_time || phase.end_time) && (
-                                  <div className="flex flex-wrap items-center gap-2 px-5 pb-2 text-xs text-white/30">
-                                    {phase.start_time ? (
-                                      <span className="flex items-center gap-1">
-                                        ▶{""}
-                                        {new Date(phase.start_time).toLocaleString("el-GR", {
-                                          timeZone: "Europe/Athens",
-                                          day: "numeric",
-                                          month: "short",
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
-                                      </span>
+                                {(phase.actual_start_time || phase.actual_end_time) ? (
+                                  <div className="flex flex-wrap gap-3 px-5 pb-2 text-xs text-white/35">
+                                    {phase.actual_start_time ? (
+                                      <span>Started {formatPhaseActualTime(phase.actual_start_time)}</span>
                                     ) : null}
-                                    {phase.start_time && phase.end_time ? <span>→</span> : null}
-                                    {phase.end_time ? (
-                                      <span className="flex items-center gap-1">
-                                        ⏹{""}
-                                        {new Date(phase.end_time).toLocaleString("el-GR", {
-                                          timeZone: "Europe/Athens",
-                                          day: "numeric",
-                                          month: "short",
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
-                                      </span>
+                                    {phase.actual_end_time ? (
+                                      <span>Ended {formatPhaseActualTime(phase.actual_end_time)}</span>
                                     ) : null}
                                   </div>
-                                )}
+                                ) : null}
 
                                 <div className="flex flex-wrap gap-2 px-5 pb-3">
-                                  <div className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                    <span className="text-xs text-white/25" aria-hidden>
-                                      ▶ Start
-                                    </span>
-                                    <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                                      <input
-                                        type="date"
-                                        value={startParts.date}
-                                        onChange={(e) => {
-                                          const v = e.target.value.trim();
-                                          updatePhaseLocal(phase.id, task.id, {
-                                            start_time: v
-                                              ? mergeLocalDateTime(phase.start_time, v, startParts.time)
-                                              : null,
-                                          });
-                                        }}
-                                        onBlur={() =>
-                                          void handleUpdatePhase(phase.id, task.id, { start_time: phase.start_time })
-                                        }
-                                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:outline-none focus:border-pink-500/40"
-                                      />
-                                      <input
-                                        type="time"
-                                        value={startParts.time}
-                                        onChange={(e) => {
-                                          const baseD = startParts.date || toLocalYmd(new Date().toISOString());
-                                          updatePhaseLocal(phase.id, task.id, {
-                                            start_time: mergeLocalDateTime(phase.start_time, baseD, e.target.value),
-                                          });
-                                        }}
-                                        onBlur={() =>
-                                          void handleUpdatePhase(phase.id, task.id, { start_time: phase.start_time })
-                                        }
-                                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:outline-none focus:border-pink-500/40"
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                    <span className="text-xs text-white/25" aria-hidden>
-                                      ⏹ End
-                                    </span>
-                                    <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                                      <input
-                                        type="date"
-                                        value={endParts.date}
-                                        onChange={(e) => {
-                                          const v = e.target.value.trim();
-                                          updatePhaseLocal(phase.id, task.id, {
-                                            end_time: v ? mergeLocalDateTime(phase.end_time, v, endParts.time) : null,
-                                          });
-                                        }}
-                                        onBlur={() =>
-                                          void handleUpdatePhase(phase.id, task.id, { end_time: phase.end_time })
-                                        }
-                                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:outline-none focus:border-pink-500/40"
-                                      />
-                                      <input
-                                        type="time"
-                                        value={endParts.time}
-                                        onChange={(e) => {
-                                          const baseD = endParts.date || toLocalYmd(new Date().toISOString());
-                                          updatePhaseLocal(phase.id, task.id, {
-                                            end_time: mergeLocalDateTime(phase.end_time, baseD, e.target.value),
-                                          });
-                                        }}
-                                        onBlur={() =>
-                                          void handleUpdatePhase(phase.id, task.id, { end_time: phase.end_time })
-                                        }
-                                        className="rounded-lg border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:outline-none focus:border-pink-500/40"
-                                      />
-                                    </div>
-                                  </div>
                                   <div className="flex min-w-[8.5rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                     <Users className="h-3.5 w-3.5 shrink-0 text-white/30" aria-hidden />
                                     <select
@@ -1357,6 +1225,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   </div>
                                 </div>
                               </div>
+                              </div>
                             );
                           })}
 
@@ -1462,12 +1331,12 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           <p className="mt-2 max-w-sm text-sm text-white/50">Adjust search or filters, or create a new task.</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
           {regularTasks.map((task) => (
             <React.Fragment key={task.id}>{renderAdminTaskCard(task)}</React.Fragment>
           ))}
           {recurringGroups.map((group) => (
-            <div key={group.title} className="mb-3">
+            <div key={group.title} className="mb-3 lg:col-span-2">
               {group.currentTask ? (
                 <React.Fragment key={group.currentTask.id}>{renderAdminTaskCard(group.currentTask)}</React.Fragment>
               ) : (
@@ -1865,7 +1734,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                   >
                     <Zap className="h-6 w-6 text-amber-400" aria-hidden />
                     <span>Add phases to this task</span>
-                    <span className="text-xs text-white/15">Optional — break task into steps with deadlines</span>
+                    <span className="text-xs text-white/15">Optional — break task into steps with checklists</span>
                   </button>
                 ) : null}
 
@@ -1893,43 +1762,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                       </div>
 
                       <div className="border-b border-white/5 px-4 py-3">
-                        <div className="mb-2 grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="mb-1 flex items-center gap-1 text-xs text-white/25">▶ Start</label>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <input
-                                type="date"
-                                value={phase.start_date}
-                                onChange={(e) => updateDraftPhase(phase.tempId, { start_date: e.target.value })}
-                                className="rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:border-pink-500/40 focus:outline-none"
-                              />
-                              <input
-                                type="time"
-                                value={phase.start_time_only}
-                                onChange={(e) => updateDraftPhase(phase.tempId, { start_time_only: e.target.value })}
-                                className="rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:border-pink-500/40 focus:outline-none"
-                              />
-                            </div>
-                          </div>
-                          <div>
-                            <label className="mb-1 flex items-center gap-1 text-xs text-white/25">⏹ End</label>
-                            <div className="grid grid-cols-2 gap-1.5">
-                              <input
-                                type="date"
-                                value={phase.end_date}
-                                onChange={(e) => updateDraftPhase(phase.tempId, { end_date: e.target.value })}
-                                className="rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:border-pink-500/40 focus:outline-none"
-                              />
-                              <input
-                                type="time"
-                                value={phase.end_time_only}
-                                onChange={(e) => updateDraftPhase(phase.tempId, { end_time_only: e.target.value })}
-                                className="rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white [color-scheme:dark] focus:border-pink-500/40 focus:outline-none"
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mt-2 grid grid-cols-3 gap-2">
+                        <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="mb-1 block text-xs text-white/25">VA</label>
                             <select
