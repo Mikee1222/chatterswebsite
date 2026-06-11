@@ -14,6 +14,7 @@ import {
   LINK_PAGE_BLOCKS_TABLE,
   LINK_PAGE_FIELDS,
   LINK_PAGE_BLOCK_FIELDS,
+  LINK_PAGE_FONTS,
 } from "@/lib/link-pages-schema";
 import type {
   LinkPageRecord,
@@ -98,7 +99,7 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
   const theme = (["dark", "light", "minimal", "neon", "gold"] as const).includes(f.theme as LinkPageTheme)
     ? (f.theme as LinkPageTheme)
     : "dark";
-  const font = (["modern", "elegant", "bold", "minimal"] as const).includes(f.font as LinkPageFont)
+  const font = (LINK_PAGE_FONTS as readonly string[]).includes(f.font ?? "")
     ? (f.font as LinkPageFont)
     : "modern";
   return {

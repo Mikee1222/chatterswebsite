@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { headers as getRequestHeaders } from "next/headers";
 import { getLinkPageBySlugFresh } from "@/services/link-pages";
 import { trackPageView, extractClientIp } from "@/services/link-page-analytics";
-import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml } from "@/lib/link-page-styles";
+import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml, GOOGLE_FONTS_STYLESHEET } from "@/lib/link-page-styles";
 import type { LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -12,10 +12,10 @@ export const fetchCache = "force-no-store";
 
 const LINK_PAGE_CSP = [
   "default-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "script-src 'self' 'unsafe-inline'",
   "img-src https: data: blob:",
-  "font-src 'self'",
+  "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
   "connect-src 'self'",
   "frame-ancestors 'self'",
   "base-uri 'self'",
@@ -44,22 +44,22 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
-function clickUrl(pageId: string, blockId: string, url: string): string {
-  const params = new URLSearchParams({ page: pageId, block: blockId, url });
+function clickUrl(pageId: string, blockId: string, url: string, sessionId: string): string {
+  const params = new URLSearchParams({ page: pageId, block: blockId, url, session: sessionId });
   return `/api/l/click?${params.toString()}`;
 }
 
-function renderLinkBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): string {
-  const href = block.url ? clickUrl(page.page_id, block.block_id, block.url) : "#";
+function renderLinkBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord, sessionId: string): string {
+  const href = block.url ? clickUrl(page.page_id, block.block_id, block.url, sessionId) : "#";
   return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml);
 }
 
-function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): string {
+function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord, sessionId: string): string {
   if (!block.is_visible) return "";
 
   switch (block.block_type) {
     case "link":
-      return renderLinkBlock(page, block);
+      return renderLinkBlock(page, block, sessionId);
     case "heading":
       return `<div class="block-heading">${escapeHtml(block.heading_text || block.label || "")}</div>`;
     case "bio_text":
@@ -81,7 +81,7 @@ function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): stri
       const urls = block.photo_urls.length ? block.photo_urls : block.url ? [block.url] : [];
       const items = urls
         .map((u) => {
-          const href = clickUrl(page.page_id, block.block_id, u);
+          const href = clickUrl(page.page_id, block.block_id, u, sessionId);
           return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
         })
         .join("");
@@ -159,7 +159,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 }
 
 function randomSessionId(): string {
-  return `sess_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  return `s_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export default async function LinkPagePublic({ params, searchParams }: Props) {
@@ -181,6 +181,8 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
     notFound();
   }
 
+  const sessionId = randomSessionId();
+
   if (!isPreview) {
     const hdrs = await getRequestHeaders();
     trackPageView({
@@ -188,17 +190,22 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
       ip: extractClientIp(hdrs),
       userAgent: hdrs.get("user-agent") ?? "",
       referrer: hdrs.get("referer") ?? "",
-      sessionId: randomSessionId(),
+      sessionId,
     }).catch(() => {});
   }
 
   const sortedBlocks = [...page.blocks].sort((a, b) => a.sort_order - b.sort_order);
-  const blocksHtml = sortedBlocks.map((b) => renderBlock(page, b)).join("\n");
+  const blocksHtml = sortedBlocks.map((b) => renderBlock(page, b, sessionId)).join("\n");
   const hasCountdown = sortedBlocks.some((b) => b.block_type === "countdown" && b.is_visible);
   const initial = (page.title || "?").charAt(0).toUpperCase();
 
   return (
     <div className="link-page-root">
+      <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href={GOOGLE_FONTS_STYLESHEET} rel="stylesheet" />
+      </head>
       <style dangerouslySetInnerHTML={{ __html: linkPageThemeCss(page) }} />
       <main className="page-wrap">
         {isPreview && page.status === "draft" ? (

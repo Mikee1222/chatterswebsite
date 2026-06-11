@@ -1,5 +1,5 @@
 import { LINK_PAGE_PLATFORMS, type LinkPagePlatformId } from "@/lib/link-pages-schema";
-import type { LinkPageBlockRecord, LinkPageBlockStyle, LinkPageWithBlocks } from "@/types";
+import type { LinkPageBlockRecord, LinkPageBlockStyle, LinkPageFont, LinkPageWithBlocks } from "@/types";
 
 export type PlatformBranding = {
   id: LinkPagePlatformId;
@@ -11,6 +11,43 @@ export type PlatformBranding = {
   borderColor: string;
   svg: string;
 };
+
+export const fontFamilyMap: Record<LinkPageFont, string> = {
+  modern: '"Segoe UI", system-ui, sans-serif',
+  inter: '"Inter", system-ui, sans-serif',
+  poppins: '"Poppins", system-ui, sans-serif',
+  raleway: '"Raleway", system-ui, sans-serif',
+  montserrat: '"Montserrat", system-ui, sans-serif',
+  playfair: '"Playfair Display", Georgia, serif',
+  dancing: '"Dancing Script", cursive',
+  bebas: '"Bebas Neue", Impact, sans-serif',
+  nunito: '"Nunito", system-ui, sans-serif',
+  lato: '"Lato", system-ui, sans-serif',
+  oswald: '"Oswald", system-ui, sans-serif',
+  elegant: 'Georgia, "Times New Roman", serif',
+  bold: '"Arial Black", Impact, sans-serif',
+  minimal: "system-ui, -apple-system, sans-serif",
+};
+
+export const fontLabels: Record<LinkPageFont, string> = {
+  modern: "Modern",
+  inter: "Inter",
+  poppins: "Poppins",
+  raleway: "Raleway",
+  montserrat: "Montserrat",
+  playfair: "Playfair",
+  dancing: "Dancing Script",
+  bebas: "Bebas Neue",
+  nunito: "Nunito",
+  lato: "Lato",
+  oswald: "Oswald",
+  elegant: "Elegant",
+  bold: "Bold",
+  minimal: "Minimal",
+};
+
+export const GOOGLE_FONTS_STYLESHEET =
+  "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=Poppins:wght@400;500;600;700&family=Raleway:wght@400;500;600;700&family=Montserrat:wght@400;500;600;700&family=Dancing+Script:wght@400;700&family=Bebas+Neue&family=Nunito:wght@400;500;600;700&family=Lato:wght@400;700&family=Oswald:wght@400;500;600;700&display=swap";
 
 const PLATFORM_IDS = new Set(LINK_PAGE_PLATFORMS.map((p) => p.id));
 
@@ -292,14 +329,7 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   const primary = page.primary_color || "#ec4899";
   const accent = page.accent_color || "#a855f7";
   const themeBgDefault = themeBackgroundDefault(page.theme);
-  const fontFamily =
-    page.font === "elegant"
-      ? 'Georgia, "Times New Roman", serif'
-      : page.font === "bold"
-        ? '"Arial Black", Impact, sans-serif'
-        : page.font === "minimal"
-          ? "system-ui, -apple-system, sans-serif"
-          : '"Segoe UI", system-ui, sans-serif';
+  const fontFamily = fontFamilyMap[page.font] ?? fontFamilyMap.modern;
 
   const themes: Record<
     string,

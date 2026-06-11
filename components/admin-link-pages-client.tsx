@@ -31,6 +31,8 @@ import {
   Area,
   LineChart,
   Line,
+  BarChart,
+  Bar,
   CartesianGrid,
   XAxis,
   YAxis,
@@ -44,8 +46,9 @@ import { useToast } from "@/contexts/toast-context";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
-import { PLATFORM_BRANDING, detectLinkPlatform } from "@/lib/link-page-styles";
+import { LINK_PAGE_FONTS, LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
+import { PLATFORM_BRANDING, detectLinkPlatform, fontFamilyMap, fontLabels, GOOGLE_FONTS_STYLESHEET } from "@/lib/link-page-styles";
+import { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type {
@@ -303,6 +306,35 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     () => new Set(["identity", "profile", "appearance", "blocks"])
   );
   const [pageStatsMap, setPageStatsMap] = React.useState<Record<string, { views: number; clicks: number }>>({});
+  const [analyticsDays, setAnalyticsDays] = React.useState(30);
+  const [globalAnalyticsDays, setGlobalAnalyticsDays] = React.useState(30);
+
+  React.useEffect(() => {
+    const id = "link-page-google-fonts";
+    if (document.getElementById(id)) return;
+    const pre1 = document.createElement("link");
+    pre1.rel = "preconnect";
+    pre1.href = "https://fonts.googleapis.com";
+    document.head.appendChild(pre1);
+    const pre2 = document.createElement("link");
+    pre2.rel = "preconnect";
+    pre2.href = "https://fonts.gstatic.com";
+    pre2.crossOrigin = "anonymous";
+    document.head.appendChild(pre2);
+    const link = document.createElement("link");
+    link.id = id;
+    link.rel = "stylesheet";
+    link.href = GOOGLE_FONTS_STYLESHEET;
+    document.head.appendChild(link);
+  }, []);
+
+  const blockClickMap = React.useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const link of analytics?.topLinks ?? []) {
+      map[link.block_id] = link.clicks;
+    }
+    return map;
+  }, [analytics?.topLinks]);
 
   const filteredPages = pages.filter((p) => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
@@ -454,10 +486,10 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     [selectedId]
   );
 
-  const loadAnalytics = React.useCallback(async (id: string) => {
+  const loadAnalytics = React.useCallback(async (id: string, days = analyticsDays) => {
     try {
       const [aRes, rRes] = await Promise.all([
-        fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/analytics?days=30`),
+        fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/analytics?days=${days}`),
         fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/analytics/realtime`),
       ]);
       const aData = (await aRes.json()) as { summary?: AnalyticsSummary };
@@ -467,22 +499,26 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     } catch {
       setAnalytics(null);
     }
-  }, []);
+  }, [analyticsDays]);
 
   React.useEffect(() => {
-    if (tab === "analytics" && selectedId) void loadAnalytics(selectedId);
-  }, [tab, selectedId, loadAnalytics]);
+    if (selectedId) void loadAnalytics(selectedId, analyticsDays);
+  }, [selectedId, analyticsDays, loadAnalytics]);
+
+  React.useEffect(() => {
+    if (tab === "analytics" && selectedId) void loadAnalytics(selectedId, analyticsDays);
+  }, [tab, selectedId, analyticsDays, loadAnalytics]);
 
   React.useEffect(() => {
     if (tab !== "analytics" || !selectedId) return;
-    const t = setInterval(() => void loadAnalytics(selectedId), 30_000);
+    const t = setInterval(() => void loadAnalytics(selectedId, analyticsDays), 30_000);
     return () => clearInterval(t);
-  }, [tab, selectedId, loadAnalytics]);
+  }, [tab, selectedId, analyticsDays, loadAnalytics]);
 
-  const loadGlobalAnalytics = React.useCallback(async () => {
+  const loadGlobalAnalytics = React.useCallback(async (days = globalAnalyticsDays) => {
     setGlobalAnalyticsLoading(true);
     try {
-      const res = await fetch("/api/admin/link-pages/analytics/global?days=30");
+      const res = await fetch(`/api/admin/link-pages/analytics/global?days=${days}`);
       const data = (await res.json()) as { summary?: GlobalAnalyticsSummary; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to load global analytics");
       setGlobalAnalytics(data.summary ?? null);
@@ -500,11 +536,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     } finally {
       setGlobalAnalyticsLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, globalAnalyticsDays]);
 
   React.useEffect(() => {
-    if (globalAnalyticsOpen) void loadGlobalAnalytics();
-  }, [globalAnalyticsOpen, loadGlobalAnalytics]);
+    if (globalAnalyticsOpen) void loadGlobalAnalytics(globalAnalyticsDays);
+  }, [globalAnalyticsOpen, globalAnalyticsDays, loadGlobalAnalytics]);
 
   async function createPage() {
     setSaving(true);
@@ -843,11 +879,13 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             summary={globalAnalytics}
             loading={globalAnalyticsLoading}
             pages={pages}
+            days={globalAnalyticsDays}
+            onDaysChange={setGlobalAnalyticsDays}
             onSelectPage={(id) => {
               setSelectedId(id);
               setGlobalAnalyticsOpen(false);
             }}
-            onRefresh={() => void loadGlobalAnalytics()}
+            onRefresh={() => void loadGlobalAnalytics(globalAnalyticsDays)}
           />
         </main>
       ) : (
@@ -952,10 +990,17 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                       dragIndex={dragIndex}
                       setDragIndex={setDragIndex}
                       onReorder={(blocks) => void reorderBlocks(blocks)}
+                      blockClickMap={blockClickMap}
                     />
                   ) : (
                     <div className="p-4">
-                      <AnalyticsPanel summary={analytics} realtime={realtime} pageTitle={selectedPage.title} />
+                      <AnalyticsPanel
+                        summary={analytics}
+                        realtime={realtime}
+                        pageTitle={selectedPage.title}
+                        days={analyticsDays}
+                        onDaysChange={setAnalyticsDays}
+                      />
                     </div>
                   )}
                 </div>
@@ -1574,6 +1619,7 @@ function EditorPanel({
   dragIndex,
   setDragIndex,
   onReorder,
+  blockClickMap,
 }: {
   page: LinkPageWithBlocks;
   pageId: string;
@@ -1594,6 +1640,7 @@ function EditorPanel({
   dragIndex: number | null;
   setDragIndex: (i: number | null) => void;
   onReorder: (blocks: LinkPageBlockRecord[]) => void;
+  blockClickMap: Record<string, number>;
 }) {
   const sorted = dedupeBlocks(page.blocks);
 
@@ -1713,32 +1760,37 @@ function EditorPanel({
         expanded={expandedSections.has("appearance")}
         onToggle={onToggleSection}
       >
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Theme">
-            <select
-              value={page.theme}
-              onChange={(e) => onPatchImmediateField({ theme: e.target.value as LinkPageRecord["theme"] })}
-              className="w-full rounded-lg border px-3 py-2 text-sm text-white"
-              style={{ background: BG, borderColor: BORDER }}
-            >
-              {(["dark", "light", "minimal", "neon", "gold"] as const).map((t) => (
-                <option key={t} value={t}>{t}</option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Font">
-            <select
-              value={page.font}
-              onChange={(e) => onPatchImmediateField({ font: e.target.value as LinkPageRecord["font"] })}
-              className="w-full rounded-lg border px-3 py-2 text-sm text-white"
-              style={{ background: BG, borderColor: BORDER }}
-            >
-              {(["modern", "elegant", "bold", "minimal"] as const).map((f) => (
-                <option key={f} value={f}>{f}</option>
-              ))}
-            </select>
-          </Field>
-        </div>
+        <Field label="Theme">
+          <select
+            value={page.theme}
+            onChange={(e) => onPatchImmediateField({ theme: e.target.value as LinkPageRecord["theme"] })}
+            className="w-full rounded-lg border px-3 py-2 text-sm text-white"
+            style={{ background: BG, borderColor: BORDER }}
+          >
+            {(["dark", "light", "minimal", "neon", "gold"] as const).map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Font">
+          <div className="grid grid-cols-2 gap-2">
+            {LINK_PAGE_FONTS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => onPatchImmediateField({ font: f })}
+                className="rounded-lg border px-3 py-2.5 text-left text-[15px] text-white transition-colors"
+                style={{
+                  fontFamily: fontFamilyMap[f],
+                  background: page.font === f ? ACCENT : BG,
+                  borderColor: page.font === f ? ACCENT : BORDER,
+                }}
+              >
+                {fontLabels[f]}
+              </button>
+            ))}
+          </div>
+        </Field>
         <Field label="Background type">
           <select
             value={page.background_type}
@@ -1852,6 +1904,11 @@ function EditorPanel({
                 <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-white/40">
                   <GripVertical className="h-4 w-4 cursor-grab text-white/25" />
                   <span className="font-semibold">{block.block_type.replace("_", " ")}</span>
+                  {(blockClickMap[block.block_id] ?? 0) > 0 ? (
+                    <span className="normal-case tracking-normal text-white/30">
+                      · {blockClickMap[block.block_id]} clicks
+                    </span>
+                  ) : null}
                   {!block.is_visible ? <EyeOff className="h-3 w-3 text-white/25" /> : <Eye className="h-3 w-3 text-white/20" />}
                 </div>
                 <div className="flex items-center gap-0.5">
@@ -2133,14 +2190,50 @@ function BlockEditor({
   );
 }
 
+const ANALYTICS_DAY_OPTIONS = [7, 14, 30, 90] as const;
+
+function AnalyticsDaysPicker({
+  days,
+  onDaysChange,
+}: {
+  days: number;
+  onDaysChange: (days: number) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {ANALYTICS_DAY_OPTIONS.map((d) => (
+        <button
+          key={d}
+          type="button"
+          onClick={() => onDaysChange(d)}
+          className={cn(
+            "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+            days === d ? "border-pink-500/40 text-pink-200" : "text-white/50 hover:text-white/80"
+          )}
+          style={{
+            background: days === d ? "rgba(236,72,153,0.12)" : BG,
+            borderColor: days === d ? ACCENT : BORDER,
+          }}
+        >
+          {d}d
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function AnalyticsPanel({
   summary,
   realtime,
   pageTitle,
+  days,
+  onDaysChange,
 }: {
   summary: AnalyticsSummary | null;
   realtime: number;
   pageTitle?: string;
+  days: number;
+  onDaysChange: (days: number) => void;
 }) {
   if (!summary) {
     return (
@@ -2152,14 +2245,20 @@ function AnalyticsPanel({
 
   return (
     <div className="space-y-5">
-      {pageTitle ? (
-        <h2 className="text-lg font-bold text-white">{pageTitle}</h2>
-      ) : null}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {pageTitle ? (
+          <h2 className="text-lg font-bold text-white">{pageTitle}</h2>
+        ) : (
+          <span />
+        )}
+        <AnalyticsDaysPicker days={days} onDaysChange={onDaysChange} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <LuxuryStatCard label="Page views" value={summary.pageViews} />
         <LuxuryStatCard label="Link clicks" value={summary.linkClicks} />
         <LuxuryStatCard label="Unique visitors" value={summary.uniqueVisitors} />
-        <LuxuryStatCard label="Live (5 min)" value={realtime} accent pulse />
+        <LuxuryStatCard label="CTR" value={summary.ctr} suffix="%" accent />
+        <LuxuryStatCard label="Live (5 min)" value={realtime} pulse />
       </div>
 
       {summary.viewsByDay.length > 0 ? (
@@ -2229,6 +2328,85 @@ function AnalyticsPanel({
           </ul>
         </ChartCard>
       ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        {summary.cityBreakdown.length > 0 ? (
+          <ChartCard title="Top cities">
+            <ul className="space-y-2">
+              {summary.cityBreakdown.map((c) => (
+                <li key={c.city} className="flex justify-between text-sm text-white/60">
+                  <span>{c.city}</span>
+                  <span className="tabular-nums text-white/35">{c.count}</span>
+                </li>
+              ))}
+            </ul>
+          </ChartCard>
+        ) : null}
+
+        {summary.referrerBreakdown.length > 0 ? (
+          <ChartCard title="Traffic sources">
+            <ul className="space-y-2">
+              {summary.referrerBreakdown.map((r) => {
+                const total = summary.referrerBreakdown.reduce((s, x) => s + x.count, 0);
+                const pct = total ? Math.round((r.count / total) * 100) : 0;
+                return (
+                  <li key={r.referrer}>
+                    <div className="mb-1 flex justify-between text-sm text-white/60">
+                      <span>{cleanReferrerLabel(r.referrer)}</span>
+                      <span className="tabular-nums text-white/35">
+                        {r.count} ({pct}%)
+                      </span>
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${pct}%`, background: ACCENT }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </ChartCard>
+        ) : null}
+      </div>
+
+      {summary.utmBreakdown.length > 0 ? (
+        <ChartCard title="UTM campaigns">
+          <ul className="space-y-2">
+            {summary.utmBreakdown.map((u) => (
+              <li key={`${u.source}-${u.campaign}`} className="flex justify-between gap-2 text-sm text-white/60">
+                <span className="truncate">
+                  {u.source}
+                  <span className="text-white/30"> · {u.campaign}</span>
+                </span>
+                <span className="shrink-0 tabular-nums text-white/35">{u.count}</span>
+              </li>
+            ))}
+          </ul>
+        </ChartCard>
+      ) : null}
+
+      {summary.hourlyDistribution.some((h) => h.views > 0 || h.clicks > 0) ? (
+        <ChartCard title="Peak hours">
+          <div className="h-48">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={summary.hourlyDistribution}>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis
+                  dataKey="hour"
+                  tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }}
+                  tickFormatter={(h) => `${h}h`}
+                />
+                <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                <Bar dataKey="views" fill={ACCENT} name="Views" radius={[2, 2, 0, 0]} />
+                <Bar dataKey="clicks" fill="#a855f7" name="Clicks" radius={[2, 2, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </ChartCard>
+      ) : null}
     </div>
   );
 }
@@ -2237,12 +2415,16 @@ function GlobalAnalyticsPanel({
   summary,
   loading,
   pages,
+  days,
+  onDaysChange,
   onSelectPage,
   onRefresh,
 }: {
   summary: GlobalAnalyticsSummary | null;
   loading: boolean;
   pages: LinkPageRecord[];
+  days: number;
+  onDaysChange: (days: number) => void;
   onSelectPage: (id: string) => void;
   onRefresh: () => void;
 }) {
@@ -2282,20 +2464,23 @@ function GlobalAnalyticsPanel({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: BORDER }}>
+      <div className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-4" style={{ borderColor: BORDER }}>
         <div>
           <h2 className="text-lg font-bold text-white">All Pages Analytics</h2>
-          <p className="text-xs text-white/40">Last 30 days · combined performance</p>
+          <p className="text-xs text-white/40">Last {days} days · combined performance</p>
         </div>
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={loading}
-          className="rounded-lg border px-3 py-1.5 text-xs text-white/60 transition-colors hover:text-white/90 disabled:opacity-50"
-          style={{ borderColor: BORDER }}
-        >
-          {loading ? <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> : "Refresh"}
-        </button>
+        <div className="flex items-center gap-3">
+          <AnalyticsDaysPicker days={days} onDaysChange={onDaysChange} />
+          <button
+            type="button"
+            onClick={onRefresh}
+            disabled={loading}
+            className="rounded-lg border px-3 py-1.5 text-xs text-white/60 transition-colors hover:text-white/90 disabled:opacity-50"
+            style={{ borderColor: BORDER }}
+          >
+            {loading ? <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> : "Refresh"}
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
@@ -2426,13 +2611,70 @@ function GlobalAnalyticsPanel({
               ) : null}
             </div>
           </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {summary.countryBreakdown.length > 0 ? (
+              <ChartCard title="Top countries">
+                <ul className="space-y-2">
+                  {summary.countryBreakdown.map((c) => (
+                    <li key={c.country} className="flex justify-between text-sm text-white/60">
+                      <span>{c.country}</span>
+                      <span className="tabular-nums text-white/35">{c.count.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              </ChartCard>
+            ) : null}
+
+            {summary.referrerBreakdown.length > 0 ? (
+              <ChartCard title="Traffic sources">
+                <ul className="space-y-2">
+                  {summary.referrerBreakdown.map((r) => (
+                    <li key={r.referrer} className="flex justify-between text-sm text-white/60">
+                      <span>{cleanReferrerLabel(r.referrer)}</span>
+                      <span className="tabular-nums text-white/35">{r.count.toLocaleString()}</span>
+                    </li>
+                  ))}
+                </ul>
+              </ChartCard>
+            ) : null}
+          </div>
+
+          {summary.bestDayOfWeek.some((d) => d.views > 0 || d.clicks > 0) ? (
+            <ChartCard title="Best days of week">
+              <div className="h-48">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={summary.bestDayOfWeek}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="day" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                    <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                    <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                    <Bar dataKey="views" fill={ACCENT} name="Views" radius={[2, 2, 0, 0]} />
+                    <Bar dataKey="clicks" fill="#a855f7" name="Clicks" radius={[2, 2, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function LuxuryStatCard({ label, value, accent, pulse }: { label: string; value: number; accent?: boolean; pulse?: boolean }) {
+function LuxuryStatCard({
+  label,
+  value,
+  accent,
+  pulse,
+  suffix,
+}: {
+  label: string;
+  value: number;
+  accent?: boolean;
+  pulse?: boolean;
+  suffix?: string;
+}) {
   return (
     <div
       className="relative overflow-hidden rounded-xl border p-4"
@@ -2447,6 +2689,7 @@ function LuxuryStatCard({ label, value, accent, pulse }: { label: string; value:
         style={{ color: accent ? ACCENT : "#fff" }}
       >
         {value.toLocaleString()}
+        {suffix ? <span className="text-lg">{suffix}</span> : null}
       </p>
     </div>
   );

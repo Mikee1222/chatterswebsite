@@ -9,7 +9,7 @@ import type {
   LinkPageAnalyticsEventType,
   LinkPageDeviceType,
 } from "@/types";
-import { listLinkPages } from "@/services/link-pages";
+import { getLinkPageBlocksFresh, listLinkPages } from "@/services/link-pages";
 
 type AnalyticsFields = {
   event_id?: string;
@@ -55,6 +55,33 @@ type GeoInfo = {
   city: string;
   region: string;
 };
+
+const BOT_UA_PATTERNS = [
+  "bot",
+  "crawler",
+  "spider",
+  "preview",
+  "facebot",
+  "facebookexternalhit",
+  "twitterbot",
+  "linkedinbot",
+  "telegrambot",
+  "whatsapp",
+  "slackbot",
+  "googlebot",
+];
+
+const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+function isBotUserAgent(ua: string): boolean {
+  const lower = ua.toLowerCase();
+  return BOT_UA_PATTERNS.some((p) => lower.includes(p));
+}
+
+function isInternalAdminReferrer(referrer: string): boolean {
+  const r = referrer.toLowerCase();
+  return r.includes("/admin") || r.includes("admin/link-pages");
+}
 
 function parseUserAgent(ua: string): ParsedUa {
   const lower = ua.toLowerCase();
@@ -116,6 +143,9 @@ function newEventId(): string {
 async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackContext): Promise<void> {
   try {
     const ua = ctx.userAgent ?? "";
+    if (isBotUserAgent(ua)) return;
+    if (eventType === "page_view" && isInternalAdminReferrer(ctx.referrer ?? "")) return;
+
     const parsed = parseUserAgent(ua);
     const geo = ctx.ip ? await lookupGeo(ctx.ip) : { country: "", city: "", region: "" };
     const now = new Date().toISOString();
@@ -188,33 +218,58 @@ function ymdFromIso(iso: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+function hourFromIso(iso: string): number {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return -1;
+  return d.getUTCHours();
+}
+
+function dayOfWeekFromIso(iso: string): number {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return -1;
+  return d.getUTCDay();
+}
+
+export { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
+
 export async function getPageAnalytics(pageId: string, days = 30): Promise<AnalyticsSummary> {
   const pid = pageId.trim();
   const since = new Date();
   since.setDate(since.getDate() - days);
   const sinceIso = since.toISOString();
 
-  const records = await listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
-    filterByFormula: `AND({page_id}='${pid.replace(/'/g, "\\'")}', IS_AFTER({timestamp}, '${sinceIso}'))`,
-    sort: [{ field: LINK_PAGE_ANALYTICS_FIELDS.timestamp, direction: "desc" }],
-    _caller: "link-page-analytics",
-  }).catch(() => []);
+  const [records, blocks] = await Promise.all([
+    listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
+      filterByFormula: `AND({page_id}='${pid.replace(/'/g, "\\'")}', IS_AFTER({timestamp}, '${sinceIso}'))`,
+      sort: [{ field: LINK_PAGE_ANALYTICS_FIELDS.timestamp, direction: "desc" }],
+      _caller: "link-page-analytics",
+    }).catch(() => []),
+    getLinkPageBlocksFresh(pid).catch(() => []),
+  ]);
 
+  const blockMap = new Map(blocks.map((b) => [b.block_id, b]));
   const events = records.map(mapAnalyticsRecord);
   const pageViews = events.filter((e) => e.event_type === "page_view").length;
   const linkClicks = events.filter((e) => e.event_type === "link_click").length;
   const sessions = new Set(events.map((e) => e.session_id).filter(Boolean));
   const uniqueVisitors = sessions.size || pageViews;
+  const ctr = pageViews > 0 ? Math.round((linkClicks / pageViews) * 100) : 0;
 
-  const clicksByBlock = new Map<string, { label: string; clicks: number }>();
+  const clicksByBlock = new Map<string, number>();
   for (const e of events) {
     if (e.event_type !== "link_click" || !e.block_id) continue;
-    const cur = clicksByBlock.get(e.block_id) ?? { label: e.block_id, clicks: 0 };
-    cur.clicks += 1;
-    clicksByBlock.set(e.block_id, cur);
+    clicksByBlock.set(e.block_id, (clicksByBlock.get(e.block_id) ?? 0) + 1);
   }
   const topLinks = [...clicksByBlock.entries()]
-    .map(([block_id, v]) => ({ block_id, label: v.label, clicks: v.clicks }))
+    .map(([block_id, clicks]) => {
+      const block = blockMap.get(block_id);
+      return {
+        block_id,
+        label: block?.label?.trim() || block?.url?.trim() || block_id,
+        url: block?.url ?? "",
+        clicks,
+      };
+    })
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, 10);
 
@@ -250,6 +305,18 @@ export async function getPageAnalytics(pageId: string, days = 30): Promise<Analy
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  const cityMap = new Map<string, number>();
+  for (const e of events) {
+    if (e.event_type !== "page_view") continue;
+    const key = e.city?.trim();
+    if (!key) continue;
+    cityMap.set(key, (cityMap.get(key) ?? 0) + 1);
+  }
+  const cityBreakdown = [...cityMap.entries()]
+    .map(([city, count]) => ({ city, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
   const referrerMap = new Map<string, number>();
   for (const e of events) {
     if (e.event_type !== "page_view") continue;
@@ -261,15 +328,49 @@ export async function getPageAnalytics(pageId: string, days = 30): Promise<Analy
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
 
+  const utmMap = new Map<string, number>();
+  for (const e of events) {
+    if (e.event_type !== "link_click") continue;
+    const source = e.utm_source?.trim();
+    if (!source) continue;
+    const campaign = e.utm_campaign?.trim() || "—";
+    const key = `${source}\0${campaign}`;
+    utmMap.set(key, (utmMap.get(key) ?? 0) + 1);
+  }
+  const utmBreakdown = [...utmMap.entries()]
+    .map(([key, count]) => {
+      const [source, campaign] = key.split("\0");
+      return { source: source ?? "", campaign: campaign ?? "—", count };
+    })
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const hourlyMap = new Map<number, { views: number; clicks: number }>();
+  for (let h = 0; h < 24; h++) hourlyMap.set(h, { views: 0, clicks: 0 });
+  for (const e of events) {
+    const hour = hourFromIso(e.timestamp);
+    if (hour < 0 || hour > 23) continue;
+    const cur = hourlyMap.get(hour)!;
+    if (e.event_type === "page_view") cur.views += 1;
+    else cur.clicks += 1;
+  }
+  const hourlyDistribution = [...hourlyMap.entries()]
+    .map(([hour, v]) => ({ hour, ...v }))
+    .sort((a, b) => a.hour - b.hour);
+
   return {
     pageViews,
     linkClicks,
     uniqueVisitors,
+    ctr,
     topLinks,
     viewsByDay,
     deviceBreakdown,
     countryBreakdown,
+    cityBreakdown,
     referrerBreakdown,
+    utmBreakdown,
+    hourlyDistribution,
   };
 }
 
@@ -320,10 +421,16 @@ export async function getGlobalAnalytics(days = 30): Promise<GlobalAnalyticsSumm
   const viewsByPageDay = new Map<string, Map<string, number>>();
   const pageStats = new Map<string, { views: number; clicks: number }>();
   const deviceMap = new Map<string, number>();
+  const countryMap = new Map<string, number>();
+  const referrerMap = new Map<string, number>();
+  const dayOfWeekMap = new Map<number, { views: number; clicks: number }>();
+  for (let d = 0; d < 7; d++) dayOfWeekMap.set(d, { views: 0, clicks: 0 });
 
   for (const e of events) {
     const pid = e.page_id || "unknown";
     const stats = pageStats.get(pid) ?? { views: 0, clicks: 0 };
+    const dow = dayOfWeekFromIso(e.timestamp);
+
     if (e.event_type === "page_view") {
       stats.views += 1;
       const date = ymdFromIso(e.timestamp);
@@ -334,8 +441,20 @@ export async function getGlobalAnalytics(days = 30): Promise<GlobalAnalyticsSumm
       }
       const key = e.device_type || "unknown";
       deviceMap.set(key, (deviceMap.get(key) ?? 0) + 1);
+      const country = e.country || "Unknown";
+      countryMap.set(country, (countryMap.get(country) ?? 0) + 1);
+      const ref = e.referrer?.trim() || "Direct";
+      referrerMap.set(ref, (referrerMap.get(ref) ?? 0) + 1);
+      if (dow >= 0 && dow <= 6) {
+        const cur = dayOfWeekMap.get(dow)!;
+        cur.views += 1;
+      }
     } else if (e.event_type === "link_click") {
       stats.clicks += 1;
+      if (dow >= 0 && dow <= 6) {
+        const cur = dayOfWeekMap.get(dow)!;
+        cur.clicks += 1;
+      }
     }
     pageStats.set(pid, stats);
   }
@@ -355,8 +474,21 @@ export async function getGlobalAnalytics(days = 30): Promise<GlobalAnalyticsSumm
     .sort((a, b) => b.views - a.views);
 
   const deviceBreakdown = [...deviceMap.entries()].map(([device, count]) => ({ device, count }));
-
   const pageBreakdown = leaderboard.map(({ page_id, title, views }) => ({ page_id, title, views }));
+
+  const countryBreakdown = [...countryMap.entries()]
+    .map(([country, count]) => ({ country, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const referrerBreakdown = [...referrerMap.entries()]
+    .map(([referrer, count]) => ({ referrer, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10);
+
+  const bestDayOfWeek = [...dayOfWeekMap.entries()]
+    .map(([dow, v]) => ({ day: DAY_NAMES[dow] ?? String(dow), ...v }))
+    .sort((a, b) => b.views - a.views);
 
   return {
     totalPageViews,
@@ -366,5 +498,8 @@ export async function getGlobalAnalytics(days = 30): Promise<GlobalAnalyticsSumm
     leaderboard,
     deviceBreakdown,
     pageBreakdown,
+    countryBreakdown,
+    referrerBreakdown,
+    bestDayOfWeek,
   };
 }

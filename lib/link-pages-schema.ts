@@ -72,7 +72,22 @@ export const LINK_PAGE_ANALYTICS_FIELDS = {
 export const LINK_PAGE_STATUSES = ["draft", "published", "archived"] as const;
 export const LINK_PAGE_BACKGROUND_TYPES = ["color", "gradient", "image"] as const;
 export const LINK_PAGE_THEMES = ["dark", "light", "minimal", "neon", "gold"] as const;
-export const LINK_PAGE_FONTS = ["modern", "elegant", "bold", "minimal"] as const;
+export const LINK_PAGE_FONTS = [
+  "modern",
+  "inter",
+  "poppins",
+  "raleway",
+  "montserrat",
+  "playfair",
+  "dancing",
+  "bebas",
+  "nunito",
+  "lato",
+  "oswald",
+  "elegant",
+  "bold",
+  "minimal",
+] as const;
 export const LINK_PAGE_BLOCK_TYPES = [
   "link",
   "bio_text",

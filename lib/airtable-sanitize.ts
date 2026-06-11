@@ -330,7 +330,22 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     status: new Set(["draft", "published", "archived"]),
     background_type: new Set(["color", "gradient", "image"]),
     theme: new Set(["dark", "light", "minimal", "neon", "gold"]),
-    font: new Set(["modern", "elegant", "bold", "minimal"]),
+    font: new Set([
+      "modern",
+      "inter",
+      "poppins",
+      "raleway",
+      "montserrat",
+      "playfair",
+      "dancing",
+      "bebas",
+      "nunito",
+      "lato",
+      "oswald",
+      "elegant",
+      "bold",
+      "minimal",
+    ]),
   },
   link_page_blocks: {
     block_type: new Set([

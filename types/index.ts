@@ -1255,7 +1255,21 @@ export interface PushSubscriptionRecord {
 export type LinkPageStatus = "draft" | "published" | "archived";
 export type LinkPageBackgroundType = "color" | "gradient" | "image";
 export type LinkPageTheme = "dark" | "light" | "minimal" | "neon" | "gold";
-export type LinkPageFont = "modern" | "elegant" | "bold" | "minimal";
+export type LinkPageFont =
+  | "modern"
+  | "inter"
+  | "poppins"
+  | "raleway"
+  | "montserrat"
+  | "playfair"
+  | "dancing"
+  | "bebas"
+  | "nunito"
+  | "lato"
+  | "oswald"
+  | "elegant"
+  | "bold"
+  | "minimal";
 export type LinkPageBlockType =
   | "link"
   | "bio_text"
@@ -1338,11 +1352,15 @@ export interface AnalyticsSummary {
   pageViews: number;
   linkClicks: number;
   uniqueVisitors: number;
-  topLinks: Array<{ block_id: string; label: string; clicks: number }>;
+  ctr: number;
+  topLinks: Array<{ block_id: string; label: string; url: string; clicks: number }>;
   viewsByDay: Array<{ date: string; views: number; clicks: number }>;
   deviceBreakdown: Array<{ device: string; count: number }>;
   countryBreakdown: Array<{ country: string; count: number }>;
+  cityBreakdown: Array<{ city: string; count: number }>;
   referrerBreakdown: Array<{ referrer: string; count: number }>;
+  utmBreakdown: Array<{ source: string; campaign: string; count: number }>;
+  hourlyDistribution: Array<{ hour: number; views: number; clicks: number }>;
 }
 
 export interface GlobalAnalyticsSummary {
@@ -1353,6 +1371,9 @@ export interface GlobalAnalyticsSummary {
   leaderboard: Array<{ page_id: string; title: string; slug: string; views: number; clicks: number }>;
   deviceBreakdown: Array<{ device: string; count: number }>;
   pageBreakdown: Array<{ page_id: string; title: string; views: number }>;
+  countryBreakdown: Array<{ country: string; count: number }>;
+  referrerBreakdown: Array<{ referrer: string; count: number }>;
+  bestDayOfWeek: Array<{ day: string; views: number; clicks: number }>;
 }
 
 export interface LinkPageWithBlocks extends LinkPageRecord {
