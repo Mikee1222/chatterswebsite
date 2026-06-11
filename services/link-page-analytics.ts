@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { listAllRecords, createRecord, type AirtableRecord } from "@/lib/airtable-server";
 import {
   LINK_PAGE_ANALYTICS_TABLE,
@@ -108,6 +107,10 @@ async function lookupGeo(ip: string): Promise<GeoInfo> {
   }
 }
 
+function newEventId(): string {
+  return `evt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackContext): Promise<void> {
   try {
     const ua = ctx.userAgent ?? "";
@@ -115,7 +118,7 @@ async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackConte
     const geo = ctx.ip ? await lookupGeo(ctx.ip) : { country: "", city: "", region: "" };
     const now = new Date().toISOString();
     const fields: AnalyticsFields = {
-      event_id: randomUUID(),
+      event_id: newEventId(),
       page_id: ctx.pageId,
       block_id: ctx.blockId ?? "",
       event_type: eventType,

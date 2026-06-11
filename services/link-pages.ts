@@ -1,5 +1,4 @@
 import { unstable_cache } from "next/cache";
-import { randomUUID } from "node:crypto";
 import {
   listRecords,
   listAllRecords,
@@ -165,6 +164,14 @@ function bumpUpdatedAt(patch: Partial<PageFields | BlockFields>): Partial<PageFi
   return { ...patch, updated_at: new Date().toISOString() };
 }
 
+function newPageId(): string {
+  return `lp_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function newBlockId(): string {
+  return `blk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
 async function fetchPageByFormula(formula: string): Promise<LinkPageRecord | null> {
   const { records } = await listRecords<PageFields>(LINK_PAGES_TABLE, {
     filterByFormula: formula,
@@ -255,7 +262,7 @@ export type CreateLinkPageInput = {
 
 export async function createLinkPage(input: CreateLinkPageInput = {}): Promise<LinkPageRecord> {
   const now = new Date().toISOString();
-  const pageId = randomUUID();
+  const pageId = newPageId();
   const title = (input.title ?? "Untitled page").trim() || "Untitled page";
   let slug = slugify(input.slug ?? title);
   if (!slug) slug = `page-${pageId.slice(0, 8)}`;
@@ -398,7 +405,7 @@ export async function upsertBlock(
   input: UpsertBlockInput
 ): Promise<LinkPageBlockRecord> {
   const now = new Date().toISOString();
-  const blockId = input.block_id?.trim() || randomUUID();
+  const blockId = input.block_id?.trim() || newBlockId();
   const fields: BlockFields = {
     block_id: blockId,
     page_id: input.page_id,
