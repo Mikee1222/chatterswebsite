@@ -55,7 +55,9 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   }
   const { id } = await ctx.params;
   try {
+    const page = await getLinkPageById(id);
     await deleteLinkPage(id);
+    if (page?.slug) revalidatePath(`/l/${page.slug}`);
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Delete failed";

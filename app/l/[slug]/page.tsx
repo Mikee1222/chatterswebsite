@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { headers as getRequestHeaders } from "next/headers";
-import { getLinkPageBySlug } from "@/services/link-pages";
+import { getLinkPageBySlugFresh } from "@/services/link-pages";
 import { trackPageView, extractClientIp } from "@/services/link-page-analytics";
 import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml } from "@/lib/link-page-styles";
 import type { LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
@@ -126,7 +126,7 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
 
   let page: LinkPageWithBlocks | null;
   try {
-    page = await getLinkPageBySlug(slug);
+    page = await getLinkPageBySlugFresh(slug);
   } catch (err) {
     if (isAirtableRateLimitError(err)) {
       return { title: "Just a moment…", robots: { index: false, follow: false } };
@@ -169,7 +169,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
 
   let page: LinkPageWithBlocks | null;
   try {
-    page = await getLinkPageBySlug(slug);
+    page = await getLinkPageBySlugFresh(slug);
   } catch (err) {
     if (isAirtableRateLimitError(err)) {
       return <LinkPageRateLimited />;
@@ -201,7 +201,9 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
     <div className="link-page-root">
       <style dangerouslySetInnerHTML={{ __html: linkPageThemeCss(page) }} />
       <main className="page-wrap">
-        {isPreview ? <div className="preview-banner">Draft preview — not visible to the public</div> : null}
+        {isPreview && page.status === "draft" ? (
+          <div className="preview-banner">Draft preview — not visible to the public</div>
+        ) : null}
         <div className="avatar-wrap">
           <div className="avatar-ring" aria-hidden="true" />
           {page.profile_photo_url ? (

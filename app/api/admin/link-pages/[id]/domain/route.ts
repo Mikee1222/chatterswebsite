@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -117,6 +118,7 @@ export async function POST(request: Request, ctx: Ctx) {
 
     const status = await addDomainToVercel(domain);
     const updated = await updateLinkPage(id, { custom_domain: status.domain });
+    revalidatePath(`/l/${updated.slug}`);
 
     return NextResponse.json({
       vercelConfigured: true,
@@ -150,6 +152,7 @@ export async function DELETE(_request: Request, ctx: Ctx) {
       await removeDomainFromVercel(domain);
     }
     const updated = await updateLinkPage(id, { custom_domain: "" });
+    revalidatePath(`/l/${updated.slug}`);
     return NextResponse.json({ success: true, page: updated, vercelConfigured: isVercelDomainsConfigured() });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to remove domain";

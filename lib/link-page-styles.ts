@@ -219,19 +219,36 @@ function styleClasses(style: LinkPageBlockStyle): string {
   return classes.join(" ");
 }
 
+function platformButtonExtras(platform: LinkPagePlatformId): string {
+  if (platform === "tiktok") return "border:1px solid rgba(255,255,255,0.12);";
+  if (platform === "twitter") return "border:1px solid #333;";
+  return "";
+}
+
 function inlineStyles(
   branding: PlatformBranding,
   style: LinkPageBlockStyle,
   platform: LinkPagePlatformId
 ): string {
-  if (style === "prominent" || style === "pill" || style === "card") {
-    const extra = platform === "tiktok" ? "border:1px solid rgba(255,255,255,0.12);" : platform === "twitter" ? "border:1px solid #333;" : "";
-    return `background:${branding.prominentBg};color:${branding.textColor};${extra}`;
-  }
+  const branded = `background:${branding.prominentBg};color:${branding.textColor};${platformButtonExtras(platform)}`;
   if (style === "subtle") {
     return `background:transparent;color:var(--text);border:1px solid ${branding.borderColor};`;
   }
-  return `background:${hexToRgba(branding.accentColor, 0.15)};color:var(--text);border:1px solid ${branding.borderColor};`;
+  if (style === "prominent" || style === "pill" || style === "card" || style === "default") {
+    return branded;
+  }
+  return branded;
+}
+
+/** Platform-specific button styling for preview and public pages. */
+export function getPlatformStyles(
+  block: LinkPageBlockRecord,
+  primaryColor: string,
+  style: LinkPageBlockStyle = block.style ?? "default"
+): { platform: LinkPagePlatformId; branding: PlatformBranding; inline: string } {
+  const platform = detectLinkPlatform(block);
+  const branding = brandingForBlock(block, primaryColor);
+  return { platform, branding, inline: inlineStyles(branding, style, platform) };
 }
 
 const ARROW_SVG = `<svg class="link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>`;
@@ -246,13 +263,11 @@ export function renderBrandedLinkHtml(
   primaryColor: string,
   escapeHtml: (s: string) => string
 ): string {
-  const platform = detectLinkPlatform(block);
-  const branding = brandingForBlock(block, primaryColor);
   const style = block.style ?? "default";
+  const { platform, branding, inline } = getPlatformStyles(block, primaryColor, style);
   const label = block.label || branding.label || block.url || "Link";
   const sublabel = block.sublabel?.trim();
   const classes = styleClasses(style);
-  const inline = inlineStyles(branding, style, platform);
 
   const sublabelHtml = sublabel
     ? `<div class="link-sublabel">${escapeHtml(sublabel)}</div>`
@@ -268,10 +283,15 @@ export function renderBrandedLinkHtml(
   </a>`;
 }
 
+function themeBackgroundDefault(theme: string): string {
+  return theme === "light" ? "#f8fafc" : "#0a0a0a";
+}
+
 /** Shared theme CSS for public link-in-bio pages */
 export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   const primary = page.primary_color || "#ec4899";
   const accent = page.accent_color || "#a855f7";
+  const themeBgDefault = themeBackgroundDefault(page.theme);
   const fontFamily =
     page.font === "elegant"
       ? 'Georgia, "Times New Roman", serif'
@@ -280,11 +300,6 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
         : page.font === "minimal"
           ? "system-ui, -apple-system, sans-serif"
           : '"Segoe UI", system-ui, sans-serif';
-
-  let bg = page.background_value || "#0a0a0a";
-  if (page.background_type === "gradient") {
-    bg = page.background_value || `linear-gradient(160deg, ${primary}22 0%, #0a0a0a 45%, ${accent}18 100%)`;
-  }
 
   const themes: Record<
     string,
@@ -333,12 +348,15 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   };
   const t = themes[page.theme] ?? themes.dark;
 
+  const bgValue = page.background_value?.trim() ?? "";
   const bgRule =
     page.background_type === "image"
-      ? `background-color: #0a0a0a; background-image: url(${page.background_value}); background-size: cover; background-position: center; background-attachment: fixed;`
+      ? bgValue
+        ? `background-color: ${themeBgDefault}; background-image: url(${bgValue}); background-size: cover; background-position: center; background-attachment: fixed;`
+        : `background: ${themeBgDefault};`
       : page.background_type === "gradient"
-        ? `background: ${bg};`
-        : `background: ${bg};`;
+        ? `background: ${bgValue || `linear-gradient(160deg, ${themeBgDefault} 0%, #141414 50%, ${themeBgDefault} 100%)`};`
+        : `background: ${bgValue || themeBgDefault};`;
 
   return `
     .link-page-root {

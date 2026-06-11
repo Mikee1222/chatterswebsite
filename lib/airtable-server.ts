@@ -191,6 +191,8 @@ export type ListParams = {
   /** Optional caller id for debug logs when filterByFormula is used */
   _caller?: string;
   fields?: string[];
+  /** When true, bypass the in-memory listRecords read cache (e.g. public link pages). */
+  skipCache?: boolean;
 };
 
 /** Full `users` table list (all pages); longer TTL than per-page listRecords cache to cut rate limits on hot paths. */
@@ -256,19 +258,24 @@ export async function listRecords<T = Record<string, unknown>>(
   }
 
   pruneExpiredListRecordsCache();
-  const cacheKey = listRecordsCacheKey(tableName, params);
-  const cached = listRecordsReadCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return cloneListRecordsPayload<T>(cached.payload as { records: AirtableRecord<T>[]; offset?: string });
+  if (!params.skipCache) {
+    const cacheKey = listRecordsCacheKey(tableName, params);
+    const cached = listRecordsReadCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return cloneListRecordsPayload<T>(cached.payload as { records: AirtableRecord<T>[]; offset?: string });
+    }
   }
 
   try {
     const data = await airtableFetch<{ records: AirtableRecord<T>[]; offset?: string }>(url.toString());
     const snapshot = cloneListRecordsPayload<T>(data);
-    listRecordsReadCache.set(cacheKey, {
-      expiresAt: Date.now() + getListRecordsCacheTtlMs(tableName),
-      payload: snapshot as { records: AirtableRecord<unknown>[]; offset?: string },
-    });
+    if (!params.skipCache) {
+      const cacheKey = listRecordsCacheKey(tableName, params);
+      listRecordsReadCache.set(cacheKey, {
+        expiresAt: Date.now() + getListRecordsCacheTtlMs(tableName),
+        payload: snapshot as { records: AirtableRecord<unknown>[]; offset?: string },
+      });
+    }
     return snapshot;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -202,32 +202,47 @@ function newBlockId(): string {
   return `blk_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-async function fetchPageByFormula(formula: string): Promise<LinkPageRecord | null> {
+async function fetchPageByFormula(
+  formula: string,
+  options?: { skipCache?: boolean }
+): Promise<LinkPageRecord | null> {
   const { records } = await listRecords<PageFields>(LINK_PAGES_TABLE, {
     filterByFormula: formula,
     pageSize: 1,
     _caller: "link-pages",
+    skipCache: options?.skipCache,
   });
   const rec = records[0];
   return rec ? mapPage(rec) : null;
 }
 
-async function _getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
+async function loadLinkPageBySlug(
+  slug: string,
+  options?: { skipCache?: boolean }
+): Promise<LinkPageWithBlocks | null> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
-  const page = await fetchPageByFormula(`LOWER({slug})="${escapeFormulaString(normalized)}"`);
+  const page = await fetchPageByFormula(`LOWER({slug})="${escapeFormulaString(normalized)}"`, options);
   if (!page) return null;
-  const blocks = await listBlocksForPage(page.page_id);
+  const blocks = options?.skipCache
+    ? await fetchBlocksForPage(page.page_id, options)
+    : await listBlocksForPage(page.page_id);
   return { ...page, blocks: blocks.filter((b) => b.is_visible) };
 }
 
+/** Uncached read for public link pages — always hits Airtable. */
+export async function getLinkPageBySlugFresh(slug: string): Promise<LinkPageWithBlocks | null> {
+  return loadLinkPageBySlug(slug, { skipCache: true });
+}
+
+/** Next.js Data Cache TTL for admin/middleware cached reads (not used on public pages). */
 const LINK_PAGE_PUBLIC_CACHE_SECONDS = 120;
 
 export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
   const tag = linkPageSlugTag(normalized);
-  return unstable_cache(() => _getLinkPageBySlug(normalized), [tag], {
+  return unstable_cache(() => loadLinkPageBySlug(normalized), [tag], {
     revalidate: LINK_PAGE_PUBLIC_CACHE_SECONDS,
     tags: [tag],
   })();
@@ -278,13 +293,34 @@ export async function getLinkPageByPageId(pageId: string): Promise<LinkPageRecor
   return fetchPageByFormula(`{page_id}="${escapeFormulaString(pid)}"`);
 }
 
-async function fetchBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
+function dedupeBlocksByBlockId(blocks: LinkPageBlockRecord[]): LinkPageBlockRecord[] {
+  const byKey = new Map<string, LinkPageBlockRecord>();
+  for (const block of blocks) {
+    const key = block.block_id || block.id;
+    const existing = byKey.get(key);
+    if (!existing || block.updated_at > existing.updated_at) {
+      byKey.set(key, block);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.sort_order - b.sort_order);
+}
+
+async function fetchBlocksForPage(
+  pageId: string,
+  options?: { skipCache?: boolean }
+): Promise<LinkPageBlockRecord[]> {
   const records = await listAllRecords<BlockFields>(LINK_PAGE_BLOCKS_TABLE, {
     filterByFormula: `{page_id}="${escapeFormulaString(pageId)}"`,
     sort: [{ field: LINK_PAGE_BLOCK_FIELDS.sort_order, direction: "asc" }],
     _caller: "link-page-blocks",
+    skipCache: options?.skipCache,
   });
-  return records.map(mapBlock);
+  return dedupeBlocksByBlockId(records.map(mapBlock));
+}
+
+/** Uncached block list for public link pages — always hits Airtable. */
+export async function getLinkPageBlocksFresh(pageId: string): Promise<LinkPageBlockRecord[]> {
+  return fetchBlocksForPage(pageId, { skipCache: true });
 }
 
 export async function listBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
@@ -443,8 +479,8 @@ export async function unpublishLinkPage(recordId: string): Promise<LinkPageRecor
 
 export type UpsertBlockInput = {
   block_id?: string;
-  page_id: string;
-  block_type: LinkPageBlockType;
+  page_id?: string;
+  block_type?: LinkPageBlockType;
   sort_order?: number;
   is_visible?: boolean;
   label?: string;
@@ -459,16 +495,12 @@ export type UpsertBlockInput = {
   heading_text?: string;
 };
 
-export async function upsertBlock(
-  recordId: string | null,
-  input: UpsertBlockInput
-): Promise<LinkPageBlockRecord> {
+function blockFieldsFromInput(input: UpsertBlockInput, blockId: string, pageId: string): BlockFields {
   const now = new Date().toISOString();
-  const blockId = input.block_id?.trim() || newBlockId();
-  const fields: BlockFields = {
+  return {
     block_id: blockId,
-    page_id: input.page_id,
-    block_type: input.block_type,
+    page_id: pageId,
+    block_type: input.block_type ?? "link",
     sort_order: input.sort_order ?? 0,
     is_visible: input.is_visible !== false,
     label: input.label ?? "",
@@ -483,15 +515,54 @@ export async function upsertBlock(
     heading_text: input.heading_text ?? "",
     updated_at: now,
   };
+}
+
+function partialBlockPatch(input: UpsertBlockInput): Partial<BlockFields> {
+  const patch: Partial<BlockFields> = {};
+  if (input.block_type !== undefined) patch.block_type = input.block_type;
+  if (input.sort_order !== undefined) patch.sort_order = input.sort_order;
+  if (input.is_visible !== undefined) patch.is_visible = input.is_visible;
+  if (input.label !== undefined) patch.label = input.label;
+  if (input.url !== undefined) patch.url = input.url;
+  if (input.icon !== undefined) patch.icon = input.icon;
+  if (input.sublabel !== undefined) patch.sublabel = input.sublabel;
+  if (input.style !== undefined) patch.style = input.style;
+  if (input.platform !== undefined) patch.platform = input.platform;
+  if (input.custom_button_color !== undefined) patch.custom_button_color = input.custom_button_color;
+  if (input.photo_urls !== undefined) patch.photo_urls = serializePhotoUrls(input.photo_urls);
+  if (input.countdown_target !== undefined) patch.countdown_target = input.countdown_target ?? undefined;
+  if (input.heading_text !== undefined) patch.heading_text = input.heading_text;
+  return patch;
+}
+
+export async function upsertBlock(
+  recordId: string | null,
+  input: UpsertBlockInput
+): Promise<LinkPageBlockRecord> {
+  const now = new Date().toISOString();
 
   let rec: AirtableRecord<BlockFields>;
+  let pageId = input.page_id?.trim() ?? "";
+
   if (recordId) {
-    rec = await updateRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, recordId, bumpUpdatedAt(fields));
+    const existing = await getRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, recordId);
+    pageId = pageId || (existing.fields.page_id ?? "");
+    const patch = partialBlockPatch(input);
+    if (Object.keys(patch).length === 0) {
+      return mapBlock(existing);
+    }
+    rec = await updateRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, recordId, bumpUpdatedAt(patch));
   } else {
+    if (!input.page_id?.trim()) throw new Error("page_id is required");
+    if (!input.block_type) throw new Error("block_type is required");
+    pageId = input.page_id.trim();
+    const blockId = input.block_id?.trim() || newBlockId();
+    const fields = blockFieldsFromInput(input, blockId, pageId);
     rec = await createRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, { ...fields, created_at: now });
   }
+
   invalidateListRecordsReadCacheForTable(LINK_PAGE_BLOCKS_TABLE);
-  const page = await getLinkPageByPageId(input.page_id);
+  const page = await getLinkPageByPageId(pageId);
   if (page) invalidateLinkPagePublicCache(page);
   return mapBlock(rec);
 }

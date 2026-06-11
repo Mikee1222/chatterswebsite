@@ -220,6 +220,37 @@ function slugify(input: string): string {
     .slice(0, 64);
 }
 
+function dedupeBlocks(blocks: LinkPageBlockRecord[]): LinkPageBlockRecord[] {
+  const byKey = new Map<string, LinkPageBlockRecord>();
+  for (const block of blocks) {
+    const key = block.block_id || block.id;
+    const existing = byKey.get(key);
+    if (!existing || block.updated_at > existing.updated_at) {
+      byKey.set(key, block);
+    }
+  }
+  return [...byKey.values()].sort((a, b) => a.sort_order - b.sort_order);
+}
+
+type BlockPatch = Partial<
+  Pick<
+    LinkPageBlockRecord,
+    | "label"
+    | "url"
+    | "platform"
+    | "sublabel"
+    | "style"
+    | "custom_button_color"
+    | "icon"
+    | "is_visible"
+    | "heading_text"
+    | "countdown_target"
+    | "photo_urls"
+    | "block_type"
+    | "sort_order"
+  >
+>;
+
 function validateSlug(slug: string): string | null {
   if (!slug) return "Slug is required";
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
@@ -290,7 +321,12 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
       const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(id)}`);
       const data = (await res.json()) as { page?: LinkPageWithBlocks; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to load page");
-      setSelectedPage(data.page ?? null);
+      const page = data.page ?? null;
+      if (page) {
+        setSelectedPage({ ...page, blocks: dedupeBlocks(page.blocks) });
+      } else {
+        setSelectedPage(null);
+      }
     } catch (err) {
       addToast(localToast("Load failed", err instanceof Error ? err.message : "Could not load page", "high"));
     } finally {
@@ -533,6 +569,22 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     setDeleteOpen(false);
   }
 
+  const refreshBlocks = React.useCallback(async () => {
+    if (!selectedId) return;
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}/blocks`);
+      const data = (await res.json()) as { blocks?: LinkPageBlockRecord[]; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to refresh blocks");
+      if (data.blocks) {
+        setSelectedPage((prev) => (prev ? { ...prev, blocks: dedupeBlocks(data.blocks!) } : prev));
+      }
+    } catch (err) {
+      addToast(
+        localToast("Block refresh failed", err instanceof Error ? err.message : "Could not refresh blocks", "high")
+      );
+    }
+  }, [selectedId, addToast]);
+
   async function addBlock(type: LinkPageBlockType) {
     if (!selectedId || !selectedPage) return;
     try {
@@ -548,41 +600,25 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
       const data = (await res.json()) as { block?: LinkPageBlockRecord; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Add block failed");
       if (data.block) {
-        setSelectedPage((prev) =>
-          prev ? { ...prev, blocks: [...prev.blocks, data.block!].sort((a, b) => a.sort_order - b.sort_order) } : prev
-        );
+        await refreshBlocks();
       }
     } catch (err) {
       addToast(localToast("Add block failed", err instanceof Error ? err.message : "Error", "high"));
     }
   }
 
-  async function updateBlock(block: LinkPageBlockRecord) {
+  async function updateBlock(blockId: string, patch: BlockPatch) {
+    if (!selectedId) return;
     try {
-      const res = await fetch(`/api/admin/link-pages/blocks/${encodeURIComponent(block.id)}`, {
+      const res = await fetch(`/api/admin/link-pages/blocks/${encodeURIComponent(blockId)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          page_id: block.page_id,
-          block_type: block.block_type,
-          sort_order: block.sort_order,
-          is_visible: block.is_visible,
-          label: block.label,
-          url: block.url,
-          icon: block.icon,
-          sublabel: block.sublabel,
-          style: block.style,
-          platform: block.platform,
-          custom_button_color: block.custom_button_color,
-          photo_urls: block.photo_urls,
-          countdown_target: block.countdown_target,
-          heading_text: block.heading_text,
-        }),
+        body: JSON.stringify(patch),
       });
-      if (!res.ok) {
-        const data = (await res.json()) as { error?: string };
-        throw new Error(data.error ?? "Update failed");
-      }
+      const data = (await res.json()) as { block?: LinkPageBlockRecord; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Update failed");
+      await refreshBlocks();
+      return data.block;
     } catch (err) {
       addToast(localToast("Block save failed", err instanceof Error ? err.message : "Error", "high"));
     }
@@ -1550,7 +1586,7 @@ function EditorPanel({
   slugError: string | null;
   onDomainUpdated: (domain: string) => void;
   onAddBlock: (t: LinkPageBlockType) => void;
-  onUpdateBlock: (b: LinkPageBlockRecord) => Promise<void>;
+  onUpdateBlock: (blockId: string, patch: BlockPatch) => Promise<LinkPageBlockRecord | undefined>;
   onRemoveBlock: (id: string) => void;
   onMoveBlock: (i: number, dir: -1 | 1) => void;
   onUpload: (f: File, cb: (url: string) => void) => Promise<void>;
@@ -1559,7 +1595,7 @@ function EditorPanel({
   setDragIndex: (i: number | null) => void;
   onReorder: (blocks: LinkPageBlockRecord[]) => void;
 }) {
-  const sorted = [...page.blocks].sort((a, b) => a.sort_order - b.sort_order);
+  const sorted = dedupeBlocks(page.blocks);
 
   return (
     <div>
@@ -1834,7 +1870,8 @@ function EditorPanel({
                 block={block}
                 pagePrimaryColor={page.primary_color}
                 onChange={(patch) => patchBlock(block.id, patch)}
-                onSave={(b) => void onUpdateBlock(b)}
+                onSaveLinkFields={(blockId, patch) => void onUpdateBlock(blockId, patch)}
+                onSavePatch={(blockId, patch) => void onUpdateBlock(blockId, patch)}
                 onUpload={onUpload}
               />
             </div>
@@ -1852,15 +1889,43 @@ function BlockEditor({
   block,
   pagePrimaryColor,
   onChange,
-  onSave,
+  onSaveLinkFields,
+  onSavePatch,
   onUpload,
 }: {
   block: LinkPageBlockRecord;
   pagePrimaryColor: string;
   onChange: (patch: Partial<LinkPageBlockRecord>) => void;
-  onSave: (block: LinkPageBlockRecord) => void;
+  onSaveLinkFields: (blockId: string, patch: BlockPatch) => void;
+  onSavePatch: (blockId: string, patch: BlockPatch) => void;
   onUpload: (f: File, cb: (url: string) => void) => Promise<void>;
 }) {
+  const blockRef = React.useRef(block);
+  blockRef.current = block;
+
+  const saveLinkFields = React.useCallback(() => {
+    const current = blockRef.current;
+    const patch: BlockPatch = {
+      label: current.label,
+      url: current.url,
+      platform: current.platform,
+      sublabel: current.sublabel,
+      style: current.style,
+    };
+    if (blockPlatform(current) === "custom") {
+      patch.custom_button_color = current.custom_button_color;
+      patch.icon = current.icon;
+    }
+    onSaveLinkFields(current.id, patch);
+  }, [onSaveLinkFields]);
+
+  const savePatch = React.useCallback(
+    (patch: BlockPatch) => {
+      onSavePatch(blockRef.current.id, patch);
+    },
+    [onSavePatch]
+  );
+
   if (block.block_type === "spacer") {
     return <p className="text-[11px] text-white/30">Vertical spacer — drag to reposition</p>;
   }
@@ -1869,18 +1934,21 @@ function BlockEditor({
   const isCustomPlatform = selectedPlatform === "custom";
 
   return (
-    <div
-      className="space-y-2"
-      onBlur={(e) => {
-        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) {
-          onSave(block);
-        }
-      }}
-    >
+    <div className="space-y-2">
       {(block.block_type === "link" || block.block_type === "social_bar") && (
         <>
-          <FormInput value={block.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Label" />
-          <FormInput value={block.url} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://…" />
+          <FormInput
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            onBlur={saveLinkFields}
+            placeholder="Label"
+          />
+          <FormInput
+            value={block.url}
+            onChange={(e) => onChange({ url: e.target.value })}
+            onBlur={saveLinkFields}
+            placeholder="https://…"
+          />
           <div className="space-y-1.5">
             <p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Platform</p>
             <div className="flex flex-wrap gap-1.5">
@@ -1902,6 +1970,14 @@ function BlockEditor({
                         patch.url = p.urlPrefix;
                       }
                       onChange(patch);
+                      const next = { ...blockRef.current, ...patch };
+                      const save: BlockPatch = {
+                        platform: next.platform,
+                        icon: next.icon,
+                      };
+                      if (patch.label !== undefined) save.label = next.label;
+                      if (patch.url !== undefined) save.url = next.url;
+                      onSavePatch(next.id, save);
                     }}
                     className={cn(
                       "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors",
@@ -1935,18 +2011,27 @@ function BlockEditor({
                 <NativeColorSwatch
                   value={block.custom_button_color || pagePrimaryColor}
                   fallback={pagePrimaryColor || ACCENT}
-                  onChange={(v) => onChange({ custom_button_color: v })}
+                  onChange={(v) => {
+                    onChange({ custom_button_color: v });
+                    savePatch({ custom_button_color: v });
+                  }}
                 />
               </Field>
               <FormInput
                 value={block.icon && block.icon !== "custom" ? block.icon : "🔗"}
                 onChange={(e) => onChange({ icon: e.target.value || "🔗" })}
+                onBlur={() => savePatch({ icon: blockRef.current.icon || "🔗" })}
                 placeholder="Icon emoji"
               />
             </>
           ) : null}
           {block.block_type === "link" ? (
-            <FormInput value={block.sublabel} onChange={(e) => onChange({ sublabel: e.target.value })} placeholder="Sublabel (optional)" />
+            <FormInput
+              value={block.sublabel}
+              onChange={(e) => onChange({ sublabel: e.target.value })}
+              onBlur={saveLinkFields}
+              placeholder="Sublabel (optional)"
+            />
           ) : null}
         </>
       )}
@@ -1954,21 +2039,39 @@ function BlockEditor({
         <FormInput
           value={block.heading_text || block.label}
           onChange={(e) => onChange({ heading_text: e.target.value, label: e.target.value })}
+          onBlur={() =>
+            savePatch({
+              heading_text: blockRef.current.heading_text || blockRef.current.label,
+              label: blockRef.current.heading_text || blockRef.current.label,
+            })
+          }
           placeholder="Heading text"
         />
       )}
       {block.block_type === "bio_text" && (
-        <Textarea value={block.label} onChange={(e) => onChange({ label: e.target.value })} rows={2} placeholder="Bio text" />
+        <Textarea
+          value={block.label}
+          onChange={(e) => onChange({ label: e.target.value })}
+          onBlur={() => savePatch({ label: blockRef.current.label })}
+          rows={2}
+          placeholder="Bio text"
+        />
       )}
       {block.block_type === "countdown" && (
         <>
-          <FormInput value={block.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Countdown label" />
+          <FormInput
+            value={block.label}
+            onChange={(e) => onChange({ label: e.target.value })}
+            onBlur={() => savePatch({ label: blockRef.current.label })}
+            placeholder="Countdown label"
+          />
           <FormInput
             type="datetime-local"
             value={block.countdown_target?.slice(0, 16) ?? ""}
             onChange={(e) =>
               onChange({ countdown_target: e.target.value ? new Date(e.target.value).toISOString() : null })
             }
+            onBlur={() => savePatch({ countdown_target: blockRef.current.countdown_target })}
           />
         </>
       )}
@@ -1981,6 +2084,7 @@ function BlockEditor({
                 photo_urls: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
               })
             }
+            onBlur={() => savePatch({ photo_urls: blockRef.current.photo_urls })}
             rows={3}
             placeholder="Image URLs (one per line)"
           />
@@ -2001,7 +2105,11 @@ function BlockEditor({
       {block.block_type === "link" && (
         <select
           value={block.style}
-          onChange={(e) => onChange({ style: e.target.value as LinkPageBlockRecord["style"] })}
+          onChange={(e) => {
+            const style = e.target.value as LinkPageBlockRecord["style"];
+            onChange({ style });
+            savePatch({ style });
+          }}
           className="w-full rounded-lg border px-3 py-1.5 text-xs text-white"
           style={{ background: BG, borderColor: BORDER }}
         >
@@ -2011,7 +2119,14 @@ function BlockEditor({
         </select>
       )}
       <label className="flex items-center gap-2 text-[11px] text-white/45">
-        <input type="checkbox" checked={block.is_visible} onChange={(e) => onChange({ is_visible: e.target.checked })} />
+        <input
+          type="checkbox"
+          checked={block.is_visible}
+          onChange={(e) => {
+            onChange({ is_visible: e.target.checked });
+            savePatch({ is_visible: e.target.checked });
+          }}
+        />
         Visible
       </label>
     </div>
