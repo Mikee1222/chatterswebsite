@@ -210,6 +210,20 @@ function mistakeDateMs(iso: string): number {
   return Number.isFinite(t) ? t : NaN;
 }
 
+/** Unreviewed (pending) mistakes count for admin nav badge (fields-only read). */
+export async function countPendingMistakes(): Promise<number> {
+  try {
+    const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {
+      filterByFormula: `{status} = "pending"`,
+      fields: ["status"],
+      _caller: "countPendingMistakes",
+    });
+    return records.length;
+  } catch {
+    return 0;
+  }
+}
+
 export async function listMistakesForAdmin(filters: MistakeAdminListFilters): Promise<MistakeRecord[]> {
   const formula = buildAdminFilterFormula(filters);
   const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {

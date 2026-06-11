@@ -295,6 +295,19 @@ export async function listAdminPendingCustomRequests(): Promise<CustomRequest[]>
   return records.map((r) => mapRecord(r as AirtableRecord<Fields>));
 }
 
+/** Pending admin_status count for nav badge (fields-only read). */
+export async function countAdminPendingCustomRequests(): Promise<number> {
+  try {
+    const records = await listAllRecords<Fields>(TABLE, {
+      filterByFormula: `{admin_status} = "pending"`,
+      fields: ["admin_status"],
+    });
+    return records.length;
+  } catch {
+    return 0;
+  }
+}
+
 /** Partial update for admin edit / decline fields (sanitized via updateRecord). */
 export async function patchCustomRequestRecord(
   recordId: string,

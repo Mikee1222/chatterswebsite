@@ -144,6 +144,20 @@ export async function listFinesBonuses(filters: FinesBonusesListFilters = {}): P
   return records.map((r) => mapRecord(r as AirtableRecord<Record<string, unknown>>));
 }
 
+/** Pending review count for admin nav badge (fields-only read). */
+export async function countPendingReviewFinesBonuses(): Promise<number> {
+  try {
+    const records = await listAllRecords<Record<string, unknown>>(TABLE, {
+      filterByFormula: `{status} = "pending_review"`,
+      fields: ["status"],
+      _caller: "countPendingReviewFinesBonuses",
+    });
+    return records.length;
+  } catch {
+    return 0;
+  }
+}
+
 export type CreateFineBonusInput = {
   user_id: string;
   user_name: string;
