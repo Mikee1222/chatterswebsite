@@ -1342,6 +1342,16 @@ export interface AnalyticsSummary {
   referrerBreakdown: Array<{ referrer: string; count: number }>;
 }
 
+export interface GlobalAnalyticsSummary {
+  totalPageViews: number;
+  totalLinkClicks: number;
+  totalUniqueVisitors: number;
+  viewsByDayByPage: Array<{ date: string; pages: Record<string, number> }>;
+  leaderboard: Array<{ page_id: string; title: string; slug: string; views: number; clicks: number }>;
+  deviceBreakdown: Array<{ device: string; count: number }>;
+  pageBreakdown: Array<{ page_id: string; title: string; views: number }>;
+}
+
 export interface LinkPageWithBlocks extends LinkPageRecord {
   blocks: LinkPageBlockRecord[];
 }

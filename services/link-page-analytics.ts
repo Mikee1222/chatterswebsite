@@ -5,9 +5,11 @@ import {
 } from "@/lib/link-pages-schema";
 import type {
   AnalyticsSummary,
+  GlobalAnalyticsSummary,
   LinkPageAnalyticsEventType,
   LinkPageDeviceType,
 } from "@/types";
+import { listLinkPages } from "@/services/link-pages";
 
 type AnalyticsFields = {
   event_id?: string;
@@ -291,4 +293,78 @@ export function extractClientIp(headers: Headers): string {
     headers.get("x-real-ip") ??
     ""
   );
+}
+
+export async function getGlobalAnalytics(days = 30): Promise<GlobalAnalyticsSummary> {
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+  const sinceIso = since.toISOString();
+
+  const [records, pages] = await Promise.all([
+    listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
+      filterByFormula: `IS_AFTER({timestamp}, '${sinceIso}')`,
+      sort: [{ field: LINK_PAGE_ANALYTICS_FIELDS.timestamp, direction: "desc" }],
+      _caller: "link-page-global-analytics",
+    }).catch(() => []),
+    listLinkPages(),
+  ]);
+
+  const pageMeta = new Map(pages.map((p) => [p.page_id, { title: p.title, slug: p.slug }]));
+  const events = records.map(mapAnalyticsRecord);
+
+  const totalPageViews = events.filter((e) => e.event_type === "page_view").length;
+  const totalLinkClicks = events.filter((e) => e.event_type === "link_click").length;
+  const sessions = new Set(events.map((e) => e.session_id).filter(Boolean));
+  const totalUniqueVisitors = sessions.size || totalPageViews;
+
+  const viewsByPageDay = new Map<string, Map<string, number>>();
+  const pageStats = new Map<string, { views: number; clicks: number }>();
+  const deviceMap = new Map<string, number>();
+
+  for (const e of events) {
+    const pid = e.page_id || "unknown";
+    const stats = pageStats.get(pid) ?? { views: 0, clicks: 0 };
+    if (e.event_type === "page_view") {
+      stats.views += 1;
+      const date = ymdFromIso(e.timestamp);
+      if (date) {
+        const dayMap = viewsByPageDay.get(date) ?? new Map<string, number>();
+        dayMap.set(pid, (dayMap.get(pid) ?? 0) + 1);
+        viewsByPageDay.set(date, dayMap);
+      }
+      const key = e.device_type || "unknown";
+      deviceMap.set(key, (deviceMap.get(key) ?? 0) + 1);
+    } else if (e.event_type === "link_click") {
+      stats.clicks += 1;
+    }
+    pageStats.set(pid, stats);
+  }
+
+  const viewsByDayByPage = [...viewsByPageDay.entries()]
+    .map(([date, dayMap]) => ({ date, pages: Object.fromEntries(dayMap) }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  const leaderboard = [...pageStats.entries()]
+    .map(([page_id, s]) => ({
+      page_id,
+      title: pageMeta.get(page_id)?.title ?? page_id,
+      slug: pageMeta.get(page_id)?.slug ?? "",
+      views: s.views,
+      clicks: s.clicks,
+    }))
+    .sort((a, b) => b.views - a.views);
+
+  const deviceBreakdown = [...deviceMap.entries()].map(([device, count]) => ({ device, count }));
+
+  const pageBreakdown = leaderboard.map(({ page_id, title, views }) => ({ page_id, title, views }));
+
+  return {
+    totalPageViews,
+    totalLinkClicks,
+    totalUniqueVisitors,
+    viewsByDayByPage,
+    leaderboard,
+    deviceBreakdown,
+    pageBreakdown,
+  };
 }

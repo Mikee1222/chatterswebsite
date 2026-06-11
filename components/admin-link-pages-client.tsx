@@ -5,14 +5,20 @@ import {
   Archive,
   BarChart3,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
+  Copy,
   ExternalLink,
   Eye,
+  EyeOff,
   GripVertical,
   Link2,
   Loader2,
+  Monitor,
   Plus,
+  QrCode,
   Search,
+  Smartphone,
   Trash2,
   Upload,
 } from "lucide-react";
@@ -20,6 +26,8 @@ import {
   ResponsiveContainer,
   AreaChart,
   Area,
+  LineChart,
+  Line,
   CartesianGrid,
   XAxis,
   YAxis,
@@ -27,22 +35,32 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from "recharts";
 import { useToast } from "@/contexts/toast-context";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { LinkPageLivePreview } from "@/components/link-pages/link-page-live-preview";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
-import type { AppNotification, AnalyticsSummary, LinkPageBlockRecord, LinkPageBlockType, LinkPageRecord, LinkPageWithBlocks, ModelRecord } from "@/types";
+import type {
+  AppNotification,
+  AnalyticsSummary,
+  GlobalAnalyticsSummary,
+  LinkPageBlockRecord,
+  LinkPageBlockType,
+  LinkPageRecord,
+  LinkPageWithBlocks,
+  ModelRecord,
+} from "@/types";
 
-const cardClass = cn(
-  "rounded-xl border border-white/[0.08] bg-zinc-950/80",
-  "shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)]"
-);
-
+/* ── Design tokens ── */
+const BG = "#050505";
+const PANEL = "#0a0a0a";
+const BORDER = "rgba(255,255,255,0.08)";
 const ACCENT = "#ec4899";
-const PIE_COLORS = ["#ec4899", "#a855f7", "#38bdf8", "#34d399", "#fbbf24"];
+const PIE_COLORS = ["#ec4899", "#a855f7", "#38bdf8", "#34d399", "#fbbf24", "#f97316"];
 
 function localToast(title: string, body: string, priority: "normal" | "high"): AppNotification {
   const id = `toast-${Date.now()}`;
@@ -71,14 +89,21 @@ const PLATFORM_PRESETS: Array<{ icon: string; label: string; urlPrefix: string }
   { icon: "💬", label: "Telegram", urlPrefix: "https://t.me/" },
 ];
 
-const BLOCK_TYPES: Array<{ value: LinkPageBlockType; label: string }> = [
-  { value: "link", label: "Link" },
-  { value: "heading", label: "Heading" },
-  { value: "bio_text", label: "Bio text" },
-  { value: "photo_grid", label: "Photo grid" },
-  { value: "countdown", label: "Countdown" },
-  { value: "social_bar", label: "Social bar" },
-  { value: "spacer", label: "Spacer" },
+const BLOCK_TYPES: Array<{ value: LinkPageBlockType; label: string; icon: string }> = [
+  { value: "link", label: "Link", icon: "🔗" },
+  { value: "heading", label: "Heading", icon: "H" },
+  { value: "bio_text", label: "Bio text", icon: "¶" },
+  { value: "photo_grid", label: "Photo grid", icon: "🖼" },
+  { value: "countdown", label: "Countdown", icon: "⏱" },
+  { value: "social_bar", label: "Social bar", icon: "◎" },
+  { value: "spacer", label: "Spacer", icon: "↕" },
+];
+
+const STATUS_FILTERS = [
+  { value: "all" as const, label: "All" },
+  { value: "published" as const, label: "Published" },
+  { value: "draft" as const, label: "Draft" },
+  { value: "archived" as const, label: "Archived" },
 ];
 
 type Props = {
@@ -103,6 +128,18 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [realtime, setRealtime] = React.useState(0);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [dragIndex, setDragIndex] = React.useState<number | null>(null);
+
+  /* UI-only state */
+  const [globalAnalyticsOpen, setGlobalAnalyticsOpen] = React.useState(false);
+  const [globalAnalytics, setGlobalAnalytics] = React.useState<GlobalAnalyticsSummary | null>(null);
+  const [globalAnalyticsLoading, setGlobalAnalyticsLoading] = React.useState(false);
+  const [previewDevice, setPreviewDevice] = React.useState<"mobile" | "desktop">("mobile");
+  const [debouncedPage, setDebouncedPage] = React.useState<LinkPageWithBlocks | null>(null);
+  const [showQr, setShowQr] = React.useState(false);
+  const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
+    () => new Set(["identity", "profile", "appearance", "blocks"])
+  );
+  const [pageStatsMap, setPageStatsMap] = React.useState<Record<string, { views: number; clicks: number }>>({});
 
   const filteredPages = pages.filter((p) => {
     if (statusFilter !== "all" && p.status !== statusFilter) return false;
@@ -134,6 +171,15 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     else setSelectedPage(null);
   }, [selectedId, loadPage]);
 
+  React.useEffect(() => {
+    if (!selectedPage) {
+      setDebouncedPage(null);
+      return;
+    }
+    const t = setTimeout(() => setDebouncedPage(selectedPage), 500);
+    return () => clearTimeout(t);
+  }, [selectedPage]);
+
   const loadAnalytics = React.useCallback(async (id: string) => {
     try {
       const [aRes, rRes] = await Promise.all([
@@ -159,6 +205,33 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     return () => clearInterval(t);
   }, [tab, selectedId, loadAnalytics]);
 
+  const loadGlobalAnalytics = React.useCallback(async () => {
+    setGlobalAnalyticsLoading(true);
+    try {
+      const res = await fetch("/api/admin/link-pages/analytics/global?days=30");
+      const data = (await res.json()) as { summary?: GlobalAnalyticsSummary; error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to load global analytics");
+      setGlobalAnalytics(data.summary ?? null);
+      if (data.summary) {
+        const map: Record<string, { views: number; clicks: number }> = {};
+        for (const row of data.summary.leaderboard) {
+          map[row.page_id] = { views: row.views, clicks: row.clicks };
+        }
+        setPageStatsMap(map);
+      }
+    } catch (err) {
+      addToast(
+        localToast("Analytics failed", err instanceof Error ? err.message : "Could not load", "high")
+      );
+    } finally {
+      setGlobalAnalyticsLoading(false);
+    }
+  }, [addToast]);
+
+  React.useEffect(() => {
+    if (globalAnalyticsOpen) void loadGlobalAnalytics();
+  }, [globalAnalyticsOpen, loadGlobalAnalytics]);
+
   async function createPage() {
     setSaving(true);
     try {
@@ -172,6 +245,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
       if (data.page) {
         setPages((prev) => [data.page!, ...prev]);
         setSelectedId(data.page.id);
+        setGlobalAnalyticsOpen(false);
         addToast(localToast("Page created", data.page.title, "normal"));
       }
     } catch (err) {
@@ -350,169 +424,371 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     });
   }
 
+  function toggleSection(key: string) {
+    setExpandedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
+  function copyPublicUrl() {
+    if (!publicUrl) return;
+    void navigator.clipboard.writeText(publicUrl);
+    addToast(localToast("Copied", "Link copied to clipboard", "normal"));
+  }
+
   const publicUrl = selectedPage?.slug
     ? `${typeof window !== "undefined" ? window.location.origin : ""}${ROUTES.linkPage(selectedPage.slug)}`
     : "";
 
-  return (
-    <div className="mx-auto max-w-[1600px] px-4 py-6 lg:px-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight text-white">Link pages</h1>
-          <p className="mt-1 text-sm text-white/50">Build link-in-bio pages for models</p>
-        </div>
-        <button
-          type="button"
-          onClick={() => void createPage()}
-          disabled={saving}
-          className="inline-flex items-center gap-2 rounded-lg bg-pink-500 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-400 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-          New page
-        </button>
-      </div>
+  const qrUrl = publicUrl
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(publicUrl)}`
+    : "";
 
-      <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
-        {/* Left: pages list */}
-        <div className={cn(cardClass, "flex flex-col p-4")}>
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
+  const showPreview = !globalAnalyticsOpen && tab === "editor";
+
+  return (
+    <div className="flex h-[calc(100vh-4rem)] overflow-hidden" style={{ background: BG }}>
+      {/* ── LEFT PANEL ── */}
+      <aside
+        className="flex shrink-0 flex-col border-r"
+        style={{ width: 280, background: PANEL, borderColor: BORDER }}
+      >
+        <div className="border-b p-4" style={{ borderColor: BORDER }}>
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <div>
+              <h1 className="text-base font-bold text-white">Link Pages</h1>
+              <p className="mt-0.5 text-[11px] leading-snug text-white/40">Build link-in-bio pages for models</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => void createPage()}
+              disabled={saving}
+              title="New page"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-white transition-colors hover:opacity-90 disabled:opacity-50"
+              style={{ background: ACCENT }}
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setGlobalAnalyticsOpen((v) => !v);
+              if (!globalAnalyticsOpen) setTab("editor");
+            }}
+            className={cn(
+              "mb-3 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
+              globalAnalyticsOpen
+                ? "border-pink-500/40 bg-pink-500/10 text-pink-200"
+                : "border-white/10 bg-white/[0.03] text-white/60 hover:border-white/20 hover:text-white/80"
+            )}
+          >
+            <BarChart3 className="h-3.5 w-3.5" />
+            All pages analytics
+          </button>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/30" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search pages…"
-              className="w-full rounded-lg border border-white/10 bg-black/40 py-2 pl-9 pr-3 text-sm text-white placeholder:text-white/35"
+              className="w-full rounded-lg border py-2 pl-8 pr-3 text-xs text-white placeholder:text-white/30"
+              style={{ background: BG, borderColor: BORDER }}
             />
           </div>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value as typeof statusFilter)}
-            className="mb-3 rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-          >
-            <option value="all">All statuses</option>
-            <option value="draft">Draft</option>
-            <option value="published">Published</option>
-            <option value="archived">Archived</option>
-          </select>
-          <div className="flex max-h-[70vh] flex-col gap-2 overflow-y-auto">
-            {filteredPages.map((p) => (
+          <div className="mt-2 flex flex-wrap gap-1">
+            {STATUS_FILTERS.map((f) => (
               <button
-                key={p.id}
+                key={f.value}
                 type="button"
-                onClick={() => setSelectedId(p.id)}
+                onClick={() => setStatusFilter(f.value)}
                 className={cn(
-                  "rounded-lg border px-3 py-3 text-left transition-colors",
-                  selectedId === p.id
-                    ? "border-pink-500/40 bg-pink-500/10"
-                    : "border-white/8 bg-white/[0.02] hover:bg-white/[0.05]"
+                  "rounded-full px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide transition-colors",
+                  statusFilter === f.value
+                    ? "text-white"
+                    : "text-white/40 hover:text-white/70"
                 )}
+                style={
+                  statusFilter === f.value
+                    ? { background: `${ACCENT}22`, color: ACCENT, border: `1px solid ${ACCENT}44` }
+                    : { border: `1px solid ${BORDER}` }
+                }
               >
-                <div className="flex items-start justify-between gap-2">
-                  <span className="font-medium text-white">{p.title || "Untitled"}</span>
-                  <StatusPill status={p.status} />
-                </div>
-                <p className="mt-1 text-xs text-white/45">/{p.slug}</p>
-                {p.model_id ? (
-                  <p className="mt-0.5 text-xs text-white/35">{modelById[p.model_id] ?? "Model"}</p>
-                ) : null}
+                {f.label}
               </button>
             ))}
-            {filteredPages.length === 0 ? (
-              <p className="py-8 text-center text-sm text-white/40">No pages found</p>
-            ) : null}
           </div>
         </div>
 
-        {/* Right: editor / analytics */}
-        <div className={cn(cardClass, "min-h-[480px] p-4")}>
-          {!selectedPage && !loading ? (
-            <div className="flex h-full min-h-[400px] items-center justify-center text-white/40">
-              Select or create a page
-            </div>
-          ) : loading ? (
-            <div className="flex h-full min-h-[400px] items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-pink-400" />
-            </div>
-          ) : selectedPage ? (
-            <>
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-white/8 pb-4">
-                <div className="flex gap-2">
-                  <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
-                    Editor
-                  </TabBtn>
-                  <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
-                    <BarChart3 className="mr-1 inline h-4 w-4" />
-                    Analytics
-                  </TabBtn>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  {selectedPage.status === "published" ? (
-                    <a
-                      href={publicUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
-                    >
-                      <ExternalLink className="h-3.5 w-3.5" /> View live
-                    </a>
-                  ) : null}
-                  {selectedPage.status !== "published" ? (
-                    <button
-                      type="button"
-                      onClick={() => void publish("publish")}
-                      className="rounded-lg bg-emerald-600/80 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-500"
-                    >
-                      Publish
-                    </button>
+        <div className="flex-1 overflow-y-auto p-2">
+          {filteredPages.map((p) => {
+            const stats = pageStatsMap[p.page_id];
+            const isSelected = selectedId === p.id && !globalAnalyticsOpen;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => {
+                  setSelectedId(p.id);
+                  setGlobalAnalyticsOpen(false);
+                }}
+                className={cn(
+                  "mb-1.5 flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all",
+                  isSelected ? "border-pink-500/50 bg-pink-500/[0.08]" : "border-transparent hover:border-white/10 hover:bg-white/[0.03]"
+                )}
+              >
+                <div
+                  className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 text-sm font-bold text-white/60"
+                  style={{ borderColor: isSelected ? ACCENT : "rgba(255,255,255,0.12)", background: "#141414" }}
+                >
+                  {p.profile_photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={p.profile_photo_url} alt="" className="h-full w-full object-cover" />
                   ) : (
+                    (p.title || "?").charAt(0).toUpperCase()
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-1">
+                    <span className="truncate text-sm font-medium text-white">{p.title || "Untitled"}</span>
+                    <StatusPill status={p.status} />
+                  </div>
+                  <p className="mt-0.5 truncate text-[11px] text-white/35">/{p.slug}</p>
+                  {p.model_id ? (
+                    <p className="mt-0.5 truncate text-[10px] text-white/25">{modelById[p.model_id] ?? "Model"}</p>
+                  ) : null}
+                  {stats ? (
+                    <div className="mt-1.5 flex gap-3 text-[10px] tabular-nums text-white/40">
+                      <span>{stats.views.toLocaleString()} views</span>
+                      <span>{stats.clicks.toLocaleString()} clicks</span>
+                    </div>
+                  ) : null}
+                </div>
+              </button>
+            );
+          })}
+          {filteredPages.length === 0 ? (
+            <p className="py-12 text-center text-xs text-white/30">No pages found</p>
+          ) : null}
+        </div>
+      </aside>
+
+      {/* ── GLOBAL ANALYTICS (full width) ── */}
+      {globalAnalyticsOpen ? (
+        <main className="flex flex-1 flex-col overflow-hidden" style={{ background: BG }}>
+          <GlobalAnalyticsPanel
+            summary={globalAnalytics}
+            loading={globalAnalyticsLoading}
+            pages={pages}
+            onSelectPage={(id) => {
+              setSelectedId(id);
+              setGlobalAnalyticsOpen(false);
+            }}
+            onRefresh={() => void loadGlobalAnalytics()}
+          />
+        </main>
+      ) : (
+        <>
+          {/* ── CENTER PANEL ── */}
+          <section
+            className="flex shrink-0 flex-col overflow-hidden border-r"
+            style={{ width: tab === "analytics" ? undefined : 400, flex: tab === "analytics" ? 1 : undefined, background: PANEL, borderColor: BORDER }}
+          >
+            {!selectedPage && !loading ? (
+              <EmptyState message="Select or create a page" />
+            ) : loading ? (
+              <LoadingState />
+            ) : selectedPage ? (
+              <>
+                {/* Tab bar + actions */}
+                <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: BORDER }}>
+                  <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
+                    <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
+                      Editor
+                    </TabBtn>
+                    <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
+                      <BarChart3 className="mr-1 inline h-3.5 w-3.5" />
+                      Analytics
+                    </TabBtn>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <StatusToggle
+                      status={selectedPage.status}
+                      onPublish={() => void publish("publish")}
+                      onUnpublish={() => void publish("unpublish")}
+                      disabled={saving}
+                    />
+                    {selectedPage.status === "published" ? (
+                      <a
+                        href={publicUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] text-white/60 transition-colors hover:text-white/90"
+                        style={{ borderColor: BORDER }}
+                      >
+                        <ExternalLink className="h-3 w-3" /> Live
+                      </a>
+                    ) : null}
                     <button
                       type="button"
-                      onClick={() => void publish("unpublish")}
-                      className="rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/70"
+                      onClick={() => void publish("archive")}
+                      className="rounded-lg border p-1.5 text-white/40 transition-colors hover:text-white/70"
+                      style={{ borderColor: BORDER }}
+                      title="Archive"
                     >
-                      Unpublish
+                      <Archive className="h-3.5 w-3.5" />
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteOpen(true)}
+                      className="rounded-lg border p-1.5 text-rose-400/60 transition-colors hover:text-rose-300"
+                      style={{ borderColor: "rgba(244,63,94,0.2)" }}
+                      title="Delete"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex-1 overflow-y-auto">
+                  {tab === "editor" ? (
+                    <EditorPanel
+                      page={selectedPage}
+                      models={models}
+                      saving={saving}
+                      expandedSections={expandedSections}
+                      onToggleSection={toggleSection}
+                      onSave={(patch) => void savePage(patch)}
+                      onAddBlock={(t) => void addBlock(t)}
+                      onUpdateBlock={updateBlock}
+                      onRemoveBlock={(id) => void removeBlock(id)}
+                      onMoveBlock={moveBlock}
+                      onUpload={uploadPhoto}
+                      patchBlock={patchBlockLocal}
+                      dragIndex={dragIndex}
+                      setDragIndex={setDragIndex}
+                      onReorder={(blocks) => void reorderBlocks(blocks)}
+                    />
+                  ) : (
+                    <div className="p-4">
+                      <AnalyticsPanel summary={analytics} realtime={realtime} pageTitle={selectedPage.title} />
+                    </div>
                   )}
+                </div>
+              </>
+            ) : null}
+          </section>
+
+          {/* ── RIGHT PANEL — Live Preview ── */}
+          {showPreview ? (
+            <aside
+              className="flex shrink-0 flex-col overflow-hidden"
+              style={{ width: 400, background: PANEL }}
+            >
+              <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: BORDER }}>
+                <span className="text-sm font-semibold text-white/80">Preview</span>
+                <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
                   <button
                     type="button"
-                    onClick={() => void publish("archive")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-white/15 px-3 py-1.5 text-xs text-white/60"
+                    onClick={() => setPreviewDevice("mobile")}
+                    className={cn(
+                      "rounded-md p-1.5 transition-colors",
+                      previewDevice === "mobile" ? "text-pink-300" : "text-white/40 hover:text-white/70"
+                    )}
+                    style={previewDevice === "mobile" ? { background: `${ACCENT}22` } : undefined}
+                    title="Mobile"
                   >
-                    <Archive className="h-3.5 w-3.5" /> Archive
+                    <Smartphone className="h-3.5 w-3.5" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDeleteOpen(true)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-rose-500/30 px-3 py-1.5 text-xs text-rose-300"
+                    onClick={() => setPreviewDevice("desktop")}
+                    className={cn(
+                      "rounded-md p-1.5 transition-colors",
+                      previewDevice === "desktop" ? "text-pink-300" : "text-white/40 hover:text-white/70"
+                    )}
+                    style={previewDevice === "desktop" ? { background: `${ACCENT}22` } : undefined}
+                    title="Desktop"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Monitor className="h-3.5 w-3.5" />
                   </button>
                 </div>
               </div>
 
-              {tab === "editor" ? (
-                <EditorPanel
-                  page={selectedPage}
-                  models={models}
-                  saving={saving}
-                  onSave={(patch) => void savePage(patch)}
-                  onAddBlock={(t) => void addBlock(t)}
-                  onUpdateBlock={updateBlock}
-                  onRemoveBlock={(id) => void removeBlock(id)}
-                  onMoveBlock={moveBlock}
-                  onUpload={uploadPhoto}
-                  patchBlock={patchBlockLocal}
-                  dragIndex={dragIndex}
-                  setDragIndex={setDragIndex}
-                  onReorder={(blocks) => void reorderBlocks(blocks)}
-                />
-              ) : (
-                <AnalyticsPanel summary={analytics} realtime={realtime} />
-              )}
-            </>
+              {/* URL bar */}
+              <div className="shrink-0 space-y-2 border-b px-4 py-3" style={{ borderColor: BORDER }}>
+                <div className="flex items-center gap-2 rounded-lg border px-3 py-2" style={{ background: BG, borderColor: BORDER }}>
+                  <Link2 className="h-3 w-3 shrink-0 text-white/30" />
+                  <span className="min-w-0 flex-1 truncate text-[11px] text-white/50">{publicUrl || "—"}</span>
+                  <button type="button" onClick={copyPublicUrl} className="text-white/40 hover:text-white/70" title="Copy URL">
+                    <Copy className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+                <div className="flex gap-2">
+                  {publicUrl ? (
+                    <a
+                      href={publicUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border py-1.5 text-[11px] text-white/60 transition-colors hover:text-white/90"
+                      style={{ borderColor: BORDER }}
+                    >
+                      <ExternalLink className="h-3 w-3" /> Test live
+                    </a>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setShowQr((v) => !v)}
+                    className={cn(
+                      "flex items-center justify-center gap-1.5 rounded-lg border px-3 py-1.5 text-[11px] transition-colors",
+                      showQr ? "text-pink-300" : "text-white/60 hover:text-white/90"
+                    )}
+                    style={{ borderColor: showQr ? `${ACCENT}44` : BORDER }}
+                  >
+                    <QrCode className="h-3 w-3" /> QR
+                  </button>
+                </div>
+                {showQr && qrUrl ? (
+                  <div className="flex justify-center rounded-lg border p-3" style={{ borderColor: BORDER, background: BG }}>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={qrUrl} alt="QR code" width={160} height={160} className="rounded" />
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Preview frame */}
+              <div className="flex flex-1 items-start justify-center overflow-y-auto p-4">
+                {debouncedPage ? (
+                  previewDevice === "mobile" ? (
+                    <div
+                      className="relative overflow-hidden rounded-[2rem] border-[3px] shadow-2xl"
+                      style={{ width: 375, borderColor: "#1a1a1a", background: "#000" }}
+                    >
+                      <div className="flex h-6 items-center justify-center" style={{ background: "#111" }}>
+                        <div className="h-1 w-16 rounded-full bg-white/20" />
+                      </div>
+                      <div className="max-h-[calc(100vh-18rem)] overflow-y-auto">
+                        <LinkPageLivePreview page={debouncedPage} device="mobile" />
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full max-w-[360px]">
+                      <LinkPageLivePreview page={debouncedPage} device="desktop" />
+                    </div>
+                  )
+                ) : (
+                  <div className="flex items-center gap-2 text-xs text-white/30">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Updating preview…
+                  </div>
+                )}
+              </div>
+            </aside>
           ) : null}
-        </div>
-      </div>
+        </>
+      )}
 
       <ConfirmDialog
         open={deleteOpen}
@@ -527,6 +803,24 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   );
 }
 
+/* ═══════════════════════════════════════════
+   Sub-components
+   ═══════════════════════════════════════════ */
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-1 items-center justify-center text-sm text-white/30">{message}</div>
+  );
+}
+
+function LoadingState() {
+  return (
+    <div className="flex flex-1 items-center justify-center">
+      <Loader2 className="h-7 w-7 animate-spin" style={{ color: ACCENT }} />
+    </div>
+  );
+}
+
 function StatusPill({ status }: { status: string }) {
   const cls =
     status === "published"
@@ -535,32 +829,90 @@ function StatusPill({ status }: { status: string }) {
         ? "bg-white/10 text-white/45 border-white/15"
         : "bg-amber-500/15 text-amber-300 border-amber-500/30";
   return (
-    <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase", cls)}>
+    <span className={cn("shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase", cls)}>
       {status}
     </span>
   );
 }
 
-function TabBtn({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
-        active ? "bg-pink-500/15 text-pink-200" : "text-white/50 hover:text-white/80"
+        "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+        active ? "text-pink-200" : "text-white/45 hover:text-white/75"
       )}
+      style={active ? { background: `${ACCENT}22` } : undefined}
     >
       {children}
     </button>
+  );
+}
+
+function StatusToggle({
+  status,
+  onPublish,
+  onUnpublish,
+  disabled,
+}: {
+  status: string;
+  onPublish: () => void;
+  onUnpublish: () => void;
+  disabled: boolean;
+}) {
+  const isPublished = status === "published";
+  return (
+    <button
+      type="button"
+      disabled={disabled || status === "archived"}
+      onClick={() => (isPublished ? onUnpublish() : onPublish())}
+      className={cn(
+        "relative flex h-7 w-[52px] items-center rounded-full border transition-colors disabled:opacity-40",
+        isPublished ? "border-emerald-500/40 bg-emerald-500/20" : "border-white/15 bg-white/[0.06]"
+      )}
+      title={isPublished ? "Published — click to unpublish" : "Draft — click to publish"}
+    >
+      <span
+        className={cn(
+          "absolute h-5 w-5 rounded-full bg-white shadow transition-transform",
+          isPublished ? "translate-x-[26px]" : "translate-x-1"
+        )}
+      />
+    </button>
+  );
+}
+
+function AccordionSection({
+  id,
+  title,
+  expanded,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  expanded: boolean;
+  onToggle: (id: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="border-b" style={{ borderColor: BORDER }}>
+      <button
+        type="button"
+        onClick={() => onToggle(id)}
+        className="flex w-full items-center justify-between px-4 py-3 text-left transition-colors hover:bg-white/[0.02]"
+      >
+        <span className="text-xs font-semibold uppercase tracking-wider text-white/60">{title}</span>
+        {expanded ? (
+          <ChevronDown className="h-4 w-4 text-white/30" />
+        ) : (
+          <ChevronRight className="h-4 w-4 text-white/30" />
+        )}
+      </button>
+      {expanded ? <div className="space-y-3 px-4 pb-4">{children}</div> : null}
+    </div>
   );
 }
 
@@ -568,6 +920,8 @@ function EditorPanel({
   page,
   models,
   saving,
+  expandedSections,
+  onToggleSection,
   onSave,
   onAddBlock,
   onUpdateBlock,
@@ -582,6 +936,8 @@ function EditorPanel({
   page: LinkPageWithBlocks;
   models: ModelRecord[];
   saving: boolean;
+  expandedSections: Set<string>;
+  onToggleSection: (id: string) => void;
   onSave: (patch: Partial<LinkPageRecord>) => void;
   onAddBlock: (t: LinkPageBlockType) => void;
   onUpdateBlock: (b: LinkPageBlockRecord) => Promise<void>;
@@ -596,239 +952,256 @@ function EditorPanel({
   const sorted = [...page.blocks].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
-    <div className="grid gap-6 xl:grid-cols-2">
-      <div className="space-y-4">
-        <Section title="Settings">
-          <Field label="Title">
+    <div>
+      <AccordionSection
+        id="identity"
+        title="Identity"
+        expanded={expandedSections.has("identity")}
+        onToggle={onToggleSection}
+      >
+        <Field label="Title">
+          <FormInput value={page.title} onChange={(e) => onSave({ title: e.target.value })} disabled={saving} />
+        </Field>
+        <Field label="Slug">
+          <FormInput value={page.slug} onChange={(e) => onSave({ slug: e.target.value })} disabled={saving} />
+        </Field>
+        <Field label="Model">
+          <select
+            value={page.model_id}
+            onChange={(e) => onSave({ model_id: e.target.value })}
+            className="w-full rounded-lg border px-3 py-2 text-sm text-white"
+            style={{ background: BG, borderColor: BORDER }}
+          >
+            <option value="">— None —</option>
+            {models.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.model_name || m.id}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Custom domain">
+          <FormInput
+            value={page.custom_domain}
+            onChange={(e) => onSave({ custom_domain: e.target.value })}
+            placeholder="links.example.com"
+            disabled={saving}
+          />
+        </Field>
+        <Field label="Meta description">
+          <Textarea value={page.meta_description} onChange={(e) => onSave({ meta_description: e.target.value })} rows={2} />
+        </Field>
+        <label className="flex items-center gap-2 text-xs text-white/60">
+          <input
+            type="checkbox"
+            checked={page.show_powered_by}
+            onChange={(e) => onSave({ show_powered_by: e.target.checked })}
+            className="rounded border-white/20"
+          />
+          Show powered-by badge
+        </label>
+      </AccordionSection>
+
+      <AccordionSection
+        id="profile"
+        title="Profile"
+        expanded={expandedSections.has("profile")}
+        onToggle={onToggleSection}
+      >
+        <Field label="Bio">
+          <Textarea value={page.bio} onChange={(e) => onSave({ bio: e.target.value })} rows={3} />
+        </Field>
+        <Field label="Profile photo URL">
+          <div className="flex gap-2">
             <FormInput
-              value={page.title}
-              onChange={(e) => onSave({ title: e.target.value })}
-              disabled={saving}
+              value={page.profile_photo_url}
+              onChange={(e) => onSave({ profile_photo_url: e.target.value })}
             />
-          </Field>
-          <Field label="Slug">
-            <FormInput
-              value={page.slug}
-              onChange={(e) => onSave({ slug: e.target.value })}
-              disabled={saving}
-            />
-          </Field>
-          <Field label="Model">
+            <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-2 text-xs text-white/60 hover:bg-white/5" style={{ borderColor: BORDER }}>
+              <Upload className="h-3.5 w-3.5" />
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) void onUpload(f, (url) => onSave({ profile_photo_url: url }));
+                }}
+              />
+            </label>
+          </div>
+        </Field>
+      </AccordionSection>
+
+      <AccordionSection
+        id="appearance"
+        title="Appearance"
+        expanded={expandedSections.has("appearance")}
+        onToggle={onToggleSection}
+      >
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Theme">
             <select
-              value={page.model_id}
-              onChange={(e) => onSave({ model_id: e.target.value })}
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+              value={page.theme}
+              onChange={(e) => onSave({ theme: e.target.value as LinkPageRecord["theme"] })}
+              className="w-full rounded-lg border px-3 py-2 text-sm text-white"
+              style={{ background: BG, borderColor: BORDER }}
             >
-              <option value="">— None —</option>
-              {models.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.model_name || m.id}
-                </option>
+              {(["dark", "light", "minimal", "neon", "gold"] as const).map((t) => (
+                <option key={t} value={t}>{t}</option>
               ))}
             </select>
           </Field>
-          <Field label="Custom domain">
-            <FormInput
-              value={page.custom_domain}
-              onChange={(e) => onSave({ custom_domain: e.target.value })}
-              placeholder="links.example.com"
-              disabled={saving}
-            />
-          </Field>
-          <Field label="Meta description">
-            <Textarea
-              value={page.meta_description}
-              onChange={(e) => onSave({ meta_description: e.target.value })}
-              rows={2}
-            />
-          </Field>
-          <label className="flex items-center gap-2 text-sm text-white/70">
-            <input
-              type="checkbox"
-              checked={page.show_powered_by}
-              onChange={(e) => onSave({ show_powered_by: e.target.checked })}
-              className="rounded border-white/20"
-            />
-            Show powered-by badge
-          </label>
-        </Section>
-
-        <Section title="Profile">
-          <Field label="Bio">
-            <Textarea value={page.bio} onChange={(e) => onSave({ bio: e.target.value })} rows={3} />
-          </Field>
-          <Field label="Profile photo URL">
-            <div className="flex gap-2">
-              <FormInput
-                value={page.profile_photo_url}
-                onChange={(e) => onSave({ profile_photo_url: e.target.value })}
-              />
-              <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border border-white/15 px-3 py-2 text-xs text-white/70 hover:bg-white/5">
-                <Upload className="h-3.5 w-3.5" />
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0];
-                    if (f) void onUpload(f, (url) => onSave({ profile_photo_url: url }));
-                  }}
-                />
-              </label>
-            </div>
-          </Field>
-        </Section>
-
-        <Section title="Appearance">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Theme">
-              <select
-                value={page.theme}
-                onChange={(e) => onSave({ theme: e.target.value as LinkPageRecord["theme"] })}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-              >
-                {(["dark", "light", "minimal", "neon", "gold"] as const).map((t) => (
-                  <option key={t} value={t}>
-                    {t}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <Field label="Font">
-              <select
-                value={page.font}
-                onChange={(e) => onSave({ font: e.target.value as LinkPageRecord["font"] })}
-                className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
-              >
-                {(["modern", "elegant", "bold", "minimal"] as const).map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
-            </Field>
-          </div>
-          <Field label="Background type">
+          <Field label="Font">
             <select
-              value={page.background_type}
-              onChange={(e) =>
-                onSave({ background_type: e.target.value as LinkPageRecord["background_type"] })
-              }
-              className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+              value={page.font}
+              onChange={(e) => onSave({ font: e.target.value as LinkPageRecord["font"] })}
+              className="w-full rounded-lg border px-3 py-2 text-sm text-white"
+              style={{ background: BG, borderColor: BORDER }}
             >
-              <option value="color">Color</option>
-              <option value="gradient">Gradient</option>
-              <option value="image">Image URL</option>
+              {(["modern", "elegant", "bold", "minimal"] as const).map((f) => (
+                <option key={f} value={f}>{f}</option>
+              ))}
             </select>
           </Field>
-          <Field label="Background value">
-            <FormInput
-              value={page.background_value}
-              onChange={(e) => onSave({ background_value: e.target.value })}
-              placeholder="#0a0a0a or linear-gradient(...) or image URL"
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Primary color">
-              <FormInput
-                value={page.primary_color}
+        </div>
+        <Field label="Background type">
+          <select
+            value={page.background_type}
+            onChange={(e) => onSave({ background_type: e.target.value as LinkPageRecord["background_type"] })}
+            className="w-full rounded-lg border px-3 py-2 text-sm text-white"
+            style={{ background: BG, borderColor: BORDER }}
+          >
+            <option value="color">Color</option>
+            <option value="gradient">Gradient</option>
+            <option value="image">Image URL</option>
+          </select>
+        </Field>
+        <Field label="Background value">
+          <FormInput
+            value={page.background_value}
+            onChange={(e) => onSave({ background_value: e.target.value })}
+            placeholder="#0a0a0a or linear-gradient(...) or image URL"
+          />
+        </Field>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Primary color">
+            <div className="flex gap-2">
+              <input
+                type="color"
+                value={page.primary_color || ACCENT}
                 onChange={(e) => onSave({ primary_color: e.target.value })}
+                className="h-9 w-9 cursor-pointer rounded border-0 bg-transparent"
               />
-            </Field>
-            <Field label="Accent color">
-              <FormInput
-                value={page.accent_color}
+              <FormInput value={page.primary_color} onChange={(e) => onSave({ primary_color: e.target.value })} />
+            </div>
+          </Field>
+          <Field label="Accent color">
+            <div className="flex gap-2">
+              <input
+                type="color"
+                value={page.accent_color || "#a855f7"}
                 onChange={(e) => onSave({ accent_color: e.target.value })}
+                className="h-9 w-9 cursor-pointer rounded border-0 bg-transparent"
               />
-            </Field>
-          </div>
-        </Section>
-      </div>
+              <FormInput value={page.accent_color} onChange={(e) => onSave({ accent_color: e.target.value })} />
+            </div>
+          </Field>
+        </div>
+      </AccordionSection>
 
-      <div className="space-y-4">
-        <Section title="Blocks">
-          <div className="mb-3 flex flex-wrap gap-2">
-            {BLOCK_TYPES.map((bt) => (
-              <button
-                key={bt.value}
-                type="button"
-                onClick={() => onAddBlock(bt.value)}
-                className="rounded-lg border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs text-white/70 hover:border-pink-500/30 hover:text-pink-200"
-              >
-                + {bt.label}
-              </button>
-            ))}
-          </div>
+      <AccordionSection
+        id="blocks"
+        title="Blocks"
+        expanded={expandedSections.has("blocks")}
+        onToggle={onToggleSection}
+      >
+        {/* Add block grid */}
+        <div className="mb-4 grid grid-cols-4 gap-1.5">
+          {BLOCK_TYPES.map((bt) => (
+            <button
+              key={bt.value}
+              type="button"
+              onClick={() => onAddBlock(bt.value)}
+              className="flex flex-col items-center gap-1 rounded-lg border py-2 text-[10px] text-white/50 transition-colors hover:border-pink-500/30 hover:text-pink-200"
+              style={{ borderColor: BORDER, background: BG }}
+            >
+              <span className="text-base leading-none">{bt.icon}</span>
+              {bt.label}
+            </button>
+          ))}
+        </div>
 
-          <div className="space-y-2">
-            {sorted.map((block, index) => (
-              <div
-                key={block.id}
-                draggable
-                onDragStart={() => setDragIndex(index)}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => {
-                  if (dragIndex === null || dragIndex === index) return;
-                  const next = [...sorted];
-                  const [moved] = next.splice(dragIndex, 1);
-                  next.splice(index, 0, moved);
-                  setDragIndex(null);
-                  onReorder(next);
-                }}
-                className="rounded-lg border border-white/10 bg-black/30 p-3"
-              >
-                <div className="mb-2 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2 text-xs text-white/50">
-                    <GripVertical className="h-4 w-4 cursor-grab" />
-                    <span className="font-medium uppercase">{block.block_type.replace("_", " ")}</span>
-                    {!block.is_visible ? <Eye className="h-3.5 w-3.5 text-white/30" /> : null}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <button type="button" onClick={() => onMoveBlock(index, -1)} className="p-1 text-white/40 hover:text-white">
-                      <ChevronUp className="h-4 w-4" />
-                    </button>
-                    <button type="button" onClick={() => onMoveBlock(index, 1)} className="p-1 text-white/40 hover:text-white">
-                      <ChevronDown className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onRemoveBlock(block.id)}
-                      className="p-1 text-rose-400/70 hover:text-rose-300"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </div>
+        {/* Platform presets */}
+        <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-white/30">Quick presets</p>
+        <div className="mb-4 flex flex-wrap gap-1.5">
+          {PLATFORM_PRESETS.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => onAddBlock("link")}
+              className="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] text-white/55 transition-colors hover:border-pink-500/30 hover:text-pink-200"
+              style={{ borderColor: BORDER }}
+              title={`Add ${p.label} link`}
+            >
+              <span>{p.icon}</span> {p.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Draggable blocks */}
+        <div className="space-y-2">
+          {sorted.map((block, index) => (
+            <div
+              key={block.id}
+              draggable
+              onDragStart={() => setDragIndex(index)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => {
+                if (dragIndex === null || dragIndex === index) return;
+                const next = [...sorted];
+                const [moved] = next.splice(dragIndex, 1);
+                next.splice(index, 0, moved);
+                setDragIndex(null);
+                onReorder(next);
+              }}
+              className={cn(
+                "rounded-xl border p-3 transition-colors",
+                dragIndex === index ? "border-pink-500/40 bg-pink-500/[0.05]" : ""
+              )}
+              style={{ borderColor: dragIndex === index ? undefined : BORDER, background: BG }}
+            >
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-[10px] uppercase tracking-wide text-white/40">
+                  <GripVertical className="h-4 w-4 cursor-grab text-white/25" />
+                  <span className="font-semibold">{block.block_type.replace("_", " ")}</span>
+                  {!block.is_visible ? <EyeOff className="h-3 w-3 text-white/25" /> : <Eye className="h-3 w-3 text-white/20" />}
                 </div>
-                <BlockEditor
-                  block={block}
-                  onChange={(patch) => patchBlock(block.id, patch)}
-                  onSave={(b) => void onUpdateBlock(b)}
-                  onUpload={onUpload}
-                />
+                <div className="flex items-center gap-0.5">
+                  <button type="button" onClick={() => onMoveBlock(index, -1)} className="p-1 text-white/30 hover:text-white/70">
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </button>
+                  <button type="button" onClick={() => onMoveBlock(index, 1)} className="p-1 text-white/30 hover:text-white/70">
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </button>
+                  <button type="button" onClick={() => onRemoveBlock(block.id)} className="p-1 text-rose-400/50 hover:text-rose-300">
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
-            ))}
-            {sorted.length === 0 ? (
-              <p className="py-6 text-center text-sm text-white/35">No blocks yet — add one above</p>
-            ) : null}
-          </div>
-        </Section>
-
-        <Section title="Quick link presets">
-          <div className="flex flex-wrap gap-2">
-            {PLATFORM_PRESETS.map((p) => (
-              <button
-                key={p.label}
-                type="button"
-                onClick={() => onAddBlock("link")}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/65 hover:border-pink-500/30"
-                title={`Add ${p.label} link`}
-              >
-                <span>{p.icon}</span> {p.label}
-              </button>
-            ))}
-          </div>
-        </Section>
-      </div>
+              <BlockEditor
+                block={block}
+                onChange={(patch) => patchBlock(block.id, patch)}
+                onSave={(b) => void onUpdateBlock(b)}
+                onUpload={onUpload}
+              />
+            </div>
+          ))}
+          {sorted.length === 0 ? (
+            <p className="py-8 text-center text-xs text-white/25">No blocks yet — add one above</p>
+          ) : null}
+        </div>
+      </AccordionSection>
     </div>
   );
 }
@@ -845,7 +1218,7 @@ function BlockEditor({
   onUpload: (f: File, cb: (url: string) => void) => Promise<void>;
 }) {
   if (block.block_type === "spacer") {
-    return <p className="text-xs text-white/40">Vertical spacer — use move buttons to adjust position</p>;
+    return <p className="text-[11px] text-white/30">Vertical spacer — drag to reposition</p>;
   }
 
   return (
@@ -859,27 +1232,11 @@ function BlockEditor({
     >
       {(block.block_type === "link" || block.block_type === "social_bar") && (
         <>
-          <FormInput
-            value={block.label}
-            onChange={(e) => onChange({ label: e.target.value })}
-            placeholder="Label"
-          />
-          <FormInput
-            value={block.url}
-            onChange={(e) => onChange({ url: e.target.value })}
-            placeholder="https://…"
-          />
-          <FormInput
-            value={block.icon}
-            onChange={(e) => onChange({ icon: e.target.value })}
-            placeholder="Icon (emoji or text)"
-          />
+          <FormInput value={block.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Label" />
+          <FormInput value={block.url} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://…" />
+          <FormInput value={block.icon} onChange={(e) => onChange({ icon: e.target.value })} placeholder="Icon (emoji or text)" />
           {block.block_type === "link" ? (
-            <FormInput
-              value={block.sublabel}
-              onChange={(e) => onChange({ sublabel: e.target.value })}
-              placeholder="Sublabel (optional)"
-            />
+            <FormInput value={block.sublabel} onChange={(e) => onChange({ sublabel: e.target.value })} placeholder="Sublabel (optional)" />
           ) : null}
         </>
       )}
@@ -891,20 +1248,11 @@ function BlockEditor({
         />
       )}
       {block.block_type === "bio_text" && (
-        <Textarea
-          value={block.label}
-          onChange={(e) => onChange({ label: e.target.value })}
-          rows={2}
-          placeholder="Bio text"
-        />
+        <Textarea value={block.label} onChange={(e) => onChange({ label: e.target.value })} rows={2} placeholder="Bio text" />
       )}
       {block.block_type === "countdown" && (
         <>
-          <FormInput
-            value={block.label}
-            onChange={(e) => onChange({ label: e.target.value })}
-            placeholder="Countdown label"
-          />
+          <FormInput value={block.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Countdown label" />
           <FormInput
             type="datetime-local"
             value={block.countdown_target?.slice(0, 16) ?? ""}
@@ -920,16 +1268,13 @@ function BlockEditor({
             value={block.photo_urls.join("\n")}
             onChange={(e) =>
               onChange({
-                photo_urls: e.target.value
-                  .split("\n")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
+                photo_urls: e.target.value.split("\n").map((s) => s.trim()).filter(Boolean),
               })
             }
             rows={3}
             placeholder="Image URLs (one per line)"
           />
-          <label className="inline-flex cursor-pointer items-center gap-1 text-xs text-white/60">
+          <label className="inline-flex cursor-pointer items-center gap-1 text-[11px] text-white/50">
             <Upload className="h-3.5 w-3.5" /> Upload
             <input
               type="file"
@@ -937,8 +1282,7 @@ function BlockEditor({
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
-                if (f)
-                  void onUpload(f, (url) => onChange({ photo_urls: [...block.photo_urls, url] }));
+                if (f) void onUpload(f, (url) => onChange({ photo_urls: [...block.photo_urls, url] }));
               }}
             />
           </label>
@@ -948,135 +1292,346 @@ function BlockEditor({
         <select
           value={block.style}
           onChange={(e) => onChange({ style: e.target.value as LinkPageBlockRecord["style"] })}
-          className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-1.5 text-xs text-white"
+          className="w-full rounded-lg border px-3 py-1.5 text-xs text-white"
+          style={{ background: BG, borderColor: BORDER }}
         >
           {(["default", "prominent", "subtle", "pill", "card"] as const).map((s) => (
-            <option key={s} value={s}>
-              {s}
-            </option>
+            <option key={s} value={s}>{s}</option>
           ))}
         </select>
       )}
-      <label className="flex items-center gap-2 text-xs text-white/50">
-        <input
-          type="checkbox"
-          checked={block.is_visible}
-          onChange={(e) => onChange({ is_visible: e.target.checked })}
-        />
+      <label className="flex items-center gap-2 text-[11px] text-white/45">
+        <input type="checkbox" checked={block.is_visible} onChange={(e) => onChange({ is_visible: e.target.checked })} />
         Visible
       </label>
     </div>
   );
 }
 
-function AnalyticsPanel({ summary, realtime }: { summary: AnalyticsSummary | null; realtime: number }) {
+function AnalyticsPanel({
+  summary,
+  realtime,
+  pageTitle,
+}: {
+  summary: AnalyticsSummary | null;
+  realtime: number;
+  pageTitle?: string;
+}) {
   if (!summary) {
     return (
-      <div className="flex min-h-[300px] items-center justify-center text-white/40">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Loading analytics…
+      <div className="flex min-h-[300px] items-center justify-center text-white/35">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" style={{ color: ACCENT }} /> Loading analytics…
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {pageTitle ? (
+        <h2 className="text-lg font-bold text-white">{pageTitle}</h2>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Page views" value={summary.pageViews} />
-        <StatCard label="Link clicks" value={summary.linkClicks} />
-        <StatCard label="Unique visitors" value={summary.uniqueVisitors} />
-        <StatCard label="Live (5 min)" value={realtime} accent />
+        <LuxuryStatCard label="Page views" value={summary.pageViews} />
+        <LuxuryStatCard label="Link clicks" value={summary.linkClicks} />
+        <LuxuryStatCard label="Unique visitors" value={summary.uniqueVisitors} />
+        <LuxuryStatCard label="Live (5 min)" value={realtime} accent pulse />
       </div>
 
       {summary.viewsByDay.length > 0 ? (
-        <div className="rounded-lg border border-white/8 bg-black/30 p-4">
-          <h3 className="mb-3 text-sm font-medium text-white/70">Views & clicks</h3>
+        <ChartCard title="Views & clicks">
           <div className="h-56">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={summary.viewsByDay}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
-                <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 11 }} />
-                <Tooltip
-                  contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)" }}
-                />
-                <Area type="monotone" dataKey="views" stroke={ACCENT} fill={`${ACCENT}33`} name="Views" />
-                <Area type="monotone" dataKey="clicks" stroke="#a855f7" fill="#a855f733" name="Clicks" />
+                <defs>
+                  <linearGradient id="viewsGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor={ACCENT} stopOpacity={0.3} />
+                    <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                <Area type="monotone" dataKey="views" stroke={ACCENT} fill="url(#viewsGrad)" name="Views" strokeWidth={2} />
+                <Area type="monotone" dataKey="clicks" stroke="#a855f7" fill="#a855f722" name="Clicks" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
-        </div>
+        </ChartCard>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {summary.deviceBreakdown.length > 0 ? (
-          <div className="rounded-lg border border-white/8 bg-black/30 p-4">
-            <h3 className="mb-2 text-sm font-medium text-white/70">Devices</h3>
+          <ChartCard title="Devices">
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={summary.deviceBreakdown} dataKey="count" nameKey="device" cx="50%" cy="50%" outerRadius={70}>
+                  <Pie data={summary.deviceBreakdown} dataKey="count" nameKey="device" cx="50%" cy="50%" innerRadius={40} outerRadius={70}>
                     {summary.deviceBreakdown.map((_, i) => (
                       <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip contentStyle={{ background: "#18181b", border: "1px solid rgba(255,255,255,0.1)" }} />
+                  <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-          </div>
+          </ChartCard>
         ) : null}
 
         {summary.topLinks.length > 0 ? (
-          <div className="rounded-lg border border-white/8 bg-black/30 p-4">
-            <h3 className="mb-2 text-sm font-medium text-white/70">Top links</h3>
+          <ChartCard title="Top links">
             <ul className="space-y-2">
               {summary.topLinks.map((l) => (
-                <li key={l.block_id} className="flex justify-between text-sm">
-                  <span className="truncate text-white/70">{l.label || l.block_id}</span>
-                  <span className="tabular-nums text-pink-300">{l.clicks}</span>
+                <li key={l.block_id} className="flex items-center justify-between text-sm">
+                  <span className="truncate text-white/65">{l.label || l.block_id}</span>
+                  <span className="tabular-nums font-semibold" style={{ color: ACCENT }}>{l.clicks}</span>
                 </li>
               ))}
             </ul>
-          </div>
+          </ChartCard>
         ) : null}
       </div>
 
       {summary.countryBreakdown.length > 0 ? (
-        <div className="rounded-lg border border-white/8 bg-black/30 p-4">
-          <h3 className="mb-2 text-sm font-medium text-white/70">Top countries</h3>
+        <ChartCard title="Top countries">
           <ul className="grid gap-2 sm:grid-cols-2">
             {summary.countryBreakdown.map((c) => (
-              <li key={c.country} className="flex justify-between text-sm text-white/65">
+              <li key={c.country} className="flex justify-between text-sm text-white/60">
                 <span>{c.country}</span>
-                <span className="tabular-nums text-white/45">{c.count}</span>
+                <span className="tabular-nums text-white/35">{c.count}</span>
               </li>
             ))}
           </ul>
-        </div>
+        </ChartCard>
       ) : null}
     </div>
   );
 }
 
-function StatCard({ label, value, accent }: { label: string; value: number; accent?: boolean }) {
+function GlobalAnalyticsPanel({
+  summary,
+  loading,
+  pages,
+  onSelectPage,
+  onRefresh,
+}: {
+  summary: GlobalAnalyticsSummary | null;
+  loading: boolean;
+  pages: LinkPageRecord[];
+  onSelectPage: (id: string) => void;
+  onRefresh: () => void;
+}) {
+  const pageIdToRecordId = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of pages) map.set(p.page_id, p.id);
+    return map;
+  }, [pages]);
+
+  const pageColors = React.useMemo(() => {
+    const ids = summary?.leaderboard.map((l) => l.page_id) ?? [];
+    const map: Record<string, string> = {};
+    ids.forEach((id, i) => {
+      map[id] = PIE_COLORS[i % PIE_COLORS.length];
+    });
+    return map;
+  }, [summary]);
+
+  const stackedData = React.useMemo(() => {
+    if (!summary) return [];
+    return summary.viewsByDayByPage.map((row) => {
+      const entry: Record<string, string | number> = { date: row.date };
+      for (const [pid, views] of Object.entries(row.pages)) {
+        entry[pid] = views;
+      }
+      return entry;
+    });
+  }, [summary]);
+
+  if (loading && !summary) {
+    return <LoadingState />;
+  }
+
+  if (!summary) {
+    return <EmptyState message="No analytics data yet" />;
+  }
+
   return (
-    <div className="rounded-lg border border-white/8 bg-black/30 p-4">
-      <p className="text-xs text-white/45">{label}</p>
-      <p className={cn("mt-1 text-2xl font-bold tabular-nums", accent ? "text-pink-300" : "text-white")}>
+    <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex shrink-0 items-center justify-between border-b px-6 py-4" style={{ borderColor: BORDER }}>
+        <div>
+          <h2 className="text-lg font-bold text-white">All Pages Analytics</h2>
+          <p className="text-xs text-white/40">Last 30 days · combined performance</p>
+        </div>
+        <button
+          type="button"
+          onClick={onRefresh}
+          disabled={loading}
+          className="rounded-lg border px-3 py-1.5 text-xs text-white/60 transition-colors hover:text-white/90 disabled:opacity-50"
+          style={{ borderColor: BORDER }}
+        >
+          {loading ? <Loader2 className="inline h-3.5 w-3.5 animate-spin" /> : "Refresh"}
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-6">
+        <div className="mx-auto max-w-6xl space-y-6">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <LuxuryStatCard label="Total page views" value={summary.totalPageViews} />
+            <LuxuryStatCard label="Total link clicks" value={summary.totalLinkClicks} />
+            <LuxuryStatCard label="Unique visitors" value={summary.totalUniqueVisitors} />
+          </div>
+
+          {stackedData.length > 0 ? (
+            <ChartCard title="Views by page (daily)">
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={stackedData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                    <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                    <YAxis tick={{ fill: "rgba(255,255,255,0.35)", fontSize: 10 }} />
+                    <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                    <Legend wrapperStyle={{ fontSize: 11, color: "rgba(255,255,255,0.5)" }} />
+                    {summary.leaderboard.slice(0, 6).map((p) => (
+                      <Line
+                        key={p.page_id}
+                        type="monotone"
+                        dataKey={p.page_id}
+                        name={p.title}
+                        stroke={pageColors[p.page_id]}
+                        strokeWidth={2}
+                        dot={false}
+                      />
+                    ))}
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </ChartCard>
+          ) : null}
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            {/* Leaderboard */}
+            <ChartCard title="Leaderboard">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-left text-[10px] uppercase tracking-wider text-white/30" style={{ borderColor: BORDER }}>
+                      <th className="pb-2 pr-4">Page</th>
+                      <th className="pb-2 pr-4 text-right">Views</th>
+                      <th className="pb-2 text-right">Clicks</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summary.leaderboard.map((row, i) => {
+                      const recordId = pageIdToRecordId.get(row.page_id);
+                      return (
+                        <tr
+                          key={row.page_id}
+                          className={cn("border-b transition-colors", recordId ? "cursor-pointer hover:bg-white/[0.03]" : "")}
+                          style={{ borderColor: BORDER }}
+                          onClick={() => recordId && onSelectPage(recordId)}
+                        >
+                          <td className="py-2.5 pr-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] tabular-nums text-white/25">#{i + 1}</span>
+                              <div>
+                                <p className="font-medium text-white/80">{row.title}</p>
+                                <p className="text-[10px] text-white/30">/{row.slug}</p>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="py-2.5 pr-4 text-right tabular-nums text-white/70">{row.views.toLocaleString()}</td>
+                          <td className="py-2.5 text-right tabular-nums" style={{ color: ACCENT }}>{row.clicks.toLocaleString()}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </ChartCard>
+
+            <div className="space-y-4">
+              {summary.pageBreakdown.length > 0 ? (
+                <ChartCard title="Views by page">
+                  <div className="h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={summary.pageBreakdown.slice(0, 8)}
+                          dataKey="views"
+                          nameKey="title"
+                          cx="50%"
+                          cy="50%"
+                          innerRadius={35}
+                          outerRadius={70}
+                        >
+                          {summary.pageBreakdown.slice(0, 8).map((_, i) => (
+                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip contentStyle={{ background: "#111", border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 12 }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </ChartCard>
+              ) : null}
+
+              {summary.deviceBreakdown.length > 0 ? (
+                <ChartCard title="Device breakdown">
+                  <ul className="space-y-2">
+                    {summary.deviceBreakdown.map((d, i) => {
+                      const total = summary.deviceBreakdown.reduce((s, x) => s + x.count, 0);
+                      const pct = total ? Math.round((d.count / total) * 100) : 0;
+                      return (
+                        <li key={d.device}>
+                          <div className="mb-1 flex justify-between text-xs">
+                            <span className="capitalize text-white/60">{d.device}</span>
+                            <span className="tabular-nums text-white/40">{d.count.toLocaleString()} ({pct}%)</span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full" style={{ background: "rgba(255,255,255,0.06)" }}>
+                            <div
+                              className="h-full rounded-full"
+                              style={{ width: `${pct}%`, background: PIE_COLORS[i % PIE_COLORS.length] }}
+                            />
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </ChartCard>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LuxuryStatCard({ label, value, accent, pulse }: { label: string; value: number; accent?: boolean; pulse?: boolean }) {
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl border p-4"
+      style={{ background: PANEL, borderColor: BORDER }}
+    >
+      {accent ? (
+        <div className="absolute inset-0 opacity-10" style={{ background: `radial-gradient(circle at top right, ${ACCENT}, transparent 70%)` }} />
+      ) : null}
+      <p className="text-[10px] font-medium uppercase tracking-wider text-white/35">{label}</p>
+      <p
+        className={cn("mt-1.5 text-2xl font-bold tabular-nums", pulse && "animate-pulse")}
+        style={{ color: accent ? ACCENT : "#fff" }}
+      >
         {value.toLocaleString()}
       </p>
     </div>
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function ChartCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-white/8 bg-black/20 p-4">
-      <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white/80">
-        <Link2 className="h-4 w-4 text-pink-400" />
-        {title}
-      </h3>
-      <div className="space-y-3">{children}</div>
+    <div className="rounded-xl border p-4" style={{ background: PANEL, borderColor: BORDER }}>
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wider text-white/50">{title}</h3>
+      {children}
     </div>
   );
 }
@@ -1084,7 +1639,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <Label className="mb-1 block text-xs text-white/50">{label}</Label>
+      <Label className="mb-1 block text-[11px] text-white/40">{label}</Label>
       {children}
     </div>
   );
