@@ -25,7 +25,7 @@ const postSchema = z.object({
     .trim()
     .min(1)
     .max(80)
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, and hyphens"),
+    .regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, hyphens, and underscores"),
   label: z.string().trim().min(1).max(120),
   description: z.string().max(2000).optional().default(""),
   permissions: z.array(permissionSchema).optional().default([]),

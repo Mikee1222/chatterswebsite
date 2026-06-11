@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ChevronDown, Lock, Plus, Shield, Trash2, Users } from "lucide-react";
+import { ChevronDown, Copy, Lock, Plus, Shield, Trash2, Users } from "lucide-react";
+import { createPortal } from "react-dom";
 import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
 import { SopShell } from "@/components/sop/sop-shell";
 import { SopEmptyState } from "@/components/sop/sop-empty-state";
@@ -262,7 +263,15 @@ export function AdminRolesClient({
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
   const [deleteOpen, setDeleteOpen] = React.useState(false);
+  const [duplicateOpen, setDuplicateOpen] = React.useState(false);
+  const [duplicateSource, setDuplicateSource] = React.useState<RoleRecord | null>(null);
+  const [duplicateLabel, setDuplicateLabel] = React.useState("");
+  const [duplicateRoleId, setDuplicateRoleId] = React.useState("");
+  const [duplicating, setDuplicating] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => setMounted(true), []);
 
   const hasUnsavedChanges =
     draft != null && savedDraft != null && !draftsEqual(draft, savedDraft);
@@ -418,6 +427,63 @@ export function AdminRolesClient({
     }
   }
 
+  function openDuplicateModal(role: RoleRecord) {
+    setDuplicateSource(role);
+    setDuplicateLabel(`${role.label} (Copy)`);
+    setDuplicateRoleId(`${role.role_id}_copy`);
+    setDuplicateOpen(true);
+  }
+
+  async function handleDuplicate() {
+    if (!duplicateSource) return;
+    const label = duplicateLabel.trim();
+    const role_id = duplicateRoleId.trim();
+    if (!label || !role_id) return;
+
+    setDuplicating(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role_id,
+          label,
+          description: duplicateSource.description,
+          color: duplicateSource.color || "gray",
+          permissions: duplicateSource.permissions,
+          notification_defaults: normalizeNotificationDefaults(
+            duplicateSource.notification_defaults
+              ? { ...duplicateSource.notification_defaults }
+              : getFallbackNotificationDefaults(duplicateSource.role_id)
+          ),
+          is_system_role: false,
+        }),
+      });
+      const data = (await res.json()) as { role?: RoleRecord; error?: string | Record<string, string[]> };
+      if (!res.ok) {
+        const errMsg =
+          typeof data.error === "string"
+            ? data.error
+            : data.error && typeof data.error === "object"
+              ? Object.values(data.error).flat().join(", ") || "Duplicate failed"
+              : "Duplicate failed";
+        throw new Error(errMsg);
+      }
+      const created = data.role!;
+      setRoles((prev) => [...prev, created].sort((a, b) => a.label.localeCompare(b.label)));
+      selectRole(created);
+      setDuplicateOpen(false);
+      setDuplicateSource(null);
+      addToast(localToast("role-dup", "Role duplicated successfully", `"${created.label}" was created.`, "normal"));
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Duplicate failed";
+      addToast(localToast("role-dup-e", "Duplicate failed", msg, "high"));
+    } finally {
+      setDuplicating(false);
+    }
+  }
+
   async function handleDelete() {
     if (!draft || draft.isNew || draft.is_system_role) return;
     setDeleting(true);
@@ -478,12 +544,12 @@ export function AdminRolesClient({
                 const count = userCounts[role.role_id.toLowerCase()] ?? 0;
                 const active = selectedId === role.id;
                 return (
-                  <li key={role.id}>
+                  <li key={role.id} className="group relative">
                     <button
                       type="button"
                       onClick={() => selectRole(role)}
                       className={cn(
-                        "w-full rounded-xl border px-3 py-3 text-left transition",
+                        "w-full rounded-xl border px-3 py-3 pr-10 text-left transition",
                         active
                           ? cn("border-pink-500/35 bg-pink-500/10", cfg.glow)
                           : "border-white/10 bg-white/[0.03] hover:border-white/16 hover:bg-white/[0.06]"
@@ -516,6 +582,20 @@ export function AdminRolesClient({
                         </div>
                       </div>
                     </button>
+                    <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition group-hover:opacity-100 group-focus-within:opacity-100">
+                      <button
+                        type="button"
+                        title="Duplicate role"
+                        aria-label={`Duplicate ${role.label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDuplicateModal(role);
+                        }}
+                        className="rounded-lg border border-white/10 bg-black/40 p-1.5 text-white/55 transition hover:border-pink-500/35 hover:bg-pink-500/15 hover:text-pink-200"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </li>
                 );
               })}
@@ -989,6 +1069,83 @@ export function AdminRolesClient({
         loading={deleting}
         onConfirm={handleDelete}
       />
+
+      {duplicateOpen && mounted && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm md:items-center">
+              <button
+                type="button"
+                className="absolute inset-0"
+                aria-label="Close"
+                onClick={() => !duplicating && setDuplicateOpen(false)}
+              />
+              <div
+                className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#1a1a2e] p-6 shadow-2xl"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="duplicate-role-title"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <h2 id="duplicate-role-title" className="text-lg font-semibold text-white">
+                  Duplicate role
+                </h2>
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label
+                      htmlFor="duplicate-role-label"
+                      className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/45"
+                    >
+                      New role name
+                    </label>
+                    <FormInput
+                      id="duplicate-role-label"
+                      value={duplicateLabel}
+                      onChange={(e) => setDuplicateLabel(e.target.value)}
+                      disabled={duplicating}
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label
+                      htmlFor="duplicate-role-id"
+                      className="mb-2 block text-xs font-semibold uppercase tracking-wider text-white/45"
+                    >
+                      Role ID
+                    </label>
+                    <FormInput
+                      id="duplicate-role-id"
+                      value={duplicateRoleId}
+                      onChange={(e) => setDuplicateRoleId(e.target.value)}
+                      disabled={duplicating}
+                    />
+                  </div>
+                </div>
+                <div className="mt-6 flex flex-wrap justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDuplicateOpen(false)}
+                    disabled={duplicating}
+                    className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/60 transition hover:bg-white/10 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleDuplicate()}
+                    disabled={duplicating || !duplicateLabel.trim() || !duplicateRoleId.trim()}
+                    className="flex min-h-[44px] min-w-[7rem] items-center justify-center gap-2 rounded-xl border border-pink-500/40 bg-pink-500/20 px-4 py-2.5 text-sm font-semibold text-pink-100 transition hover:bg-pink-500/30 disabled:cursor-not-allowed disabled:opacity-45"
+                  >
+                    {duplicating ? (
+                      <Spinner className="inline h-4 w-4 border-white/30 border-t-white" />
+                    ) : null}
+                    Duplicate
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </SopShell>
   );
 }
