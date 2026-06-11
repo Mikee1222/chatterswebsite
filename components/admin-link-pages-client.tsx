@@ -3561,15 +3561,9 @@ function AnalyticsPanel({
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <LuxuryStatCard
-          label="Page views"
+          label="Total views"
           value={summary.pageViews}
           trend={summary.previousPeriodComparison.pageViews}
-          trendLabel={trendLabel}
-        />
-        <LuxuryStatCard
-          label="Link clicks"
-          value={summary.linkClicks}
-          trend={summary.previousPeriodComparison.linkClicks}
           trendLabel={trendLabel}
         />
         <LuxuryStatCard
@@ -3579,14 +3573,46 @@ function AnalyticsPanel({
           trendLabel={trendLabel}
         />
         <LuxuryStatCard
-          label="CTR"
-          value={summary.ctr}
+          label="New visitors"
+          value={summary.newVisitors}
+          subtitle={`${summary.returningVisitors} returning (${summary.returningRate}%)`}
+          trend={summary.previousPeriodComparison.newVisitors}
+          trendLabel={trendLabel}
+        />
+        <LuxuryStatCard
+          label="True CTR"
+          value={summary.trueCtr}
           suffix="%"
           accent
-          trend={summary.previousPeriodComparison.ctr}
+          subtitle={`${summary.uniqueClickers} unique clickers`}
+          trend={summary.previousPeriodComparison.trueCtr}
           trendLabel={trendLabel}
         />
       </div>
+
+      {summary.uniqueVisitors > 0 ? (
+        <ChartCard title="Visitor behavior">
+          <div className="space-y-3">
+            <div className="flex justify-between text-sm text-white/70">
+              <span>New visitors: {summary.newVisitors} ({summary.uniqueVisitors > 0 ? Math.round((summary.newVisitors / summary.uniqueVisitors) * 100) : 0}%)</span>
+              <span>Returning: {summary.returningVisitors} ({summary.returningRate}%)</span>
+            </div>
+            <div className="flex h-3 overflow-hidden rounded-full">
+              <div
+                className="h-full"
+                style={{
+                  width: `${summary.uniqueVisitors > 0 ? Math.round((summary.newVisitors / summary.uniqueVisitors) * 100) : 0}%`,
+                  background: `linear-gradient(90deg, ${ACCENT}, ${PURPLE})`,
+                }}
+              />
+              <div className="h-full flex-1" style={{ background: "rgba(255,255,255,0.12)" }} />
+            </div>
+            <p className="text-[10px] text-white/35">
+              {summary.newVisitors} new · {summary.returningVisitors} returning
+            </p>
+          </div>
+        </ChartCard>
+      ) : null}
 
       <div className="flex items-center gap-2 text-xs text-white/40">
         <span className="inline-flex h-2 w-2 animate-pulse rounded-full" style={{ background: ACCENT }} />
@@ -3637,9 +3663,14 @@ function AnalyticsPanel({
                     <p className="truncate text-[10px] text-white/30">{link.url}</p>
                   </div>
                   <MiniSparkline data={link.sparkline} />
-                  <span className="shrink-0 tabular-nums text-sm font-semibold" style={{ color: ACCENT }}>
-                    {link.clicks}
-                  </span>
+                  <div className="shrink-0 text-right">
+                    <span className="block tabular-nums text-sm font-semibold" style={{ color: ACCENT }}>
+                      {link.clicks}
+                    </span>
+                    <span className="block text-[10px] tabular-nums text-white/35">
+                      {link.uniqueClicks} unique
+                    </span>
+                  </div>
                 </li>
               );
             })}
@@ -3957,23 +3988,25 @@ function GlobalAnalyticsPanel({
               trendLabel={trendLabel}
             />
             <LuxuryStatCard
-              label="Total link clicks"
-              value={summary.totalLinkClicks}
-              trend={summary.previousPeriodComparison.linkClicks}
-              trendLabel={trendLabel}
-            />
-            <LuxuryStatCard
               label="Unique visitors"
               value={summary.totalUniqueVisitors}
               trend={summary.previousPeriodComparison.uniqueVisitors}
               trendLabel={trendLabel}
             />
             <LuxuryStatCard
-              label="CTR"
-              value={summary.ctr}
+              label="New visitors"
+              value={summary.totalNewVisitors}
+              subtitle={`${summary.totalReturningVisitors} returning (${summary.returningRate}%)`}
+              trend={summary.previousPeriodComparison.newVisitors}
+              trendLabel={trendLabel}
+            />
+            <LuxuryStatCard
+              label="True CTR"
+              value={summary.trueCtr}
               suffix="%"
               accent
-              trend={summary.previousPeriodComparison.ctr}
+              subtitle={`${summary.totalUniqueClickers} unique clickers`}
+              trend={summary.previousPeriodComparison.trueCtr}
               trendLabel={trendLabel}
             />
           </div>
@@ -4191,6 +4224,7 @@ function LuxuryStatCard({
   accent,
   pulse,
   suffix,
+  subtitle,
   trend,
   trendLabel,
 }: {
@@ -4199,6 +4233,7 @@ function LuxuryStatCard({
   accent?: boolean;
   pulse?: boolean;
   suffix?: string;
+  subtitle?: string;
   trend?: AnalyticsTrend;
   trendLabel?: string;
 }) {
@@ -4218,6 +4253,7 @@ function LuxuryStatCard({
         {value.toLocaleString()}
         {suffix ? <span className="text-lg">{suffix}</span> : null}
       </p>
+      {subtitle ? <p className="mt-1 text-[11px] text-white/40">{subtitle}</p> : null}
       {trend ? (
         <div className="mt-2">
           <TrendBadge trend={trend} suffix={trendLabel} />

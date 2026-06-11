@@ -310,7 +310,7 @@ export function renderBrandedLinkHtml(
     ? `<div class="link-sublabel">${escapeHtml(sublabel)}</div>`
     : "";
 
-  return `<a class="${classes}" href="${escapeHtml(href)}" rel="noopener noreferrer" data-platform="${platform}" style="${inline}">
+  return `<a class="${classes}" href="${escapeHtml(href)}" rel="noopener noreferrer" data-platform="${platform}" data-lp-click="1" style="${inline}">
     <div class="link-icon-wrap">${branding.svg}</div>
     <div class="link-content">
       <div class="link-label">${escapeHtml(label)}</div>

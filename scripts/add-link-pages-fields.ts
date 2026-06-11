@@ -11,7 +11,11 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createField, getBaseSchema, type AirtableTable } from "../lib/airtable-admin";
 import type { FieldDef } from "../lib/airtable-schema";
-import { LINK_PAGES_TABLE, LINK_PAGE_BLOCKS_TABLE } from "../lib/link-pages-schema";
+import {
+  LINK_PAGES_TABLE,
+  LINK_PAGE_BLOCKS_TABLE,
+  LINK_PAGE_ANALYTICS_TABLE,
+} from "../lib/link-pages-schema";
 
 loadEnv();
 loadEnv({ path: ".env.local" });
@@ -96,6 +100,16 @@ async function main(): Promise<void> {
   await ensureField(baseId, token, pagesTable, "cookie_notice_text", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "platform", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "custom_button_color", TEXT_DEF);
+
+  const analyticsTable = findTable(schema, LINK_PAGE_ANALYTICS_TABLE);
+  if (!analyticsTable) {
+    console.error(`Table "${LINK_PAGE_ANALYTICS_TABLE}" not found. Run npm run setup:link-pages-tables first.`);
+    process.exit(1);
+  }
+
+  await ensureField(baseId, token, analyticsTable, "visitor_id", TEXT_DEF);
+  await ensureField(baseId, token, analyticsTable, "is_new_visitor", CHECKBOX_DEF);
+  await ensureField(baseId, token, analyticsTable, "is_new_session", CHECKBOX_DEF);
 
   console.log("Done.");
 }

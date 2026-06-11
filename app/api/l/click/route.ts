@@ -26,6 +26,7 @@ export async function GET(request: Request) {
 
   const hdrs = await headers();
   const sessionId = url.searchParams.get("session") ?? "";
+  const visitorId = url.searchParams.get("visitor") ?? "";
   trackLinkClick({
     pageId,
     blockId,
@@ -33,6 +34,7 @@ export async function GET(request: Request) {
     userAgent: hdrs.get("user-agent") ?? "",
     referrer: hdrs.get("referer") ?? "",
     sessionId,
+    visitorId,
     utmSource: url.searchParams.get("utm_source") ?? "",
     utmMedium: url.searchParams.get("utm_medium") ?? "",
     utmCampaign: url.searchParams.get("utm_campaign") ?? "",

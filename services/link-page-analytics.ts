@@ -40,6 +40,9 @@ type AnalyticsFields = {
   referrer?: string;
   user_agent?: string;
   session_id?: string;
+  visitor_id?: string;
+  is_new_visitor?: boolean;
+  is_new_session?: boolean;
   timestamp?: string;
   utm_source?: string;
   utm_medium?: string;
@@ -53,6 +56,9 @@ export type TrackContext = {
   userAgent?: string;
   referrer?: string;
   sessionId?: string;
+  visitorId?: string;
+  isNewVisitor?: boolean;
+  isNewSession?: boolean;
   utmSource?: string;
   utmMedium?: string;
   utmCampaign?: string;
@@ -86,11 +92,18 @@ type MappedEvent = {
   referrer: string;
   user_agent: string;
   session_id: string;
+  visitor_id: string;
+  is_new_visitor: boolean;
+  is_new_session: boolean;
   timestamp: string;
   utm_source: string;
   utm_medium: string;
   utm_campaign: string;
 };
+
+function visitorKey(e: Pick<MappedEvent, "visitor_id" | "session_id">): string {
+  return e.visitor_id?.trim() || e.session_id?.trim() || "";
+}
 
 const BOT_UA_PATTERNS = [
   "bot",
@@ -200,6 +213,9 @@ async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackConte
       referrer: (ctx.referrer ?? "").slice(0, 500),
       user_agent: ua.slice(0, 2000),
       session_id: ctx.sessionId ?? "",
+      visitor_id: ctx.visitorId ?? "",
+      is_new_visitor: ctx.isNewVisitor === true,
+      is_new_session: ctx.isNewSession === true,
       timestamp: now,
       utm_source: ctx.utmSource ?? "",
       utm_medium: ctx.utmMedium ?? "",
@@ -209,6 +225,16 @@ async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackConte
   } catch {
     // fire-and-forget — never throw
   }
+}
+
+export type EnhancedTrackContext = TrackContext & {
+  eventType?: LinkPageAnalyticsEventType;
+};
+
+/** Client fingerprint tracking — page views and enhanced metadata. Never throws. */
+export function writeEnhancedEvent(ctx: EnhancedTrackContext): Promise<void> {
+  const eventType = ctx.eventType === "link_click" ? "link_click" : "page_view";
+  return writeEvent(eventType, ctx);
 }
 
 /** Fire-and-forget page view tracking. Never throws. */
@@ -241,6 +267,9 @@ function mapAnalyticsRecord(rec: AirtableRecord<AnalyticsFields>): MappedEvent {
     referrer: f.referrer ?? "",
     user_agent: f.user_agent ?? "",
     session_id: f.session_id ?? "",
+    visitor_id: f.visitor_id ?? "",
+    is_new_visitor: f.is_new_visitor === true,
+    is_new_session: f.is_new_session === true,
     timestamp: f.timestamp ?? "",
     utm_source: f.utm_source ?? "",
     utm_medium: f.utm_medium ?? "",
@@ -284,17 +313,40 @@ function filterEventsInRange(events: MappedEvent[], start: Date, end?: Date): Ma
 function computeCoreMetrics(events: MappedEvent[]): AnalyticsPeriodMetrics {
   const pageViews = events.filter((e) => e.event_type === "page_view").length;
   const linkClicks = events.filter((e) => e.event_type === "link_click").length;
-  const sessionsWithView = new Set<string>();
-  const sessionsWithClick = new Set<string>();
+  const visitorsWithView = new Set<string>();
+  const visitorsWithClick = new Set<string>();
+  const newVisitorIds = new Set<string>();
+
   for (const e of events) {
-    if (!e.session_id) continue;
-    if (e.event_type === "page_view") sessionsWithView.add(e.session_id);
-    if (e.event_type === "link_click") sessionsWithClick.add(e.session_id);
+    const vid = visitorKey(e);
+    if (!vid) continue;
+    if (e.event_type === "page_view") {
+      visitorsWithView.add(vid);
+      if (e.is_new_visitor) newVisitorIds.add(vid);
+    }
+    if (e.event_type === "link_click") visitorsWithClick.add(vid);
   }
-  const uniqueVisitors = sessionsWithView.size || pageViews;
-  const visitsWithClicks = [...sessionsWithView].filter((s) => sessionsWithClick.has(s)).length;
-  const ctr = uniqueVisitors > 0 ? Math.round((visitsWithClicks / uniqueVisitors) * 100) : 0;
-  return { pageViews, linkClicks, uniqueVisitors, visitsWithClicks, ctr };
+
+  const uniqueVisitors = visitorsWithView.size || pageViews;
+  const newVisitors = newVisitorIds.size;
+  const returningVisitors = Math.max(0, uniqueVisitors - newVisitors);
+  const returningRate = uniqueVisitors > 0 ? Math.round((returningVisitors / uniqueVisitors) * 100) : 0;
+  const uniqueClickers = visitorsWithClick.size;
+  const trueCtr = uniqueVisitors > 0 ? Math.round((uniqueClickers / uniqueVisitors) * 100) : 0;
+  const visitsWithClicks = [...visitorsWithView].filter((v) => visitorsWithClick.has(v)).length;
+
+  return {
+    pageViews,
+    linkClicks,
+    uniqueVisitors,
+    newVisitors,
+    returningVisitors,
+    returningRate,
+    uniqueClickers,
+    trueCtr,
+    visitsWithClicks,
+    ctr: trueCtr,
+  };
 }
 
 function buildPreviousComparison(
@@ -305,6 +357,8 @@ function buildPreviousComparison(
     pageViews: computeTrend(current.pageViews, previous.pageViews),
     linkClicks: computeTrend(current.linkClicks, previous.linkClicks),
     uniqueVisitors: computeTrend(current.uniqueVisitors, previous.uniqueVisitors),
+    newVisitors: computeTrend(current.newVisitors, previous.newVisitors),
+    trueCtr: computeTrend(current.trueCtr, previous.trueCtr),
     visitsWithClicks: computeTrend(current.visitsWithClicks, previous.visitsWithClicks),
     ctr: computeTrend(current.ctr, previous.ctr),
   };
@@ -456,9 +510,16 @@ export async function getPageAnalytics(pageId: string, days = 1): Promise<Analyt
   const previousCore = computeCoreMetrics(previousEvents);
 
   const clicksByBlock = new Map<string, number>();
+  const uniqueClicksByBlock = new Map<string, Set<string>>();
   for (const e of currentEvents) {
     if (e.event_type !== "link_click" || !e.block_id) continue;
     clicksByBlock.set(e.block_id, (clicksByBlock.get(e.block_id) ?? 0) + 1);
+    const vid = visitorKey(e);
+    if (vid) {
+      const set = uniqueClicksByBlock.get(e.block_id) ?? new Set<string>();
+      set.add(vid);
+      uniqueClicksByBlock.set(e.block_id, set);
+    }
   }
   const topLinks = [...clicksByBlock.entries()]
     .map(([block_id, clicks]) => {
@@ -469,6 +530,7 @@ export async function getPageAnalytics(pageId: string, days = 1): Promise<Analyt
         label: block?.label?.trim() || url.trim() || block_id,
         url,
         clicks,
+        uniqueClicks: uniqueClicksByBlock.get(block_id)?.size ?? 0,
         platform: detectLinkPlatform({
           platform: block?.platform ?? "",
           icon: block?.icon ?? "",
@@ -531,10 +593,12 @@ export async function getRealtimeVisitors(pageId: string): Promise<number> {
     filterByFormula: `AND({page_id}='${pid.replace(/'/g, "\\'")}', {event_type}='page_view', IS_AFTER({timestamp}, '${since}'))`,
     _caller: "link-page-realtime",
   }).catch(() => []);
-  const sessions = new Set(
-    records.map((r) => r.fields.session_id).filter((s): s is string => typeof s === "string" && !!s.trim())
+  const visitors = new Set(
+    records
+      .map((r) => r.fields.visitor_id?.trim() || r.fields.session_id?.trim())
+      .filter((s): s is string => typeof s === "string" && !!s)
   );
-  return sessions.size || records.length;
+  return visitors.size || records.length;
 }
 
 export function extractClientIp(headers: Headers): string {
@@ -625,7 +689,12 @@ export async function getGlobalAnalytics(days = 1): Promise<GlobalAnalyticsSumma
     totalPageViews: core.pageViews,
     totalLinkClicks: core.linkClicks,
     totalUniqueVisitors: core.uniqueVisitors,
+    totalNewVisitors: core.newVisitors,
+    totalReturningVisitors: core.returningVisitors,
+    returningRate: core.returningRate,
+    totalUniqueClickers: core.uniqueClickers,
     visitsWithClicks: core.visitsWithClicks,
+    trueCtr: core.trueCtr,
     ctr: core.ctr,
     viewsByDayByPage,
     viewsByDay,

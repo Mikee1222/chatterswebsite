@@ -1392,6 +1392,11 @@ export interface AnalyticsPeriodMetrics {
   pageViews: number;
   linkClicks: number;
   uniqueVisitors: number;
+  newVisitors: number;
+  returningVisitors: number;
+  returningRate: number;
+  uniqueClickers: number;
+  trueCtr: number;
   visitsWithClicks: number;
   ctr: number;
 }
@@ -1400,6 +1405,11 @@ export interface AnalyticsSummary {
   pageViews: number;
   linkClicks: number;
   uniqueVisitors: number;
+  newVisitors: number;
+  returningVisitors: number;
+  returningRate: number;
+  uniqueClickers: number;
+  trueCtr: number;
   visitsWithClicks: number;
   ctr: number;
   topLinks: Array<{
@@ -1407,6 +1417,7 @@ export interface AnalyticsSummary {
     label: string;
     url: string;
     clicks: number;
+    uniqueClicks: number;
     platform: string;
     sparkline: number[];
   }>;
@@ -1423,6 +1434,8 @@ export interface AnalyticsSummary {
     pageViews: AnalyticsTrend;
     linkClicks: AnalyticsTrend;
     uniqueVisitors: AnalyticsTrend;
+    newVisitors: AnalyticsTrend;
+    trueCtr: AnalyticsTrend;
     visitsWithClicks: AnalyticsTrend;
     ctr: AnalyticsTrend;
   };
@@ -1432,7 +1445,12 @@ export interface GlobalAnalyticsSummary {
   totalPageViews: number;
   totalLinkClicks: number;
   totalUniqueVisitors: number;
+  totalNewVisitors: number;
+  totalReturningVisitors: number;
+  returningRate: number;
+  totalUniqueClickers: number;
   visitsWithClicks: number;
+  trueCtr: number;
   ctr: number;
   viewsByDayByPage: Array<{ date: string; pages: Record<string, number> }>;
   viewsByDay: Array<{ date: string; views: number; clicks: number }>;
@@ -1448,6 +1466,8 @@ export interface GlobalAnalyticsSummary {
     pageViews: AnalyticsTrend;
     linkClicks: AnalyticsTrend;
     uniqueVisitors: AnalyticsTrend;
+    newVisitors: AnalyticsTrend;
+    trueCtr: AnalyticsTrend;
     visitsWithClicks: AnalyticsTrend;
     ctr: AnalyticsTrend;
   };

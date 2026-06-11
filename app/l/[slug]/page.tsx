@@ -1,8 +1,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
-import { cookies, headers as getRequestHeaders } from "next/headers";
+import { cookies } from "next/headers";
 import { getLinkPageBySlugFresh, getLinkPageWithBlocksByPageIdFresh } from "@/services/link-pages";
-import { trackPageView, extractClientIp } from "@/services/link-page-analytics";
 import { getAbVariantForSession, trackAbEvent } from "@/services/link-ab-testing";
 import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml, GOOGLE_FONTS_STYLESHEET } from "@/lib/link-page-styles";
 import type { LinkPageAbVariant, LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
@@ -95,14 +94,105 @@ function clickUrl(
   pageId: string,
   blockId: string,
   url: string,
-  sessionId: string,
   variant?: LinkPageAbVariant,
   abEnabled?: boolean
 ): string {
-  const params = new URLSearchParams({ page: pageId, block: blockId, url, session: sessionId });
+  const params = new URLSearchParams({ page: pageId, block: blockId, url });
   if (abEnabled && variant) params.set("variant", variant);
   return `/api/l/click?${params.toString()}`;
 }
+
+function fingerprintTrackingScript(pageId: string): string {
+  const pid = pageId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  return `(function(){
+  if(window.location.search.includes('preview=true'))return;
+  function getFingerprint(){
+    var components=[
+      navigator.userAgent,
+      navigator.language,
+      screen.width+'x'+screen.height,
+      screen.colorDepth,
+      new Date().getTimezoneOffset(),
+      navigator.hardwareConcurrency||'',
+      navigator.deviceMemory||'',
+      navigator.platform||''
+    ];
+    var str=components.join('|');
+    var hash=0;
+    for(var i=0;i<str.length;i++){
+      var char=str.charCodeAt(i);
+      hash=((hash<<5)-hash)+char;
+      hash=hash&hash;
+    }
+    return 'fp_'+Math.abs(hash).toString(36);
+  }
+  function getVisitorId(){
+    try{
+      var stored=localStorage.getItem('lp_visitor_id');
+      if(stored)return{id:stored,isNew:false};
+      var fp=getFingerprint();
+      localStorage.setItem('lp_visitor_id',fp);
+      return{id:fp,isNew:true};
+    }catch(e){
+      return{id:getFingerprint(),isNew:true};
+    }
+  }
+  function getSessionId(){
+    var sessionKey='lp_session_${pid}';
+    var now=Date.now();
+    try{
+      var lastActivity=localStorage.getItem(sessionKey+'_ts');
+      if(lastActivity&&(now-parseInt(lastActivity,10))<30*60*1000){
+        localStorage.setItem(sessionKey+'_ts',now.toString());
+        return{id:localStorage.getItem(sessionKey)||'',isNew:false};
+      }
+      var sessionId='s_'+now+'_'+Math.random().toString(36).slice(2,8);
+      localStorage.setItem(sessionKey,sessionId);
+      localStorage.setItem(sessionKey+'_ts',now.toString());
+      return{id:sessionId,isNew:true};
+    }catch(e){
+      return{id:'s_'+now+'_'+Math.random().toString(36).slice(2,8),isNew:true};
+    }
+  }
+  var visitor=getVisitorId();
+  var session=getSessionId();
+  window._lp_visitor_id=visitor.id;
+  window._lp_session_id=session.id;
+  var params=new URLSearchParams(window.location.search);
+  fetch('/api/l/track',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({
+      page_id:'${pid}',
+      visitor_id:visitor.id,
+      session_id:session.id,
+      is_new_visitor:visitor.isNew,
+      is_new_session:session.isNew,
+      event_type:'page_view',
+      referrer:document.referrer||'',
+      utm_source:params.get('utm_source')||'',
+      utm_medium:params.get('utm_medium')||'',
+      utm_campaign:params.get('utm_campaign')||''
+    })
+  }).catch(function(){});
+})();`;
+}
+
+const LINK_CLICK_TRACKING_SCRIPT = `(function(){
+  document.querySelectorAll('a[data-lp-click]').forEach(function(a){
+    a.addEventListener('click',function(){
+      var vid=window._lp_visitor_id||'';
+      var sid=window._lp_session_id||'';
+      if(!vid&&!sid)return;
+      try{
+        var u=new URL(a.getAttribute('href')||'',window.location.origin);
+        if(vid)u.searchParams.set('visitor',vid);
+        if(sid)u.searchParams.set('session',sid);
+        a.href=u.pathname+u.search;
+      }catch(e){}
+    },true);
+  });
+})();`;
 
 function renderLinkBlock(
   page: LinkPageWithBlocks,
@@ -113,7 +203,7 @@ function renderLinkBlock(
   abEnabled: boolean
 ): string {
   const href = block.url
-    ? clickUrl(controlPageId, block.block_id, block.url, sessionId, variant, abEnabled)
+    ? clickUrl(controlPageId, block.block_id, block.url, variant, abEnabled)
     : "#";
   return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml);
 }
@@ -152,8 +242,8 @@ function renderBlock(
       const urls = block.photo_urls.length ? block.photo_urls : block.url ? [block.url] : [];
       const items = urls
         .map((u) => {
-          const href = clickUrl(controlPageId, block.block_id, u, sessionId, variant, abEnabled);
-          return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
+          const href = clickUrl(controlPageId, block.block_id, u, variant, abEnabled);
+          return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" data-lp-click="1" title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
         })
         .join("");
       return items ? `<div class="social-bar">${items}</div>` : "";
@@ -292,24 +382,13 @@ async function renderLinkPagePublic({ params, searchParams }: Props) {
     }
   }
 
-  if (!isPreview) {
-    const hdrs = await getRequestHeaders();
-    trackPageView({
+  if (!isPreview && abEnabled) {
+    trackAbEvent({
       pageId: controlPage.page_id,
-      ip: extractClientIp(hdrs),
-      userAgent: hdrs.get("user-agent") ?? "",
-      referrer: hdrs.get("referer") ?? "",
+      variant,
+      eventType: "view",
       sessionId,
-    }).catch(() => {});
-
-    if (abEnabled) {
-      trackAbEvent({
-        pageId: controlPage.page_id,
-        variant,
-        eventType: "view",
-        sessionId,
-      });
-    }
+    });
   }
 
   const sortedBlocks = [...activePage.blocks].sort((a, b) => a.sort_order - b.sort_order);
@@ -400,6 +479,12 @@ async function renderLinkPagePublic({ params, searchParams }: Props) {
             __html: `.cookie-banner{position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.875rem 1rem;background:rgba(10,10,10,0.95);border-top:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(8px)}.cookie-banner-text{margin:0;flex:1;min-width:12rem;font-size:0.8125rem;line-height:1.4;color:rgba(255,255,255,0.75)}.cookie-banner-btn{flex-shrink:0;border:none;border-radius:9999px;padding:0.5rem 1.25rem;font-size:0.8125rem;font-weight:600;color:#fff;background:var(--primary,#ec4899);cursor:pointer}`,
           }}
         />
+      ) : null}
+      {!isPreview ? (
+        <>
+          <script dangerouslySetInnerHTML={{ __html: fingerprintTrackingScript(controlPage.page_id) }} />
+          <script dangerouslySetInnerHTML={{ __html: LINK_CLICK_TRACKING_SCRIPT }} />
+        </>
       ) : null}
       {hasCountdown ? (
         <script
