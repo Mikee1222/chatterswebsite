@@ -15,6 +15,7 @@ import {
 } from "@/lib/airtable-server";
 import {
   getFallbackNotificationDefaults,
+  normalizeNotificationDefaults,
   parseNotificationDefaultsJson,
   type NotificationRoleDefaults,
 } from "@/lib/notification-role-defaults";
@@ -62,7 +63,9 @@ function mapRecord(rec: AirtableRecord<Fields>): RoleRecord {
     label: f.label ?? "",
     description: f.description ?? "",
     permissions: parsePermissionsJson(f.permissions),
-    notification_defaults: parsedDefaults ?? getFallbackNotificationDefaults(roleId),
+    notification_defaults: parsedDefaults
+      ? normalizeNotificationDefaults(parsedDefaults)
+      : getFallbackNotificationDefaults(roleId),
     is_system_role: f.is_system_role ?? false,
     color: f.color ?? "",
     created_at: f.created_at ?? "",
@@ -172,8 +175,9 @@ export async function upsertRole(
 ): Promise<RoleRecord> {
   const now = new Date().toISOString();
   const roleId = input.role_id.trim().toLowerCase();
-  const notificationDefaults =
-    input.notification_defaults ?? getFallbackNotificationDefaults(roleId);
+  const notificationDefaults = normalizeNotificationDefaults(
+    input.notification_defaults ?? getFallbackNotificationDefaults(roleId)
+  );
   const fields: Fields = {
     role_id: roleId,
     label: input.label.trim(),

@@ -33,8 +33,9 @@ import { ButtonSecondary } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { NotificationPreference, UserRole } from "@/types";
 import {
-  notificationDefaultsEqual,
+  notificationCategoryDefaultsEqual,
   preferenceCategoryFieldsFromPrefs,
+  type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
 } from "@/lib/notification-role-defaults";
 import { cn } from "@/lib/utils";
@@ -159,7 +160,7 @@ function NotificationToggleField({
 }
 
 const CATEGORY_TOGGLES: Array<{
-  key: keyof NotificationRoleDefaults;
+  key: NotificationRoleCategoryKey;
   name: string;
   label: string;
   group: string;
@@ -265,13 +266,13 @@ export function NotificationSettingsForm({
   );
 
   const categoryModified = React.useCallback(
-    (key: keyof NotificationRoleDefaults) =>
+    (key: NotificationRoleCategoryKey) =>
       roleDefaults != null && currentCategories[key] !== roleDefaults[key],
     [roleDefaults, currentCategories]
   );
 
   const hasCategoryOverrides =
-    roleDefaults != null && !notificationDefaultsEqual(currentCategories, roleDefaults);
+    roleDefaults != null && !notificationCategoryDefaultsEqual(currentCategories, roleDefaults);
 
   React.useEffect(() => {
     setPushEnabled(prefs.push_enabled);
@@ -363,7 +364,7 @@ export function NotificationSettingsForm({
   }
 
   const categoryState: Record<
-    keyof NotificationRoleDefaults,
+    NotificationRoleCategoryKey,
     { value: boolean; setter: (v: boolean) => void }
   > = {
     shift: { value: shiftAlerts, setter: setShiftAlerts },

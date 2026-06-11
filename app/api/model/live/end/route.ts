@@ -70,7 +70,9 @@ export async function POST(req: Request) {
 
     const modelRecord = await getModelById(ctx.linkedModelId);
     if (modelRecord) {
-      await notifyModelLiveEnded(modelRecord, liveId);
+      await notifyModelLiveEnded(modelRecord, liveId, existing.platform).catch((e) =>
+        console.error("[live/end] notification failed:", e)
+      );
     }
     return NextResponse.json({ success: true, live_id: liveId, stream_id: liveId });
   } catch {

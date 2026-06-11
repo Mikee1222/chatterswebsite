@@ -21,9 +21,14 @@ import {
 } from "@/lib/permissions";
 import {
   getFallbackNotificationDefaults,
+  normalizeNotificationDefaults,
   NOTIFICATION_CATEGORY_EVENTS,
   NOTIFICATION_CATEGORY_GROUPS,
   notificationDefaultsEqual,
+  parseEventDescriptionFromEntry,
+  parseEventKeyFromEntry,
+  getEventDefaultValue,
+  type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
 } from "@/lib/notification-role-defaults";
 import { cn } from "@/lib/utils";
@@ -81,9 +86,11 @@ function toDraft(role: RoleRecord): RoleDraft {
     label: role.label,
     description: role.description,
     permissions: [...role.permissions],
-    notification_defaults: role.notification_defaults
-      ? { ...role.notification_defaults }
-      : getFallbackNotificationDefaults(role.role_id),
+    notification_defaults: normalizeNotificationDefaults(
+      role.notification_defaults
+        ? { ...role.notification_defaults }
+        : getFallbackNotificationDefaults(role.role_id)
+    ),
     is_system_role: role.is_system_role,
     color: role.color || "gray",
   };
@@ -106,13 +113,16 @@ function PermissionSwitch({
   checked,
   disabled,
   onChange,
+  size = "default",
 }: {
   id: string;
   checked: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
+  size?: "default" | "small";
 }) {
   const reduceMotion = useReducedMotion();
+  const small = size === "small";
   return (
     <button
       type="button"
@@ -122,7 +132,8 @@ function PermissionSwitch({
       disabled={disabled}
       onClick={() => !disabled && onChange(!checked)}
       className={cn(
-        "relative h-9 w-[3.25rem] shrink-0 rounded-full border-2 outline-none transition duration-300",
+        "relative shrink-0 rounded-full border-2 outline-none transition duration-300",
+        small ? "h-6 w-[2.35rem]" : "h-9 w-[3.25rem]",
         disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer active:scale-[0.98]",
         checked
           ? "border-pink-300/45 bg-gradient-to-r from-pink-500 via-fuchsia-600 to-purple-600"
@@ -131,11 +142,12 @@ function PermissionSwitch({
     >
       <motion.span
         className={cn(
-          "pointer-events-none absolute left-[4px] top-[4px] h-6 w-6 rounded-full bg-white shadow-md",
+          "pointer-events-none absolute rounded-full bg-white shadow-md",
+          small ? "left-[3px] top-[3px] h-[18px] w-[18px]" : "left-[4px] top-[4px] h-6 w-6",
           checked && "ring-2 ring-pink-200/35"
         )}
         initial={false}
-        animate={{ x: checked ? 22 : 0 }}
+        animate={{ x: checked ? (small ? 14 : 22) : 0 }}
         transition={
           reduceMotion
             ? { duration: 0.12 }
@@ -174,6 +186,10 @@ export function AdminRolesClient({
     initialRoles[0] ? toDraft(initialRoles[0]) : null
   );
   const [expandedGroups, setExpandedGroups] = React.useState<Record<string, boolean>>({});
+  const [expandedNotificationCategories, setExpandedNotificationCategories] = React.useState<
+    Record<string, boolean>
+  >({});
+  const [allNotificationCategoriesExpanded, setAllNotificationCategoriesExpanded] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<"permissions" | "notifications">("permissions");
   const [saving, setSaving] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
@@ -227,16 +243,52 @@ export function AdminRolesClient({
     });
   }
 
-  function toggleNotificationCategory(key: keyof NotificationRoleDefaults, enabled: boolean) {
+  function toggleNotificationCategory(key: NotificationRoleCategoryKey, enabled: boolean) {
     if (!draft) return;
+    setDraft((prev) => {
+      if (!prev) return prev;
+      const nextDefaults = { ...prev.notification_defaults, [key]: enabled } as NotificationRoleDefaults;
+      for (const entry of NOTIFICATION_CATEGORY_EVENTS[key]) {
+        const eventKey = parseEventKeyFromEntry(entry);
+        (nextDefaults as Record<string, boolean>)[eventKey] = enabled;
+      }
+      return { ...prev, notification_defaults: nextDefaults };
+    });
+  }
+
+  function toggleNotificationEvent(
+    categoryKey: NotificationRoleCategoryKey,
+    eventKey: string,
+    enabled: boolean
+  ) {
+    if (!draft) return;
+    if (!draft.notification_defaults[categoryKey]) return;
     setDraft((prev) =>
       prev
         ? {
             ...prev,
-            notification_defaults: { ...prev.notification_defaults, [key]: enabled },
+            notification_defaults: {
+              ...prev.notification_defaults,
+              [eventKey]: enabled,
+            } as NotificationRoleDefaults,
           }
         : prev
     );
+  }
+
+  function toggleAllNotificationCategories(expand: boolean) {
+    setAllNotificationCategoriesExpanded(expand);
+    const next: Record<string, boolean> = {};
+    for (const group of NOTIFICATION_CATEGORY_GROUPS) {
+      for (const cat of group.categories) {
+        next[cat.key] = expand;
+      }
+    }
+    setExpandedNotificationCategories(next);
+  }
+
+  function toggleNotificationCategoryExpanded(key: string) {
+    setExpandedNotificationCategories((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   function toggleGroup(key: string) {
@@ -617,12 +669,23 @@ export function AdminRolesClient({
                 </div>
                 ) : (
                 <div>
-                  <h3 className="mb-2 text-sm font-semibold uppercase tracking-wider text-white/55">
-                    Notification defaults
-                  </h3>
-                  <p className="mb-5 text-sm text-white/45">
-                    Default category toggles for new users with this role. Users can override these in Settings.
-                  </p>
+                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h3 className="text-sm font-semibold uppercase tracking-wider text-white/55">
+                        Notification defaults
+                      </h3>
+                      <p className="mt-1 text-sm text-white/45">
+                        Default category and event toggles for new users with this role. Users can override categories in Settings.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleAllNotificationCategories(!allNotificationCategoriesExpanded)}
+                      className="rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-white/60 transition hover:bg-white/[0.08] hover:text-white/85"
+                    >
+                      {allNotificationCategoriesExpanded ? "Collapse all" : "Expand all"}
+                    </button>
+                  </div>
                   <div className="space-y-6">
                     {NOTIFICATION_CATEGORY_GROUPS.map((group) => (
                       <div key={group.key}>
@@ -631,42 +694,90 @@ export function AdminRolesClient({
                         </p>
                         <ul className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] px-2 py-2">
                           {group.categories.map((cat) => {
-                            const checked = draft.notification_defaults[cat.key];
+                            const categoryOn = draft.notification_defaults[cat.key];
                             const switchId = `notif-default-${draft.id}-${cat.key}`;
                             const categoryEvents = NOTIFICATION_CATEGORY_EVENTS[cat.key];
+                            const categoryExpanded =
+                              expandedNotificationCategories[cat.key] ?? allNotificationCategoriesExpanded;
                             return (
                               <li key={cat.key} className="rounded-lg px-2 py-2.5">
                                 <div className="flex items-center justify-between gap-3">
-                                  <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
-                                    <p className="text-sm font-medium text-white/80">{cat.label}</p>
-                                    <p className="mt-0.5 text-xs text-white/40">{cat.description}</p>
-                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleNotificationCategoryExpanded(cat.key)}
+                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                  >
+                                    <ChevronDown
+                                      className={cn(
+                                        "h-4 w-4 shrink-0 text-white/35 transition",
+                                        categoryExpanded && "rotate-180"
+                                      )}
+                                    />
+                                    <span className="min-w-0 flex-1">
+                                      <p className="text-base font-bold text-white/90">{cat.label}</p>
+                                      <p className="mt-0.5 text-xs text-white/40">{cat.description}</p>
+                                    </span>
+                                  </button>
                                   <PermissionSwitch
                                     id={switchId}
-                                    checked={checked}
+                                    checked={categoryOn}
                                     onChange={(next) => toggleNotificationCategory(cat.key, next)}
                                   />
                                 </div>
-                                <ul className="mt-2 space-y-1 border-l border-white/10 pl-3">
-                                  {categoryEvents.map((entry) => (
-                                    <li
-                                      key={entry}
-                                      className="flex items-start gap-2 text-[11px] leading-snug text-white/38"
-                                    >
-                                      <span
-                                        className={cn(
-                                          "mt-1.5 h-1 w-1 shrink-0 rounded-full",
-                                          checked ? "bg-pink-400/70" : "bg-white/25"
-                                        )}
-                                        aria-hidden
-                                      />
-                                      <span>{entry}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                                <p className="mt-2 pl-3 text-[10px] text-white/30">
-                                  When ON: user receives these notifications
-                                </p>
+                                {categoryExpanded ? (
+                                  <ul
+                                    className={cn(
+                                      "mt-3 space-y-1 border-l border-white/10 pl-4",
+                                      !categoryOn && "opacity-40"
+                                    )}
+                                  >
+                                    {categoryEvents.map((entry) => {
+                                      const eventKey = parseEventKeyFromEntry(entry);
+                                      const eventDescription = parseEventDescriptionFromEntry(entry);
+                                      const eventChecked = getEventDefaultValue(
+                                        draft.notification_defaults,
+                                        cat.key,
+                                        eventKey
+                                      );
+                                      const eventSwitchId = `notif-event-${draft.id}-${eventKey}`;
+                                      return (
+                                        <li
+                                          key={eventKey}
+                                          className="flex items-center justify-between gap-3 py-1.5"
+                                        >
+                                          <label
+                                            htmlFor={eventSwitchId}
+                                            className={cn(
+                                              "min-w-0 flex-1",
+                                              categoryOn ? "cursor-pointer" : "cursor-not-allowed"
+                                            )}
+                                          >
+                                            <p className="text-[13px] leading-snug text-white/50">
+                                              <span className="font-mono text-[11px] text-white/35">
+                                                {eventKey}
+                                              </span>
+                                              {eventDescription ? (
+                                                <>
+                                                  {" "}
+                                                  <span className="text-white/45">— {eventDescription}</span>
+                                                </>
+                                              ) : null}
+                                            </p>
+                                          </label>
+                                          <PermissionSwitch
+                                            id={eventSwitchId}
+                                            checked={eventChecked}
+                                            disabled={!categoryOn}
+                                            size="small"
+                                            onChange={(next) =>
+                                              toggleNotificationEvent(cat.key, eventKey, next)
+                                            }
+                                          />
+                                        </li>
+                                      );
+                                    })}
+                                  </ul>
+                                ) : null}
                               </li>
                             );
                           })}

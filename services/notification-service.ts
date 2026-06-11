@@ -10,6 +10,10 @@ import {
   NOTIFICATION_ENTITY,
 } from "@/lib/notification-types";
 import { CATEGORY_TO_AIRTABLE, EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
+import {
+  EVENT_TO_ROLE_CATEGORY,
+  getEventDefaultValue,
+} from "@/lib/notification-role-defaults";
 import { broadcastRealtimeEvent } from "@/lib/realtime-broadcast";
 import { sendWebPush } from "@/lib/web-push-server";
 import { getPushTargetPath } from "@/lib/notification-routes";
@@ -18,8 +22,11 @@ import type {
   NotificationEventType,
   NotificationPriority,
   NotificationPreference,
+  NotificationRoleDefaults,
 } from "@/types";
 import { devLog } from "@/lib/dev-log";
+import { getNotificationDefaultsForRole } from "@/services/roles";
+import { getUserByAirtableId } from "@/services/users";
 
 /** Map event type to Airtable category. Categories must match Airtable single-select. */
 const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
@@ -59,7 +66,7 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   va_content_assigned: "task",
   va_content_scheduled: "task",
   va_content_completed: "task",
-  custom_request_uploaded: "custom_request",
+  custom_request_uploaded: "task",
   period_3_day_reminder: "model",
   period_predicted_day: "model",
   period_confirmed_early: "model",
@@ -70,18 +77,18 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   whale_followup: "whale",
   whale_spent: "whale",
   whale_session_submitted: "whale",
-  custom_request_created: "custom_request",
-  custom_request_updated: "custom_request",
-  custom_request_submitted: "custom_request",
-  custom_status_changed: "custom_request",
-  custom_approved: "custom_request",
-  custom_rejected: "custom_request",
-  custom_declined: "custom_request",
-  custom_edited: "custom_request",
-  custom_uploaded: "custom_request",
-  custom_scheduled: "custom_request",
-  custom_deadline_approaching: "custom_request",
-  custom_overdue: "custom_request",
+  custom_request_created: "task",
+  custom_request_updated: "task",
+  custom_request_submitted: "task",
+  custom_status_changed: "task",
+  custom_approved: "model",
+  custom_rejected: "model",
+  custom_declined: "model",
+  custom_edited: "model",
+  custom_uploaded: "model",
+  custom_scheduled: "model",
+  custom_deadline_approaching: "model",
+  custom_overdue: "model",
   form_submitted: "system",
   schedule_updated: "system",
   weekly_availability_friday_reminder: "system",
@@ -96,7 +103,7 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   level_up: "system",
   spin_available: "system",
   challenge_completed: "system",
-  billing_cycle_announced: "billing",
+  billing_cycle_announced: "system",
   billing_due_reminder: "billing",
   billing_payment_submitted: "billing",
   payment_submitted: "billing",
@@ -105,8 +112,8 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   sop_academy_reminder: "system",
   sop_academy_training_complete: "system",
   sop_academy_signed_off: "system",
-  expense_approved: "system",
-  expense_rejected: "system",
+  expense_approved: "model",
+  expense_rejected: "model",
 };
 
 /** Service-layer defaults (merges lib/notification-types + model session events). */
@@ -141,7 +148,7 @@ const CATEGORY_TO_PREF_KEY: Record<NotificationCategory, NotificationPreferenceG
 
 const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPreferenceGateKey>> = {
   billing_due_reminder: "system_alerts",
-  billing_cycle_announced: "period_alerts",
+  billing_cycle_announced: "system_alerts",
   payment_confirmed: "system_alerts",
   payment_rejected: "task_alerts",
   period_3_day_reminder: "period_alerts",
@@ -157,8 +164,20 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   level_up: "reward_alerts",
   spin_available: "reward_alerts",
   challenge_completed: "reward_alerts",
-  expense_approved: "system_alerts",
-  expense_rejected: "system_alerts",
+  expense_approved: "model_alerts",
+  expense_rejected: "model_alerts",
+  custom_request_created: "task_alerts",
+  custom_request_updated: "task_alerts",
+  custom_request_submitted: "task_alerts",
+  custom_status_changed: "task_alerts",
+  custom_approved: "model_alerts",
+  custom_rejected: "model_alerts",
+  custom_declined: "model_alerts",
+  custom_edited: "model_alerts",
+  custom_uploaded: "model_alerts",
+  custom_scheduled: "model_alerts",
+  custom_deadline_approaching: "model_alerts",
+  custom_overdue: "model_alerts",
 };
 
 const ENTITY_TO_PREF_KEY: Record<string, NotificationPreferenceGateKey> = {
@@ -188,6 +207,16 @@ function resolvePreferenceKey(
     return "marketing_alerts";
   }
   return EVENT_TO_PREF_KEY[eventType] ?? CATEGORY_TO_PREF_KEY[category];
+}
+
+async function getRoleDefaultsForUser(userId: string): Promise<NotificationRoleDefaults | null> {
+  try {
+    const user = await getUserByAirtableId(userId);
+    if (!user?.role) return null;
+    return await getNotificationDefaultsForRole(user.role);
+  } catch {
+    return null;
+  }
 }
 
 function isInQuietHours(prefs: { quiet_hours_start: string; quiet_hours_end: string }): boolean {
@@ -247,13 +276,26 @@ function shouldSendPush(
   priority: NotificationPriority,
   eventType: NotificationEventType,
   entityType?: string,
-  triggerSource?: string
+  triggerSource?: string,
+  roleDefaults?: NotificationRoleDefaults | null
 ): { send: boolean; skipReason?: string } {
   if (prefs.mute_all) return { send: false, skipReason: "mute_all is true" };
   if (!prefs.push_enabled) return { send: false, skipReason: "push_enabled is false" };
   const categoryKey = resolvePreferenceKey(eventType, category, entityType, triggerSource);
   if (categoryKey && !(prefs[categoryKey] as boolean))
     return { send: false, skipReason: `category preference ${categoryKey} is false` };
+  if (roleDefaults) {
+    const roleCategoryKey = EVENT_TO_ROLE_CATEGORY[eventType];
+    if (roleCategoryKey) {
+      const roleEventAllowed = getEventDefaultValue(roleDefaults, roleCategoryKey, eventType);
+      if (!roleEventAllowed) {
+        return {
+          send: false,
+          skipReason: `role default for ${eventType} is false (category ${roleCategoryKey})`,
+        };
+      }
+    }
+  }
   if (prefs.critical_only && priority !== "critical" && priority !== "high")
     return { send: false, skipReason: `critical_only is true and priority "${priority}" is not critical/high` };
   return { send: true };
@@ -490,6 +532,7 @@ export async function notify(options: NotifyOptions) {
 
   const prefs = await getPreferencesByUserId(options.user_id);
   console.log("[notify] user preferences lookup for:", options.user_id);
+  const roleDefaults = await getRoleDefaultsForUser(options.user_id);
 
   devLog(PUSH_DEBUG, "recipient user id", JSON.stringify({ recipient_user_id: options.user_id }));
   devLog(PUSH_DEBUG, "preferences loaded", JSON.stringify({ has_prefs: !!prefs }));
@@ -545,7 +588,8 @@ export async function notify(options: NotifyOptions) {
       priority,
       options.event_type,
       options.entity_type,
-      options._triggerSource
+      options._triggerSource,
+      roleDefaults
     );
     devLog(NOTIF, "shift_started_admin_shift_alerts_pref", JSON.stringify({
       recipient_user_id: options.user_id,
@@ -615,7 +659,8 @@ export async function notify(options: NotifyOptions) {
     priority,
     options.event_type,
     options.entity_type,
-    options._triggerSource
+    options._triggerSource,
+    roleDefaults
   );
   devLog(
     PUSH_AUDIT,

@@ -31,7 +31,9 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
-      return isAdmin ? ROUTES.admin.modelLiveStreams : ROUTES.model.liveStreams;
+      if (isAdmin) return ROUTES.admin.liveShifts;
+      if (isModel) return ROUTES.model.liveStreams;
+      return ROUTES.va.liveShifts;
     case "custom_request":
       if (isAdmin) return ROUTES.admin.customRequests;
       if (isVa) return ROUTES.va.customRequests;
@@ -86,7 +88,9 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
-      return isAdmin ? ROUTES.admin.modelLiveStreams : ROUTES.model.liveStreams;
+      if (isAdmin) return ROUTES.admin.liveShifts;
+      if (isModel) return ROUTES.model.liveStreams;
+      return ROUTES.va.liveShifts;
     case "custom_request":
       if (isAdmin) return ROUTES.admin.customRequests;
       if (isVa) return ROUTES.va.customRequests;

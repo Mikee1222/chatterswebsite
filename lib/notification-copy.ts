@@ -3,6 +3,7 @@
  * Times use {@link formatTimeAthens} / {@link formatDateTimeAthens} (Europe/Athens) so UTC servers show correct local wall clock.
  */
 
+import { modelLiveStreamPlatformLabel } from "@/lib/airtable-options";
 import { formatTimeAthens, formatDateTimeAthens } from "@/lib/format";
 
 /** Format time for notification body (24h, Europe/Athens). */
@@ -277,34 +278,38 @@ export function modelTakenAdmin(modelName: string, chatterName: string): { title
 }
 
 /** Model went live — assigned chatter (pause chatting). */
-export function modelLiveStartedChatter(modelName: string): { title: string; body: string } {
+export function modelLiveStartedChatter(modelName: string, platform: string): { title: string; body: string } {
+  const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
-    title: `🔴 ${modelName} is live!`,
-    body: `🔴 Pause chatting — ${modelName} just started a live stream.`,
+    title: `🔴 ${modelName} is live on ${platformLabel}!`,
+    body: `🔴 Pause chatting — ${modelName} just started a live stream on ${platformLabel}.`,
   };
 }
 
 /** Model went live — admin oversight. */
-export function modelLiveStartedAdmin(modelName: string): { title: string; body: string } {
+export function modelLiveStartedAdmin(modelName: string, platform: string): { title: string; body: string } {
+  const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
-    title: `🔴 ${modelName} went live`,
-    body: `🔴 ${modelName} started a live stream.`,
+    title: `🔴 ${modelName} went live on ${platformLabel}`,
+    body: `🔴 ${modelName} started a live stream on ${platformLabel}.`,
   };
 }
 
 /** Model live ended — assigned chatter (resume chatting). */
-export function modelLiveEndedChatter(modelName: string): { title: string; body: string } {
+export function modelLiveEndedChatter(modelName: string, platform: string): { title: string; body: string } {
+  const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
-    title: `⏹️ ${modelName} live ended`,
-    body: `⏹️ ${modelName}'s live stream ended. Resume chatting.`,
+    title: `⏹️ ${modelName} finished on ${platformLabel}`,
+    body: `⏹️ ${modelName} finished on ${platformLabel}. Resume chatting.`,
   };
 }
 
 /** Model live ended — admin oversight. */
-export function modelLiveEndedAdmin(modelName: string): { title: string; body: string } {
+export function modelLiveEndedAdmin(modelName: string, platform: string): { title: string; body: string } {
+  const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
-    title: `⏹️ ${modelName} live ended`,
-    body: `⏹️ ${modelName} finished the live stream.`,
+    title: `⏹️ ${modelName} live ended on ${platformLabel}`,
+    body: `⏹️ ${modelName} finished the live stream on ${platformLabel}.`,
   };
 }
 

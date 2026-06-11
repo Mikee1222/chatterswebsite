@@ -7,20 +7,27 @@ export type UserRole = "admin" | "manager" | "chatter" | "virtual_assistant" | "
 /** Alias for permission strings used in RBAC checks. */
 export type PermissionKey = Permission;
 
-/** Role-level notification category defaults (stored as JSON on roles table). */
+/** Role-level notification category keys (master toggles in roles UI). */
+export type NotificationRoleCategoryKey =
+  | "shift"
+  | "whale"
+  | "model"
+  | "system"
+  | "task"
+  | "mistake"
+  | "fine_bonus"
+  | "period"
+  | "marketing"
+  | "phase"
+  | "reward";
+
+/**
+ * Role-level notification defaults (stored as JSON on roles table).
+ * Category booleans are required; individual event keys are optional overrides.
+ */
 export type NotificationRoleDefaults = {
-  shift: boolean;
-  whale: boolean;
-  model: boolean;
-  system: boolean;
-  task: boolean;
-  mistake: boolean;
-  fine_bonus: boolean;
-  period: boolean;
-  marketing: boolean;
-  phase: boolean;
-  reward: boolean;
-};
+  [K in NotificationRoleCategoryKey]: boolean;
+} & Partial<Record<NotificationEventType, boolean>>;
 
 /** Airtable `roles` table row. */
 export interface RoleRecord {

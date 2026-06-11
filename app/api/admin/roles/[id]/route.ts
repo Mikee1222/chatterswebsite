@@ -10,12 +10,14 @@ const permissionSchema = z
 import { deleteRole, getRoleById, upsertRole } from "@/services/roles";
 import { NOTIFICATION_ROLE_DEFAULT_KEYS } from "@/lib/notification-role-defaults";
 
-const notificationDefaultsSchema = z.object(
-  Object.fromEntries(NOTIFICATION_ROLE_DEFAULT_KEYS.map((key) => [key, z.boolean()])) as Record<
-    (typeof NOTIFICATION_ROLE_DEFAULT_KEYS)[number],
-    z.ZodBoolean
-  >
-);
+const notificationDefaultsSchema = z
+  .object(
+    Object.fromEntries(NOTIFICATION_ROLE_DEFAULT_KEYS.map((key) => [key, z.boolean()])) as Record<
+      (typeof NOTIFICATION_ROLE_DEFAULT_KEYS)[number],
+      z.ZodBoolean
+    >
+  )
+  .catchall(z.boolean());
 
 const patchSchema = z.object({
   label: z.string().trim().min(1).max(120).optional(),

@@ -75,14 +75,12 @@ export async function POST(req: Request) {
     platform,
   }).catch(() => {});
 
-  // Notify after returning success (fire and forget)
-  getModelById(ctx.linkedModelId)
-    .then((modelRecord) => {
-      if (modelRecord) {
-        return notifyModelLiveStarted(modelRecord, row.id);
-      }
-    })
-    .catch((e) => console.error("[live/start] notification failed:", e));
+  const modelRecord = await getModelById(ctx.linkedModelId);
+  if (modelRecord) {
+    await notifyModelLiveStarted(modelRecord, row.id, platform).catch((e) =>
+      console.error("[live/start] notification failed:", e)
+    );
+  }
 
   return NextResponse.json({
     success: true,

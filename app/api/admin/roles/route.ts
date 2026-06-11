@@ -10,12 +10,14 @@ import { hasPermission } from "@/lib/rbac";
 import { getRoles, syncRoleOptionToAirtable, upsertRole } from "@/services/roles";
 import { NOTIFICATION_ROLE_DEFAULT_KEYS } from "@/lib/notification-role-defaults";
 
-const notificationDefaultsSchema = z.object(
-  Object.fromEntries(NOTIFICATION_ROLE_DEFAULT_KEYS.map((key) => [key, z.boolean()])) as Record<
-    (typeof NOTIFICATION_ROLE_DEFAULT_KEYS)[number],
-    z.ZodBoolean
-  >
-);
+const notificationDefaultsSchema = z
+  .object(
+    Object.fromEntries(NOTIFICATION_ROLE_DEFAULT_KEYS.map((key) => [key, z.boolean()])) as Record<
+      (typeof NOTIFICATION_ROLE_DEFAULT_KEYS)[number],
+      z.ZodBoolean
+    >
+  )
+  .catchall(z.boolean());
 
 const postSchema = z.object({
   role_id: z

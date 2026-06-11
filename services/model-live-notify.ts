@@ -8,7 +8,8 @@ import {
   modelLiveEndedChatter,
 } from "@/lib/notification-copy";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-import { notify, notifyAdmins } from "@/services/notification-service";
+import { notify } from "@/services/notification-service";
+import { getModelLiveStreamById } from "@/services/model-live-streams";
 import { getActiveShiftsWithModel, getChatterIdsFromOpenShiftModels } from "@/services/shifts";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId, listAllUsers } from "@/services/users";
 import { getProgramsForWeek } from "@/services/weekly-program";
@@ -16,6 +17,13 @@ import { listAllWhales } from "@/services/whales";
 import type { ModelRecord } from "@/types";
 
 type LiveNotifyKind = "started" | "ended";
+
+async function resolveLivePlatform(liveStreamRecordId: string, platform?: string): Promise<string> {
+  const trimmed = platform?.trim();
+  if (trimmed) return trimmed;
+  const live = await getModelLiveStreamById(liveStreamRecordId).catch(() => null);
+  return live?.platform?.trim() ?? "";
+}
 
 async function getFallbackChatterIdsForModel(modelId: string, modelRecord: ModelRecord): Promise<string[]> {
   const trimmed = modelId.trim();
@@ -67,19 +75,47 @@ async function resolveChatterIdsForModelLive(modelRecord: ModelRecord): Promise<
   return getFallbackChatterIdsForModel(modelId, modelRecord);
 }
 
+async function notifyAdminsAndManagersModelLive(params: {
+  event_type: (typeof NOTIFICATION_EVENT)[keyof typeof NOTIFICATION_EVENT];
+  priority: (typeof NOTIFICATION_PRIORITY)[keyof typeof NOTIFICATION_PRIORITY];
+  title: string;
+  body: string;
+  entity_type: string;
+  entity_id: string;
+  actor_user_id?: string;
+  actor_name?: string;
+}): Promise<void> {
+  const adminUsers = await listAllUsers();
+  const recipients = adminUsers.filter(
+    (u) =>
+      (u.role === "admin" || u.role === "manager") &&
+      (u.status ?? "").toLowerCase() === "active" &&
+      u.can_login === true
+  );
+  for (const admin of recipients) {
+    await notify({
+      user_id: admin.id,
+      ...params,
+    }).catch(() => {});
+  }
+}
+
 async function notifyChattersModelLive(
   modelRecord: ModelRecord,
   liveStreamRecordId: string,
   kind: LiveNotifyKind,
   modelActorUserId: string | undefined,
-  modelName: string
+  modelName: string,
+  platform: string
 ): Promise<void> {
   const chatterIds = await resolveChatterIdsForModelLive(modelRecord);
-  const chatterCopy = kind === "started" ? modelLiveStartedChatter(modelName) : modelLiveEndedChatter(modelName);
+  const chatterCopy =
+    kind === "started"
+      ? modelLiveStartedChatter(modelName, platform)
+      : modelLiveEndedChatter(modelName, platform);
   const eventType =
     kind === "started" ? NOTIFICATION_EVENT.MODEL_LIVE_STARTED : NOTIFICATION_EVENT.MODEL_LIVE_ENDED;
-  const priority =
-    kind === "started" ? NOTIFICATION_PRIORITY.HIGH : NOTIFICATION_PRIORITY.NORMAL;
+  const priority = NOTIFICATION_PRIORITY.HIGH;
   const triggerSource = kind === "started" ? "live_start_chatter" : "live_end_chatter";
 
   for (const chatterId of chatterIds) {
@@ -99,12 +135,17 @@ async function notifyChattersModelLive(
 }
 
 /** Admins + chatters on active shifts (or weekly-program fallback when none). */
-export async function notifyModelLiveStarted(modelRecord: ModelRecord, liveStreamRecordId: string): Promise<void> {
+export async function notifyModelLiveStarted(
+  modelRecord: ModelRecord,
+  liveStreamRecordId: string,
+  platform?: string
+): Promise<void> {
   const modelName = (modelRecord.model_name ?? "Model").trim() || "Model";
+  const resolvedPlatform = await resolveLivePlatform(liveStreamRecordId, platform);
   const modelActorUserId =
     (await getActiveModelUserAirtableIdByLinkedModelRecordId(modelRecord.id)) ?? undefined;
-  const adminCopy = modelLiveStartedAdmin(modelName);
-  await notifyAdmins({
+  const adminCopy = modelLiveStartedAdmin(modelName, resolvedPlatform);
+  await notifyAdminsAndManagersModelLive({
     event_type: NOTIFICATION_EVENT.MODEL_LIVE_STARTED,
     priority: NOTIFICATION_PRIORITY.HIGH,
     title: adminCopy.title,
@@ -113,24 +154,43 @@ export async function notifyModelLiveStarted(modelRecord: ModelRecord, liveStrea
     entity_id: liveStreamRecordId,
     actor_user_id: modelActorUserId,
     actor_name: modelName,
-  }).catch(() => {});
-  await notifyChattersModelLive(modelRecord, liveStreamRecordId, "started", modelActorUserId, modelName);
+  });
+  await notifyChattersModelLive(
+    modelRecord,
+    liveStreamRecordId,
+    "started",
+    modelActorUserId,
+    modelName,
+    resolvedPlatform
+  );
 }
 
-export async function notifyModelLiveEnded(modelRecord: ModelRecord, liveStreamRecordId: string): Promise<void> {
+export async function notifyModelLiveEnded(
+  modelRecord: ModelRecord,
+  liveStreamRecordId: string,
+  platform?: string
+): Promise<void> {
   const modelName = (modelRecord.model_name ?? "Model").trim() || "Model";
+  const resolvedPlatform = await resolveLivePlatform(liveStreamRecordId, platform);
   const modelActorUserId =
     (await getActiveModelUserAirtableIdByLinkedModelRecordId(modelRecord.id)) ?? undefined;
-  const adminCopy = modelLiveEndedAdmin(modelName);
-  await notifyAdmins({
+  const adminCopy = modelLiveEndedAdmin(modelName, resolvedPlatform);
+  await notifyAdminsAndManagersModelLive({
     event_type: NOTIFICATION_EVENT.MODEL_LIVE_ENDED,
-    priority: NOTIFICATION_PRIORITY.NORMAL,
+    priority: NOTIFICATION_PRIORITY.HIGH,
     title: adminCopy.title,
     body: adminCopy.body,
     entity_type: "model_live_stream",
     entity_id: liveStreamRecordId,
     actor_user_id: modelActorUserId,
     actor_name: modelName,
-  }).catch(() => {});
-  await notifyChattersModelLive(modelRecord, liveStreamRecordId, "ended", modelActorUserId, modelName);
+  });
+  await notifyChattersModelLive(
+    modelRecord,
+    liveStreamRecordId,
+    "ended",
+    modelActorUserId,
+    modelName,
+    resolvedPlatform
+  );
 }
