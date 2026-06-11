@@ -1076,6 +1076,8 @@ export type NotificationEventType =
   | "payment_submitted"
   | "payment_confirmed"
   | "payment_rejected"
+  | "expense_approved"
+  | "expense_rejected"
   // SOP Academy
   | "sop_academy_reminder"
   | "sop_academy_training_complete"

@@ -259,6 +259,14 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "admin_only",
     description: "Admins when a learner signs off on academy training.",
   },
+  expense_approved: {
+    rule: "assigned_party_only",
+    description: "The linked model user when an expense request is approved.",
+  },
+  expense_rejected: {
+    rule: "assigned_party_only",
+    description: "The linked model user when an expense request is rejected.",
+  },
 };
 
 /**

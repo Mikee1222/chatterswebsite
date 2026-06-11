@@ -43,18 +43,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const updated = await updateModelExpenseRequest(id, updatePayload);
 
   const st = parsed.data.status;
-  if (parsed.data.model_id && (st === "approved" || st === "rejected")) {
-    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(parsed.data.model_id);
+  if (st === "approved" || st === "rejected") {
+    const modelId = parsed.data.model_id || updated.model_id;
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(modelId);
     if (modelUserId) {
       const note = (parsed.data.admin_notes ?? updated.admin_notes ?? "").trim();
       if (st === "approved") {
         await notify({
           user_id: modelUserId,
-          event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+          event_type: NOTIFICATION_EVENT.EXPENSE_APPROVED,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: "✅ Expense Request Approved",
           body: note && note.length > 0 ? note : "Your request is now approved.",
-          entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+          entity_type: NOTIFICATION_ENTITY.EXPENSE_REQUEST,
           entity_id: updated.id,
           actor_user_id: session.airtableUserId ?? session.id,
           actor_name: session.fullName ?? "Admin",
@@ -62,11 +63,11 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       } else {
         await notify({
           user_id: modelUserId,
-          event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+          event_type: NOTIFICATION_EVENT.EXPENSE_REJECTED,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: "❌ Expense Request Declined",
           body: note && note.length > 0 ? note : "No reason provided.",
-          entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+          entity_type: NOTIFICATION_ENTITY.EXPENSE_REQUEST,
           entity_id: updated.id,
           actor_user_id: session.airtableUserId ?? session.id,
           actor_name: session.fullName ?? "Admin",

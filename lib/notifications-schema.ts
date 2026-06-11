@@ -153,6 +153,8 @@ export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtabl
   sop_academy_reminder: "system_alert",
   sop_academy_training_complete: "system_alert",
   sop_academy_signed_off: "system_alert",
+  expense_approved: "system_alert",
+  expense_rejected: "system_alert",
 };
 
 /** Map legacy category to Airtable category (task_shift -> task, account -> system). */

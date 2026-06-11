@@ -10,7 +10,7 @@ import {
   getCustomRequestById,
   updateCustomRequestAdminStatus,
 } from "@/services/custom-requests";
-import { getUserByAirtableId } from "@/services/users";
+import { getActiveModelUserAirtableIdByLinkedModelRecordId, getUserByAirtableId } from "@/services/users";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { CustomRequestAdminStatus } from "@/types";
@@ -114,6 +114,21 @@ export async function updateCustomStatusAction(
       });
     } catch (e) {
       console.error("[notify] updateCustomStatusAction notifyAdmins failed", e);
+    }
+    if (admin_status === "accepted") {
+      const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(updated.assigned_model_id);
+      if (modelUserId) {
+        await notify({
+          user_id: modelUserId,
+          event_type: NOTIFICATION_EVENT.CUSTOM_APPROVED,
+          priority: NOTIFICATION_PRIORITY.NORMAL,
+          title: "✅ Custom request approved",
+          body: `✅ A custom request "${customTitle}" has been approved. Please check your schedule.`,
+          entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
+          entity_id: recordId,
+          _triggerSource: "updateCustomStatusAction_model",
+        }).catch(() => {});
+      }
     }
     return { success: true };
   } catch (err) {

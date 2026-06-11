@@ -105,6 +105,8 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   sop_academy_reminder: "system",
   sop_academy_training_complete: "system",
   sop_academy_signed_off: "system",
+  expense_approved: "system",
+  expense_rejected: "system",
 };
 
 /** Service-layer defaults (merges lib/notification-types + model session events). */
@@ -155,6 +157,8 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   level_up: "reward_alerts",
   spin_available: "reward_alerts",
   challenge_completed: "reward_alerts",
+  expense_approved: "system_alerts",
+  expense_rejected: "system_alerts",
 };
 
 const ENTITY_TO_PREF_KEY: Record<string, NotificationPreferenceGateKey> = {
@@ -699,6 +703,10 @@ export async function notify(options: NotifyOptions) {
   }
 
   // 11. Right before sending web push
+  console.log(`[notify] Sending push to user: ${options.user_id}`, {
+    event_type: options.event_type,
+    subscriptions_count: subscriptions.length,
+  });
   devLog(NOTIF, "11 before_send_web_push", JSON.stringify({
     recipient_user_id: options.user_id,
     event_type: options.event_type,

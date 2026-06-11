@@ -37,6 +37,9 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       if (isVa) return ROUTES.va.customRequests;
       if (isModel) return ROUTES.model.customs;
       return ROUTES.chatter.requestCustom;
+    case "expense_request":
+      if (isModel) return ROUTES.model.home;
+      return isAdmin ? ROUTES.admin.expenseRequests : ROUTES.model.home;
     case "spin_wheel_spin":
       if (isAdmin) return ROUTES.admin.spinResults;
       return ROUTES.chatter.rewards;
@@ -89,6 +92,9 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       if (isVa) return ROUTES.va.customRequests;
       if (isModel) return ROUTES.model.customs;
       return ROUTES.chatter.requestCustom;
+    case "expense_request":
+      if (isModel) return ROUTES.model.home;
+      return isAdmin ? ROUTES.admin.expenseRequests : ROUTES.model.home;
     case "spin_wheel_spin":
       if (isAdmin) return ROUTES.admin.spinResults;
       return ROUTES.chatter.rewards;
@@ -183,6 +189,9 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "payment_confirmed":
     case "payment_rejected":
       return "Billing";
+    case "expense_approved":
+    case "expense_rejected":
+      return "Expense";
     case "user_created":
     case "role_changed":
     case "account_deleted":
