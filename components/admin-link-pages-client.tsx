@@ -2,8 +2,10 @@
 
 import * as React from "react";
 import {
+  AlertTriangle,
   Archive,
   BarChart3,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
@@ -152,7 +154,6 @@ type SaveablePageFields = Pick<
   | "title"
   | "slug"
   | "model_id"
-  | "custom_domain"
   | "meta_description"
   | "show_powered_by"
   | "bio"
@@ -166,12 +167,26 @@ type SaveablePageFields = Pick<
   | "verified"
 >;
 
+type DomainDnsRecord = {
+  type: string;
+  name: string;
+  value: string;
+};
+
+type DomainStatusResponse = {
+  vercelConfigured?: boolean;
+  domain?: string;
+  verified?: boolean;
+  records?: DomainDnsRecord[];
+  error?: string;
+  page?: LinkPageRecord;
+};
+
 function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
   return {
     title: page.title,
     slug: page.slug,
     model_id: page.model_id,
-    custom_domain: page.custom_domain,
     meta_description: page.meta_description,
     show_powered_by: page.show_powered_by,
     bio: page.bio,
@@ -346,6 +361,15 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
       }, 1000);
     },
     [flushDebouncedSave]
+  );
+
+  const handleDomainUpdated = React.useCallback(
+    (domain: string) => {
+      if (!selectedId) return;
+      setPages((prev) => prev.map((p) => (p.id === selectedId ? { ...p, custom_domain: domain } : p)));
+      setSelectedPage((prev) => (prev ? { ...prev, custom_domain: domain } : prev));
+    },
+    [selectedId]
   );
 
   const loadAnalytics = React.useCallback(async (id: string) => {
@@ -814,10 +838,12 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                   {tab === "editor" ? (
                     <EditorPanel
                       page={{ ...selectedPage, ...fieldDraft }}
+                      pageId={selectedId!}
                       models={models}
                       expandedSections={expandedSections}
                       onToggleSection={toggleSection}
                       onPatchField={patchFieldDraft}
+                      onDomainUpdated={handleDomainUpdated}
                       onAddBlock={(t) => void addBlock(t)}
                       onUpdateBlock={updateBlock}
                       onRemoveBlock={(id) => void removeBlock(id)}
@@ -1124,12 +1150,309 @@ function FieldSaveIndicator({ status }: { status: FieldSaveStatus }) {
   return <span className="text-[10px] font-medium text-emerald-400/90">Saved ✓</span>;
 }
 
+function DnsCopyButton({ value, label }: { value: string; label: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // ignore
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10px] text-white/55 transition hover:bg-white/5"
+      style={{ borderColor: BORDER }}
+      title={`Copy ${label}`}
+    >
+      {copied ? <CheckCircle2 className="h-3 w-3 text-emerald-400" /> : <Copy className="h-3 w-3" />}
+      {copied ? "Copied" : "Copy"}
+    </button>
+  );
+}
+
+function LinkPageDomainManager({
+  pageId,
+  customDomain,
+  onDomainUpdated,
+}: {
+  pageId: string;
+  customDomain: string;
+  onDomainUpdated: (domain: string) => void;
+}) {
+  const { addToast } = useToast();
+  const [input, setInput] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [status, setStatus] = React.useState<DomainStatusResponse | null>(null);
+  const [vercelConfigured, setVercelConfigured] = React.useState<boolean | null>(null);
+
+  const checkStatus = React.useCallback(async () => {
+    if (!customDomain.trim()) {
+      setStatus(null);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/admin/link-pages/${encodeURIComponent(pageId)}/domain?domain=${encodeURIComponent(customDomain)}`
+      );
+      const data = (await res.json()) as DomainStatusResponse;
+      if (data.vercelConfigured !== undefined) setVercelConfigured(data.vercelConfigured);
+      setStatus(data);
+    } catch {
+      setStatus({ domain: customDomain, verified: false, records: [] });
+    } finally {
+      setLoading(false);
+    }
+  }, [pageId, customDomain]);
+
+  React.useEffect(() => {
+    if (!customDomain.trim()) {
+      setStatus(null);
+      setInput("");
+      void fetch(`/api/admin/link-pages/${encodeURIComponent(pageId)}/domain`)
+        .then((r) => r.json())
+        .then((data: DomainStatusResponse) => {
+          if (data.vercelConfigured !== undefined) setVercelConfigured(data.vercelConfigured);
+        })
+        .catch(() => setVercelConfigured(false));
+      return;
+    }
+    void checkStatus();
+  }, [pageId, customDomain, checkStatus]);
+
+  React.useEffect(() => {
+    if (!customDomain.trim() || status?.verified) return;
+    const t = setInterval(() => void checkStatus(), 30_000);
+    return () => clearInterval(t);
+  }, [customDomain, status?.verified, checkStatus]);
+
+  async function connectDomain() {
+    const domain = input.trim();
+    if (!domain) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(pageId)}/domain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain }),
+      });
+      const data = (await res.json()) as DomainStatusResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to connect domain");
+      if (data.vercelConfigured !== undefined) setVercelConfigured(data.vercelConfigured);
+      if (data.page) onDomainUpdated(data.page.custom_domain);
+      else onDomainUpdated(data.domain ?? domain);
+      setStatus(data);
+      setInput("");
+      addToast(localToast("Domain connected", data.domain ?? domain, "normal"));
+    } catch (err) {
+      addToast(
+        localToast("Domain failed", err instanceof Error ? err.message : "Could not connect domain", "high")
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function removeDomain() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(pageId)}/domain`, {
+        method: "DELETE",
+      });
+      const data = (await res.json()) as DomainStatusResponse & { error?: string };
+      if (!res.ok) throw new Error(data.error ?? "Failed to remove domain");
+      onDomainUpdated("");
+      setStatus(null);
+      setInput("");
+      addToast(localToast("Domain removed", "Custom domain disconnected", "normal"));
+    } catch (err) {
+      addToast(
+        localToast("Remove failed", err instanceof Error ? err.message : "Could not remove domain", "high")
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const isVerified = Boolean(customDomain && status?.verified);
+  const visitUrl = customDomain ? `https://${customDomain}` : "";
+
+  return (
+    <div className="space-y-2">
+      {vercelConfigured === false ? (
+        <div
+          className="flex items-start gap-2 rounded-lg border px-3 py-2 text-[11px] text-amber-200/90"
+          style={{ borderColor: "rgba(251,191,36,0.25)", background: "rgba(251,191,36,0.08)" }}
+        >
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Automatic domain setup is unavailable. Set <code className="text-amber-100/80">VERCEL_TOKEN</code> and{" "}
+            <code className="text-amber-100/80">VERCEL_PROJECT_ID</code> on the server.
+          </span>
+        </div>
+      ) : null}
+
+      {!customDomain ? (
+        <div
+          className="rounded-lg border border-dashed px-3 py-4"
+          style={{ borderColor: "rgba(255,255,255,0.15)" }}
+        >
+          <p className="mb-2 text-[11px] text-white/45">Connect a custom domain (e.g. links.example.com)</p>
+          <div className="flex gap-2">
+            <FormInput
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="links.example.com"
+              disabled={loading || vercelConfigured === false}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void connectDomain();
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => void connectDomain()}
+              disabled={loading || !input.trim() || vercelConfigured === false}
+              className="shrink-0 rounded-lg px-3 py-2 text-xs font-medium text-white transition disabled:opacity-40"
+              style={{ background: ACCENT }}
+            >
+              Connect
+            </button>
+          </div>
+        </div>
+      ) : loading && !status ? (
+        <div className="flex items-center justify-center gap-2 rounded-lg border py-8" style={{ borderColor: BORDER }}>
+          <Loader2 className="h-4 w-4 animate-spin text-white/40" />
+          <span className="text-xs text-white/45">Checking domain…</span>
+        </div>
+      ) : isVerified ? (
+        <div
+          className="space-y-3 rounded-lg border px-3 py-3"
+          style={{ borderColor: "rgba(52,211,153,0.3)", background: "rgba(52,211,153,0.08)" }}
+        >
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            <span className="text-xs font-semibold text-emerald-300">Active</span>
+            <span className="truncate text-xs text-white/60">{customDomain}</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href={visitUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] text-white/70 transition hover:text-white"
+              style={{ borderColor: BORDER }}
+            >
+              <ExternalLink className="h-3 w-3" /> Visit link
+            </a>
+            <button
+              type="button"
+              onClick={() => void removeDomain()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] text-rose-300/80 transition hover:text-rose-200 disabled:opacity-40"
+              style={{ borderColor: "rgba(244,63,94,0.25)" }}
+            >
+              <Trash2 className="h-3 w-3" /> Remove
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div
+          className="space-y-3 rounded-lg border px-3 py-3"
+          style={{ borderColor: "rgba(251,191,36,0.3)", background: "rgba(251,191,36,0.06)" }}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <p className="text-xs font-semibold text-amber-200">Pending DNS</p>
+              <p className="mt-0.5 text-[11px] text-white/50">{customDomain}</p>
+            </div>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin text-amber-200/60" /> : null}
+          </div>
+
+          {status?.error ? (
+            <p className="text-[11px] text-rose-300/80">{status.error}</p>
+          ) : null}
+
+          {(status?.records ?? []).length > 0 ? (
+            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: BORDER }}>
+              <table className="w-full text-left text-[11px]">
+                <thead>
+                  <tr className="border-b text-white/40" style={{ borderColor: BORDER }}>
+                    <th className="px-2 py-1.5 font-medium">Type</th>
+                    <th className="px-2 py-1.5 font-medium">Name</th>
+                    <th className="px-2 py-1.5 font-medium">Value</th>
+                    <th className="px-2 py-1.5 font-medium" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {(status?.records ?? []).map((rec) => (
+                    <tr key={`${rec.type}-${rec.name}-${rec.value}`} className="border-b" style={{ borderColor: BORDER }}>
+                      <td className="px-2 py-1.5 font-mono text-white/70">{rec.type}</td>
+                      <td className="px-2 py-1.5 font-mono text-white/70">{rec.name}</td>
+                      <td className="max-w-[140px] truncate px-2 py-1.5 font-mono text-white/70" title={rec.value}>
+                        {rec.value}
+                      </td>
+                      <td className="px-2 py-1.5">
+                        <DnsCopyButton value={rec.value} label={rec.type} />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          <p className="text-[10px] text-white/40">
+            Add these records at your DNS provider. Status is checked automatically every 30 seconds.
+          </p>
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void checkStatus()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] text-white/70 transition hover:text-white disabled:opacity-40"
+              style={{ borderColor: BORDER }}
+            >
+              <RefreshCw className={cn("h-3 w-3", loading && "animate-spin")} /> Check status
+            </button>
+            <button
+              type="button"
+              onClick={() => void removeDomain()}
+              disabled={loading}
+              className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] text-rose-300/80 transition hover:text-rose-200 disabled:opacity-40"
+              style={{ borderColor: "rgba(244,63,94,0.25)" }}
+            >
+              <Trash2 className="h-3 w-3" /> Remove
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading && customDomain && status ? (
+        <p className="text-center text-[10px] text-white/35">
+          <Loader2 className="mr-1 inline h-3 w-3 animate-spin" />
+          Updating…
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function EditorPanel({
   page,
+  pageId,
   models,
   expandedSections,
   onToggleSection,
   onPatchField,
+  onDomainUpdated,
   onAddBlock,
   onUpdateBlock,
   onRemoveBlock,
@@ -1141,10 +1464,12 @@ function EditorPanel({
   onReorder,
 }: {
   page: LinkPageWithBlocks;
+  pageId: string;
   models: ModelRecord[];
   expandedSections: Set<string>;
   onToggleSection: (id: string) => void;
   onPatchField: (patch: Partial<LinkPageRecord>) => void;
+  onDomainUpdated: (domain: string) => void;
   onAddBlock: (t: LinkPageBlockType) => void;
   onUpdateBlock: (b: LinkPageBlockRecord) => Promise<void>;
   onRemoveBlock: (id: string) => void;
@@ -1187,10 +1512,10 @@ function EditorPanel({
           </select>
         </Field>
         <Field label="Custom domain">
-          <FormInput
-            value={page.custom_domain}
-            onChange={(e) => onPatchField({ custom_domain: e.target.value })}
-            placeholder="links.example.com"
+          <LinkPageDomainManager
+            pageId={pageId}
+            customDomain={page.custom_domain}
+            onDomainUpdated={onDomainUpdated}
           />
         </Field>
         <Field label="Meta description">
