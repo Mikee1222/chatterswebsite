@@ -52,6 +52,10 @@ type PageFields = {
   ab_test_name?: string;
   ab_winner?: string;
   ab_started_at?: string;
+  meta_pixel_id?: string;
+  tiktok_pixel_id?: string;
+  cookie_notice_enabled?: boolean;
+  cookie_notice_text?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -143,6 +147,10 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
       ? (f.ab_winner as LinkPageAbWinner)
       : "none",
     ab_started_at: f.ab_started_at ?? null,
+    meta_pixel_id: f.meta_pixel_id ?? "",
+    tiktok_pixel_id: f.tiktok_pixel_id ?? "",
+    cookie_notice_enabled: f.cookie_notice_enabled !== false,
+    cookie_notice_text: f.cookie_notice_text ?? "",
     created_at: f.created_at ?? rec.createdTime ?? "",
     updated_at: f.updated_at ?? "",
   };
@@ -435,6 +443,10 @@ export async function createLinkPage(input: CreateLinkPageInput = {}): Promise<L
     show_powered_by: false,
     meta_description: "",
     verified: false,
+    meta_pixel_id: "",
+    tiktok_pixel_id: "",
+    cookie_notice_enabled: true,
+    cookie_notice_text: "",
     created_at: now,
     updated_at: now,
   };
@@ -462,6 +474,10 @@ export type UpdateLinkPageInput = Partial<
     | "show_powered_by"
     | "meta_description"
     | "verified"
+    | "meta_pixel_id"
+    | "tiktok_pixel_id"
+    | "cookie_notice_enabled"
+    | "cookie_notice_text"
   >
 >;
 
@@ -483,6 +499,10 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
   if (input.show_powered_by !== undefined) patch.show_powered_by = input.show_powered_by;
   if (input.meta_description !== undefined) patch.meta_description = input.meta_description;
   if (input.verified !== undefined) patch.verified = input.verified;
+  if (input.meta_pixel_id !== undefined) patch.meta_pixel_id = input.meta_pixel_id.trim();
+  if (input.tiktok_pixel_id !== undefined) patch.tiktok_pixel_id = input.tiktok_pixel_id.trim();
+  if (input.cookie_notice_enabled !== undefined) patch.cookie_notice_enabled = input.cookie_notice_enabled;
+  if (input.cookie_notice_text !== undefined) patch.cookie_notice_text = input.cookie_notice_text;
 
   const rec = await updateRecord<PageFields>(LINK_PAGES_TABLE, recordId, bumpUpdatedAt(patch));
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);

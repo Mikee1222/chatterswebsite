@@ -1315,6 +1315,10 @@ export interface LinkPageRecord {
   ab_test_name: string;
   ab_winner: LinkPageAbWinner;
   ab_started_at: string | null;
+  meta_pixel_id: string;
+  tiktok_pixel_id: string;
+  cookie_notice_enabled: boolean;
+  cookie_notice_text: string;
   created_at: string;
   updated_at: string;
 }

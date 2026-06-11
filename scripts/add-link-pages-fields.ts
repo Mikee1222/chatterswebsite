@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
 /**
- * Adds link_pages.verified and link_page_blocks.custom_button_color via Airtable Metadata API.
+ * Adds link_pages tracking/pixel fields and link_page_blocks.platform via Airtable Metadata API.
  * Idempotent: skips fields that already exist.
  *
  * Usage: npm run add:link-pages-fields
@@ -90,6 +90,10 @@ async function main(): Promise<void> {
   }
 
   await ensureField(baseId, token, pagesTable, "verified", CHECKBOX_DEF);
+  await ensureField(baseId, token, pagesTable, "meta_pixel_id", TEXT_DEF);
+  await ensureField(baseId, token, pagesTable, "tiktok_pixel_id", TEXT_DEF);
+  await ensureField(baseId, token, pagesTable, "cookie_notice_enabled", CHECKBOX_DEF);
+  await ensureField(baseId, token, pagesTable, "cookie_notice_text", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "platform", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "custom_button_color", TEXT_DEF);
 

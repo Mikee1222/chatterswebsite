@@ -14,14 +14,60 @@ export const fetchCache = "force-no-store";
 const LINK_PAGE_CSP = [
   "default-src 'self'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "script-src 'self' 'unsafe-inline'",
-  "img-src https: data: blob:",
+  "script-src 'self' 'unsafe-inline' https://connect.facebook.net https://analytics.tiktok.com",
+  "img-src https: data: blob: https://www.facebook.com",
   "font-src 'self' https://fonts.googleapis.com https://fonts.gstatic.com",
-  "connect-src 'self'",
+  "connect-src 'self' https://connect.facebook.net https://www.facebook.com https://analytics.tiktok.com",
   "frame-ancestors 'self'",
   "base-uri 'self'",
   "form-action 'self'",
 ].join("; ");
+
+const DEFAULT_COOKIE_NOTICE_TEXT =
+  "We use cookies and similar technologies for analytics. By clicking Accept, you agree to this use.";
+
+const COOKIE_CONSENT_STORAGE_KEY = "lp_cookie_consent";
+
+function pixelTrackingScript(opts: {
+  metaPixelId: string;
+  tiktokPixelId: string;
+  cookieNoticeEnabled: boolean;
+}): string {
+  const metaId = opts.metaPixelId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const tiktokId = opts.tiktokPixelId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+  const needsConsent = opts.cookieNoticeEnabled ? "true" : "false";
+  const consentKey = COOKIE_CONSENT_STORAGE_KEY;
+
+  return `(function(){
+  var CONSENT_KEY='${consentKey}';
+  var needsConsent=${needsConsent};
+  var metaId='${metaId}';
+  var tiktokId='${tiktokId}';
+  function hasConsent(){try{return localStorage.getItem(CONSENT_KEY)==='1';}catch(e){return false;}}
+  function loadMeta(id){
+    if(!id||window.fbq)return;
+    !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';n.queue=[];t=b.createElement(e);t.async=!0;t.src=v;s=b.getElementsByTagName(e)[0];s.parentNode.insertBefore(t,s)}(window,document,'script','https://connect.facebook.net/en_US/fbevents.js');
+    fbq('init',id);fbq('track','PageView');
+  }
+  function loadTiktok(id){
+    if(!id||window.ttq)return;
+    !function(w,d,t){w.TiktokAnalyticsObject=t;var ttq=w[t]=w[t]||[];ttq.methods=["page","track","identify","instances","debug","on","off","once","ready","alias","group","enableCookie","disableCookie","holdConsent","revokeConsent","grantConsent"],ttq.setAndDefer=function(t,e){t[e]=function(){t.push([e].concat(Array.prototype.slice.call(arguments,0)))}};for(var i=0;i<ttq.methods.length;i++)ttq.setAndDefer(ttq,ttq.methods[i]);ttq.instance=function(t){for(var e=ttq._i[t]||[],n=0;n<ttq.methods.length;n++)ttq.setAndDefer(e,ttq.methods[n]);return e},ttq.load=function(e,n){var r="https://analytics.tiktok.com/i18n/pixel/events.js",o=n&&n.partner;ttq._i=ttq._i||{},ttq._i[e]=[],ttq._i[e]._u=r,ttq._t=ttq._t||{},ttq._t[e]=+new Date,ttq._o=ttq._o||{},ttq._o[e]=n||{};n=document.createElement("script");n.type="text/javascript",n.async=!0,n.src=r+"?sdkid="+e+"&lib="+t;e=document.getElementsByTagName("script")[0];e.parentNode.insertBefore(n,e)};ttq.load(id);ttq.page()}(window,document,'ttq');
+  }
+  function loadPixels(){if(metaId)loadMeta(metaId);if(tiktokId)loadTiktok(tiktokId);}
+  window.lpAcceptCookies=function(){
+    try{localStorage.setItem(CONSENT_KEY,'1');}catch(e){}
+    var b=document.getElementById('lp-cookie-banner');if(b)b.style.display='none';
+    loadPixels();
+  };
+  if(!needsConsent||hasConsent()){loadPixels();var b=document.getElementById('lp-cookie-banner');if(b)b.style.display='none';}
+})();`;
+}
+
+function metaPixelNoscript(pixelId: string): string {
+  const id = escapeHtml(pixelId.trim());
+  if (!id) return "";
+  return `<img height="1" width="1" style="display:none" alt="" src="https://www.facebook.com/tr?id=${id}&amp;ev=PageView&amp;noscript=1" />`;
+}
 
 export async function headers(): Promise<HeadersInit> {
   return {
@@ -263,6 +309,12 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
     .join("\n");
   const hasCountdown = sortedBlocks.some((b) => b.block_type === "countdown" && b.is_visible);
   const initial = (activePage.title || "?").charAt(0).toUpperCase();
+  const metaPixelId = controlPage.meta_pixel_id.trim();
+  const tiktokPixelId = controlPage.tiktok_pixel_id.trim();
+  const hasPixels = !isPreview && !!(metaPixelId || tiktokPixelId);
+  const showCookieNotice = !isPreview && controlPage.cookie_notice_enabled && hasPixels;
+  const cookieNoticeText =
+    controlPage.cookie_notice_text.trim() || DEFAULT_COOKIE_NOTICE_TEXT;
 
   return (
     <div className="link-page-root">
@@ -297,6 +349,49 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
         <div className="blocks" dangerouslySetInnerHTML={{ __html: blocksHtml }} />
         {activePage.show_powered_by ? <p className="powered-by">Powered by Link Pages</p> : null}
       </main>
+      {showCookieNotice ? (
+        <div
+          id="lp-cookie-banner"
+          className="cookie-banner"
+          role="dialog"
+          aria-label="Cookie notice"
+        >
+          <p className="cookie-banner-text">{cookieNoticeText}</p>
+          <button type="button" className="cookie-banner-btn">
+            Accept
+          </button>
+        </div>
+      ) : null}
+      {hasPixels ? (
+        <>
+          {metaPixelId ? (
+            <noscript dangerouslySetInnerHTML={{ __html: metaPixelNoscript(metaPixelId) }} />
+          ) : null}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: pixelTrackingScript({
+                metaPixelId,
+                tiktokPixelId,
+                cookieNoticeEnabled: controlPage.cookie_notice_enabled,
+              }),
+            }}
+          />
+          {showCookieNotice ? (
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `document.querySelector('#lp-cookie-banner .cookie-banner-btn')?.addEventListener('click',function(){window.lpAcceptCookies&&window.lpAcceptCookies();});`,
+              }}
+            />
+          ) : null}
+        </>
+      ) : null}
+      {hasPixels ? (
+        <style
+          dangerouslySetInnerHTML={{
+            __html: `.cookie-banner{position:fixed;bottom:0;left:0;right:0;z-index:100;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.875rem 1rem;background:rgba(10,10,10,0.95);border-top:1px solid rgba(255,255,255,0.12);backdrop-filter:blur(8px)}.cookie-banner-text{margin:0;flex:1;min-width:12rem;font-size:0.8125rem;line-height:1.4;color:rgba(255,255,255,0.75)}.cookie-banner-btn{flex-shrink:0;border:none;border-radius:9999px;padding:0.5rem 1.25rem;font-size:0.8125rem;font-weight:600;color:#fff;background:var(--primary,#ec4899);cursor:pointer}`,
+          }}
+        />
+      ) : null}
       {hasCountdown ? (
         <script
           dangerouslySetInnerHTML={{

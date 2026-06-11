@@ -30,6 +30,10 @@ export const LINK_PAGE_FIELDS = {
   ab_test_name: "ab_test_name",
   ab_winner: "ab_winner",
   ab_started_at: "ab_started_at",
+  meta_pixel_id: "meta_pixel_id",
+  tiktok_pixel_id: "tiktok_pixel_id",
+  cookie_notice_enabled: "cookie_notice_enabled",
+  cookie_notice_text: "cookie_notice_text",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

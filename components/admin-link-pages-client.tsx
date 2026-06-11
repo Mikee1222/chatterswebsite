@@ -208,6 +208,10 @@ function previewPageFromFields(
     show_powered_by: false,
     meta_description: "",
     verified: false,
+    meta_pixel_id: "",
+    tiktok_pixel_id: "",
+    cookie_notice_enabled: true,
+    cookie_notice_text: "",
     ab_test_enabled: false,
     ab_variant_id: "",
     ab_test_name: "",
@@ -738,6 +742,10 @@ type SaveablePageFields = Pick<
   | "primary_color"
   | "accent_color"
   | "verified"
+  | "meta_pixel_id"
+  | "tiktok_pixel_id"
+  | "cookie_notice_enabled"
+  | "cookie_notice_text"
 >;
 
 type DomainDnsRecord = {
@@ -771,6 +779,10 @@ function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
     primary_color: page.primary_color,
     accent_color: page.accent_color,
     verified: page.verified,
+    meta_pixel_id: page.meta_pixel_id,
+    tiktok_pixel_id: page.tiktok_pixel_id,
+    cookie_notice_enabled: page.cookie_notice_enabled,
+    cookie_notice_text: page.cookie_notice_text,
   };
 }
 
@@ -2723,6 +2735,52 @@ function EditorPanel({
             <p className="py-8 text-center text-xs text-white/25">No blocks yet — add one above</p>
           ) : null}
         </div>
+      </AccordionSection>
+
+      <AccordionSection
+        id="tracking"
+        title="Tracking & Pixels"
+        expanded={expandedSections.has("tracking")}
+        onToggle={onToggleSection}
+      >
+        <p className="mb-3 text-[11px] text-white/40">
+          Meta and TikTok pixels fire on page views after cookie consent (when enabled). Click
+          tracking passes fbclid through redirects automatically.
+        </p>
+        <Field label="Meta Pixel ID">
+          <FormInput
+            value={page.meta_pixel_id}
+            onChange={(e) => onPatchTextField({ meta_pixel_id: e.target.value })}
+            onBlur={onFieldBlur}
+            placeholder="e.g. 123456789012345"
+          />
+        </Field>
+        <Field label="TikTok Pixel ID">
+          <FormInput
+            value={page.tiktok_pixel_id}
+            onChange={(e) => onPatchTextField({ tiktok_pixel_id: e.target.value })}
+            onBlur={onFieldBlur}
+            placeholder="e.g. CXXXXXXXXXXXXXXX"
+          />
+        </Field>
+        <label className="flex items-center gap-2 text-xs text-white/60">
+          <input
+            type="checkbox"
+            checked={page.cookie_notice_enabled}
+            onChange={(e) => onPatchImmediateField({ cookie_notice_enabled: e.target.checked })}
+            className="rounded border-white/20"
+          />
+          Show cookie notice before loading pixels
+        </label>
+        <Field label="Cookie notice text">
+          <Textarea
+            value={page.cookie_notice_text}
+            onChange={(e) => onPatchTextField({ cookie_notice_text: e.target.value })}
+            onBlur={onFieldBlur}
+            rows={2}
+            placeholder="We use cookies and similar technologies for analytics…"
+          />
+        </Field>
       </AccordionSection>
 
       <AccordionSection

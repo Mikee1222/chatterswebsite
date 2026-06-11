@@ -49,5 +49,9 @@ export async function GET(request: Request) {
     });
   }
 
+  // Meta/TikTok pixels run client-side on the link page. fbclid (and other ad click IDs)
+  // pass through this 301 redirect to the destination URL automatically — no server-side
+  // pixel fire is required unless you later want an explicit Lead event on outbound clicks.
+
   return NextResponse.redirect(parsed.toString(), 301);
 }
