@@ -29,6 +29,7 @@ import {
   notificationDefaultsEqual,
   parseEventDescriptionFromEntry,
   parseEventKeyFromEntry,
+  parseEventLabelFromEntry,
   parseEventNoteFromEntry,
   getScopeForRole,
   getEventDefaultValue,
@@ -881,6 +882,7 @@ export function AdminRolesClient({
                                   >
                                     {categoryEvents.map((entry) => {
                                       const eventKey = parseEventKeyFromEntry(entry);
+                                      const eventLabel = parseEventLabelFromEntry(entry);
                                       const eventDescription = parseEventDescriptionFromEntry(entry);
                                       const eventNote = parseEventNoteFromEntry(entry);
                                       const eventScope = isSystemRole
@@ -921,10 +923,15 @@ export function AdminRolesClient({
                                               {isSystemRole && eventScope ? (
                                                 <ScopeBadge scope={eventScope} roleLabel={roleLabel} />
                                               ) : null}
-                                              {eventDescription ? (
-                                                <span className="text-white/45">— {eventDescription}</span>
+                                              {eventLabel ? (
+                                                <span className="text-white/45">— {eventLabel}</span>
                                               ) : null}
                                             </p>
+                                            {eventDescription ? (
+                                              <p className="mt-0.5 text-xs leading-snug text-white/40">
+                                                {eventDescription}
+                                              </p>
+                                            ) : null}
                                             {showBroadcastWarning ? (
                                               <p className="mt-0.5 text-[11px] font-medium leading-snug text-amber-300">
                                                 ⚠️ Sends to all {roleLabel}s
