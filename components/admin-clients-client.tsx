@@ -2,12 +2,12 @@
 
 import * as React from "react";
 import { createPortal } from "react-dom";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Building2,
   Calendar,
   Check,
-  ChevronRight,
   CreditCard,
   ExternalLink,
   Eye,
@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   Send,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
@@ -27,6 +28,7 @@ import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { useToast } from "@/contexts/toast-context";
 import { getCycleAmountDue } from "@/lib/client-portal-utils";
 import { formatDateEuropean } from "@/lib/format";
+import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { AppNotification } from "@/types";
 import type {
@@ -42,6 +44,8 @@ type Props = {
   clients: AdminClientRecord[];
 };
 
+type BillingCycleWithAmount = BillingCycleRecord & { correct_amount_due?: number };
+
 type EnrichedSubmission = PaymentSubmissionRecord & {
   payment_method_label?: string;
   payment_method_type?: string;
@@ -49,14 +53,26 @@ type EnrichedSubmission = PaymentSubmissionRecord & {
 
 type ClientDetail = {
   models: ClientModelRecord[];
-  billingCycles: BillingCycleRecord[];
+  billingCycles: BillingCycleWithAmount[];
   submissions: EnrichedSubmission[];
 };
 
-function sortRecentBillingCycles(cycles: BillingCycleRecord[]): BillingCycleRecord[] {
+const cardClass = cn(
+  "rounded-xl border border-white/[0.08] bg-zinc-950/80 p-5",
+  "shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)]"
+);
+
+const SEARCH_DEBOUNCE_MS = 300;
+
+function sortRecentBillingCycles(cycles: BillingCycleWithAmount[]): BillingCycleWithAmount[] {
   return [...cycles]
     .sort((a, b) => b.period_start.localeCompare(a.period_start))
     .slice(0, 5);
+}
+
+function cycleAmountDue(cycle: BillingCycleWithAmount): number {
+  if (typeof cycle.correct_amount_due === "number") return cycle.correct_amount_due;
+  return getCycleAmountDue(cycle);
 }
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
@@ -123,6 +139,10 @@ function cycleStatusVariant(status: BillingCycleStatus): keyof typeof badgeVaria
   return "slate";
 }
 
+function formatCycleStatus(status: BillingCycleStatus): string {
+  return status.replace(/_/g, " ");
+}
+
 function submissionProofUrl(sub: PaymentSubmissionRecord): string | undefined {
   if (sub.proof_url) return sub.proof_url;
   return sub.proof_attachment?.[0]?.url;
@@ -150,16 +170,61 @@ function formatMoney(amount: number, currency: string): string {
   }
 }
 
+function formatFeePercent(clientPercentage: number | undefined): string {
+  if (typeof clientPercentage !== "number") return "—";
+  return `${(clientPercentage * 100).toFixed(1)}%`;
+}
+
+function clientInitials(client: AdminClientRecord): string {
+  const source = (client.company_name || client.display_name || client.email || "?").trim();
+  const parts = source.split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return source.slice(0, 2).toUpperCase();
+}
+
+function avatarClasses(status: AdminClientRecord["status"]): string {
+  if (status === "active") {
+    return "border-emerald-500/35 bg-gradient-to-br from-emerald-500/25 to-emerald-600/10 text-emerald-200";
+  }
+  if (status === "suspended") {
+    return "border-amber-500/35 bg-gradient-to-br from-amber-500/25 to-amber-600/10 text-amber-200";
+  }
+  return "border-white/15 bg-gradient-to-br from-white/10 to-white/5 text-white/55";
+}
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delayMs);
+    return () => window.clearTimeout(timer);
+  }, [value, delayMs]);
+  return debounced;
+}
+
+function useIsLgDesktop(): boolean {
+  const [isDesktop, setIsDesktop] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isDesktop;
+}
+
 function PortalAccessSwitch({
   checked,
   disabled,
   onChange,
   tooltip,
+  compact,
 }: {
   checked: boolean;
   disabled?: boolean;
   onChange: (next: boolean) => void;
   tooltip?: string;
+  compact?: boolean;
 }) {
   return (
     <div
@@ -179,7 +244,8 @@ function PortalAccessSwitch({
           if (!disabled) onChange(!checked);
         }}
         className={cn(
-          "relative h-8 w-14 shrink-0 rounded-full border-2 transition-all duration-200",
+          "relative shrink-0 rounded-full border-2 transition-all duration-200",
+          compact ? "h-6 w-11" : "h-8 w-14",
           disabled && "cursor-not-allowed opacity-50",
           checked
             ? "border-pink-300/55 bg-gradient-to-r from-pink-500 to-fuchsia-600 shadow-[0_0_12px_-2px_hsl(330_80%_55%/0.55)]"
@@ -188,26 +254,28 @@ function PortalAccessSwitch({
       >
         <span
           className={cn(
-            "absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white shadow-md transition-transform duration-200",
-            checked ? "translate-x-[26px]" : "translate-x-[3px]"
+            "absolute top-[3px] rounded-full bg-white shadow-md transition-transform duration-200",
+            compact ? "h-[16px] w-[16px]" : "h-[22px] w-[22px]",
+            checked
+              ? compact
+                ? "translate-x-[21px]"
+                : "translate-x-[26px]"
+              : "translate-x-[3px]"
           )}
         />
       </button>
-      <span
-        className={cn(
-          "hidden text-xs font-medium sm:inline",
-          checked ? "text-pink-300" : "text-white/40"
-        )}
-      >
-        {checked ? "On" : "Off"}
-      </span>
+      {!compact ? (
+        <span
+          className={cn(
+            "hidden text-xs font-medium sm:inline",
+            checked ? "text-pink-300" : "text-white/40"
+          )}
+        >
+          {checked ? "On" : "Off"}
+        </span>
+      ) : null}
     </div>
   );
-}
-
-function formatFeePercent(clientPercentage: number | undefined): string {
-  if (typeof clientPercentage !== "number") return "—";
-  return `${(clientPercentage * 100).toFixed(1)}%`;
 }
 
 function AddClientModal({
@@ -562,8 +630,23 @@ function EditClientModal({
   );
 }
 
-function ClientDetailSheet({
+function DetailEmptyState() {
+  return (
+    <div className={cn(cardClass, "flex h-full min-h-[320px] flex-col items-center justify-center text-center")}>
+      <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/[0.04]">
+        <UserRound className="h-7 w-7 text-white/25" aria-hidden />
+      </div>
+      <p className="text-base font-medium text-white/70">Select a client to view details</p>
+      <p className="mt-1 max-w-xs text-sm text-white/40">
+        Choose a client from the list to see billing, models, and submissions.
+      </p>
+    </div>
+  );
+}
+
+function ClientDetailPanel({
   client,
+  layout,
   onClose,
   onPortalAccessChange,
   onClientUpdated,
@@ -571,7 +654,8 @@ function ClientDetailSheet({
   statusPending,
 }: {
   client: AdminClientRecord;
-  onClose: () => void;
+  layout: "desktop" | "mobile";
+  onClose?: () => void;
   onPortalAccessChange: (clientId: string, portalAccess: boolean) => void;
   onClientUpdated: (client: AdminClientRecord) => void;
   onToggleStatus: (client: AdminClientRecord) => void;
@@ -613,7 +697,7 @@ function ClientDetailSheet({
       ]);
       const detailJson = (await detailRes.json()) as {
         models?: ClientModelRecord[];
-        billingCycles?: BillingCycleRecord[];
+        billingCycles?: BillingCycleWithAmount[];
         error?: string;
       };
       const submissionsJson = (await submissionsRes.json()) as {
@@ -653,6 +737,7 @@ function ClientDetailSheet({
   }, [client.telegram_group_link, client.telegram_group_name, editingTelegram]);
 
   React.useEffect(() => {
+    if (layout !== "mobile") return;
     const body = document.body;
     const html = document.documentElement;
     const prevOverflow = body.style.overflow;
@@ -664,9 +749,10 @@ function ClientDetailSheet({
       body.style.overflow = prevOverflow;
       body.style.paddingRight = prevPaddingRight;
     };
-  }, []);
+  }, [layout]);
 
   React.useEffect(() => {
+    if (layout !== "mobile" || !onClose) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
@@ -675,7 +761,7 @@ function ClientDetailSheet({
     };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  }, [layout, onClose]);
 
   async function handlePortalToggle(next: boolean) {
     setPortalPending(true);
@@ -802,18 +888,420 @@ function ClientDetailSheet({
     }
   }
 
+  const detailBody = (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {loading ? (
+        <div className="flex items-center gap-2 px-1 py-8 text-sm text-white/50">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          Loading…
+        </div>
+      ) : loadError ? (
+        <p className="px-1 py-4 text-sm text-rose-300">{loadError}</p>
+      ) : detail ? (
+        <div className="space-y-4">
+          <section className={cardClass}>
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white/80">
+              <Building2 className="h-4 w-4 text-white/45" aria-hidden />
+              Client info
+            </h3>
+            <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs text-white/45">Company</dt>
+                <dd className="mt-1 text-sm text-white">{client.company_name || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-white/45">Display name</dt>
+                <dd className="mt-1 text-sm text-white">{client.display_name || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-white/45">Email</dt>
+                <dd className="mt-1 text-sm text-white">{client.email || "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs text-white/45">Fee %</dt>
+                <dd className="mt-1 text-sm text-white">
+                  {typeof client.client_percentage === "number"
+                    ? `${(client.client_percentage * 100).toFixed(1)}%`
+                    : "—"}
+                </dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className={cardClass}>
+            <div className="mb-4 flex items-center justify-between gap-2">
+              <h3 className="flex items-center gap-2 text-sm font-medium text-white/80">
+                <Send className="h-4 w-4 text-white/45" aria-hidden />
+                Telegram
+              </h3>
+              {!editingTelegram ? (
+                <button
+                  type="button"
+                  onClick={() => setEditingTelegram(true)}
+                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/5"
+                >
+                  Edit
+                </button>
+              ) : null}
+            </div>
+            {editingTelegram ? (
+              <form onSubmit={handleTelegramSave} className="space-y-3">
+                <div>
+                  <Label htmlFor={`telegram-group-name-${layout}`}>Group name</Label>
+                  <FormInput
+                    id={`telegram-group-name-${layout}`}
+                    value={telegramGroupName}
+                    onChange={(e) => setTelegramGroupName(e.target.value)}
+                    placeholder="e.g. Acme Agency Chat"
+                    maxLength={200}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor={`telegram-group-link-${layout}`}>Group link</Label>
+                  <FormInput
+                    id={`telegram-group-link-${layout}`}
+                    type="url"
+                    value={telegramGroupLink}
+                    onChange={(e) => setTelegramGroupLink(e.target.value)}
+                    placeholder="https://t.me/..."
+                  />
+                </div>
+                {telegramError ? (
+                  <p className="text-sm text-rose-300">{telegramError}</p>
+                ) : null}
+                <div className="flex gap-2 pt-1">
+                  <ButtonSecondary
+                    type="button"
+                    className="flex-1"
+                    onClick={handleTelegramCancel}
+                    disabled={telegramPending}
+                  >
+                    Cancel
+                  </ButtonSecondary>
+                  <FormSubmitButton
+                    className="flex-1"
+                    loading={telegramPending}
+                    disabled={telegramPending}
+                  >
+                    Save
+                  </FormSubmitButton>
+                </div>
+              </form>
+            ) : client.telegram_group_link?.trim() || client.telegram_group_name?.trim() ? (
+              <div className="space-y-3 text-sm">
+                <div>
+                  <p className="text-xs text-white/45">Group name</p>
+                  <p className="mt-1 text-white">{client.telegram_group_name?.trim() || "—"}</p>
+                </div>
+                {client.telegram_group_link?.trim() ? (
+                  <>
+                    <div>
+                      <p className="text-xs text-white/45">Group link</p>
+                      <a
+                        href={client.telegram_group_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-1 inline-flex items-center gap-1.5 text-pink-300 hover:text-pink-200"
+                      >
+                        <span className="max-w-full truncate">{client.telegram_group_link}</span>
+                        <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                      </a>
+                    </div>
+                    <a
+                      href={client.telegram_group_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-gradient-to-r from-rose-600 via-pink-600 to-pink-500 px-3 py-1.5 text-xs font-medium text-white shadow-[0_2px_12px_-2px_rgba(236,72,153,0.45)] transition-opacity hover:opacity-90"
+                    >
+                      <Send className="h-3 w-3 shrink-0 opacity-95" aria-hidden />
+                      Open in Telegram
+                    </a>
+                  </>
+                ) : null}
+              </div>
+            ) : (
+              <p className="text-sm text-white/45">No Telegram group linked yet.</p>
+            )}
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white/80">
+              <Users className="h-4 w-4 text-white/45" aria-hidden />
+              Models ({detail.models.length})
+            </h3>
+            {detail.models.length === 0 ? (
+              <p className="text-sm text-white/45">No models assigned.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {detail.models.map((row) => (
+                  <span
+                    key={row.id}
+                    className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5 text-sm"
+                  >
+                    <span className="font-medium text-white">
+                      {row.model_name?.trim() || "Unnamed model"}
+                    </span>
+                    <Badge variant="pink">Chatting Agency</Badge>
+                  </span>
+                ))}
+              </div>
+            )}
+            <Link
+              href={ROUTES.admin.models}
+              className="mt-4 inline-flex items-center gap-1 text-xs text-pink-300/90 transition-colors hover:text-pink-200"
+            >
+              Manage on Models page
+              <ExternalLink className="h-3 w-3" aria-hidden />
+            </Link>
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white/80">
+              <Calendar className="h-4 w-4 text-white/45" aria-hidden />
+              Billing cycles
+            </h3>
+            {recentBillingCycles.length === 0 ? (
+              <p className="text-sm text-white/45">No billing cycles yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {recentBillingCycles.map((cycle) => (
+                  <li
+                    key={cycle.id}
+                    className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-4 py-3 text-sm transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="font-medium text-white">{formatKind(cycle.kind)}</p>
+                        <p className="mt-0.5 text-xs text-white/45">
+                          {formatDateEuropean(cycle.period_start)} –{" "}
+                          {formatDateEuropean(cycle.period_end)}
+                        </p>
+                        <p className="mt-1 text-xs text-white/40">
+                          Due {formatDateEuropean(cycle.due_date)}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium tabular-nums text-white">
+                          {formatMoney(cycleAmountDue(cycle), cycle.currency)}
+                        </p>
+                        <div className="mt-1.5">
+                          <Badge variant={cycleStatusVariant(cycle.status)}>
+                            {formatCycleStatus(cycle.status)}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className={cardClass}>
+            <h3 className="mb-4 flex items-center gap-2 text-sm font-medium text-white/80">
+              <CreditCard className="h-4 w-4 text-white/45" aria-hidden />
+              Pending submissions ({detail.submissions.length})
+            </h3>
+            {detail.submissions.length === 0 ? (
+              <p className="text-sm text-white/45">No payments awaiting review.</p>
+            ) : (
+              <ul className="space-y-3">
+                {detail.submissions.map((sub) => {
+                  const proofUrl = submissionProofUrl(sub);
+                  return (
+                    <li
+                      key={sub.id}
+                      className="rounded-lg border border-yellow-500/20 bg-yellow-500/[0.06] p-4 text-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-medium text-white">
+                            {formatMoney(sub.submitted_amount, sub.submitted_currency)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-white/45">
+                            {formatDateEuropean(sub.submitted_datetime)}
+                          </p>
+                          <p className="mt-1 text-xs text-white/45">
+                            Payment method: {formatPaymentMethod(sub)}
+                          </p>
+                          {sub.reference_id ? (
+                            <p className="mt-1 text-xs text-white/40">Ref: {sub.reference_id}</p>
+                          ) : null}
+                          {sub.note ? (
+                            <p className="mt-2 text-xs text-white/55">{sub.note}</p>
+                          ) : null}
+                        </div>
+                        {proofUrl ? (
+                          <a
+                            href={proofUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-[hsl(330,90%,75%)] hover:underline"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            View proof
+                            <ExternalLink className="h-3 w-3" />
+                          </a>
+                        ) : null}
+                      </div>
+                      <div className="mt-3">
+                        <FormInput
+                          placeholder="Admin note (optional)"
+                          value={activeNoteId === sub.id ? adminNote : ""}
+                          onChange={(e) => {
+                            setActiveNoteId(sub.id);
+                            setAdminNote(e.target.value);
+                          }}
+                          onFocus={() => setActiveNoteId(sub.id)}
+                          disabled={!!reviewingId}
+                        />
+                      </div>
+                      <div className="mt-3 flex gap-2">
+                        <button
+                          type="button"
+                          disabled={!!reviewingId}
+                          onClick={() => void handleSubmissionReview(sub.id, "approved")}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {reviewingId === sub.id && reviewingAction === "approved" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          Approve
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!!reviewingId}
+                          onClick={() => void handleSubmissionReview(sub.id, "rejected")}
+                          className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {reviewingId === sub.id && reviewingAction === "rejected" ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                          Reject
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+
+  const header = (
+    <div className="shrink-0 border-b border-white/10 pb-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h2 className="truncate text-xl font-semibold text-white">
+            {client.company_name || client.display_name || "Client"}
+          </h2>
+          {client.display_name && client.company_name ? (
+            <p className="mt-0.5 truncate text-sm text-white/55">{client.display_name}</p>
+          ) : null}
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            disabled={statusPending}
+            onClick={() => onToggleStatus(client)}
+            className={cn(
+              "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+              client.status === "active"
+                ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
+                : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
+              statusPending && "cursor-not-allowed opacity-50"
+            )}
+          >
+            {client.status === "active" ? "Mark inactive" : "Mark active"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditingClient(true)}
+            className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/5"
+          >
+            Edit
+          </button>
+          {layout === "mobile" && onClose ? (
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg border border-white/10 p-2 text-white/60 transition-colors hover:bg-white/5 hover:text-white"
+              aria-label="Close panel"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
+        <Badge variant={portalAccess ? "pink" : "slate"}>
+          Portal {portalAccess ? "enabled" : "disabled"}
+        </Badge>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-white/45">Portal access</span>
+          <PortalAccessSwitch
+            checked={portalAccess}
+            disabled={portalPending}
+            onChange={(next) => void handlePortalToggle(next)}
+            tooltip={
+              portalAccess
+                ? "Portal access enabled — click to disable"
+                : "Portal access disabled — click to enable"
+            }
+          />
+        </div>
+      </div>
+    </div>
+  );
+
+  const editModal = (
+    <AnimatePresence>
+      {editingClient ? (
+        <EditClientModal
+          client={client}
+          onClose={() => setEditingClient(false)}
+          onUpdated={(updated) => {
+            onClientUpdated(updated);
+            setEditingClient(false);
+          }}
+        />
+      ) : null}
+    </AnimatePresence>
+  );
+
+  if (layout === "desktop") {
+    return (
+      <>
+        <motion.div
+          key={client.id}
+          initial={{ opacity: 0, x: 8 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className={cn(cardClass, "flex h-full min-h-0 flex-col overflow-hidden !p-0")}
+        >
+          <div className="px-5 pt-5">{header}</div>
+          <div className="px-5 pb-5">{detailBody}</div>
+        </motion.div>
+        {editModal}
+      </>
+    );
+  }
+
   return (
     <>
       <motion.div
-        layout={false}
-        className="fixed inset-0 z-[70] flex justify-end"
-        initial={{ opacity: 0, pointerEvents: "none" }}
-        animate={{ opacity: 1, pointerEvents: "auto" }}
-        exit={{
-          opacity: 0,
-          pointerEvents: "none",
-          transition: { opacity: { duration: 0.15 }, pointerEvents: { duration: 0 } },
-        }}
+        className="fixed inset-0 z-[70] flex items-end justify-center lg:hidden"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
         transition={{ duration: 0.15 }}
       >
         <button
@@ -823,415 +1311,31 @@ function ClientDetailSheet({
           onClick={onClose}
         />
         <motion.aside
-          layout={false}
-          className="relative z-[1] flex h-full w-full max-w-lg flex-col border-l border-white/10 bg-black/95 shadow-2xl overflow-hidden"
-          initial={{ x: 48 }}
-          animate={{ x: 0 }}
-          exit={{ x: 48 }}
-          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="relative z-[1] flex max-h-[min(88dvh,720px)] w-full flex-col overflow-hidden rounded-t-3xl border border-white/10 border-b-0 bg-zinc-950 shadow-[0_-12px_48px_rgba(0,0,0,0.55)]"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+          initial={{ y: "100%" }}
+          animate={{ y: 0 }}
+          exit={{ y: "100%" }}
+          transition={{ type: "spring", damping: 28, stiffness: 320 }}
         >
-          <div className="border-b border-white/10 px-5 py-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-white">
-                  {client.company_name || client.display_name || "Client"}
-                </h2>
-                {client.display_name && client.company_name ? (
-                  <p className="mt-0.5 text-sm text-white/55">{client.display_name}</p>
-                ) : null}
-                <p className="mt-1 text-sm text-white/45">{client.email || "—"}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  disabled={statusPending}
-                  onClick={() => onToggleStatus(client)}
-                  className={cn(
-                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                    client.status === "active"
-                      ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                      : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
-                    statusPending && "cursor-not-allowed opacity-50"
-                  )}
-                >
-                  {client.status === "active" ? "Mark inactive" : "Mark active"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setEditingClient(true)}
-                  className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
-                >
-                  Edit
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  className="rounded-lg border border-white/10 p-2 text-white/60 hover:bg-white/5 hover:text-white"
-                  aria-label="Close panel"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
-              <button
-                type="button"
-                onClick={() => void handlePortalToggle(!portalAccess)}
-                disabled={portalPending}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                  portalAccess
-                    ? "border-pink-400/30 bg-pink-500/15 text-pink-300 hover:bg-pink-500/25"
-                    : "border-white/15 bg-white/5 text-white/50 hover:bg-white/10",
-                  portalPending && "cursor-not-allowed opacity-50"
-                )}
-              >
-                <span
-                  className={cn(
-                    "h-2 w-2 rounded-full",
-                    portalAccess ? "bg-pink-400" : "bg-white/30"
-                  )}
-                />
-                Portal {portalAccess ? "enabled" : "disabled"}
-                {portalPending ? "…" : null}
-              </button>
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
-            {loading ? (
-              <p className="text-sm text-white/50">Loading…</p>
-            ) : loadError ? (
-              <p className="text-sm text-rose-300">{loadError}</p>
-            ) : detail ? (
-              <div className="space-y-6">
-                <section>
-                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                    <Building2 className="h-3.5 w-3.5" />
-                    Client info
-                  </div>
-                  <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm">
-                    <div className="flex justify-between gap-4">
-                      <span className="text-white/45">Company</span>
-                      <span className="text-right text-white">{client.company_name || "—"}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-white/45">Display name</span>
-                      <span className="text-right text-white">{client.display_name || "—"}</span>
-                    </div>
-                    <div className="flex justify-between gap-4">
-                      <span className="text-white/45">Email</span>
-                      <span className="text-right text-white">{client.email || "—"}</span>
-                    </div>
-                    {typeof client.client_percentage === "number" ? (
-                      <div className="flex justify-between gap-4">
-                        <span className="text-white/45">Client %</span>
-                        <span className="text-right text-white">
-                          {(client.client_percentage * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                    ) : null}
-                  </div>
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                      <Send className="h-3.5 w-3.5" />
-                      Telegram
-                    </div>
-                    {!editingTelegram ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditingTelegram(true)}
-                        className="rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/70 hover:bg-white/5"
-                      >
-                        Edit
-                      </button>
-                    ) : null}
-                  </div>
-                  {editingTelegram ? (
-                    <form
-                      onSubmit={handleTelegramSave}
-                      className="space-y-3 rounded-xl border border-white/10 bg-white/[0.03] p-4"
-                    >
-                      <div>
-                        <Label htmlFor="telegram-group-name">Group name</Label>
-                        <FormInput
-                          id="telegram-group-name"
-                          value={telegramGroupName}
-                          onChange={(e) => setTelegramGroupName(e.target.value)}
-                          placeholder="e.g. Acme Agency Chat"
-                          maxLength={200}
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="telegram-group-link">Group link</Label>
-                        <FormInput
-                          id="telegram-group-link"
-                          type="url"
-                          value={telegramGroupLink}
-                          onChange={(e) => setTelegramGroupLink(e.target.value)}
-                          placeholder="https://t.me/..."
-                        />
-                      </div>
-                      {telegramError ? (
-                        <p className="text-sm text-rose-300">{telegramError}</p>
-                      ) : null}
-                      <div className="flex gap-2 pt-1">
-                        <ButtonSecondary
-                          type="button"
-                          className="flex-1"
-                          onClick={handleTelegramCancel}
-                          disabled={telegramPending}
-                        >
-                          Cancel
-                        </ButtonSecondary>
-                        <FormSubmitButton
-                          className="flex-1"
-                          loading={telegramPending}
-                          disabled={telegramPending}
-                        >
-                          Save
-                        </FormSubmitButton>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-4 text-sm">
-                      <div className="flex justify-between gap-4">
-                        <span className="text-white/45">Group name</span>
-                        <span className="text-right text-white">
-                          {client.telegram_group_name?.trim() || "—"}
-                        </span>
-                      </div>
-                      <div className="flex justify-between gap-4">
-                        <span className="text-white/45">Group link</span>
-                        {client.telegram_group_link?.trim() ? (
-                          <a
-                            href={client.telegram_group_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-right text-pink-300 hover:text-pink-200"
-                          >
-                            <span className="max-w-[200px] truncate">
-                              {client.telegram_group_link}
-                            </span>
-                            <ExternalLink className="h-3.5 w-3.5 shrink-0" aria-hidden />
-                          </a>
-                        ) : (
-                          <span className="text-right text-white">—</span>
-                        )}
-                      </div>
-                      {client.telegram_group_link?.trim() ? (
-                        <a
-                          href={client.telegram_group_link}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-gradient-to-r from-rose-600 via-pink-600 to-pink-500 px-3 py-1.5 text-xs font-medium text-white shadow-[0_2px_12px_-2px_rgba(236,72,153,0.45)] transition-opacity hover:opacity-90"
-                        >
-                          <Send className="h-3 w-3 shrink-0 opacity-95" aria-hidden />
-                          Open in Telegram
-                        </a>
-                      ) : null}
-                    </div>
-                  )}
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                    <Users className="h-3.5 w-3.5" />
-                    Models ({detail.models.length})
-                  </div>
-                  {detail.models.length === 0 ? (
-                    <p className="text-sm text-white/45">No models assigned.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {detail.models.map((row) => (
-                        <li
-                          key={row.id}
-                          className="flex items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm"
-                        >
-                          <span className="font-medium text-white">
-                            {row.model_name?.trim() || "Unnamed model"}
-                          </span>
-                          <Badge variant="pink">Chatting Agency</Badge>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className="mt-3 text-xs text-white/40">
-                    Manage model assignments from the Models page.
-                  </p>
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                    <Calendar className="h-3.5 w-3.5" />
-                    Recent billing cycles
-                  </div>
-                  {recentBillingCycles.length === 0 ? (
-                    <p className="text-sm text-white/45">No billing cycles yet.</p>
-                  ) : (
-                    <ul className="space-y-2">
-                      {recentBillingCycles.map((cycle) => (
-                        <li
-                          key={cycle.id}
-                          className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-white">{formatKind(cycle.kind)}</p>
-                              <p className="mt-0.5 text-xs text-white/45">
-                                {formatDateEuropean(cycle.period_start)} –{""}
-                                {formatDateEuropean(cycle.period_end)}
-                              </p>
-                              <p className="mt-1 text-xs text-white/40">
-                                Due {formatDateEuropean(cycle.due_date)}
-                              </p>
-                            </div>
-                            <div className="text-right">
-                              <p className="font-medium text-white">
-                                {formatMoney(getCycleAmountDue(cycle), cycle.currency)}
-                              </p>
-                              <div className="mt-1">
-                                <Badge variant={cycleStatusVariant(cycle.status)}>
-                                  {cycle.status.replace(/_/g, "")}
-                                </Badge>
-                              </div>
-                            </div>
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </section>
-
-                <section>
-                  <div className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-white/40">
-                    <CreditCard className="h-3.5 w-3.5" />
-                    Pending submissions ({detail.submissions.length})
-                  </div>
-                  {detail.submissions.length === 0 ? (
-                    <p className="text-sm text-white/45">No payments awaiting review.</p>
-                  ) : (
-                    <ul className="space-y-3">
-                      {detail.submissions.map((sub) => {
-                        const proofUrl = submissionProofUrl(sub);
-                        return (
-                        <li
-                          key={sub.id}
-                          className="rounded-xl border border-yellow-500/20 bg-yellow-500/[0.06] p-4 text-sm"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div>
-                              <p className="font-medium text-white">
-                                {formatMoney(sub.submitted_amount, sub.submitted_currency)}
-                              </p>
-                              <p className="mt-0.5 text-xs text-white/45">
-                                {formatDateEuropean(sub.submitted_datetime)}
-                              </p>
-                              <p className="mt-1 text-xs text-white/45">
-                                Payment method: {formatPaymentMethod(sub)}
-                              </p>
-                              {sub.reference_id ? (
-                                <p className="mt-1 text-xs text-white/40">Ref: {sub.reference_id}</p>
-                              ) : null}
-                              {sub.note ? (
-                                <p className="mt-2 text-xs text-white/55">{sub.note}</p>
-                              ) : null}
-                            </div>
-                            {proofUrl ? (
-                              <a
-                                href={proofUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-[hsl(330,90%,75%)] hover:underline"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                View proof
-                                <ExternalLink className="h-3 w-3" />
-                              </a>
-                            ) : null}
-                          </div>
-                          <div className="mt-3">
-                            <FormInput
-                              placeholder="Admin note (optional)"
-                              value={activeNoteId === sub.id ? adminNote : ""}
-                              onChange={(e) => {
-                                setActiveNoteId(sub.id);
-                                setAdminNote(e.target.value);
-                              }}
-                              onFocus={() => setActiveNoteId(sub.id)}
-                              disabled={!!reviewingId}
-                            />
-                          </div>
-                          <div className="mt-3 flex gap-2">
-                            <button
-                              type="button"
-                              disabled={!!reviewingId}
-                              onClick={() => void handleSubmissionReview(sub.id, "approved")}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/15 px-3 py-2 text-xs font-medium text-emerald-300 hover:bg-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {reviewingId === sub.id && reviewingAction === "approved" ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                              ) : (
-                                <Check className="h-3.5 w-3.5" />
-                              )}
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              disabled={!!reviewingId}
-                              onClick={() => void handleSubmissionReview(sub.id, "rejected")}
-                              className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-rose-500/30 bg-rose-500/15 px-3 py-2 text-xs font-medium text-rose-300 hover:bg-rose-500/25 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              {reviewingId === sub.id && reviewingAction === "rejected" ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden />
-                              ) : (
-                                <X className="h-3.5 w-3.5" />
-                              )}
-                              Reject
-                            </button>
-                          </div>
-                        </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </section>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="border-t border-white/10 p-4">
-            <ButtonSecondary type="button" className="w-full" onClick={onClose}>
-              Close
-            </ButtonSecondary>
+          <div className="mx-auto mt-2 h-1 w-10 shrink-0 rounded-full bg-white/20" aria-hidden />
+          <div className="min-h-0 flex-1 overflow-hidden px-5 pb-5 pt-4">
+            {header}
+            {detailBody}
           </div>
         </motion.aside>
       </motion.div>
-
-      <AnimatePresence>
-        {editingClient ? (
-          <EditClientModal
-            client={client}
-            onClose={() => setEditingClient(false)}
-            onUpdated={(updated) => {
-              onClientUpdated(updated);
-              setEditingClient(false);
-            }}
-          />
-        ) : null}
-      </AnimatePresence>
+      {editModal}
     </>
   );
 }
 
 export function AdminClientsClient({ clients: initialClients }: Props) {
   const { addToast } = useToast();
+  const isLgDesktop = useIsLgDesktop();
   const [clients, setClients] = React.useState(initialClients);
   const [search, setSearch] = React.useState("");
+  const debouncedSearch = useDebouncedValue(search, SEARCH_DEBOUNCE_MS);
   const [showInactive, setShowInactive] = React.useState(false);
   const [selectedClient, setSelectedClient] = React.useState<AdminClientRecord | null>(null);
   const [portalPendingId, setPortalPendingId] = React.useState<string | null>(null);
@@ -1247,7 +1351,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
     if (!showInactive) {
       list = list.filter((c) => c.status === "active");
     }
-    const q = search.trim().toLowerCase();
+    const q = debouncedSearch.trim().toLowerCase();
     if (!q) return list;
     return list.filter(
       (c) =>
@@ -1255,7 +1359,7 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
         c.display_name.toLowerCase().includes(q) ||
         c.email.toLowerCase().includes(q)
     );
-  }, [clients, search, showInactive]);
+  }, [clients, debouncedSearch, showInactive]);
 
   function handlePortalAccessChange(clientId: string, portalAccess: boolean) {
     setClients((prev) =>
@@ -1363,243 +1467,172 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 px-4 py-6 md:px-6 md:py-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white">Users</h1>
-          <p className="mt-1 text-sm text-white/55">Manage clients and internal team members</p>
+    <div className="mx-auto flex min-h-[calc(100dvh-4rem)] max-w-[1600px] flex-col px-4 py-6 md:px-6 md:py-8 lg:flex-row lg:gap-6">
+      <div className="flex min-h-0 w-full flex-col lg:w-[40%] lg:shrink-0">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold tracking-tight text-white">Clients</h1>
+            <span className="rounded-full border border-white/10 bg-white/[0.06] px-2.5 py-0.5 text-xs font-medium tabular-nums text-white/60">
+              {filtered.length}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAddClient(true)}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-pink-400/40 bg-gradient-to-r from-pink-500 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.45)] transition hover:brightness-110"
+          >
+            <Plus className="h-4 w-4" />
+            Add client
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setShowAddClient(true)}
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-pink-400/40 bg-gradient-to-r from-pink-500 to-fuchsia-600 px-4 py-2.5 text-sm font-semibold text-white shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.45)] transition hover:brightness-110"
-        >
-          <Plus className="h-4 w-4" />
-          Add user
-        </button>
-      </div>
 
-      <div className="flex max-w-3xl flex-wrap items-center gap-3">
-        <div className="relative min-w-[200px] flex-1">
+        <div className="relative mb-3">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" />
           <FormInput
-            className="pl-10"
+            className="w-full pl-10"
             placeholder="Search company, name, or email…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <button
-          type="button"
-          onClick={() => setShowInactive((v) => !v)}
-          title={showInactive ? "Hide inactive users from the list" : "Include inactive users in the list"}
-          className={cn(
-            "inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition-all",
-            showInactive
-              ? "border-amber-500/45 bg-amber-500/15 text-amber-200 shadow-[0_0_20px_-8px_hsl(38_92%_50%/0.45)] ring-1 ring-amber-500/25"
-              : "border-white/15 bg-white/[0.06] text-white/65 hover:border-white/25 hover:bg-white/[0.09] hover:text-white"
-          )}
-        >
-          {showInactive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-          {showInactive ? "Showing inactive" : "Show inactive"}
-        </button>
-      </div>
 
-      <div
-        className="overflow-hidden rounded-2xl border border-white/10 bg-black/40 backdrop-blur-xl"
-        style={{
-          boxShadow:
-            "0 0 0 1px rgba(255,255,255,0.06), 0 0 48px -12px hsl(330 80% 55% / 0.1)",
-        }}
-      >
-        <div className="hidden overflow-x-auto md:block">
-          <table className="w-full min-w-[760px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-white/10 bg-white/[0.03] text-xs uppercase tracking-wider text-white/40">
-                <th className="px-4 py-3 font-medium">Company</th>
-                <th className="px-4 py-3 font-medium">Email</th>
-                <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Fee %</th>
-                <th className="px-4 py-3 font-medium">Portal</th>
-                <th className="px-4 py-3 font-medium">Actions</th>
-                <th className="w-10 px-4 py-3" aria-hidden />
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-white/45">
-                    {search.trim() ? "No users match your search." : "No users yet."}
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((client) => {
-                  const isInactive = client.status === "inactive";
-                  const statusBusy = statusPendingId === client.id;
-                  return (
-                  <tr
-                    key={client.id}
-                    className={cn(
-                      "cursor-pointer border-b border-white/5 transition-colors hover:bg-white/[0.06]",
-                      isInactive && "opacity-50"
-                    )}
-                    onClick={() => setSelectedClient(client)}
-                  >
-                    <td className="px-4 py-3">
-                      <p className="font-medium text-white">
-                        {client.company_name || client.display_name || "—"}
-                      </p>
-                      {client.display_name && client.company_name ? (
-                        <p className="text-xs text-white/45">{client.display_name}</p>
-                      ) : client.user_type === "team_member" && client.role ? (
-                        <p className="text-xs capitalize text-white/45">
-                          {client.role.replace(/_/g, "")}
-                        </p>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-white/70">{client.email || "—"}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        {isInactive ? (
-                          <Badge variant="slate">Inactive</Badge>
-                        ) : (
-                          <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-white/70">
-                      {formatFeePercent(client.client_percentage)}
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <PortalAccessSwitch
-                        checked={client.portal_access}
-                        disabled={portalPendingId === client.id}
-                        tooltip={
-                          client.portal_access
-                            ? "Portal access enabled — click to disable"
-                            : "Portal access disabled — click to enable"
-                        }
-                        onChange={(next) => void handleListPortalToggle(client, next)}
-                      />
-                    </td>
-                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                      <button
-                        type="button"
-                        disabled={statusBusy}
-                        title={
-                          client.status === "active"
-                            ? "Mark this user inactive"
-                            : "Mark this user active"
-                        }
-                        onClick={() => void handleToggleStatus(client)}
-                        className={cn(
-                          "rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors whitespace-nowrap",
-                          client.status === "active"
-                            ? "border-amber-500/30 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20"
-                            : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20",
-                          statusBusy && "cursor-not-allowed opacity-50"
-                        )}
-                      >
-                        {client.status === "active" ? "Mark inactive" : "Mark active"}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-white/30">
-                      <ChevronRight className="h-4 w-4" />
-                    </td>
-                  </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
+        <div className="mb-4 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowInactive((v) => !v)}
+            title={showInactive ? "Hide inactive clients" : "Include inactive clients"}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors",
+              showInactive
+                ? "border-amber-500/35 bg-amber-500/10 text-amber-200"
+                : "border-white/10 bg-white/[0.03] text-white/50 hover:border-white/20 hover:text-white/70"
+            )}
+          >
+            {showInactive ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
+            Show inactive
+          </button>
         </div>
 
-        <div className="divide-y divide-white/10 md:hidden">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pb-4 lg:pb-0">
           {filtered.length === 0 ? (
-            <p className="px-4 py-10 text-center text-sm text-white/45">
-              {search.trim() ? "No users match your search." : "No users yet."}
-            </p>
+            <div className={cn(cardClass, "py-10 text-center text-sm text-white/45")}>
+              {debouncedSearch.trim() ? "No clients match your search." : "No clients yet."}
+            </div>
           ) : (
             filtered.map((client) => {
+              const isSelected = selectedClient?.id === client.id;
               const isInactive = client.status === "inactive";
               const statusBusy = statusPendingId === client.id;
               return (
-              <button
-                key={client.id}
-                type="button"
-                className={cn(
-                  "flex w-full items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-white/[0.06]",
-                  isInactive && "opacity-50"
-                )}
-                onClick={() => setSelectedClient(client)}
-              >
-                <div className="min-w-0 flex-1">
-                  <p className="truncate font-medium text-white">
-                    {client.company_name || client.display_name || "—"}
-                  </p>
-                  <p className="truncate text-xs text-white/45">{client.email || "—"}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
-                    {isInactive ? (
-                      <Badge variant="slate">Inactive</Badge>
-                    ) : (
-                      <Badge variant={clientStatusVariant(client.status)}>{client.status}</Badge>
-                    )}
-                    <span className="text-xs text-white/45">
-                      Fee {formatFeePercent(client.client_percentage)}
+                <button
+                  key={client.id}
+                  type="button"
+                  onClick={() => setSelectedClient(client)}
+                  className={cn(
+                    "w-full rounded-xl border bg-zinc-950/80 p-4 text-left transition-all duration-200",
+                    "hover:border-white/15 hover:bg-white/[0.04]",
+                    isSelected
+                      ? "border-l-[3px] border-l-pink-500 border-pink-500/25 bg-pink-500/[0.06] shadow-[inset_0_0_0_1px_rgba(236,72,153,0.08)]"
+                      : "border-white/[0.08]",
+                    isInactive && !isSelected && "opacity-60"
+                  )}
+                >
+                  <div className="flex items-start gap-3">
+                    <span
+                      className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-xs font-semibold",
+                        avatarClasses(client.status)
+                      )}
+                    >
+                      {clientInitials(client)}
                     </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold text-white">
+                            {client.company_name || client.display_name || "—"}
+                          </p>
+                          {client.display_name && client.company_name ? (
+                            <p className="truncate text-sm text-white/50">{client.display_name}</p>
+                          ) : null}
+                          <p className="truncate text-[12px] text-white/40">{client.email || "—"}</p>
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1.5">
+                          {isInactive ? (
+                            <Badge variant="slate">Inactive</Badge>
+                          ) : (
+                            <Badge variant={clientStatusVariant(client.status)}>
+                              {client.status}
+                            </Badge>
+                          )}
+                          <Badge variant="default">{formatFeePercent(client.client_percentage)} fee</Badge>
+                        </div>
+                      </div>
+                      <div
+                        className="mt-3 flex items-center justify-between gap-2 border-t border-white/[0.06] pt-3"
+                        onClick={(e) => e.stopPropagation()}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-white/40">Portal</span>
+                          <PortalAccessSwitch
+                            compact
+                            checked={client.portal_access}
+                            disabled={portalPendingId === client.id}
+                            tooltip={
+                              client.portal_access
+                                ? "Portal access enabled — click to disable"
+                                : "Portal access disabled — click to enable"
+                            }
+                            onChange={(next) => void handleListPortalToggle(client, next)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          disabled={statusBusy}
+                          title={
+                            client.status === "active"
+                              ? "Mark this client inactive"
+                              : "Mark this client active"
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleToggleStatus(client);
+                          }}
+                          className={cn(
+                            "text-[11px] text-white/40 transition-colors hover:text-white/65",
+                            statusBusy && "cursor-not-allowed opacity-50"
+                          )}
+                        >
+                          {client.status === "active" ? "Mark inactive" : "Mark active"}
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <div
-                    onClick={(e) => e.stopPropagation()}
-                    onKeyDown={(e) => e.stopPropagation()}
-                  >
-                    <PortalAccessSwitch
-                      checked={client.portal_access}
-                      disabled={portalPendingId === client.id}
-                      tooltip={
-                        client.portal_access
-                          ? "Portal access enabled — click to disable"
-                          : "Portal access disabled — click to enable"
-                      }
-                      onChange={(next) => void handleListPortalToggle(client, next)}
-                    />
-                  </div>
-                  <button
-                    type="button"
-                    disabled={statusBusy}
-                    title={
-                      client.status === "active"
-                        ? "Mark this user inactive"
-                        : "Mark this user active"
-                    }
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      void handleToggleStatus(client);
-                    }}
-                    className={cn(
-                      "rounded-lg border px-2 py-1 text-[11px] font-medium transition-colors whitespace-nowrap",
-                      client.status === "active"
-                        ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-                      statusBusy && "cursor-not-allowed opacity-50"
-                    )}
-                  >
-                    {client.status === "active" ? "Mark inactive" : "Mark active"}
-                  </button>
-                </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-white/30" />
-              </button>
+                </button>
               );
             })
           )}
         </div>
       </div>
 
-      <p className="text-xs text-white/35">
-        {filtered.length} user{filtered.length === 1 ? "" : "s"}
-        {search.trim() ? ` matching “${search.trim()}”` : ""}
-      </p>
+      <div className="hidden min-h-0 flex-1 lg:flex lg:w-[60%]">
+        <div className="flex h-full w-full min-h-[480px] flex-col">
+          {selectedClient && isLgDesktop ? (
+            <ClientDetailPanel
+              key={selectedClient.id}
+              layout="desktop"
+              client={selectedClient}
+              onPortalAccessChange={handlePortalAccessChange}
+              onClientUpdated={handleClientUpdated}
+              onToggleStatus={(c) => void handleToggleStatus(c)}
+              statusPending={statusPendingId === selectedClient.id}
+            />
+          ) : (
+            <DetailEmptyState />
+          )}
+        </div>
+      </div>
 
       <AnimatePresence>
         {showAddClient ? (
@@ -1611,9 +1644,10 @@ export function AdminClientsClient({ clients: initialClients }: Props) {
       </AnimatePresence>
 
       <AnimatePresence>
-        {selectedClient ? (
-          <ClientDetailSheet
-            key={selectedClient.id}
+        {selectedClient && !isLgDesktop ? (
+          <ClientDetailPanel
+            key={`mobile-${selectedClient.id}`}
+            layout="mobile"
             client={selectedClient}
             onClose={() => setSelectedClient(null)}
             onPortalAccessChange={handlePortalAccessChange}

@@ -119,6 +119,14 @@ function mapBillingCycleRevenue(rec: AirtableRecord<Record<string, unknown>>): B
   };
 }
 
+/** Resolve fee USD from a billing_cycle_revenues row (stored fee or turnover × percent). */
+export function feeFromRevenue(r: BillingCycleRevenueRecord): number {
+  if (typeof r.fee_usd === "number" && Number.isFinite(r.fee_usd)) {
+    return r.fee_usd;
+  }
+  return (r.turnover_usd ?? 0) * ((r.fee_percent ?? 0) / 100);
+}
+
 function mapPaymentSubmission(rec: AirtableRecord<Record<string, unknown>>): PaymentSubmissionRecord {
   const f = rec.fields;
   const proofAttachment = Array.isArray(f.proof_attachment)

@@ -3,11 +3,17 @@ import { z } from "zod";
 import { listAllRecords } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { getCycleAmountDue } from "@/lib/client-portal-utils";
+import {
+  feeFromRevenue,
+  getBillingCycleRevenuesForCycles,
+} from "@/services/client-billing";
 import {
   getAdminClientById,
   getClientBillingCycles,
   updateAdminClient,
 } from "@/services/client-portal";
+import type { BillingCycleRevenueStatus } from "@/types/client-portal";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -16,7 +22,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
 
-  const [client, clientModelsRecords, billingCycles, revenues] = await Promise.all([
+  const [client, clientModelsRecords, billingCyclesRaw] = await Promise.all([
     getAdminClientById(id),
     listAllRecords<Record<string, unknown>>("client_models", {
       _caller: "admin/clients/[id]:GET:client_models",
@@ -24,30 +30,41 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
       const clients = Array.isArray(r.fields.client) ? r.fields.client : [];
       return clients.includes(id);
     })),
-    getClientBillingCycles(id).then((cycles) =>
-      [...cycles]
-        .sort((a, b) => b.period_start.localeCompare(a.period_start))
-        .slice(0, 5)
-    ),
-    listAllRecords<Record<string, unknown>>("billing_cycle_revenues", {
-      _caller: "admin/clients/[id]:cycle_revenues",
-    }),
+    getClientBillingCycles(id),
   ]);
 
+  const billingCycles = [...billingCyclesRaw]
+    .sort((a, b) => b.period_start.localeCompare(a.period_start))
+    .slice(0, 5);
+
+  const cycleRevenues = await getBillingCycleRevenuesForCycles(
+    billingCycles.map((c) => c.id)
+  );
+
   const cyclesWithStatus = billingCycles.map((cycle) => {
-    if (cycle.kind === "chatting_weekly") {
-      const cycleRevenues = revenues.filter((r) => {
-        const bc = Array.isArray(r.fields.billing_cycle) ? r.fields.billing_cycle : [];
-        return bc.includes(cycle.id);
-      });
-      if (cycleRevenues.length > 0) {
-        const statuses = cycleRevenues.map((r) => String(r.fields.status ?? "draft"));
-        const statusPriority = ["confirmed_paid", "pending_review", "announced", "overdue", "draft"];
-        const resolvedStatus = statusPriority.find((s) => statuses.includes(s)) ?? "draft";
-        return { ...cycle, status: resolvedStatus as typeof cycle.status };
-      }
+    const clientRevenues = cycleRevenues.filter(
+      (r) => r.billing_cycle.includes(cycle.id) && r.client.includes(id)
+    );
+
+    const correct_amount_due =
+      clientRevenues.length > 0
+        ? clientRevenues.reduce((sum, r) => sum + feeFromRevenue(r), 0)
+        : getCycleAmountDue(cycle);
+
+    if (cycle.kind === "chatting_weekly" && clientRevenues.length > 0) {
+      const statuses = clientRevenues.map((r) => r.status ?? "draft");
+      const statusPriority: BillingCycleRevenueStatus[] = [
+        "confirmed_paid",
+        "pending_review",
+        "announced",
+        "overdue",
+        "draft",
+      ];
+      const resolvedStatus = statusPriority.find((s) => statuses.includes(s)) ?? "draft";
+      return { ...cycle, status: resolvedStatus as typeof cycle.status, correct_amount_due };
     }
-    return cycle;
+
+    return { ...cycle, correct_amount_due };
   });
 
   const modelIds = clientModelsRecords.flatMap((r) =>
