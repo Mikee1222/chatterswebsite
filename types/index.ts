@@ -1249,3 +1249,99 @@ export interface PushSubscriptionRecord {
   active: boolean;
   created_at: string;
 }
+
+// --- Link-in-Bio pages ---
+
+export type LinkPageStatus = "draft" | "published" | "archived";
+export type LinkPageBackgroundType = "color" | "gradient" | "image";
+export type LinkPageTheme = "dark" | "light" | "minimal" | "neon" | "gold";
+export type LinkPageFont = "modern" | "elegant" | "bold" | "minimal";
+export type LinkPageBlockType =
+  | "link"
+  | "bio_text"
+  | "photo_grid"
+  | "countdown"
+  | "social_bar"
+  | "spacer"
+  | "heading";
+export type LinkPageBlockStyle = "default" | "prominent" | "subtle" | "pill" | "card";
+export type LinkPageAnalyticsEventType = "page_view" | "link_click";
+export type LinkPageDeviceType = "mobile" | "desktop" | "tablet";
+
+export interface LinkPageRecord {
+  id: string;
+  page_id: string;
+  model_id: string;
+  slug: string;
+  status: LinkPageStatus;
+  title: string;
+  bio: string;
+  profile_photo_url: string;
+  background_type: LinkPageBackgroundType;
+  background_value: string;
+  theme: LinkPageTheme;
+  primary_color: string;
+  accent_color: string;
+  font: LinkPageFont;
+  custom_domain: string;
+  show_powered_by: boolean;
+  meta_description: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LinkPageBlockRecord {
+  id: string;
+  block_id: string;
+  page_id: string;
+  block_type: LinkPageBlockType;
+  sort_order: number;
+  is_visible: boolean;
+  label: string;
+  url: string;
+  icon: string;
+  sublabel: string;
+  style: LinkPageBlockStyle;
+  photo_urls: string[];
+  countdown_target: string | null;
+  heading_text: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LinkPageAnalyticsRecord {
+  id: string;
+  event_id: string;
+  page_id: string;
+  block_id: string;
+  event_type: LinkPageAnalyticsEventType;
+  ip_address: string;
+  country: string;
+  city: string;
+  region: string;
+  device_type: LinkPageDeviceType;
+  browser: string;
+  os: string;
+  referrer: string;
+  user_agent: string;
+  session_id: string;
+  timestamp: string;
+  utm_source: string;
+  utm_medium: string;
+  utm_campaign: string;
+}
+
+export interface AnalyticsSummary {
+  pageViews: number;
+  linkClicks: number;
+  uniqueVisitors: number;
+  topLinks: Array<{ block_id: string; label: string; clicks: number }>;
+  viewsByDay: Array<{ date: string; views: number; clicks: number }>;
+  deviceBreakdown: Array<{ device: string; count: number }>;
+  countryBreakdown: Array<{ country: string; count: number }>;
+  referrerBreakdown: Array<{ referrer: string; count: number }>;
+}
+
+export interface LinkPageWithBlocks extends LinkPageRecord {
+  blocks: LinkPageBlockRecord[];
+}

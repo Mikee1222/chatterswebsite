@@ -138,7 +138,7 @@ export function getBothTypeHiddenNavPreview(config: VaHiddenNavByType): string[]
 }
 
 export type NavIconKey =
-  | "Home"| "Calendar"| "CalendarCheck"| "PlayCircle"| "FileText"| "Users"| "Receipt"| "Wrench"| "Radio"| "UserCheck"| "Activity"| "Package"| "UserCog"| "LayoutDashboard"| "ListTodo"| "Settings"| "Sparkles"| "Trophy"| "Target"| "LineChart"| "CalendarDays"| "CalendarClock"| "Clock"| "MessageSquarePlus"| "ImageOff"| "AlertTriangle"| "AlertCircle"| "Settings2"| "Coins"| "TrendingUp"| "Info"| "CreditCard"| "BookOpen";
+  | "Home"| "Calendar"| "CalendarCheck"| "PlayCircle"| "FileText"| "Users"| "Receipt"| "Wrench"| "Radio"| "UserCheck"| "Activity"| "Package"| "UserCog"| "LayoutDashboard"| "ListTodo"| "Settings"| "Sparkles"| "Trophy"| "Target"| "LineChart"| "CalendarDays"| "CalendarClock"| "Clock"| "MessageSquarePlus"| "ImageOff"| "AlertTriangle"| "AlertCircle"| "Settings2"| "Coins"| "TrendingUp"| "Info"| "CreditCard"| "BookOpen"| "Link2";
 
 /** Active state for a nav href: exact match, or prefix only if no longer href in the set also matches. */
 export function navHrefIsActive(pathname: string, href: string, allHrefs: readonly string[]): boolean {
@@ -356,6 +356,13 @@ const adminNav: NavItem[] = [
     iconKey: "Package",
     navSection: "CREATORS",
     requiresPermission: PERMISSIONS.CUSTOM_REQUESTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.linkPages,
+    label: "Link pages",
+    iconKey: "Link2",
+    navSection: "CREATORS",
+    requiresPermission: PERMISSIONS.LINK_PAGES_VIEW,
   },
 
   // ── CONTENT ──

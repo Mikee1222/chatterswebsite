@@ -5,8 +5,9 @@ import { ROUTES } from "@/lib/routes";
 import { verifySessionToken } from "@/lib/session-token";
 import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { getLinkPageByCustomDomain } from "@/services/link-pages";
 
-const PUBLIC_PATHS = [ROUTES.login];
+const PUBLIC_PATHS = [ROUTES.login, "/l/"];
 
 /** Paths that must never be blocked by auth (PWA, static assets). Bypass auth and return next() immediately. */
 const PUBLIC_ASSET_PREFIXES = [
@@ -32,10 +33,54 @@ function isPublicAssetPath(pathname: string): boolean {
   return PUBLIC_ASSET_PREFIXES.some((prefix) => p.startsWith(prefix));
 }
 
+function isPublicAppPath(pathname: string): boolean {
+  if (pathname.startsWith("/l/")) return true;
+  return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+}
+
+function getAppHostnames(): Set<string> {
+  const hosts = new Set<string>(["localhost", "127.0.0.1"]);
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (appUrl) {
+    try {
+      hosts.add(new URL(appUrl).hostname.toLowerCase());
+    } catch {
+      // ignore invalid URL
+    }
+  }
+  const vercelUrl = process.env.VERCEL_URL?.trim();
+  if (vercelUrl) hosts.add(vercelUrl.toLowerCase());
+  return hosts;
+}
+
+function isMainAppHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^www\./, "").split(":")[0] ?? "";
+  return getAppHostnames().has(normalized);
+}
+
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = request.headers.get("host") ?? "";
 
   if (isPublicAssetPath(pathname)) {
+    return NextResponse.next();
+  }
+
+  // Custom domain → rewrite to /l/{slug}
+  if (host && !isMainAppHost(host) && !pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
+    try {
+      const page = await getLinkPageByCustomDomain(host);
+      if (page?.slug) {
+        const rewriteUrl = request.nextUrl.clone();
+        rewriteUrl.pathname = `/l/${page.slug}`;
+        return NextResponse.rewrite(rewriteUrl);
+      }
+    } catch {
+      // fall through to normal auth
+    }
+  }
+
+  if (isPublicAppPath(pathname)) {
     return NextResponse.next();
   }
 

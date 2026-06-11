@@ -125,7 +125,11 @@ export const ROUTES = {
     /** Admin-only full notification pipeline diagnostic (same env gate as test notifications). */
     notificationDiagnostic: "/admin/notification-diagnostic",
     roles: "/admin/roles",
+    linkPages: "/admin/link-pages",
   },
+
+  /** Public link-in-bio pages */
+  linkPage: (slug: string) => `/l/${encodeURIComponent(slug)}`,
 
   /** Model (role: model) – modelss-linked user */
   model: {

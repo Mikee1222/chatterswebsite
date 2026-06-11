@@ -95,6 +95,9 @@ export const PERMISSIONS = {
 
   MASS_LISTS_VIEW: "mass-lists:view",
   MASS_LISTS_MANAGE: "mass-lists:manage",
+
+  LINK_PAGES_VIEW: "link-pages:view",
+  LINK_PAGES_MANAGE: "link-pages:manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -151,6 +154,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   feedback: "Feedback",
   pricing: "Pricing",
   "mass-lists": "Mass lists",
+  "link-pages": "Link pages",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -266,6 +270,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "mass-lists:view": "Προβολή μαζικών λιστών επικοινωνίας",
   "mass-lists:manage": "Δημιουργία και διαχείριση μαζικών λιστών",
+
+  "link-pages:view": "Προβολή link-in-bio σελίδων",
+  "link-pages:manage": "Δημιουργία και διαχείριση link-in-bio σελίδων",
 };
 
 export type PermissionGroup = {
