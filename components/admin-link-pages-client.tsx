@@ -211,7 +211,27 @@ function diffSaveableFields(baseline: SaveablePageFields, current: SaveablePageF
   return patch;
 }
 
-type FieldSaveStatus = "idle" | "pending" | "saving" | "saved";
+function slugify(input: string): string {
+  return input
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+function validateSlug(slug: string): string | null {
+  if (!slug) return "Slug is required";
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    return "Use lowercase letters, numbers, and hyphens only";
+  }
+  return null;
+}
+
+const SAVE_DEBOUNCE_MS = 1500;
+const PREVIEW_REFRESH_DELAY_MS = 3000;
+
+type FieldSaveStatus = "idle" | "saving" | "saved";
 
 type Props = {
   initialPages: LinkPageRecord[];
@@ -242,15 +262,19 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [globalAnalyticsLoading, setGlobalAnalyticsLoading] = React.useState(false);
   const [previewDevice, setPreviewDevice] = React.useState<"mobile" | "desktop">("mobile");
   const [previewKey, setPreviewKey] = React.useState(0);
-  const [fieldDraft, setFieldDraft] = React.useState<Partial<LinkPageRecord>>({});
+  const [draft, setDraft] = React.useState<SaveablePageFields | null>(null);
+  const [saved, setSaved] = React.useState<SaveablePageFields | null>(null);
   const [fieldSaveStatus, setFieldSaveStatus] = React.useState<FieldSaveStatus>("idle");
+  const [slugError, setSlugError] = React.useState<string | null>(null);
   const [showQr, setShowQr] = React.useState(false);
-  const saveBaselineRef = React.useRef<SaveablePageFields | null>(null);
-  const fieldDraftRef = React.useRef(fieldDraft);
+  const draftRef = React.useRef(draft);
+  const savedRef = React.useRef(saved);
   const saveDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedFadeRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const previewRefreshRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  fieldDraftRef.current = fieldDraft;
+  draftRef.current = draft;
+  savedRef.current = saved;
   const [expandedSections, setExpandedSections] = React.useState<Set<string>>(
     () => new Set(["identity", "profile", "appearance", "blocks"])
   );
@@ -288,33 +312,58 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
 
   React.useEffect(() => {
     if (!selectedPage) {
-      saveBaselineRef.current = null;
-      setFieldDraft({});
+      setDraft(null);
+      setSaved(null);
       setFieldSaveStatus("idle");
+      setSlugError(null);
       return;
     }
-    saveBaselineRef.current = pickSaveableFields(selectedPage);
-    setFieldDraft({});
+    const fields = pickSaveableFields(selectedPage);
+    setDraft(fields);
+    setSaved(fields);
     setFieldSaveStatus("idle");
+    setSlugError(null);
   }, [selectedPage?.id]);
 
   React.useEffect(() => {
     return () => {
       if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
       if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
+      if (previewRefreshRef.current) clearTimeout(previewRefreshRef.current);
     };
   }, []);
 
-  const flushDebouncedSave = React.useCallback(async () => {
-    if (!selectedId || !selectedPage || !saveBaselineRef.current) return;
+  const hasUnsavedChanges = React.useMemo(() => {
+    if (!draft || !saved) return false;
+    return Object.keys(diffSaveableFields(saved, draft)).length > 0;
+  }, [draft, saved]);
 
-    const current = { ...saveBaselineRef.current, ...fieldDraftRef.current };
-    const patch = diffSaveableFields(saveBaselineRef.current, current as SaveablePageFields);
+  const savePageFields = React.useCallback(async () => {
+    if (!selectedId || !selectedPage || !draftRef.current || !savedRef.current) return;
+
+    const currentDraft = { ...draftRef.current };
+    if ("slug" in diffSaveableFields(savedRef.current, currentDraft)) {
+      const normalizedSlug = slugify(currentDraft.slug);
+      const slugValidation = validateSlug(normalizedSlug);
+      if (slugValidation) {
+        setSlugError(slugValidation);
+        addToast(localToast("Invalid slug", slugValidation, "high"));
+        return;
+      }
+      currentDraft.slug = normalizedSlug;
+      if (normalizedSlug !== draftRef.current.slug) {
+        setDraft(currentDraft);
+      }
+    }
+
+    const patch = diffSaveableFields(savedRef.current, currentDraft);
     if (Object.keys(patch).length === 0) {
       setFieldSaveStatus("idle");
+      setSlugError(null);
       return;
     }
 
+    setSlugError(null);
     setFieldSaveStatus("saving");
     try {
       const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(selectedId)}`, {
@@ -325,16 +374,20 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
       const data = (await res.json()) as { page?: LinkPageRecord; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Save failed");
       if (data.page) {
-        saveBaselineRef.current = pickSaveableFields(data.page);
-        setFieldDraft({});
+        const savedFields = pickSaveableFields(data.page);
+        setSaved(savedFields);
+        setDraft(savedFields);
         setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
         setSelectedPage((prev) => (prev ? { ...prev, ...data.page! } : prev));
-        setPreviewKey((k) => k + 1);
         setFieldSaveStatus("saved");
         if (savedFadeRef.current) clearTimeout(savedFadeRef.current);
         savedFadeRef.current = setTimeout(() => {
           setFieldSaveStatus((s) => (s === "saved" ? "idle" : s));
         }, 2500);
+        if (previewRefreshRef.current) clearTimeout(previewRefreshRef.current);
+        previewRefreshRef.current = setTimeout(() => {
+          setPreviewKey((k) => k + 1);
+        }, PREVIEW_REFRESH_DELAY_MS);
       } else {
         setFieldSaveStatus("idle");
       }
@@ -344,17 +397,36 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     }
   }, [selectedId, selectedPage, addToast]);
 
-  const patchFieldDraft = React.useCallback(
-    (patch: Partial<LinkPageRecord>) => {
-      setFieldDraft((prev) => ({ ...prev, ...patch }));
-      setFieldSaveStatus("pending");
-      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
-      saveDebounceRef.current = setTimeout(() => {
-        void flushDebouncedSave();
-      }, 1000);
+  const scheduleDebouncedSave = React.useCallback(() => {
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(() => {
+      void savePageFields();
+    }, SAVE_DEBOUNCE_MS);
+  }, [savePageFields]);
+
+  const updateDraft = React.useCallback(
+    (patch: Partial<SaveablePageFields>) => {
+      setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
+      if ("slug" in patch) {
+        const normalized = slugify(patch.slug ?? "");
+        setSlugError(validateSlug(normalized));
+      }
+      scheduleDebouncedSave();
     },
-    [flushDebouncedSave]
+    [scheduleDebouncedSave]
   );
+
+  const handleFieldBlur = React.useCallback(() => {
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = null;
+    void savePageFields();
+  }, [savePageFields]);
+
+  const handleSaveClick = React.useCallback(() => {
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = null;
+    void savePageFields();
+  }, [savePageFields]);
 
   const handleDomainUpdated = React.useCallback(
     (domain: string) => {
@@ -604,14 +676,14 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     addToast(localToast("Copied", "Link copied to clipboard", "normal"));
   }
 
-  const editingPage = selectedPage ? { ...selectedPage, ...fieldDraft } : null;
+  const editingPage = selectedPage && draft ? { ...selectedPage, ...draft } : selectedPage;
 
-  const publicUrl = editingPage?.slug
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}${ROUTES.linkPage(editingPage.slug)}`
+  const publicUrl = saved?.slug
+    ? `${typeof window !== "undefined" ? window.location.origin : ""}${ROUTES.linkPage(saved.slug)}`
     : "";
 
-  const previewUrl = editingPage?.slug
-    ? `${ROUTES.linkPage(editingPage.slug)}?preview=true&t=${previewKey}`
+  const previewUrl = saved?.slug
+    ? `${ROUTES.linkPage(saved.slug)}?preview=true&t=${previewKey}`
     : "";
 
   const qrUrl = publicUrl
@@ -776,7 +848,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
               <>
                 {/* Tab bar + actions */}
                 <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: BORDER }}>
-                  <div className="flex items-center gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
                       <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
                         Editor
@@ -786,7 +858,26 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                         Analytics
                       </TabBtn>
                     </div>
-                    {tab === "editor" ? <FieldSaveIndicator status={fieldSaveStatus} /> : null}
+                    {tab === "editor" ? (
+                      <>
+                        {hasUnsavedChanges ? (
+                          <span className="text-[10px] font-medium text-amber-400">● Unsaved changes</span>
+                        ) : null}
+                        <FieldSaveIndicator status={fieldSaveStatus} />
+                        <button
+                          type="button"
+                          onClick={handleSaveClick}
+                          disabled={!hasUnsavedChanges || fieldSaveStatus === "saving"}
+                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                          style={{ background: ACCENT }}
+                        >
+                          {fieldSaveStatus === "saving" ? (
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                          ) : null}
+                          Save changes
+                        </button>
+                      </>
+                    ) : null}
                   </div>
                   <div className="flex items-center gap-1.5">
                     <StatusToggle
@@ -830,12 +921,14 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                 <div className="flex-1 overflow-y-auto">
                   {tab === "editor" ? (
                     <EditorPanel
-                      page={{ ...selectedPage, ...fieldDraft }}
+                      page={editingPage!}
                       pageId={selectedId!}
                       models={models}
                       expandedSections={expandedSections}
                       onToggleSection={toggleSection}
-                      onPatchField={patchFieldDraft}
+                      onPatchField={updateDraft}
+                      onFieldBlur={handleFieldBlur}
+                      slugError={slugError}
                       onDomainUpdated={handleDomainUpdated}
                       onAddBlock={(t) => void addBlock(t)}
                       onUpdateBlock={updateBlock}
@@ -1133,7 +1226,7 @@ function AccordionSection({
 
 function FieldSaveIndicator({ status }: { status: FieldSaveStatus }) {
   if (status === "idle") return null;
-  if (status === "pending" || status === "saving") {
+  if (status === "saving") {
     return (
       <span className="inline-flex items-center gap-1 text-[10px] text-white/45">
         <Loader2 className="h-3 w-3 animate-spin" /> Saving…
@@ -1445,6 +1538,8 @@ function EditorPanel({
   expandedSections,
   onToggleSection,
   onPatchField,
+  onFieldBlur,
+  slugError,
   onDomainUpdated,
   onAddBlock,
   onUpdateBlock,
@@ -1461,7 +1556,9 @@ function EditorPanel({
   models: ModelRecord[];
   expandedSections: Set<string>;
   onToggleSection: (id: string) => void;
-  onPatchField: (patch: Partial<LinkPageRecord>) => void;
+  onPatchField: (patch: Partial<SaveablePageFields>) => void;
+  onFieldBlur: () => void;
+  slugError: string | null;
   onDomainUpdated: (domain: string) => void;
   onAddBlock: (t: LinkPageBlockType) => void;
   onUpdateBlock: (b: LinkPageBlockRecord) => Promise<void>;
@@ -1484,10 +1581,19 @@ function EditorPanel({
         onToggle={onToggleSection}
       >
         <Field label="Title">
-          <FormInput value={page.title} onChange={(e) => onPatchField({ title: e.target.value })} />
+          <FormInput
+            value={page.title}
+            onChange={(e) => onPatchField({ title: e.target.value })}
+            onBlur={onFieldBlur}
+          />
         </Field>
         <Field label="Slug">
-          <FormInput value={page.slug} onChange={(e) => onPatchField({ slug: e.target.value })} />
+          <FormInput
+            value={page.slug}
+            onChange={(e) => onPatchField({ slug: slugify(e.target.value) })}
+            onBlur={onFieldBlur}
+            error={slugError ?? undefined}
+          />
         </Field>
         <Field label="Model">
           <select
@@ -1512,7 +1618,12 @@ function EditorPanel({
           />
         </Field>
         <Field label="Meta description">
-          <Textarea value={page.meta_description} onChange={(e) => onPatchField({ meta_description: e.target.value })} rows={2} />
+          <Textarea
+            value={page.meta_description}
+            onChange={(e) => onPatchField({ meta_description: e.target.value })}
+            onBlur={onFieldBlur}
+            rows={2}
+          />
         </Field>
         <label className="flex items-center gap-2 text-xs text-white/60">
           <input
@@ -1532,13 +1643,19 @@ function EditorPanel({
         onToggle={onToggleSection}
       >
         <Field label="Bio">
-          <Textarea value={page.bio} onChange={(e) => onPatchField({ bio: e.target.value })} rows={3} />
+          <Textarea
+            value={page.bio}
+            onChange={(e) => onPatchField({ bio: e.target.value })}
+            onBlur={onFieldBlur}
+            rows={3}
+          />
         </Field>
         <Field label="Profile photo URL">
           <div className="flex gap-2">
             <FormInput
               value={page.profile_photo_url}
               onChange={(e) => onPatchField({ profile_photo_url: e.target.value })}
+              onBlur={onFieldBlur}
             />
             <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-2 text-xs text-white/60 hover:bg-white/5" style={{ borderColor: BORDER }}>
               <Upload className="h-3.5 w-3.5" />
@@ -1620,6 +1737,7 @@ function EditorPanel({
             <FormInput
               value={page.background_value}
               onChange={(e) => onPatchField({ background_value: e.target.value })}
+              onBlur={onFieldBlur}
               placeholder={page.background_type === "gradient" ? "linear-gradient(...)" : "Image URL"}
             />
           )}
