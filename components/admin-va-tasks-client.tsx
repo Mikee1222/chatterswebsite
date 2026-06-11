@@ -118,12 +118,26 @@ function formatReminderLabel(minutes: number | null): string {
 function SectionLabel({ icon, label }: { icon: string; label: string }) {
   return (
     <div className="mb-4 flex items-center gap-2">
-      <span className="text-base">{icon}</span>
-      <p className="text-xs font-bold uppercase tracking-widest text-white/50">{label}</p>
-      <div className="h-px flex-1 bg-white/8" />
+      {icon ? <span className="text-base">{icon}</span> : null}
+      <p className="text-xs font-semibold tracking-wide text-pink-400">{label}</p>
+      <div className="h-px flex-1 bg-[#1f1f1f]" />
     </div>
   );
 }
+
+function priorityBorderClass(priority: VaTaskPriority) {
+  const k = (priority || "normal").toLowerCase();
+  if (k === "urgent") return "border-l-red-500";
+  if (k === "high") return "border-l-orange-500";
+  if (k === "low") return "border-l-gray-500";
+  return "border-l-blue-500";
+}
+
+const ADMIN_FILTER_INPUT =
+  "h-11 rounded-xl border border-[#1f1f1f] bg-[#0d0d0d] px-4 text-sm text-white outline-none placeholder:text-white/25 focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20";
+
+const ADMIN_MODAL_INPUT =
+  "w-full rounded-xl border border-[#1f1f1f] bg-[#141414] px-4 py-3 text-sm text-white placeholder:text-white/25 outline-none transition focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20";
 
 function Divider() {
   return <div className="h-px bg-white/6" />;
@@ -781,35 +795,19 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   const reminderChipActive = (min: number) => reminderMinutes === min;
 
   function renderAdminTaskCard(task: VaTaskRecord) {
+    const modelNames = task.assigned_model_names ?? [];
     return (
                 <div
                   className={cn(
-                    "group relative rounded-2xl border p-5 pl-6 transition-all hover:bg-white/[0.04]",
-                    task.status === "done"
-                      ? "border-emerald-500/15 opacity-70"
-                      : task.priority === "urgent"
-                        ? "border-red-500/25"
-                        : task.priority === "high"
-                          ? "border-amber-500/20"
-                          : "border-white/8"
+                    "group relative overflow-hidden rounded-2xl border border-[#1f1f1f] border-l-[5px] bg-[#0d0d0d] p-5 transition-all hover:border-[#2a2a2a]",
+                    priorityBorderClass(task.priority),
+                    task.status === "done" && "opacity-70",
                   )}
                 >
-                  <div
-                    className={cn(
-                      "absolute left-2 top-4 bottom-4 w-1 rounded-full",
-                      task.priority === "urgent"
-                        ? "bg-red-500"
-                        : task.priority === "high"
-                          ? "bg-amber-500"
-                          : task.priority === "normal"
-                            ? "bg-sky-500"
-                            : "bg-white/25"
-                    )}
-                  />
-                  <div className="pl-2">
+                  <div>
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <div className="mb-2 flex flex-wrap items-center gap-2">
+                        <div className="mb-3 flex flex-wrap items-center gap-2">
                           <StatusBadge status={task.status} />
                           <PriorityBadge priority={task.priority} />
                           {task.is_recurring ? (
@@ -820,70 +818,79 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         </div>
                         <h3
                           className={cn(
-                            "font-semibold text-white",
+                            "text-lg font-semibold leading-snug text-white",
                             task.status === "done" && "text-white/50 line-through"
                           )}
                         >
                           {task.title}
                         </h3>
-                        {task.description ? (
-                          <p className="mt-1 line-clamp-2 text-sm text-white/40">{task.description}</p>
-                        ) : null}
                       </div>
-                      <div className="flex shrink-0 items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
                         {task.status !== "done" && task.status !== "skipped" ? (
                           <button
                             type="button"
                             onClick={() => void handleRemind(task)}
                             disabled={reminding === task.id}
-                            className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/15 px-3 py-1.5 text-xs font-semibold text-amber-300 transition hover:bg-amber-500/25 disabled:opacity-40"
+                            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-40"
                           >
-                            <Bell className="h-3.5 w-3.5" aria-hidden />
+                            <Bell className="h-3 w-3" aria-hidden />
                             {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
                           </button>
                         ) : null}
                         <button
                           type="button"
                           onClick={() => openEdit(task)}
-                          className="rounded-lg p-1.5 text-white/40 transition hover:bg-white/10 hover:text-white"
-                          title="Edit"
+                          className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
                         >
-                          <Pencil className="h-3.5 w-3.5" aria-hidden />
+                          <Pencil className="h-3 w-3" aria-hidden />
+                          Edit
                         </button>
                         <button
                           type="button"
                           disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
                           onClick={() => setTaskPendingDelete(task)}
-                          className="rounded-lg p-1.5 text-white/40 transition hover:bg-red-500/10 hover:text-red-300 disabled:opacity-50"
-                          title="Delete"
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
                         >
-                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          <Trash2 className="h-3 w-3" aria-hidden />
+                          Delete
                         </button>
                       </div>
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-white/30">
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/50">
+                        <Users className="h-3 w-3 shrink-0" aria-hidden />
+                        {assignedLabel(task)}
+                      </span>
+                      {modelNames.map((name) => (
+                        <span
+                          key={name}
+                          className="rounded-full border border-pink-500/25 bg-pink-500/10 px-2.5 py-1 text-xs font-medium text-pink-300"
+                        >
+                          {name}
+                        </span>
+                      ))}
                       {task.due_date ? (
                         <span
                           className={cn(
-                            "inline-flex items-center gap-1",
-                            isPastDue(task.due_date) && task.status !== "done" && "text-red-400"
+                            "inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs",
+                            isPastDue(task.due_date) && task.status !== "done"
+                              ? "border-red-500/30 text-red-400"
+                              : "text-white/45",
                           )}
                         >
                           <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                          {formatDateTimeAthens(task.due_date)}
-                          {isPastDue(task.due_date) && task.status !== "done" ? "· Overdue" : ""}
+                          {formatDateEuropean(task.due_date)}
+                          {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
                         </span>
                       ) : null}
-                      <span>{assignedLabel(task)}</span>
-                      {(task.assigned_model_names ?? []).length > 0 ? (
-                        <span className="inline-flex items-center gap-1 text-rose-400/70"><Users className="h-3.5 w-3.5" aria-hidden />{(task.assigned_model_names ?? []).join(", ")}</span>
-                      ) : null}
                       {task.reminder_minutes_before != null ? (
-                        <span>{formatReminderLabel(task.reminder_minutes_before)}</span>
+                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/40">
+                          {formatReminderLabel(task.reminder_minutes_before)}
+                        </span>
                       ) : null}
                     </div>
 
-                    <div className="mt-3 border-t border-white/[0.08] pt-3">
+                    <div className="mt-5 border-t border-[#1f1f1f] pt-4">
                       <button
                         type="button"
                         onClick={async () => {
@@ -894,28 +901,21 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                           setExpandedTaskId(task.id);
                           await loadPhases(task.id);
                         }}
-                        className="group/ph flex items-center gap-2 text-xs text-white/35 transition-colors hover:text-white/70"
+                        className="group/ph flex items-center gap-2 text-sm text-white/45 transition-colors hover:text-white/75"
                       >
-                        <span
-                          className={cn(
-                            "flex h-6 w-6 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-[10px] transition-colors group-hover/ph:border-white/20",
-                            expandedTaskId === task.id && "border-pink-500/30 bg-pink-500/10 text-pink-300",
-                          )}
-                        >
-                          {expandedTaskId === task.id ? "▼" : "▶"}
-                        </span>
-                        <span className="font-semibold tracking-wide">Phases</span>
+                        <span className="text-xs">{expandedTaskId === task.id ? "▼" : "▶"}</span>
+                        <span className="font-medium">Phases</span>
                         {taskPhases[task.id]?.length ? (
-                          <span className="rounded-full border border-white/10 bg-white/[0.06] px-2 py-0.5 text-[10px] font-bold text-white/50">
+                          <span className="rounded-full border border-[#1f1f1f] bg-[#141414] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white/50">
                             {taskPhases[task.id].length}
                           </span>
                         ) : null}
-                        {loadingPhases === task.id ? <span className="animate-pulse text-white/30">Loading…</span> : null}
+                        {loadingPhases === task.id ? <span className="animate-pulse text-xs text-white/30">Loading…</span> : null}
                       </button>
 
                       {expandedTaskId === task.id ? (
-                        <div className="relative mt-5 space-y-0 pl-4">
-                          <div className="absolute bottom-2 left-[1.125rem] top-2 w-px bg-white/10" aria-hidden />
+                        <div className="relative mt-5 space-y-0 pl-5">
+                          <div className="absolute bottom-2 left-[0.625rem] top-2 w-px bg-[#1f1f1f]" aria-hidden />
                           {(taskPhases[task.id] ?? []).map((phase, phaseIndex) => {
                             const items = phase.items ?? [];
                             const doneItems = items.filter((i) => i.status === "completed").length;
@@ -925,26 +925,26 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                               <div key={phase.id} className={cn("relative pb-6", isLast && "pb-0")}>
                                 <div
                                   className={cn(
-                                    "absolute -left-4 top-4 z-10 h-3 w-3 rounded-full border-2 border-[#0a0a14]",
+                                    "absolute -left-5 top-5 z-10 h-3.5 w-3.5 rounded-full border-2 border-[#0d0d0d]",
                                     phase.status === "completed"
                                       ? "bg-emerald-500"
                                       : phase.status === "overdue"
                                         ? "bg-red-500"
                                         : phase.status === "in_progress"
                                           ? "bg-blue-500"
-                                          : "bg-white/30",
+                                          : "bg-gray-500",
                                   )}
                                 />
                               <div
                                 className={cn(
-                                  "overflow-hidden rounded-2xl border transition-all",
+                                  "overflow-hidden rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] transition-all",
                                   phase.status === "completed"
-                                    ? "border-emerald-500/20 bg-emerald-500/[0.04]"
+                                    ? "border-l-[3px] border-l-emerald-500"
                                     : phase.status === "overdue"
-                                      ? "border-red-500/25 bg-red-500/[0.04]"
+                                      ? "border-l-[3px] border-l-red-500"
                                       : phase.status === "in_progress"
-                                        ? "border-blue-500/20 bg-blue-500/[0.04]"
-                                        : "border-white/10 bg-white/[0.02]",
+                                        ? "border-l-[3px] border-l-blue-500"
+                                        : "border-l-[3px] border-l-gray-600",
                                 )}
                               >
                                 <div className="flex items-center gap-3 px-5 py-4">
@@ -1182,72 +1182,68 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="text-xs font-bold uppercase tracking-widest text-pink-400/60">Administration</p>
-          <h1 className="mt-1 text-3xl font-bold text-white">VA tasks</h1>
-          <p className="mt-1 text-sm text-white/40">Assign and manage tasks for your virtual assistants</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-pink-400">Administration</p>
+          <h1 className="mt-2 text-[36px] font-bold leading-tight tracking-tight text-white">VA Tasks</h1>
+          <p className="mt-2 text-sm text-white/40">Assign and manage tasks for your virtual assistants</p>
         </div>
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/20 transition hover:opacity-90"
+          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-pink-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/25 transition hover:bg-pink-400"
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
           New task
         </button>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { label: "Total", value: taskStats.total, color: "text-white" },
           { label: "Pending", value: taskStats.pending, color: "text-amber-400" },
-          {
-            label: "In progress",
-            value: taskStats.inProgress,
-            color: "text-sky-400",
-          },
+          { label: "In progress", value: taskStats.inProgress, color: "text-blue-400" },
           { label: "Done", value: taskStats.done, color: "text-emerald-400" },
         ].map((s) => (
-          <div key={s.label} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-            <p className="text-[11px] font-semibold uppercase tracking-widest text-white/30">{s.label}</p>
-            <p className={cn("mt-1 text-3xl font-bold tabular-nums", s.color)}>{s.value}</p>
+          <div key={s.label} className="rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d] p-5">
+            <p className="text-xs font-medium text-white/40">{s.label}</p>
+            <p className={cn("mt-2 text-3xl font-bold tabular-nums", s.color)}>{s.value}</p>
           </div>
         ))}
       </div>
 
-      <div className="flex flex-wrap gap-3 rounded-2xl border border-white/8 bg-white/[0.02] p-4">
+      <div className="flex flex-wrap gap-3 rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d] p-4">
         <input
           type="search"
           placeholder="Search tasks…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="min-w-[10rem] flex-1 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white outline-none placeholder:text-white/25 focus:border-pink-500/50"
+          className={cn(ADMIN_FILTER_INPUT, "min-w-[10rem] flex-1")}
         />
         <CustomSelect
           value={filterVa}
           onChange={setFilterVa}
           options={vaOptionsForFilter}
-          triggerClassName="h-11 min-w-[10rem] rounded-xl border border-white/10 bg-white/5 text-sm text-white"
+          triggerClassName={cn(ADMIN_FILTER_INPUT, "min-w-[10rem]")}
           portaled
         />
         <select
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
-          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-pink-500/50"
+          className={cn(ADMIN_FILTER_INPUT, "min-w-[9rem]")}
         >
           <option value="">All statuses</option>
           {STATUSES.map((s) => (
             <option key={s} value={s}>
-              {s.replace(/_/g, "")}
+              {s.replace(/_/g, " ")}
             </option>
           ))}
         </select>
         <select
           value={filterPriority}
           onChange={(e) => setFilterPriority(e.target.value)}
-          className="h-11 min-w-[9rem] rounded-xl border border-white/10 bg-white/5 px-3 text-sm text-white outline-none focus:border-pink-500/50"
+          className={cn(ADMIN_FILTER_INPUT, "min-w-[9rem]")}
         >
           <option value="">All priorities</option>
           {PRIORITIES.map((p) => (
@@ -1259,7 +1255,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       </div>
 
       {regularTasks.length === 0 && recurringGroups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-16 text-center">
+        <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d] px-6 py-16 text-center">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
             <ClipboardList className="h-7 w-7" aria-hidden />
           </div>
@@ -1267,7 +1263,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           <p className="mt-2 max-w-sm text-sm text-white/50">Adjust search or filters, or create a new task.</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {regularTasks.map((task) => (
             <React.Fragment key={task.id}>{renderAdminTaskCard(task)}</React.Fragment>
           ))}
@@ -1355,17 +1351,17 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       )}
 
       {modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 backdrop-blur-sm md:items-center">
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-[#0a0a14] shadow-2xl md:max-w-2xl md:rounded-3xl">
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-white/8 bg-[#0a0a14]/95 px-6 py-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm md:items-center">
+          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-[20px] border border-[#1f1f1f] bg-[#0d0d0d] shadow-2xl md:max-w-2xl md:rounded-[20px]">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[#1f1f1f] bg-[#0d0d0d]/95 px-6 py-5 backdrop-blur-sm">
               <div>
-                <p className="mb-0.5 text-xs font-bold uppercase tracking-widest text-pink-400/60">VA TASKS</p>
+                <p className="mb-1 text-xs font-semibold text-pink-400">VA tasks</p>
                 <h2 className="text-xl font-bold text-white">{editingId ? "Edit task" : "New task"}</h2>
               </div>
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="flex h-8 w-8 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white/40 transition hover:bg-white/10 hover:text-white"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#1f1f1f] bg-[#141414] text-white/50 transition hover:border-white/20 hover:text-white"
                 aria-label="Close"
               >
                 <X className="h-4 w-4" />
@@ -1422,7 +1418,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                 ) : null}
 
                 <div className="mt-4">
-                  <label className="mb-2 block text-xs uppercase tracking-widest text-white/30">Assign models (optional)</label>
+                  <label className="mb-2 block text-xs font-medium text-white/40">Assign models (optional)</label>
                   <div className="flex flex-wrap gap-2">
                     {modelss.map((m) => {
                       const on = assignedModels.includes(m.id);
@@ -1454,33 +1450,33 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                 <SectionLabel icon="" label="Details" />
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">
+                    <label className="mb-1.5 block text-xs font-medium text-white/40">
                       Title <span className="text-pink-400">*</span>
                     </label>
                     <input
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
                       placeholder="Task title…"
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/20 transition-all focus:border-pink-500/50 focus:bg-white/8 focus:outline-none"
+                      className={ADMIN_MODAL_INPUT}
                     />
                   </div>
                   <div>
-                    <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">Description</label>
+                    <label className="mb-1.5 block text-xs font-medium text-white/40">Description</label>
                     <textarea
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
                       rows={3}
                       placeholder="What needs to be done?"
-                      className="w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder:text-white/20 transition-all focus:border-pink-500/50 focus:bg-white/8 focus:outline-none"
+                      className={cn(ADMIN_MODAL_INPUT, "resize-none")}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">Status</label>
+                      <label className="mb-1.5 block text-xs font-medium text-white/40">Status</label>
                       <select
                         value={status}
                         onChange={(e) => setStatus(e.target.value as VaTaskStatus)}
-                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                        className={ADMIN_MODAL_INPUT}
                       >
                         <option value="pending">⏳ Pending</option>
                         <option value="in_progress">In Progress</option>
@@ -1489,11 +1485,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                       </select>
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">Priority</label>
+                      <label className="mb-1.5 block text-xs font-medium text-white/40">Priority</label>
                       <select
                         value={priority}
                         onChange={(e) => setPriority(e.target.value as VaTaskPriority)}
-                        className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white focus:outline-none"
+                        className={ADMIN_MODAL_INPUT}
                       >
                         <option value="low">Low</option>
                         <option value="normal">Normal</option>
@@ -1511,12 +1507,12 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                 <SectionLabel icon="" label="Schedule" />
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1.5 block text-xs uppercase tracking-widest text-white/30">Due date &amp; time</label>
+                    <label className="mb-1.5 block text-xs font-medium text-white/40">Due date &amp; time</label>
                     <input
                       type="datetime-local"
                       value={dueLocal}
                       onChange={(e) => setDueLocal(e.target.value)}
-                      className="w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white [color-scheme:dark] focus:border-pink-500/50 focus:outline-none"
+                      className={cn(ADMIN_MODAL_INPUT, "[color-scheme:dark]")}
                     />
                   </div>
                   <div className="flex items-center gap-3">
@@ -1524,7 +1520,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                     <span className="text-sm text-white/60">Recurring task</span>
                   </div>
                   {isRecurring ? (
-                    <div className="space-y-3 rounded-2xl border border-white/8 bg-white/[0.03] p-4">
+                    <div className="space-y-3 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-4">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
                           <label className="mb-1.5 block text-xs text-white/40">Repeat every</label>
@@ -1646,7 +1642,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <Zap className="h-4 w-4 text-amber-400" aria-hidden />
-                    <p className="text-xs font-bold uppercase tracking-widest text-white/60">Phases</p>
+                    <p className="text-xs font-semibold text-pink-400">Phases</p>
                     {draftPhases.length > 0 ? (
                       <span className="flex h-5 w-5 items-center justify-center rounded-full border border-pink-500/30 bg-pink-500/20 text-xs font-bold text-pink-400">
                         {draftPhases.length}
@@ -1676,7 +1672,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
                 <div className="space-y-3">
                   {draftPhases.map((phase, phaseIndex) => (
-                    <div key={phase.tempId} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
+                    <div key={phase.tempId} className="overflow-hidden rounded-xl border border-[#1f1f1f] bg-[#0a0a0a]">
                       <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-pink-500/20 bg-pink-500/15 text-xs font-bold text-pink-400">
                           {phaseIndex + 1}
@@ -1771,19 +1767,19 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               </div>
             </div>
 
-            <div className="sticky bottom-0 flex gap-3 border-t border-white/8 bg-[#0a0a14]/95 px-6 py-4 backdrop-blur-sm">
+            <div className="sticky bottom-0 flex gap-3 border-t border-[#1f1f1f] bg-[#0d0d0d]/95 px-6 py-5 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => void handleSubmitTask()}
                 disabled={!title.trim() || saving}
-                className="flex-1 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 py-3.5 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90 active:scale-[0.99] disabled:opacity-40"
+                className="flex-1 rounded-xl bg-pink-500 py-3.5 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition hover:bg-pink-400 active:scale-[0.99] disabled:opacity-40"
               >
                 {saving ? "Saving…" : editingId ? "Update task" : "Create task"}
               </button>
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="rounded-2xl border border-white/10 bg-white/5 px-5 py-3.5 text-white/50 transition-all hover:bg-white/10"
+                className="rounded-xl border border-[#1f1f1f] bg-[#141414] px-5 py-3.5 text-white/50 transition hover:border-white/20 hover:text-white"
               >
                 Cancel
               </button>
