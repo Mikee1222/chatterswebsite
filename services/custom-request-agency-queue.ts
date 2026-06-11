@@ -34,20 +34,10 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
   const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(before.assigned_model_id);
   const modelName = (before.assigned_model_name ?? "Model").trim() || "Model";
   const chatterRecordId = before.requested_by_chatter_id?.trim();
-  await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_APPROVED, {
-    recipient_mode: "monitoring_only",
-    priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "✅ Custom request approved",
-    body: `✅ ${customTitle} was approved.`,
-    entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
-    entity_id: recordId,
-    actor_user_id: modelUserId ?? undefined,
-    actor_name: modelName,
-  }).catch(() => {});
   if (modelUserId) {
     await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_APPROVED, {
+      skipAdminVariant: true,
       recipient_mode: "personal_only",
-      personal_user_id: modelUserId,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "✅ Custom request approved",
       body: `✅ A custom request "${customTitle}" has been approved. Please check your schedule.`,
@@ -55,12 +45,11 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
       entity_id: recordId,
       actor_user_id: modelUserId,
       actor_name: modelName,
+      personal_user_id: modelUserId,
     }).catch(() => {});
   }
   if (chatterRecordId) {
     await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_APPROVED, {
-      recipient_mode: "personal_only",
-      personal_user_id: chatterRecordId,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "✅ Custom request approved",
       body: `✅ ${customTitle} was approved — your model has been notified.`,
@@ -68,6 +57,8 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
       entity_id: recordId,
       actor_user_id: modelUserId ?? undefined,
       actor_name: modelName,
+      personal_user_id: chatterRecordId,
+      context: { customTitle, modelName, fanUsername: before.fan_username },
     }).catch(() => {});
   }
   return { ok: true };

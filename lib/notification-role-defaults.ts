@@ -5,6 +5,10 @@ import type {
   NotificationRoleDefaults,
   UserRole,
 } from "@/types";
+import {
+  hasAdminVariant,
+  MONITORING_ACTOR_ROLES,
+} from "@/lib/notification-admin-variants";
 
 export type { NotificationRoleDefaults, NotificationRoleCategoryKey };
 
@@ -177,18 +181,14 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   account_update: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
 };
 
-/** Build per-role scope from legacy personal/monitoring + target roles. */
-function buildEventScope(
-  legacyScope: "personal" | "monitoring",
-  eventKey: string
-): NotificationEventEntry["scope"] {
+/** Build per-role scope for personal (non-_admin) events. Admin/manager use _admin variants instead. */
+function buildEventScope(eventKey: string): NotificationEventEntry["scope"] {
   const targets = EVENT_TARGET_ROLES[eventKey];
+  const actorRoles = MONITORING_ACTOR_ROLES[eventKey as keyof typeof MONITORING_ACTOR_ROLES];
   const scope = {} as NotificationEventEntry["scope"];
   for (const role of NOTIFICATION_SCOPE_ROLES) {
-    if (targets?.includes(role)) {
+    if (targets?.includes(role) || actorRoles?.includes(role)) {
       scope[role] = "personal";
-    } else if (legacyScope === "monitoring" && (role === "admin" || role === "manager")) {
-      scope[role] = "broadcast";
     } else {
       scope[role] = "none";
     }
@@ -196,14 +196,38 @@ function buildEventScope(
   return scope;
 }
 
-function eventEntry(
-  key: string,
-  label: string,
-  legacyScope: "personal" | "monitoring",
-  note?: string
-): NotificationEventEntry {
-  const scope = buildEventScope(legacyScope, key);
+function buildAdminScope(): NotificationEventEntry["scope"] {
+  const scope = {} as NotificationEventEntry["scope"];
+  for (const role of NOTIFICATION_SCOPE_ROLES) {
+    scope[role] = role === "admin" || role === "manager" ? "broadcast" : "none";
+  }
+  return scope;
+}
+
+function eventEntry(key: string, label: string, note?: string): NotificationEventEntry {
+  const scope = buildEventScope(key);
   return note ? { key, label, scope, note } : { key, label, scope };
+}
+
+function adminEventEntry(personalKey: string, adminLabel: string, note?: string): NotificationEventEntry {
+  const scope = buildAdminScope();
+  return note
+    ? { key: `${personalKey}_admin`, label: adminLabel, scope, note }
+    : { key: `${personalKey}_admin`, label: adminLabel, scope };
+}
+
+/** Personal event + optional paired _admin monitoring event. */
+function pairedEvents(
+  key: string,
+  personalLabel: string,
+  adminLabel: string,
+  note?: string
+): readonly NotificationEventEntry[] {
+  const entries: NotificationEventEntry[] = [eventEntry(key, personalLabel, note)];
+  if (hasAdminVariant(key)) {
+    entries.push(adminEventEntry(key, adminLabel, note));
+  }
+  return entries;
 }
 
 export function isNotificationRoleCategoryKey(key: string): key is NotificationRoleCategoryKey {
@@ -219,135 +243,148 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   readonly NotificationEventEntry[]
 > = {
   shift: [
-    eventEntry("shift_started", "Chatter/VA starts a shift", "monitoring"),
-    eventEntry("shift_ended", "Chatter/VA ends a shift", "monitoring"),
-    eventEntry("shift_late", "Late for a scheduled shift", "personal"),
-    eventEntry("shift_no_show", "No-show on scheduled shift", "monitoring"),
-    eventEntry("shift_overtime", "Shift overtime alert", "monitoring"),
-    eventEntry("shift_running_long", "Shift running longer than expected", "monitoring"),
-    eventEntry("shift_starting_soon", "Reminder before shift starts", "personal"),
-    eventEntry("chatter_no_models", "Chatter on shift with no models", "monitoring"),
-    eventEntry("break_started", "Break started", "monitoring"),
-    eventEntry("break_ended", "Break ended", "monitoring"),
-    eventEntry("break_exceeded", "Break over 45 minutes", "personal"),
-    eventEntry("break_too_long", "Break duration limit exceeded", "personal"),
+    ...pairedEvents("shift_started", "Ξεκίνησες βάρδια", "Κάποιος ξεκίνησε βάρδια"),
+    ...pairedEvents("shift_ended", "Τελείωσες βάρδια", "Κάποιος τελείωσε βάρδια"),
+    ...pairedEvents("shift_late", "Άργησες στη βάρδια", "Κάποιος άργησε στη βάρδια"),
+    ...pairedEvents("shift_no_show", "Απουσία από βάρδια", "Απουσία από προγραμματισμένη βάρδια"),
+    ...pairedEvents("shift_overtime", "Υπερωρία βάρδιας", "Υπερωρία βάρδιας (παρακολούθηση)"),
+    ...pairedEvents("shift_running_long", "Μακρά βάρδια", "Βάρδια τρέχει longer than expected"),
+    eventEntry("shift_starting_soon", "Reminder before shift starts"),
+    ...pairedEvents("chatter_no_models", "Chatter on shift with no models", "Chatter on shift with no models (admin)"),
+    ...pairedEvents("break_started", "Ξεκίνησες διάλειμμα", "Κάποιος ξεκίνησε διάλειμμα"),
+    ...pairedEvents("break_ended", "Τελείωσε το διάλειμμα", "Κάποιος επέστρεψε από διάλειμμα"),
+    ...pairedEvents("break_exceeded", "Break over 45 minutes", "Break over 45 minutes (admin)"),
+    ...pairedEvents("break_too_long", "Break duration limit exceeded", "Break duration limit exceeded (admin)"),
   ],
   task: [
-    eventEntry("task_started", "VA starts a task shift", "monitoring"),
-    eventEntry("task_finished", "VA ends a task shift", "monitoring"),
-    eventEntry("task_shift_started", "VA task shift session started", "monitoring"),
-    eventEntry("task_shift_ended", "VA task shift session ended", "monitoring"),
-    eventEntry("task_completed", "VA completes an assigned task", "personal"),
-    eventEntry("task_overdue", "VA task past due date", "personal"),
-    eventEntry("tasks_not_started", "Tasks not started on schedule", "monitoring"),
-    eventEntry("va_task_reminder", "Reminder before VA task due", "personal"),
-    eventEntry("model_content_scheduled", "Model schedules content assignment", "personal"),
-    eventEntry("model_content_completed", "Model marks content complete", "personal"),
-    eventEntry("va_content_assigned", "VA receives a content assignment", "personal"),
-    eventEntry("va_content_scheduled", "VA content delivery scheduled", "personal"),
-    eventEntry("va_content_completed", "VA content marked complete", "personal"),
-    eventEntry("custom_request_uploaded", "Custom request file uploaded", "personal"),
+    ...pairedEvents("task_started", "VA starts a task shift", "VA starts a task shift (admin)"),
+    ...pairedEvents("task_finished", "VA ends a task shift", "VA ends a task shift (admin)"),
+    ...pairedEvents("task_shift_started", "VA task shift session started", "VA task shift session started (admin)"),
+    ...pairedEvents("task_shift_ended", "VA task shift session ended", "VA task shift session ended (admin)"),
+    ...pairedEvents("task_completed", "VA completes an assigned task", "VA completes an assigned task (admin)"),
+    ...pairedEvents("task_overdue", "VA task past due date", "VA task past due date (admin)"),
+    ...pairedEvents("tasks_not_started", "Tasks not started on schedule", "Tasks not started on schedule (admin)"),
+    eventEntry("va_task_reminder", "Reminder before VA task due"),
+    ...pairedEvents("model_content_scheduled", "Model schedules content assignment", "Model schedules content (admin)"),
+    ...pairedEvents("model_content_completed", "Model marks content complete", "Model marks content complete (admin)"),
+    ...pairedEvents("va_content_assigned", "VA receives a content assignment", "VA content assignment created (admin)"),
+    ...pairedEvents("va_content_scheduled", "VA content delivery scheduled", "VA content delivery scheduled (admin)"),
+    ...pairedEvents("va_content_completed", "VA content marked complete", "VA content marked complete (admin)"),
+    ...pairedEvents("custom_request_uploaded", "Custom request file uploaded", "Custom request file uploaded (admin)"),
   ],
   phase: [
-    eventEntry("phase_task_completed", "VA completes a phase checklist item", "monitoring"),
-    eventEntry("phase_completed", "VA completes all items in a phase", "personal"),
-    eventEntry("phase_overdue", "VA phase missed deadline", "personal"),
-    eventEntry("all_phases_completed", "All phases done for a VA task", "personal"),
+    ...pairedEvents("phase_task_completed", "VA completes a phase checklist item", "VA phase checklist progress (admin)"),
+    ...pairedEvents("phase_completed", "VA completes all items in a phase", "VA phase completed (admin)"),
+    ...pairedEvents("phase_overdue", "VA phase missed deadline", "VA phase overdue (admin)"),
+    ...pairedEvents("all_phases_completed", "All phases done for a VA task", "All VA phases completed (admin)"),
   ],
   model: [
-    eventEntry("model_became_free", "Model becomes available on floor", "monitoring"),
-    eventEntry("model_taken", "Chatter enters a model session", "monitoring"),
-    eventEntry("model_live_started", "Model goes live", "monitoring"),
-    eventEntry("model_live_ended", "Model live stream ended", "monitoring"),
-    eventEntry("model_live_scheduled", "Upcoming live stream reminder", "personal"),
-    eventEntry("model_missed_live", "Model missed scheduled live", "monitoring"),
+    ...pairedEvents("model_became_free", "Model becomes available on floor", "Model available on floor (admin)"),
+    ...pairedEvents("model_taken", "Chatter enters a model session", "Chatter entered model session (admin)"),
+    ...pairedEvents("model_live_started", "Model goes live", "Model went live (admin)"),
+    ...pairedEvents("model_live_ended", "Model live stream ended", "Model live stream ended (admin)"),
+    eventEntry("model_live_scheduled", "Upcoming live stream reminder"),
+    ...pairedEvents("model_missed_live", "Model missed scheduled live", "Model missed scheduled live (admin)"),
   ],
   period: [
-    eventEntry("period_3_day_reminder", "Period expected in ~3 days", "personal"),
-    eventEntry("period_predicted_day", "Predicted period start today", "personal"),
-    eventEntry("period_confirmed_early", "Period logged earlier than predicted", "personal"),
-    eventEntry("period_overdue", "Period logging overdue", "personal"),
-    eventEntry("period_prediction_reset", "Period prediction reset", "personal"),
+    eventEntry("period_3_day_reminder", "Period expected in ~3 days"),
+    eventEntry("period_predicted_day", "Predicted period start today"),
+    eventEntry("period_confirmed_early", "Period logged earlier than predicted"),
+    eventEntry("period_overdue", "Period logging overdue"),
+    eventEntry("period_prediction_reset", "Period prediction reset"),
   ],
   whale: [
-    eventEntry("whale_registered", "New whale registered", "monitoring"),
-    eventEntry("whale_assigned", "Whale assigned to chatter or model", "personal"),
-    eventEntry("whale_spent", "Whale spending logged", "monitoring"),
-    eventEntry("whale_followup", "Whale follow-up due", "personal"),
-    eventEntry("whale_session_submitted", "Chatter logs a whale session", "monitoring"),
+    ...pairedEvents("whale_registered", "New whale registered", "New whale registered (admin)"),
+    ...pairedEvents("whale_assigned", "Whale assigned to chatter or model", "Whale assigned (admin)"),
+    ...pairedEvents("whale_spent", "Whale spending logged", "Whale spending logged (admin)"),
+    ...pairedEvents("whale_followup", "Whale follow-up due", "Whale follow-up due (admin)"),
+    ...pairedEvents("whale_session_submitted", "Chatter logs a whale session", "Whale session submitted (admin)"),
   ],
   mistake: [
     eventEntry(
       "chatter_mistake",
       "Mistake logged or updated",
-      "personal",
       "Entity-gated: uses chatter_mistake entity_type; event_type is chatter_mistake on approve/reject."
+    ),
+    adminEventEntry(
+      "chatter_mistake",
+      "Λάθος καταχωρήθηκε (admin)",
+      "Entity-gated: admin monitoring for chatter mistakes."
     ),
   ],
   fine_bonus: [
     eventEntry(
       "fine_bonus",
       "Fine or bonus submitted or reviewed",
-      "personal",
       "Entity-gated only — no standalone event_type; preference follows fine_bonus entity_type."
     ),
+    {
+      key: "fine_bonus_admin",
+      label: "Fine or bonus submitted or reviewed (admin)",
+      scope: buildAdminScope(),
+      note: "Entity-gated admin monitoring for fines and bonuses.",
+    },
   ],
   reward: [
-    eventEntry("points_awarded", "Points earned", "personal"),
-    eventEntry("level_up", "Rewards tier level up", "personal"),
-    eventEntry("spin_available", "Spin wheel credit available", "personal"),
-    eventEntry("challenge_completed", "Live challenge completed", "personal"),
+    ...pairedEvents("points_awarded", "Points earned", "Points awarded (admin)"),
+    ...pairedEvents("level_up", "Rewards tier level up", "Level up (admin)"),
+    eventEntry("spin_available", "Spin wheel credit available"),
+    ...pairedEvents("challenge_completed", "Live challenge completed", "Challenge completed (admin)"),
   ],
   marketing: [
     eventEntry(
       "shadowban_report",
       "Shadowban report submitted or reviewed",
-      "personal",
       "Entity-gated: event_type shadowban_report on review; entity_type shadowban_report."
+    ),
+    adminEventEntry(
+      "shadowban_report",
+      "Shadowban report (admin)",
+      "Entity-gated admin monitoring for shadowban reports."
     ),
   ],
   custom_request_alerts: [
-    eventEntry("custom_request_created", "New custom request submitted", "personal"),
-    eventEntry("custom_request_submitted", "Custom request sent to agency", "personal"),
-    eventEntry("custom_request_updated", "Custom request details updated", "personal"),
-    eventEntry("custom_status_changed", "Custom request status changed", "personal"),
-    eventEntry("custom_approved", "Custom request approved by agency", "personal"),
-    eventEntry("custom_rejected", "Custom request rejected", "personal"),
-    eventEntry("custom_declined", "Custom request declined by agency", "personal"),
-    eventEntry("custom_edited", "Custom request terms edited", "personal"),
-    eventEntry("custom_uploaded", "Custom content uploaded", "personal"),
-    eventEntry("custom_scheduled", "Custom delivery scheduled", "personal"),
-    eventEntry("custom_deadline_approaching", "Custom deadline in 48h", "personal"),
-    eventEntry("custom_overdue", "Custom request past deadline", "personal"),
+    ...pairedEvents("custom_request_created", "New custom request submitted", "New custom request (admin)"),
+    ...pairedEvents("custom_request_submitted", "Custom request sent to agency", "Custom request submitted (admin)"),
+    ...pairedEvents("custom_request_updated", "Custom request details updated", "Custom request updated (admin)"),
+    ...pairedEvents("custom_status_changed", "Custom request status changed", "Custom status changed (admin)"),
+    ...pairedEvents("custom_approved", "Custom request approved by agency", "Custom approved (admin)"),
+    ...pairedEvents("custom_rejected", "Custom request rejected", "Custom rejected (admin)"),
+    ...pairedEvents("custom_declined", "Custom request declined by agency", "Custom declined (admin)"),
+    ...pairedEvents("custom_edited", "Custom request terms edited", "Custom edited (admin)"),
+    ...pairedEvents("custom_uploaded", "Custom content uploaded", "Custom uploaded (admin)"),
+    ...pairedEvents("custom_scheduled", "Custom delivery scheduled", "Custom scheduled (admin)"),
+    ...pairedEvents("custom_deadline_approaching", "Custom deadline in 48h", "Custom deadline approaching (admin)"),
+    ...pairedEvents("custom_overdue", "Custom request past deadline", "Custom overdue (admin)"),
   ],
   billing_alerts: [
-    eventEntry("billing_cycle_announced", "Client billing cycle announced", "monitoring"),
-    eventEntry("billing_due_reminder", "Client payment due reminder", "monitoring"),
-    eventEntry("payment_submitted", "Client payment proof submitted", "monitoring"),
-    eventEntry("billing_payment_submitted", "Client payment proof submitted (legacy)", "monitoring"),
-    eventEntry("payment_confirmed", "Client payment confirmed", "monitoring"),
-    eventEntry("payment_rejected", "Client payment rejected", "monitoring"),
-    eventEntry("expense_approved", "Expense request approved", "monitoring"),
-    eventEntry("expense_rejected", "Expense request declined", "monitoring"),
+    eventEntry("billing_cycle_announced", "Client billing cycle announced"),
+    eventEntry("billing_due_reminder", "Client payment due reminder"),
+    ...pairedEvents("payment_submitted", "Client payment proof submitted", "Client payment proof submitted (admin)"),
+    ...pairedEvents("billing_payment_submitted", "Client payment proof submitted (legacy)", "Client payment proof (admin)"),
+    eventEntry("payment_confirmed", "Client payment confirmed"),
+    eventEntry("payment_rejected", "Client payment rejected"),
+    ...pairedEvents("expense_approved", "Expense request approved", "Expense request approved (admin)"),
+    ...pairedEvents("expense_rejected", "Expense request declined", "Expense request declined (admin)"),
   ],
   training_alerts: [
-    eventEntry("sop_academy_reminder", "SOP Academy training reminder", "personal"),
-    eventEntry("sop_academy_training_complete", "SOP Academy training complete", "personal"),
-    eventEntry("sop_academy_signed_off", "SOP Academy sign-off", "personal"),
+    eventEntry("sop_academy_reminder", "SOP Academy training reminder"),
+    ...pairedEvents("sop_academy_training_complete", "SOP Academy training complete", "SOP Academy training complete (admin)"),
+    ...pairedEvents("sop_academy_signed_off", "SOP Academy sign-off", "SOP Academy sign-off (admin)"),
   ],
   schedule_alerts: [
-    eventEntry("schedule_updated", "Weekly schedule updated", "personal"),
-    eventEntry("weekly_availability_friday_reminder", "Friday availability reminder", "personal"),
-    eventEntry("availability_submitted", "Availability submitted", "monitoring"),
+    ...pairedEvents("schedule_updated", "Weekly schedule updated", "Weekly schedule updated (admin)"),
+    eventEntry("weekly_availability_friday_reminder", "Friday availability reminder"),
+    ...pairedEvents("availability_submitted", "Availability submitted", "Availability submitted (admin)"),
   ],
   system: [
-    eventEntry("system_alert", "General system message", "monitoring"),
-    eventEntry("user_created", "New user account created", "monitoring"),
-    eventEntry("role_changed", "User role changed", "personal"),
-    eventEntry("account_deleted", "Account deleted", "monitoring"),
-    eventEntry("account_update", "Account settings changed", "personal"),
-    eventEntry("daily_summary", "Daily operations summary", "monitoring"),
-    eventEntry("form_submitted", "Form submitted", "monitoring"),
+    eventEntry("system_alert", "General system message"),
+    ...pairedEvents("user_created", "New user account created", "New user account created (admin)"),
+    eventEntry("role_changed", "User role changed"),
+    eventEntry("account_deleted", "Account deleted"),
+    eventEntry("account_update", "Account settings changed"),
+    eventEntry("daily_summary", "Daily operations summary"),
+    ...pairedEvents("form_submitted", "Form submitted", "Form submitted (admin)"),
   ],
 };
 

@@ -442,3 +442,174 @@ export function whaleSessionSubmittedAdmin(
     body: `💰 ${chatterName} submitted a session for ${whaleUsername}${model}. ${amt} ${currency}.`,
   };
 }
+
+/** Context passed to admin notification copy builders from notifyByRoleConfig. */
+export type AdminNotificationContext = Record<string, unknown> & {
+  actor_name?: string;
+  actorName?: string;
+  modelNames?: string[];
+  modelName?: string;
+  startTime?: string | Date;
+  endTime?: string | Date;
+  workedMinutes?: number;
+  minutes?: number;
+  duration?: string;
+  sessionCount?: number;
+  platform?: string;
+  fanUsername?: string;
+  price?: string | number;
+  whaleName?: string;
+  whaleUsername?: string;
+  amount?: number | string;
+  currency?: string;
+  chatterName?: string;
+  mistakeType?: string;
+  adminName?: string;
+  status?: string;
+  customTitle?: string;
+  formName?: string;
+  taskTitle?: string;
+  points?: number;
+  level?: number | string;
+  assigneeName?: string;
+  submittedAt?: string | Date;
+};
+
+function ctxActor(ctx: AdminNotificationContext, fallback?: string): string {
+  const name = ctx.actor_name ?? ctx.actorName ?? ctx.chatterName ?? fallback ?? "Someone";
+  return String(name).trim() || "Someone";
+}
+
+function ctxModels(ctx: AdminNotificationContext): string[] {
+  if (Array.isArray(ctx.modelNames)) return ctx.modelNames.filter(Boolean).map(String);
+  if (ctx.modelName) return [String(ctx.modelName)];
+  return [];
+}
+
+/** Rich admin title for paired `_admin` notification events. */
+export function buildAdminTitle(
+  baseEventType: string,
+  ctx: AdminNotificationContext,
+  fallbackTitle?: string
+): string {
+  const actor = ctxActor(ctx);
+  switch (baseEventType) {
+    case "shift_started":
+      return `${actor} ξεκίνησε βάρδια`;
+    case "shift_ended":
+      return `${actor} τελείωσε βάρδια`;
+    case "shift_late":
+      return `${actor} άργησε ${ctx.minutes ?? "?"} λεπτά`;
+    case "break_exceeded":
+      return `${actor} - διάλειμμα ${ctx.minutes ?? "?"} λεπτά`;
+    case "model_live_started":
+      return `${ctx.modelName ?? actor} πήγε live`;
+    case "custom_approved":
+      return `Custom εγκρίθηκε — ${ctx.modelName ?? "model"}`;
+    case "whale_spent":
+      return `${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} έκανε αγορά`;
+    case "chatter_mistake":
+      return `Λάθος καταχωρήθηκε — ${actor}`;
+    default:
+      return fallbackTitle?.trim() || `${actor} — ${baseEventType.replace(/_/g, " ")}`;
+  }
+}
+
+/** Rich admin body for paired `_admin` notification events. */
+export function buildAdminBody(
+  baseEventType: string,
+  ctx: AdminNotificationContext,
+  fallbackBody?: string
+): string {
+  const actor = ctxActor(ctx);
+  const models = ctxModels(ctx);
+  const modelList = models.length > 0 ? models.join(", ") : "—";
+
+  switch (baseEventType) {
+    case "shift_started": {
+      const copy = shiftStartedAdmin(actor, ctx.startTime ?? new Date(), models);
+      return copy.body;
+    }
+    case "shift_ended": {
+      const copy = shiftCompletedAdmin(actor, ctx.endTime ?? new Date(), models, ctx.workedMinutes);
+      return copy.body;
+    }
+    case "shift_late":
+      return `${actor} ξεκίνησε ${ctx.minutes ?? "?"} λεπτά αργότερα από το πρόγραμμα.`;
+    case "break_started": {
+      const copy = breakStartedAdmin(actor, ctx.startTime);
+      return copy.body;
+    }
+    case "break_ended": {
+      const copy = breakEndedAdmin(actor, ctx.endTime ?? new Date(), ctx.minutes);
+      return copy.body;
+    }
+    case "break_exceeded":
+      return `${actor} είναι σε διάλειμμα ${ctx.minutes ?? "?"} λεπτά. Όριο: 45 λεπτά.`;
+    case "task_shift_started": {
+      const copy = taskShiftStartedAdmin(actor, ctx.startTime ?? new Date(), models);
+      return copy.body;
+    }
+    case "task_shift_ended": {
+      const copy = taskShiftEndedAdmin(actor, ctx.endTime ?? new Date());
+      return copy.body;
+    }
+    case "model_live_started": {
+      const copy = modelLiveStartedAdmin(String(ctx.modelName ?? actor), String(ctx.platform ?? ""));
+      return copy.body;
+    }
+    case "model_live_ended": {
+      const copy = modelLiveEndedAdmin(String(ctx.modelName ?? actor), String(ctx.platform ?? ""));
+      return copy.body;
+    }
+    case "model_became_free": {
+      const copy = modelBecameFreeAdmin(String(ctx.modelName ?? actor));
+      return copy.body;
+    }
+    case "model_taken": {
+      const copy = modelTakenAdmin(String(ctx.modelName ?? "Model"), actor);
+      return copy.body;
+    }
+    case "custom_request_created": {
+      const copy = customRequestCreatedAdmin(actor);
+      return copy.body;
+    }
+    case "custom_approved":
+      return `Custom request του ${ctx.fanUsername ?? "fan"} εγκρίθηκε. Model: ${ctx.modelName ?? "—"}, Τιμή: ${ctx.price ?? "—"}`;
+    case "whale_registered": {
+      const copy = whaleRegisteredAdmin(String(ctx.whaleName ?? ctx.whaleUsername ?? "Whale"));
+      return copy.body;
+    }
+    case "whale_assigned": {
+      const copy = whaleAssignedAdmin(
+        String(ctx.whaleName ?? ctx.whaleUsername ?? "Whale"),
+        String(ctx.assigneeName ?? actor)
+      );
+      return copy.body;
+    }
+    case "whale_spent":
+      return `${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} ξόδεψε ${ctx.amount ?? "?"}. Chatter: ${ctx.chatterName ?? actor}. Model: ${ctx.modelName ?? modelList}`;
+    case "whale_session_submitted": {
+      const copy = whaleSessionSubmittedAdmin(
+        actor,
+        String(ctx.whaleUsername ?? ctx.whaleName ?? "whale"),
+        ctx.amount ?? "?",
+        String(ctx.currency ?? ""),
+        ctx.modelName ? String(ctx.modelName) : undefined
+      );
+      return copy.body;
+    }
+    case "chatter_mistake":
+      return `${actor} έκανε λάθος: ${ctx.mistakeType ?? "—"}. Καταχωρήθηκε από ${ctx.adminName ?? "admin"}`;
+    case "form_submitted": {
+      const copy = formSubmittedAdmin(
+        String(ctx.formName ?? "Form"),
+        actor,
+        ctx.submittedAt ?? new Date()
+      );
+      return copy.body;
+    }
+    default:
+      return fallbackBody?.trim() || `${actor}. Models: ${modelList}.`;
+  }
+}

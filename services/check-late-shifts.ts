@@ -144,7 +144,6 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
       ).catch(() => true);
       if (!dupChatter) {
         await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_LATE, {
-          recipient_mode: "personal_only",
           personal_user_id: program.chatter_id,
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: "🚨 You're late for your shift",
@@ -153,26 +152,16 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
           entity_id: chatterEntityId,
           actor_user_id: program.chatter_id,
           actor_name: program.chatter_name ?? undefined,
+          context: { minutes: minsLate, chatterName },
+          should_notify_user: (userId) =>
+            userId === program.chatter_id
+              ? Promise.resolve(true)
+              : findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, adminEntityId, airtableShiftLate).then(
+                  (exists) => !exists
+                ),
         }).catch(() => {});
         shiftScheduledLateChatterCount++;
       }
-
-      await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_LATE, {
-        recipient_mode: "monitoring_only",
-        priority: NOTIFICATION_PRIORITY.HIGH,
-        title: `🚨 ${chatterName} is late`,
-        body: `🚨 ${chatterName} hasn't started their shift yet — ${minsLate} minutes late.`,
-        entity_type: NOTIFICATION_ENTITY.SHIFT,
-        entity_id: adminEntityId,
-        actor_user_id: program.chatter_id,
-        actor_name: program.chatter_name ?? undefined,
-        personal_user_id: program.chatter_id,
-        should_notify_user: (userId) =>
-          findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, adminEntityId, airtableShiftLate).then(
-            (exists) => !exists
-          ),
-      }).catch(() => {});
-      if (!dupChatter) shiftLateNotStartedAdminCount++;
     }
   }
 
@@ -195,7 +184,6 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
     if (actualMs - scheduledMs < LATE_THRESHOLD_MS) continue;
 
     await notifyByRoleConfig(NOTIFICATION_EVENT.SHIFT_LATE, {
-      recipient_mode: "monitoring_only",
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "⏱️ Shift Started Late",
       body: `⏱️ ${shift.chatter_name ?? "Staff"} started ${Math.round((actualMs - scheduledMs) / 60000)} min late.`,
@@ -204,6 +192,7 @@ export async function runCheckLateShifts(): Promise<CheckLateShiftsResult> {
       actor_user_id: shift.chatter_id,
       actor_name: shift.chatter_name ?? undefined,
       personal_user_id: shift.chatter_id,
+      context: { minutes: Math.round((actualMs - scheduledMs) / 60000) },
       should_notify_user: (userId) =>
         findExistingNotification(userId, NOTIFICATION_ENTITY.SHIFT, shift.id, airtableShiftLate).then(
           (exists) => !exists

@@ -4,6 +4,8 @@
  * to avoid drift from the real Airtable schema.
  */
 
+import { NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT } from "@/lib/notification-admin-variants";
+
 // --- Table name ---
 export const NOTIFICATIONS_TABLE = "notifications" as const;
 
@@ -55,6 +57,7 @@ export const NOTIFICATION_EVENT_TYPES = [
   "custom_request_uploaded",
   "chatter_mistake",
   "shadowban_report",
+  ...NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.map((base) => `${base}_admin`),
 ] as const;
 
 export type NotificationEventTypeAirtable = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -73,7 +76,7 @@ export const NOTIFICATION_CATEGORIES = [
 export type NotificationCategoryAirtable = (typeof NOTIFICATION_CATEGORIES)[number];
 
 /** Map internal/operational event types to Airtable event_type single-select (for writes). */
-export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtable> = {
+const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable> = {
   shift_started: "shift_started",
   shift_ended: "shift_ended",
   break_started: "shift_started",
@@ -159,6 +162,16 @@ export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtabl
   expense_rejected: "system_alert",
   chatter_mistake: "chatter_mistake",
   shadowban_report: "shadowban_report",
+};
+
+export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtable> = {
+  ...EVENT_TYPE_TO_AIRTABLE_BASE,
+  ...Object.fromEntries(
+    NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.map((base) => {
+      const adminKey = `${base}_admin`;
+      return [adminKey, EVENT_TYPE_TO_AIRTABLE_BASE[base] ?? base];
+    })
+  ),
 };
 
 /** Map legacy category to Airtable category (task_shift -> task, account -> system). */

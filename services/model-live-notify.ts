@@ -97,29 +97,16 @@ async function notifyModelLiveByRoleConfig(params: {
   const chatterIds = await resolveChatterIdsForModelLive(modelRecord);
 
   await notifyByRoleConfig(eventType, {
-    recipient_mode: "monitoring_only",
+    personal_user_ids: chatterIds.length > 0 ? chatterIds : undefined,
     priority: NOTIFICATION_PRIORITY.HIGH,
-    title: adminCopy.title,
-    body: adminCopy.body,
+    title: chatterIds.length > 0 ? chatterCopy.title : adminCopy.title,
+    body: chatterIds.length > 0 ? chatterCopy.body : adminCopy.body,
     entity_type: "model_live_stream",
     entity_id: liveStreamRecordId,
     actor_user_id: modelActorUserId,
     actor_name: modelName,
+    context: { modelName, platform },
   }).catch(() => {});
-
-  if (chatterIds.length > 0) {
-    await notifyByRoleConfig(eventType, {
-      recipient_mode: "personal_only",
-      personal_user_ids: chatterIds,
-      priority: NOTIFICATION_PRIORITY.HIGH,
-      title: chatterCopy.title,
-      body: chatterCopy.body,
-      entity_type: "model_live_stream",
-      entity_id: liveStreamRecordId,
-      actor_user_id: modelActorUserId,
-      actor_name: modelName,
-    }).catch(() => {});
-  }
 }
 
 /** Admins + chatters on active shifts (or weekly-program fallback when none). */

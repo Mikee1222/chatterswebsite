@@ -24,6 +24,12 @@ import {
   DEFAULT_PRIORITY_BY_EVENT as DEFAULT_PRIORITY_BY_EVENT_BASE,
   NOTIFICATION_ENTITY,
 } from "@/lib/notification-types";
+import {
+  hasAdminVariant,
+  NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT,
+  toAdminEventType,
+} from "@/lib/notification-admin-variants";
+import { buildAdminBody, buildAdminTitle, type AdminNotificationContext } from "@/lib/notification-copy";
 import { CATEGORY_TO_AIRTABLE, EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import {
   EVENT_TO_ROLE_CATEGORY,
@@ -51,7 +57,7 @@ import { getNotificationDefaultsForRole } from "@/services/roles";
 import { getUserByAirtableId } from "@/services/users";
 
 /** Map event type to Airtable category. Categories must match Airtable single-select. */
-const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
+const BASE_EVENT_TO_CATEGORY = {
   shift_started: "shift",
   shift_ended: "shift",
   shift_late: "shift",
@@ -140,12 +146,28 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   shadowban_report: "system",
 };
 
+const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
+  ...BASE_EVENT_TO_CATEGORY,
+  ...(Object.fromEntries(
+    NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.map((base) => [
+      `${base}_admin`,
+      BASE_EVENT_TO_CATEGORY[base],
+    ])
+  ) as Partial<Record<NotificationEventType, NotificationCategory>>),
+} as Record<NotificationEventType, NotificationCategory>;
+
 /** Service-layer defaults (merges lib/notification-types + model session events). */
 const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, NotificationPriority>> = {
   ...DEFAULT_PRIORITY_BY_EVENT_BASE,
   model_became_free: "normal",
   model_taken: "normal",
   va_task_reminder: "high",
+  ...Object.fromEntries(
+    NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.flatMap((base) => {
+      const priority = DEFAULT_PRIORITY_BY_EVENT_BASE[base];
+      return priority ? [[`${base}_admin`, priority] as const] : [];
+    })
+  ),
 };
 
 function resolveNotifyPriority(
@@ -227,6 +249,13 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   chatter_mistake: "mistake_alerts",
   shadowban_report: "marketing_alerts",
 };
+
+for (const base of NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT) {
+  const pref = EVENT_TO_PREF_KEY[base];
+  if (pref) {
+    EVENT_TO_PREF_KEY[`${base}_admin` as NotificationEventType] = pref;
+  }
+}
 
 const ENTITY_TO_PREF_KEY: Record<string, NotificationPreferenceGateKey> = {
   [NOTIFICATION_ENTITY.CHATTER_MISTAKE]: "mistake_alerts",
@@ -896,15 +925,17 @@ export type NotifyByRoleConfigOptions = {
   body?: string;
   priority?: "low" | "normal" | "high" | "critical";
   context?: Record<string, unknown>;
+  /** When false, do not auto-fire the paired `_admin` variant (multi-call flows). Default true. */
+  skipAdminVariant?: boolean;
 };
 
 /**
  * Resolve recipients from /admin/roles notification toggles, then call notify() for each.
  */
-export async function notifyByRoleConfig(
+async function fireNotifyByRoleConfig(
   eventType: NotificationEventType,
   options: NotifyByRoleConfigOptions
-): Promise<void> {
+): Promise<number> {
   const mode = options.recipient_mode ?? "all";
   const personalIds = [
     ...new Set(
@@ -955,7 +986,7 @@ export async function notifyByRoleConfig(
       "notifyByRoleConfig_skip",
       JSON.stringify({ eventType, reason: "missing entity_type, entity_id, title, or body" })
     );
-    return;
+    return 0;
   }
 
   const priority = options.priority as NotificationPriority | undefined;
@@ -980,7 +1011,37 @@ export async function notifyByRoleConfig(
     sent += 1;
   }
 
+  return sent;
+}
+
+export async function notifyByRoleConfig(
+  eventType: NotificationEventType,
+  options: NotifyByRoleConfigOptions
+): Promise<void> {
+  const sent = await fireNotifyByRoleConfig(eventType, options);
   console.log(`[notifyByRoleConfig] event=${eventType} recipients=${sent}`);
+
+  if (!hasAdminVariant(eventType)) return;
+  if (options.skipAdminVariant) return;
+  // Legacy monitoring_only calls targeted admin broadcast on the personal event; skip to avoid duplicates.
+  if (options.recipient_mode === "monitoring_only") return;
+
+  const adminEventType = toAdminEventType(eventType);
+  const ctx: AdminNotificationContext = {
+    ...(options.context ?? {}),
+    actor_name: options.actor_name,
+    actorName: options.actor_name,
+  };
+  const adminTitle = buildAdminTitle(eventType, ctx, options.title);
+  const adminBody = buildAdminBody(eventType, ctx, options.body);
+
+  const adminSent = await fireNotifyByRoleConfig(adminEventType, {
+    ...options,
+    title: adminTitle,
+    body: adminBody,
+    recipient_mode: options.recipient_mode === "personal_only" ? "monitoring_only" : options.recipient_mode,
+  });
+  console.log(`[notifyByRoleConfig] event=${adminEventType} recipients=${adminSent}`);
 }
 
 export type NotifyAdminsOptions = Omit<NotifyOptions, "user_id"> & {
