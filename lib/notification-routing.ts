@@ -267,6 +267,14 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "The linked model user when an expense request is rejected.",
   },
+  chatter_mistake: {
+    rule: "assigned_chatter_only",
+    description: "The chatter who received the mistake; VA reporter on approve/reject flows.",
+  },
+  shadowban_report: {
+    rule: "assigned_party_only",
+    description: "The user who submitted the shadowban report.",
+  },
 };
 
 /**

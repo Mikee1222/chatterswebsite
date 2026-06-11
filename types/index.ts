@@ -1089,6 +1089,9 @@ export type NotificationEventType =
   | "payment_rejected"
   | "expense_approved"
   | "expense_rejected"
+  // Performance / marketing
+  | "chatter_mistake"
+  | "shadowban_report"
   // SOP Academy
   | "sop_academy_reminder"
   | "sop_academy_training_complete"

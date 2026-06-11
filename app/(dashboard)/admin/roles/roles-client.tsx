@@ -27,6 +27,7 @@ import {
   notificationDefaultsEqual,
   parseEventDescriptionFromEntry,
   parseEventKeyFromEntry,
+  parseEventNoteFromEntry,
   getEventDefaultValue,
   type NotificationRoleCategoryKey,
   type NotificationRoleDefaults,
@@ -734,6 +735,7 @@ export function AdminRolesClient({
                                     {categoryEvents.map((entry) => {
                                       const eventKey = parseEventKeyFromEntry(entry);
                                       const eventDescription = parseEventDescriptionFromEntry(entry);
+                                      const eventNote = parseEventNoteFromEntry(entry);
                                       const eventChecked = getEventDefaultValue(
                                         draft.notification_defaults,
                                         cat.key,
@@ -763,6 +765,11 @@ export function AdminRolesClient({
                                                 </>
                                               ) : null}
                                             </p>
+                                            {eventNote ? (
+                                              <p className="mt-0.5 text-[11px] leading-snug text-white/30">
+                                                {eventNote}
+                                              </p>
+                                            ) : null}
                                           </label>
                                           <PermissionSwitch
                                             id={eventSwitchId}

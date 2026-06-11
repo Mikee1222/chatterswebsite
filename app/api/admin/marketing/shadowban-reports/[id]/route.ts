@@ -78,7 +78,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (reportedById) {
       await notify({
         user_id: reportedById,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        event_type: NOTIFICATION_EVENT.SHADOWBAN_REPORT,
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: "✅ Shadowban Report Approved",
         body: `✅ Your shadowban report for @${f.username ?? ""} (${f.platform ?? ""}) was approved. The account was marked as shadowbanned.`,

@@ -12,6 +12,7 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
   const isAdmin = role === "admin" || role === "manager";
   const isModel = role === "model";
   const isVa = role === "virtual_assistant";
+  const isChatter = role === "chatter";
   const isClient = role === "client";
   switch (entityType) {
     case "whale":
@@ -47,6 +48,29 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return ROUTES.chatter.rewards;
     case "fine_bonus":
       return ROUTES.finesBonuses;
+    case "model_period":
+      if (isAdmin) return ROUTES.admin.models;
+      if (isModel) return ROUTES.model.home;
+      return ROUTES.dashboard;
+    case "chatter_mistake":
+      if (isAdmin) return ROUTES.admin.mistakes;
+      if (isChatter) return ROUTES.chatter.mistakes;
+      if (isVa) return ROUTES.va.mistakes;
+      return ROUTES.dashboard;
+    case "shadowban_report":
+      if (isAdmin) return ROUTES.admin.marketing;
+      if (isVa) return ROUTES.va.marketingAccounts;
+      return ROUTES.dashboard;
+    case "challenge":
+      if (isAdmin) return ROUTES.admin.challenges;
+      return ROUTES.chatter.challenges;
+    case "form":
+      if (isAdmin) return ROUTES.admin.home;
+      return ROUTES.dashboard;
+    case "tip":
+      if (isAdmin) return ROUTES.admin.rebillsTips;
+      if (isChatter) return ROUTES.chatter.myRebills;
+      return ROUTES.dashboard;
     case "billing_cycle":
       return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
     case "payment_submission":

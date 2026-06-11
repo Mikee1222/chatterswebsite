@@ -116,6 +116,8 @@ const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
   sop_academy_signed_off: "system",
   expense_approved: "billing",
   expense_rejected: "billing",
+  chatter_mistake: "system",
+  shadowban_report: "system",
 };
 
 /** Service-layer defaults (merges lib/notification-types + model session events). */
@@ -202,6 +204,8 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   schedule_updated: "schedule_alerts",
   weekly_availability_friday_reminder: "schedule_alerts",
   availability_submitted: "schedule_alerts",
+  chatter_mistake: "mistake_alerts",
+  shadowban_report: "marketing_alerts",
 };
 
 const ENTITY_TO_PREF_KEY: Record<string, NotificationPreferenceGateKey> = {

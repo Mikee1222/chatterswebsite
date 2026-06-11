@@ -57,7 +57,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       if (mistake.va_id) {
         await notify({
           user_id: mistake.va_id,
-          event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+          event_type: NOTIFICATION_EVENT.CHATTER_MISTAKE,
           priority: NOTIFICATION_PRIORITY.NORMAL,
           title: "❌ Mistake Rejected",
           body: `❌ Your report for ${mistake.chatter_name} was rejected: ${adminNotes || "—"}`,
@@ -97,7 +97,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (mistake.chatter_id) {
       await notify({
         user_id: mistake.chatter_id,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        event_type: NOTIFICATION_EVENT.CHATTER_MISTAKE,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: "⚠️ Mistake approved",
         body: `⚠️ A ${category} mistake was recorded: ${reasonLabel}. Points deducted: ${points}.`,
@@ -110,7 +110,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     if (mistake.va_id) {
       await notify({
         user_id: mistake.va_id,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        event_type: NOTIFICATION_EVENT.CHATTER_MISTAKE,
         priority: NOTIFICATION_PRIORITY.NORMAL,
         title: "✅ Mistake Approved",
         body: `✅ Your mistake report for ${mistake.chatter_name} was approved.`,

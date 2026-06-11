@@ -1,6 +1,7 @@
 
 import { listAllRecords } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
+import { NOTIFICATION_EVENT } from "@/lib/notification-types";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { notify } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
@@ -63,7 +64,7 @@ async function amountDueForClient(
 }
 
 const BILLING_CYCLE_ANNOUNCED_AIRTABLE =
-  EVENT_TYPE_TO_AIRTABLE.system_alert ?? "system_alert";
+  EVENT_TYPE_TO_AIRTABLE.billing_cycle_announced ?? "system_alert";
 
 // Called when a billing cycle is created or status changes to "announced"
 export async function notifyClientBillingAnnounced(
@@ -94,7 +95,7 @@ export async function notifyClientBillingAnnounced(
 
   await notify({
     user_id: clientId,
-    event_type: "system_alert",
+    event_type: NOTIFICATION_EVENT.BILLING_CYCLE_ANNOUNCED,
     priority: "high",
     title: `📋 Payment Due — ${kindLabel} ${period}`,
     body: `💳 Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,

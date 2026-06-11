@@ -86,6 +86,8 @@ export const NOTIFICATION_EVENT = {
   PAYMENT_REJECTED: "payment_rejected" as const,
   EXPENSE_APPROVED: "expense_approved" as const,
   EXPENSE_REJECTED: "expense_rejected" as const,
+  CHATTER_MISTAKE: "chatter_mistake" as const,
+  SHADOWBAN_REPORT: "shadowban_report" as const,
 } satisfies Record<string, NotificationEventType>;
 
 /** Default priority by event type for operational alerts. Callers can override. */
@@ -147,6 +149,8 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   payment_rejected: "high",
   expense_approved: "normal",
   expense_rejected: "normal",
+  chatter_mistake: "high",
+  shadowban_report: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */

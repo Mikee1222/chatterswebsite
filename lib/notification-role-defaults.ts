@@ -48,13 +48,31 @@ export const NOTIFICATION_CATEGORY_LABELS: Record<
   schedule_alerts: { en: "Schedule & availability", el: "Ειδοποιήσεις για πρόγραμμα και διαθεσιμότητα." },
 };
 
-/** Parse event key from strings like "shift_started — description". */
-export function parseEventKeyFromEntry(entry: string): string {
+export type NotificationCategoryEventEntry =
+  | string
+  | { key: string; label: string; note?: string };
+
+/** Parse event key from string entries or object entries. */
+export function parseEventKeyFromEntry(entry: NotificationCategoryEventEntry): string {
+  if (typeof entry === "object") return entry.key;
   return entry.split(" — ")[0]?.trim() ?? entry.trim();
 }
 
+/** Parse human label from object entries or description from string entries. */
+export function parseEventLabelFromEntry(entry: NotificationCategoryEventEntry): string {
+  if (typeof entry === "object") return entry.label;
+  return parseEventDescriptionFromEntry(entry);
+}
+
+/** Optional admin note (entity-only pseudo-events). */
+export function parseEventNoteFromEntry(entry: NotificationCategoryEventEntry): string {
+  if (typeof entry === "object") return entry.note?.trim() ?? "";
+  return "";
+}
+
 /** Parse description from strings like "shift_started — description". */
-export function parseEventDescriptionFromEntry(entry: string): string {
+export function parseEventDescriptionFromEntry(entry: NotificationCategoryEventEntry): string {
+  if (typeof entry === "object") return entry.label;
   const idx = entry.indexOf(" — ");
   return idx >= 0 ? entry.slice(idx + 3).trim() : "";
 }
@@ -67,7 +85,10 @@ export function isNotificationRoleCategoryKey(key: string): key is NotificationR
  * Human-readable event lists per notification preference category (role default keys).
  * Each entry: "event_type — short description". Used in Admin → Roles → Notifications tab.
  */
-export const NOTIFICATION_CATEGORY_EVENTS: Record<NotificationRoleCategoryKey, readonly string[]> = {
+export const NOTIFICATION_CATEGORY_EVENTS: Record<
+  NotificationRoleCategoryKey,
+  readonly NotificationCategoryEventEntry[]
+> = {
   shift: [
     "shift_started — Chatter/VA starts a shift",
     "shift_ended — Chatter/VA ends a shift",
@@ -125,10 +146,18 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<NotificationRoleCategoryKey, r
     "whale_session_submitted — Chatter logs a whale session",
   ],
   mistake: [
-    "chatter_mistake — Mistake logged or updated (entity-gated)",
+    {
+      key: "chatter_mistake",
+      label: "Mistake logged or updated",
+      note: "Entity-gated: uses chatter_mistake entity_type; event_type is chatter_mistake on approve/reject.",
+    },
   ],
   fine_bonus: [
-    "fine_bonus — Fine or bonus submitted or reviewed (entity-gated)",
+    {
+      key: "fine_bonus",
+      label: "Fine or bonus submitted or reviewed",
+      note: "Entity-gated only — no standalone event_type; preference follows fine_bonus entity_type.",
+    },
   ],
   reward: [
     "points_awarded — Points earned",
@@ -137,7 +166,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<NotificationRoleCategoryKey, r
     "challenge_completed — Live challenge completed",
   ],
   marketing: [
-    "shadowban_report — Shadowban report submitted or reviewed (entity-gated)",
+    {
+      key: "shadowban_report",
+      label: "Shadowban report submitted or reviewed",
+      note: "Entity-gated: event_type shadowban_report on review; entity_type shadowban_report.",
+    },
   ],
   custom_request_alerts: [
     "custom_request_created — New custom request submitted",

@@ -53,6 +53,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   "va_content_scheduled",
   "va_content_completed",
   "custom_request_uploaded",
+  "chatter_mistake",
+  "shadowban_report",
 ] as const;
 
 export type NotificationEventTypeAirtable = (typeof NOTIFICATION_EVENT_TYPES)[number];
@@ -155,6 +157,8 @@ export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtabl
   sop_academy_signed_off: "system_alert",
   expense_approved: "system_alert",
   expense_rejected: "system_alert",
+  chatter_mistake: "chatter_mistake",
+  shadowban_report: "shadowban_report",
 };
 
 /** Map legacy category to Airtable category (task_shift -> task, account -> system). */
