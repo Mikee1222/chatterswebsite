@@ -250,17 +250,23 @@ export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlock
 }
 
 export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
-  const normalized = domain.trim().toLowerCase().replace(/^www\./, "");
-  if (!normalized) return null;
-  const tag = linkPageDomainTag(normalized);
-  return unstable_cache(
-    () =>
-      fetchPageByFormula(
-        `AND(LOWER({custom_domain})="${escapeFormulaString(normalized)}", {status}="published")`
-      ),
-    [tag],
-    { revalidate: 30, tags: [tag] }
-  )();
+  const raw = domain.trim().toLowerCase().split(":")[0] ?? "";
+  if (!raw) return null;
+  const normalizedDomain = raw.replace(/^www\./, "");
+  if (!normalizedDomain) return null;
+
+  // Canonical Airtable value is apex only (e.g. sofiapetritsi.com — no www prefix).
+  const lookupVariants = Array.from(new Set([raw, normalizedDomain, `www.${normalizedDomain}`]));
+  const domainMatches = lookupVariants
+    .map((d) => `LOWER({custom_domain})="${escapeFormulaString(d)}"`)
+    .join(",");
+  const formula = `AND({status}="published", OR(${domainMatches}))`;
+
+  const tag = linkPageDomainTag(normalizedDomain);
+  return unstable_cache(() => fetchPageByFormula(formula), [tag, ...lookupVariants], {
+    revalidate: 30,
+    tags: [tag],
+  })();
 }
 
 export async function listLinkPages(modelId?: string): Promise<LinkPageRecord[]> {

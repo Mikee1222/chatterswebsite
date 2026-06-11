@@ -59,13 +59,11 @@ export async function middleware(request: NextRequest) {
     if (!pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
       try {
         const page = await getLinkPageByCustomDomain(host);
-        if (page?.slug) {
-          const rewriteUrl = request.nextUrl.clone();
-          rewriteUrl.pathname = `/l/${page.slug}`;
-          return NextResponse.rewrite(rewriteUrl);
+        if (page) {
+          return NextResponse.rewrite(new URL(`/l/${page.slug}`, request.url));
         }
-      } catch {
-        // unknown custom domain — serve without auth
+      } catch (error) {
+        console.error("[middleware] custom domain lookup failed:", error);
       }
     }
     return NextResponse.next();
