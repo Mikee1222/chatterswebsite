@@ -1,6 +1,8 @@
 "use server";
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { getUserByAirtableId } from "@/services/users";
+import { getVaTaskById } from "@/services/va-tasks";
 
 const TABLE_PHASES = "va_task_phases";
 const TABLE_ITEMS = "va_task_phase_items";
@@ -178,6 +180,40 @@ export async function resolvePhaseItemRowId(paramId: string): Promise<string | n
   return rows[0]?.id ?? null;
 }
 
+async function resolvePhaseAssignees(
+  taskId: string,
+  data: Partial<TaskPhase>,
+): Promise<{
+  assigned_va_id: string;
+  assigned_va_name: string;
+  assigned_model_id: string;
+  assigned_model_name: string;
+}> {
+  const task = taskId ? await getVaTaskById(taskId) : null;
+
+  let assigned_va_id = data.assigned_va_id?.trim() ?? "";
+  let assigned_va_name = data.assigned_va_name?.trim() ?? "";
+  let assigned_model_id = data.assigned_model_id?.trim() ?? "";
+  let assigned_model_name = data.assigned_model_name?.trim() ?? "";
+
+  if (!assigned_va_id && task?.assigned_to_ids.length) {
+    assigned_va_id = task.assigned_to_ids[0];
+    if (!assigned_va_name) {
+      const user = await getUserByAirtableId(assigned_va_id);
+      assigned_va_name = (user?.full_name || user?.email || "").trim();
+    }
+  }
+
+  if (!assigned_model_id && task?.assigned_model_ids.length) {
+    assigned_model_id = task.assigned_model_ids[0];
+    if (!assigned_model_name) {
+      assigned_model_name = task.assigned_model_names[0] ?? "";
+    }
+  }
+
+  return { assigned_va_id, assigned_va_name, assigned_model_id, assigned_model_name };
+}
+
 export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
   const tid = airtableFormulaString(taskId);
   const [phaseRecords, itemRecords] = await Promise.all([
@@ -200,6 +236,8 @@ export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
 }
 
 export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> {
+  const taskId = data.task_id?.trim() ?? "";
+  const assignees = await resolvePhaseAssignees(taskId, data);
   const rec = await createRecord<PhaseFields>(TABLE_PHASES, {
     phase_id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     task_id: data.task_id,
@@ -208,10 +246,10 @@ export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> 
     title: data.title ?? `Phase ${data.phase_number ?? 1}`,
     description: data.description ?? "",
     status: "pending",
-    assigned_va_id: data.assigned_va_id ?? "",
-    assigned_va_name: data.assigned_va_name ?? "",
-    assigned_model_id: data.assigned_model_id ?? "",
-    assigned_model_name: data.assigned_model_name ?? "",
+    assigned_va_id: assignees.assigned_va_id,
+    assigned_va_name: assignees.assigned_va_name,
+    assigned_model_id: assignees.assigned_model_id,
+    assigned_model_name: assignees.assigned_model_name,
     region: data.region ?? "Global",
     created_at: new Date().toISOString(),
   });
@@ -225,12 +263,31 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   if (data.status !== undefined) patch.status = data.status;
   if (data.actual_start_time !== undefined) patch.actual_start_time = data.actual_start_time;
   if (data.actual_end_time !== undefined) patch.actual_end_time = data.actual_end_time;
-  if (data.assigned_va_id !== undefined) patch.assigned_va_id = data.assigned_va_id;
-  if (data.assigned_va_name !== undefined) patch.assigned_va_name = data.assigned_va_name;
-  if (data.assigned_model_id !== undefined) patch.assigned_model_id = data.assigned_model_id;
-  if (data.assigned_model_name !== undefined) patch.assigned_model_name = data.assigned_model_name;
   if (data.region !== undefined) patch.region = data.region;
   if (data.completed_at !== undefined) patch.completed_at = data.completed_at;
+
+  if (
+    data.assigned_va_id !== undefined ||
+    data.assigned_va_name !== undefined ||
+    data.assigned_model_id !== undefined ||
+    data.assigned_model_name !== undefined
+  ) {
+    let taskId = data.task_id?.trim() ?? "";
+    if (!taskId) {
+      const phaseRec = await getRecord<PhaseFields>(TABLE_PHASES, id);
+      taskId = (phaseRec.fields.task_id as string)?.trim() ?? "";
+    }
+    const assignees = await resolvePhaseAssignees(taskId, data);
+    if (data.assigned_va_id !== undefined || data.assigned_va_name !== undefined) {
+      patch.assigned_va_id = assignees.assigned_va_id;
+      patch.assigned_va_name = assignees.assigned_va_name;
+    }
+    if (data.assigned_model_id !== undefined || data.assigned_model_name !== undefined) {
+      patch.assigned_model_id = assignees.assigned_model_id;
+      patch.assigned_model_name = assignees.assigned_model_name;
+    }
+  }
+
   if (Object.keys(patch).length === 0) return;
   await updateRecord(TABLE_PHASES, id, patch);
 }

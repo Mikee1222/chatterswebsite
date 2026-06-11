@@ -61,10 +61,6 @@ interface DraftPhase {
   tempId: string;
   serverId?: string;
   title: string;
-  assigned_va_id: string;
-  assigned_va_name: string;
-  assigned_model_id: string;
-  assigned_model_name: string;
   region: TaskPhase["region"];
   items: DraftPhaseItem[];
 }
@@ -156,10 +152,6 @@ function phaseToDraft(p: TaskPhase): DraftPhase {
     tempId: p.id,
     serverId: p.id,
     title: p.title,
-    assigned_va_id: p.assigned_va_id ?? "",
-    assigned_va_name: p.assigned_va_name ?? "",
-    assigned_model_id: p.assigned_model_id ?? "",
-    assigned_model_name: p.assigned_model_name ?? "",
     region: p.region ?? "Global",
     items: (p.items ?? []).map((i) => ({
       tempId: i.id,
@@ -411,10 +403,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       {
         tempId: `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         title: "",
-        assigned_va_id: "",
-        assigned_va_name: "",
-        assigned_model_id: "",
-        assigned_model_name: "",
         region: "Global",
         items: [],
       },
@@ -485,10 +473,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         task_title: taskTitle,
         phase_number: phaseIndex + 1,
         title: dp.title.trim() || `Phase ${phaseIndex + 1}`,
-        assigned_va_id: dp.assigned_va_id || "",
-        assigned_va_name: dp.assigned_va_name || "",
-        assigned_model_id: dp.assigned_model_id || "",
-        assigned_model_name: dp.assigned_model_name || "",
         region: dp.region,
       };
 
@@ -500,10 +484,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           credentials: "include",
           body: JSON.stringify({
             title: phaseBody.title,
-            assigned_va_id: phaseBody.assigned_va_id,
-            assigned_va_name: phaseBody.assigned_va_name,
-            assigned_model_id: phaseBody.assigned_model_id,
-            assigned_model_name: phaseBody.assigned_model_name,
             region: phaseBody.region,
           }),
         });
@@ -1040,50 +1020,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                 ) : null}
 
                                 <div className="flex flex-wrap gap-2 px-5 pb-3">
-                                  <div className="flex min-w-[8.5rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                    <Users className="h-3.5 w-3.5 shrink-0 text-white/30" aria-hidden />
-                                    <select
-                                      value={phase.assigned_va_id ?? ""}
-                                      onChange={(e) => {
-                                        const v = vaUsers.find((x) => x.id === e.target.value);
-                                        void handleUpdatePhase(phase.id, task.id, {
-                                          assigned_va_id: e.target.value,
-                                          assigned_va_name: v ? (v.full_name || v.email).trim() : "",
-                                        });
-                                      }}
-                                      className="min-w-0 flex-1 cursor-pointer bg-transparent text-xs text-white focus:outline-none"
-                                    >
-                                      <option value="">Any VA</option>
-                                      {vaUsers.map((v) => (
-                                        <option key={v.id} value={v.id}>
-                                          {(v.full_name || v.email).trim() || v.id}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div className="flex min-w-[7rem] max-w-[10rem] items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
-                                    <span className="shrink-0 text-xs" aria-hidden>
-<Users className="h-4 w-4 text-rose-400/70" aria-hidden />
-                                    </span>
-                                    <select
-                                      value={phase.assigned_model_id ?? ""}
-                                      onChange={(e) => {
-                                        const m = modelss.find((x) => x.id === e.target.value);
-                                        void handleUpdatePhase(phase.id, task.id, {
-                                          assigned_model_id: e.target.value,
-                                          assigned_model_name: m?.model_name ?? "",
-                                        });
-                                      }}
-                                      className="min-w-0 flex-1 cursor-pointer truncate bg-transparent text-xs text-white focus:outline-none"
-                                    >
-                                      <option value="">No creator</option>
-                                      {modelss.map((m) => (
-                                        <option key={m.id} value={m.id}>
-                                          {m.model_name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </div>
                                   <div className="flex items-center gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2">
                                     <select
                                       value={phase.region ?? "Global"}
@@ -1762,64 +1698,18 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                       </div>
 
                       <div className="border-b border-white/5 px-4 py-3">
-                        <div className="grid grid-cols-3 gap-2">
-                          <div>
-                            <label className="mb-1 block text-xs text-white/25">VA</label>
-                            <select
-                              value={phase.assigned_va_id}
-                              onChange={(e) => {
-                                const va = vaUsers.find((v) => v.id === e.target.value);
-                                updateDraftPhase(phase.tempId, {
-                                  assigned_va_id: e.target.value,
-                                  assigned_va_name: va ? (va.full_name || va.email).trim() : "",
-                                });
-                              }}
-                              className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white focus:outline-none"
-                            >
-                              <option value="">Any VA</option>
-                              {vaUsers.map((v) => (
-                                <option key={v.id} value={v.id}>
-                                  {(v.full_name || v.email).trim() || v.id}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs text-white/25">Creator</label>
-                            <select
-                              value={phase.assigned_model_id}
-                              onChange={(e) => {
-                                const m = modelss.find((x) => x.id === e.target.value);
-                                updateDraftPhase(phase.tempId, {
-                                  assigned_model_id: e.target.value,
-                                  assigned_model_name: m?.model_name ?? "",
-                                });
-                              }}
-                              className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white focus:outline-none"
-                            >
-                              <option value="">None</option>
-                              {modelss.map((m) => (
-                                <option key={m.id} value={m.id}>
-                                  {m.model_name}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                          <div>
-                            <label className="mb-1 block text-xs text-white/25">Region</label>
-                            <select
-                              value={phase.region}
-                              onChange={(e) =>
-                                updateDraftPhase(phase.tempId, { region: e.target.value as TaskPhase["region"] })
-                              }
-                              className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white focus:outline-none"
-                            >
-                              <option value="Greek">🇬🇷 Greek</option>
-                              <option value="USA">🇺🇸 USA</option>
-                              <option value="Global">Global</option>
-                            </select>
-                          </div>
-                        </div>
+                        <label className="mb-1 block text-xs text-white/25">Region</label>
+                        <select
+                          value={phase.region}
+                          onChange={(e) =>
+                            updateDraftPhase(phase.tempId, { region: e.target.value as TaskPhase["region"] })
+                          }
+                          className="w-full rounded-xl border border-white/10 bg-white/5 px-2 py-2 text-xs text-white focus:outline-none"
+                        >
+                          <option value="Greek">🇬🇷 Greek</option>
+                          <option value="USA">🇺🇸 USA</option>
+                          <option value="Global">Global</option>
+                        </select>
                       </div>
 
                       <div className="px-4 py-3">
