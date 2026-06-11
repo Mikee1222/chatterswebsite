@@ -75,6 +75,16 @@ function mapRecord(rec: AirtableRecord<Fields>): RoleRecord {
   };
 }
 
+/** System roles in Airtable may lag behind code defaults when new permissions ship. */
+function resolveRolePermissions(roleId: string, stored: Permission[]): Permission[] {
+  const defaults = DEFAULT_ROLE_PERMISSIONS[roleId as UserRole];
+  if (!defaults) return stored;
+  if (stored.length === 0) return [...defaults];
+  const merged = new Set(stored);
+  for (const p of defaults) merged.add(p);
+  return [...merged];
+}
+
 export async function getRolePermissions(roleName: string): Promise<Permission[]> {
   const key = roleName.trim().toLowerCase();
   if (!key) return [];
@@ -86,18 +96,12 @@ export async function getRolePermissions(roleName: string): Promise<Permission[]
     });
     const row = records[0];
     if (!row) {
-      const fallback = DEFAULT_ROLE_PERMISSIONS[key as UserRole];
-      return fallback ? [...fallback] : [];
+      return resolveRolePermissions(key, []);
     }
     const perms = parsePermissionsJson(row.fields.permissions);
-    if (perms.length === 0) {
-      const fallback = DEFAULT_ROLE_PERMISSIONS[key as UserRole];
-      return fallback ? [...fallback] : [];
-    }
-    return perms;
+    return resolveRolePermissions(key, perms);
   } catch {
-    const fallback = DEFAULT_ROLE_PERMISSIONS[key as UserRole];
-    return fallback ? [...fallback] : [];
+    return resolveRolePermissions(key, []);
   }
 }
 
