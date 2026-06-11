@@ -174,6 +174,11 @@ function formatCalendarDayName(ymd: string): string {
   return d.toLocaleDateString("en-GB", { weekday: "short" });
 }
 
+function formatCalendarDayDate(ymd: string): string {
+  const d = new Date(`${ymd}T12:00:00`);
+  return d.toLocaleDateString("en-GB", { day: "numeric", month: "long" });
+}
+
 function formatListDateHeader(date: string, todayYmd: string): string {
   const tomorrow = addDays(todayYmd, 1);
   if (date === todayYmd) return "Today";
@@ -604,6 +609,7 @@ export function AdminModelSchedulesClient({
   }, [models]);
 
   React.useEffect(() => {
+    if (!modelsDropdownOpen) return;
     function handleClickOutside(e: MouseEvent) {
       if (modelsDropdownRef.current && !modelsDropdownRef.current.contains(e.target as Node)) {
         setModelsDropdownOpen(false);
@@ -611,7 +617,7 @@ export function AdminModelSchedulesClient({
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [modelsDropdownOpen]);
 
   const weekStart = initialWeek;
   const weekEnd = React.useMemo(() => addDays(weekStart, 6), [weekStart]);
@@ -882,7 +888,7 @@ export function AdminModelSchedulesClient({
       </div>
 
       {/* Filters bar */}
-      <div className="space-y-4 rounded-xl border border-white/[0.08] bg-black/25 p-4 backdrop-blur-xl">
+      <div className="relative z-50 space-y-4 overflow-visible rounded-xl border border-white/[0.08] bg-black/25 p-4 backdrop-blur-xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex flex-wrap items-center gap-2">
             {activeFilterCount > 0 ? (
@@ -964,8 +970,8 @@ export function AdminModelSchedulesClient({
           </div>
         </div>
 
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div ref={modelsDropdownRef} className="relative">
+        <div className="flex flex-col gap-4 overflow-visible sm:flex-row sm:items-end sm:justify-between">
+          <div ref={modelsDropdownRef} className="relative overflow-visible">
             <p className="mb-2 text-[13px] font-medium text-white/50">Models</p>
             <button
               type="button"
@@ -981,7 +987,7 @@ export function AdminModelSchedulesClient({
               <ChevronDown className={cn("h-4 w-4 text-white/50 transition-transform", modelsDropdownOpen && "rotate-180")} />
             </button>
             {modelsDropdownOpen ? (
-              <div className="absolute left-0 z-40 mt-2 w-64 max-h-56 overflow-y-auto rounded-xl border border-white/[0.1] bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl">
+              <div className="absolute left-0 top-full z-[60] mt-2 min-w-[280px] max-h-56 overflow-y-auto rounded-xl border border-white/[0.1] bg-zinc-950/95 p-2 shadow-2xl backdrop-blur-xl">
                 {models.length === 0 ? (
                   <p className="px-2 py-2 text-[13px] text-white/50">No models</p>
                 ) : (
@@ -996,7 +1002,7 @@ export function AdminModelSchedulesClient({
                           className="rounded border-white/25"
                         />
                         <ModelAvatar name={m.name} size="sm" />
-                        <span className="truncate">{m.name}</span>
+                        <span className="whitespace-nowrap">{m.name}</span>
                       </label>
                     );
                   })
@@ -1087,7 +1093,7 @@ export function AdminModelSchedulesClient({
                         {formatCalendarDayName(d)}
                       </div>
                       <div className={cn("mt-0.5 text-[13px] tabular-nums", isTodayCol ? "font-semibold text-pink-200" : "text-white/70")}>
-                        {formatDateOnlyEuropean(d)}
+                        {formatCalendarDayDate(d)}
                       </div>
                     </th>
                   );
