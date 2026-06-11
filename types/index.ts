@@ -889,6 +889,8 @@ export interface UserRecord {
   /** Airtable `va_type` when role (or secondary_role) is virtual_assistant. */
   va_type?: VaType | null;
   telegram_username?: string;
+  /** Last User-Agent string seen on successful login (for new-device detection). */
+  last_login_user_agent?: string;
 }
 
 export interface ActivityLog {

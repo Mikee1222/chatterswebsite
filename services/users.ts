@@ -32,6 +32,7 @@ type Fields = {
   linked_model?: string | string[];
   language_preference?: string;
   telegram_username?: string;
+  last_login_user_agent?: string;
 };
 
 function mapSecondaryRoleField(raw: unknown): "chatter" | "virtual_assistant" | null {
@@ -73,6 +74,9 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   if (vaType) out.va_type = vaType;
   if (typeof f.telegram_username === "string" && f.telegram_username.trim()) {
     out.telegram_username = f.telegram_username.trim();
+  }
+  if (typeof f.last_login_user_agent === "string" && f.last_login_user_agent.trim()) {
+    out.last_login_user_agent = f.last_login_user_agent.trim();
   }
   return out;
 }
@@ -226,6 +230,13 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
 export async function setPasswordHash(recordId: string, passwordHash: string): Promise<void> {
   await updateRecord<Fields>(TABLE, recordId, {
     password_hash: passwordHash,
+  });
+}
+
+/** Persist User-Agent after login for new-device notification dedup. */
+export async function updateLastLoginUserAgent(recordId: string, userAgent: string): Promise<void> {
+  await updateRecord<Fields>(TABLE, recordId, {
+    last_login_user_agent: userAgent.trim(),
   });
 }
 

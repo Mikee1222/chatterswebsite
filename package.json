@@ -26,6 +26,7 @@
     "complete:model-fields": "tsx scripts/complete-model-fields.ts",
     "complete:period-fields": "tsx scripts/complete-period-fields.ts",
     "add:language-field": "tsx scripts/add-language-field.ts",
+    "add:last-login-user-agent-field": "tsx scripts/add-last-login-user-agent-field.ts",
     "add:secondary-role-field": "tsx scripts/add-secondary-role-field.ts",
     "add:va-type-field": "tsx scripts/add-va-type-field.ts",
     "add:social-account-status-fields": "tsx scripts/add-social-account-status-fields.ts",
