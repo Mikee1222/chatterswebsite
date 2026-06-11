@@ -18,7 +18,7 @@ import { countWhalesWithoutChatter } from "@/services/whales";
 import { countAdminPendingCustomRequests } from "@/services/custom-requests";
 import { countPendingReviewFinesBonuses } from "@/services/fines-bonuses";
 import { countPendingMistakes } from "@/services/chatter-mistakes";
-import { getCachedModelss } from "@/services/modelss";
+import { listAllModelss } from "@/services/modelss";
 import { getRoles } from "@/services/roles";
 import type { ModelLang } from "@/lib/model-i18n";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
@@ -78,11 +78,11 @@ export default async function DashboardLayout({
     const [chatterShifts, vaShifts, modelss] = await Promise.all([
       getActiveShifts("chatter").catch(() => []),
       getActiveShifts("virtual_assistant").catch(() => []),
-      getCachedModelss().catch(() => []),
+      listAllModelss().catch(() => []),
     ]);
     quickStats = {
-      activeShifts: chatterShifts.length + vaShifts.length,
-      freeModels: modelss.filter((m) => m.current_status === "free").length,
+      activeShiftsCount: chatterShifts.length + vaShifts.length,
+      freeModelsCount: modelss.filter((m) => m.current_status === "free").length,
     };
   }
 

@@ -205,8 +205,8 @@ function groupAdminItems(items: NavItem[]): { section: string; items: NavItem[] 
 }
 
 export type SidebarQuickStats = {
-  activeShifts: number;
-  freeModels: number;
+  activeShiftsCount: number;
+  freeModelsCount: number;
 };
 
 export function Sidebar({
@@ -697,9 +697,9 @@ export function Sidebar({
           {quickStats && !collapsed ? (
             <div className="border-b border-white/[0.06] px-4 py-2.5 text-[11px] text-white/50">
               <span className="text-emerald-400">●</span>{" "}
-              <span className="tabular-nums text-white/70">{quickStats.activeShifts} active</span>
+              <span className="tabular-nums text-white/70">{quickStats.activeShiftsCount} shifts active</span>
               <span className="mx-1.5 text-white/25">·</span>
-              <span className="tabular-nums text-white/70">{quickStats.freeModels} free</span>
+              <span className="tabular-nums text-white/70">{quickStats.freeModelsCount} models free</span>
             </div>
           ) : null}
 
