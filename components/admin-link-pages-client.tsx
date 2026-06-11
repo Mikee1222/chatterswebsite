@@ -43,6 +43,7 @@ import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { LINK_PAGE_PLATFORMS } from "@/lib/link-pages-schema";
+import { PLATFORM_BRANDING, detectLinkPlatform } from "@/lib/link-page-styles";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type {
@@ -125,6 +126,10 @@ function NativeColorSwatch({
 
 const PLATFORM_PRESETS = LINK_PAGE_PLATFORMS.filter((p) => p.id !== "custom");
 
+function blockPlatform(block: LinkPageBlockRecord): string {
+  return detectLinkPlatform(block);
+}
+
 const BLOCK_TYPES: Array<{ value: LinkPageBlockType; label: string; icon: string }> = [
   { value: "link", label: "Link", icon: "🔗" },
   { value: "heading", label: "Heading", icon: "H" },
@@ -158,6 +163,7 @@ type SaveablePageFields = Pick<
   | "background_value"
   | "primary_color"
   | "accent_color"
+  | "verified"
 >;
 
 function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
@@ -176,6 +182,7 @@ function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
     background_value: page.background_value,
     primary_color: page.primary_color,
     accent_color: page.accent_color,
+    verified: page.verified,
   };
 }
 
@@ -495,6 +502,8 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
           icon: block.icon,
           sublabel: block.sublabel,
           style: block.style,
+          platform: block.platform,
+          custom_button_color: block.custom_button_color,
           photo_urls: block.photo_urls,
           countdown_target: block.countdown_target,
           heading_text: block.heading_text,
@@ -1227,6 +1236,15 @@ function EditorPanel({
             </label>
           </div>
         </Field>
+        <label className="flex items-center gap-2 text-xs text-white/60">
+          <input
+            type="checkbox"
+            checked={page.verified}
+            onChange={(e) => onPatchField({ verified: e.target.checked })}
+            className="rounded border-white/20"
+          />
+          Verified badge
+        </label>
       </AccordionSection>
 
       <AccordionSection
@@ -1387,6 +1405,7 @@ function EditorPanel({
               </div>
               <BlockEditor
                 block={block}
+                pagePrimaryColor={page.primary_color}
                 onChange={(patch) => patchBlock(block.id, patch)}
                 onSave={(b) => void onUpdateBlock(b)}
                 onUpload={onUpload}
@@ -1404,11 +1423,13 @@ function EditorPanel({
 
 function BlockEditor({
   block,
+  pagePrimaryColor,
   onChange,
   onSave,
   onUpload,
 }: {
   block: LinkPageBlockRecord;
+  pagePrimaryColor: string;
   onChange: (patch: Partial<LinkPageBlockRecord>) => void;
   onSave: (block: LinkPageBlockRecord) => void;
   onUpload: (f: File, cb: (url: string) => void) => Promise<void>;
@@ -1416,6 +1437,9 @@ function BlockEditor({
   if (block.block_type === "spacer") {
     return <p className="text-[11px] text-white/30">Vertical spacer — drag to reposition</p>;
   }
+
+  const selectedPlatform = blockPlatform(block);
+  const isCustomPlatform = selectedPlatform === "custom";
 
   return (
     <div
@@ -1430,35 +1454,70 @@ function BlockEditor({
         <>
           <FormInput value={block.label} onChange={(e) => onChange({ label: e.target.value })} placeholder="Label" />
           <FormInput value={block.url} onChange={(e) => onChange({ url: e.target.value })} placeholder="https://…" />
-          <div className="space-y-1">
-            <p className="text-[10px] text-white/30">Platform icon</p>
-            <div className="flex flex-wrap gap-1">
-              {LINK_PAGE_PLATFORMS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  title={p.label}
-                  onClick={() => {
-                    const patch: Partial<LinkPageBlockRecord> = { icon: p.icon };
-                    if (p.id !== "custom" && p.urlPrefix && !block.url) {
-                      patch.label = block.label || p.label;
-                      patch.url = p.urlPrefix;
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Platform</p>
+            <div className="flex flex-wrap gap-1.5">
+              {LINK_PAGE_PLATFORMS.map((p) => {
+                const branding = PLATFORM_BRANDING[p.id];
+                const selected = selectedPlatform === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    title={p.label}
+                    onClick={() => {
+                      const patch: Partial<LinkPageBlockRecord> = {
+                        platform: p.id,
+                        icon: p.id === "custom" ? block.icon || "🔗" : p.icon,
+                      };
+                      if (p.id !== "custom" && p.urlPrefix && !block.url) {
+                        patch.label = block.label || p.label;
+                        patch.url = p.urlPrefix;
+                      }
+                      onChange(patch);
+                    }}
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-medium transition-colors",
+                      selected ? "text-white" : "text-white/55 hover:text-white/80"
+                    )}
+                    style={
+                      selected
+                        ? {
+                            background: branding.pillColor,
+                            borderColor: branding.pillColor,
+                            color: p.id === "snapchat" ? "#000" : "#fff",
+                          }
+                        : { borderColor: BORDER, background: "rgba(255,255,255,0.03)" }
                     }
-                    onChange(patch);
-                  }}
-                  className={cn(
-                    "inline-flex h-8 w-8 items-center justify-center rounded-lg border text-base transition-colors",
-                    block.icon === p.icon
-                      ? "border-pink-500/40 bg-pink-500/10"
-                      : "border-white/10 hover:border-pink-500/30"
-                  )}
-                >
-                  {p.icon}
-                </button>
-              ))}
+                  >
+                    <span
+                      className="h-2 w-2 shrink-0 rounded-full"
+                      style={{ background: branding.pillColor }}
+                      aria-hidden="true"
+                    />
+                    <span>{p.icon}</span>
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
-          <FormInput value={block.icon} onChange={(e) => onChange({ icon: e.target.value })} placeholder="Icon (emoji or text)" />
+          {isCustomPlatform ? (
+            <>
+              <Field label="Button color">
+                <NativeColorSwatch
+                  value={block.custom_button_color || pagePrimaryColor}
+                  fallback={pagePrimaryColor || ACCENT}
+                  onChange={(v) => onChange({ custom_button_color: v })}
+                />
+              </Field>
+              <FormInput
+                value={block.icon && block.icon !== "custom" ? block.icon : "🔗"}
+                onChange={(e) => onChange({ icon: e.target.value || "🔗" })}
+                placeholder="Icon emoji"
+              />
+            </>
+          ) : null}
           {block.block_type === "link" ? (
             <FormInput value={block.sublabel} onChange={(e) => onChange({ sublabel: e.target.value })} placeholder="Sublabel (optional)" />
           ) : null}

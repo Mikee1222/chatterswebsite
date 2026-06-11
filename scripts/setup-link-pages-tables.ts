@@ -119,6 +119,7 @@ function linkPagesFields(): Array<Record<string, unknown>> {
     { name: "custom_domain", type: "singleLineText" },
     { name: "show_powered_by", type: "checkbox", options: { ...checkboxOptions } },
     { name: "meta_description", type: "multilineText" },
+    { name: "verified", type: "checkbox", options: { ...checkboxOptions } },
     { name: "created_at", type: "dateTime", options: { ...datetimeOptions } },
     { name: "updated_at", type: "dateTime", options: { ...datetimeOptions } },
   ];
@@ -162,6 +163,8 @@ function linkPageBlocksFields(): Array<Record<string, unknown>> {
         ],
       },
     },
+    { name: "platform", type: "singleLineText" },
+    { name: "custom_button_color", type: "singleLineText" },
     { name: "photo_urls", type: "multilineText" },
     { name: "countdown_target", type: "dateTime", options: { ...datetimeOptions } },
     { name: "heading_text", type: "singleLineText" },

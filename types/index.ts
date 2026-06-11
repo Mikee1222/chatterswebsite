@@ -1286,6 +1286,7 @@ export interface LinkPageRecord {
   custom_domain: string;
   show_powered_by: boolean;
   meta_description: string;
+  verified: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -1302,6 +1303,8 @@ export interface LinkPageBlockRecord {
   icon: string;
   sublabel: string;
   style: LinkPageBlockStyle;
+  platform: string;
+  custom_button_color: string;
   photo_urls: string[];
   countdown_target: string | null;
   heading_text: string;

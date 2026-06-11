@@ -44,6 +44,7 @@ type PageFields = {
   custom_domain?: string;
   show_powered_by?: boolean;
   meta_description?: string;
+  verified?: boolean;
   created_at?: string;
   updated_at?: string;
 };
@@ -59,6 +60,8 @@ type BlockFields = {
   icon?: string;
   sublabel?: string;
   style?: string;
+  platform?: string;
+  custom_button_color?: string;
   photo_urls?: string;
   countdown_target?: string;
   heading_text?: string;
@@ -116,6 +119,7 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
     custom_domain: f.custom_domain ?? "",
     show_powered_by: f.show_powered_by === true,
     meta_description: f.meta_description ?? "",
+    verified: f.verified === true,
     created_at: f.created_at ?? rec.createdTime ?? "",
     updated_at: f.updated_at ?? "",
   };
@@ -143,6 +147,8 @@ function mapBlock(rec: AirtableRecord<BlockFields>): LinkPageBlockRecord {
     icon: f.icon ?? "",
     sublabel: f.sublabel ?? "",
     style,
+    platform: f.platform ?? "",
+    custom_button_color: f.custom_button_color ?? "",
     photo_urls: parsePhotoUrls(f.photo_urls),
     countdown_target: f.countdown_target ?? null,
     heading_text: f.heading_text ?? "",
@@ -307,6 +313,7 @@ export async function createLinkPage(input: CreateLinkPageInput = {}): Promise<L
     custom_domain: "",
     show_powered_by: false,
     meta_description: "",
+    verified: false,
     created_at: now,
     updated_at: now,
   };
@@ -333,6 +340,7 @@ export type UpdateLinkPageInput = Partial<
     | "custom_domain"
     | "show_powered_by"
     | "meta_description"
+    | "verified"
   >
 >;
 
@@ -353,6 +361,7 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
   if (input.custom_domain !== undefined) patch.custom_domain = input.custom_domain.trim().toLowerCase();
   if (input.show_powered_by !== undefined) patch.show_powered_by = input.show_powered_by;
   if (input.meta_description !== undefined) patch.meta_description = input.meta_description;
+  if (input.verified !== undefined) patch.verified = input.verified;
 
   const rec = await updateRecord<PageFields>(LINK_PAGES_TABLE, recordId, bumpUpdatedAt(patch));
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
@@ -426,6 +435,8 @@ export type UpsertBlockInput = {
   icon?: string;
   sublabel?: string;
   style?: LinkPageBlockStyle;
+  platform?: string;
+  custom_button_color?: string;
   photo_urls?: string[];
   countdown_target?: string | null;
   heading_text?: string;
@@ -448,6 +459,8 @@ export async function upsertBlock(
     icon: input.icon ?? "",
     sublabel: input.sublabel ?? "",
     style: input.style ?? "default",
+    platform: input.platform ?? "",
+    custom_button_color: input.custom_button_color ?? "",
     photo_urls: serializePhotoUrls(input.photo_urls),
     countdown_target: input.countdown_target ?? undefined,
     heading_text: input.heading_text ?? "",
@@ -511,6 +524,8 @@ export async function duplicateLinkPage(recordId: string): Promise<LinkPageRecor
       icon: b.icon,
       sublabel: b.sublabel,
       style: b.style,
+      platform: b.platform,
+      custom_button_color: b.custom_button_color,
       photo_urls: b.photo_urls,
       countdown_target: b.countdown_target,
       heading_text: b.heading_text,

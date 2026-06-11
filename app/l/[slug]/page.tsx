@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { headers as getRequestHeaders } from "next/headers";
 import { getLinkPageBySlug } from "@/services/link-pages";
 import { trackPageView, extractClientIp } from "@/services/link-page-analytics";
-import { linkPageThemeCss } from "@/lib/link-page-styles";
+import { linkPageThemeCss, renderBrandedLinkHtml, verifiedBadgeHtml } from "@/lib/link-page-styles";
 import type { LinkPageBlockRecord, LinkPageWithBlocks } from "@/types";
 
 export const dynamic = "force-dynamic";
@@ -48,19 +48,8 @@ function clickUrl(pageId: string, blockId: string, url: string): string {
 }
 
 function renderLinkBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): string {
-  const styleClass = block.style !== "default" ? ` style-${block.style}` : "";
   const href = block.url ? clickUrl(page.page_id, block.block_id, block.url) : "#";
-  const icon = block.icon ? `<span class="link-icon" aria-hidden="true">${escapeHtml(block.icon)}</span>` : "";
-  const isCard = block.style === "card";
-
-  return `<a class="block-link${styleClass}" href="${escapeHtml(href)}" rel="noopener noreferrer">
-    ${!isCard ? icon : ""}
-    <div class="link-content">
-      ${isCard && icon ? icon : ""}
-      <div class="link-label">${escapeHtml(block.label || block.url || "Link")}</div>
-      ${block.sublabel ? `<div class="link-sublabel">${escapeHtml(block.sublabel)}</div>` : ""}
-    </div>
-  </a>`;
+  return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml);
 }
 
 function renderBlock(page: LinkPageWithBlocks, block: LinkPageBlockRecord): string {
@@ -181,7 +170,12 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
             </div>
           )}
         </div>
-        <h1 className="title">{page.title}</h1>
+        <div className="title-row">
+          <h1 className="title">{page.title}</h1>
+          {page.verified ? (
+            <span dangerouslySetInnerHTML={{ __html: verifiedBadgeHtml() }} />
+          ) : null}
+        </div>
         {page.bio ? <p className="bio">{page.bio}</p> : null}
         <div className="blocks" dangerouslySetInnerHTML={{ __html: blocksHtml }} />
         {page.show_powered_by ? <p className="powered-by">Powered by Link Pages</p> : null}

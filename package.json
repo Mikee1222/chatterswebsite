@@ -34,6 +34,7 @@
     "create:model-groups-table": "tsx scripts/create-model-groups-table.ts",
     "add:custom-requests-audit-fields": "tsx scripts/add-custom-requests-audit-fields.ts",
     "setup:link-pages-tables": "tsx scripts/setup-link-pages-tables.ts",
+    "add:link-pages-fields": "tsx scripts/add-link-pages-fields.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "wrangler d1 execute chatter-d1 --remote --file=./drizzle/migrations/0000_initial.sql",
     "db:studio": "drizzle-kit studio",
