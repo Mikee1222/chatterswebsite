@@ -51,12 +51,6 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark">
-      <head>
-        <link rel="apple-touch-icon" href="/apple-touch-icon-v2.png" />
-        <link rel="icon" type="image/png" sizes="192x192" href="/icon-192-v2.png" />
-        <link rel="icon" type="image/png" sizes="512x512" href="/icon-512-v2.png" />
-        <link rel="manifest" href="/manifest.json" />
-      </head>
       <body className="min-h-screen text-[hsl(0,0%,98%)]">
         {children}
         <ToasterProvider />

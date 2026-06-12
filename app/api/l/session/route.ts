@@ -27,8 +27,7 @@ export async function POST(request: Request) {
     });
 
     return Response.json({ ok: true });
-  } catch (err) {
-    console.error("[l/session] error:", err);
+  } catch {
     return Response.json({ ok: false }, { status: 500 });
   }
 }

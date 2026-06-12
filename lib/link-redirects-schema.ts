@@ -20,7 +20,7 @@ export const LINK_REDIRECT_FIELDS = {
 export function buildRedirectPublicUrl(
   page: { slug: string; custom_domain?: string },
   redirectSlug: string,
-  origin = "https://gunzoteam.com"
+  origin = "https://www.gunzoteam.com"
 ): string {
   const slug = redirectSlug.trim();
   const domain = page.custom_domain?.trim().toLowerCase().replace(/^www\./, "");

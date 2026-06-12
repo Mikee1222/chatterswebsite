@@ -1,5 +1,13 @@
 import { writeEnhancedEvent, extractClientIp } from "@/services/link-page-analytics";
+import { getLinkPageBySlug } from "@/services/link-pages";
 import type { LinkPageAnalyticsEventType } from "@/types";
+
+async function resolvePageId(pageParam: string): Promise<string> {
+  const trimmed = pageParam.trim();
+  if (!trimmed) return "";
+  const bySlug = await getLinkPageBySlug(trimmed);
+  return bySlug?.page_id ?? trimmed;
+}
 
 type TrackBody = {
   page_id?: string;
@@ -17,12 +25,14 @@ type TrackBody = {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as TrackBody;
-    const pageId = body.page_id?.trim() ?? "";
+    const pageParam = body.page_id?.trim() ?? "";
     const visitorId = body.visitor_id?.trim() ?? "";
 
-    if (!pageId || !visitorId) {
+    if (!pageParam || !visitorId) {
       return Response.json({ ok: false });
     }
+
+    const pageId = await resolvePageId(pageParam);
 
     const eventType: LinkPageAnalyticsEventType =
       body.event_type === "link_click" ? "link_click" : "page_view";

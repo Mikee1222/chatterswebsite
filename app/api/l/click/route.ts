@@ -2,28 +2,37 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import { trackLinkClick, extractClientIp } from "@/services/link-page-analytics";
 import { trackAbEvent } from "@/services/link-ab-testing";
+import { getLinkPageBySlug } from "@/services/link-pages";
 import type { LinkPageAbVariant } from "@/types";
+
+async function resolvePageId(pageParam: string): Promise<string> {
+  const trimmed = pageParam.trim();
+  if (!trimmed) return "";
+  const bySlug = await getLinkPageBySlug(trimmed);
+  return bySlug?.page_id ?? trimmed;
+}
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const pageId = url.searchParams.get("page")?.trim() ?? "";
+  const pageParam = url.searchParams.get("page")?.trim() ?? "";
   const blockId = url.searchParams.get("block")?.trim() ?? "";
   const targetUrl = url.searchParams.get("url")?.trim() ?? "";
 
   if (!targetUrl) {
-    return NextResponse.json({ error: "Missing url" }, { status: 400 });
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 
   let parsed: URL;
   try {
     parsed = new URL(targetUrl);
     if (!["http:", "https:"].includes(parsed.protocol)) {
-      return NextResponse.json({ error: "Invalid url" }, { status: 400 });
+      return NextResponse.json({ error: "Bad request" }, { status: 400 });
     }
   } catch {
-    return NextResponse.json({ error: "Invalid url" }, { status: 400 });
+    return NextResponse.json({ error: "Bad request" }, { status: 400 });
   }
 
+  const pageId = await resolvePageId(pageParam);
   const hdrs = await headers();
   const sessionId = url.searchParams.get("session") ?? "";
   const visitorId = url.searchParams.get("visitor") ?? "";

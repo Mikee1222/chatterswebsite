@@ -90,20 +90,32 @@ function escapeHtml(s: string): string {
     .replace(/'/g, "&#39;");
 }
 
+function linkPagePublicUrl(page: Pick<LinkPageWithBlocks, "slug" | "custom_domain">): string {
+  const domain = page.custom_domain?.trim().toLowerCase().replace(/^www\./, "");
+  if (domain) return `https://${domain}`;
+  return `https://www.gunzoteam.com/l/${encodeURIComponent(page.slug)}`;
+}
+
+function clickBaseUrl(page: Pick<LinkPageWithBlocks, "custom_domain">): string {
+  const domain = page.custom_domain?.trim().toLowerCase().replace(/^www\./, "");
+  return domain ? `https://${domain}` : "";
+}
+
 function clickUrl(
-  pageId: string,
+  pageSlug: string,
   blockId: string,
   url: string,
+  baseUrl: string,
   variant?: LinkPageAbVariant,
   abEnabled?: boolean
 ): string {
-  const params = new URLSearchParams({ page: pageId, block: blockId, url });
+  const params = new URLSearchParams({ page: pageSlug, block: blockId, url });
   if (abEnabled && variant) params.set("variant", variant);
-  return `/api/l/click?${params.toString()}`;
+  return `${baseUrl}/api/l/click?${params.toString()}`;
 }
 
-function fingerprintTrackingScript(pageId: string): string {
-  const pid = pageId.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+function fingerprintTrackingScript(pageSlug: string): string {
+  const slug = pageSlug.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
   return `(function(){
   if(window.location.search.includes('preview=true'))return;
   function getFingerprint(){
@@ -138,7 +150,7 @@ function fingerprintTrackingScript(pageId: string): string {
     }
   }
   function getSessionId(){
-    var sessionKey='lp_session_${pid}';
+    var sessionKey='lp_session_${slug}';
     var now=Date.now();
     try{
       var lastActivity=localStorage.getItem(sessionKey+'_ts');
@@ -163,7 +175,7 @@ function fingerprintTrackingScript(pageId: string): string {
     method:'POST',
     headers:{'Content-Type':'application/json'},
     body:JSON.stringify({
-      page_id:'${pid}',
+      page_id:'${slug}',
       visitor_id:visitor.id,
       session_id:session.id,
       is_new_visitor:visitor.isNew,
@@ -197,13 +209,13 @@ const LINK_CLICK_TRACKING_SCRIPT = `(function(){
 function renderLinkBlock(
   page: LinkPageWithBlocks,
   block: LinkPageBlockRecord,
-  sessionId: string,
-  controlPageId: string,
+  pageSlug: string,
+  clickOrigin: string,
   variant: LinkPageAbVariant,
   abEnabled: boolean
 ): string {
   const href = block.url
-    ? clickUrl(controlPageId, block.block_id, block.url, variant, abEnabled)
+    ? clickUrl(pageSlug, block.block_id, block.url, clickOrigin, variant, abEnabled)
     : "#";
   return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml);
 }
@@ -211,8 +223,8 @@ function renderLinkBlock(
 function renderBlock(
   page: LinkPageWithBlocks,
   block: LinkPageBlockRecord,
-  sessionId: string,
-  controlPageId: string,
+  pageSlug: string,
+  clickOrigin: string,
   variant: LinkPageAbVariant,
   abEnabled: boolean
 ): string {
@@ -220,7 +232,7 @@ function renderBlock(
 
   switch (block.block_type) {
     case "link":
-      return renderLinkBlock(page, block, sessionId, controlPageId, variant, abEnabled);
+      return renderLinkBlock(page, block, pageSlug, clickOrigin, variant, abEnabled);
     case "heading":
       return `<div class="block-heading">${escapeHtml(block.heading_text || block.label || "")}</div>`;
     case "bio_text":
@@ -242,7 +254,7 @@ function renderBlock(
       const urls = block.photo_urls.length ? block.photo_urls : block.url ? [block.url] : [];
       const items = urls
         .map((u) => {
-          const href = clickUrl(controlPageId, block.block_id, u, variant, abEnabled);
+          const href = clickUrl(pageSlug, block.block_id, u, clickOrigin, variant, abEnabled);
           return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" data-lp-click="1" title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
         })
         .join("");
@@ -301,14 +313,18 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   }
 
   const desc = page.meta_description || page.bio || page.title;
+  const pageUrl = linkPagePublicUrl(page);
   return {
     title: isPreview ? `${page.title} (Preview)` : page.title,
     description: desc,
     robots: { index: false, follow: false },
+    alternates: { canonical: pageUrl },
     openGraph: {
       title: page.title,
       description: desc,
       type: "profile",
+      url: pageUrl,
+      siteName: page.title,
       images: page.profile_photo_url ? [{ url: page.profile_photo_url }] : undefined,
     },
     twitter: {
@@ -384,8 +400,9 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
   }
 
   const sortedBlocks = [...activePage.blocks].sort((a, b) => a.sort_order - b.sort_order);
+  const clickOrigin = clickBaseUrl(controlPage);
   const blocksHtml = sortedBlocks
-    .map((b) => renderBlock(activePage, b, sessionId, controlPage.page_id, variant, abEnabled))
+    .map((b) => renderBlock(activePage, b, controlPage.slug, clickOrigin, variant, abEnabled))
     .join("\n");
   const hasCountdown = sortedBlocks.some((b) => b.block_type === "countdown" && b.is_visible);
   const initial = (activePage.title || "?").charAt(0).toUpperCase();
@@ -482,7 +499,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
               }}
             />
           ) : null}
-          <script dangerouslySetInnerHTML={{ __html: fingerprintTrackingScript(controlPage.page_id) }} />
+          <script dangerouslySetInnerHTML={{ __html: fingerprintTrackingScript(controlPage.slug) }} />
           <script dangerouslySetInnerHTML={{ __html: LINK_CLICK_TRACKING_SCRIPT }} />
         </>
       ) : null}

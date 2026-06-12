@@ -1444,7 +1444,12 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   }
 
   function copyRedirectUrl(page: LinkPageRecord, redirectSlug: string) {
-    const origin = typeof window !== "undefined" ? window.location.origin : "https://gunzoteam.com";
+    const origin =
+      typeof window !== "undefined"
+        ? window.location.origin
+        : page.custom_domain
+          ? `https://${page.custom_domain.replace(/^www\./, "")}`
+          : "https://www.gunzoteam.com";
     const url = buildRedirectPublicUrl(page, redirectSlug, origin);
     void navigator.clipboard.writeText(url);
     addToast(localToast("Copied", "Short URL copied to clipboard", "normal"));
@@ -1487,7 +1492,9 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const editingPage = selectedPage && draft ? { ...selectedPage, ...draft } : selectedPage;
 
   const publicUrl = saved?.slug
-    ? `${typeof window !== "undefined" ? window.location.origin : ""}${ROUTES.linkPage(saved.slug)}`
+    ? selectedPage?.custom_domain
+      ? `https://${selectedPage.custom_domain.replace(/^www\./, "")}`
+      : `https://www.gunzoteam.com/l/${encodeURIComponent(saved.slug)}`
     : "";
 
   const previewUrl = saved?.slug

@@ -49,8 +49,15 @@ function isGunzoDomain(host: string): boolean {
 
 const CUSTOM_DOMAIN_404_HTML = `<!DOCTYPE html>
 <html lang="en">
-<head><meta charset="utf-8"><title>404 Not Found</title></head>
-<body><h1>404 Not Found</h1><p>The page you requested could not be found.</p></body>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>404</title>
+<style>
+body{margin:0;background:#0a0a0a;color:rgba(255,255,255,0.65);font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100dvh;text-align:center;font-size:0.875rem;-webkit-font-smoothing:antialiased}
+</style>
+</head>
+<body><p>404 · Page not found</p></body>
 </html>`;
 
 export async function middleware(request: NextRequest) {
