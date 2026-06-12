@@ -12,7 +12,18 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const days = Number.parseInt(url.searchParams.get("days") ?? "1", 10);
-  const summary = await getGlobalAnalytics(Number.isFinite(days) && days > 0 ? days : 1);
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const days = Number.parseInt(url.searchParams.get("days") ?? "30", 10);
+  const effectiveDays = Number.isFinite(days) && days > 0 ? days : 30;
+
+  const summary =
+    from && to
+      ? await getGlobalAnalytics({
+          from: new Date(from),
+          to: new Date(`${to}T23:59:59`),
+        })
+      : await getGlobalAnalytics({ days: effectiveDays });
+
   return NextResponse.json({ summary });
 }

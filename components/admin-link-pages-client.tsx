@@ -945,8 +945,8 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     () => new Set(["identity", "profile", "appearance", "blocks", "redirects"])
   );
   const [pageStatsMap, setPageStatsMap] = React.useState<Record<string, { views: number; clicks: number }>>({});
-  const [analyticsDays, setAnalyticsDays] = React.useState(1);
-  const [globalAnalyticsDays, setGlobalAnalyticsDays] = React.useState(1);
+  const [analyticsRange, setAnalyticsRange] = React.useState<AnalyticsDateRange>({ type: "preset", days: 1 });
+  const [globalAnalyticsRange, setGlobalAnalyticsRange] = React.useState<AnalyticsDateRange>({ type: "preset", days: 1 });
   const [abTest, setAbTest] = React.useState<AbTestResults | null>(null);
   const [abTestLoading, setAbTestLoading] = React.useState(false);
   const [abSetupOpen, setAbSetupOpen] = React.useState(false);
@@ -1130,10 +1130,14 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     [selectedId]
   );
 
-  const loadAnalytics = React.useCallback(async (id: string, days = analyticsDays) => {
+  const loadAnalytics = React.useCallback(async (id: string, range = analyticsRange) => {
     try {
+      const analyticsUrl = buildAnalyticsQueryUrl(
+        `/api/admin/link-pages/${encodeURIComponent(id)}/analytics`,
+        range
+      );
       const [aRes, rRes] = await Promise.all([
-        fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/analytics?days=${days}`),
+        fetch(analyticsUrl),
         fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/analytics/realtime`),
       ]);
       const aData = (await aRes.json()) as { summary?: AnalyticsSummary };
@@ -1143,11 +1147,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     } catch {
       setAnalytics(null);
     }
-  }, [analyticsDays]);
+  }, [analyticsRange]);
 
   React.useEffect(() => {
-    if (selectedId) void loadAnalytics(selectedId, analyticsDays);
-  }, [selectedId, analyticsDays, loadAnalytics]);
+    if (selectedId) void loadAnalytics(selectedId, analyticsRange);
+  }, [selectedId, analyticsRange, loadAnalytics]);
 
   const loadAbTest = React.useCallback(async (id: string) => {
     setAbTestLoading(true);
@@ -1179,19 +1183,19 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
 
 
   React.useEffect(() => {
-    if (tab === "analytics" && selectedId) void loadAnalytics(selectedId, analyticsDays);
-  }, [tab, selectedId, analyticsDays, loadAnalytics]);
+    if (tab === "analytics" && selectedId) void loadAnalytics(selectedId, analyticsRange);
+  }, [tab, selectedId, analyticsRange, loadAnalytics]);
 
   React.useEffect(() => {
     if (tab !== "analytics" || !selectedId) return;
-    const t = setInterval(() => void loadAnalytics(selectedId, analyticsDays), 30_000);
+    const t = setInterval(() => void loadAnalytics(selectedId, analyticsRange), 30_000);
     return () => clearInterval(t);
-  }, [tab, selectedId, analyticsDays, loadAnalytics]);
+  }, [tab, selectedId, analyticsRange, loadAnalytics]);
 
-  const loadGlobalAnalytics = React.useCallback(async (days = globalAnalyticsDays) => {
+  const loadGlobalAnalytics = React.useCallback(async (range = globalAnalyticsRange) => {
     setGlobalAnalyticsLoading(true);
     try {
-      const res = await fetch(`/api/admin/link-pages/analytics/global?days=${days}`);
+      const res = await fetch(buildAnalyticsQueryUrl("/api/admin/link-pages/analytics/global", range));
       const data = (await res.json()) as { summary?: GlobalAnalyticsSummary; error?: string };
       if (!res.ok) throw new Error(data.error ?? "Failed to load global analytics");
       setGlobalAnalytics(data.summary ?? null);
@@ -1209,11 +1213,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     } finally {
       setGlobalAnalyticsLoading(false);
     }
-  }, [addToast, globalAnalyticsDays]);
+  }, [addToast, globalAnalyticsRange]);
 
   React.useEffect(() => {
-    if (globalAnalyticsOpen) void loadGlobalAnalytics(globalAnalyticsDays);
-  }, [globalAnalyticsOpen, globalAnalyticsDays, loadGlobalAnalytics]);
+    if (globalAnalyticsOpen) void loadGlobalAnalytics(globalAnalyticsRange);
+  }, [globalAnalyticsOpen, globalAnalyticsRange, loadGlobalAnalytics]);
 
   async function createPage() {
     setSaving(true);
@@ -1642,13 +1646,13 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             summary={globalAnalytics}
             loading={globalAnalyticsLoading}
             pages={pages}
-            days={globalAnalyticsDays}
-            onDaysChange={setGlobalAnalyticsDays}
+            days={globalAnalyticsRange}
+            onDaysChange={setGlobalAnalyticsRange}
             onSelectPage={(id) => {
               setSelectedId(id);
               setGlobalAnalyticsOpen(false);
             }}
-            onRefresh={() => void loadGlobalAnalytics(globalAnalyticsDays)}
+            onRefresh={() => void loadGlobalAnalytics(globalAnalyticsRange)}
           />
         </main>
       ) : (
@@ -1791,8 +1795,8 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                         summary={analytics}
                         realtime={realtime}
                         pageTitle={selectedPage.title}
-                        days={analyticsDays}
-                        onDaysChange={setAnalyticsDays}
+                        days={analyticsRange}
+                        onDaysChange={setAnalyticsRange}
                       />
                     </div>
                   ) : (
@@ -3322,6 +3326,81 @@ function BlockEditor({
   );
 }
 
+type AnalyticsDateRange =
+  | { type: "preset"; days: number }
+  | { type: "custom"; from: string; to: string };
+
+function buildAnalyticsQueryUrl(base: string, range: AnalyticsDateRange): string {
+  if (range.type === "custom") {
+    return `${base}?from=${encodeURIComponent(range.from)}&to=${encodeURIComponent(range.to)}`;
+  }
+  return `${base}?days=${range.days}`;
+}
+
+function analyticsTodayYmd(): string {
+  return new Date().toISOString().split("T")[0]!;
+}
+
+function analyticsStartOfWeekYmd(): string {
+  const d = new Date();
+  const dow = d.getDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + mondayOffset);
+  return d.toISOString().split("T")[0]!;
+}
+
+function analyticsStartOfMonthYmd(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().split("T")[0]!;
+}
+
+function analyticsLastMonthStartYmd(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth() - 1, 1).toISOString().split("T")[0]!;
+}
+
+function analyticsLastMonthEndYmd(): string {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), 0).toISOString().split("T")[0]!;
+}
+
+function analyticsLastWeekStartYmd(): string {
+  const d = new Date(analyticsStartOfWeekYmd());
+  d.setDate(d.getDate() - 7);
+  return d.toISOString().split("T")[0]!;
+}
+
+function analyticsLastWeekEndYmd(): string {
+  const d = new Date(analyticsStartOfWeekYmd());
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().split("T")[0]!;
+}
+
+function analyticsMinus90DaysYmd(): string {
+  const d = new Date();
+  d.setDate(d.getDate() - 90);
+  return d.toISOString().split("T")[0]!;
+}
+
+function formatAnalyticsDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("el-GR", {
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function analyticsRangeLabel(range: AnalyticsDateRange): string {
+  if (range.type === "custom") {
+    return `${formatAnalyticsDate(range.from)} – ${formatAnalyticsDate(range.to)}`;
+  }
+  if (range.days === 1) return "Today";
+  return `Last ${range.days} days`;
+}
+
+function isPresetRangeActive(range: AnalyticsDateRange, days: number): boolean {
+  return range.type === "preset" && range.days === days;
+}
+
 const ANALYTICS_DAY_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 1, label: "Today" },
   { value: 7, label: "7d" },
@@ -3329,32 +3408,202 @@ const ANALYTICS_DAY_OPTIONS: Array<{ value: number; label: string }> = [
   { value: 90, label: "90d" },
 ];
 
-function AnalyticsDaysPicker({
-  days,
-  onDaysChange,
+const ANALYTICS_QUICK_PRESETS: Array<{ label: string; from: () => string; to: () => string }> = [
+  { label: "This week", from: analyticsStartOfWeekYmd, to: analyticsTodayYmd },
+  { label: "Last week", from: analyticsLastWeekStartYmd, to: analyticsLastWeekEndYmd },
+  { label: "This month", from: analyticsStartOfMonthYmd, to: analyticsTodayYmd },
+  { label: "Last month", from: analyticsLastMonthStartYmd, to: analyticsLastMonthEndYmd },
+  { label: "Last 3 months", from: analyticsMinus90DaysYmd, to: analyticsTodayYmd },
+];
+
+function AnalyticsDateRangePicker({
+  range,
+  onRangeChange,
 }: {
-  days: number;
-  onDaysChange: (days: number) => void;
+  range: AnalyticsDateRange;
+  onRangeChange: (range: AnalyticsDateRange) => void;
 }) {
+  const today = analyticsTodayYmd();
+  const [selectedDays, setSelectedDays] = React.useState<number | "custom">(
+    range.type === "preset" ? range.days : "custom"
+  );
+  const [customDateFrom, setCustomDateFrom] = React.useState(range.type === "custom" ? range.from : "");
+  const [customDateTo, setCustomDateTo] = React.useState(range.type === "custom" ? range.to : "");
+  const [appliedRange, setAppliedRange] = React.useState<{ from: string; to: string } | null>(
+    range.type === "custom" ? { from: range.from, to: range.to } : null
+  );
+  const [showCustomPicker, setShowCustomPicker] = React.useState(false);
+
+  React.useEffect(() => {
+    if (range.type === "preset") {
+      setSelectedDays(range.days);
+      setAppliedRange(null);
+      setShowCustomPicker(false);
+    } else {
+      setSelectedDays("custom");
+      setCustomDateFrom(range.from);
+      setCustomDateTo(range.to);
+      setAppliedRange({ from: range.from, to: range.to });
+    }
+  }, [range]);
+
+  const handlePresetClick = (days: number) => {
+    setSelectedDays(days);
+    setShowCustomPicker(false);
+    setAppliedRange(null);
+    onRangeChange({ type: "preset", days });
+  };
+
+  const handleCustomClick = () => {
+    setSelectedDays("custom");
+    setShowCustomPicker(true);
+    if (!customDateFrom) setCustomDateFrom(analyticsMinus90DaysYmd());
+    if (!customDateTo) setCustomDateTo(today);
+  };
+
+  const handleApplyCustomRange = () => {
+    if (!customDateFrom || !customDateTo) return;
+    const next = { from: customDateFrom, to: customDateTo };
+    setAppliedRange(next);
+    setShowCustomPicker(false);
+    onRangeChange({ type: "custom", ...next });
+  };
+
+  const clearCustomRange = () => {
+    setAppliedRange(null);
+    setCustomDateFrom("");
+    setCustomDateTo("");
+    setShowCustomPicker(false);
+    setSelectedDays(30);
+    onRangeChange({ type: "preset", days: 30 });
+  };
+
+  const customPillLabel =
+    appliedRange != null
+      ? `${formatAnalyticsDate(appliedRange.from)} – ${formatAnalyticsDate(appliedRange.to)}`
+      : "Custom";
+
+  const customActive = range.type === "custom" || showCustomPicker;
+
   return (
-    <div className="flex flex-wrap gap-2">
-      {ANALYTICS_DAY_OPTIONS.map(({ value, label }) => (
+    <div className="flex flex-col items-end gap-3">
+      <div className="flex flex-wrap justify-end gap-2">
+        {ANALYTICS_DAY_OPTIONS.map(({ value, label }) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => handlePresetClick(value)}
+            className={cn(
+              "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
+              isPresetRangeActive(range, value) ? "border-pink-500/40 text-pink-200" : "text-white/50 hover:text-white/80"
+            )}
+            style={{
+              background: isPresetRangeActive(range, value) ? "rgba(236,72,153,0.12)" : BG,
+              borderColor: isPresetRangeActive(range, value) ? ACCENT : BORDER,
+            }}
+          >
+            {label}
+          </button>
+        ))}
         <button
-          key={value}
           type="button"
-          onClick={() => onDaysChange(value)}
+          onClick={handleCustomClick}
           className={cn(
             "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-            days === value ? "border-pink-500/40 text-pink-200" : "text-white/50 hover:text-white/80"
+            customActive ? "border-pink-500/40 text-pink-200" : "text-white/50 hover:text-white/80"
           )}
           style={{
-            background: days === value ? "rgba(236,72,153,0.12)" : BG,
-            borderColor: days === value ? ACCENT : BORDER,
+            background: customActive ? "rgba(236,72,153,0.12)" : BG,
+            borderColor: customActive ? ACCENT : BORDER,
           }}
         >
-          {label}
+          {customPillLabel}
         </button>
-      ))}
+      </div>
+
+      {showCustomPicker ? (
+        <div
+          className="flex w-full max-w-md flex-col gap-4 rounded-2xl border p-5"
+          style={{ background: PANEL, borderColor: "#1a1a1a" }}
+        >
+          <p className="m-0 text-sm font-semibold text-white">Custom date range</p>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-xs text-[#6b7280]">From</label>
+              <input
+                type="date"
+                value={customDateFrom}
+                max={customDateTo || today}
+                onChange={(e) => setCustomDateFrom(e.target.value)}
+                className="w-full cursor-pointer rounded-[10px] border border-[#333] bg-[#111] px-3.5 py-2.5 text-sm text-white [color-scheme:dark]"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs text-[#6b7280]">To</label>
+              <input
+                type="date"
+                value={customDateTo}
+                min={customDateFrom}
+                max={today}
+                onChange={(e) => setCustomDateTo(e.target.value)}
+                className="w-full cursor-pointer rounded-[10px] border border-[#333] bg-[#111] px-3.5 py-2.5 text-sm text-white [color-scheme:dark]"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="m-0 self-center text-xs text-[#6b7280]">Quick:</p>
+            {ANALYTICS_QUICK_PRESETS.map((preset) => (
+              <button
+                key={preset.label}
+                type="button"
+                onClick={() => {
+                  setCustomDateFrom(preset.from());
+                  setCustomDateTo(preset.to());
+                }}
+                className="cursor-pointer rounded-md border border-[#333] bg-[#111] px-2.5 py-1 text-xs text-[#9ca3af] transition-colors hover:text-white"
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+
+          <button
+            type="button"
+            onClick={handleApplyCustomRange}
+            disabled={!customDateFrom || !customDateTo}
+            className="rounded-[10px] border-none px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
+            style={{ background: ACCENT }}
+          >
+            Apply range
+          </button>
+
+          {appliedRange ? (
+            <div
+              className="flex items-center gap-2 rounded-lg border px-3 py-2"
+              style={{
+                background: "rgba(236,72,153,0.1)",
+                borderColor: "rgba(236,72,153,0.2)",
+              }}
+            >
+              <span className="text-[13px]" style={{ color: ACCENT }}>
+                📅
+              </span>
+              <span className="text-[13px] font-medium" style={{ color: ACCENT }}>
+                {formatAnalyticsDate(appliedRange.from)} → {formatAnalyticsDate(appliedRange.to)}
+              </span>
+              <button
+                type="button"
+                onClick={clearCustomRange}
+                className="ml-auto cursor-pointer border-none bg-transparent text-xs text-[#6b7280] hover:text-white"
+              >
+                ✕ Clear
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -3648,16 +3897,17 @@ function AnalyticsPanel({
   summary,
   realtime,
   pageTitle,
-  days,
-  onDaysChange,
+  days: range,
+  onDaysChange: onRangeChange,
 }: {
   summary: AnalyticsSummary | null;
   realtime: number;
   pageTitle?: string;
-  days: number;
-  onDaysChange: (days: number) => void;
+  days: AnalyticsDateRange;
+  onDaysChange: (range: AnalyticsDateRange) => void;
 }) {
-  const trendLabel = days === 1 ? "vs yesterday" : "vs prev period";
+  const trendLabel =
+    range.type === "preset" && range.days === 1 ? "vs yesterday" : "vs prev period";
 
   const hourlyRadialData = React.useMemo(() => {
     if (!summary) return [];
@@ -3701,7 +3951,7 @@ function AnalyticsPanel({
         ) : (
           <span />
         )}
-        <AnalyticsDaysPicker days={days} onDaysChange={onDaysChange} />
+        <AnalyticsDateRangePicker range={range} onRangeChange={onRangeChange} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -4040,16 +4290,16 @@ function GlobalAnalyticsPanel({
   summary,
   loading,
   pages,
-  days,
-  onDaysChange,
+  days: range,
+  onDaysChange: onRangeChange,
   onSelectPage,
   onRefresh,
 }: {
   summary: GlobalAnalyticsSummary | null;
   loading: boolean;
   pages: LinkPageRecord[];
-  days: number;
-  onDaysChange: (days: number) => void;
+  days: AnalyticsDateRange;
+  onDaysChange: (range: AnalyticsDateRange) => void;
   onSelectPage: (id: string) => void;
   onRefresh: () => void;
 }) {
@@ -4079,7 +4329,8 @@ function GlobalAnalyticsPanel({
     });
   }, [summary]);
 
-  const trendLabel = days === 1 ? "vs yesterday" : "vs prev period";
+  const trendLabel =
+    range.type === "preset" && range.days === 1 ? "vs yesterday" : "vs prev period";
 
   const hourlyRadialData = React.useMemo(() => {
     if (!summary) return [];
@@ -4105,12 +4356,10 @@ function GlobalAnalyticsPanel({
       <div className="flex shrink-0 items-center justify-between gap-4 border-b px-6 py-4" style={{ borderColor: BORDER }}>
         <div>
           <h2 className="text-lg font-bold text-white">All Pages Analytics</h2>
-          <p className="text-xs text-white/40">
-            {days === 1 ? "Today" : `Last ${days} days`} · combined performance
-          </p>
+          <p className="text-xs text-white/40">{analyticsRangeLabel(range)} · combined performance</p>
         </div>
         <div className="flex items-center gap-3">
-          <AnalyticsDaysPicker days={days} onDaysChange={onDaysChange} />
+          <AnalyticsDateRangePicker range={range} onRangeChange={onRangeChange} />
           <button
             type="button"
             onClick={onRefresh}

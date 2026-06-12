@@ -298,6 +298,26 @@ function getPeriodBounds(days: number): { currentStart: Date; previousStart: Dat
   return { currentStart, previousStart, fetchSince: previousStart };
 }
 
+type AnalyticsRangeOptions = { days?: number; from?: Date; to?: Date };
+
+function resolvePeriodBounds(options: AnalyticsRangeOptions = {}): {
+  currentStart: Date;
+  currentEnd: Date;
+  previousStart: Date;
+  fetchSince: Date;
+} {
+  if (options.from && options.to) {
+    const currentStart = options.from;
+    const currentEnd = options.to;
+    const durationMs = Math.max(1, currentEnd.getTime() - currentStart.getTime());
+    const previousStart = new Date(currentStart.getTime() - durationMs);
+    return { currentStart, currentEnd, previousStart, fetchSince: previousStart };
+  }
+  const days = options.days ?? 1;
+  const { currentStart, previousStart, fetchSince } = getPeriodBounds(days);
+  return { currentStart, currentEnd: new Date(), previousStart, fetchSince };
+}
+
 function filterEventsInRange(events: MappedEvent[], start: Date, end?: Date): MappedEvent[] {
   const startMs = start.getTime();
   const endMs = end?.getTime();
@@ -487,9 +507,12 @@ function buildSparklineForBlock(allEvents: MappedEvent[], blockId: string): numb
 
 export { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
 
-export async function getPageAnalytics(pageId: string, days = 1): Promise<AnalyticsSummary> {
+export async function getPageAnalytics(
+  pageId: string,
+  options: AnalyticsRangeOptions = {}
+): Promise<AnalyticsSummary> {
   const pid = pageId.trim();
-  const { currentStart, previousStart, fetchSince } = getPeriodBounds(days);
+  const { currentStart, currentEnd, previousStart, fetchSince } = resolvePeriodBounds(options);
 
   const [records, blocks, redirects] = await Promise.all([
     listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
@@ -503,7 +526,7 @@ export async function getPageAnalytics(pageId: string, days = 1): Promise<Analyt
 
   const blockMap = new Map(blocks.map((b) => [b.block_id, b]));
   const allEvents = records.map(mapAnalyticsRecord);
-  const currentEvents = filterEventsInRange(allEvents, currentStart);
+  const currentEvents = filterEventsInRange(allEvents, currentStart, options.from && options.to ? currentEnd : undefined);
   const previousEvents = filterEventsInRange(allEvents, previousStart, currentStart);
 
   const core = computeCoreMetrics(currentEvents);
@@ -610,8 +633,8 @@ export function extractClientIp(headers: Headers): string {
   );
 }
 
-export async function getGlobalAnalytics(days = 1): Promise<GlobalAnalyticsSummary> {
-  const { currentStart, previousStart, fetchSince } = getPeriodBounds(days);
+export async function getGlobalAnalytics(options: AnalyticsRangeOptions = {}): Promise<GlobalAnalyticsSummary> {
+  const { currentStart, currentEnd, previousStart, fetchSince } = resolvePeriodBounds(options);
 
   const [records, pages] = await Promise.all([
     listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
@@ -624,7 +647,7 @@ export async function getGlobalAnalytics(days = 1): Promise<GlobalAnalyticsSumma
 
   const pageMeta = new Map(pages.map((p) => [p.page_id, { title: p.title, slug: p.slug }]));
   const allEvents = records.map(mapAnalyticsRecord);
-  const currentEvents = filterEventsInRange(allEvents, currentStart);
+  const currentEvents = filterEventsInRange(allEvents, currentStart, options.from && options.to ? currentEnd : undefined);
   const previousEvents = filterEventsInRange(allEvents, previousStart, currentStart);
 
   const core = computeCoreMetrics(currentEvents);
