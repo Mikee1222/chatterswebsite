@@ -1604,73 +1604,92 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             ) : selectedPage ? (
               <>
                 {/* Tab bar + actions */}
-                <div className="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3" style={{ borderColor: BORDER }}>
-                  <div className="flex min-w-0 flex-wrap items-center gap-2">
-                    <div className="flex gap-1 rounded-lg p-0.5" style={{ background: BG }}>
-                      <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
-                        Editor
-                      </TabBtn>
-                      <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
-                        <BarChart3 className="mr-1 inline h-3.5 w-3.5" />
-                        Analytics
-                      </TabBtn>
-                      <TabBtn active={tab === "ab_test"} onClick={() => setTab("ab_test")}>
-                        <FlaskConical className="mr-1 inline h-3.5 w-3.5" />
-                        A/B Test
-                      </TabBtn>
-                    </div>
-                    {tab === "editor" ? (
-                      <>
-                        <SaveStatusIndicator isSaving={isSaving} hasUnsavedChanges={hasUnsavedChanges} />
-                        <button
-                          type="button"
-                          onClick={() => void handleSave()}
-                          disabled={isSaving}
-                          className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
-                          style={{ background: ACCENT }}
-                        >
-                          {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                          Save
-                        </button>
-                      </>
-                    ) : null}
+                <div className="flex shrink-0 items-center justify-between gap-3 border-b px-4 py-3" style={{ borderColor: BORDER }}>
+                  <div
+                    className="flex shrink-0 items-center gap-0.5 rounded-full border p-0.5"
+                    style={{ borderColor: BORDER, background: BG }}
+                  >
+                    <TabBtn active={tab === "editor"} onClick={() => setTab("editor")}>
+                      Editor
+                    </TabBtn>
+                    <TabBtn active={tab === "analytics"} onClick={() => setTab("analytics")}>
+                      <BarChart3 className="mr-1 inline h-3.5 w-3.5" />
+                      Analytics
+                    </TabBtn>
+                    <TabBtn active={tab === "ab_test"} onClick={() => setTab("ab_test")}>
+                      <FlaskConical className="mr-1 inline h-3.5 w-3.5" />
+                      A/B Test
+                    </TabBtn>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <StatusToggle
-                      status={selectedPage.status}
-                      onPublish={() => void publish("publish")}
-                      onUnpublish={() => void publish("unpublish")}
-                      disabled={saving}
-                    />
+
+                  <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className={cn(
+                          "text-[11px] font-medium",
+                          selectedPage.status === "published" ? "text-emerald-400/90" : "text-white/45"
+                        )}
+                      >
+                        {selectedPage.status === "published" ? "Published" : "Draft"}
+                      </span>
+                      <StatusToggle
+                        status={selectedPage.status}
+                        onPublish={() => void publish("publish")}
+                        onUnpublish={() => void publish("unpublish")}
+                        disabled={saving}
+                      />
+                    </div>
+
+                    <div className="h-4 w-px shrink-0 bg-white/10" aria-hidden />
+
                     {selectedPage.status === "published" ? (
                       <a
                         href={publicUrl}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[11px] text-white/60 transition-colors hover:text-white/90"
-                        style={{ borderColor: BORDER }}
+                        className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] text-white/55 transition-colors hover:text-white/90"
                       >
-                        <ExternalLink className="h-3 w-3" /> Live
+                        <ExternalLink className="h-3 w-3" />
+                        Live
                       </a>
                     ) : null}
-                    <button
-                      type="button"
-                      onClick={() => void publish("archive")}
-                      className="rounded-lg border p-1.5 text-white/40 transition-colors hover:text-white/70"
-                      style={{ borderColor: BORDER }}
-                      title="Archive"
-                    >
-                      <Archive className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteOpen(true)}
-                      className="rounded-lg border p-1.5 text-rose-400/60 transition-colors hover:text-rose-300"
-                      style={{ borderColor: "rgba(244,63,94,0.2)" }}
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+
+                    {tab === "editor" ? (
+                      <>
+                        <SaveStatusIndicator isSaving={isSaving} hasUnsavedChanges={hasUnsavedChanges} />
+                        {hasUnsavedChanges ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleSave()}
+                            disabled={isSaving}
+                            className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+                            style={{ background: ACCENT }}
+                          >
+                            {isSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                            Save
+                          </button>
+                        ) : null}
+                      </>
+                    ) : null}
+
+                    <div className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => void publish("archive")}
+                        className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-white/[0.04] hover:text-white/60"
+                        title="Archive"
+                      >
+                        <Archive className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setDeleteOpen(true)}
+                        className="rounded-lg p-1.5 text-white/30 transition-colors hover:bg-rose-500/10 hover:text-rose-400/80"
+                        title="Delete"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2016,7 +2035,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-md px-3 py-1.5 text-xs font-medium transition-colors",
+        "inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
         active ? "text-pink-200" : "text-white/45 hover:text-white/75"
       )}
       style={active ? { background: `${ACCENT}22` } : undefined}
@@ -2106,9 +2125,19 @@ function SaveStatusIndicator({
     );
   }
   if (hasUnsavedChanges) {
-    return <span className="text-[10px] font-medium text-amber-400">● Unsaved</span>;
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-medium text-amber-400">
+        <AlertTriangle className="h-3 w-3" />
+        Unsaved
+      </span>
+    );
   }
-  return <span className="text-[10px] font-medium text-emerald-400/90">✓ Saved</span>;
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-medium text-emerald-400/90">
+      <CheckCircle2 className="h-3 w-3" />
+      Saved
+    </span>
+  );
 }
 
 function DnsCopyButton({ value, label }: { value: string; label: string }) {
