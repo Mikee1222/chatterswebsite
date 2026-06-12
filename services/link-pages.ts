@@ -173,7 +173,18 @@ function mapBlock(rec: AirtableRecord<BlockFields>): LinkPageBlockRecord {
   ).includes(f.block_type as LinkPageBlockType)
     ? (f.block_type as LinkPageBlockType)
     : "link";
-  const style = (["default", "prominent", "subtle", "pill", "card"] as const).includes(f.style as LinkPageBlockStyle)
+  const validStyles = [
+    "default",
+    "prominent",
+    "subtle",
+    "glass",
+    "glass_dark",
+    "outline",
+    "minimal",
+    "pill",
+    "card",
+  ] as const;
+  const style = validStyles.includes(f.style as LinkPageBlockStyle)
     ? (f.style as LinkPageBlockStyle)
     : "default";
   return {

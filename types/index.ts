@@ -1284,7 +1284,16 @@ export type LinkPageBlockType =
   | "social_bar"
   | "spacer"
   | "heading";
-export type LinkPageBlockStyle = "default" | "prominent" | "subtle" | "pill" | "card";
+export type LinkPageBlockStyle =
+  | "default"
+  | "prominent"
+  | "subtle"
+  | "glass"
+  | "glass_dark"
+  | "outline"
+  | "minimal"
+  | "pill"
+  | "card";
 export type LinkPageAnalyticsEventType = "page_view" | "link_click";
 export type LinkPageDeviceType = "mobile" | "desktop" | "tablet";
 export type LinkPageAbWinner = "none" | "a" | "b";

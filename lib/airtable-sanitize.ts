@@ -365,7 +365,17 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
       "spacer",
       "heading",
     ]),
-    style: new Set(["default", "prominent", "subtle", "pill", "card"]),
+    style: new Set([
+      "default",
+      "prominent",
+      "subtle",
+      "glass",
+      "glass_dark",
+      "outline",
+      "minimal",
+      "pill",
+      "card",
+    ]),
   },
   link_page_analytics: {
     event_type: new Set(["page_view", "link_click"]),

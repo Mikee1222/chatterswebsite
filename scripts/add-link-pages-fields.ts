@@ -15,6 +15,8 @@ import {
   LINK_PAGES_TABLE,
   LINK_PAGE_BLOCKS_TABLE,
   LINK_PAGE_ANALYTICS_TABLE,
+  LINK_PAGE_BLOCK_STYLES,
+  LINK_PAGE_BLOCK_STYLES_LEGACY,
 } from "../lib/link-pages-schema";
 
 loadEnv();
@@ -55,6 +57,65 @@ function getCredentials(): { token: string; baseId: string } {
 
 function findTable(schema: { tables: AirtableTable[] }, name: string): AirtableTable | null {
   return schema.tables.find((t) => t.name === name) ?? null;
+}
+
+type ChoiceRow = { id?: string; name: string; color?: string };
+
+async function ensureSelectChoices(
+  baseId: string,
+  token: string,
+  table: AirtableTable,
+  fieldName: string,
+  choiceNames: readonly string[]
+): Promise<void> {
+  const field = table.fields.find((f) => f.name === fieldName);
+  if (!field?.id) {
+    console.error(`Field ${table.name}.${fieldName} not found — cannot merge select choices.`);
+    return;
+  }
+  if (field.type !== "singleSelect") {
+    console.error(`Field ${table.name}.${fieldName} is not singleSelect (${field.type}).`);
+    return;
+  }
+
+  const existingChoices = (field.options?.choices ?? []) as ChoiceRow[];
+  const seen = new Set(existingChoices.map((c) => (c.name ?? "").trim().toLowerCase()));
+  const toAdd: ChoiceRow[] = [];
+  for (const name of choiceNames) {
+    const key = name.trim().toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      toAdd.push({ name });
+    }
+  }
+  if (toAdd.length === 0) {
+    console.log(`Skip — ${table.name}.${fieldName} choices already include all requested options.`);
+    return;
+  }
+
+  const merged = [...existingChoices.map((c) => ({ ...c })), ...toAdd];
+  const nextOptions = { ...(field.options ?? {}), choices: merged };
+  const url = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields/${field.id}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "singleSelect",
+      options: nextOptions,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`Failed to update ${table.name}.${fieldName} choices: ${body}`);
+    console.warn(
+      `Add these options manually in Airtable → ${table.name} → ${fieldName}: ${toAdd.map((c) => c.name).join(", ")}`
+    );
+    return;
+  }
+  console.log(`Updated ${table.name}.${fieldName} with choices: ${toAdd.map((c) => c.name).join(", ")}`);
 }
 
 async function ensureField(
@@ -100,6 +161,9 @@ async function main(): Promise<void> {
   await ensureField(baseId, token, pagesTable, "cookie_notice_text", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "platform", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "custom_button_color", TEXT_DEF);
+
+  const styleChoices = [...LINK_PAGE_BLOCK_STYLES, ...LINK_PAGE_BLOCK_STYLES_LEGACY];
+  await ensureSelectChoices(baseId, token, blocksTable, "style", styleChoices);
 
   const analyticsTable = findTable(schema, LINK_PAGE_ANALYTICS_TABLE);
   if (!analyticsTable) {

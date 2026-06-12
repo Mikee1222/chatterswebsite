@@ -155,8 +155,12 @@ function linkPageBlocksFields(): Array<Record<string, unknown>> {
       type: "singleSelect",
       options: {
         choices: [
-          { name: "default" },
           { name: "prominent" },
+          { name: "default" },
+          { name: "glass" },
+          { name: "glass_dark" },
+          { name: "outline" },
+          { name: "minimal" },
           { name: "subtle" },
           { name: "pill" },
           { name: "card" },

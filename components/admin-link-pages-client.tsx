@@ -63,6 +63,7 @@ import {
   detectLinkPlatform,
   fontFamilyMap,
   fontLabels,
+  getRecommendedBlockStyle,
   GOOGLE_FONTS_STYLESHEET,
 } from "@/lib/link-page-styles";
 import { ROUTES } from "@/lib/routes";
@@ -3013,6 +3014,9 @@ function BlockEditor({
                         patch.label = block.label || p.label;
                         patch.url = p.urlPrefix;
                       }
+                      if (blockRef.current.style === "default") {
+                        patch.style = getRecommendedBlockStyle(p.id);
+                      }
                       onChange(patch);
                       const next = { ...blockRef.current, ...patch };
                       const save: BlockPatch = {
@@ -3021,6 +3025,7 @@ function BlockEditor({
                       };
                       if (patch.label !== undefined) save.label = next.label;
                       if (patch.url !== undefined) save.url = next.url;
+                      if (patch.style !== undefined) save.style = next.style;
                       onSavePatch(next.id, save);
                     }}
                     className={cn(
@@ -3147,20 +3152,47 @@ function BlockEditor({
         </div>
       )}
       {block.block_type === "link" && (
-        <select
-          value={block.style}
-          onChange={(e) => {
-            const style = e.target.value as LinkPageBlockRecord["style"];
-            onChange({ style });
-            savePatch({ style });
-          }}
-          className="w-full rounded-lg border px-3 py-1.5 text-xs text-white"
-          style={{ background: BG, borderColor: BORDER }}
-        >
-          {(["default", "prominent", "subtle", "pill", "card"] as const).map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
+        <div className="space-y-1.5">
+          <p className="text-[10px] font-medium uppercase tracking-wider text-white/30">Button style</p>
+          <div className="flex flex-wrap gap-1.5">
+            {(
+              [
+                { id: "prominent", label: "Branded" },
+                { id: "glass", label: "Glass" },
+                { id: "glass_dark", label: "Dark glass" },
+                { id: "outline", label: "Outline" },
+                { id: "minimal", label: "Minimal" },
+                { id: "subtle", label: "Subtle" },
+              ] as const
+            ).map((s) => {
+              const selected = block.style === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => {
+                    onChange({ style: s.id });
+                    savePatch({ style: s.id });
+                  }}
+                  className="rounded-lg border px-3 py-1.5 text-[13px] transition-colors"
+                  style={{
+                    borderColor: selected ? ACCENT : "#333",
+                    background: selected ? "rgba(236,72,153,0.15)" : "#111",
+                    color: selected ? ACCENT : "#9ca3af",
+                    fontWeight: selected ? 600 : 400,
+                  }}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+          {block.style === "default" ? (
+            <p className="text-[10px] text-white/35">
+              Auto: {getRecommendedBlockStyle(detectLinkPlatform(block))} for this platform
+            </p>
+          ) : null}
+        </div>
       )}
       <label className="flex items-center gap-2 text-[11px] text-white/45">
         <input

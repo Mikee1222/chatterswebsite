@@ -250,9 +250,40 @@ function brandingForBlock(block: LinkPageBlockRecord, primaryColor: string): Pla
   };
 }
 
-function styleClasses(style: LinkPageBlockStyle): string {
+const PLATFORM_RECOMMENDED_STYLE: Record<LinkPagePlatformId, LinkPageBlockStyle> = {
+  instagram: "prominent",
+  tiktok: "prominent",
+  telegram: "prominent",
+  twitter: "minimal",
+  snapchat: "glass",
+  youtube: "prominent",
+  facebook: "prominent",
+  discord: "prominent",
+  whatsapp: "prominent",
+  pinterest: "prominent",
+  custom: "glass",
+};
+
+/** Default block style when a platform is selected or style is "default". */
+export function getRecommendedBlockStyle(platform: LinkPagePlatformId): LinkPageBlockStyle {
+  return PLATFORM_RECOMMENDED_STYLE[platform] ?? "glass";
+}
+
+function resolveEffectiveStyle(platform: LinkPagePlatformId, style: LinkPageBlockStyle): LinkPageBlockStyle {
+  if (style === "default") return getRecommendedBlockStyle(platform);
+  return style;
+}
+
+function styleClasses(style: LinkPageBlockStyle, platform: LinkPagePlatformId): string {
+  const effective = resolveEffectiveStyle(platform, style);
   const classes = ["link-btn", "block-link"];
-  if (style !== "default") classes.push(`style-${style}`);
+  if (effective !== "default" && effective !== "prominent") {
+    classes.push(`style-${effective}`);
+  } else if (style === "prominent" || effective === "prominent") {
+    classes.push("style-prominent");
+  }
+  if (effective === "pill" || style === "pill") classes.push("style-pill");
+  if (effective === "card" || style === "card") classes.push("style-card");
   return classes.join(" ");
 }
 
@@ -262,19 +293,47 @@ function platformButtonExtras(platform: LinkPagePlatformId): string {
   return "";
 }
 
+const GLASS_STYLE_CSS =
+  "background:rgba(255,255,255,0.15);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.25);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.3);";
+const GLASS_DARK_STYLE_CSS =
+  "background:rgba(0,0,0,0.35);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,0.1);color:#fff;";
+const OUTLINE_STYLE_CSS =
+  "background:transparent;border:2px solid rgba(255,255,255,0.5);color:#fff;";
+const MINIMAL_STYLE_CSS =
+  "background:rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.08);color:#fff;";
+const SNAPCHAT_PROMINENT_GLASS_CSS =
+  "background:rgba(255,252,0,0.2);border:1px solid rgba(255,252,0,0.4);color:#fffc00;backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);";
+
 function inlineStyles(
   branding: PlatformBranding,
   style: LinkPageBlockStyle,
   platform: LinkPagePlatformId
 ): string {
+  if (platform === "snapchat" && style === "prominent") {
+    return SNAPCHAT_PROMINENT_GLASS_CSS;
+  }
+
+  const effective = resolveEffectiveStyle(platform, style);
   const branded = `background:${branding.prominentBg};color:${branding.textColor};${platformButtonExtras(platform)}`;
-  if (style === "subtle") {
-    return `background:transparent;color:var(--text);border:1px solid ${branding.borderColor};`;
+
+  switch (effective) {
+    case "glass":
+      return GLASS_STYLE_CSS;
+    case "glass_dark":
+      return GLASS_DARK_STYLE_CSS;
+    case "outline":
+      return OUTLINE_STYLE_CSS;
+    case "minimal":
+      return MINIMAL_STYLE_CSS;
+    case "subtle":
+      return `background:transparent;color:var(--text);border:1px solid ${branding.borderColor};`;
+    case "pill":
+    case "card":
+    case "prominent":
+      return branded;
+    default:
+      return branded;
   }
-  if (style === "prominent" || style === "pill" || style === "card" || style === "default") {
-    return branded;
-  }
-  return branded;
 }
 
 /** Platform-specific button styling for preview and public pages. */
@@ -282,10 +341,23 @@ export function getPlatformStyles(
   block: LinkPageBlockRecord,
   primaryColor: string,
   style: LinkPageBlockStyle = block.style ?? "default"
-): { platform: LinkPagePlatformId; branding: PlatformBranding; inline: string } {
+): {
+  platform: LinkPagePlatformId;
+  branding: PlatformBranding;
+  inline: string;
+  effectiveStyle: LinkPageBlockStyle;
+  recommendedStyle: LinkPageBlockStyle;
+} {
   const platform = detectLinkPlatform(block);
   const branding = brandingForBlock(block, primaryColor);
-  return { platform, branding, inline: inlineStyles(branding, style, platform) };
+  const effectiveStyle = resolveEffectiveStyle(platform, style);
+  return {
+    platform,
+    branding,
+    inline: inlineStyles(branding, style, platform),
+    effectiveStyle,
+    recommendedStyle: getRecommendedBlockStyle(platform),
+  };
 }
 
 const ARROW_SVG = `<svg class="link-arrow" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M9 18l6-6-6-6"/></svg>`;
@@ -304,7 +376,7 @@ export function renderBrandedLinkHtml(
   const { platform, branding, inline } = getPlatformStyles(block, primaryColor, style);
   const label = block.label || branding.label || block.url || "Link";
   const sublabel = block.sublabel?.trim();
-  const classes = styleClasses(style);
+  const classes = styleClasses(style, platform);
 
   const sublabelHtml = sublabel
     ? `<div class="link-sublabel">${escapeHtml(sublabel)}</div>`
@@ -504,6 +576,17 @@ function backgroundKeyframesCss(
   `;
 }
 
+function hasRichVisualBackground(
+  page: Pick<LinkPageWithBlocks, "background_type">
+): boolean {
+  return (
+    page.background_type === "image" ||
+    page.background_type === "gradient" ||
+    page.background_type === "gradient_preset" ||
+    page.background_type === "animated"
+  );
+}
+
 /** Shared theme CSS for public link-in-bio pages */
 export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   const primary = page.primary_color || "#ec4899";
@@ -560,6 +643,22 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
   const bgRule = getBackgroundCss(page);
   const overlayRule = backgroundOverlayCss(page, t.overlay);
   const keyframes = backgroundKeyframesCss(page);
+  const richBg = hasRichVisualBackground(page);
+  const richProfileCss = richBg
+    ? `
+    .avatar {
+      border: 3px solid rgba(255,255,255,0.4);
+      box-shadow: 0 12px 40px var(--glow), 0 0 24px rgba(255,255,255,0.25);
+    }
+    .avatar-placeholder {
+      border: 3px solid rgba(255,255,255,0.4);
+      box-shadow: 0 12px 40px var(--glow), 0 0 24px rgba(255,255,255,0.25);
+    }
+    .title { text-shadow: 0 2px 8px rgba(0,0,0,0.5); }
+    .bio { text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+    .block-bio { text-shadow: 0 1px 4px rgba(0,0,0,0.4); }
+  `
+    : "";
 
   return `
     ${keyframes}
@@ -693,6 +792,9 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       gap: 0.7rem;
       margin-top: 0.75rem;
     }
+    .link-btn {
+      transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
+    }
     .block-link {
       display: flex;
       align-items: center;
@@ -704,18 +806,18 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       font-size: 15px;
       font-weight: 600;
       letter-spacing: 0.01em;
-      transition: transform 0.15s ease, filter 0.15s ease, box-shadow 0.15s ease;
       position: relative;
       overflow: hidden;
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
     }
     .link-btn:hover {
-      transform: translateY(-2px);
-      filter: brightness(1.1);
+      transform: translateY(-2px) scale(1.01);
+      filter: brightness(1.08);
+      box-shadow: 0 8px 25px rgba(0,0,0,0.3);
     }
     .link-btn:active {
-      transform: translateY(0);
+      transform: translateY(0) scale(0.99);
       filter: brightness(0.95);
     }
     .block-link.style-pill { border-radius: 999px; }
@@ -821,5 +923,6 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       opacity: 0.55;
       letter-spacing: 0.04em;
     }
+    ${richProfileCss}
   `;
 }

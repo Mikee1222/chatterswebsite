@@ -127,7 +127,18 @@ export const LINK_PAGE_BLOCK_TYPES = [
   "spacer",
   "heading",
 ] as const;
-export const LINK_PAGE_BLOCK_STYLES = ["default", "prominent", "subtle", "pill", "card"] as const;
+export const LINK_PAGE_BLOCK_STYLES = [
+  "prominent",
+  "default",
+  "glass",
+  "glass_dark",
+  "outline",
+  "minimal",
+  "subtle",
+] as const;
+
+/** Legacy block styles still accepted when reading Airtable records. */
+export const LINK_PAGE_BLOCK_STYLES_LEGACY = ["pill", "card"] as const;
 export const LINK_PAGE_ANALYTICS_EVENT_TYPES = ["page_view", "link_click"] as const;
 export const LINK_PAGE_DEVICE_TYPES = ["mobile", "desktop", "tablet"] as const;
 export const LINK_PAGE_AB_WINNERS = ["none", "a", "b"] as const;
