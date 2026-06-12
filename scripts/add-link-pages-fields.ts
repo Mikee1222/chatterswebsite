@@ -22,6 +22,9 @@ import {
 loadEnv();
 loadEnv({ path: ".env.local" });
 
+const DATA_API = "https://api.airtable.com/v0";
+const STYLE_FIELD_NAME = "style";
+
 const CHECKBOX_DEF: FieldDef = {
   type: "checkbox",
   options: { icon: "check", color: "greenBright" },
@@ -61,6 +64,100 @@ function findTable(schema: { tables: AirtableTable[] }, name: string): AirtableT
 
 type ChoiceRow = { id?: string; name: string; color?: string };
 
+function preserveChoice(choice: ChoiceRow): ChoiceRow {
+  const out: ChoiceRow = { name: choice.name };
+  if (choice.id) out.id = choice.id;
+  if (choice.color) out.color = choice.color;
+  return out;
+}
+
+function choiceNamesSet(choices: ChoiceRow[]): Set<string> {
+  return new Set(choices.map((c) => (c.name ?? "").trim().toLowerCase()).filter(Boolean));
+}
+
+async function patchSelectChoices(
+  baseId: string,
+  token: string,
+  table: AirtableTable,
+  fieldId: string,
+  nextChoices: ChoiceRow[]
+): Promise<boolean> {
+  const url = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields/${fieldId}`;
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      type: "singleSelect",
+      options: { choices: nextChoices },
+    }),
+  });
+  if (res.ok) return true;
+  if (res.status === 422) return false;
+  const body = await res.text();
+  throw new Error(`PATCH ${table.name}.${STYLE_FIELD_NAME} failed (${res.status}): ${body}`);
+}
+
+async function addStyleChoiceViaTypecast(
+  token: string,
+  baseId: string,
+  choiceName: string
+): Promise<void> {
+  const probeSuffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const createRes = await fetch(
+    `${DATA_API}/${baseId}/${encodeURIComponent(LINK_PAGE_BLOCKS_TABLE)}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        typecast: true,
+        records: [
+          {
+            fields: {
+              block_id: `schema-sync-probe-${probeSuffix}`,
+              page_id: "schema-sync-probe",
+              block_type: "link",
+              sort_order: 0,
+              is_visible: false,
+              label: `Schema probe ${choiceName}`,
+              [STYLE_FIELD_NAME]: choiceName,
+            },
+          },
+        ],
+      }),
+    }
+  );
+  if (!createRes.ok) {
+    throw new Error(
+      `typecast create ${STYLE_FIELD_NAME}="${choiceName}" failed (${createRes.status}): ${await createRes.text()}`
+    );
+  }
+  const created = (await createRes.json()) as { records?: Array<{ id: string }> };
+  const probeId = created.records?.[0]?.id;
+  if (!probeId) {
+    throw new Error(`typecast create ${STYLE_FIELD_NAME}="${choiceName}" returned no record id`);
+  }
+
+  const deleteRes = await fetch(
+    `${DATA_API}/${baseId}/${encodeURIComponent(LINK_PAGE_BLOCKS_TABLE)}/${probeId}`,
+    {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    }
+  );
+  if (!deleteRes.ok) {
+    throw new Error(
+      `Failed to delete typecast probe record ${probeId} (${deleteRes.status}): ${await deleteRes.text()}`
+    );
+  }
+  console.log(`Added "${choiceName}" via typecast probe (Meta API PATCH not supported on this base).`);
+}
+
 async function ensureSelectChoices(
   baseId: string,
   token: string,
@@ -79,43 +176,38 @@ async function ensureSelectChoices(
   }
 
   const existingChoices = (field.options?.choices ?? []) as ChoiceRow[];
-  const seen = new Set(existingChoices.map((c) => (c.name ?? "").trim().toLowerCase()));
-  const toAdd: ChoiceRow[] = [];
-  for (const name of choiceNames) {
-    const key = name.trim().toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      toAdd.push({ name });
-    }
-  }
-  if (toAdd.length === 0) {
+  const existingSet = choiceNamesSet(existingChoices);
+  const missing = choiceNames.filter((name) => !existingSet.has(name.trim().toLowerCase()));
+  if (missing.length === 0) {
     console.log(`Skip — ${table.name}.${fieldName} choices already include all requested options.`);
     return;
   }
 
-  const merged = [...existingChoices.map((c) => ({ ...c })), ...toAdd];
-  const nextOptions = { ...(field.options ?? {}), choices: merged };
-  const url = `https://api.airtable.com/v0/meta/bases/${baseId}/tables/${table.id}/fields/${field.id}`;
-  const res = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      type: "singleSelect",
-      options: nextOptions,
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text();
-    console.error(`Failed to update ${table.name}.${fieldName} choices: ${body}`);
-    console.warn(
-      `Add these options manually in Airtable → ${table.name} → ${fieldName}: ${toAdd.map((c) => c.name).join(", ")}`
-    );
-    return;
+  console.log(`Adding ${missing.length} missing ${table.name}.${fieldName} choice(s)...`);
+
+  const nextChoices: ChoiceRow[] = [
+    ...existingChoices.map(preserveChoice),
+    ...missing.map((name) => ({ name })),
+  ];
+
+  const patched = await patchSelectChoices(baseId, token, table, field.id, nextChoices);
+  if (patched) {
+    console.log(`Added ${missing.length} choice(s) via Meta API PATCH: ${missing.join(", ")}`);
+  } else {
+    for (const choiceName of missing) {
+      await addStyleChoiceViaTypecast(token, baseId, choiceName);
+    }
   }
-  console.log(`Updated ${table.name}.${fieldName} with choices: ${toAdd.map((c) => c.name).join(", ")}`);
+
+  const refreshed = await getBaseSchema(baseId, token);
+  const refreshedTable = findTable(refreshed, table.name);
+  const refreshedField = refreshedTable?.fields.find((f) => f.name === fieldName);
+  const updatedSet = choiceNamesSet((refreshedField?.options?.choices ?? []) as ChoiceRow[]);
+  const stillMissing = choiceNames.filter((name) => !updatedSet.has(name.trim().toLowerCase()));
+  if (stillMissing.length > 0) {
+    throw new Error(`After add, ${table.name}.${fieldName} still missing: ${stillMissing.join(", ")}`);
+  }
+  console.log(`Verified: all requested ${table.name}.${fieldName} choices present.`);
 }
 
 async function ensureField(
