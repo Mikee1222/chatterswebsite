@@ -47,12 +47,17 @@ function isGunzoDomain(host: string): boolean {
   );
 }
 
+const CUSTOM_DOMAIN_404_HTML = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>404 Not Found</title></head>
+<body><h1>404 Not Found</h1><p>The page you requested could not be found.</p></body>
+</html>`;
+
 export async function middleware(request: NextRequest) {
   const host = request.headers.get("host") ?? "";
   const { pathname } = request.nextUrl;
-  console.log("[middleware] host:", host, "isGunzo:", isGunzoDomain(host));
 
-  // Custom domains — never run auth; rewrite root to /l/{slug} when configured
+  // Custom domains — never run auth or expose Gunzo internal pages
   if (!isGunzoDomain(host)) {
     const bareHost = host.split(":")[0]?.toLowerCase() ?? "";
 
@@ -63,22 +68,29 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(apexUrl, 301);
     }
 
-    if (isPublicAppPath(pathname) || isPublicAssetPath(pathname)) {
+    if (pathname.startsWith("/api/l/")) return NextResponse.next();
+    if (pathname.startsWith("/r/")) return NextResponse.next();
+    if (
+      pathname.startsWith("/_next/") ||
+      pathname.startsWith("/favicon") ||
+      pathname.includes(".")
+    ) {
       return NextResponse.next();
     }
-    if (!pathname.startsWith("/l/") && !pathname.startsWith("/api/")) {
-      try {
-        const page = await getLinkPageByCustomDomainFresh(bareHost || host);
-        if (page) {
-          console.log("[middleware] custom domain rewrite:", bareHost || host, "→", page.slug);
-          return NextResponse.rewrite(new URL(`/l/${page.slug}`, request.url));
-        }
-        console.warn("[middleware] custom domain no match:", bareHost || host);
-      } catch (error) {
-        console.error("[middleware] custom domain lookup failed:", bareHost || host, error);
+
+    try {
+      const page = await getLinkPageByCustomDomainFresh(bareHost || host);
+      if (page && page.status === "published") {
+        return NextResponse.rewrite(new URL(`/l/${page.slug}`, request.url));
       }
+    } catch (e) {
+      console.error("[middleware] custom domain error:", e);
     }
-    return NextResponse.next();
+
+    return new NextResponse(CUSTOM_DOMAIN_404_HTML, {
+      status: 404,
+      headers: { "content-type": "text/html" },
+    });
   }
 
   // Gunzo app domain — public paths bypass auth
