@@ -395,6 +395,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
   const showCookieNotice = !isPreview && !!controlPage.cookie_notice_enabled && hasPixels;
   const cookieNoticeText =
     (controlPage.cookie_notice_text ?? "").trim() || DEFAULT_COOKIE_NOTICE_TEXT;
+  const bioText = activePage.bio?.trim() ?? "";
 
   return (
     <div className="link-page-root">
@@ -425,7 +426,7 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
             <span dangerouslySetInnerHTML={{ __html: verifiedBadgeHtml() }} />
           ) : null}
         </div>
-        {activePage.bio ? <p className="bio">{activePage.bio}</p> : null}
+        {bioText ? <p className="bio">{bioText}</p> : null}
         <div className="blocks" dangerouslySetInnerHTML={{ __html: blocksHtml }} />
         {activePage.show_powered_by ? <p className="powered-by">Powered by Link Pages</p> : null}
       </main>

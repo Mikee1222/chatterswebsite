@@ -31,6 +31,7 @@ const CHECKBOX_DEF: FieldDef = {
 };
 
 const TEXT_DEF: FieldDef = { type: "singleLineText" };
+const MULTILINE_DEF: FieldDef = { type: "multilineText" };
 
 function loadBaseIdFromWrangler(): string | null {
   const path = resolve(process.cwd(), "wrangler.jsonc");
@@ -246,6 +247,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  await ensureField(baseId, token, pagesTable, "bio", MULTILINE_DEF);
+  await ensureField(baseId, token, pagesTable, "show_powered_by", CHECKBOX_DEF);
   await ensureField(baseId, token, pagesTable, "verified", CHECKBOX_DEF);
   await ensureField(baseId, token, pagesTable, "meta_pixel_id", TEXT_DEF);
   await ensureField(baseId, token, pagesTable, "tiktok_pixel_id", TEXT_DEF);

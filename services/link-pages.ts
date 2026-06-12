@@ -138,7 +138,7 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
     slug: f.slug ?? "",
     status,
     title: f.title ?? "",
-    bio: f.bio ?? "",
+    bio: airtableText(f.bio),
     profile_photo_url: f.profile_photo_url ?? "",
     background_type: bgType,
     background_value: airtableText(f.background_value, "#0a0a0a"),

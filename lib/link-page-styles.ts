@@ -777,8 +777,11 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       flex-shrink: 0;
     }
     .bio {
+      position: relative;
+      z-index: 1;
       font-size: 0.95rem;
       color: var(--muted);
+      opacity: 1;
       text-align: center;
       line-height: 1.55;
       white-space: pre-wrap;
@@ -847,8 +850,11 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       letter-spacing: 0.12em;
     }
     .block-bio {
+      position: relative;
+      z-index: 1;
       font-size: 0.9rem;
       color: var(--muted);
+      opacity: 1;
       text-align: center;
       line-height: 1.65;
       white-space: pre-wrap;

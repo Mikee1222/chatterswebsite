@@ -2564,12 +2564,13 @@ function EditorPanel({
         expanded={expandedSections.has("profile")}
         onToggle={onToggleSection}
       >
-        <Field label="Bio">
+        <Field label="Bio / caption">
           <Textarea
-            value={page.bio}
+            value={page.bio ?? ""}
             onChange={(e) => onPatchTextField({ bio: e.target.value })}
             onBlur={onFieldBlur}
             rows={3}
+            placeholder="Short bio or tagline shown under the title"
           />
         </Field>
         <Field label="Profile photo URL">
