@@ -194,7 +194,8 @@ const LINK_CLICK_TRACKING_SCRIPT = `(function(){
   document.querySelectorAll('a[data-lp-click]').forEach(function(a){
     a.addEventListener('click',function(){
       var vid=window._lp_visitor_id||'';
-      var sid=window._lp_session_id||'';
+      var useAb=a.hasAttribute('data-ab-track');
+      var sid=useAb?(window._lp_ab_session_id||''):(window._lp_session_id||'');
       if(!vid&&!sid)return;
       try{
         var u=new URL(a.getAttribute('href')||'',window.location.origin);
@@ -217,7 +218,7 @@ function renderLinkBlock(
   const href = block.url
     ? clickUrl(pageSlug, block.block_id, block.url, clickOrigin, variant, abEnabled)
     : "#";
-  return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml);
+  return renderBrandedLinkHtml(block, href, page.primary_color, escapeHtml, abEnabled);
 }
 
 function renderBlock(
@@ -255,7 +256,8 @@ function renderBlock(
       const items = urls
         .map((u) => {
           const href = clickUrl(pageSlug, block.block_id, u, clickOrigin, variant, abEnabled);
-          return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" data-lp-click="1" title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
+          const abTrackAttr = abEnabled ? ' data-ab-track="true"' : "";
+          return `<a href="${escapeHtml(href)}" rel="noopener noreferrer" data-lp-click="1"${abTrackAttr} title="${escapeHtml(block.label || "")}">${escapeHtml(block.icon || "→")}</a>`;
         })
         .join("");
       return items ? `<div class="social-bar">${items}</div>` : "";
@@ -496,6 +498,13 @@ export default async function LinkPagePublic({ params, searchParams }: Props) {
             <script
               dangerouslySetInnerHTML={{
                 __html: sessionCookieBootstrapScript(controlPage.page_id, sessionId),
+              }}
+            />
+          ) : null}
+          {abEnabled ? (
+            <script
+              dangerouslySetInnerHTML={{
+                __html: `window._lp_ab_session_id='${sessionId.replace(/\\/g, "\\\\").replace(/'/g, "\\'")}';`,
               }}
             />
           ) : null}

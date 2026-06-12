@@ -16,6 +16,7 @@ import {
   getLinkPageByPageId,
   createLinkPage,
   updateLinkPage,
+  archiveLinkPage,
   upsertBlock,
   listBlocksForPage,
   invalidateLinkPagePublicCache,
@@ -159,8 +160,6 @@ function aggregateMetrics(
 ): { a: AbVariantMetrics; b: AbVariantMetrics } {
   const viewSessions: Record<LinkPageAbVariant, Set<string>> = { a: new Set(), b: new Set() };
   const clickSessions: Record<LinkPageAbVariant, Set<string>> = { a: new Set(), b: new Set() };
-  let viewsA = 0;
-  let viewsB = 0;
   let clicksA = 0;
   let clicksB = 0;
 
@@ -169,8 +168,6 @@ function aggregateMetrics(
     if (!sid) continue;
     if (ev.event_type === "view") {
       viewSessions[ev.variant].add(sid);
-      if (ev.variant === "a") viewsA++;
-      else viewsB++;
     } else {
       clickSessions[ev.variant].add(sid);
       if (ev.variant === "a") clicksA++;
@@ -178,16 +175,17 @@ function aggregateMetrics(
     }
   }
 
-  function build(variant: LinkPageAbVariant, views: number, clicks: number): AbVariantMetrics {
+  function build(variant: LinkPageAbVariant, clicks: number): AbVariantMetrics {
     const sessions = viewSessions[variant].size;
+    const views = sessions;
     const sessionsWithClicks = [...clickSessions[variant]].filter((s) => viewSessions[variant].has(s)).length;
     const ctr = sessions > 0 ? sessionsWithClicks / sessions : 0;
     return { variant, views, clicks, sessions, sessionsWithClicks, ctr };
   }
 
   return {
-    a: build("a", viewsA, clicksA),
-    b: build("b", viewsB, clicksB),
+    a: build("a", clicksA),
+    b: build("b", clicksB),
   };
 }
 
@@ -214,12 +212,24 @@ export async function getAbTestResults(page: LinkPageRecord): Promise<AbTestResu
     _caller: "link-ab-results",
   });
 
-  const events = records.map((rec) => ({
-    variant: parseVariant(rec.fields.variant),
-    event_type: parseAbEventType(rec.fields.event_type),
-    session_id: rec.fields.session_id ?? "",
-    timestamp: rec.fields.timestamp ?? "",
-  }));
+  const startedAtMs = page.ab_started_at ? Date.parse(page.ab_started_at) : NaN;
+  const testStopped = !page.ab_test_enabled && page.ab_winner !== "none";
+  const stoppedAtMs = testStopped && page.updated_at ? Date.parse(page.updated_at) : NaN;
+
+  const events = records
+    .map((rec) => ({
+      variant: parseVariant(rec.fields.variant),
+      event_type: parseAbEventType(rec.fields.event_type),
+      session_id: rec.fields.session_id ?? "",
+      timestamp: rec.fields.timestamp ?? "",
+    }))
+    .filter((ev) => {
+      if (!ev.timestamp) return false;
+      const ts = Date.parse(ev.timestamp);
+      if (Number.isFinite(startedAtMs) && ts < startedAtMs) return false;
+      if (Number.isFinite(stoppedAtMs) && ts > stoppedAtMs) return false;
+      return true;
+    });
 
   const { a: variantA, b: variantB } = aggregateMetrics(events);
   const aNoClick = Math.max(0, variantA.sessions - variantA.sessionsWithClicks);
@@ -402,13 +412,22 @@ export async function declareWinner(
   if (!control) throw new Error("Page not found");
   if (!control.ab_variant_id) throw new Error("No variant configured");
 
+  const variantPageId = control.ab_variant_id;
+
   if (winner === "b") {
-    await copyVariantContentToControl(control, control.ab_variant_id);
+    await copyVariantContentToControl(control, variantPageId);
+  }
+
+  const variantMeta = await getLinkPageByPageId(variantPageId);
+  if (variantMeta) {
+    await archiveLinkPage(variantMeta.id);
   }
 
   await updateAbFields(controlRecordId, {
     ab_test_enabled: false,
     ab_winner: winner,
+    ab_variant_id: "",
+    ab_started_at: "",
   });
 
   invalidateLinkPagePublicCache(control);

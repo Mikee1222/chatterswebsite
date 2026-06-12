@@ -370,7 +370,8 @@ export function renderBrandedLinkHtml(
   block: LinkPageBlockRecord,
   href: string,
   primaryColor: string,
-  escapeHtml: (s: string) => string
+  escapeHtml: (s: string) => string,
+  abTrack?: boolean
 ): string {
   const style = block.style ?? "default";
   const { platform, branding, inline } = getPlatformStyles(block, primaryColor, style);
@@ -382,7 +383,8 @@ export function renderBrandedLinkHtml(
     ? `<div class="link-sublabel">${escapeHtml(sublabel)}</div>`
     : "";
 
-  return `<a class="${classes}" href="${escapeHtml(href)}" rel="noopener noreferrer" data-platform="${platform}" data-lp-click="1" style="${inline}">
+  const abTrackAttr = abTrack ? ' data-ab-track="true"' : "";
+  return `<a class="${classes}" href="${escapeHtml(href)}" rel="noopener noreferrer" data-platform="${platform}" data-lp-click="1"${abTrackAttr} style="${inline}">
     <div class="link-icon-wrap">${branding.svg}</div>
     <div class="link-content">
       <div class="link-label">${escapeHtml(label)}</div>

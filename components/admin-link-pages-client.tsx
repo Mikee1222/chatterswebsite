@@ -948,6 +948,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [analyticsRange, setAnalyticsRange] = React.useState<AnalyticsDateRange>({ type: "preset", days: 1 });
   const [globalAnalyticsRange, setGlobalAnalyticsRange] = React.useState<AnalyticsDateRange>({ type: "preset", days: 1 });
   const [abTest, setAbTest] = React.useState<AbTestResults | null>(null);
+  const [abVariantPage, setAbVariantPage] = React.useState<LinkPageRecord | null>(null);
   const [abTestLoading, setAbTestLoading] = React.useState(false);
   const [abSetupOpen, setAbSetupOpen] = React.useState(false);
   const [abTestName, setAbTestName] = React.useState("");
@@ -1157,9 +1158,15 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
     setAbTestLoading(true);
     try {
       const res = await fetch(`/api/admin/link-pages/${encodeURIComponent(id)}/ab-test`);
-      const data = (await res.json()) as { results?: AbTestResults; page?: LinkPageRecord; error?: string };
+      const data = (await res.json()) as {
+        results?: AbTestResults;
+        page?: LinkPageRecord;
+        variantPage?: LinkPageRecord | null;
+        error?: string;
+      };
       if (!res.ok) throw new Error(data.error ?? "Failed to load A/B test");
       setAbTest(data.results ?? null);
+      setAbVariantPage(data.variantPage ?? null);
       if (data.page) {
         setSelectedPage((prev) => (prev ? { ...prev, ...data.page } : prev));
         setPages((prev) => prev.map((p) => (p.id === data.page!.id ? { ...p, ...data.page } : p)));
@@ -1803,6 +1810,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                     <div className="p-4">
                       <AbTestPanel
                         page={selectedPage}
+                        variantPage={abVariantPage}
                         results={abTest}
                         loading={abTestLoading}
                         actionLoading={abActionLoading}
@@ -3643,6 +3651,7 @@ function formatPeakHour(hour: number): string {
 
 function AbTestPanel({
   page,
+  variantPage,
   results,
   loading,
   actionLoading,
@@ -3658,6 +3667,7 @@ function AbTestPanel({
   onDeclareWinner,
 }: {
   page: LinkPageRecord;
+  variantPage: LinkPageRecord | null;
   results: AbTestResults | null;
   loading: boolean;
   actionLoading: boolean;
@@ -3673,6 +3683,7 @@ function AbTestPanel({
   onDeclareWinner: (winner: "a" | "b") => Promise<void>;
 }) {
   const formatPct = (n: number) => `${(n * 100).toFixed(1)}%`;
+  const [confirmWinner, setConfirmWinner] = React.useState<"a" | "b" | null>(null);
 
   if (loading && !results) {
     return (
@@ -3686,6 +3697,19 @@ function AbTestPanel({
   const hasVariant = !!page.ab_variant_id;
   const confidence = results?.confidence ?? 0;
   const suggested = results?.suggestedWinner;
+  const variantA = results?.variantA;
+  const variantB = results?.variantB;
+  const totalSessions = (variantA?.sessions ?? 0) + (variantB?.sessions ?? 0);
+  const ctrDiff = Math.abs((variantA?.ctr ?? 0) - (variantB?.ctr ?? 0));
+  const showLeadingBadge =
+    enabled &&
+    totalSessions > 20 &&
+    ctrDiff > 0.02 &&
+    confidence > 70 &&
+    suggested != null;
+
+  const previewAUrl = page.slug ? `${ROUTES.linkPage(page.slug)}?preview=true` : "";
+  const previewBUrl = variantPage?.slug ? `${ROUTES.linkPage(variantPage.slug)}?preview=true` : "";
 
   const chartData = (results?.viewsByDay ?? []).map((d) => ({
     date: d.date.slice(5),
@@ -3695,6 +3719,24 @@ function AbTestPanel({
 
   return (
     <div className="space-y-5">
+      <ConfirmDialog
+        open={confirmWinner !== null}
+        onClose={() => setConfirmWinner(null)}
+        title={`Declare Variant ${confirmWinner?.toUpperCase() ?? ""} winner?`}
+        description={
+          confirmWinner === "b"
+            ? "Variant B's design will replace the live page. Variant B will be archived and the test will end."
+            : "The test will end and Variant A (control) will remain live. Variant B will be archived."
+        }
+        confirmLabel="Declare winner"
+        confirmVariant="warning"
+        loading={actionLoading}
+        onConfirm={async () => {
+          if (!confirmWinner) return;
+          await onDeclareWinner(confirmWinner);
+          setConfirmWinner(null);
+        }}
+      />
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-bold text-white">{results?.testName || "A/B Test"}</h2>
@@ -3739,6 +3781,49 @@ function AbTestPanel({
       {page.status !== "published" && !enabled ? (
         <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-xs text-amber-200">
           Publish this page before starting an A/B test.
+        </div>
+      ) : null}
+
+      {enabled && totalSessions < 20 ? (
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-white/50">
+          Not enough data yet — need at least 20 sessions before results are meaningful.
+        </div>
+      ) : null}
+
+      {enabled && confidence > 80 && suggested ? (
+        <div className="rounded-xl border border-pink-500/30 bg-pink-500/10 px-4 py-3 text-xs text-pink-200">
+          Variant {suggested.toUpperCase()} is leading with {confidence}% confidence — consider declaring a winner.
+        </div>
+      ) : null}
+
+      {(previewAUrl || previewBUrl) && (enabled || hasVariant) ? (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {previewAUrl ? (
+            <div className="rounded-xl border p-3" style={{ borderColor: BORDER, background: BG }}>
+              <p className="mb-2 text-xs font-semibold text-white/70">Variant A (Control)</p>
+              <div className="relative mx-auto overflow-hidden rounded-lg border" style={{ borderColor: BORDER, width: 180, height: 320 }}>
+                <iframe
+                  src={previewAUrl}
+                  title="Variant A preview"
+                  className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+                  style={{ width: 390, height: 693, transform: "scale(0.462)" }}
+                />
+              </div>
+            </div>
+          ) : null}
+          {previewBUrl ? (
+            <div className="rounded-xl border p-3" style={{ borderColor: BORDER, background: BG }}>
+              <p className="mb-2 text-xs font-semibold text-white/70">Variant B (Challenger)</p>
+              <div className="relative mx-auto overflow-hidden rounded-lg border" style={{ borderColor: BORDER, width: 180, height: 320 }}>
+                <iframe
+                  src={previewBUrl}
+                  title="Variant B preview"
+                  className="pointer-events-none absolute left-0 top-0 origin-top-left border-0"
+                  style={{ width: 390, height: 693, transform: "scale(0.462)" }}
+                />
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
@@ -3800,10 +3885,10 @@ function AbTestPanel({
               key={v}
               className={cn(
                 "rounded-xl border p-4",
-                isSuggested && enabled ? "border-pink-500/40" : "",
+                isSuggested && showLeadingBadge ? "border-pink-500/40" : "",
                 isWinner ? "border-emerald-500/40 bg-emerald-500/[0.06]" : ""
               )}
-              style={{ borderColor: isSuggested && enabled ? undefined : BORDER, background: isWinner ? undefined : BG }}
+              style={{ borderColor: isSuggested && showLeadingBadge ? undefined : BORDER, background: isWinner ? undefined : BG }}
             >
               <div className="mb-3 flex items-center justify-between">
                 <span className="text-sm font-semibold text-white">
@@ -3812,11 +3897,15 @@ function AbTestPanel({
                 </span>
                 {isWinner ? (
                   <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">Winner</span>
-                ) : isSuggested && enabled ? (
+                ) : showLeadingBadge && isSuggested ? (
                   <span className="rounded-full bg-pink-500/20 px-2 py-0.5 text-[10px] font-medium text-pink-300">Leading</span>
                 ) : null}
               </div>
-              <div className="grid grid-cols-3 gap-2 text-center">
+              <div className="grid grid-cols-4 gap-2 text-center">
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-white/35">Sessions</p>
+                  <p className="text-lg font-bold tabular-nums text-white">{metrics?.sessions.toLocaleString() ?? "—"}</p>
+                </div>
                 <div>
                   <p className="text-[10px] uppercase tracking-wide text-white/35">Views</p>
                   <p className="text-lg font-bold tabular-nums text-white">{metrics?.views.toLocaleString() ?? "—"}</p>
@@ -3830,11 +3919,10 @@ function AbTestPanel({
                   <p className="text-lg font-bold tabular-nums text-white">{metrics ? formatPct(metrics.ctr) : "—"}</p>
                 </div>
               </div>
-              <p className="mt-2 text-[10px] text-white/30">{metrics?.sessions ?? 0} sessions</p>
               {enabled ? (
                 <button
                   type="button"
-                  onClick={() => void onDeclareWinner(v)}
+                  onClick={() => setConfirmWinner(v)}
                   disabled={actionLoading}
                   className="mt-3 w-full rounded-lg border py-1.5 text-[11px] font-medium text-white/60 hover:text-white/90 disabled:opacity-40"
                   style={{ borderColor: BORDER }}
