@@ -192,6 +192,131 @@ function buildAnimatedValue(colors: [string, string, string], speed: string): st
   return `${colors.join(",")},${speed}`;
 }
 
+function ImageUploadArea({
+  id,
+  value,
+  pageId,
+  uploadType,
+  uploadTitle,
+  previewVariant = "banner",
+  onUrlChange,
+  onUrlBlur,
+  onUploaded,
+  onRemove,
+}: {
+  id: string;
+  value: string;
+  pageId: string;
+  uploadType: "background" | "profile";
+  uploadTitle: string;
+  previewVariant?: "banner" | "circle";
+  onUrlChange: (url: string) => void;
+  onUrlBlur?: () => void;
+  onUploaded: (url: string) => void;
+  onRemove: () => void;
+}) {
+  const { addToast } = useToast();
+  const [isUploading, setIsUploading] = React.useState(false);
+  const inputRef = React.useRef<HTMLInputElement>(null);
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      addToast(localToast("File too large", "Image must be under 5MB", "high"));
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("type", uploadType);
+      formData.append("pageId", pageId);
+      const res = await fetch("/api/admin/link-pages/upload", { method: "POST", body: formData });
+      const data = (await res.json()) as { url?: string; error?: string };
+      if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
+      onUploaded(data.url);
+      addToast(localToast("Uploaded", "Image uploaded!", "normal"));
+    } catch (err) {
+      addToast(
+        localToast("Upload failed", err instanceof Error ? err.message : "Upload failed", "high")
+      );
+    } finally {
+      setIsUploading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={isUploading}
+        className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed px-6 py-6 transition-colors hover:border-pink-500/50 disabled:opacity-60"
+        style={{ borderColor: "rgba(255,255,255,0.15)" }}
+      >
+        <span className="text-2xl" aria-hidden>
+          🖼️
+        </span>
+        <p className="text-sm font-medium text-white">{uploadTitle}</p>
+        <p className="text-xs text-white/40">JPG, PNG, WebP — max 5MB</p>
+      </button>
+      <input
+        ref={inputRef}
+        id={id}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => void handleFileUpload(e)}
+      />
+      {isUploading ? (
+        <div className="flex items-center justify-center gap-2 py-2 text-xs text-white/40">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Uploading…
+        </div>
+      ) : null}
+      <div className="flex items-center gap-3">
+        <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
+        <span className="text-xs text-white/30">or paste URL</span>
+        <div className="h-px flex-1" style={{ background: "rgba(255,255,255,0.08)" }} />
+      </div>
+      <FormInput value={value} onChange={(e) => onUrlChange(e.target.value)} onBlur={onUrlBlur} placeholder="https://..." />
+      {value ? (
+        previewVariant === "circle" ? (
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={value}
+              alt=""
+              className="h-16 w-16 rounded-full border-2 object-cover"
+              style={{ borderColor: BORDER }}
+            />
+            <div>
+              <p className="text-[13px] text-white">Profile photo</p>
+              <button type="button" onClick={onRemove} className="text-xs text-rose-400 hover:text-rose-300">
+                Remove
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="relative h-[120px] overflow-hidden rounded-xl">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={value} alt="Background preview" className="h-full w-full object-cover" />
+            <button
+              type="button"
+              onClick={onRemove}
+              className="absolute right-2 top-2 rounded-md bg-black/70 px-2 py-1 text-xs text-white"
+            >
+              ✕ Remove
+            </button>
+          </div>
+        )
+      ) : null}
+    </div>
+  );
+}
+
 function previewPageFromFields(
   page: Pick<
     LinkPageRecord,
@@ -236,11 +361,13 @@ function previewPageFromFields(
 
 function BackgroundSection({
   page,
+  pageId,
   onPatchImmediateField,
   onPatchTextField,
   onFieldBlur,
 }: {
   page: Pick<LinkPageRecord, "background_type" | "background_value" | "theme">;
+  pageId: string;
   onPatchImmediateField: (patch: Partial<SaveablePageFields>) => void;
   onPatchTextField: (patch: Partial<SaveablePageFields>) => void;
   onFieldBlur: () => void;
@@ -539,31 +666,41 @@ function BackgroundSection({
 
       {activeTab === "image" ? (
         <div className="space-y-3">
-          <Field label="Image URL">
-            <FormInput
-              value={imageState.url}
-              onChange={(e) =>
-                onPatchTextField({
-                  background_type: "image",
-                  background_value: serializeImageBackgroundValue({
-                    ...imageState,
-                    url: e.target.value,
-                  }),
-                })
-              }
-              onBlur={onFieldBlur}
-              placeholder="https://..."
-            />
-          </Field>
-          {imageState.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={imageState.url}
-              alt=""
-              className="h-24 w-full rounded-lg border object-cover"
-              style={{ borderColor: BORDER }}
-            />
-          ) : null}
+          <ImageUploadArea
+            id="bg-image-upload"
+            value={imageState.url}
+            pageId={pageId}
+            uploadType="background"
+            uploadTitle="Upload background image"
+            onUrlChange={(url) =>
+              onPatchTextField({
+                background_type: "image",
+                background_value: serializeImageBackgroundValue({
+                  ...imageState,
+                  url,
+                }),
+              })
+            }
+            onUrlBlur={onFieldBlur}
+            onUploaded={(url) =>
+              onPatchImmediateField({
+                background_type: "image",
+                background_value: serializeImageBackgroundValue({
+                  ...imageState,
+                  url,
+                }),
+              })
+            }
+            onRemove={() =>
+              onPatchImmediateField({
+                background_type: "image",
+                background_value: serializeImageBackgroundValue({
+                  ...imageState,
+                  url: "",
+                }),
+              })
+            }
+          />
           <Field label={`Overlay (${Math.round(imageState.overlay * 100)}%)`}>
             <input
               type="range"
@@ -1467,8 +1604,12 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   }
 
   async function uploadPhoto(file: File, onUrl: (url: string) => void) {
+    if (!selectedId) throw new Error("No page selected");
+    if (file.size > 5 * 1024 * 1024) throw new Error("Image must be under 5MB");
     const form = new FormData();
     form.append("file", file);
+    form.append("type", "block");
+    form.append("pageId", selectedId);
     const res = await fetch("/api/admin/link-pages/upload", { method: "POST", body: form });
     const data = (await res.json()) as { url?: string; error?: string };
     if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
@@ -2668,26 +2809,19 @@ function EditorPanel({
             />
           </Field>
         </div>
-        <Field label="Profile photo URL">
-          <div className="flex gap-2">
-            <FormInput
-              value={page.profile_photo_url}
-              onChange={(e) => onPatchTextField({ profile_photo_url: e.target.value })}
-              onBlur={onFieldBlur}
-            />
-            <label className="inline-flex cursor-pointer items-center gap-1 rounded-lg border px-3 py-2 text-xs text-white/60 hover:bg-white/5" style={{ borderColor: BORDER }}>
-              <Upload className="h-3.5 w-3.5" />
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void onUpload(f, (url) => onPatchImmediateField({ profile_photo_url: url }));
-                }}
-              />
-            </label>
-          </div>
+        <Field label="Profile photo">
+          <ImageUploadArea
+            id="profile-photo-upload"
+            value={page.profile_photo_url}
+            pageId={pageId}
+            uploadType="profile"
+            uploadTitle="Upload profile photo"
+            previewVariant="circle"
+            onUrlChange={(url) => onPatchTextField({ profile_photo_url: url })}
+            onUrlBlur={onFieldBlur}
+            onUploaded={(url) => onPatchImmediateField({ profile_photo_url: url })}
+            onRemove={() => onPatchImmediateField({ profile_photo_url: "" })}
+          />
         </Field>
         <label className="flex items-center gap-2 text-xs text-white/60">
           <input
@@ -2740,6 +2874,7 @@ function EditorPanel({
         <Field label="Background">
           <BackgroundSection
             page={page}
+            pageId={pageId}
             onPatchImmediateField={onPatchImmediateField}
             onPatchTextField={onPatchTextField}
             onFieldBlur={onFieldBlur}
