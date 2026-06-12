@@ -1,8 +1,11 @@
 import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
+import sharp from "sharp";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+
+const COMPRESS_THRESHOLD_BYTES = 5 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
@@ -23,22 +26,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid upload type" }, { status: 400 });
   }
 
-  const maxBytes = type === "background" || type === "profile" ? 5 * 1024 * 1024 : 10 * 1024 * 1024;
-  if (file.size > maxBytes) {
-    const maxMb = maxBytes / (1024 * 1024);
-    return NextResponse.json({ error: `File too large (max ${maxMb}MB)` }, { status: 400 });
+  const compressionDisabled =
+    form.get("compress") === "false" || form.get("disableCompression") === "true";
+  const shouldCompress = file.size > COMPRESS_THRESHOLD_BYTES && !compressionDisabled;
+
+  let uploadBody: Buffer | File = file;
+  let uploadContentType = file.type;
+  let uploadName = file.name;
+
+  if (shouldCompress) {
+    const input = Buffer.from(await file.arrayBuffer());
+    uploadBody = await sharp(input)
+      .rotate()
+      .resize({ width: 4096, height: 4096, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+    uploadContentType = "image/webp";
+    uploadName = file.name.replace(/\.[^.]+$/, "") + ".webp";
+  } else {
+    // Compression disabled — upload original file
   }
 
   if (!process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json({ error: "File upload not configured" }, { status: 503 });
   }
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+  const safeName = uploadName.replace(/[^a-zA-Z0-9.-]/g, "_");
   const folder = pageId ? `link-pages/${pageId}/${type}` : `link-pages/${type}`;
   const filename = `${folder}/${Date.now()}-${safeName}`;
-  const blob = await put(filename, file, {
+  const blob = await put(filename, uploadBody, {
     access: "public",
     addRandomSuffix: false,
+    contentType: uploadContentType,
   });
   return NextResponse.json({ url: blob.url });
 }

@@ -6,6 +6,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  // Pages Router body limit; App Router route handlers use platform/runtime limits instead.
+  api: { bodyParser: { sizeLimit: "100mb" } },
   // Cloudflare: use @opennextjs/cloudflare (Workers). Build: npm run pages:build; deploy: npm run deploy:cf
   outputFileTracingRoot: path.join(__dirname, "."),
   webpack: (config) => {

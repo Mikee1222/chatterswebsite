@@ -223,10 +223,6 @@ function ImageUploadArea({
     const file = e.target.files?.[0];
     e.target.value = "";
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) {
-      addToast(localToast("File too large", "Image must be under 5MB", "high"));
-      return;
-    }
     setIsUploading(true);
     try {
       const formData = new FormData();
@@ -260,7 +256,7 @@ function ImageUploadArea({
           🖼️
         </span>
         <p className="text-sm font-medium text-white">{uploadTitle}</p>
-        <p className="text-xs text-white/40">JPG, PNG, WebP — max 5MB</p>
+        <p className="text-xs text-white/40">JPG, PNG, WebP</p>
       </button>
       <input
         ref={inputRef}
@@ -1605,7 +1601,6 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
 
   async function uploadPhoto(file: File, onUrl: (url: string) => void) {
     if (!selectedId) throw new Error("No page selected");
-    if (file.size > 5 * 1024 * 1024) throw new Error("Image must be under 5MB");
     const form = new FormData();
     form.append("file", file);
     form.append("type", "block");
