@@ -34,6 +34,8 @@ export const LINK_PAGE_FIELDS = {
   tiktok_pixel_id: "tiktok_pixel_id",
   cookie_notice_enabled: "cookie_notice_enabled",
   cookie_notice_text: "cookie_notice_text",
+  bio_color: "bio_color",
+  name_color: "name_color",
   created_at: "created_at",
   updated_at: "updated_at",
 } as const;

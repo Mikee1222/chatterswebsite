@@ -56,6 +56,8 @@ type PageFields = {
   tiktok_pixel_id?: string;
   cookie_notice_enabled?: boolean;
   cookie_notice_text?: string;
+  bio_color?: string;
+  name_color?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -161,6 +163,8 @@ function mapPage(rec: AirtableRecord<PageFields>): LinkPageRecord {
     tiktok_pixel_id: airtableText(f.tiktok_pixel_id),
     cookie_notice_enabled: airtableBool(f.cookie_notice_enabled),
     cookie_notice_text: airtableText(f.cookie_notice_text),
+    bio_color: airtableText(f.bio_color),
+    name_color: airtableText(f.name_color),
     created_at: f.created_at ?? rec.createdTime ?? "",
     updated_at: f.updated_at ?? "",
   };
@@ -499,6 +503,8 @@ export type UpdateLinkPageInput = Partial<
     | "tiktok_pixel_id"
     | "cookie_notice_enabled"
     | "cookie_notice_text"
+    | "bio_color"
+    | "name_color"
   >
 >;
 
@@ -524,6 +530,8 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
   if (input.tiktok_pixel_id !== undefined) patch.tiktok_pixel_id = input.tiktok_pixel_id.trim();
   if (input.cookie_notice_enabled !== undefined) patch.cookie_notice_enabled = input.cookie_notice_enabled;
   if (input.cookie_notice_text !== undefined) patch.cookie_notice_text = input.cookie_notice_text;
+  if (input.bio_color !== undefined) patch.bio_color = input.bio_color.trim();
+  if (input.name_color !== undefined) patch.name_color = input.name_color.trim();
 
   const rec = await updateRecord<PageFields>(LINK_PAGES_TABLE, recordId, bumpUpdatedAt(patch));
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);

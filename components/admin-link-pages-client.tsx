@@ -88,6 +88,14 @@ const BG = "#050505";
 const PANEL = "#0d0d0d";
 const BORDER = "rgba(255,255,255,0.08)";
 const ACCENT = "#ec4899";
+
+const THEME_TEXT_COLOR: Record<LinkPageRecord["theme"], string> = {
+  dark: "#fafafa",
+  light: "#0f172a",
+  minimal: "#f4f4f5",
+  neon: "#ffffff",
+  gold: "#fef3c7",
+};
 const PURPLE = "#8b5cf6";
 const PIE_COLORS = ["#ec4899", "#8b5cf6", "#38bdf8", "#34d399", "#fbbf24", "#f97316"];
 
@@ -213,6 +221,8 @@ function previewPageFromFields(
     tiktok_pixel_id: "",
     cookie_notice_enabled: true,
     cookie_notice_text: "",
+    bio_color: "",
+    name_color: "",
     ab_test_enabled: false,
     ab_variant_id: "",
     ab_test_name: "",
@@ -704,6 +714,46 @@ function NativeColorSwatch({
   );
 }
 
+function OptionalColorField({
+  value,
+  fallback,
+  onSwatchChange,
+  onHexChange,
+  onHexBlur,
+  onReset,
+}: {
+  value: string | undefined;
+  fallback: string;
+  onSwatchChange: (value: string) => void;
+  onHexChange: (value: string) => void;
+  onHexBlur: () => void;
+  onReset: () => void;
+}) {
+  const hasCustom = !!value?.trim();
+  return (
+    <div className="flex items-center gap-2">
+      <NativeColorSwatch value={hasCustom ? value : fallback} fallback={fallback} onChange={onSwatchChange} />
+      <FormInput
+        value={value ?? ""}
+        onChange={(e) => onHexChange(e.target.value)}
+        onBlur={onHexBlur}
+        placeholder="Theme default"
+        className="min-w-0 flex-1 font-mono text-xs"
+      />
+      {hasCustom ? (
+        <button
+          type="button"
+          onClick={onReset}
+          className="shrink-0 rounded-lg border px-2 py-1.5 text-[10px] text-white/50 transition-colors hover:text-white/80"
+          style={{ borderColor: BORDER }}
+        >
+          Reset
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 const PLATFORM_PRESETS = LINK_PAGE_PLATFORMS.filter((p) => p.id !== "custom");
 
 function blockPlatform(block: LinkPageBlockRecord): string {
@@ -747,6 +797,8 @@ type SaveablePageFields = Pick<
   | "tiktok_pixel_id"
   | "cookie_notice_enabled"
   | "cookie_notice_text"
+  | "bio_color"
+  | "name_color"
 >;
 
 type DomainDnsRecord = {
@@ -784,6 +836,8 @@ function pickSaveableFields(page: LinkPageRecord): SaveablePageFields {
     tiktok_pixel_id: page.tiktok_pixel_id ?? "",
     cookie_notice_enabled: page.cookie_notice_enabled ?? true,
     cookie_notice_text: page.cookie_notice_text ?? "",
+    bio_color: page.bio_color ?? "",
+    name_color: page.name_color ?? "",
   };
 }
 
@@ -2573,6 +2627,28 @@ function EditorPanel({
             placeholder="Short bio or tagline shown under the title"
           />
         </Field>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Name color">
+            <OptionalColorField
+              value={page.name_color}
+              fallback={THEME_TEXT_COLOR[page.theme] ?? THEME_TEXT_COLOR.dark}
+              onSwatchChange={(v) => onPatchImmediateField({ name_color: v })}
+              onHexChange={(v) => onPatchTextField({ name_color: v })}
+              onHexBlur={onFieldBlur}
+              onReset={() => onPatchImmediateField({ name_color: "" })}
+            />
+          </Field>
+          <Field label="Bio color">
+            <OptionalColorField
+              value={page.bio_color}
+              fallback={THEME_TEXT_COLOR[page.theme] ?? THEME_TEXT_COLOR.dark}
+              onSwatchChange={(v) => onPatchImmediateField({ bio_color: v })}
+              onHexChange={(v) => onPatchTextField({ bio_color: v })}
+              onHexBlur={onFieldBlur}
+              onReset={() => onPatchImmediateField({ bio_color: "" })}
+            />
+          </Field>
+        </div>
         <Field label="Profile photo URL">
           <div className="flex gap-2">
             <FormInput

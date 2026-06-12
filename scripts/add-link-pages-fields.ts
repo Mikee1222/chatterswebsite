@@ -254,6 +254,8 @@ async function main(): Promise<void> {
   await ensureField(baseId, token, pagesTable, "tiktok_pixel_id", TEXT_DEF);
   await ensureField(baseId, token, pagesTable, "cookie_notice_enabled", CHECKBOX_DEF);
   await ensureField(baseId, token, pagesTable, "cookie_notice_text", TEXT_DEF);
+  await ensureField(baseId, token, pagesTable, "bio_color", TEXT_DEF);
+  await ensureField(baseId, token, pagesTable, "name_color", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "platform", TEXT_DEF);
   await ensureField(baseId, token, blocksTable, "custom_button_color", TEXT_DEF);
 

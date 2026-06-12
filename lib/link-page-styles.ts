@@ -639,6 +639,10 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
     },
   };
   const t = themes[page.theme] ?? themes.dark;
+  const themeTextColor = t.text;
+  const nameColor = page.name_color?.trim() || themeTextColor;
+  const bioColor = page.bio_color?.trim() || themeTextColor;
+  const bioOpacity = page.bio_color?.trim() ? 1 : 0.75;
 
   const bgRule = getBackgroundCss(page);
   const overlayRule = backgroundOverlayCss(page, t.overlay);
@@ -765,6 +769,7 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       margin: 0.25rem 0 0;
       letter-spacing: -0.02em;
       line-height: 1.2;
+      color: ${nameColor};
     }
     .verified-badge {
       display: inline-flex;
@@ -780,8 +785,8 @@ export function linkPageThemeCss(page: LinkPageWithBlocks): string {
       position: relative;
       z-index: 1;
       font-size: 0.95rem;
-      color: var(--muted);
-      opacity: 1;
+      color: ${bioColor};
+      opacity: ${bioOpacity};
       text-align: center;
       line-height: 1.55;
       white-space: pre-wrap;

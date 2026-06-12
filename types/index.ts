@@ -1328,6 +1328,8 @@ export interface LinkPageRecord {
   tiktok_pixel_id: string;
   cookie_notice_enabled: boolean;
   cookie_notice_text: string;
+  bio_color?: string;
+  name_color?: string;
   created_at: string;
   updated_at: string;
 }
