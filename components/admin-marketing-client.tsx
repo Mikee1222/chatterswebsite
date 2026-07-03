@@ -5,6 +5,7 @@ import {
   Ban,
   Check,
   ChevronDown,
+  CheckCircle2,
   ClipboardList,
   Copy,
   ExternalLink,
@@ -364,6 +365,20 @@ function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }
 }
 
 function ReportTypeBadge({ type }: { type: ShadowbanReportType }) {
+  if (type === "lifted") {
+    return (
+      <span
+        className={cn(
+          VA_STATUS_BADGE,
+          "gap-1 normal-case tracking-normal",
+          "border-emerald-500/40 bg-emerald-500/12 text-emerald-300 shadow-[0_0_12px_-4px_rgba(52,211,153,0.35)]",
+        )}
+      >
+        <CheckCircle2 className="h-3 w-3" aria-hidden />
+        Lift reported
+      </span>
+    );
+  }
   const banned = type === "banned";
   return (
     <span
@@ -866,6 +881,16 @@ export function AdminMarketingClient({
     return { pending, bannedThisWeek, shadowbannedThisWeek };
   }, [reports]);
 
+  const pendingLiftedReportByAccountId = React.useMemo(() => {
+    const map = new Map<string, ShadowbanReport>();
+    for (const r of reports) {
+      if (r.status === "pending" && r.report_type === "lifted") {
+        map.set(r.account_id, r);
+      }
+    }
+    return map;
+  }, [reports]);
+
   const hasReportFilters =
     !!filterReportStatus ||
     !!filterReportType ||
@@ -1081,12 +1106,21 @@ export function AdminMarketingClient({
       const listData = (await listRes.json()) as { reports?: ShadowbanReport[] };
       setReports(listData.reports ?? []);
       if (action === "approve" && reportBefore) {
-        const newStatus: SocialAccountStatus = reportBefore.report_type === "banned" ? "banned" : "shadowbanned";
-        setAccounts((prev) =>
-          prev.map((a) =>
-            a.account_id === reportBefore.account_id ? { ...a, account_status: newStatus } : a,
-          ),
-        );
+        if (reportBefore.report_type === "lifted") {
+          setAccounts((prev) =>
+            prev.map((a) =>
+              a.account_id === reportBefore.account_id ? { ...a, account_status: "active" } : a,
+            ),
+          );
+        } else {
+          const newStatus: SocialAccountStatus =
+            reportBefore.report_type === "banned" ? "banned" : "shadowbanned";
+          setAccounts((prev) =>
+            prev.map((a) =>
+              a.account_id === reportBefore.account_id ? { ...a, account_status: newStatus } : a,
+            ),
+          );
+        }
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Review failed");
@@ -1525,6 +1559,7 @@ export function AdminMarketingClient({
                     const color = platformColorByName[acc.platform] ?? getSocialColor(acc.platform);
                     const st: SocialAccountStatus = acc.account_status ?? "active";
                     const statusCfg = STATUS_CONFIG[st];
+                    const pendingLiftedReport = pendingLiftedReportByAccountId.get(acc.account_id);
 
                     return (
                       <div
@@ -1639,6 +1674,34 @@ export function AdminMarketingClient({
                               Active: {acc.active ? "On" : "Off"}
                             </button>
                           </div>
+
+                          {pendingLiftedReport ? (
+                            <div className="mb-3 space-y-2 rounded-xl border border-emerald-500/30 bg-emerald-500/8 p-3">
+                              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-300">
+                                <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                                VA reports restriction lifted
+                              </span>
+                              {pendingLiftedReport.notes ? (
+                                <p className="text-xs text-[#B8B4B8]/55">{pendingLiftedReport.notes}</p>
+                              ) : null}
+                              <div className="flex flex-wrap gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void handleReviewReport(pendingLiftedReport.id, "approve")}
+                                  className="rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-3 py-1.5 text-xs font-semibold text-emerald-200 transition hover:bg-emerald-500/25"
+                                >
+                                  Confirm — set active
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleReviewReport(pendingLiftedReport.id, "dismiss")}
+                                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-[#B8B4B8]/60 hover:bg-white/10"
+                                >
+                                  Dismiss
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
 
                           <div className="group/status relative mt-auto">
                             <button
@@ -2013,6 +2076,7 @@ export function AdminMarketingClient({
                 <option value="">All types</option>
                 <option value="shadowbanned">Shadowbanned</option>
                 <option value="banned">Banned</option>
+                <option value="lifted">Restriction lifted</option>
               </select>
               <select
                 value={filterReportPlatform}
@@ -2132,7 +2196,9 @@ export function AdminMarketingClient({
                       VA_CARD,
                       "overflow-hidden p-0",
                       report.status === "pending"
-                        ? "border-amber-500/25"
+                        ? report.report_type === "lifted"
+                          ? "border-emerald-500/25"
+                          : "border-amber-500/25"
                         : report.status === "approved"
                           ? "border-red-500/20 opacity-90"
                           : "border-white/8 opacity-75",
@@ -2238,9 +2304,16 @@ export function AdminMarketingClient({
                             <button
                               type="button"
                               onClick={() => void handleReviewReport(report.id, "approve")}
-                              className="flex-1 rounded-xl border border-red-500/30 bg-red-500/15 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/25"
+                              className={cn(
+                                "flex-1 rounded-xl border py-2.5 text-sm font-semibold transition",
+                                report.report_type === "lifted"
+                                  ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25"
+                                  : "border-red-500/30 bg-red-500/15 text-red-300 hover:bg-red-500/25",
+                              )}
                             >
-                              Approve — mark {report.report_type === "banned" ? "banned" : "shadowbanned"}
+                              {report.report_type === "lifted"
+                                ? "Confirm — set active"
+                                : `Approve — mark ${report.report_type === "banned" ? "banned" : "shadowbanned"}`}
                             </button>
                             <button
                               type="button"

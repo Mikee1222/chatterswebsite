@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
-import { getAccountsByVA } from "@/services/marketing";
+import { getAccountsByVA, getPendingLiftedReportAccountIds } from "@/services/marketing";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -14,8 +14,15 @@ export async function GET(req: Request) {
   const vaId = session.airtableUserId ?? session.id;
   const { searchParams } = new URL(req.url);
   const modelId = searchParams.get("model_id")?.trim();
-  let accounts = await getAccountsByVA(vaId);
-  if (modelId) accounts = accounts.filter((a) => a.model_id === modelId);
-  return NextResponse.json({ accounts });
+  const [accounts, pendingLiftedIds] = await Promise.all([
+    getAccountsByVA(vaId),
+    getPendingLiftedReportAccountIds(),
+  ]);
+  let filtered = accounts;
+  if (modelId) filtered = filtered.filter((a) => a.model_id === modelId);
+  const pending_lifted_account_ids = filtered
+    .map((a) => a.account_id)
+    .filter((id) => pendingLiftedIds.has(id));
+  return NextResponse.json({ accounts: filtered, pending_lifted_account_ids });
 }
 

@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ChevronRight, ExternalLink, Link2, Smartphone } from "lucide-react";
+import { AlertTriangle, ChevronRight, ExternalLink, Link2, CheckCircle2 } from "lucide-react";
 import type { FunnelLink, SocialAccount, SocialAccountStatus } from "@/services/marketing";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
+import { VARestrictionLiftedModal } from "@/components/va-restriction-lifted-modal";
 import { PlatformIconBadge } from "@/components/social-platform-icon";
 import { getSocialColor, getPlatformAccentGlow } from "@/lib/social-platform-config";
 import {
@@ -105,7 +106,15 @@ function StatusBadge({ status }: { status: SocialAccountStatus }) {
   );
 }
 
-function AccountCard({ acc }: { acc: SocialAccount }) {
+function AccountCard({
+  acc,
+  pendingLifted,
+  onReportLifted,
+}: {
+  acc: SocialAccount;
+  pendingLifted: boolean;
+  onReportLifted: (acc: SocialAccount) => void;
+}) {
   const plat = acc.platform?.trim() || "Other";
   const color = getSocialColor(plat);
   const href = acc.account_link?.trim() || "#";
@@ -150,6 +159,29 @@ function AccountCard({ acc }: { acc: SocialAccount }) {
         Open profile
         <ExternalLink className="h-3 w-3 text-white/40" />
       </a>
+      {(st === "shadowbanned" || st === "banned") && (
+        <div className="mt-3">
+          {pendingLifted ? (
+            <p className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/25 bg-emerald-500/8 px-3 py-2 text-xs font-medium text-emerald-300/90">
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Reported — awaiting confirmation
+            </p>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onReportLifted(acc)}
+              className={cn(
+                "inline-flex w-full items-center justify-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition",
+                "border-emerald-500/30 bg-emerald-500/8 text-emerald-300/90",
+                "hover:border-emerald-500/45 hover:bg-emerald-500/12",
+              )}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+              Report restriction lifted
+            </button>
+          )}
+        </div>
+      )}
     </article>
   );
 }
@@ -158,10 +190,14 @@ function CreatorPortfolio({
   modelId,
   modelName,
   accounts,
+  pendingLiftedAccountIds,
+  onReportLifted,
 }: {
   modelId: string;
   modelName: string;
   accounts: SocialAccount[];
+  pendingLiftedAccountIds: Set<string>;
+  onReportLifted: (acc: SocialAccount) => void;
 }) {
   const issueCount = accounts.filter((a) => (a.account_status ?? "active") !== "active").length;
 
@@ -191,7 +227,12 @@ function CreatorPortfolio({
         />
         <div className="space-y-3 pl-7">
           {accounts.map((acc) => (
-            <AccountCard key={acc.id} acc={acc} />
+            <AccountCard
+              key={acc.id}
+              acc={acc}
+              pendingLifted={pendingLiftedAccountIds.has(acc.account_id)}
+              onReportLifted={onReportLifted}
+            />
           ))}
         </div>
       </div>
@@ -343,19 +384,27 @@ export function VaMarketingClient() {
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
   const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
+  const [liftedTarget, setLiftedTarget] = React.useState<SocialAccount | null>(null);
+  const [pendingLiftedAccountIds, setPendingLiftedAccountIds] = React.useState<Set<string>>(() => new Set());
 
   const reload = React.useCallback(async () => {
     setLoading(true);
     setErr(null);
     try {
       const res = await fetch("/api/va/marketing/accounts", { credentials: "include" });
-      const data = (await res.json().catch(() => ({}))) as { accounts?: SocialAccount[]; error?: string };
+      const data = (await res.json().catch(() => ({}))) as {
+        accounts?: SocialAccount[];
+        pending_lifted_account_ids?: string[];
+        error?: string;
+      };
       if (!res.ok) {
         setErr(data.error?.trim() || "Could not load accounts");
         setAccounts([]);
+        setPendingLiftedAccountIds(new Set());
         return;
       }
       setAccounts(data.accounts ?? []);
+      setPendingLiftedAccountIds(new Set(data.pending_lifted_account_ids ?? []));
     } catch {
       setErr("Network error");
       setAccounts([]);
@@ -476,6 +525,8 @@ export function VaMarketingClient() {
                 modelId={modelId}
                 modelName={group.modelName}
                 accounts={group.items}
+                pendingLiftedAccountIds={pendingLiftedAccountIds}
+                onReportLifted={setLiftedTarget}
               />
             ))}
           </div>
@@ -491,6 +542,20 @@ export function VaMarketingClient() {
           void reload();
         }}
         vaAccounts={accounts}
+      />
+
+      <VARestrictionLiftedModal
+        open={!!liftedTarget}
+        account={liftedTarget}
+        onClose={() => {
+          setLiftedTarget(null);
+          void reload();
+        }}
+        onSubmitted={() => {
+          if (liftedTarget) {
+            setPendingLiftedAccountIds((prev) => new Set([...prev, liftedTarget.account_id]));
+          }
+        }}
       />
     </div>
   );

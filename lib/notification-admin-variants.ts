@@ -78,6 +78,7 @@ export const NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT = [
   "shadowban_report",
   "shadowban_submitted",
   "shadowban_resolved",
+  "shadowban_lifted_reported",
   "period_overdue",
   "billing_cycle_announced",
   "sop_quiz_passed",

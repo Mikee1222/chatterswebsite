@@ -189,6 +189,7 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   shadowban_report: ["virtual_assistant", "model"],
   shadowban_submitted: ["virtual_assistant", "model"],
   shadowban_resolved: ["virtual_assistant", "model"],
+  shadowban_lifted_reported: ["virtual_assistant"],
   billing_cycle_announced: ["client"],
   payment_submitted: ["client"],
   sop_quiz_passed: ["chatter", "virtual_assistant"],
@@ -740,6 +741,13 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Shadowban report resolved (admin)",
       "Αποστέλλεται στον VA/model όταν λύνεται shadowban",
       "Ενημερώνει τον admin για επίλυση shadowban"
+    ),
+    ...pairedEvents(
+      "shadowban_lifted_reported",
+      "Restriction lift reported",
+      "Restriction lift reported (admin)",
+      "Επιβεβαίωση στον VA ότι ανέφερε ότι η περιορισμός λήγει",
+      "Ενημερώνει τον admin ότι VA αναφέρει ότι η περιορισμός λήγει"
     ),
   ],
   custom_request_alerts: [

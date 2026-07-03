@@ -24,6 +24,7 @@ const PERSONAL_EVENTS = [
   "fine_bonus_reviewed",
   "shadowban_submitted",
   "shadowban_resolved",
+  "shadowban_lifted_reported",
   "sop_quiz_passed",
   "sop_quiz_failed",
   "schedule_published",

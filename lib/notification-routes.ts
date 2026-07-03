@@ -136,6 +136,10 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return ROUTES.chatter.rewards;
     case "fine_bonus":
       return ROUTES.finesBonuses;
+    case "shadowban_report":
+      if (isAdmin) return ROUTES.admin.marketing;
+      if (isVa) return ROUTES.va.marketingAccounts;
+      return ROUTES.dashboard;
     case "billing_cycle":
       return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
     case "payment_submission":
@@ -227,6 +231,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
       return "Training";
     case "shadowban_submitted":
     case "shadowban_resolved":
+    case "shadowban_lifted_reported":
       return "Marketing";
     case "login_new_device":
     case "password_changed":

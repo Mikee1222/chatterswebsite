@@ -641,6 +641,29 @@ export async function createShadowbanReport(
   return mapShadowbanReport(rec);
 }
 
+/** Account IDs with a pending VA "restriction lifted" report awaiting admin confirmation. */
+export async function getPendingLiftedReportAccountIds(): Promise<Set<string>> {
+  const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
+    filterByFormula: `{status} = "pending"`,
+  });
+  const out = new Set<string>();
+  for (const rec of records) {
+    const f = rec.fields ?? {};
+    if (deriveShadowbanReportType(f) !== "lifted") continue;
+    const accountId = String(f.account_id ?? "").trim();
+    if (accountId) out.add(accountId);
+  }
+  return out;
+}
+
+export async function hasPendingLiftedReport(accountId: string): Promise<boolean> {
+  const aid = airtableFormulaString(accountId);
+  const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
+    filterByFormula: `AND({status} = "pending", {account_id} = "${aid}")`,
+  });
+  return records.some((rec) => deriveShadowbanReportType(rec.fields ?? {}) === "lifted");
+}
+
 export async function updateShadowbanReport(id: string, data: Partial<ShadowbanReport>): Promise<void> {
   const patch: Record<string, unknown> = {};
   if (data.status !== undefined) patch.status = data.status;

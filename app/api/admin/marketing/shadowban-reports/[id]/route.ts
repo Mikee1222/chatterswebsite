@@ -63,6 +63,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       reviewed_at: now,
     });
 
+    const reportType = deriveShadowbanReportType(f);
     const accountIdField = String(f.account_id ?? "").trim();
     if (accountIdField) {
       const accounts = await listAllRecords("model_social_accounts", {
@@ -70,18 +71,28 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
       const acc = accounts[0];
       if (acc) {
-        const reportType = deriveShadowbanReportType(f);
-        await updateAccount(acc.id, {
-          account_status: reportType === "banned" ? "banned" : "shadowbanned",
-          shadowban_reported_at: now,
-          shadowban_reported_by: String(f.reported_by_name ?? "").trim() || "Reporter",
-        });
+        if (reportType === "lifted") {
+          await updateAccount(acc.id, {
+            account_status: "active",
+          });
+        } else {
+          await updateAccount(acc.id, {
+            account_status: reportType === "banned" ? "banned" : "shadowbanned",
+            shadowban_reported_at: now,
+            shadowban_reported_by: String(f.reported_by_name ?? "").trim() || "Reporter",
+          });
+        }
       }
     }
 
     const reportedById = String(f.reported_by_id ?? "").trim();
     if (reportedById) {
-      const copy = shadowbanResolvedPersonal(String(f.username ?? ""), String(f.platform ?? ""), true);
+      const copy = shadowbanResolvedPersonal(
+        String(f.username ?? ""),
+        String(f.platform ?? ""),
+        true,
+        reportType === "lifted",
+      );
       await notifyByRoleConfig(NOTIFICATION_EVENT.SHADOWBAN_RESOLVED, {
         personal_user_id: reportedById,
         priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -95,6 +106,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           username: f.username,
           platform: f.platform,
           approved: true,
+          lifted: reportType === "lifted",
         },
       }).catch(() => {});
     }
@@ -107,7 +119,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
     const reportedById = String(f.reported_by_id ?? "").trim();
     if (reportedById) {
-      const copy = shadowbanResolvedPersonal(String(f.username ?? ""), String(f.platform ?? ""), false);
+      const reportType = deriveShadowbanReportType(f);
+      const copy = shadowbanResolvedPersonal(
+        String(f.username ?? ""),
+        String(f.platform ?? ""),
+        false,
+        reportType === "lifted",
+      );
       await notifyByRoleConfig(NOTIFICATION_EVENT.SHADOWBAN_RESOLVED, {
         personal_user_id: reportedById,
         priority: NOTIFICATION_PRIORITY.NORMAL,
@@ -121,6 +139,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
           username: f.username,
           platform: f.platform,
           approved: false,
+          lifted: reportType === "lifted",
         },
       }).catch(() => {});
     }

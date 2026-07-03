@@ -632,8 +632,20 @@ export function shadowbanSubmittedAdmin(
 export function shadowbanResolvedPersonal(
   username: string,
   platform: string,
-  approved: boolean
+  approved: boolean,
+  lifted = false,
 ): { title: string; body: string } {
+  if (lifted) {
+    return approved
+      ? {
+          title: "✅ Restriction lift confirmed",
+          body: `Admin confirmed @${username} (${platform}) is active again.`,
+        }
+      : {
+          title: "Restriction lift not confirmed",
+          body: `Admin did not confirm the lift for @${username} (${platform}). The account stays restricted.`,
+        };
+  }
   return approved
     ? {
         title: "✅ Αναφορά shadowban εγκρίθηκε",
@@ -649,11 +661,42 @@ export function shadowbanResolvedPersonal(
 export function shadowbanResolvedAdmin(
   reviewerName: string,
   username: string,
-  approved: boolean
+  approved: boolean,
+  lifted = false,
 ): { title: string; body: string } {
+  if (lifted) {
+    return {
+      title: `Lift ${approved ? "confirmed" : "dismissed"} — @${username}`,
+      body: `${reviewerName} ${approved ? "restored active status for" : "dismissed the lift report for"} @${username}.`,
+    };
+  }
   return {
     title: `Shadowban ${approved ? "εγκρίθηκε" : "απορρίφθηκε"} — @${username}`,
     body: `${reviewerName} ${approved ? "επικύρωσε" : "απέρριψε"} αναφορά shadowban για @${username}.`,
+  };
+}
+
+/** Restriction lifted reported — personal. */
+export function shadowbanLiftedReportedPersonal(
+  username: string,
+  platform: string,
+): { title: string; body: string } {
+  return {
+    title: "Lift report submitted",
+    body: `Your report that @${username} (${platform}) is active again was sent to admin.`,
+  };
+}
+
+/** Restriction lifted reported — admin. */
+export function shadowbanLiftedReportedAdmin(
+  reporterName: string,
+  username: string,
+  platform: string,
+  modelName: string,
+): { title: string; body: string } {
+  return {
+    title: `Lift reported — @${username}`,
+    body: `${reporterName} reports the restriction is gone on ${platform} for ${modelName || "model"} (@${username}). Confirm to restore active.`,
   };
 }
 
@@ -863,11 +906,19 @@ export function buildAdminTitle(
         String(ctx.platform ?? "—"),
         String(ctx.modelName ?? "")
       ).title;
+    case "shadowban_lifted_reported":
+      return shadowbanLiftedReportedAdmin(
+        actor,
+        String(ctx.username ?? "—"),
+        String(ctx.platform ?? "—"),
+        String(ctx.modelName ?? ""),
+      ).title;
     case "shadowban_resolved":
       return shadowbanResolvedAdmin(
         actor,
         String(ctx.username ?? "—"),
-        ctx.approved === true
+        ctx.approved === true,
+        ctx.lifted === true,
       ).title;
     case "sop_quiz_passed":
       return sopQuizPassedAdmin(actor, String(ctx.sopTitle ?? "SOP"), Number(ctx.score ?? 0)).title;
@@ -1014,11 +1065,19 @@ export function buildAdminBody(
         String(ctx.platform ?? "—"),
         String(ctx.modelName ?? "")
       ).body;
+    case "shadowban_lifted_reported":
+      return shadowbanLiftedReportedAdmin(
+        actor,
+        String(ctx.username ?? "—"),
+        String(ctx.platform ?? "—"),
+        String(ctx.modelName ?? ""),
+      ).body;
     case "shadowban_resolved":
       return shadowbanResolvedAdmin(
         actor,
         String(ctx.username ?? "—"),
-        ctx.approved === true
+        ctx.approved === true,
+        ctx.lifted === true,
       ).body;
     case "sop_quiz_passed":
       return sopQuizPassedAdmin(actor, String(ctx.sopTitle ?? "SOP"), Number(ctx.score ?? 0)).body;

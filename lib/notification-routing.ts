@@ -384,6 +384,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "Reporter when a shadowban report is approved or dismissed.",
   },
+  shadowban_lifted_reported: {
+    rule: "assigned_party_only",
+    description: "VA when they report a shadowban/ban restriction has been lifted.",
+  },
   sop_quiz_passed: {
     rule: "assigned_party_only",
     description: "Chatter/VA when they pass an SOP quiz.",
@@ -478,6 +482,7 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   shadowban_report_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   shadowban_submitted_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   shadowban_resolved_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
+  shadowban_lifted_reported_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   period_overdue_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   billing_cycle_announced_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   sop_quiz_passed_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
@@ -593,6 +598,7 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "fine_bonus_reviewed",
   "shadowban_submitted",
   "shadowban_resolved",
+  "shadowban_lifted_reported",
   "sop_quiz_passed",
   "sop_quiz_failed",
   "schedule_published",
