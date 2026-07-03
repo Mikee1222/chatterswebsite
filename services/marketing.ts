@@ -1,6 +1,7 @@
 "use server";
 
 import { createRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { deriveShadowbanReportType, type ShadowbanReportType } from "@/lib/shadowban-helpers";
 
 const TABLE_PLATFORMS = "marketing_platforms";
 const TABLE_ACCOUNTS = "model_social_accounts";
@@ -33,8 +34,7 @@ export interface SocialAccount {
 
 export type ShadowbanReportStatus = "pending" | "approved" | "dismissed";
 
-/** What was reported for the account: a shadowban (limited reach) or a full ban. */
-export type ShadowbanReportType = "shadowbanned" | "banned";
+export type { ShadowbanReportType };
 
 export interface ShadowbanReport {
   id: string;
@@ -55,22 +55,6 @@ export interface ShadowbanReport {
   reviewed_by: string;
   created_at: string;
   reviewed_at: string | null;
-}
-
-/**
- * Resolve the report type from an Airtable shadowban_reports row.
- * The submit route encodes the type in the notes prefix ("[Ban reported]" / "[Shadowban reported]"),
- * and (forward-compatible) may also set a dedicated `report_type` field.
- */
-export function deriveShadowbanReportType(fields: {
-  report_type?: unknown;
-  notes?: unknown;
-}): ShadowbanReportType {
-  const rt = typeof fields.report_type === "string" ? fields.report_type.trim().toLowerCase() : "";
-  if (rt === "banned") return "banned";
-  if (rt === "shadowbanned") return "shadowbanned";
-  const notes = typeof fields.notes === "string" ? fields.notes : "";
-  return /^\s*\[ban reported\]/i.test(notes) ? "banned" : "shadowbanned";
 }
 
 export interface FunnelLink {
