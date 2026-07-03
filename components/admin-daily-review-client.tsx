@@ -178,9 +178,21 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
         body: JSON.stringify({ review_date: selectedDate }),
       });
       const data = (await res.json()) as { review?: MarketingDailyReview; error?: string };
+      if (res.status === 409) {
+        await loadDate(selectedDate);
+        await reloadHistory();
+        addToast(
+          localToast(
+            `dr-dupe-${Date.now()}`,
+            "Review already exists",
+            `A review for ${formatReviewDate(selectedDate)} already exists — loaded it for editing.`,
+            "normal",
+          ),
+        );
+        return;
+      }
       if (!res.ok || !data.review) {
         addToast(localToast(`dr-err-${Date.now()}`, "Failed", data.error ?? "Could not start review", "high"));
-        if (data.review) await loadDate(selectedDate);
         return;
       }
       await loadDate(selectedDate);

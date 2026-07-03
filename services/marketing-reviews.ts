@@ -13,6 +13,7 @@ import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
+  toReviewDateKey,
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
@@ -350,12 +351,16 @@ export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
 }
 
 export async function getDailyReviewByDate(date: string): Promise<MarketingDailyReview | null> {
-  const d = escapeFormulaString(date.trim());
+  const targetKey = toReviewDateKey(date);
+  if (!targetKey) return null;
+  // Airtable filterByFormula string equality on date fields is unreliable (date⇄text
+  // coercion against the base's European D/M/YYYY display format), so fetch all reviews
+  // and match on a normalized YYYY-MM-DD key in JS instead. Volume is small.
   const records = await listAllRecords<DailyReviewFields>(TABLE_DAILY_REVIEWS, {
-    filterByFormula: `{review_date} = "${d}"`,
+    sort: [{ field: "review_date", direction: "desc" }],
   });
-  const rec = records[0];
-  return rec ? mapDailyReview(rec) : null;
+  const match = records.find((rec) => toReviewDateKey(rec.fields?.review_date) === targetKey);
+  return match ? mapDailyReview(match) : null;
 }
 
 export async function getDailyReviewDetail(id: string): Promise<MarketingDailyReviewDetail | null> {
@@ -378,6 +383,12 @@ async function getExecAuditsForDailyReview(dailyReviewId: string): Promise<Marke
 export async function createDailyReview(
   data: Partial<MarketingDailyReview> & { manager_name: string; review_date: string },
 ): Promise<MarketingDailyReview> {
+  // Guard against duplicate reviews for the same calendar day (defense-in-depth in case
+  // the API-layer check is bypassed or a concurrent request slips through). Returns the
+  // existing review instead of creating a second one.
+  const existing = await getDailyReviewByDate(data.review_date);
+  if (existing) return existing;
+
   const label =
     data.review_label?.trim() ||
     `Daily review — ${data.review_date}`;
