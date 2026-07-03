@@ -30,6 +30,7 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { SopFormSection } from "@/components/sop/sop-form-section";
 import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
+import { AccountCompensationSection } from "@/components/account-compensation-section";
 import { cn } from "@/lib/utils";
 
 const VA_TYPES: VaType[] = ["chatting", "marketing", "both"];
@@ -86,7 +87,7 @@ export function CreateAccountForm({ roles, modelOptions = [], defaultRole }: Pro
   const selectedRole = roles.find((r) => r.role_id === role);
 
   return (
-    <form action={createAccount} className={`${formSpace} mx-auto max-w-2xl space-y-5`}>
+    <form action={createAccount} encType="multipart/form-data" className={`${formSpace} mx-auto max-w-2xl space-y-5`}>
       <SopFormSection title="Basic info" description="Name and email for the new account">
         <FormField label="Full name" icon={<User />} htmlFor="full_name" required staggerIndex={0}>
           <FormInput id="full_name" name="full_name" type="text" required placeholder="Jane Doe" />
@@ -167,6 +168,8 @@ export function CreateAccountForm({ roles, modelOptions = [], defaultRole }: Pro
           </div>
         </FormField>
       </SopFormSection>
+
+      <AccountCompensationSection />
 
       <SopFormSection title="Profile" description="Optional profile fields for this role" defaultOpen={role === "model" || role === "chatter" || role === "virtual_assistant"}>
         {(role === "chatter" || role === "virtual_assistant") && (

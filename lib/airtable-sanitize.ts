@@ -50,6 +50,8 @@ const DATE_TIME_FIELD_NORMALIZED = new Set([
   "recurrence_end_date",
   "start_date",
   "end_date",
+  "collaboration_start_date",
+  "collaboration_end_date",
   "break_reminder_at",
   "mistake_date",
   "reviewed_at",
@@ -441,6 +443,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   users: {
     va_type: new Set(["chatting", "marketing", "both"]),
+    compensation_type: new Set(["Percentage", "Flat Fee"]),
   },
 };
 

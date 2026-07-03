@@ -10,9 +10,16 @@ import {
   type ListParams,
 } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
-import type { UserRecord, UserRole, VaType } from "@/types";
+import type { UserRecord, UserRole, VaType, CompensationType, UserContractAttachment } from "@/types";
+import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 
 const TABLE = "users";
+
+const FIELD_COMPENSATION_TYPE = "Compensation Type";
+const FIELD_COMPENSATION_VALUE = "Compensation Value";
+const FIELD_CONTRACT_ATTACHMENTS = "Contract Attachments";
+const FIELD_COLLABORATION_START_DATE = "Collaboration Start Date";
+const FIELD_COLLABORATION_END_DATE = "Collaboration End Date";
 
 type Fields = {
   user_id?: string;
@@ -33,7 +40,38 @@ type Fields = {
   language_preference?: string;
   telegram_username?: string;
   last_login_user_agent?: string;
+  [FIELD_COMPENSATION_TYPE]?: string;
+  [FIELD_COMPENSATION_VALUE]?: number;
+  [FIELD_CONTRACT_ATTACHMENTS]?: unknown;
+  [FIELD_COLLABORATION_START_DATE]?: string;
+  [FIELD_COLLABORATION_END_DATE]?: string;
 };
+
+function parseCompensationType(raw: unknown): CompensationType | null {
+  const s = String(raw ?? "").trim();
+  if (s === "Percentage" || s === "Flat Fee") return s;
+  return null;
+}
+
+function parseContractAttachments(raw: unknown): UserContractAttachment[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((x): x is UserContractAttachment => x != null && typeof x === "object" && "url" in (x as object))
+    .map((x) => ({
+      id: typeof x.id === "string" ? x.id : undefined,
+      url: typeof x.url === "string" ? x.url : "",
+      filename: typeof x.filename === "string" ? x.filename : undefined,
+      size: typeof x.size === "number" ? x.size : undefined,
+      type: typeof x.type === "string" ? x.type : undefined,
+    }))
+    .filter((x) => x.url.length > 0);
+}
+
+function parseDateField(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  return trimmed ? trimmed.slice(0, 10) : null;
+}
 
 function mapSecondaryRoleField(raw: unknown): "chatter" | "virtual_assistant" | null {
   const s = String(raw ?? "").trim().toLowerCase();
@@ -78,6 +116,17 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   if (typeof f.last_login_user_agent === "string" && f.last_login_user_agent.trim()) {
     out.last_login_user_agent = f.last_login_user_agent.trim();
   }
+  const compensationType = parseCompensationType(f[FIELD_COMPENSATION_TYPE]);
+  if (compensationType) out.compensation_type = compensationType;
+  if (typeof f[FIELD_COMPENSATION_VALUE] === "number" && !Number.isNaN(f[FIELD_COMPENSATION_VALUE])) {
+    out.compensation_value = f[FIELD_COMPENSATION_VALUE];
+  }
+  const contractAttachments = parseContractAttachments(f[FIELD_CONTRACT_ATTACHMENTS]);
+  if (contractAttachments.length > 0) out.contract_attachments = contractAttachments;
+  const collaborationStart = parseDateField(f[FIELD_COLLABORATION_START_DATE]);
+  if (collaborationStart) out.collaboration_start_date = collaborationStart;
+  const collaborationEnd = parseDateField(f[FIELD_COLLABORATION_END_DATE]);
+  if (collaborationEnd) out.collaboration_end_date = collaborationEnd;
   return out;
 }
 
@@ -155,6 +204,11 @@ export type CreateUserInput = {
   language_preference?: string;
   telegram_username?: string;
   va_type?: VaType;
+  compensation_type?: CompensationType | null;
+  compensation_value?: number | null;
+  contract_attachments?: UserContractAttachment[];
+  collaboration_start_date?: string | null;
+  collaboration_end_date?: string | null;
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
@@ -172,6 +226,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   if (input.language_preference) fields.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) fields.telegram_username = input.telegram_username.trim();
   if (input.va_type) fields.va_type = input.va_type;
+  applyCompensationFields(fields as Record<string, unknown>, input);
   const rec = await createRecord<Fields>(TABLE, fields as Fields);
   return mapRecord(rec);
 }
@@ -190,7 +245,68 @@ export type UpdateUserInput = Partial<{
   /** Persists Airtable values chatting | marketing | both (null clears). */
   va_type: VaType | null;
   telegram_username: string | null;
+  compensation_type: CompensationType | null;
+  compensation_value: number | null;
+  contract_attachments: UserContractAttachment[] | null;
+  collaboration_start_date: string | null;
+  collaboration_end_date: string | null;
 }>;
+
+function applyCompensationFields(
+  fields: Record<string, unknown>,
+  input: {
+    compensation_type?: CompensationType | null;
+    compensation_value?: number | null;
+    contract_attachments?: UserContractAttachment[] | null;
+    collaboration_start_date?: string | null;
+    collaboration_end_date?: string | null;
+  }
+) {
+  if (input.compensation_type !== undefined) {
+    if (input.compensation_type === null) {
+      fields[FIELD_COMPENSATION_TYPE] = null;
+      fields[FIELD_COMPENSATION_VALUE] = null;
+    } else {
+      fields[FIELD_COMPENSATION_TYPE] = input.compensation_type;
+      if (input.compensation_value !== undefined) {
+        fields[FIELD_COMPENSATION_VALUE] =
+          input.compensation_value === null ? null : input.compensation_value;
+      }
+    }
+  } else if (input.compensation_value !== undefined) {
+    fields[FIELD_COMPENSATION_VALUE] =
+      input.compensation_value === null ? null : input.compensation_value;
+  }
+  if (input.contract_attachments !== undefined) {
+    fields[FIELD_CONTRACT_ATTACHMENTS] =
+      input.contract_attachments?.map((a) => ({
+        url: a.url,
+        ...(a.filename ? { filename: a.filename } : {}),
+      })) ?? [];
+  }
+  if (input.collaboration_start_date !== undefined) {
+    fields[FIELD_COLLABORATION_START_DATE] = input.collaboration_start_date || null;
+  }
+  if (input.collaboration_end_date !== undefined) {
+    fields[FIELD_COLLABORATION_END_DATE] = input.collaboration_end_date || null;
+  }
+}
+
+export async function uploadUserContractAttachments(
+  recordId: string,
+  files: Array<{ name: string; type: string; bytes: Uint8Array }>
+): Promise<void> {
+  for (const file of files) {
+    if (!file.bytes.byteLength) continue;
+    await uploadAirtableAttachment({
+      recordId,
+      fieldName: FIELD_CONTRACT_ATTACHMENTS,
+      filename: file.name || "contract.pdf",
+      contentType: file.type || "application/octet-stream",
+      bytes: file.bytes,
+    });
+  }
+}
 
 export async function updateUser(recordId: string, input: UpdateUserInput): Promise<UserRecord> {
   const fields: Partial<Fields> = {};
@@ -223,6 +339,7 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   if (input.telegram_username !== undefined) {
     fields.telegram_username = input.telegram_username?.trim() ?? "";
   }
+  applyCompensationFields(fields as Record<string, unknown>, input);
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
   return mapRecord(rec);
 }

@@ -19,11 +19,12 @@ import {
   createUser,
   updateUser,
   setPasswordHash,
+  uploadUserContractAttachments,
   type CreateUserInput,
   type UpdateUserInput,
 } from "@/services/users";
 import { createDefaultPreferencesForUser } from "@/services/notification-preferences";
-import type { VaType } from "@/types";
+import type { VaType, CompensationType, UserContractAttachment } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
@@ -56,6 +57,90 @@ async function resolveValidRoleId(raw: string): Promise<string | null> {
 function parseVaType(raw: string): VaType | null {
   const v = raw.trim().toLowerCase();
   return VA_TYPES.includes(v as VaType) ? (v as VaType) : null;
+}
+
+function parseCompensationType(raw: string): CompensationType | null {
+  const s = raw.trim();
+  if (s === "Percentage" || s === "Flat Fee") return s;
+  return null;
+}
+
+function parseKeptContractAttachments(raw: string): UserContractAttachment[] {
+  if (!raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((x): x is UserContractAttachment => x != null && typeof x === "object" && "url" in (x as object))
+      .map((x) => ({
+        id: typeof x.id === "string" ? x.id : undefined,
+        url: typeof x.url === "string" ? x.url : "",
+        filename: typeof x.filename === "string" ? x.filename : undefined,
+      }))
+      .filter((x) => x.url.length > 0);
+  } catch {
+    return [];
+  }
+}
+
+async function readContractUploadFiles(formData: FormData) {
+  const files: Array<{ name: string; type: string; bytes: Uint8Array }> = [];
+  for (const entry of formData.getAll("contract_attachments")) {
+    if (!(entry instanceof File) || entry.size <= 0) continue;
+    files.push({
+      name: entry.name || "contract.pdf",
+      type: entry.type || "application/octet-stream",
+      bytes: new Uint8Array(await entry.arrayBuffer()),
+    });
+  }
+  return files;
+}
+
+type ParsedCompensationFields = {
+  compensation_type: CompensationType | null;
+  compensation_value: number | null;
+  contract_attachments: UserContractAttachment[];
+  collaboration_start_date: string | null;
+  collaboration_end_date: string | null;
+};
+
+function parseCompensationFields(formData: FormData): ParsedCompensationFields | { error: string } {
+  const compensationTypeRaw = (formData.get("compensation_type") as string)?.trim() ?? "";
+  const compensationType = parseCompensationType(compensationTypeRaw);
+  const compensationValueRaw = (formData.get("compensation_value") as string)?.trim() ?? "";
+  const collaborationStartRaw = (formData.get("collaboration_start_date") as string)?.trim() ?? "";
+  const collaborationEndRaw = (formData.get("collaboration_end_date") as string)?.trim() ?? "";
+  const keptAttachments = parseKeptContractAttachments(
+    (formData.get("kept_contract_attachments") as string)?.trim() ?? ""
+  );
+
+  let compensation_value: number | null = null;
+  if (compensationType) {
+    if (!compensationValueRaw) {
+      return { error: "Compensation value is required when compensation type is selected." };
+    }
+    const parsedValue = Number(compensationValueRaw);
+    if (!Number.isFinite(parsedValue)) {
+      return { error: "Compensation value must be a valid number." };
+    }
+    if (compensationType === "Percentage" && (parsedValue < 0 || parsedValue > 100)) {
+      return { error: "Percentage must be between 0 and 100." };
+    }
+    if (compensationType === "Flat Fee" && parsedValue < 0) {
+      return { error: "Flat fee amount cannot be negative." };
+    }
+    compensation_value = Math.round(parsedValue * 100) / 100;
+  } else if (compensationValueRaw) {
+    return { error: "Select a compensation type before entering a value." };
+  }
+
+  return {
+    compensation_type: compensationType,
+    compensation_value,
+    contract_attachments: keptAttachments,
+    collaboration_start_date: collaborationStartRaw ? collaborationStartRaw.slice(0, 10) : null,
+    collaboration_end_date: collaborationEndRaw ? collaborationEndRaw.slice(0, 10) : null,
+  };
 }
 
 export async function createAccount(formData: FormData) {
@@ -100,8 +185,33 @@ export async function createAccount(formData: FormData) {
     }
     input.va_type = vaType;
   }
+
+  const compensation = parseCompensationFields(formData);
+  if ("error" in compensation) {
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(compensation.error));
+  }
+  input.compensation_type = compensation.compensation_type;
+  input.compensation_value = compensation.compensation_value;
+  input.contract_attachments = compensation.contract_attachments;
+  input.collaboration_start_date = compensation.collaboration_start_date;
+  input.collaboration_end_date = compensation.collaboration_end_date;
+
+  const contractFiles = await readContractUploadFiles(formData);
+
   try {
     const created = await createUser(input);
+    if (contractFiles.length > 0) {
+      try {
+        await uploadUserContractAttachments(created.id, contractFiles);
+      } catch (uploadErr) {
+        console.error("[createAccount] contract attachment upload failed", uploadErr);
+        redirect(
+          ACCOUNTS_LIST +
+            "?error=" +
+            encodeURIComponent("User created but contract upload failed. Edit the user to re-upload files.")
+        );
+      }
+    }
     await createDefaultPreferencesForUser(created.id, role).catch((err) => {
       console.error("[createAccount] notification prefs init failed", err);
     });
@@ -187,8 +297,33 @@ export async function updateAccount(formData: FormData) {
     input.va_type = null;
   }
   if (telegram_username !== undefined) input.telegram_username = telegram_username;
+
+  const compensation = parseCompensationFields(formData);
+  if ("error" in compensation) {
+    redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent(compensation.error));
+  }
+  input.compensation_type = compensation.compensation_type;
+  input.compensation_value = compensation.compensation_value;
+  input.contract_attachments = compensation.contract_attachments;
+  input.collaboration_start_date = compensation.collaboration_start_date;
+  input.collaboration_end_date = compensation.collaboration_end_date;
+
+  const contractFiles = await readContractUploadFiles(formData);
+
   try {
     await updateUser(recordId, input);
+    if (contractFiles.length > 0) {
+      try {
+        await uploadUserContractAttachments(recordId, contractFiles);
+      } catch (uploadErr) {
+        console.error("[updateAccount] contract attachment upload failed", uploadErr);
+        redirect(
+          ACCOUNTS_LIST +
+            "?error=" +
+            encodeURIComponent("User updated but new contract upload failed. Try uploading again.")
+        );
+      }
+    }
     revalidateAccountsPaths();
     redirect(ACCOUNTS_LIST + "?success=updated");
   } catch (err) {

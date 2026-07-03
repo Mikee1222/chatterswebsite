@@ -868,6 +868,16 @@ export interface MonthlyTarget {
   updated_at: string;
 }
 
+export type CompensationType = "Percentage" | "Flat Fee";
+
+export type UserContractAttachment = {
+  id?: string;
+  url: string;
+  filename?: string;
+  size?: number;
+  type?: string;
+};
+
 export interface UserRecord {
   id: string;
   user_id: string;
@@ -892,6 +902,16 @@ export interface UserRecord {
   telegram_username?: string;
   /** Last User-Agent string seen on successful login (for new-device detection). */
   last_login_user_agent?: string;
+  /** Airtable `Compensation Type`: Percentage or Flat Fee. */
+  compensation_type?: CompensationType | null;
+  /** Airtable `Compensation Value`: percentage or flat fee amount. */
+  compensation_value?: number | null;
+  /** Airtable `Contract Attachments`. */
+  contract_attachments?: UserContractAttachment[];
+  /** Airtable `Collaboration Start Date` (YYYY-MM-DD). */
+  collaboration_start_date?: string | null;
+  /** Airtable `Collaboration End Date` (YYYY-MM-DD). */
+  collaboration_end_date?: string | null;
 }
 
 export interface ActivityLog {

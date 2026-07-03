@@ -29,6 +29,7 @@ import { SopFormSection } from "@/components/sop/sop-form-section";
 import { SopSegmentedToggle } from "@/components/sop/sop-segmented-toggle";
 import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { AccountCompensationSection } from "@/components/account-compensation-section";
 import { cn } from "@/lib/utils";
 
 const STATUSES = ["active", "inactive", "suspended"] as const;
@@ -101,7 +102,7 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
         nameToConfirm={user.full_name?.trim() || user.email?.trim() || "User"}
       />
 
-      <form action={updateAccount} className={`${formSpace} mx-auto max-w-2xl space-y-5`}>
+      <form action={updateAccount} encType="multipart/form-data" className={`${formSpace} mx-auto max-w-2xl space-y-5`}>
         <input type="hidden" name="recordId" value={user.id} />
 
         <SopFormSection title="Basic info" description="Name and email">
@@ -231,6 +232,23 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
             </div>
           </FormField>
         </SopFormSection>
+
+        <AccountCompensationSection
+          defaultCompensationType={user.compensation_type ?? ""}
+          defaultCompensationValue={user.compensation_value ?? null}
+          defaultCollaborationStartDate={user.collaboration_start_date ?? ""}
+          defaultCollaborationEndDate={user.collaboration_end_date ?? ""}
+          existingAttachments={user.contract_attachments ?? []}
+          defaultOpen={
+            Boolean(
+              user.compensation_type ||
+                user.compensation_value != null ||
+                user.collaboration_start_date ||
+                user.collaboration_end_date ||
+                (user.contract_attachments?.length ?? 0) > 0
+            )
+          }
+        />
 
         <SopFormSection
           title="Profile"
