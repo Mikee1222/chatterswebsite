@@ -21,27 +21,19 @@ import {
   displayOrDash,
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
+import {
+  WinnerVideoCopyButton,
+  WinnerVideoFilters,
+  WinnerVideoKanbanBoard,
+  WinnerVideoSubmissionsToolbar,
+  useWinnerVideoCopy,
+  winnerVideoLocalToast,
+} from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
+import { filterWinnerVideosClient, type WinnerVideoDateRange, type WinnerVideoViewMode } from "@/lib/winner-videos-filters";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
-
-function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
-  return {
-    id,
-    notification_id: id,
-    user_id: "local",
-    category: "system" as const,
-    event_type: "system_alert" as const,
-    priority,
-    title,
-    body,
-    entity_type: "system",
-    entity_id: "",
-    read_at: null,
-    created_at: new Date().toISOString(),
-  };
-}
 
 type Props = {
   initialSubmissions: WinnerVideoRecord[];
@@ -50,9 +42,14 @@ type Props = {
 
 export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props) {
   const { addToast } = useToast();
+  const copySubmission = useWinnerVideoCopy(addToast);
   const [submissions, setSubmissions] = React.useState(initialSubmissions);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<WinnerVideoViewMode>("list");
+  const [filterDateRange, setFilterDateRange] = React.useState<WinnerVideoDateRange>("all");
+  const [filterDateFrom, setFilterDateFrom] = React.useState("");
+  const [filterDateTo, setFilterDateTo] = React.useState("");
 
   const [referenceModelId, setReferenceModelId] = React.useState("");
   const [videoLink, setVideoLink] = React.useState("");
@@ -61,6 +58,16 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
   const [screenshotFiles, setScreenshotFiles] = React.useState<File[]>([]);
 
   React.useEffect(() => setSubmissions(initialSubmissions), [initialSubmissions]);
+
+  const filteredSubmissions = React.useMemo(
+    () =>
+      filterWinnerVideosClient(submissions, {
+        dateRange: filterDateRange,
+        dateFrom: filterDateFrom,
+        dateTo: filterDateTo,
+      }),
+    [submissions, filterDateRange, filterDateFrom, filterDateTo],
+  );
 
   const modelOptions = React.useMemo<CustomSelectOption[]>(
     () => [
@@ -89,7 +96,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!referenceModelId || !selectedModelName.trim() || !videoLink.trim()) {
-      addToast(localToast(`wv-val-${Date.now()}`, "Missing fields", "Reference model and video link are required.", "high"));
+      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing fields", "Reference model and video link are required.", "high"));
       return;
     }
     setSaving(true);
@@ -108,7 +115,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       });
       const data = (await res.json()) as { video?: WinnerVideoRecord; error?: string };
       if (!res.ok || !data.video) {
-        addToast(localToast(`wv-err-${Date.now()}`, "Submit failed", data.error ?? "Could not submit video", "high"));
+        addToast(winnerVideoLocalToast(`wv-err-${Date.now()}`, "Submit failed", data.error ?? "Could not submit video", "high"));
         return;
       }
       if (screenshotFiles.length > 0) {
@@ -126,7 +133,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       setViews("");
       setScreenshotFiles([]);
       await reload();
-      addToast(localToast(`wv-ok-${Date.now()}`, "Submitted", "Your winner video was logged for review.", "normal"));
+      addToast(winnerVideoLocalToast(`wv-ok-${Date.now()}`, "Submitted", "Your winner video was logged for review.", "normal"));
     } finally {
       setSaving(false);
     }
@@ -215,24 +222,53 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
         </form>
       </ReviewFormSection>
 
+      <WinnerVideoFilters
+        filterDateRange={filterDateRange}
+        onFilterDateRangeChange={setFilterDateRange}
+        filterDateFrom={filterDateFrom}
+        onFilterDateFromChange={setFilterDateFrom}
+        filterDateTo={filterDateTo}
+        onFilterDateToChange={setFilterDateTo}
+      />
+
       <section className="space-y-3">
-        <ReviewSectionHeader>My submissions</ReviewSectionHeader>
+        <ReviewSectionHeader
+          action={
+            filteredSubmissions.length > 0 ? (
+              <WinnerVideoSubmissionsToolbar
+                viewMode={viewMode}
+                onViewModeChange={setViewMode}
+                videos={filteredSubmissions}
+                addToast={addToast}
+              />
+            ) : null
+          }
+        >
+          My submissions
+        </ReviewSectionHeader>
         {loading ? (
           <ReviewLoadingState />
-        ) : submissions.length === 0 ? (
+        ) : filteredSubmissions.length === 0 ? (
           <ReviewEmptyState
             icon={Trophy}
-            title="No submissions yet"
-            description="Your winner video submissions will appear here with review status."
+            title={submissions.length === 0 ? "No submissions yet" : "No matching submissions"}
+            description={
+              submissions.length === 0
+                ? "Your winner video submissions will appear here with review status."
+                : "Try adjusting your date filters."
+            }
           />
+        ) : viewMode === "board" ? (
+          <WinnerVideoKanbanBoard videos={filteredSubmissions} onCopy={copySubmission} addToast={addToast} />
         ) : (
-          submissions.map((v) => (
+          filteredSubmissions.map((v) => (
             <FindingCard key={v.id}>
               <div className="flex flex-wrap items-center gap-2">
                 <WinnerVideoStatusBadge status={v.status} />
                 <span className="text-xs text-[#B8B4B8]/45">
                   {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : "—"}
                 </span>
+                <WinnerVideoCopyButton onClick={() => void copySubmission(v)} className="ml-auto" />
               </div>
               <p className="mt-2 font-semibold text-white">{displayOrDash(v.reference_model_name)}</p>
               {v.video_link ? (
