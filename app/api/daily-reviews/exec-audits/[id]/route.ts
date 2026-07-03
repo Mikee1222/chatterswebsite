@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { deleteExecAudit, updateExecAudit } from "@/services/marketing-reviews";
+import { updateExecAudit } from "@/services/marketing-reviews";
 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.DAILY_REVIEW_SUBMIT))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
@@ -27,16 +27,5 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     issues_found: body.issues_found != null ? String(body.issues_found) : undefined,
     actions_taken: body.actions_taken != null ? String(body.actions_taken) : undefined,
   });
-  return NextResponse.json({ ok: true });
-}
-
-export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSessionFromCookies();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const { id } = await ctx.params;
-  await deleteExecAudit(id);
   return NextResponse.json({ ok: true });
 }

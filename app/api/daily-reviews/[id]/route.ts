@@ -2,12 +2,12 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { deleteDailyReview, getDailyReviewDetail, updateDailyReview } from "@/services/marketing-reviews";
+import { getDailyReviewDetail, updateDailyReview } from "@/services/marketing-reviews";
 
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.DAILY_REVIEW_SUBMIT))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
@@ -19,10 +19,13 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.DAILY_REVIEW_SUBMIT))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
+  const existing = await getDailyReviewDetail(id);
+  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
   const body = (await req.json()) as Record<string, unknown>;
   await updateDailyReview(id, {
     review_label: body.review_label != null ? String(body.review_label) : undefined,
@@ -40,17 +43,4 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   });
   const review = await getDailyReviewDetail(id);
   return NextResponse.json({ review });
-}
-
-export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
-  const session = await getSessionFromCookies();
-  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  }
-  const { id } = await ctx.params;
-  const existing = await getDailyReviewDetail(id);
-  if (!existing) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  await deleteDailyReview(id);
-  return NextResponse.json({ ok: true });
 }

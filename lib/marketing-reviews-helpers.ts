@@ -58,6 +58,27 @@ export function filterSpotChecksByManager<T extends { manager_name: string }>(
   return checks.filter((sc) => sc.manager_name.trim().toLowerCase() === target);
 }
 
+/** Client-side filter for daily reviews submitted by a supervisor. */
+export function filterDailyReviewsByManager<T extends { manager_name: string }>(
+  reviews: T[],
+  managerName: string,
+): T[] {
+  const target = managerName.trim().toLowerCase();
+  if (!target) return reviews;
+  return reviews.filter((r) => r.manager_name.trim().toLowerCase() === target);
+}
+
+export function todayReviewIso(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+export function formatReviewDate(iso: string): string {
+  if (!iso) return "—";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
 export const DAILY_REVIEW_KPIS = [
   "Posts published on time",
   "Engagement targets met",

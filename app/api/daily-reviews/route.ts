@@ -2,64 +2,39 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { toReviewDateKey } from "@/lib/marketing-reviews-helpers";
+import {
+  filterDailyReviewsByManager,
+  spotCheckManagerName,
+} from "@/lib/marketing-reviews-helpers";
 import {
   createDailyReview,
-  deleteDailyReview,
   getDailyReviewByDate,
-  getDailyReviewDetail,
   getDailyReviews,
 } from "@/services/marketing-reviews";
-
-function filterReviews(
-  reviews: Awaited<ReturnType<typeof getDailyReviews>>,
-  params: { date_from?: string; date_to?: string; manager_name?: string },
-) {
-  const fromKey = params.date_from ? toReviewDateKey(params.date_from) : "";
-  const toKey = params.date_to ? toReviewDateKey(params.date_to) : "";
-  const manager = params.manager_name?.trim().toLowerCase() ?? "";
-
-  return reviews.filter((r) => {
-    const dateKey = toReviewDateKey(r.review_date);
-    if (fromKey && dateKey < fromKey) return false;
-    if (toKey && dateKey > toKey) return false;
-    if (manager && r.manager_name.trim().toLowerCase() !== manager) return false;
-    return true;
-  });
-}
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.DAILY_REVIEW_SUBMIT))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const url = new URL(req.url);
-  const date = url.searchParams.get("date");
+  const date = new URL(req.url).searchParams.get("date");
   if (date) {
     const review = await getDailyReviewByDate(date);
     return NextResponse.json({ review });
   }
 
-  const dateFrom = url.searchParams.get("date_from") ?? undefined;
-  const dateTo = url.searchParams.get("date_to") ?? undefined;
-  const managerName = url.searchParams.get("manager_name") ?? undefined;
-
-  const reviews = await getDailyReviews();
-  return NextResponse.json({
-    reviews: filterReviews(reviews, {
-      date_from: dateFrom,
-      date_to: dateTo,
-      manager_name: managerName,
-    }),
-  });
+  const managerName = spotCheckManagerName(session);
+  const all = await getDailyReviews();
+  const reviews = filterDailyReviewsByManager(all, managerName);
+  return NextResponse.json({ reviews });
 }
 
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.DAILY_REVIEW_SUBMIT))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -74,7 +49,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "A review already exists for this date", review: existing }, { status: 409 });
   }
 
-  const managerName = session.fullName?.trim() || session.email?.trim() || "Manager";
+  const managerName = spotCheckManagerName(session);
   const review = await createDailyReview({
     manager_name: managerName,
     review_date: reviewDate,

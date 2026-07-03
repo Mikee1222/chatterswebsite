@@ -63,6 +63,8 @@ export const PERMISSIONS = {
 
   SPOTCHECK_SUBMIT: "spotcheck:submit",
 
+  DAILY_REVIEW_SUBMIT: "daily_review:submit",
+
   CONTENT_VIEW: "content:view",
   CONTENT_MANAGE: "content:manage",
   CONTENT_ASSIGN: "content:assign",
@@ -149,6 +151,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   sops: "SOPs / training",
   pdf_maker: "PDF Maker",
   spotcheck: "Spot checks",
+  daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
   notifications: "Notifications",
@@ -243,6 +246,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "pdf_maker:manage": "Δημιουργία και διαχείριση εγγράφων PDF",
 
   "spotcheck:submit": "Υποβολή spot check ευρημάτων QA marketing",
+
+  "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
 
   "content:view": "Προβολή αιτημάτων και ημερολογίου περιεχομένου",
   "content:manage": "Διαχείριση αιτημάτων και περιεχομένου μοντέλων",

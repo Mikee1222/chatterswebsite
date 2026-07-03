@@ -440,6 +440,18 @@ export async function uploadDailyReviewAttachments(
   }
 }
 
+export async function deleteDailyReview(id: string): Promise<void> {
+  const audits = await getExecAuditsForDailyReview(id);
+  for (const audit of audits) {
+    await deleteRecord(TABLE_EXEC_AUDITS, audit.id);
+  }
+  await deleteRecord(TABLE_DAILY_REVIEWS, id);
+}
+
+export async function deleteExecAudit(id: string): Promise<void> {
+  await deleteRecord(TABLE_EXEC_AUDITS, id);
+}
+
 export async function createExecAudit(
   data: Partial<MarketingExecAudit> & { daily_review_id: string },
 ): Promise<MarketingExecAudit> {

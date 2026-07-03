@@ -1,18 +1,15 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { getDailyReviewByDate, getDailyReviewDetail, getDailyReviews } from "@/services/marketing-reviews";
 import { listAllUsers } from "@/services/users";
 import { AdminDailyReviewClient } from "@/components/admin-daily-review-client";
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 export default async function AdminDailyReviewPage() {
   await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_MANAGE);
 
-  const today = todayIso();
+  const today = todayReviewIso();
   const [reviews, todayRow, allUsers] = await Promise.all([
     getDailyReviews().catch(() => []),
     getDailyReviewByDate(today).catch(() => null),

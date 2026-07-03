@@ -427,6 +427,14 @@ const adminNav: NavItem[] = [
     excludeFromMobileMainTabs: true,
   },
   {
+    href: ROUTES.dailyReview,
+    label: "Daily Review",
+    iconKey: "CalendarCheck",
+    navSection: "SUPERVISION",
+    requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.admin.spotChecks,
     label: "Spot checks",
     iconKey: "ListTodo",
@@ -437,6 +445,7 @@ const adminNav: NavItem[] = [
     href: ROUTES.admin.dailyReview,
     label: "Daily review",
     iconKey: "CalendarCheck",
+    navSection: "MANAGER REVIEW",
     requiresPermission: PERMISSIONS.MARKETING_MANAGE,
   },
 

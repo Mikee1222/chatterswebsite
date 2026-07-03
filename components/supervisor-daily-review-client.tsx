@@ -1,9 +1,7 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import { CalendarCheck, Loader2, Plus, Trash2, X } from "lucide-react";
-import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { CalendarCheck, Loader2, Plus } from "lucide-react";
 import { DailyReviewFormFields, type DailyReviewFormState } from "@/components/daily-review-form-fields";
 import {
   emptyExecAuditDraft,
@@ -11,7 +9,6 @@ import {
   type ExecAuditDraft,
 } from "@/components/exec-audit-card";
 import { useToast } from "@/contexts/toast-context";
-import { ROUTES } from "@/lib/routes";
 import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import {
   VA_BTN_PRIMARY,
@@ -27,28 +24,7 @@ import type {
 } from "@/services/marketing-reviews";
 import type { UserRecord } from "@/types";
 
-const API_BASE = "/api/admin/marketing-reviews/daily-reviews";
-
-type DateRange = "all" | "7d" | "30d" | "custom";
-
-const ADMIN_SELECT = cn(VA_FILTER_INPUT, "min-w-[9rem]");
-
-function isoDateDaysAgo(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() - days);
-  return d.toISOString().slice(0, 10);
-}
-
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/8 px-2.5 py-1 text-xs text-[#D4AF8C]">
-      {label}
-      <button type="button" onClick={onRemove} className="rounded-full p-0.5 hover:bg-[#D4AF8C]/15" aria-label={`Remove ${label}`}>
-        <X className="h-3 w-3" aria-hidden />
-      </button>
-    </span>
-  );
-}
+const API_BASE = "/api/daily-reviews";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {
@@ -94,25 +70,18 @@ function detailToExecAudits(review: MarketingDailyReviewDetail | null): ExecAudi
 }
 
 type Props = {
-  initialReviews: MarketingDailyReview[];
+  initialSubmissions: MarketingDailyReview[];
   todayReview: MarketingDailyReviewDetail | null;
   vaUsers: UserRecord[];
 };
 
-export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }: Props) {
+export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, vaUsers }: Props) {
   const { addToast } = useToast();
-  const [reviews, setReviews] = React.useState(initialReviews);
+  const [myReviews, setMyReviews] = React.useState(initialSubmissions);
   const [selectedDate, setSelectedDate] = React.useState(todayReviewIso());
   const [activeReview, setActiveReview] = React.useState<MarketingDailyReviewDetail | null>(todayReview);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-  const [deleteReviewId, setDeleteReviewId] = React.useState<string | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
-
-  const [filterSupervisor, setFilterSupervisor] = React.useState("");
-  const [filterDateRange, setFilterDateRange] = React.useState<DateRange>("all");
-  const [filterDateFrom, setFilterDateFrom] = React.useState("");
-  const [filterDateTo, setFilterDateTo] = React.useState("");
 
   const [formState, setFormState] = React.useState<DailyReviewFormState>(() => detailToFormState(todayReview));
   const [execAudits, setExecAudits] = React.useState<ExecAuditDraft[]>(() => detailToExecAudits(todayReview));
@@ -122,11 +91,6 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
     () => vaUsers.filter((u) => u.va_type === "marketing" || u.va_type === "both" || !u.va_type),
     [vaUsers],
   );
-
-  const supervisorOptions = React.useMemo(() => {
-    const names = new Set(reviews.map((r) => r.manager_name).filter(Boolean));
-    return [...names].sort((a, b) => a.localeCompare(b));
-  }, [reviews]);
 
   function applyReviewToForm(review: MarketingDailyReviewDetail | null) {
     setFormState(detailToFormState(review));
@@ -160,32 +124,9 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
   }, [selectedDate]);
 
   async function reloadHistory() {
-    const params = new URLSearchParams();
-    if (filterSupervisor) params.set("manager_name", filterSupervisor);
-    if (filterDateRange === "7d") params.set("date_from", isoDateDaysAgo(7));
-    if (filterDateRange === "30d") params.set("date_from", isoDateDaysAgo(30));
-    if (filterDateRange === "custom") {
-      if (filterDateFrom) params.set("date_from", filterDateFrom);
-      if (filterDateTo) params.set("date_to", filterDateTo);
-    }
-    const res = await fetch(`${API_BASE}?${params}`);
+    const res = await fetch(API_BASE);
     const data = (await res.json()) as { reviews?: MarketingDailyReview[] };
-    if (res.ok) setReviews(data.reviews ?? []);
-  }
-
-  React.useEffect(() => {
-    void reloadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterSupervisor, filterDateRange, filterDateFrom, filterDateTo]);
-
-  const hasFilters =
-    Boolean(filterSupervisor) || filterDateRange !== "all";
-
-  function clearFilters() {
-    setFilterSupervisor("");
-    setFilterDateRange("all");
-    setFilterDateFrom("");
-    setFilterDateTo("");
+    if (res.ok) setMyReviews(data.reviews ?? []);
   }
 
   async function startReview() {
@@ -261,13 +202,13 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
           actions_taken: audit.actions_taken,
         };
         if (audit.id) {
-          await fetch(`/api/admin/marketing-reviews/exec-audits/${audit.id}`, {
+          await fetch(`${API_BASE}/exec-audits/${audit.id}`, {
             method: "PATCH",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(payload),
           });
         } else if (audit.exec_va_id) {
-          await fetch("/api/admin/marketing-reviews/exec-audits", {
+          await fetch(`${API_BASE}/exec-audits`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ ...payload, daily_review_id: activeReview.id }),
@@ -289,51 +230,17 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
     }
   }
 
-  async function deleteExecAuditById(auditId: string) {
-    await fetch(`/api/admin/marketing-reviews/exec-audits/${auditId}`, { method: "DELETE" });
-    setExecAudits((prev) => prev.filter((a) => a.id !== auditId));
-  }
-
-  async function confirmDeleteReview() {
-    if (!deleteReviewId) return;
-    setDeleting(true);
-    try {
-      const res = await fetch(`${API_BASE}/${deleteReviewId}`, { method: "DELETE" });
-      if (!res.ok) {
-        addToast(localToast(`dr-del-err-${Date.now()}`, "Failed", "Could not delete review", "high"));
-        return;
-      }
-      if (activeReview?.id === deleteReviewId) {
-        setActiveReview(null);
-        applyReviewToForm(null);
-      }
-      await reloadHistory();
-      addToast(localToast(`dr-del-ok-${Date.now()}`, "Deleted", "Daily review removed.", "normal"));
-    } finally {
-      setDeleting(false);
-      setDeleteReviewId(null);
-    }
-  }
-
   const isToday = selectedDate === todayReviewIso();
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#FF1493]/70">Manager review</p>
-          <h1 className="mt-1 text-2xl font-bold text-white">Daily review</h1>
-          <p className="mt-1 text-sm text-[#B8B4B8]/60">Manage all supervisor daily reviews</p>
-        </div>
-        <Link
-          href={ROUTES.admin.spotChecks}
-          className="rounded-xl border border-[#D4AF8C]/35 px-4 py-2.5 text-sm font-medium text-[#D4AF8C] hover:bg-[#D4AF8C]/6"
-        >
-          ← Spot checks
-        </Link>
+    <div className="mx-auto max-w-2xl space-y-8">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#FF1493]/70">Supervision</p>
+        <h1 className="mt-1 text-2xl font-bold text-white">Daily Review</h1>
+        <p className="mt-1 text-sm text-[#B8B4B8]/60">End-of-day marketing supervisor checklist</p>
       </div>
 
-      <div className={cn(VA_CARD, "flex flex-wrap items-end gap-4 p-4 md:p-5")}>
+      <section className={cn(VA_CARD, "flex flex-wrap items-end gap-4 p-4 md:p-5")}>
         <label className="space-y-1.5 text-sm">
           <span className="text-[#B8B4B8]/60">Review date</span>
           <input
@@ -348,17 +255,7 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
             {saving ? "Starting…" : "Start today's review"}
           </button>
         ) : null}
-        {activeReview ? (
-          <button
-            type="button"
-            onClick={() => setDeleteReviewId(activeReview.id)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/35 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10"
-          >
-            <Trash2 className="h-4 w-4" aria-hidden />
-            Delete review
-          </button>
-        ) : null}
-      </div>
+      </section>
 
       {loading ? (
         <div className={cn(VA_CARD, "flex items-center justify-center gap-2 py-16 text-[#B8B4B8]/50")}>
@@ -368,14 +265,15 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
       ) : !activeReview ? (
         <div className={cn(VA_CARD, "py-16 text-center shadow-[0_0_24px_rgba(212,175,140,0.08)]")}>
           <CalendarCheck className="mx-auto mb-3 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
-          <p className="text-[#B8B4B8]/70">No review for {formatReviewDate(selectedDate)}</p>
+          <p className="font-medium text-[#B8B4B8]/80">No review for {formatReviewDate(selectedDate)}</p>
+          <p className="mt-1 text-sm text-[#B8B4B8]/45">Start a new review or pick another date.</p>
           <button type="button" onClick={() => void startReview()} disabled={saving} className={cn(VA_BTN_PRIMARY, "mt-4")}>
             Start review for this date
           </button>
         </div>
       ) : (
         <div className="space-y-5">
-          <div className={cn(VA_CARD, "space-y-5 p-5 shadow-[0_0_20px_rgba(255,20,147,0.06)]")}>
+          <section className={cn(VA_CARD, "space-y-5 p-5 shadow-[0_0_20px_rgba(255,20,147,0.06)]")}>
             <DailyReviewFormFields
               state={formState}
               marketingVas={marketingVas}
@@ -400,9 +298,9 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
               onChange={(patch) => setFormState((prev) => ({ ...prev, ...patch }))}
               onAttachFiles={setAttachFiles}
             />
-          </div>
+          </section>
 
-          <div className="space-y-3">
+          <section className="space-y-3">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-base font-semibold text-white">Per-exec audits</h3>
               <button
@@ -426,14 +324,11 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
                   onChange={(patch) =>
                     setExecAudits((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)))
                   }
-                  onDelete={() => {
-                    if (audit.id) void deleteExecAuditById(audit.id);
-                    else setExecAudits((prev) => prev.filter((_, i) => i !== index));
-                  }}
+                  onDelete={() => setExecAudits((prev) => prev.filter((_, i) => i !== index))}
                 />
               ))
             )}
-          </div>
+          </section>
 
           <div className="flex justify-end">
             <button type="button" onClick={() => void saveReview()} disabled={saving} className={VA_BTN_PRIMARY}>
@@ -443,122 +338,32 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
         </div>
       )}
 
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold text-white">Review history</h3>
-          {hasFilters ? (
-            <button type="button" onClick={clearFilters} className="text-xs text-[#D4AF8C]/80 hover:text-[#D4AF8C]">
-              Clear filters
-            </button>
-          ) : null}
-        </div>
-
-        <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4")}>
-          <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-            Supervisor
-            <select value={filterSupervisor} onChange={(e) => setFilterSupervisor(e.target.value)} className={ADMIN_SELECT}>
-              <option value="">All</option>
-              {supervisorOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-            Date range
-            <select
-              value={filterDateRange}
-              onChange={(e) => setFilterDateRange(e.target.value as DateRange)}
-              className={ADMIN_SELECT}
-            >
-              <option value="all">All time</option>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="custom">Custom</option>
-            </select>
-          </label>
-          {filterDateRange === "custom" ? (
-            <>
-              <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-                From
-                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className={ADMIN_SELECT} />
-              </label>
-              <label className="space-y-1 text-xs text-[#B8B4B8]/60">
-                To
-                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className={ADMIN_SELECT} />
-              </label>
-            </>
-          ) : null}
-        </div>
-
-        {hasFilters ? (
-          <div className="flex flex-wrap gap-2">
-            {filterSupervisor ? <FilterChip label={`Supervisor: ${filterSupervisor}`} onRemove={() => setFilterSupervisor("")} /> : null}
-            {filterDateRange === "7d" ? (
-              <FilterChip label="Last 7 days" onRemove={() => setFilterDateRange("all")} />
-            ) : null}
-            {filterDateRange === "30d" ? (
-              <FilterChip label="Last 30 days" onRemove={() => setFilterDateRange("all")} />
-            ) : null}
-            {filterDateRange === "custom" && (filterDateFrom || filterDateTo) ? (
-              <FilterChip
-                label={`${filterDateFrom || "…"} → ${filterDateTo || "…"}`}
-                onRemove={() => {
-                  setFilterDateRange("all");
-                  setFilterDateFrom("");
-                  setFilterDateTo("");
-                }}
-              />
-            ) : null}
+      <section className="space-y-3">
+        <h2 className="text-base font-semibold text-white">My review history</h2>
+        {myReviews.length === 0 ? (
+          <div className={cn(VA_CARD, "py-14 text-center")}>
+            <CalendarCheck className="mx-auto mb-3 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
+            <p className="font-medium text-[#B8B4B8]/80">No past reviews yet</p>
+            <p className="mt-1 text-sm text-[#B8B4B8]/45">Completed reviews you submit will appear here.</p>
           </div>
-        ) : null}
-
-        {reviews.length === 0 ? (
-          <p className="text-sm text-[#B8B4B8]/50">No reviews match your filters.</p>
         ) : (
-          <div className="space-y-2">
-            {reviews.map((r) => (
-              <div
-                key={r.id}
-                className={cn(
-                  VA_CARD,
-                  "flex w-full items-center justify-between gap-3 p-4",
-                  r.review_date === selectedDate && "ring-1 ring-[#FF1493]/35",
-                )}
-              >
-                <button type="button" onClick={() => setSelectedDate(r.review_date)} className="min-w-0 flex-1 text-left">
-                  <p className="font-medium text-white">{r.review_label}</p>
-                  <p className="text-xs text-[#B8B4B8]/50">
-                    {formatReviewDate(r.review_date)} · {r.manager_name}
-                    {r.time_spent_minutes != null ? ` · ${r.time_spent_minutes} min` : ""}
-                  </p>
-                </button>
-                <div className="flex shrink-0 items-center gap-2">
-                  {r.top_performer_name ? <span className={VA_MODEL_TAG}>{r.top_performer_name}</span> : null}
-                  <button
-                    type="button"
-                    onClick={() => setDeleteReviewId(r.id)}
-                    className="rounded-lg border border-red-500/30 p-2 text-red-400 hover:bg-red-500/10"
-                    aria-label="Delete review"
-                  >
-                    <Trash2 className="h-4 w-4" aria-hidden />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
+          myReviews.map((r) => (
+            <article key={r.id} className={cn(VA_CARD, "p-4 md:p-5")}>
+              <p className="font-medium text-white">{r.review_label}</p>
+              <p className="mt-1 text-xs text-[#B8B4B8]/50">
+                {formatReviewDate(r.review_date)}
+                {r.time_spent_minutes != null ? ` · ${r.time_spent_minutes} min` : ""}
+              </p>
+              {r.top_performer_name ? (
+                <span className={cn(VA_MODEL_TAG, "mt-2 inline-block")}>{r.top_performer_name}</span>
+              ) : null}
+              {r.issues_found ? (
+                <p className="mt-3 text-sm text-[#B8B4B8]/70">{r.issues_found}</p>
+              ) : null}
+            </article>
+          ))
         )}
-      </div>
-
-      <ConfirmDeleteModal
-        open={deleteReviewId != null}
-        title="Delete daily review?"
-        description="This will permanently delete the review and all linked exec audits."
-        confirming={deleting}
-        onConfirm={() => void confirmDeleteReview()}
-        onClose={() => setDeleteReviewId(null)}
-      />
+      </section>
     </div>
   );
 }

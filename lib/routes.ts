@@ -178,6 +178,8 @@ export const ROUTES = {
   /** Other dashboard pages */
   /** Supervisor spot-check submissions (permission-gated, not under /admin). */
   spotChecks: "/spot-checks",
+  /** Supervisor daily review submissions (permission-gated, not under /admin). */
+  dailyReview: "/daily-review",
   /** Fines & bonuses (chatter + VA shared). */
   finesBonuses: "/fines-bonuses",
   /** SOP Library member view (chatter + VA shared). */
