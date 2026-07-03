@@ -416,6 +416,13 @@ const adminNav: NavItem[] = [
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.MARKETING_VIEW,
   },
+  {
+    href: ROUTES.admin.winnerVideos,
+    label: "Winner Videos",
+    iconKey: "Trophy",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
+  },
   // NOTE: The SUBMIT-tier supervision items (Spot Checks / Daily Review) live in
   // `sharedPermissionNavItems` below so any role granted the permission surfaces them.
   // Only the MANAGER REVIEW (manage-tier) items remain here.
@@ -650,6 +657,15 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
     // Users who can manage daily reviews see the MANAGER REVIEW item instead.
     hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.winners,
+    label: "Winners",
+    iconKey: "Trophy",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.WINNER_VIDEOS_SUBMIT,
+    hiddenIfPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {

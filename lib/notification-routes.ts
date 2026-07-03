@@ -65,6 +65,10 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       if (isAdmin) return ROUTES.admin.marketing;
       if (isVa) return ROUTES.va.marketingAccounts;
       return ROUTES.dashboard;
+    case "winner_video":
+      if (isAdmin) return ROUTES.admin.winnerVideos;
+      if (isVa) return ROUTES.winners;
+      return ROUTES.dashboard;
     case "challenge":
       if (isAdmin) return ROUTES.admin.challenges;
       return ROUTES.chatter.challenges;
@@ -139,6 +143,10 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
     case "shadowban_report":
       if (isAdmin) return ROUTES.admin.marketing;
       if (isVa) return ROUTES.va.marketingAccounts;
+      return ROUTES.dashboard;
+    case "winner_video":
+      if (isAdmin) return ROUTES.admin.winnerVideos;
+      if (isVa) return ROUTES.winners;
       return ROUTES.dashboard;
     case "billing_cycle":
       return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
@@ -232,6 +240,8 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "shadowban_submitted":
     case "shadowban_resolved":
     case "shadowban_lifted_reported":
+    case "winner_video_approved":
+    case "winner_video_rejected":
       return "Marketing";
     case "login_new_device":
     case "password_changed":

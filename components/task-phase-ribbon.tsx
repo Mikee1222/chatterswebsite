@@ -15,6 +15,7 @@ export type PhaseRibbonItem = Pick<
   | "completed_by_va_name"
   | "completed_at"
   | "screenshot"
+  | "step_type"
 >;
 
 export type PhaseRibbonPhase = Pick<

@@ -6,6 +6,7 @@ import { ClipboardList, ImageIcon, Plus, Trash2, X, Zap } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
 import { cn } from "@/lib/utils";
+import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import type {
   TaskTemplateCategory,
   TaskTemplateRecord,
@@ -25,6 +26,7 @@ interface DraftItem {
   title: string;
   description: string;
   requires_screenshot: boolean;
+  step_type: TaskStepType;
 }
 
 interface DraftPhase {
@@ -113,7 +115,12 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
           phases?: Array<{
             title: string;
             description: string;
-            items?: Array<{ title: string; description: string; requires_screenshot: boolean }>;
+            items?: Array<{
+              title: string;
+              description: string;
+              requires_screenshot: boolean;
+              step_type?: TaskStepType;
+            }>;
           }>;
         };
       };
@@ -128,6 +135,7 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
             title: i.title,
             description: i.description,
             requires_screenshot: i.requires_screenshot,
+            step_type: i.step_type ?? DEFAULT_TASK_STEP_TYPE,
           })),
         })),
       );
@@ -161,7 +169,7 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
               ...p,
               items: [
                 ...p.items,
-                { tempId: newTempId(), title: "", description: "", requires_screenshot: false },
+                { tempId: newTempId(), title: "", description: "", requires_screenshot: false, step_type: DEFAULT_TASK_STEP_TYPE },
               ],
             }
           : p,
@@ -203,6 +211,7 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
         description: it.description.trim(),
         requires_screenshot: it.requires_screenshot,
         sort_order: i,
+        step_type: it.step_type || DEFAULT_TASK_STEP_TYPE,
       })),
     }));
 
@@ -453,6 +462,22 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
                           {phase.items.map((item, itemIdx) => (
                             <div key={item.tempId} className="group flex items-center gap-2.5">
                               <div className="h-4 w-4 shrink-0 rounded border border-white/20 bg-white/5" />
+                              <select
+                                value={item.step_type}
+                                onChange={(e) =>
+                                  updateItem(phase.tempId, item.tempId, {
+                                    step_type: e.target.value as TaskStepType,
+                                  })
+                                }
+                                className="w-[7.5rem] shrink-0 rounded-lg border border-white/10 bg-[#141414] px-2 py-1 text-[10px] text-white/70 focus:border-pink-500/40 focus:outline-none"
+                                aria-label="Step type"
+                              >
+                                {TASK_STEP_TYPES.map((t) => (
+                                  <option key={t} value={t}>
+                                    {t}
+                                  </option>
+                                ))}
+                              </select>
                               <input
                                 value={item.title}
                                 onChange={(e) =>

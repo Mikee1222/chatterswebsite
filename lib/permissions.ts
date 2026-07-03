@@ -64,6 +64,9 @@ export const PERMISSIONS = {
   SPOTCHECK_SUBMIT: "spotcheck:submit",
   SPOTCHECK_MANAGE: "spotcheck:manage",
 
+  WINNER_VIDEOS_SUBMIT: "winner_videos:submit",
+  WINNER_VIDEOS_MANAGE: "winner_videos:manage",
+
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
   DAILY_REVIEW_MANAGE: "daily_review:manage",
 
@@ -153,6 +156,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   sops: "SOPs / training",
   pdf_maker: "PDF Maker",
   spotcheck: "Spot checks",
+  winner_videos: "Winner videos",
   daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
@@ -249,6 +253,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "spotcheck:submit": "Υποβολή spot check ευρημάτων QA marketing",
   "spotcheck:manage": "Διαχείριση και προβολή όλων των spot checks marketing",
+
+  "winner_videos:submit": "Υποβολή winner video tracking submissions",
+  "winner_videos:manage": "Διαχείριση και έγκριση winner video submissions",
 
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
   "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",
@@ -362,6 +369,7 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SETTINGS_VIEW,
   PERMISSIONS.WEEKLY_PROGRAM_VIEW,
+  PERMISSIONS.WINNER_VIDEOS_SUBMIT,
 ];
 
 const MODEL_PERMISSIONS: Permission[] = [

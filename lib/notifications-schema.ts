@@ -80,6 +80,8 @@ export const NOTIFICATION_EVENT_TYPES = [
   "sop_quiz_passed",
   "sop_quiz_failed",
   "schedule_published",
+  "winner_video_approved",
+  "winner_video_rejected",
   "spin_result",
   "login_new_device",
   "password_changed",
@@ -204,6 +206,8 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   schedule_published: "system_alert",
   login_new_device: "system_alert",
   password_changed: "system_alert",
+  winner_video_approved: "winner_video_approved",
+  winner_video_rejected: "winner_video_rejected",
 };
 
 export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtable> = {

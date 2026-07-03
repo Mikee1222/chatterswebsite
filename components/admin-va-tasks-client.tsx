@@ -12,6 +12,7 @@ import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
+import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
 import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
@@ -58,6 +59,7 @@ interface DraftPhaseItem {
   serverId?: string;
   title: string;
   requires_screenshot: boolean;
+  step_type: TaskStepType;
 }
 
 interface DraftPhase {
@@ -177,6 +179,7 @@ function phaseToDraft(p: TaskPhase): DraftPhase {
       serverId: i.id,
       title: i.title,
       requires_screenshot: i.requires_screenshot,
+      step_type: i.step_type ?? DEFAULT_TASK_STEP_TYPE,
     })),
   };
 }
@@ -553,6 +556,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                   tempId: `it_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
                   title: "",
                   requires_screenshot: false,
+                  step_type: DEFAULT_TASK_STEP_TYPE,
                 },
               ],
             }
@@ -649,6 +653,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               title: it.title,
               requires_screenshot: it.requires_screenshot,
               sort_order: i,
+              step_type: it.step_type || DEFAULT_TASK_STEP_TYPE,
             }),
           });
         } else if (it.title.trim() || it.requires_screenshot) {
@@ -662,6 +667,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               description: "",
               requires_screenshot: it.requires_screenshot,
               sort_order: i,
+              step_type: it.step_type || DEFAULT_TASK_STEP_TYPE,
             }),
           });
         }
@@ -890,6 +896,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         title: "",
         requires_screenshot: false,
         sort_order: itemCount,
+        step_type: DEFAULT_TASK_STEP_TYPE,
       }),
     });
     const data = (await res.json().catch(() => ({}))) as { item?: PhaseItem };
@@ -1146,20 +1153,38 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   ) : null}
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <input
-                                    value={item.title}
-                                    onChange={(e) =>
-                                      updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
-                                    }
-                                    onBlur={() =>
-                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
-                                    }
-                                    placeholder={`Item ${idx + 1}…`}
-                                    className={cn(
-                                      "w-full bg-transparent text-sm focus:outline-none",
-                                      item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
-                                    )}
-                                  />
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <select
+                                      value={item.step_type ?? DEFAULT_TASK_STEP_TYPE}
+                                      onChange={(e) =>
+                                        void handleUpdatePhaseItem(item.id, phase.id, task.id, {
+                                          step_type: e.target.value as TaskStepType,
+                                        })
+                                      }
+                                      className="w-[7.5rem] shrink-0 cursor-pointer rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#151315] px-2 py-1 text-[10px] text-[#B8B4B8] focus:border-[#FF1493]/40 focus:outline-none"
+                                      aria-label="Step type"
+                                    >
+                                      {TASK_STEP_TYPES.map((t) => (
+                                        <option key={t} value={t}>
+                                          {t}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <input
+                                      value={item.title}
+                                      onChange={(e) =>
+                                        updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
+                                      }
+                                      onBlur={() =>
+                                        void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
+                                      }
+                                      placeholder={`Item ${idx + 1}…`}
+                                      className={cn(
+                                        "min-w-0 flex-1 bg-transparent text-sm focus:outline-none",
+                                        item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
+                                      )}
+                                    />
+                                  </div>
                                   {item.requires_screenshot && item.status !== "completed" ? (
                                     <p className="mt-0.5 flex items-center gap-1 text-xs text-[#D4AF8C]/55">
                                       <Camera className="h-3.5 w-3.5" aria-hidden /> Requires proof
@@ -1798,6 +1823,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         title: it.title,
                         status: "pending" as const,
                         requires_screenshot: it.requires_screenshot,
+                        step_type: it.step_type,
                         completed_by_va_name: "",
                         completed_at: null,
                         screenshot: [] as PhaseItem["screenshot"],
@@ -1865,6 +1891,22 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                       return (
                         <div className="group flex items-center gap-2">
                           <div className="h-3.5 w-3.5 shrink-0 rounded border border-[#D4AF8C]/35" />
+                          <select
+                            value={draftItem.step_type}
+                            onChange={(e) =>
+                              updateDraftPhaseItem(dp.tempId, draftItem.tempId, {
+                                step_type: e.target.value as TaskStepType,
+                              })
+                            }
+                            className="w-[6.5rem] shrink-0 rounded border border-[rgba(255,255,255,0.08)] bg-[#151315] px-1.5 py-0.5 text-[10px] text-[#B8B4B8] focus:outline-none"
+                            aria-label="Step type"
+                          >
+                            {TASK_STEP_TYPES.map((t) => (
+                              <option key={t} value={t}>
+                                {t}
+                              </option>
+                            ))}
+                          </select>
                           <input
                             value={draftItem.title}
                             onChange={(e) =>

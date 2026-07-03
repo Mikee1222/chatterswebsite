@@ -10,6 +10,10 @@ import {
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
 import {
+  WINNER_VIDEO_STATUS_STYLES,
+  type WinnerVideoStatus,
+} from "@/lib/winner-videos-helpers";
+import {
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_CARD,
@@ -293,6 +297,28 @@ export function SpotCheckTypeBadge({ type }: { type: SpotCheckType }) {
       )}
     >
       {type}
+    </span>
+  );
+}
+
+export function WinnerVideoStatusBadge({ status }: { status: WinnerVideoStatus }) {
+  const style = WINNER_VIDEO_STATUS_STYLES[status];
+  return (
+    <span
+      className={cn(
+        VA_STATUS_BADGE,
+        "relative",
+        style.className,
+        style.glowClassName,
+        "before:pointer-events-none before:absolute before:-inset-1 before:-z-10 before:rounded-md before:opacity-60 before:blur-md",
+        status === "Pending" && "before:bg-amber-500/25",
+        status === "Approved" && "before:bg-emerald-500/25",
+        status === "Rejected" && "before:bg-red-500/30",
+        status === "Recreated" && "before:bg-sky-500/25",
+        status === "Published" && "before:bg-[#D4AF8C]/25",
+      )}
+    >
+      {style.label}
     </span>
   );
 }

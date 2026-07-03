@@ -100,6 +100,8 @@ export const NOTIFICATION_EVENT = {
   SHADOWBAN_SUBMITTED: "shadowban_submitted" as const,
   SHADOWBAN_RESOLVED: "shadowban_resolved" as const,
   SHADOWBAN_LIFTED_REPORTED: "shadowban_lifted_reported" as const,
+  WINNER_VIDEO_APPROVED: "winner_video_approved" as const,
+  WINNER_VIDEO_REJECTED: "winner_video_rejected" as const,
   SOP_QUIZ_PASSED: "sop_quiz_passed" as const,
   SOP_QUIZ_FAILED: "sop_quiz_failed" as const,
   SCHEDULE_PUBLISHED: "schedule_published" as const,
@@ -277,6 +279,7 @@ export const NOTIFICATION_ENTITY = {
   FINE_BONUS: "fine_bonus",
   SOP_ACADEMY: "sop_academy",
   EXPENSE_REQUEST: "expense_request",
+  WINNER_VIDEO: "winner_video",
 } as const;
 
 /** Priorities. */

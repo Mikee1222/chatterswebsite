@@ -421,6 +421,13 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   va_task_phase_items: {
     status: new Set(["pending", "completed"]),
+    step_type: new Set(["IP Check", "Warm-up", "Posting", "Engagement", "Other"]),
+  },
+  task_template_items: {
+    step_type: new Set(["IP Check", "Warm-up", "Posting", "Engagement", "Other"]),
+  },
+  winner_videos: {
+    status: new Set(["Pending", "Approved", "Rejected", "Recreated", "Published"]),
   },
   task_templates: {
     category: new Set(["marketing", "chatting", "content", "other"]),
@@ -550,6 +557,8 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   marketing_spot_checks: new Set(["timestamp"]),
   va_task_phases: new Set(["created_at", "completed_at", "scheduled_time", "start_time", "end_time"]),
   va_task_phase_items: new Set(["created_at", "completed_at"]),
+  task_template_items: new Set(["created_at"]),
+  winner_videos: new Set(["submitted_at", "reviewed_at"]),
   task_templates: new Set(["created_at"]),
   /** Server sets mistake timestamps explicitly. */
   chatter_mistakes: new Set(["created_at", "updated_at"]),

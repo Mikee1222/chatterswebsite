@@ -2,7 +2,10 @@
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { getUserByAirtableId } from "@/services/users";
+import { coerceTaskStepType, DEFAULT_TASK_STEP_TYPE, type TaskStepType } from "@/lib/task-step-types";
 import { getVaTaskById } from "@/services/va-tasks";
+
+export type { TaskStepType } from "@/lib/task-step-types";
 
 const TABLE_PHASES = "va_task_phases";
 const TABLE_ITEMS = "va_task_phase_items";
@@ -47,6 +50,7 @@ export interface PhaseItem {
   completed_by_va_name: string;
   completed_at: string | null;
   sort_order: number;
+  step_type: TaskStepType;
 }
 
 type PhaseFields = {
@@ -84,6 +88,7 @@ type ItemFields = {
   completed_by_va_name?: string;
   completed_at?: string | null;
   sort_order?: number;
+  step_type?: string;
   created_at?: string;
 };
 
@@ -157,6 +162,7 @@ function mapItem(rec: AirtableRecord<ItemFields>): PhaseItem {
     completed_by_va_name: (f.completed_by_va_name as string) ?? "",
     completed_at: (f.completed_at as string | null) ?? null,
     sort_order: typeof f.sort_order === "number" ? f.sort_order : Number(f.sort_order) || 0,
+    step_type: coerceTaskStepType(f.step_type),
   };
 }
 
@@ -308,6 +314,7 @@ export async function createPhaseItem(data: Partial<PhaseItem>): Promise<PhaseIt
     requires_screenshot: data.requires_screenshot ?? false,
     status: "pending",
     sort_order: data.sort_order ?? 0,
+    step_type: data.step_type ?? DEFAULT_TASK_STEP_TYPE,
     created_at: new Date().toISOString(),
   });
   return mapItem(rec);
@@ -320,6 +327,7 @@ export async function updatePhaseItem(id: string, data: Partial<PhaseItem>): Pro
   if (data.requires_screenshot !== undefined) patch.requires_screenshot = data.requires_screenshot;
   if (data.status !== undefined) patch.status = data.status;
   if (data.sort_order !== undefined) patch.sort_order = data.sort_order;
+  if (data.step_type !== undefined) patch.step_type = data.step_type;
   if (data.screenshot !== undefined) patch.screenshot = data.screenshot;
   if (data.completed_by_va_id !== undefined) patch.completed_by_va_id = data.completed_by_va_id;
   if (data.completed_by_va_name !== undefined) patch.completed_by_va_name = data.completed_by_va_name;
@@ -363,6 +371,7 @@ export async function clonePhasesToTask(
         description: item.description,
         requires_screenshot: item.requires_screenshot,
         sort_order: item.sort_order,
+        step_type: item.step_type,
       });
     }
     cloned += 1;

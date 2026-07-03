@@ -14,7 +14,10 @@ import { getUserByAirtableId } from "@/services/users";
 import { listAllModelss } from "@/services/modelss";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { coerceTaskStepType, DEFAULT_TASK_STEP_TYPE, type TaskStepType } from "@/lib/task-step-types";
 import type { VaTaskRecord } from "@/types";
+
+export type { TaskStepType } from "@/lib/task-step-types";
 
 const TABLE_TEMPLATES = "task_templates";
 const TABLE_PHASES = "task_template_phases";
@@ -50,6 +53,7 @@ export interface TaskTemplateItemRecord {
   description: string;
   requires_screenshot: boolean;
   sort_order: number;
+  step_type: TaskStepType;
 }
 
 export interface TaskTemplateDetail extends TaskTemplateRecord {
@@ -80,6 +84,7 @@ type ItemFields = {
   description?: string;
   requires_screenshot?: boolean;
   sort_order?: number;
+  step_type?: string;
 };
 
 function airtableFormulaString(value: string): string {
@@ -115,6 +120,7 @@ function mapItem(rec: AirtableRecord<ItemFields>): TaskTemplateItemRecord {
     description: snapshotText(f.description, ""),
     requires_screenshot: f.requires_screenshot === true,
     sort_order: typeof f.sort_order === "number" ? f.sort_order : Number(f.sort_order) || 0,
+    step_type: coerceTaskStepType(f.step_type),
   };
 }
 
@@ -195,6 +201,7 @@ export type TaskTemplateCreateInput = {
       description?: string;
       requires_screenshot?: boolean;
       sort_order?: number;
+      step_type?: TaskStepType;
     }>;
   }>;
 };
@@ -247,6 +254,7 @@ async function replaceTemplatePhases(
         description: (item.description ?? "").trim(),
         requires_screenshot: item.requires_screenshot ?? false,
         sort_order: item.sort_order ?? i,
+        step_type: item.step_type ?? DEFAULT_TASK_STEP_TYPE,
       });
     }
   }
@@ -377,6 +385,7 @@ export async function applyTemplateToTask(
         description: itemTpl.description,
         requires_screenshot: itemTpl.requires_screenshot,
         sort_order: itemTpl.sort_order,
+        step_type: itemTpl.step_type,
       });
     }
   }

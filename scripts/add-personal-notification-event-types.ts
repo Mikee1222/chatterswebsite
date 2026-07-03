@@ -43,6 +43,9 @@ const PERSONAL_EVENTS = [
   // Model content request lifecycle (C3).
   "model_content_request_created",
   "model_content_request_reviewed",
+  // Winner video tracking (VA submit / admin review).
+  "winner_video_approved",
+  "winner_video_rejected",
 ] as const;
 
 function loadBaseIdFromWrangler(): string | null {

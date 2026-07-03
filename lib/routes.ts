@@ -117,6 +117,7 @@ export const ROUTES = {
     pdfMaker: "/admin/pdf-maker",
     vaTasks: "/admin/va-tasks",
     taskTemplates: "/admin/task-templates",
+    winnerVideos: "/admin/winner-videos",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",
@@ -180,6 +181,8 @@ export const ROUTES = {
   spotChecks: "/spot-checks",
   /** Supervisor daily review submissions (permission-gated, not under /admin). */
   dailyReview: "/daily-review",
+  /** VA winner video submissions (permission-gated). */
+  winners: "/winners",
   /** Fines & bonuses (chatter + VA shared). */
   finesBonuses: "/fines-bonuses",
   /** SOP Library member view (chatter + VA shared). */

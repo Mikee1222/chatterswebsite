@@ -388,6 +388,14 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "VA when they report a shadowban/ban restriction has been lifted.",
   },
+  winner_video_approved: {
+    rule: "assigned_party_only",
+    description: "Submitting VA when their winner video is approved.",
+  },
+  winner_video_rejected: {
+    rule: "assigned_party_only",
+    description: "Submitting VA when their winner video is rejected.",
+  },
   sop_quiz_passed: {
     rule: "assigned_party_only",
     description: "Chatter/VA when they pass an SOP quiz.",
@@ -599,6 +607,8 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "shadowban_submitted",
   "shadowban_resolved",
   "shadowban_lifted_reported",
+  "winner_video_approved",
+  "winner_video_rejected",
   "sop_quiz_passed",
   "sop_quiz_failed",
   "schedule_published",

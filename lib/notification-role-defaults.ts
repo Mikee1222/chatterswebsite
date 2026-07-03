@@ -190,6 +190,8 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   shadowban_submitted: ["virtual_assistant", "model"],
   shadowban_resolved: ["virtual_assistant", "model"],
   shadowban_lifted_reported: ["virtual_assistant"],
+  winner_video_approved: ["virtual_assistant"],
+  winner_video_rejected: ["virtual_assistant"],
   billing_cycle_announced: ["client"],
   payment_submitted: ["client"],
   sop_quiz_passed: ["chatter", "virtual_assistant"],
@@ -748,6 +750,16 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Restriction lift reported (admin)",
       "Επιβεβαίωση στον VA ότι ανέφερε ότι η περιορισμός λήγει",
       "Ενημερώνει τον admin ότι VA αναφέρει ότι η περιορισμός λήγει"
+    ),
+    eventEntry(
+      "winner_video_approved",
+      "Winner video approved",
+      "Αποστέλλεται στον VA όταν εγκρίνεται η winner video υποβολή του"
+    ),
+    eventEntry(
+      "winner_video_rejected",
+      "Winner video rejected",
+      "Αποστέλλεται στον VA όταν απορρίπτεται η winner video υποβολή του"
     ),
   ],
   custom_request_alerts: [

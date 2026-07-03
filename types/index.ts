@@ -1127,6 +1127,8 @@ export type NotificationEventType =
   | "shadowban_submitted"
   | "shadowban_resolved"
   | "shadowban_lifted_reported"
+  | "winner_video_approved"
+  | "winner_video_rejected"
   | "sop_quiz_passed"
   | "sop_quiz_failed"
   | "schedule_published"
