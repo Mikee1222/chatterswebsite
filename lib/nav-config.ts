@@ -418,6 +418,19 @@ const adminNav: NavItem[] = [
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.MARKETING_VIEW,
   },
+  {
+    href: ROUTES.admin.spotChecks,
+    label: "Spot checks",
+    iconKey: "ListTodo",
+    navSection: "MANAGER REVIEW",
+    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
+  },
+  {
+    href: ROUTES.admin.dailyReview,
+    label: "Daily review",
+    iconKey: "CalendarCheck",
+    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
+  },
 
   // ── FINANCE ──
   {

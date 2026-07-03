@@ -326,6 +326,33 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   shadowban_reports: {
     status: new Set(["pending", "approved", "dismissed"]),
   },
+  marketing_spot_checks: {
+    type: new Set([
+      "Account audit",
+      "Exec QA",
+      "Account warning",
+      "Brief delay",
+      "Other",
+    ]),
+    status: new Set(["Pending", "Fixed", "Escalated"]),
+  },
+  marketing_daily_reviews: {
+    overall_kpis_reviewed: new Set([
+      "Posts published on time",
+      "Engagement targets met",
+      "Follower growth on track",
+      "Content quality standards",
+      "DM / comment response rate",
+      "Hashtag & caption compliance",
+    ]),
+    account_compliance_vs_master: new Set([
+      "Username matches master",
+      "Bio matches master",
+      "Link in bio correct",
+      "Profile photo matches",
+      "Highlights / pinned posts updated",
+    ]),
+  },
   model_funnel_links: {
     region: new Set(["USA", "Greek", "Global"]),
   },
@@ -520,6 +547,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   model_social_accounts: new Set(["created_at", "last_updated"]),
   model_funnel_links: new Set(["created_at"]),
   shadowban_reports: new Set(["created_at", "reviewed_at"]),
+  marketing_spot_checks: new Set(["timestamp"]),
   va_task_phases: new Set(["created_at", "completed_at", "scheduled_time", "start_time", "end_time"]),
   va_task_phase_items: new Set(["created_at", "completed_at"]),
   task_templates: new Set(["created_at"]),

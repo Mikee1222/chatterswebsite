@@ -110,6 +110,8 @@ export const ROUTES = {
     modelContentRequests: "/admin/model-content-requests",
     expenseRequests: "/admin/expense-requests",
     marketing: "/admin/marketing",
+    spotChecks: "/admin/spot-checks",
+    dailyReview: "/admin/daily-review",
     informations: "/admin/informations",
     sopLibrary: "/admin/sop-library",
     pdfMaker: "/admin/pdf-maker",

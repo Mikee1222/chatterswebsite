@@ -30,6 +30,8 @@ import { SopSegmentedToggle } from "@/components/sop/sop-segmented-toggle";
 import { SOP_COLOR_STYLES } from "@/components/sop/sop-colors";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { AccountCompensationSection } from "@/components/account-compensation-section";
+import { AccountReviewHistorySection } from "@/components/account-review-history-section";
+import type { VaReviewHistorySummary } from "@/services/marketing-reviews";
 import { cn } from "@/lib/utils";
 
 const STATUSES = ["active", "inactive", "suspended"] as const;
@@ -54,9 +56,10 @@ type Props = {
   roles: RoleRecord[];
   modelOptions?: { id: string; model_name: string; alreadyLinked?: boolean }[];
   canDelete?: boolean;
+  reviewHistory?: VaReviewHistorySummary | null;
 };
 
-export function EditAccountForm({ user, roles, modelOptions = [], canDelete = false }: Props) {
+export function EditAccountForm({ user, roles, modelOptions = [], canDelete = false, reviewHistory = null }: Props) {
   const roleIds = React.useMemo(() => new Set(roles.map((r) => r.role_id)), [roles]);
   const initialRole = roleIds.has(user.role) ? user.role : roles[0]?.role_id ?? user.role;
   const [role, setRole] = React.useState(initialRole);
@@ -320,6 +323,12 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
             </>
           )}
         </SopFormSection>
+
+        {reviewHistory &&
+        (role === "virtual_assistant" || secondaryRole === "virtual_assistant") &&
+        (vaType === "marketing" || vaType === "both" || user.va_type === "marketing" || user.va_type === "both") ? (
+          <AccountReviewHistorySection history={reviewHistory} />
+        ) : null}
 
         <SopFormSection title="Notes" description="Internal notes visible to admins only" defaultOpen={Boolean(user.notes)}>
           <FormField label="Notes" icon={<StickyNote />} htmlFor="notes">

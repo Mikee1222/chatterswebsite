@@ -4,6 +4,7 @@ import { getUserByAirtableId, listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditAccountForm } from "@/components/edit-account-form";
 import { listAllModelss } from "@/services/modelss";
+import { getVaReviewHistory } from "@/services/marketing-reviews";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -40,6 +41,12 @@ export default async function EditAccountPage({
     }))
     .sort((a, b) => a.model_name.localeCompare(b.model_name));
 
+  const isMarketingVa =
+    (record.role === "virtual_assistant" || record.secondary_role === "virtual_assistant") &&
+    (record.va_type === "marketing" || record.va_type === "both");
+
+  const reviewHistory = isMarketingVa ? await getVaReviewHistory(record.id).catch(() => null) : null;
+
   return (
     <div className="space-y-6">
       <div>
@@ -54,7 +61,13 @@ export default async function EditAccountPage({
           {record.full_name} · {record.email}
         </p>
       </div>
-      <EditAccountForm user={record} roles={roles} modelOptions={modelOptions} canDelete={canDelete} />
+      <EditAccountForm
+        user={record}
+        roles={roles}
+        modelOptions={modelOptions}
+        canDelete={canDelete}
+        reviewHistory={reviewHistory}
+      />
     </div>
   );
 }
