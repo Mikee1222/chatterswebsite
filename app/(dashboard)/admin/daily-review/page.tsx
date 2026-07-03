@@ -7,7 +7,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminDailyReviewClient } from "@/components/admin-daily-review-client";
 
 export default async function AdminDailyReviewPage() {
-  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_MANAGE);
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.DAILY_REVIEW_MANAGE);
 
   const today = todayReviewIso();
   const [reviews, todayRow, allUsers] = await Promise.all([

@@ -13,7 +13,7 @@ import {
 export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.SPOTCHECK_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
@@ -25,7 +25,7 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.SPOTCHECK_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
@@ -49,7 +49,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.SPOTCHECK_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;

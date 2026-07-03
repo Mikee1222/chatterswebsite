@@ -7,7 +7,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminSpotChecksClient } from "@/components/admin-spot-checks-client";
 
 export default async function AdminSpotChecksPage() {
-  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_MANAGE);
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SPOTCHECK_MANAGE);
 
   const [spotChecks, models, allUsers] = await Promise.all([
     getSpotChecks().catch(() => []),

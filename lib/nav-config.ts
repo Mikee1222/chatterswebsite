@@ -162,6 +162,12 @@ export type NavItem = {
   adminOnly?: boolean;
   /** When set, item is hidden unless the user has this permission. */
   requiresPermission?: Permission;
+  /**
+   * When set, item is hidden if the user HAS this permission.
+   * Used to dedupe submit-only nav items for users who also have the manage permission
+   * (they see the richer MANAGER REVIEW item instead).
+   */
+  hiddenIfPermission?: Permission;
   /** When true, item never fills a mobile bottom-bar slot (stays in the More sheet only). */
   excludeFromMobileMainTabs?: boolean;
   /**
@@ -424,6 +430,8 @@ const adminNav: NavItem[] = [
     iconKey: "ListTodo",
     navSection: "SUPERVISION",
     requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
+    // Users who can manage spot checks see the MANAGER REVIEW item instead.
+    hiddenIfPermission: PERMISSIONS.SPOTCHECK_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {
@@ -432,6 +440,8 @@ const adminNav: NavItem[] = [
     iconKey: "CalendarCheck",
     navSection: "SUPERVISION",
     requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
+    // Users who can manage daily reviews see the MANAGER REVIEW item instead.
+    hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {
@@ -439,14 +449,14 @@ const adminNav: NavItem[] = [
     label: "Spot checks",
     iconKey: "ListTodo",
     navSection: "MANAGER REVIEW",
-    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
+    requiresPermission: PERMISSIONS.SPOTCHECK_MANAGE,
   },
   {
     href: ROUTES.admin.dailyReview,
     label: "Daily review",
     iconKey: "CalendarCheck",
     navSection: "MANAGER REVIEW",
-    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
+    requiresPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
   },
 
   // ── FINANCE ──
@@ -676,13 +686,20 @@ export async function getNavItemsForUser(
   return filterNavItemsByPermissions(base, perms);
 }
 
-/** Hide nav items the user lacks `requiresPermission` for. */
+/**
+ * Hide nav items the user lacks `requiresPermission` for, and hide items whose
+ * `hiddenIfPermission` the user HAS (dedupe submit vs manage variants).
+ */
 export function filterNavItemsByPermissions(
   items: NavItem[],
   granted: ReadonlySet<Permission> | readonly Permission[]
 ): NavItem[] {
   const set = granted instanceof Set ? granted : new Set(granted);
-  return items.filter((item) => !item.requiresPermission || set.has(item.requiresPermission));
+  return items.filter((item) => {
+    if (item.requiresPermission && !set.has(item.requiresPermission)) return false;
+    if (item.hiddenIfPermission && set.has(item.hiddenIfPermission)) return false;
+    return true;
+  });
 }
 
 /**

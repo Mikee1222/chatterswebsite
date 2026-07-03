@@ -62,8 +62,10 @@ export const PERMISSIONS = {
   PDF_MAKER_MANAGE: "pdf_maker:manage",
 
   SPOTCHECK_SUBMIT: "spotcheck:submit",
+  SPOTCHECK_MANAGE: "spotcheck:manage",
 
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
+  DAILY_REVIEW_MANAGE: "daily_review:manage",
 
   CONTENT_VIEW: "content:view",
   CONTENT_MANAGE: "content:manage",
@@ -246,8 +248,10 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "pdf_maker:manage": "Δημιουργία και διαχείριση εγγράφων PDF",
 
   "spotcheck:submit": "Υποβολή spot check ευρημάτων QA marketing",
+  "spotcheck:manage": "Διαχείριση και προβολή όλων των spot checks marketing",
 
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
+  "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",
 
   "content:view": "Προβολή αιτημάτων και ημερολογίου περιεχομένου",
   "content:manage": "Διαχείριση αιτημάτων και περιεχομένου μοντέλων",

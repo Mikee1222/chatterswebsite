@@ -13,7 +13,7 @@ import {
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.SPOTCHECK_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -34,7 +34,7 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.SPOTCHECK_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
