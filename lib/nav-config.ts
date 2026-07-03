@@ -280,13 +280,9 @@ const adminNav: NavItem[] = [
   },
 
   // ── TEAM ──
-  {
-    href: ROUTES.admin.accounts,
-    label: "Accounts",
-    iconKey: "UserCog",
-    navSection: "TEAM",
-    requiresPermission: PERMISSIONS.ACCOUNTS_VIEW,
-  },
+  // NOTE: "Accounts" (ACCOUNTS_VIEW) moved to `sharedPermissionNavItems` (TEAM section)
+  // so any role granted the permission — not just admin — surfaces the link, matching the
+  // page's bare hasPermission guard.
   {
     href: ROUTES.admin.weeklyProgram,
     label: "Weekly program",
@@ -560,7 +556,7 @@ const adminNav: NavItem[] = [
     iconKey: "Settings2",
     navSection: "SETTINGS",
     adminOnly: true,
-    requiresPermission: PERMISSIONS.ROLES_VIEW,
+    requiresPermission: PERMISSIONS.ROLES_MANAGE,
   },
   {
     href: ROUTES.admin.feedback,
@@ -629,6 +625,13 @@ const modelNav: NavItem[] = [
  * (they see the richer MANAGER REVIEW item instead of the submit item).
  */
 const sharedPermissionNavItems: NavItem[] = [
+  {
+    href: ROUTES.admin.accounts,
+    label: "Accounts",
+    iconKey: "UserCog",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.ACCOUNTS_VIEW,
+  },
   {
     href: ROUTES.spotChecks,
     label: "Spot Checks",
