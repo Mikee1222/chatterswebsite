@@ -419,6 +419,14 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.MARKETING_VIEW,
   },
   {
+    href: ROUTES.spotChecks,
+    label: "Spot Checks",
+    iconKey: "ListTodo",
+    navSection: "SUPERVISION",
+    requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.admin.spotChecks,
     label: "Spot checks",
     iconKey: "ListTodo",

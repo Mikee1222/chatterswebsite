@@ -61,6 +61,8 @@ export const PERMISSIONS = {
 
   PDF_MAKER_MANAGE: "pdf_maker:manage",
 
+  SPOTCHECK_SUBMIT: "spotcheck:submit",
+
   CONTENT_VIEW: "content:view",
   CONTENT_MANAGE: "content:manage",
   CONTENT_ASSIGN: "content:assign",
@@ -146,6 +148,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   "va-tasks": "VA tasks",
   sops: "SOPs / training",
   pdf_maker: "PDF Maker",
+  spotcheck: "Spot checks",
   content: "Content",
   "spin-wheel": "Spin wheel",
   notifications: "Notifications",
@@ -238,6 +241,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "sops:quiz": "Συμμετοχή σε κουίζ εκπαίδευσης SOP",
 
   "pdf_maker:manage": "Δημιουργία και διαχείριση εγγράφων PDF",
+
+  "spotcheck:submit": "Υποβολή spot check ευρημάτων QA marketing",
 
   "content:view": "Προβολή αιτημάτων και ημερολογίου περιεχομένου",
   "content:manage": "Διαχείριση αιτημάτων και περιεχομένου μοντέλων",

@@ -3,19 +3,29 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  CheckCircle2,
   ChevronDown,
   ClipboardList,
   ExternalLink,
-  ImageIcon,
   Loader2,
+  MessageSquarePlus,
   Plus,
   Trash2,
   X,
 } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { SpotCheckForm, type SpotCheckFormValues } from "@/components/spot-check-form";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
+import {
+  SPOT_CHECK_STATUSES,
+  SPOT_CHECK_STATUS_STYLES,
+  SPOT_CHECK_TYPES,
+  SPOT_CHECK_TYPE_STYLES,
+  type SpotCheckStatus,
+  type SpotCheckType,
+} from "@/lib/marketing-reviews-helpers";
 import {
   VA_BTN_PRIMARY,
   VA_CARD,
@@ -24,33 +34,12 @@ import {
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import {
-  SPOT_CHECK_STATUSES,
-  SPOT_CHECK_TYPES,
-  type SpotCheckStatus,
-  type SpotCheckType,
-} from "@/lib/marketing-reviews-helpers";
 import type { MarketingSpotCheck } from "@/services/marketing-reviews";
 import type { ModelRecord, UserRecord } from "@/types";
 
 type DateRange = "all" | "7d" | "30d" | "custom";
 
 const ADMIN_SELECT = cn(VA_FILTER_INPUT, "min-w-[9rem]");
-
-const STATUS_STYLES: Record<SpotCheckStatus, { label: string; className: string }> = {
-  Pending: {
-    label: "Pending",
-    className: "border-amber-500/35 bg-amber-500/12 text-amber-300",
-  },
-  Fixed: {
-    label: "Fixed",
-    className: "border-emerald-500/35 bg-emerald-500/12 text-emerald-300",
-  },
-  Escalated: {
-    label: "Escalated",
-    className: "border-red-500/40 bg-red-500/15 text-red-300",
-  },
-};
 
 function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
@@ -101,6 +90,8 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [deleteId, setDeleteId] = React.useState<string | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [noteDrafts, setNoteDrafts] = React.useState<Record<string, string>>({});
+  const [pendingIds, setPendingIds] = React.useState<Set<string>>(new Set());
 
   const [filterVa, setFilterVa] = React.useState("");
   const [filterCreator, setFilterCreator] = React.useState("");
@@ -109,14 +100,6 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
   const [filterDateRange, setFilterDateRange] = React.useState<DateRange>("all");
   const [filterDateFrom, setFilterDateFrom] = React.useState("");
   const [filterDateTo, setFilterDateTo] = React.useState("");
-
-  const [formType, setFormType] = React.useState<SpotCheckType>("Account audit");
-  const [formVaId, setFormVaId] = React.useState("");
-  const [formCreatorId, setFormCreatorId] = React.useState("");
-  const [formWrong, setFormWrong] = React.useState("");
-  const [formAction, setFormAction] = React.useState("");
-  const [formStatus, setFormStatus] = React.useState<SpotCheckStatus>("Pending");
-  const [formFiles, setFormFiles] = React.useState<File[]>([]);
 
   const [editDraft, setEditDraft] = React.useState<Partial<MarketingSpotCheck>>({});
 
@@ -130,6 +113,19 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
       ),
     [vaUsers],
   );
+
+  function markPending(id: string, on: boolean) {
+    setPendingIds((prev) => {
+      const next = new Set(prev);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  function patchLocal(id: string, patch: Partial<MarketingSpotCheck>) {
+    setSpotChecks((prev) => prev.map((sc) => (sc.id === id ? { ...sc, ...patch } : sc)));
+  }
 
   async function reload() {
     setLoading(true);
@@ -171,55 +167,107 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
     setFilterDateTo("");
   }
 
-  function resetForm() {
-    setFormType("Account audit");
-    setFormVaId("");
-    setFormCreatorId("");
-    setFormWrong("");
-    setFormAction("");
-    setFormStatus("Pending");
-    setFormFiles([]);
-  }
-
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleCreate(values: SpotCheckFormValues) {
     setSaving(true);
     try {
-      const va = marketingVas.find((v) => v.id === formVaId);
-      const model = models.find((m) => m.id === formCreatorId);
+      const va = marketingVas.find((v) => v.id === values.exec_va_id);
+      const model = models.find((m) => m.id === values.creator_id);
       const res = await fetch("/api/admin/marketing-reviews/spot-checks", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: formType,
-          exec_va_id: formVaId,
+          type: values.type,
+          exec_va_id: values.exec_va_id,
           exec_va_name: va?.full_name ?? "",
-          creator_id: formCreatorId,
+          creator_id: values.creator_id,
           creator_name: model?.model_name ?? "",
-          what_was_wrong: formWrong,
-          action_taken: formAction,
-          status: formStatus,
+          what_was_wrong: values.what_was_wrong,
+          action_taken: values.action_taken,
+          status: values.status,
         }),
       });
       const data = (await res.json()) as { spotCheck?: MarketingSpotCheck; error?: string };
       if (!res.ok || !data.spotCheck) {
         addToast(localToast(`sc-err-${Date.now()}`, "Failed", data.error ?? "Could not create spot check", "high"));
-        return;
+        return false;
       }
-      if (formFiles.length > 0) {
+      if (values.files.length > 0) {
         const fd = new FormData();
-        for (const f of formFiles) fd.append("attachments", f);
+        for (const f of values.files) fd.append("attachments", f);
         await fetch(`/api/admin/marketing-reviews/spot-checks/${data.spotCheck.id}/attachments`, {
           method: "POST",
           body: fd,
         });
       }
       setModalOpen(false);
-      resetForm();
       await reload();
       addToast(localToast(`sc-ok-${Date.now()}`, "Spot check logged", "Finding saved successfully.", "normal"));
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function patchSpotCheck(
+    id: string,
+    body: Record<string, unknown>,
+    optimistic?: Partial<MarketingSpotCheck>,
+  ) {
+    const previous = spotChecks.find((sc) => sc.id === id);
+    if (optimistic) patchLocal(id, optimistic);
+    markPending(id, true);
+    try {
+      const res = await fetch(`/api/admin/marketing-reviews/spot-checks/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        if (previous) patchLocal(id, previous);
+        addToast(localToast(`sc-upd-err-${Date.now()}`, "Failed", "Could not update spot check", "high"));
+        return false;
+      }
+      const data = (await res.json()) as { spotCheck?: MarketingSpotCheck };
+      if (data.spotCheck) patchLocal(id, data.spotCheck);
+      return true;
+    } catch {
+      if (previous) patchLocal(id, previous);
+      addToast(localToast(`sc-upd-err-${Date.now()}`, "Failed", "Could not update spot check", "high"));
+      return false;
+    } finally {
+      markPending(id, false);
+    }
+  }
+
+  async function handleQuickStatus(id: string, status: SpotCheckStatus) {
+    const ok = await patchSpotCheck(id, { status }, { status });
+    if (ok) {
+      addToast(localToast(`sc-st-${Date.now()}`, "Status updated", `Marked as ${status}.`, "normal"));
+    }
+  }
+
+  async function handleReassign(id: string, vaId: string) {
+    if (!vaId) return;
+    const va = marketingVas.find((v) => v.id === vaId);
+    const ok = await patchSpotCheck(
+      id,
+      { exec_va_id: vaId, exec_va_name: va?.full_name ?? "" },
+      { exec_va_id: vaId, exec_va_name: va?.full_name ?? "" },
+    );
+    if (ok) {
+      addToast(localToast(`sc-re-${Date.now()}`, "Reassigned", `Exec/VA updated.`, "normal"));
+    }
+  }
+
+  async function handleAddNote(id: string) {
+    const note = (noteDrafts[id] ?? "").trim();
+    if (!note) return;
+    const sc = spotChecks.find((s) => s.id === id);
+    if (!sc) return;
+    const action_taken = sc.action_taken.trim() ? `${sc.action_taken.trim()}\n${note}` : note;
+    const ok = await patchSpotCheck(id, { action_taken }, { action_taken });
+    if (ok) {
+      setNoteDrafts((d) => ({ ...d, [id]: "" }));
+      addToast(localToast(`sc-note-${Date.now()}`, "Note added", "Action taken updated.", "normal"));
     }
   }
 
@@ -273,7 +321,7 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#FF1493]/70">Manager review</p>
           <h1 className="mt-1 text-2xl font-bold text-white">Spot checks</h1>
-          <p className="mt-1 text-sm text-[#B8B4B8]/60">Log and track marketing QA findings</p>
+          <p className="mt-1 text-sm text-[#B8B4B8]/60">Manage and resolve marketing QA findings</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link
@@ -367,43 +415,139 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
       ) : spotChecks.length === 0 ? (
         <div className={cn(VA_CARD, "py-16 text-center")}>
           <ClipboardList className="mx-auto mb-3 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
-          <p className="text-[#B8B4B8]/70">{hasFilters ? "No spot checks match filters" : "No spot checks yet"}</p>
+          <p className="font-medium text-[#B8B4B8]/80">{hasFilters ? "No spot checks match your filters" : "All clear — no spot checks yet"}</p>
+          <p className="mt-1 text-sm text-[#B8B4B8]/45">
+            {hasFilters ? "Try adjusting filters or clear them to see everything." : "Log a finding when you spot a QA issue."}
+          </p>
         </div>
       ) : (
         <div className="space-y-3">
           {spotChecks.map((sc) => {
             const expanded = expandedId === sc.id;
-            const statusStyle = STATUS_STYLES[sc.status];
+            const statusStyle = SPOT_CHECK_STATUS_STYLES[sc.status];
+            const typeStyle = SPOT_CHECK_TYPE_STYLES[sc.type];
+            const isPending = pendingIds.has(sc.id);
             return (
-              <article key={sc.id} className={cn(VA_CARD, "overflow-hidden")}>
-                <button
-                  type="button"
-                  className="flex w-full items-start justify-between gap-4 p-5 text-left"
-                  onClick={() => {
-                    if (expanded) {
-                      setExpandedId(null);
-                      setEditDraft({});
-                    } else {
-                      setExpandedId(sc.id);
-                      setEditDraft({ ...sc });
-                    }
-                  }}
-                >
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={cn(VA_STATUS_BADGE, statusStyle.className)}>{statusStyle.label}</span>
-                      <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-[#B8B4B8]/70">{sc.type}</span>
+              <article key={sc.id} className={cn(VA_CARD, "overflow-hidden", isPending && "opacity-80")}>
+                <div className="p-4 md:p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1 space-y-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span
+                          className={cn(
+                            VA_STATUS_BADGE,
+                            statusStyle.className,
+                            statusStyle.glowClassName,
+                          )}
+                        >
+                          {statusStyle.label}
+                        </span>
+                        <span className={cn("rounded-md border px-2 py-0.5 text-xs", typeStyle.className)}>
+                          {sc.type}
+                        </span>
+                        {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin text-[#D4AF8C]/50" aria-hidden /> : null}
+                      </div>
+                      <p className="font-semibold text-white">{sc.subject || sc.what_was_wrong.slice(0, 100)}</p>
+                      <p className="text-sm text-[#B8B4B8]/55">
+                        {sc.exec_va_name || "—"} · {sc.creator_name || "—"}
+                      </p>
+                      <p className="text-xs text-[#D4AF8C]/60">
+                        Submitted by <span className="text-[#D4AF8C]/90">{sc.manager_name || "Unknown"}</span>
+                        {" · "}
+                        {formatDateTimeAthens(sc.timestamp)}
+                      </p>
                     </div>
-                    <p className="font-semibold text-white">{sc.subject}</p>
-                    <p className="text-sm text-[#B8B4B8]/55">
-                      {sc.exec_va_name || "—"} · {sc.creator_name || "—"} · {sc.manager_name}
-                    </p>
-                    <p className="text-xs text-[#B8B4B8]/40">{formatDateTimeAthens(sc.timestamp)}</p>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded-lg p-1.5 text-[#D4AF8C]/50 hover:bg-white/5"
+                      aria-label={expanded ? "Collapse" : "Expand to edit"}
+                      onClick={() => {
+                        if (expanded) {
+                          setExpandedId(null);
+                          setEditDraft({});
+                        } else {
+                          setExpandedId(sc.id);
+                          setEditDraft({ ...sc });
+                        }
+                      }}
+                    >
+                      <ChevronDown className={cn("h-5 w-5 transition", expanded && "rotate-180")} aria-hidden />
+                    </button>
                   </div>
-                  <ChevronDown className={cn("h-5 w-5 shrink-0 text-[#D4AF8C]/50 transition", expanded && "rotate-180")} aria-hidden />
-                </button>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-white/6 pt-4">
+                    {sc.status !== "Fixed" ? (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => void handleQuickStatus(sc.id, "Fixed")}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-500/15 disabled:opacity-50"
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5" aria-hidden />
+                        Mark Fixed
+                      </button>
+                    ) : null}
+                    {sc.status !== "Escalated" ? (
+                      <button
+                        type="button"
+                        disabled={isPending}
+                        onClick={() => void handleQuickStatus(sc.id, "Escalated")}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/35 bg-red-500/10 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-500/15 disabled:opacity-50"
+                      >
+                        Escalate
+                      </button>
+                    ) : null}
+                    <select
+                      value={sc.exec_va_id}
+                      disabled={isPending}
+                      onChange={(e) => void handleReassign(sc.id, e.target.value)}
+                      className={cn(VA_FILTER_INPUT, "h-8 min-w-0 max-w-[10rem] py-0 text-xs")}
+                      aria-label="Reassign VA"
+                    >
+                      <option value="">Reassign VA…</option>
+                      {marketingVas.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.full_name || v.email}
+                        </option>
+                      ))}
+                    </select>
+                    <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-auto">
+                      <input
+                        type="text"
+                        value={noteDrafts[sc.id] ?? ""}
+                        onChange={(e) => setNoteDrafts((d) => ({ ...d, [sc.id]: e.target.value }))}
+                        placeholder="Add note to action taken…"
+                        className={cn(VA_FILTER_INPUT, "h-8 min-w-0 flex-1 py-0 text-xs")}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleAddNote(sc.id);
+                          }
+                        }}
+                      />
+                      <button
+                        type="button"
+                        disabled={isPending || !(noteDrafts[sc.id] ?? "").trim()}
+                        onClick={() => void handleAddNote(sc.id)}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-[#D4AF8C]/30 px-2.5 py-1.5 text-xs text-[#D4AF8C] hover:bg-[#D4AF8C]/8 disabled:opacity-40"
+                      >
+                        <MessageSquarePlus className="h-3.5 w-3.5" aria-hidden />
+                        Add
+                      </button>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteId(sc.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-500/25 px-2.5 py-1.5 text-xs text-red-300/80 hover:bg-red-500/10"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      Delete
+                    </button>
+                  </div>
+                </div>
+
                 {expanded ? (
-                  <div className="border-t border-white/6 px-5 pb-5 pt-4">
+                  <div className="border-t border-white/6 px-4 pb-5 pt-4 md:px-5">
                     <div className={VA_CHAMPAGNE_DIVIDER} />
                     <div className="mt-4 grid gap-4 md:grid-cols-2">
                       <label className="block space-y-1.5 text-sm">
@@ -502,14 +646,6 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
                     <div className="mt-5 flex flex-wrap justify-end gap-2">
                       <button
                         type="button"
-                        onClick={() => setDeleteId(sc.id)}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/30 px-4 py-2 text-sm text-red-300 hover:bg-red-500/10"
-                      >
-                        <Trash2 className="h-4 w-4" aria-hidden />
-                        Delete
-                      </button>
-                      <button
-                        type="button"
                         disabled={saving}
                         onClick={() => void handleSaveEdit(sc.id)}
                         className={VA_BTN_PRIMARY}
@@ -528,85 +664,19 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
       {modalOpen ? (
         <div className="fixed inset-0 z-[200] flex items-end justify-center p-4 md:items-center">
           <button type="button" className="absolute inset-0 bg-black/75 backdrop-blur-sm" aria-label="Close" onClick={() => !saving && setModalOpen(false)} />
-          <form onSubmit={(e) => void handleCreate(e)} className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
+          <div className="relative max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
             <h2 className="text-lg font-semibold text-white">Log finding</h2>
-            <div className="mt-4 space-y-4">
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">Type</span>
-                <select value={formType} onChange={(e) => setFormType(e.target.value as SpotCheckType)} className={cn(VA_FILTER_INPUT, "w-full")} required>
-                  {SPOT_CHECK_TYPES.map((t) => (
-                    <option key={t} value={t}>
-                      {t}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">Exec / VA</span>
-                <select value={formVaId} onChange={(e) => setFormVaId(e.target.value)} className={cn(VA_FILTER_INPUT, "w-full")}>
-                  <option value="">—</option>
-                  {marketingVas.map((v) => (
-                    <option key={v.id} value={v.id}>
-                      {v.full_name || v.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">Creator</span>
-                <select value={formCreatorId} onChange={(e) => setFormCreatorId(e.target.value)} className={cn(VA_FILTER_INPUT, "w-full")}>
-                  <option value="">—</option>
-                  {models.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.model_name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">What was wrong</span>
-                <textarea value={formWrong} onChange={(e) => setFormWrong(e.target.value)} rows={3} className={cn(VA_FILTER_INPUT, "w-full resize-y py-2")} required />
-              </label>
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">Action taken</span>
-                <textarea value={formAction} onChange={(e) => setFormAction(e.target.value)} rows={2} className={cn(VA_FILTER_INPUT, "w-full resize-y py-2")} />
-              </label>
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">Status</span>
-                <select value={formStatus} onChange={(e) => setFormStatus(e.target.value as SpotCheckStatus)} className={cn(VA_FILTER_INPUT, "w-full")}>
-                  {SPOT_CHECK_STATUSES.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block space-y-1.5 text-sm">
-                <span className="text-[#B8B4B8]/60">Attachments</span>
-                <input
-                  type="file"
-                  multiple
-                  accept="image/*,.pdf"
-                  onChange={(e) => setFormFiles(Array.from(e.target.files ?? []))}
-                  className="block w-full text-sm text-[#B8B4B8]/60 file:mr-3 file:rounded-lg file:border-0 file:bg-[#FF1493]/20 file:px-3 file:py-1.5 file:text-sm file:text-[#FFB3D9]"
-                />
-                {formFiles.length > 0 ? (
-                  <p className="flex items-center gap-1 text-xs text-[#D4AF8C]/70">
-                    <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-                    {formFiles.length} file(s) selected
-                  </p>
-                ) : null}
-              </label>
+            <div className="mt-4">
+              <SpotCheckForm
+                vaUsers={vaUsers}
+                models={models}
+                saving={saving}
+                submitLabel="Save finding"
+                onCancel={() => setModalOpen(false)}
+                onSubmit={handleCreate}
+              />
             </div>
-            <div className="mt-6 flex justify-end gap-2">
-              <button type="button" onClick={() => setModalOpen(false)} disabled={saving} className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/80">
-                Cancel
-              </button>
-              <button type="submit" disabled={saving} className={VA_BTN_PRIMARY}>
-                {saving ? "Saving…" : "Save finding"}
-              </button>
-            </div>
-          </form>
+          </div>
         </div>
       ) : null}
 
