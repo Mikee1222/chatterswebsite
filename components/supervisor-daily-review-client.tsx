@@ -1,22 +1,27 @@
 "use client";
 
 import * as React from "react";
-import { CalendarCheck, Loader2, Plus } from "lucide-react";
+import { CalendarCheck, Plus } from "lucide-react";
 import { DailyReviewFormFields, type DailyReviewFormState } from "@/components/daily-review-form-fields";
 import {
   emptyExecAuditDraft,
   ExecAuditCard,
   type ExecAuditDraft,
 } from "@/components/exec-audit-card";
-import { useToast } from "@/contexts/toast-context";
-import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import {
+  FindingCard,
+  ReviewEmptyState,
+  ReviewLoadingState,
+  ReviewPageEyebrow,
+  ReviewSectionHeader,
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_CARD,
   VA_FILTER_INPUT,
   VA_MODEL_TAG,
-} from "@/lib/va-tasks-tokens";
+} from "@/components/manager-review-ui";
+import { useToast } from "@/contexts/toast-context";
+import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
 import type {
   MarketingDailyReview,
@@ -235,7 +240,7 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
   return (
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#FF1493]/70">Supervision</p>
+        <ReviewPageEyebrow>Supervision</ReviewPageEyebrow>
         <h1 className="mt-1 text-2xl font-bold text-white">Daily Review</h1>
         <p className="mt-1 text-sm text-[#B8B4B8]/60">End-of-day marketing supervisor checklist</p>
       </div>
@@ -258,19 +263,18 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
       </section>
 
       {loading ? (
-        <div className={cn(VA_CARD, "flex items-center justify-center gap-2 py-16 text-[#B8B4B8]/50")}>
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-          Loading…
-        </div>
+        <ReviewLoadingState />
       ) : !activeReview ? (
-        <div className={cn(VA_CARD, "py-16 text-center shadow-[0_0_24px_rgba(212,175,140,0.08)]")}>
-          <CalendarCheck className="mx-auto mb-3 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
-          <p className="font-medium text-[#B8B4B8]/80">No review for {formatReviewDate(selectedDate)}</p>
-          <p className="mt-1 text-sm text-[#B8B4B8]/45">Start a new review or pick another date.</p>
-          <button type="button" onClick={() => void startReview()} disabled={saving} className={cn(VA_BTN_PRIMARY, "mt-4")}>
-            Start review for this date
-          </button>
-        </div>
+        <ReviewEmptyState
+          icon={CalendarCheck}
+          title={`No review for ${formatReviewDate(selectedDate)}`}
+          description="Start a new review or pick another date."
+          action={
+            <button type="button" onClick={() => void startReview()} disabled={saving} className={VA_BTN_PRIMARY}>
+              Start review for this date
+            </button>
+          }
+        />
       ) : (
         <div className="space-y-5">
           <section className={cn(VA_CARD, "space-y-5 p-5 shadow-[0_0_20px_rgba(255,20,147,0.06)]")}>
@@ -301,19 +305,22 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
           </section>
 
           <section className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-white">Per-exec audits</h3>
-              <button
-                type="button"
-                onClick={() => setExecAudits((prev) => [...prev, emptyExecAuditDraft()])}
-                className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 py-2 text-xs")}
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden />
-                Add VA audit
-              </button>
-            </div>
+            <ReviewSectionHeader
+              action={
+                <button
+                  type="button"
+                  onClick={() => setExecAudits((prev) => [...prev, emptyExecAuditDraft()])}
+                  className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 py-2 text-xs")}
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                  Add VA audit
+                </button>
+              }
+            >
+              Per-exec audits
+            </ReviewSectionHeader>
             {execAudits.length === 0 ? (
-              <p className="text-sm text-[#B8B4B8]/50">No per-exec audits yet.</p>
+              <p className="text-sm text-[#B8B4B8]/45">No per-exec audits yet.</p>
             ) : (
               execAudits.map((audit, index) => (
                 <ExecAuditCard
@@ -339,16 +346,16 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
       )}
 
       <section className="space-y-3">
-        <h2 className="text-base font-semibold text-white">My review history</h2>
+        <ReviewSectionHeader>My review history</ReviewSectionHeader>
         {myReviews.length === 0 ? (
-          <div className={cn(VA_CARD, "py-14 text-center")}>
-            <CalendarCheck className="mx-auto mb-3 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
-            <p className="font-medium text-[#B8B4B8]/80">No past reviews yet</p>
-            <p className="mt-1 text-sm text-[#B8B4B8]/45">Completed reviews you submit will appear here.</p>
-          </div>
+          <ReviewEmptyState
+            icon={CalendarCheck}
+            title="No past reviews yet"
+            description="Completed reviews you submit will appear here."
+          />
         ) : (
           myReviews.map((r) => (
-            <article key={r.id} className={cn(VA_CARD, "p-4 md:p-5")}>
+            <FindingCard key={r.id}>
               <p className="font-medium text-white">{r.review_label}</p>
               <p className="mt-1 text-xs text-[#B8B4B8]/50">
                 {formatReviewDate(r.review_date)}
@@ -360,7 +367,7 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
               {r.issues_found ? (
                 <p className="mt-3 text-sm text-[#B8B4B8]/70">{r.issues_found}</p>
               ) : null}
-            </article>
+            </FindingCard>
           ))
         )}
       </section>

@@ -1,8 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ImageIcon } from "lucide-react";
-import { VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
+import {
+  ManagerReviewFileDropzone,
+  ManagerReviewSelect,
+  ManagerReviewTextarea,
+  ReviewFieldLabel,
+  VA_BTN_PRIMARY,
+  type CustomSelectOption,
+} from "@/components/manager-review-ui";
 import { cn } from "@/lib/utils";
 import {
   SPOT_CHECK_STATUSES,
@@ -64,6 +70,29 @@ export function SpotCheckForm({
     [vaUsers],
   );
 
+  const typeOptions = React.useMemo<CustomSelectOption[]>(
+    () => SPOT_CHECK_TYPES.map((t) => ({ value: t, label: t })),
+    [],
+  );
+  const vaOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "—" },
+      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
+    ],
+    [marketingVas],
+  );
+  const modelOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "—" },
+      ...models.map((m) => ({ value: m.id, label: m.model_name })),
+    ],
+    [models],
+  );
+  const statusOptions = React.useMemo<CustomSelectOption[]>(
+    () => SPOT_CHECK_STATUSES.map((s) => ({ value: s, label: s })),
+    [],
+  );
+
   function reset() {
     setValues(DEFAULT_VALUES);
   }
@@ -78,113 +107,80 @@ export function SpotCheckForm({
   return (
     <form onSubmit={(e) => void handleSubmit(e)} className={cn("space-y-4", className)}>
       <label className="block space-y-1.5 text-sm">
-        <span className="text-[#B8B4B8]/60">Type</span>
-        <select
+        <ReviewFieldLabel>Type</ReviewFieldLabel>
+        <ManagerReviewSelect
           value={values.type}
-          onChange={(e) => setValues((v) => ({ ...v, type: e.target.value as SpotCheckType }))}
-          className={cn(VA_FILTER_INPUT, "w-full")}
-          required
-        >
-          {SPOT_CHECK_TYPES.map((t) => (
-            <option key={t} value={t}>
-              {t}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="text-[#B8B4B8]/60">Exec / VA</span>
-        <select
-          value={values.exec_va_id}
-          onChange={(e) => setValues((v) => ({ ...v, exec_va_id: e.target.value }))}
-          className={cn(VA_FILTER_INPUT, "w-full")}
-        >
-          <option value="">—</option>
-          {marketingVas.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.full_name || v.email}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="text-[#B8B4B8]/60">Creator</span>
-        <select
-          value={values.creator_id}
-          onChange={(e) => setValues((v) => ({ ...v, creator_id: e.target.value }))}
-          className={cn(VA_FILTER_INPUT, "w-full")}
-        >
-          <option value="">—</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.model_name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="block space-y-1.5 text-sm">
-        <span className="text-[#B8B4B8]/60">What was wrong</span>
-        <textarea
-          value={values.what_was_wrong}
-          onChange={(e) => setValues((v) => ({ ...v, what_was_wrong: e.target.value }))}
-          rows={3}
-          className={cn(VA_FILTER_INPUT, "w-full resize-y py-2")}
+          onChange={(v) => setValues((prev) => ({ ...prev, type: v as SpotCheckType }))}
+          options={typeOptions}
+          className="w-full"
           required
         />
       </label>
       <label className="block space-y-1.5 text-sm">
-        <span className="text-[#B8B4B8]/60">Action taken</span>
-        <textarea
+        <ReviewFieldLabel>Exec / VA</ReviewFieldLabel>
+        <ManagerReviewSelect
+          value={values.exec_va_id}
+          onChange={(v) => setValues((prev) => ({ ...prev, exec_va_id: v }))}
+          options={vaOptions}
+          className="w-full"
+        />
+      </label>
+      <label className="block space-y-1.5 text-sm">
+        <ReviewFieldLabel>Creator</ReviewFieldLabel>
+        <ManagerReviewSelect
+          value={values.creator_id}
+          onChange={(v) => setValues((prev) => ({ ...prev, creator_id: v }))}
+          options={modelOptions}
+          className="w-full"
+        />
+      </label>
+      <label className="block space-y-1.5 text-sm">
+        <ReviewFieldLabel>What was wrong</ReviewFieldLabel>
+        <ManagerReviewTextarea
+          value={values.what_was_wrong}
+          onChange={(e) => setValues((prev) => ({ ...prev, what_was_wrong: e.target.value }))}
+          rows={3}
+          required
+        />
+      </label>
+      <label className="block space-y-1.5 text-sm">
+        <ReviewFieldLabel>Action taken</ReviewFieldLabel>
+        <ManagerReviewTextarea
           value={values.action_taken}
-          onChange={(e) => setValues((v) => ({ ...v, action_taken: e.target.value }))}
+          onChange={(e) => setValues((prev) => ({ ...prev, action_taken: e.target.value }))}
           rows={2}
-          className={cn(VA_FILTER_INPUT, "w-full resize-y py-2")}
         />
       </label>
       {!lockStatusToPending ? (
         <label className="block space-y-1.5 text-sm">
-          <span className="text-[#B8B4B8]/60">Status</span>
-          <select
+          <ReviewFieldLabel>Status</ReviewFieldLabel>
+          <ManagerReviewSelect
             value={values.status}
-            onChange={(e) => setValues((v) => ({ ...v, status: e.target.value as SpotCheckStatus }))}
-            className={cn(VA_FILTER_INPUT, "w-full")}
-          >
-            {SPOT_CHECK_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
+            onChange={(v) => setValues((prev) => ({ ...prev, status: v as SpotCheckStatus }))}
+            options={statusOptions}
+            className="w-full"
+          />
         </label>
       ) : null}
-      <label className="block space-y-1.5 text-sm">
-        <span className="text-[#B8B4B8]/60">Attachments</span>
-        <input
-          type="file"
-          multiple
-          accept="image/*,.pdf"
-          onChange={(e) => setValues((v) => ({ ...v, files: Array.from(e.target.files ?? []) }))}
-          className="block w-full text-sm text-[#B8B4B8]/60 file:mr-3 file:rounded-lg file:border-0 file:bg-[#FF1493]/20 file:px-3 file:py-1.5 file:text-sm file:text-[#FFB3D9]"
+      <div className="block space-y-1.5 text-sm">
+        <ReviewFieldLabel>Attachments</ReviewFieldLabel>
+        <ManagerReviewFileDropzone
+          files={values.files}
+          onChange={(files) => setValues((prev) => ({ ...prev, files }))}
         />
-        {values.files.length > 0 ? (
-          <p className="flex items-center gap-1 text-xs text-[#D4AF8C]/70">
-            <ImageIcon className="h-3.5 w-3.5" aria-hidden />
-            {values.files.length} file(s) selected
-          </p>
-        ) : null}
-      </label>
+      </div>
       <div className="flex flex-wrap justify-end gap-2 pt-2">
         {onCancel ? (
           <button
             type="button"
             onClick={onCancel}
             disabled={saving}
-            className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/80"
+            className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/80 transition hover:border-[#D4AF8C]/30 hover:text-white"
           >
             Cancel
           </button>
         ) : null}
-        <button type="submit" disabled={saving} className="rounded-xl bg-[#FF1493] px-4 py-2.5 text-sm font-medium text-white hover:bg-[#FF1493]/90 disabled:opacity-50">
+        <button type="submit" disabled={saving} className={cn(VA_BTN_PRIMARY, "px-4 py-2.5 disabled:opacity-50")}>
           {saving ? "Saving…" : submitLabel}
         </button>
       </div>

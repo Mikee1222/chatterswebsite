@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { CalendarCheck, Loader2, Plus, Trash2, X } from "lucide-react";
+import { CalendarCheck, Plus, Trash2 } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { DailyReviewFormFields, type DailyReviewFormState } from "@/components/daily-review-form-fields";
 import {
@@ -10,16 +10,25 @@ import {
   ExecAuditCard,
   type ExecAuditDraft,
 } from "@/components/exec-audit-card";
-import { useToast } from "@/contexts/toast-context";
-import { ROUTES } from "@/lib/routes";
-import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import {
+  FilterBar,
+  FilterChip,
+  ManagerReviewSelect,
+  QuickActionDelete,
+  ReviewEmptyState,
+  ReviewLoadingState,
+  ReviewPageEyebrow,
+  ReviewSectionHeader,
   VA_BTN_PRIMARY,
   VA_BTN_SECONDARY,
   VA_CARD,
   VA_FILTER_INPUT,
   VA_MODEL_TAG,
-} from "@/lib/va-tasks-tokens";
+  type CustomSelectOption,
+} from "@/components/manager-review-ui";
+import { useToast } from "@/contexts/toast-context";
+import { ROUTES } from "@/lib/routes";
+import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
 import type {
   MarketingDailyReview,
@@ -31,23 +40,10 @@ const API_BASE = "/api/admin/marketing-reviews/daily-reviews";
 
 type DateRange = "all" | "7d" | "30d" | "custom";
 
-const ADMIN_SELECT = cn(VA_FILTER_INPUT, "min-w-[9rem]");
-
 function isoDateDaysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return d.toISOString().slice(0, 10);
-}
-
-function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/8 px-2.5 py-1 text-xs text-[#D4AF8C]">
-      {label}
-      <button type="button" onClick={onRemove} className="rounded-full p-0.5 hover:bg-[#D4AF8C]/15" aria-label={`Remove ${label}`}>
-        <X className="h-3 w-3" aria-hidden />
-      </button>
-    </span>
-  );
 }
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
@@ -128,6 +124,20 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
     return [...names].sort((a, b) => a.localeCompare(b));
   }, [reviews]);
 
+  const supervisorFilterOptions = React.useMemo<CustomSelectOption[]>(
+    () => [{ value: "", label: "All" }, ...supervisorOptions.map((name) => ({ value: name, label: name }))],
+    [supervisorOptions],
+  );
+  const dateRangeOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "all", label: "All time" },
+      { value: "7d", label: "Last 7 days" },
+      { value: "30d", label: "Last 30 days" },
+      { value: "custom", label: "Custom" },
+    ],
+    [],
+  );
+
   function applyReviewToForm(review: MarketingDailyReviewDetail | null) {
     setFormState(detailToFormState(review));
     setExecAudits(detailToExecAudits(review));
@@ -178,8 +188,7 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterSupervisor, filterDateRange, filterDateFrom, filterDateTo]);
 
-  const hasFilters =
-    Boolean(filterSupervisor) || filterDateRange !== "all";
+  const hasFilters = Boolean(filterSupervisor) || filterDateRange !== "all";
 
   function clearFilters() {
     setFilterSupervisor("");
@@ -321,19 +330,16 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
     <div className="space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#FF1493]/70">Manager review</p>
+          <ReviewPageEyebrow>Manager review</ReviewPageEyebrow>
           <h1 className="mt-1 text-2xl font-bold text-white">Daily review</h1>
           <p className="mt-1 text-sm text-[#B8B4B8]/60">Manage all supervisor daily reviews</p>
         </div>
-        <Link
-          href={ROUTES.admin.spotChecks}
-          className="rounded-xl border border-[#D4AF8C]/35 px-4 py-2.5 text-sm font-medium text-[#D4AF8C] hover:bg-[#D4AF8C]/6"
-        >
+        <Link href={ROUTES.admin.spotChecks} className={cn(VA_BTN_SECONDARY, "px-4 py-2.5 text-sm")}>
           ← Spot checks
         </Link>
       </div>
 
-      <div className={cn(VA_CARD, "flex flex-wrap items-end gap-4 p-4 md:p-5")}>
+      <section className={cn(VA_CARD, "flex flex-wrap items-end gap-4 p-4 md:p-5")}>
         <label className="space-y-1.5 text-sm">
           <span className="text-[#B8B4B8]/60">Review date</span>
           <input
@@ -349,30 +355,25 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
           </button>
         ) : null}
         {activeReview ? (
-          <button
-            type="button"
-            onClick={() => setDeleteReviewId(activeReview.id)}
-            className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/35 px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10"
-          >
+          <QuickActionDelete onClick={() => setDeleteReviewId(activeReview.id)} className="px-4 py-2.5 text-sm">
             <Trash2 className="h-4 w-4" aria-hidden />
             Delete review
-          </button>
+          </QuickActionDelete>
         ) : null}
-      </div>
+      </section>
 
       {loading ? (
-        <div className={cn(VA_CARD, "flex items-center justify-center gap-2 py-16 text-[#B8B4B8]/50")}>
-          <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-          Loading…
-        </div>
+        <ReviewLoadingState />
       ) : !activeReview ? (
-        <div className={cn(VA_CARD, "py-16 text-center shadow-[0_0_24px_rgba(212,175,140,0.08)]")}>
-          <CalendarCheck className="mx-auto mb-3 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
-          <p className="text-[#B8B4B8]/70">No review for {formatReviewDate(selectedDate)}</p>
-          <button type="button" onClick={() => void startReview()} disabled={saving} className={cn(VA_BTN_PRIMARY, "mt-4")}>
-            Start review for this date
-          </button>
-        </div>
+        <ReviewEmptyState
+          icon={CalendarCheck}
+          title={`No review for ${formatReviewDate(selectedDate)}`}
+          action={
+            <button type="button" onClick={() => void startReview()} disabled={saving} className={VA_BTN_PRIMARY}>
+              Start review for this date
+            </button>
+          }
+        />
       ) : (
         <div className="space-y-5">
           <div className={cn(VA_CARD, "space-y-5 p-5 shadow-[0_0_20px_rgba(255,20,147,0.06)]")}>
@@ -403,19 +404,22 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
           </div>
 
           <div className="space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-base font-semibold text-white">Per-exec audits</h3>
-              <button
-                type="button"
-                onClick={() => setExecAudits((prev) => [...prev, emptyExecAuditDraft()])}
-                className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 py-2 text-xs")}
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden />
-                Add VA audit
-              </button>
-            </div>
+            <ReviewSectionHeader
+              action={
+                <button
+                  type="button"
+                  onClick={() => setExecAudits((prev) => [...prev, emptyExecAuditDraft()])}
+                  className={cn(VA_BTN_SECONDARY, "inline-flex items-center gap-1.5 py-2 text-xs")}
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden />
+                  Add VA audit
+                </button>
+              }
+            >
+              Per-exec audits
+            </ReviewSectionHeader>
             {execAudits.length === 0 ? (
-              <p className="text-sm text-[#B8B4B8]/50">No per-exec audits yet.</p>
+              <p className="text-sm text-[#B8B4B8]/45">No per-exec audits yet.</p>
             ) : (
               execAudits.map((audit, index) => (
                 <ExecAuditCard
@@ -444,57 +448,66 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
       )}
 
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="text-base font-semibold text-white">Review history</h3>
-          {hasFilters ? (
-            <button type="button" onClick={clearFilters} className="text-xs text-[#D4AF8C]/80 hover:text-[#D4AF8C]">
-              Clear filters
-            </button>
-          ) : null}
-        </div>
+        <ReviewSectionHeader
+          action={
+            hasFilters ? (
+              <button type="button" onClick={clearFilters} className="text-xs text-[#D4AF8C]/80 hover:text-[#D4AF8C]">
+                Clear filters
+              </button>
+            ) : null
+          }
+        >
+          Review history
+        </ReviewSectionHeader>
 
-        <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4")}>
+        <FilterBar className="flex flex-wrap items-end gap-3">
           <label className="space-y-1 text-xs text-[#B8B4B8]/60">
             Supervisor
-            <select value={filterSupervisor} onChange={(e) => setFilterSupervisor(e.target.value)} className={ADMIN_SELECT}>
-              <option value="">All</option>
-              {supervisorOptions.map((name) => (
-                <option key={name} value={name}>
-                  {name}
-                </option>
-              ))}
-            </select>
+            <ManagerReviewSelect
+              value={filterSupervisor}
+              onChange={setFilterSupervisor}
+              options={supervisorFilterOptions}
+              triggerClassName="min-w-[9rem]"
+            />
           </label>
           <label className="space-y-1 text-xs text-[#B8B4B8]/60">
             Date range
-            <select
+            <ManagerReviewSelect
               value={filterDateRange}
-              onChange={(e) => setFilterDateRange(e.target.value as DateRange)}
-              className={ADMIN_SELECT}
-            >
-              <option value="all">All time</option>
-              <option value="7d">Last 7 days</option>
-              <option value="30d">Last 30 days</option>
-              <option value="custom">Custom</option>
-            </select>
+              onChange={(v) => setFilterDateRange(v as DateRange)}
+              options={dateRangeOptions}
+              triggerClassName="min-w-[9rem]"
+            />
           </label>
           {filterDateRange === "custom" ? (
             <>
               <label className="space-y-1 text-xs text-[#B8B4B8]/60">
                 From
-                <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className={ADMIN_SELECT} />
+                <input
+                  type="date"
+                  value={filterDateFrom}
+                  onChange={(e) => setFilterDateFrom(e.target.value)}
+                  className={cn(VA_FILTER_INPUT, "min-w-[9rem]")}
+                />
               </label>
               <label className="space-y-1 text-xs text-[#B8B4B8]/60">
                 To
-                <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className={ADMIN_SELECT} />
+                <input
+                  type="date"
+                  value={filterDateTo}
+                  onChange={(e) => setFilterDateTo(e.target.value)}
+                  className={cn(VA_FILTER_INPUT, "min-w-[9rem]")}
+                />
               </label>
             </>
           ) : null}
-        </div>
+        </FilterBar>
 
         {hasFilters ? (
           <div className="flex flex-wrap gap-2">
-            {filterSupervisor ? <FilterChip label={`Supervisor: ${filterSupervisor}`} onRemove={() => setFilterSupervisor("")} /> : null}
+            {filterSupervisor ? (
+              <FilterChip label={`Supervisor: ${filterSupervisor}`} onRemove={() => setFilterSupervisor("")} />
+            ) : null}
             {filterDateRange === "7d" ? (
               <FilterChip label="Last 7 days" onRemove={() => setFilterDateRange("all")} />
             ) : null}
@@ -515,15 +528,14 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
         ) : null}
 
         {reviews.length === 0 ? (
-          <p className="text-sm text-[#B8B4B8]/50">No reviews match your filters.</p>
+          <p className="text-sm text-[#B8B4B8]/45">No reviews match your filters.</p>
         ) : (
           <div className="space-y-2">
             {reviews.map((r) => (
               <div
                 key={r.id}
                 className={cn(
-                  VA_CARD,
-                  "flex w-full items-center justify-between gap-3 p-4",
+                  "mr-finding-card va-card rounded-2xl flex w-full items-center justify-between gap-3 p-4 transition duration-200 motion-reduce:transition-none hover:-translate-y-0.5",
                   r.review_date === selectedDate && "ring-1 ring-[#FF1493]/35",
                 )}
               >
@@ -539,7 +551,7 @@ export function AdminDailyReviewClient({ initialReviews, todayReview, vaUsers }:
                   <button
                     type="button"
                     onClick={() => setDeleteReviewId(r.id)}
-                    className="rounded-lg border border-red-500/30 p-2 text-red-400 hover:bg-red-500/10"
+                    className="rounded-lg border border-white/10 p-2 text-red-400/55 transition hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
                     aria-label="Delete review"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />

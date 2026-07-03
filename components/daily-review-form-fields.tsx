@@ -1,8 +1,20 @@
 "use client";
 
-import { Check } from "lucide-react";
+import * as React from "react";
+import {
+  DashPlaceholder,
+  ManagerReviewFileDropzone,
+  ManagerReviewSelect,
+  ManagerReviewTextarea,
+  ReviewFieldLabel,
+  ReviewSectionHeader,
+  TogglePill,
+  VA_CHAMPAGNE_DIVIDER,
+  VA_MODEL_TAG,
+  type CustomSelectOption,
+} from "@/components/manager-review-ui";
 import { COMPLIANCE_VS_MASTER, DAILY_REVIEW_KPIS } from "@/lib/marketing-reviews-helpers";
-import { VA_CHAMPAGNE_DIVIDER, VA_FILTER_INPUT, VA_MODEL_TAG } from "@/lib/va-tasks-tokens";
+import { VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { UserRecord } from "@/types";
 
@@ -42,6 +54,14 @@ export function DailyReviewFormFields({
   onChange,
   onAttachFiles,
 }: Props) {
+  const vaOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "—" },
+      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
+    ],
+    [marketingVas],
+  );
+
   return (
     <div className="space-y-5">
       {reviewLabel ? (
@@ -55,77 +75,39 @@ export function DailyReviewFormFields({
       ) : null}
 
       <div>
-        <p className="mb-3 text-sm font-medium text-[#D4AF8C]">KPIs reviewed</p>
+        <ReviewSectionHeader className="mb-3">KPIs reviewed</ReviewSectionHeader>
         <div className="flex flex-wrap gap-2">
-          {DAILY_REVIEW_KPIS.map((kpi) => {
-            const on = state.kpis.includes(kpi);
-            if (readOnly) {
-              if (!on) return null;
-              return (
-                <span
-                  key={kpi}
-                  className="rounded-lg border border-[#FF1493]/40 bg-[#FF1493]/15 px-3 py-2 text-xs text-[#FFB3D9]"
-                >
-                  <Check className="mb-0.5 inline h-3 w-3" aria-hidden /> {kpi}
-                </span>
-              );
-            }
-            return (
-              <button
-                key={kpi}
-                type="button"
-                onClick={() => onToggleKpi?.(kpi)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-left text-xs transition",
-                  on
-                    ? "border-[#FF1493]/40 bg-[#FF1493]/15 text-[#FFB3D9] shadow-[0_0_10px_rgba(255,20,147,0.2)]"
-                    : "border-white/8 bg-white/3 text-[#B8B4B8]/60 hover:border-[#D4AF8C]/30",
-                )}
-              >
-                {on ? <Check className="mb-0.5 inline h-3 w-3" aria-hidden /> : null} {kpi}
-              </button>
-            );
-          })}
+          {DAILY_REVIEW_KPIS.map((kpi) => (
+            <TogglePill
+              key={kpi}
+              label={kpi}
+              variant="kpi"
+              selected={state.kpis.includes(kpi)}
+              readOnly={readOnly}
+              onClick={() => onToggleKpi?.(kpi)}
+            />
+          ))}
           {readOnly && state.kpis.length === 0 ? (
-            <p className="text-sm text-[#B8B4B8]/50">None selected</p>
+            <p className="text-sm text-[#B8B4B8]/45">None selected</p>
           ) : null}
         </div>
       </div>
 
       <div>
-        <p className="mb-3 text-sm font-medium text-[#D4AF8C]">Account compliance vs master</p>
+        <ReviewSectionHeader className="mb-3">Account compliance vs master</ReviewSectionHeader>
         <div className="flex flex-wrap gap-2">
-          {COMPLIANCE_VS_MASTER.map((item) => {
-            const on = state.compliance.includes(item);
-            if (readOnly) {
-              if (!on) return null;
-              return (
-                <span
-                  key={item}
-                  className="rounded-lg border border-emerald-500/35 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300"
-                >
-                  <Check className="mb-0.5 inline h-3 w-3" aria-hidden /> {item}
-                </span>
-              );
-            }
-            return (
-              <button
-                key={item}
-                type="button"
-                onClick={() => onToggleCompliance?.(item)}
-                className={cn(
-                  "rounded-lg border px-3 py-2 text-left text-xs transition",
-                  on
-                    ? "border-emerald-500/35 bg-emerald-500/10 text-emerald-300 shadow-[0_0_10px_rgba(16,185,129,0.2)]"
-                    : "border-white/8 bg-white/3 text-[#B8B4B8]/60 hover:border-[#D4AF8C]/30",
-                )}
-              >
-                {on ? <Check className="mb-0.5 inline h-3 w-3" aria-hidden /> : null} {item}
-              </button>
-            );
-          })}
+          {COMPLIANCE_VS_MASTER.map((item) => (
+            <TogglePill
+              key={item}
+              label={item}
+              variant="compliance"
+              selected={state.compliance.includes(item)}
+              readOnly={readOnly}
+              onClick={() => onToggleCompliance?.(item)}
+            />
+          ))}
           {readOnly && state.compliance.length === 0 ? (
-            <p className="text-sm text-[#B8B4B8]/50">None selected</p>
+            <p className="text-sm text-[#B8B4B8]/45">None selected</p>
           ) : null}
         </div>
       </div>
@@ -135,7 +117,7 @@ export function DailyReviewFormFields({
           {state.topPerformerId ? (
             <p className="text-sm text-[#B8B4B8]/70">
               <span className="text-[#B8B4B8]/45">Top performer: </span>
-              {marketingVas.find((v) => v.id === state.topPerformerId)?.full_name ?? "—"}
+              {marketingVas.find((v) => v.id === state.topPerformerId)?.full_name ?? <DashPlaceholder />}
             </p>
           ) : null}
           {state.issues ? (
@@ -157,40 +139,32 @@ export function DailyReviewFormFields({
       ) : (
         <>
           <label className="block space-y-1.5 text-sm">
-            <span className="text-[#B8B4B8]/60">Top performer VA</span>
-            <select
+            <ReviewFieldLabel>Top performer VA</ReviewFieldLabel>
+            <ManagerReviewSelect
               value={state.topPerformerId}
-              onChange={(e) => onChange?.({ topPerformerId: e.target.value })}
-              className={cn(VA_FILTER_INPUT, "w-full max-w-md")}
-            >
-              <option value="">—</option>
-              {marketingVas.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.full_name || v.email}
-                </option>
-              ))}
-            </select>
+              onChange={(v) => onChange?.({ topPerformerId: v })}
+              options={vaOptions}
+              className="w-full max-w-md"
+            />
           </label>
           <label className="block space-y-1.5 text-sm">
-            <span className="text-[#B8B4B8]/60">Issues found</span>
-            <textarea
+            <ReviewFieldLabel>Issues found</ReviewFieldLabel>
+            <ManagerReviewTextarea
               value={state.issues}
               onChange={(e) => onChange?.({ issues: e.target.value })}
               rows={3}
-              className={cn(VA_FILTER_INPUT, "w-full resize-y py-2")}
             />
           </label>
           <label className="block space-y-1.5 text-sm">
-            <span className="text-[#B8B4B8]/60">Actions assigned</span>
-            <textarea
+            <ReviewFieldLabel>Actions assigned</ReviewFieldLabel>
+            <ManagerReviewTextarea
               value={state.actions}
               onChange={(e) => onChange?.({ actions: e.target.value })}
               rows={2}
-              className={cn(VA_FILTER_INPUT, "w-full resize-y py-2")}
             />
           </label>
           <label className="block max-w-xs space-y-1.5 text-sm">
-            <span className="text-[#B8B4B8]/60">Time spent (minutes)</span>
+            <ReviewFieldLabel>Time spent (minutes)</ReviewFieldLabel>
             <input
               type="number"
               min={0}
@@ -200,19 +174,10 @@ export function DailyReviewFormFields({
             />
           </label>
           {showAttachments ? (
-            <label className="block space-y-1.5 text-sm">
-              <span className="text-[#B8B4B8]/60">Attachments</span>
-              <input
-                type="file"
-                multiple
-                accept="image/*,.pdf"
-                onChange={(e) => onAttachFiles?.(Array.from(e.target.files ?? []))}
-                className="block w-full text-sm text-[#B8B4B8]/60 file:mr-3 file:rounded-lg file:border-0 file:bg-[#FF1493]/20 file:px-3 file:py-1.5 file:text-sm file:text-[#FFB3D9]"
-              />
-              {attachFiles.length > 0 ? (
-                <p className="text-xs text-[#B8B4B8]/45">{attachFiles.length} file(s) selected</p>
-              ) : null}
-            </label>
+            <div className="block space-y-1.5 text-sm">
+              <ReviewFieldLabel>Attachments</ReviewFieldLabel>
+              <ManagerReviewFileDropzone files={attachFiles} onChange={(files) => onAttachFiles?.(files)} />
+            </div>
           ) : null}
         </>
       )}

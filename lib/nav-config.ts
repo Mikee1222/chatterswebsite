@@ -404,13 +404,8 @@ const adminNav: NavItem[] = [
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.SOPS_MANAGE,
   },
-  {
-    href: ROUTES.admin.pdfMaker,
-    label: "PDF Maker",
-    iconKey: "FileText",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.PDF_MAKER_MANAGE,
-  },
+  // NOTE: "PDF Maker" (PDF_MAKER_MANAGE) moved to `sharedPermissionNavItems` (TOOLS section)
+  // so any role granted the permission — not just admin — surfaces the link.
   {
     href: ROUTES.admin.informations,
     label: "Informations",
@@ -425,7 +420,7 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.MARKETING_VIEW,
   },
   // NOTE: The SUBMIT-tier supervision items (Spot Checks / Daily Review) live in
-  // `sharedSupervisionNavItems` below so any role granted the permission surfaces them.
+  // `sharedPermissionNavItems` below so any role granted the permission surfaces them.
   // Only the MANAGER REVIEW (manage-tier) items remain here.
   {
     href: ROUTES.admin.spotChecks,
@@ -621,15 +616,18 @@ const modelNav: NavItem[] = [
 
 /**
  * Permission-gated nav items that must reach ANY role granted the underlying permission,
- * regardless of that role's base nav array (chatter/va/model/admin/custom). These are
+ * regardless of that role's base nav array (chatter/va/model/admin/manager/custom). These are
  * appended to every role's base list BEFORE permission filtering, so `requiresPermission`
  * decides show/hide. Add future permission-only shared items here.
  *
- * Only SUBMIT-tier supervision items belong here. The MANAGER REVIEW (manage-tier) items
+ * Covers unrelated features (SUPERVISION submit-tier items + standalone TOOLS). Each item
+ * carries its own `navSection` so it renders under the correct group per viewport.
+ *
+ * For SUPERVISION: only SUBMIT-tier items belong here. The MANAGER REVIEW (manage-tier) items
  * stay in `adminNav`; `hiddenIfPermission` dedupes users who also hold the manage grant
  * (they see the richer MANAGER REVIEW item instead of the submit item).
  */
-const sharedSupervisionNavItems: NavItem[] = [
+const sharedPermissionNavItems: NavItem[] = [
   {
     href: ROUTES.spotChecks,
     label: "Spot Checks",
@@ -650,12 +648,20 @@ const sharedSupervisionNavItems: NavItem[] = [
     hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.admin.pdfMaker,
+    label: "PDF Maker",
+    iconKey: "FileText",
+    navSection: "TOOLS",
+    requiresPermission: PERMISSIONS.PDF_MAKER_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
 ];
 
 /** Append shared permission-gated items to a role's base list, skipping any already present. */
 function appendSharedNavItems(base: NavItem[]): NavItem[] {
   const existing = new Set(base.map((i) => i.href));
-  const shared = sharedSupervisionNavItems.filter((i) => !existing.has(i.href));
+  const shared = sharedPermissionNavItems.filter((i) => !existing.has(i.href));
   return shared.length === 0 ? base : [...base, ...shared];
 }
 
