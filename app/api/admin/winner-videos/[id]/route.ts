@@ -24,12 +24,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (action === "approve") {
     const assigned_creator_name = String(body.assigned_creator_name ?? "").trim();
     const recreation_deadline = String(body.recreation_deadline ?? "").trim();
+    const assigned_creative_id = String(body.assigned_creative_id ?? "").trim();
+    const assigned_creative_name = String(body.assigned_creative_name ?? "").trim();
     if (!assigned_creator_name || !recreation_deadline) {
       return NextResponse.json({ error: "Creator name and recreation deadline are required" }, { status: 400 });
+    }
+    if (!assigned_creative_id || !assigned_creative_name) {
+      return NextResponse.json({ error: "A Creative must be assigned to write the script" }, { status: 400 });
     }
     const video = await approveWinnerVideo(id, {
       assigned_creator_name,
       recreation_deadline,
+      assigned_creative_id,
+      assigned_creative_name,
       reviewed_by_name: reviewerName,
       reviewed_by_id: session.airtableUserId ?? session.id,
     });

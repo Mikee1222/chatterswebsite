@@ -22,7 +22,6 @@ export function formatWinnerVideoSingleCopy(video: WinnerVideoRecord): string {
 
   if (video.note?.trim()) lines.push(video.note.trim());
   if (video.content_type) lines.push(`Type: ${video.content_type}`);
-  if (video.transcript?.trim()) lines.push(`Transcript: ${video.transcript.trim()}`);
   lines.push(`Submitted: ${formatWinnerVideoCopyDate(video.submitted_at)}`);
   return lines.join("\n");
 }
@@ -34,7 +33,6 @@ export function formatWinnerVideoBulkCopy(videos: WinnerVideoRecord[]): string {
       const lines = [header, video.video_link?.trim() || ""].filter(Boolean);
       if (video.note?.trim()) lines.push(video.note.trim());
       if (video.content_type) lines.push(`Type: ${video.content_type}`);
-      if (video.transcript?.trim()) lines.push(`Transcript: ${video.transcript.trim()}`);
       return lines.join("\n");
     })
     .join(`\n${BULK_SEPARATOR}\n`);

@@ -11,6 +11,6 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const videos = await getScriptsQueue();
+  const videos = await getScriptsQueue(session.airtableUserId ?? session.id);
   return NextResponse.json({ videos });
 }

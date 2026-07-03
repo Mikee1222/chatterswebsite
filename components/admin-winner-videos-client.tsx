@@ -45,10 +45,13 @@ import { AdminCreativeScriptsReview } from "@/components/admin-creative-scripts-
 
 type AdminTab = "submissions" | "scripts";
 
+export type CreativeOption = { id: string; name: string };
+
 type Props = {
   initialVideos: WinnerVideoRecord[];
   initialPendingScripts?: WinnerVideoRecord[];
   gunzoModels: ModelRecord[];
+  creatives?: CreativeOption[];
   canManageScripts?: boolean;
 };
 
@@ -56,6 +59,7 @@ export function AdminWinnerVideosClient({
   initialVideos,
   initialPendingScripts = [],
   gunzoModels,
+  creatives = [],
   canManageScripts = false,
 }: Props) {
   const { addToast } = useToast();
@@ -76,6 +80,7 @@ export function AdminWinnerVideosClient({
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [recreatedId, setRecreatedId] = React.useState<string | null>(null);
   const [creatorId, setCreatorId] = React.useState("");
+  const [creativeId, setCreativeId] = React.useState("");
   const [deadline, setDeadline] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [recreationLink, setRecreationLink] = React.useState("");
@@ -93,6 +98,19 @@ export function AdminWinnerVideosClient({
   const selectedCreatorName = React.useMemo(
     () => gunzoModels.find((m) => m.id === creatorId)?.model_name ?? "",
     [gunzoModels, creatorId],
+  );
+
+  const creativeOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "Select Creative…" },
+      ...creatives.map((c) => ({ value: c.id, label: c.name })),
+    ],
+    [creatives],
+  );
+
+  const selectedCreativeName = React.useMemo(
+    () => creatives.find((c) => c.id === creativeId)?.name ?? "",
+    [creatives, creativeId],
   );
 
   const statusOptions = React.useMemo<CustomSelectOption[]>(
@@ -255,6 +273,7 @@ export function AdminWinnerVideosClient({
                           onClick={() => {
                             setApproveId(v.id);
                             setCreatorId("");
+                            setCreativeId("");
                             setDeadline("");
                           }}
                         >
@@ -323,6 +342,9 @@ export function AdminWinnerVideosClient({
                     {v.recreation_deadline ? ` · deadline ${v.recreation_deadline}` : ""}
                   </p>
                 ) : null}
+                {v.assigned_creative_name ? (
+                  <p className="mt-1 text-xs text-[#D4AF8C]/80">Assigned to: {v.assigned_creative_name}</p>
+                ) : null}
                 {v.recreation_link?.trim() ? (
                   <a
                     href={v.recreation_link}
@@ -351,8 +373,10 @@ export function AdminWinnerVideosClient({
 
       {approveId ? (
         <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
-          <p className="mb-4 text-sm text-[#B8B4B8]/60">Pick the Gunzo-team creator who will recreate this video.</p>
-          <ReviewFormSection title="Creator assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
+          <p className="mb-4 text-sm text-[#B8B4B8]/60">
+            Pick the Gunzo-team creator who will recreate this video and assign a Creative to write the script.
+          </p>
+          <ReviewFormSection title="Assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
             <div className="space-y-4">
               <div>
                 <ReviewFieldLabel>Assigned creator</ReviewFieldLabel>
@@ -363,6 +387,24 @@ export function AdminWinnerVideosClient({
                   placeholder="Select Gunzo-team creator…"
                   required
                 />
+              </div>
+              <div>
+                <ReviewFieldLabel>Assign to Creative</ReviewFieldLabel>
+                {creatives.length === 0 ? (
+                  <p className="mt-1 rounded-lg border border-amber-500/25 bg-amber-500/8 px-3 py-2 text-xs text-amber-200">
+                    No Creatives available — grant creative_scripts:submit to a user first.
+                  </p>
+                ) : (
+                  <ManagerReviewSelect
+                    value={creativeId}
+                    onChange={setCreativeId}
+                    options={creativeOptions}
+                    placeholder="Select Creative…"
+                    searchable
+                    searchPlaceholder="Search Creatives…"
+                    required
+                  />
+                )}
               </div>
               <div>
                 <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
@@ -380,13 +422,31 @@ export function AdminWinnerVideosClient({
                 </button>
                 <button
                   type="button"
-                  className={VA_BTN_PRIMARY}
+                  disabled={
+                    !creatorId ||
+                    !selectedCreatorName.trim() ||
+                    !creativeId ||
+                    !selectedCreativeName.trim() ||
+                    !deadline
+                  }
+                  className={cn(VA_BTN_PRIMARY, "disabled:cursor-not-allowed disabled:opacity-40")}
                   onClick={() => {
-                    if (!approveId || !creatorId || !selectedCreatorName.trim() || !deadline) return;
+                    if (
+                      !approveId ||
+                      !creatorId ||
+                      !selectedCreatorName.trim() ||
+                      !creativeId ||
+                      !selectedCreativeName.trim() ||
+                      !deadline
+                    ) {
+                      return;
+                    }
                     void (async () => {
                       const ok = await patchVideo(approveId, {
                         action: "approve",
                         assigned_creator_name: selectedCreatorName.trim(),
+                        assigned_creative_id: creativeId,
+                        assigned_creative_name: selectedCreativeName.trim(),
                         recreation_deadline: deadline,
                       });
                       if (ok) setApproveId(null);

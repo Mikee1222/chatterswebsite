@@ -8,7 +8,6 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
-import { WINNER_VIDEO_MAX_FILE_BYTES } from "@/lib/winner-video-files";
 import {
   coerceWinnerVideoContentType,
   coerceWinnerVideoStatus,
@@ -59,6 +58,9 @@ export interface WinnerVideoRecord {
   script_reviewed_at: string | null;
   script_rejection_reason: string;
   content_type: WinnerVideoContentType | "";
+  /** Creative (staff with creative_scripts:submit) assigned to write the script on approve. */
+  assigned_creative_name: string;
+  assigned_creative_id: string;
 }
 
 export interface WinnerVideoFilters {
@@ -67,6 +69,7 @@ export interface WinnerVideoFilters {
   script_status?: ScriptStatus | "";
   submitted_by_id?: string;
   script_submitted_by_id?: string;
+  assigned_creative_id?: string;
   date_from?: string;
   date_to?: string;
 }
@@ -101,6 +104,8 @@ type WinnerVideoFields = {
   script_reviewed_at?: string | null;
   script_rejection_reason?: string;
   content_type?: string;
+  assigned_creative_name?: string;
+  assigned_creative_id?: string;
 };
 
 function escapeFormulaString(value: string): string {
@@ -155,6 +160,8 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     script_reviewed_at: f.script_reviewed_at?.trim() ? String(f.script_reviewed_at) : null,
     script_rejection_reason: String(f.script_rejection_reason ?? ""),
     content_type: coerceWinnerVideoContentType(f.content_type),
+    assigned_creative_name: String(f.assigned_creative_name ?? ""),
+    assigned_creative_id: String(f.assigned_creative_id ?? ""),
   };
 }
 
@@ -175,6 +182,11 @@ function buildFilter(filters: WinnerVideoFilters): string | undefined {
   if (filters.script_submitted_by_id?.trim()) {
     parts.push(
       `{script_submitted_by_id} = "${escapeFormulaString(filters.script_submitted_by_id.trim())}"`,
+    );
+  }
+  if (filters.assigned_creative_id?.trim()) {
+    parts.push(
+      `{assigned_creative_id} = "${escapeFormulaString(filters.assigned_creative_id.trim())}"`,
     );
   }
   if (filters.date_from?.trim()) {
@@ -256,25 +268,12 @@ export async function uploadWinnerVideoScreenshot(
   }
 }
 
-export async function uploadWinnerVideoFile(
-  id: string,
-  files: Array<{ name: string; type: string; bytes: Uint8Array }>,
-): Promise<void> {
-  for (const file of files) {
-    await uploadAirtableAttachment({
-      recordId: id,
-      fieldName: "video_file",
-      filename: file.name,
-      contentType: file.type,
-      bytes: file.bytes,
-      maxBytes: WINNER_VIDEO_MAX_FILE_BYTES,
-    });
-  }
-}
-
 export type ApproveWinnerVideoInput = {
   assigned_creator_name: string;
   recreation_deadline: string;
+  /** Creative (staff) who will write the script for this find. */
+  assigned_creative_id: string;
+  assigned_creative_name: string;
   reviewed_by_name: string;
   reviewed_by_id?: string;
 };
@@ -288,6 +287,8 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     status: "Approved",
     assigned_creator_name: data.assigned_creator_name.trim(),
     recreation_deadline: data.recreation_deadline.trim(),
+    assigned_creative_id: data.assigned_creative_id.trim(),
+    assigned_creative_name: data.assigned_creative_name.trim(),
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,
     rejection_reason: "",
@@ -449,14 +450,16 @@ export async function transcribeVideoUrl(
   }
 }
 
-export async function updateWinnerVideoTranscript(id: string, transcript: string): Promise<void> {
-  const text = transcript.trim();
-  if (!text) return;
-  await updateRecord(TABLE, id, { transcript: text });
-}
-
-export async function getScriptsQueue(): Promise<WinnerVideoRecord[]> {
-  return getAllWinnerVideos({ script_status: "Needs Script" });
+/**
+ * Scripts-to-write queue. When `assignedCreativeId` is provided, only finds assigned to
+ * that Creative are returned (the queue is per-Creative, not a shared pool).
+ */
+export async function getScriptsQueue(assignedCreativeId?: string): Promise<WinnerVideoRecord[]> {
+  const creativeId = assignedCreativeId?.trim();
+  return getAllWinnerVideos({
+    script_status: "Needs Script",
+    ...(creativeId ? { assigned_creative_id: creativeId } : {}),
+  });
 }
 
 export async function getMyScripts(submitterId: string): Promise<WinnerVideoRecord[]> {

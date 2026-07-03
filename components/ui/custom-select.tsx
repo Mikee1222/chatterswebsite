@@ -24,6 +24,10 @@ export type CustomSelectProps = {
   "aria-label"?: string;
   /** When true, menu is fixed to the viewport and portaled to `document.body` (avoids clipping by overflow:hidden). */
   portaled?: boolean;
+  /** When true, renders a filter input at the top of the menu to search options by label. */
+  searchable?: boolean;
+  /** Placeholder for the search input (searchable mode only). */
+  searchPlaceholder?: string;
 };
 
 const defaultButtonClass =
@@ -47,8 +51,12 @@ export function CustomSelect({
   "aria-labelledby": ariaLabelledby,
   "aria-label": ariaLabel,
   portaled = false,
+  searchable = false,
+  searchPlaceholder = "Search…",
 }: CustomSelectProps) {
   const [open, setOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const searchRef = React.useRef<HTMLInputElement>(null);
   const ref = React.useRef<HTMLDivElement>(null);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const [flipUp, setFlipUp] = React.useState(false);
@@ -116,6 +124,25 @@ export function CustomSelect({
   }, [disabled]);
 
   React.useEffect(() => {
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    if (searchable) {
+      const t = window.setTimeout(() => searchRef.current?.focus(), 0);
+      return () => window.clearTimeout(t);
+    }
+    return undefined;
+  }, [open, searchable]);
+
+  const filteredOptions = React.useMemo(() => {
+    if (!searchable) return options;
+    const q = query.trim().toLowerCase();
+    if (!q) return options;
+    return options.filter((o) => o.label.toLowerCase().includes(q));
+  }, [options, query, searchable]);
+
+  React.useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
       const t = e.target as Node;
@@ -152,7 +179,25 @@ export function CustomSelect({
       }
       role="listbox"
     >
-      {options.map((option) => (
+      {searchable ? (
+        <div className="sticky top-0 z-10 border-b border-white/10 bg-[#1a1a1a] p-2">
+          <input
+            ref={searchRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={searchPlaceholder}
+            className="h-9 w-full rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white placeholder:text-white/40 focus:border-pink-400/50 focus:outline-none"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setOpen(false);
+            }}
+          />
+        </div>
+      ) : null}
+      {filteredOptions.length === 0 ? (
+        <p className="px-4 py-3 text-sm text-white/40">No matches</p>
+      ) : null}
+      {filteredOptions.map((option) => (
         <button
           key={option.value === "" ? "__empty__" : option.value}
           type="button"

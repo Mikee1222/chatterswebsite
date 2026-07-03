@@ -12,6 +12,8 @@ import {
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { UserRecord, UserRole, VaType, CompensationType, UserContractAttachment } from "@/types";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { getRolePermissions } from "@/services/roles";
 
 const TABLE = "users";
 
@@ -139,6 +141,37 @@ export async function listUsers(params: ListParams = {}) {
 export async function listAllUsers(): Promise<UserRecord[]> {
   const records = await listAllRecords<Fields>(TABLE, {});
   return records.map((r) => mapRecord(r));
+}
+
+/**
+ * Active, login-enabled users whose role grants `permission`. Resolves each distinct role's
+ * permission set once (stored role perms, falling back to code defaults). Used to build
+ * pickers like the "Assign to Creative" dropdown (creative_scripts:submit).
+ */
+export async function listUsersWithPermission(permission: Permission): Promise<UserRecord[]> {
+  const users = await listAllUsers();
+  const roleCache = new Map<string, Set<Permission>>();
+  const out: UserRecord[] = [];
+  for (const u of users) {
+    if ((u.status ?? "").trim().toLowerCase() === "inactive") continue;
+    if (u.can_login === false) continue;
+    const roleKey = (u.role ?? "").trim().toLowerCase();
+    if (!roleKey) continue;
+    let perms = roleCache.get(roleKey);
+    if (!perms) {
+      let list: Permission[] = [];
+      try {
+        list = await getRolePermissions(roleKey);
+      } catch {
+        list = [];
+      }
+      if (list.length === 0) list = DEFAULT_ROLE_PERMISSIONS[roleKey as UserRole] ?? [];
+      perms = new Set(list);
+      roleCache.set(roleKey, perms);
+    }
+    if (perms.has(permission)) out.push(u);
+  }
+  return out;
 }
 
 /**

@@ -28,7 +28,6 @@ import {
   WinnerVideoKanbanBoard,
   WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
-  WinnerVideoTranscribeSection,
   useWinnerVideoCopy,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
@@ -94,10 +93,6 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
     () => gunzoModels.find((m) => m.id === referenceModelId)?.model_name ?? "",
     [gunzoModels, referenceModelId],
   );
-
-  function handleTranscriptUpdated(id: string, transcript: string) {
-    setSubmissions((prev) => prev.map((v) => (v.id === id ? { ...v, transcript } : v)));
-  }
 
   async function reload() {
     setLoading(true);

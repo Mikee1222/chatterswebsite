@@ -15,7 +15,7 @@ export default async function CreativeScriptsPage() {
   }
 
   const [queue, gunzoModels] = await Promise.all([
-    getScriptsQueue().catch(() => []),
+    getScriptsQueue(user.airtableUserId ?? user.id).catch(() => []),
     listActiveGunzoTeamModelss().catch(() => []),
   ]);
 
