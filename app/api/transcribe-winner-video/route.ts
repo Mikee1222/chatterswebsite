@@ -4,10 +4,10 @@ import { hasAnyPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   getWinnerVideoById,
-  getWinnerVideoFileUrl,
   transcribeVideoUrl,
   updateWinnerVideoTranscript,
 } from "@/services/winner-videos";
+import { getWinnerVideoFileUrl } from "@/lib/winner-video-files";
 
 export const maxDuration = 300;
 

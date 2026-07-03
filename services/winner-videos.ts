@@ -218,11 +218,6 @@ export async function uploadWinnerVideoFile(
   }
 }
 
-export function getWinnerVideoFileUrl(video: WinnerVideoRecord): string | null {
-  const url = video.video_file[0]?.url?.trim();
-  return url || null;
-}
-
 export type ApproveWinnerVideoInput = {
   assigned_creator_name: string;
   recreation_deadline: string;

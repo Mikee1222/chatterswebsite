@@ -1,3 +1,5 @@
+import type { WinnerVideoRecord } from "@/services/winner-videos";
+
 /** Per-file limit for winner video uploads to Airtable `video_file` (matches next.config body limit). */
 export const WINNER_VIDEO_MAX_FILE_BYTES = 100 * 1024 * 1024;
 
@@ -24,4 +26,9 @@ export function validateWinnerVideoFileSize(bytes: number): string | null {
     return `Video must be under ${WINNER_VIDEO_MAX_FILE_BYTES / (1024 * 1024)} MB.`;
   }
   return null;
+}
+
+export function getWinnerVideoFileUrl(video: WinnerVideoRecord): string | null {
+  const url = video.video_file[0]?.url?.trim();
+  return url || null;
 }
