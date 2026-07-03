@@ -429,10 +429,21 @@ function ReportTypeBadge({ type }: { type: ShadowbanReportType }) {
   );
 }
 
-function ReportStatusBadge({ status }: { status: ShadowbanReportStatus }) {
+function ReportStatusBadge({
+  status,
+  reportType,
+}: {
+  status: ShadowbanReportStatus;
+  reportType?: ShadowbanReportType;
+}) {
   const cfg = REPORT_STATUS_CONFIG[status] ?? REPORT_STATUS_CONFIG.pending;
+  // Lift reports read more clearly as "Confirmed — account active" than "Approved".
+  const label =
+    reportType === "lifted" && status === "approved"
+      ? "Confirmed — account active"
+      : cfg.label;
   return (
-    <span className={cn(VA_STATUS_BADGE, "normal-case tracking-normal", cfg.badgeClass)}>{cfg.label}</span>
+    <span className={cn(VA_STATUS_BADGE, "normal-case tracking-normal", cfg.badgeClass)}>{label}</span>
   );
 }
 
@@ -466,7 +477,7 @@ function MyReportCard({ report }: { report: ShadowbanReport }) {
             <div className="flex flex-wrap items-center gap-2">
               <span className={VA_MODEL_TAG}>{report.model_name || "Creator"}</span>
               <ReportTypeBadge type={report.report_type} />
-              <ReportStatusBadge status={report.status} />
+              <ReportStatusBadge status={report.status} reportType={report.report_type} />
             </div>
             {displayNotes ? (
               <p className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-[#B8B4B8]/65">

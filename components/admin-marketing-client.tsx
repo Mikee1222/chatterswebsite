@@ -1122,8 +1122,33 @@ export function AdminMarketingClient({
           );
         }
       }
+      const handle = reportBefore?.username ? `@${reportBefore.username}` : "Account";
+      if (action === "approve") {
+        if (reportBefore?.report_type === "lifted") {
+          addToast(
+            localToast(`sbr-rev-${Date.now()}`, "Account marked active", `${handle} is active again. The VA has been notified.`, "normal"),
+          );
+        } else {
+          const label = reportBefore?.report_type === "banned" ? "banned" : "shadowbanned";
+          addToast(
+            localToast(`sbr-rev-${Date.now()}`, `Account marked ${label}`, `${handle} was set to ${label}. The reporter has been notified.`, "normal"),
+          );
+        }
+      } else {
+        addToast(
+          localToast(`sbr-rev-${Date.now()}`, "Report dismissed", `${handle} status is unchanged. The reporter has been notified.`, "normal"),
+        );
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Review failed");
+      addToast(
+        localToast(
+          `sbr-rev-err-${Date.now()}`,
+          "Review failed",
+          err instanceof Error ? err.message : "Could not update the report",
+          "high",
+        ),
+      );
     }
   }
 
