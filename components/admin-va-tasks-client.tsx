@@ -9,6 +9,7 @@ import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification, ModelRecord, VaTaskRecord, VaTaskStatus, VaTaskPriority, VaRecurrenceType, VaRecurrenceDay } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
+import type { TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
@@ -274,6 +275,10 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   const editPhasesSnapshotRef = React.useRef<EditPhasesSnapshot | null>(null);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [createMode, setCreateMode] = React.useState<"scratch" | "template">("scratch");
+  const [templateOptions, setTemplateOptions] = React.useState<TaskTemplateRecord[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState("");
+  const [templateRegion, setTemplateRegion] = React.useState<TaskPhase["region"]>("Global");
 
   function resetTaskModal() {
     setEditingId(null);
@@ -294,10 +299,26 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
     setDraftPhases([]);
     editPhasesSnapshotRef.current = null;
     setError(null);
+    setCreateMode("scratch");
+    setSelectedTemplateId("");
+    setTemplateRegion("Global");
+  }
+
+  async function loadTemplateOptions() {
+    try {
+      const res = await fetch("/api/admin/task-templates", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { templates?: TaskTemplateRecord[] };
+      if (res.ok) {
+        setTemplateOptions((data.templates ?? []).filter((t) => t.is_active));
+      }
+    } catch {
+      setTemplateOptions([]);
+    }
   }
 
   const openCreate = () => {
     resetTaskModal();
+    void loadTemplateOptions();
     setModalOpen(true);
   };
 
@@ -557,12 +578,58 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
   }
 
   const handleSubmitTask = async () => {
-    if (!title.trim()) return;
+    const usingTemplate = !editingId && createMode === "template";
+    if (!usingTemplate && !title.trim()) return;
+
+    if (usingTemplate) {
+      if (!selectedTemplateId) {
+        setError("Select a template");
+        return;
+      }
+      if (assignAll || assignedTo.length !== 1) {
+        setError("Select exactly one VA for template tasks");
+        return;
+      }
+      if (assignedModels.length !== 1) {
+        setError("Select exactly one model for template tasks");
+        return;
+      }
+    }
+
     setSaving(true);
     setError(null);
     const assigned = assignAll ? [] : assignedTo;
     const dueIso = dueLocal ? fromDatetimeLocal(dueLocal) : undefined;
     const interval = isRecurring ? recurrenceIntervalNum : null;
+
+    if (usingTemplate) {
+      try {
+        const res = await fetch(`/api/admin/task-templates/${encodeURIComponent(selectedTemplateId)}/apply`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            assignedVaId: assignedTo[0],
+            assignedModelId: assignedModels[0],
+            dueDate: dueIso ?? null,
+            region: templateRegion,
+            priority,
+            reminderMinutesBefore:
+              reminderMinutes != null && Number.isFinite(reminderMinutes) ? reminderMinutes : null,
+          }),
+        });
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        if (!res.ok) {
+          setError(data.error?.trim() || "Could not apply template");
+          return;
+        }
+        handleCloseModal();
+        router.refresh();
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
 
     const payload = {
       title: title.trim(),
@@ -1371,17 +1438,89 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
             <div className="space-y-6 px-6 py-5">
               {error ? <p className="text-sm text-red-400">{error}</p> : null}
 
+              {!editingId ? (
+                <div>
+                  <SectionLabel icon="" label="Creation mode" />
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setCreateMode("scratch")}
+                      className={cn(
+                        "rounded-xl border py-3 text-sm font-semibold transition-all",
+                        createMode === "scratch"
+                          ? "border-pink-500/30 bg-pink-500/20 text-pink-400"
+                          : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10",
+                      )}
+                    >
+                      Build from scratch
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMode("template");
+                        setAssignAll(false);
+                      }}
+                      className={cn(
+                        "rounded-xl border py-3 text-sm font-semibold transition-all",
+                        createMode === "template"
+                          ? "border-pink-500/30 bg-pink-500/20 text-pink-400"
+                          : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10",
+                      )}
+                    >
+                      Start from template
+                    </button>
+                  </div>
+                  {createMode === "template" ? (
+                    <div className="mt-4 space-y-3">
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-white/40">Template</label>
+                        <select
+                          value={selectedTemplateId}
+                          onChange={(e) => setSelectedTemplateId(e.target.value)}
+                          className={ADMIN_MODAL_INPUT}
+                        >
+                          <option value="">Select template…</option>
+                          {templateOptions.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name} ({t.category})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium text-white/40">Phase region</label>
+                        <select
+                          value={templateRegion}
+                          onChange={(e) => setTemplateRegion(e.target.value as TaskPhase["region"])}
+                          className={ADMIN_MODAL_INPUT}
+                        >
+                          <option value="Greek">🇬🇷 Greek</option>
+                          <option value="USA">🇺🇸 USA</option>
+                          <option value="Global">Global</option>
+                        </select>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
+
               <div>
                 <SectionLabel icon="" label="Assignment" />
                 <div className="mb-3 flex items-center gap-3">
-                  <ModalToggle
-                    value={assignAll}
-                    onChange={(v) => {
-                      setAssignAll(v);
-                      if (v) setAssignedTo([]);
-                    }}
-                  />
-                  <span className="text-sm text-white/60">Assign to all VAs</span>
+                  {createMode !== "template" || editingId ? (
+                    <>
+                      <ModalToggle
+                        value={assignAll}
+                        onChange={(v) => {
+                          setAssignAll(v);
+                          if (v) setAssignedTo([]);
+                        }}
+                      />
+                      <span className="text-sm text-white/60">Assign to all VAs</span>
+                    </>
+                  ) : (
+                    <span className="text-sm text-white/50">Select one VA below</span>
+                  )}
                 </div>
                 {!assignAll ? (
                   <div className="flex flex-wrap gap-2">
@@ -1418,7 +1557,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                 ) : null}
 
                 <div className="mt-4">
-                  <label className="mb-2 block text-xs font-medium text-white/40">Assign models (optional)</label>
+                  <label className="mb-2 block text-xs font-medium text-white/40">
+                    {createMode === "template" && !editingId ? "Assign model *" : "Assign models (optional)"}
+                  </label>
                   <div className="flex flex-wrap gap-2">
                     {modelss.map((m) => {
                       const on = assignedModels.includes(m.id);
@@ -1446,6 +1587,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
               <Divider />
 
+              {createMode === "scratch" || editingId ? (
               <div>
                 <SectionLabel icon="" label="Details" />
                 <div className="space-y-3">
@@ -1500,6 +1642,24 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                   </div>
                 </div>
               </div>
+              ) : (
+                <div>
+                  <SectionLabel icon="" label="Details" />
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-white/40">Priority</label>
+                    <select
+                      value={priority}
+                      onChange={(e) => setPriority(e.target.value as VaTaskPriority)}
+                      className={ADMIN_MODAL_INPUT}
+                    >
+                      <option value="low">Low</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </div>
+                </div>
+              )}
 
               <Divider />
 
@@ -1516,10 +1676,14 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    <ModalToggle value={isRecurring} onChange={setIsRecurring} />
-                    <span className="text-sm text-white/60">Recurring task</span>
+                    {createMode === "scratch" || editingId ? (
+                      <>
+                        <ModalToggle value={isRecurring} onChange={setIsRecurring} />
+                        <span className="text-sm text-white/60">Recurring task</span>
+                      </>
+                    ) : null}
                   </div>
-                  {isRecurring ? (
+                  {isRecurring && (createMode === "scratch" || editingId) ? (
                     <div className="space-y-3 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-4">
                       <div className="grid grid-cols-2 gap-3">
                         <div>
@@ -1638,6 +1802,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
               <Divider />
 
+              {createMode === "scratch" || editingId ? (
               <div>
                 <div className="mb-4 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1765,16 +1930,30 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                   ))}
                 </div>
               </div>
+              ) : null}
             </div>
 
             <div className="sticky bottom-0 flex gap-3 border-t border-[#1f1f1f] bg-[#0d0d0d]/95 px-6 py-5 backdrop-blur-sm">
               <button
                 type="button"
                 onClick={() => void handleSubmitTask()}
-                disabled={!title.trim() || saving}
+                disabled={
+                  saving ||
+                  (editingId
+                    ? !title.trim()
+                    : createMode === "template"
+                      ? !selectedTemplateId
+                      : !title.trim())
+                }
                 className="flex-1 rounded-xl bg-pink-500 py-3.5 text-base font-bold text-white shadow-lg shadow-pink-500/25 transition hover:bg-pink-400 active:scale-[0.99] disabled:opacity-40"
               >
-                {saving ? "Saving…" : editingId ? "Update task" : "Create task"}
+                {saving
+                  ? "Saving…"
+                  : editingId
+                    ? "Update task"
+                    : createMode === "template"
+                      ? "Apply template"
+                      : "Create task"}
               </button>
               <button
                 type="button"

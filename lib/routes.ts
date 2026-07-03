@@ -114,6 +114,7 @@ export const ROUTES = {
     sopLibrary: "/admin/sop-library",
     pdfMaker: "/admin/pdf-maker",
     vaTasks: "/admin/va-tasks",
+    taskTemplates: "/admin/task-templates",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",
     challenges: "/admin/challenges",

@@ -299,6 +299,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
   },
   {
+    href: ROUTES.admin.taskTemplates,
+    label: "Task Templates",
+        iconKey: "ListTodo",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
+  },
+  {
     href: ROUTES.admin.modelAvailability,
     label: "Model availability",
     iconKey: "CalendarCheck",

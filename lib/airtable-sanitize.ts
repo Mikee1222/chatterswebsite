@@ -392,6 +392,9 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   va_task_phase_items: {
     status: new Set(["pending", "completed"]),
   },
+  task_templates: {
+    category: new Set(["marketing", "chatting", "content", "other"]),
+  },
   mass_lists: {
     type: new Set(["include", "exclude"]),
   },
@@ -471,6 +474,7 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   staff_task_types: new Set(["created_at"]),
   monthly_targets: new Set(["created_at", "updated_at"]),
   va_tasks: new Set(["created_at"]),
+  task_templates: new Set(["created_at"]),
   model_periods: new Set(["created_at"]),
   va_content_assignments: new Set(["created_at", "updated_at"]),
   chatter_points: new Set(["created_at", "updated_at"]),
@@ -512,6 +516,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   shadowban_reports: new Set(["created_at", "reviewed_at"]),
   va_task_phases: new Set(["created_at", "completed_at", "scheduled_time", "start_time", "end_time"]),
   va_task_phase_items: new Set(["created_at", "completed_at"]),
+  task_templates: new Set(["created_at"]),
   /** Server sets mistake timestamps explicitly. */
   chatter_mistakes: new Set(["created_at", "updated_at"]),
   fines_and_bonuses: new Set(["created_at"]),
