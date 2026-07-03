@@ -28,8 +28,11 @@ import {
   WinnerVideoCopyButton,
   WinnerVideoFilters,
   WinnerVideoKanbanBoard,
+  WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
+  WinnerVideoTranscriptBlock,
   useWinnerVideoCopy,
+  useWinnerVideoTranscriptPolling,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
@@ -105,6 +108,8 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, filterDateRange, filterDateFrom, filterDateTo]);
 
+  useWinnerVideoTranscriptPolling(videos, reload);
+
   async function patchVideo(id: string, body: Record<string, unknown>) {
     setPendingId(id);
     try {
@@ -167,7 +172,13 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
             Submissions
           </ReviewSectionHeader>
           {viewMode === "board" ? (
-            <WinnerVideoKanbanBoard videos={videos} onCopy={copySubmission} addToast={addToast} />
+            <WinnerVideoKanbanBoard
+              videos={videos}
+              onCopy={copySubmission}
+              addToast={addToast}
+              onRefresh={() => void reload()}
+              refreshing={loading}
+            />
           ) : (
             videos.map((v) => (
               <FindingCard key={v.id} pending={v.status === "Pending" && pendingId === v.id}>
@@ -179,6 +190,7 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
                         {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : <DashPlaceholder />}
                       </span>
                       <WinnerVideoCopyButton onClick={() => void copySubmission(v)} />
+                      <WinnerVideoRefreshButton onClick={() => void reload()} refreshing={loading} />
                     </div>
                     <p className="text-lg font-semibold text-white">{displayOrDash(v.reference_model_name)}</p>
                     <p className="text-xs text-[#B8B4B8]/55">By {displayOrDash(v.submitted_by_name)}</p>
@@ -245,6 +257,7 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
                   </a>
                 ) : null}
                 {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
+                <WinnerVideoTranscriptBlock video={v} addToast={addToast} />
                 {v.views_at_submission != null ? (
                   <p className="mt-1 text-xs text-[#B8B4B8]/50">Views: {v.views_at_submission.toLocaleString()}</p>
                 ) : null}

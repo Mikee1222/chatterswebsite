@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, Copy, LayoutGrid, List } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, Copy, LayoutGrid, List, RefreshCw } from "lucide-react";
 import {
   FilterBar,
   FilterChip,
@@ -208,6 +208,129 @@ export function useWinnerVideoCopy(addToast: (toast: ReturnType<typeof winnerVid
   );
 }
 
+export function winnerVideoHasPendingTranscript(video: WinnerVideoRecord): boolean {
+  return Boolean(video.video_link?.trim()) && !video.transcript?.trim();
+}
+
+export function useWinnerVideoTranscriptPolling(
+  videos: WinnerVideoRecord[],
+  onRefresh: () => void | Promise<void>,
+  enabled = true,
+) {
+  const hasPending = React.useMemo(() => videos.some(winnerVideoHasPendingTranscript), [videos]);
+  const onRefreshRef = React.useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
+
+  React.useEffect(() => {
+    if (!enabled || !hasPending) return;
+    const intervalId = window.setInterval(() => {
+      void onRefreshRef.current();
+    }, 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [enabled, hasPending]);
+}
+
+export function WinnerVideoRefreshButton({
+  onClick,
+  refreshing = false,
+  className,
+}: {
+  onClick: () => void;
+  refreshing?: boolean;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      title="Refresh"
+      aria-label="Refresh"
+      disabled={refreshing}
+      className={cn(
+        "inline-flex shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-[#0D0B0D]/60 p-1.5 text-[#B8B4B8]/55 transition hover:border-[#D4AF8C]/30 hover:bg-[#D4AF8C]/8 hover:text-[#D4AF8C] disabled:cursor-not-allowed disabled:opacity-50",
+        className,
+      )}
+    >
+      <RefreshCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} aria-hidden />
+    </button>
+  );
+}
+
+export function WinnerVideoTranscriptBlock({
+  video,
+  addToast,
+  className,
+}: {
+  video: WinnerVideoRecord;
+  addToast: (toast: ReturnType<typeof winnerVideoLocalToast>) => void;
+  className?: string;
+}) {
+  const [expanded, setExpanded] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const transcript = video.transcript?.trim() ?? "";
+  const pending = winnerVideoHasPendingTranscript(video);
+
+  if (!transcript && !pending) return null;
+
+  async function handleCopyTranscript(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!transcript) return;
+    const ok = await copyTextToClipboard(transcript);
+    if (!ok) {
+      addToast(winnerVideoLocalToast(`wv-tr-copy-err-${Date.now()}`, "Copy failed", "Could not copy transcript.", "high"));
+      return;
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
+  if (pending) {
+    return (
+      <p className={cn("text-[11px] italic text-[#B8B4B8]/40", className)}>Transcript pending…</p>
+    );
+  }
+
+  return (
+    <div className={cn("mt-2", className)}>
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+          className="inline-flex min-w-0 flex-1 items-center gap-1 text-left text-[11px] font-medium text-[#B8B4B8]/55 transition hover:text-[#B8B4B8]/75"
+          aria-expanded={expanded}
+        >
+          {expanded ? (
+            <ChevronDown className="h-3 w-3 shrink-0" aria-hidden />
+          ) : (
+            <ChevronRight className="h-3 w-3 shrink-0" aria-hidden />
+          )}
+          <span>Transcript</span>
+        </button>
+        <button
+          type="button"
+          onClick={(e) => void handleCopyTranscript(e)}
+          title={copied ? "Copied" : "Copy transcript"}
+          aria-label={copied ? "Copied" : "Copy transcript"}
+          className="inline-flex shrink-0 items-center justify-center rounded-md border border-white/[0.08] bg-[#0D0B0D]/60 p-1 text-[#B8B4B8]/55 transition hover:border-[#D4AF8C]/30 hover:bg-[#D4AF8C]/8 hover:text-[#D4AF8C]"
+        >
+          {copied ? <Check className="h-3 w-3 text-emerald-400" aria-hidden /> : <Copy className="h-3 w-3" aria-hidden />}
+        </button>
+      </div>
+      {expanded ? (
+        <p className="mt-1.5 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-md border border-white/[0.06] bg-[#0D0B0D]/50 px-2.5 py-2 text-xs leading-relaxed text-[#B8B4B8]/70">
+          {transcript}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 type WinnerVideoFiltersProps = {
   filterStatus?: WinnerVideoStatus | "";
   onFilterStatusChange?: (status: WinnerVideoStatus | "") => void;
@@ -303,9 +426,15 @@ export function WinnerVideoFilters({
 export function WinnerVideoKanbanCard({
   video,
   onCopy,
+  onRefresh,
+  refreshing = false,
+  addToast,
 }: {
   video: WinnerVideoRecord;
   onCopy: (video: WinnerVideoRecord) => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
+  addToast: (toast: ReturnType<typeof winnerVideoLocalToast>) => void;
 }) {
   const notePreview = truncateNote(video.note);
 
@@ -315,9 +444,13 @@ export function WinnerVideoKanbanCard({
         <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-white">
           {video.reference_model_name?.trim() || "—"}
         </p>
-        <WinnerVideoCopyButton onClick={() => onCopy(video)} />
+        <div className="flex shrink-0 items-center gap-1">
+          {onRefresh ? <WinnerVideoRefreshButton onClick={onRefresh} refreshing={refreshing} /> : null}
+          <WinnerVideoCopyButton onClick={() => onCopy(video)} />
+        </div>
       </div>
       {notePreview ? <p className="mt-1.5 text-xs leading-relaxed text-[#B8B4B8]/60">{notePreview}</p> : null}
+      <WinnerVideoTranscriptBlock video={video} addToast={addToast} />
       <p className="mt-2 text-[11px] text-[#B8B4B8]/45">
         {video.submitted_at ? formatDateTimeAthens(video.submitted_at) : "—"}
       </p>
@@ -329,9 +462,17 @@ type WinnerVideoKanbanBoardProps = {
   videos: WinnerVideoRecord[];
   onCopy: (video: WinnerVideoRecord) => void;
   addToast: (toast: ReturnType<typeof winnerVideoLocalToast>) => void;
+  onRefresh?: () => void;
+  refreshing?: boolean;
 };
 
-export function WinnerVideoKanbanBoard({ videos, onCopy, addToast }: WinnerVideoKanbanBoardProps) {
+export function WinnerVideoKanbanBoard({
+  videos,
+  onCopy,
+  addToast,
+  onRefresh,
+  refreshing = false,
+}: WinnerVideoKanbanBoardProps) {
   const grouped = React.useMemo(() => {
     const map: Record<WinnerVideoStatus, WinnerVideoRecord[]> = {
       Pending: [],
@@ -377,7 +518,14 @@ export function WinnerVideoKanbanBoard({ videos, onCopy, addToast }: WinnerVideo
                   </p>
                 ) : (
                   columnVideos.map((video) => (
-                    <WinnerVideoKanbanCard key={video.id} video={video} onCopy={onCopy} />
+                    <WinnerVideoKanbanCard
+                      key={video.id}
+                      video={video}
+                      onCopy={onCopy}
+                      onRefresh={onRefresh}
+                      refreshing={refreshing}
+                      addToast={addToast}
+                    />
                   ))
                 )}
               </div>

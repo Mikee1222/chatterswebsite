@@ -2,7 +2,12 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createWinnerVideo, getWinnerVideosBySubmitter } from "@/services/winner-videos";
+import { runAfterResponse } from "@/lib/run-after-response";
+import {
+  createWinnerVideo,
+  getWinnerVideosBySubmitter,
+  transcribeAndSaveWinnerVideo,
+} from "@/services/winner-videos";
 
 export async function GET() {
   const session = await getSessionFromCookies();
@@ -47,6 +52,8 @@ export async function POST(req: Request) {
     submitted_by_id: session.airtableUserId ?? session.id,
     submitted_by_name: (session.fullName || session.email || "").trim(),
   });
+
+  runAfterResponse(() => transcribeAndSaveWinnerVideo(video.id, video.video_link));
 
   return NextResponse.json({ video });
 }

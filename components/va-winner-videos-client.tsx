@@ -25,8 +25,11 @@ import {
   WinnerVideoCopyButton,
   WinnerVideoFilters,
   WinnerVideoKanbanBoard,
+  WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
+  WinnerVideoTranscriptBlock,
   useWinnerVideoCopy,
+  useWinnerVideoTranscriptPolling,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
@@ -92,6 +95,8 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       setLoading(false);
     }
   }
+
+  useWinnerVideoTranscriptPolling(submissions, reload);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -259,7 +264,13 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
             }
           />
         ) : viewMode === "board" ? (
-          <WinnerVideoKanbanBoard videos={filteredSubmissions} onCopy={copySubmission} addToast={addToast} />
+          <WinnerVideoKanbanBoard
+            videos={filteredSubmissions}
+            onCopy={copySubmission}
+            addToast={addToast}
+            onRefresh={() => void reload()}
+            refreshing={loading}
+          />
         ) : (
           filteredSubmissions.map((v) => (
             <FindingCard key={v.id}>
@@ -268,7 +279,10 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
                 <span className="text-xs text-[#B8B4B8]/45">
                   {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : "—"}
                 </span>
-                <WinnerVideoCopyButton onClick={() => void copySubmission(v)} className="ml-auto" />
+                <div className="ml-auto flex items-center gap-1">
+                  <WinnerVideoRefreshButton onClick={() => void reload()} refreshing={loading} />
+                  <WinnerVideoCopyButton onClick={() => void copySubmission(v)} />
+                </div>
               </div>
               <p className="mt-2 font-semibold text-white">{displayOrDash(v.reference_model_name)}</p>
               {v.video_link ? (
@@ -282,6 +296,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
                 </a>
               ) : null}
               {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
+              <WinnerVideoTranscriptBlock video={v} addToast={addToast} />
               {v.views_at_submission != null ? (
                 <p className="mt-1 text-xs text-[#B8B4B8]/50">Views at submission: {v.views_at_submission.toLocaleString()}</p>
               ) : null}

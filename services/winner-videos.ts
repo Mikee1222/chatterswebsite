@@ -38,6 +38,7 @@ export interface WinnerVideoRecord {
   recreation_link: string;
   views_at_submission: number | null;
   screenshot: WinnerVideoAttachment[];
+  transcript: string;
 }
 
 export interface WinnerVideoFilters {
@@ -65,6 +66,7 @@ type WinnerVideoFields = {
   recreation_link?: string;
   views_at_submission?: number | string | null;
   screenshot?: unknown;
+  transcript?: string;
 };
 
 function escapeFormulaString(value: string): string {
@@ -107,6 +109,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     recreation_link: String(f.recreation_link ?? ""),
     views_at_submission: coerceViews(f.views_at_submission),
     screenshot: mapAttachments(f.screenshot),
+    transcript: String(f.transcript ?? ""),
   };
 }
 
@@ -297,4 +300,81 @@ export async function updateWinnerVideoStatus(
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after status update");
   return updated;
+}
+
+const TRANSCRIBE_TIMEOUT_MS = 5 * 60 * 1000;
+
+export async function transcribeVideoUrl(
+  url: string,
+): Promise<{ transcript: string; language: string; duration: number } | null> {
+  const serviceUrl = process.env.TRANSCRIBE_SERVICE_URL?.trim();
+  const apiKey = process.env.TRANSCRIBE_SERVICE_API_KEY?.trim();
+  if (!serviceUrl || !apiKey) {
+    console.error("[transcribeVideoUrl] TRANSCRIBE_SERVICE_URL or TRANSCRIBE_SERVICE_API_KEY is not configured");
+    return null;
+  }
+
+  const trimmedUrl = url.trim();
+  if (!trimmedUrl) return null;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), TRANSCRIBE_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/transcribe`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-API-Key": apiKey,
+      },
+      body: JSON.stringify({ url: trimmedUrl }),
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error("[transcribeVideoUrl] service error", res.status, body.slice(0, 500));
+      return null;
+    }
+
+    const data = (await res.json()) as {
+      transcript?: unknown;
+      language?: unknown;
+      duration?: unknown;
+      duration_seconds?: unknown;
+    };
+
+    const transcript = typeof data.transcript === "string" ? data.transcript.trim() : "";
+    if (!transcript) {
+      console.error("[transcribeVideoUrl] empty transcript in response");
+      return null;
+    }
+
+    const language = typeof data.language === "string" ? data.language : "unknown";
+    const durationRaw = data.duration ?? data.duration_seconds;
+    const duration =
+      typeof durationRaw === "number" && Number.isFinite(durationRaw)
+        ? durationRaw
+        : Number.parseFloat(String(durationRaw ?? "0")) || 0;
+
+    return { transcript, language, duration };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[transcribeVideoUrl] request failed:", message);
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function updateWinnerVideoTranscript(id: string, transcript: string): Promise<void> {
+  const text = transcript.trim();
+  if (!text) return;
+  await updateRecord(TABLE, id, { transcript: text });
+}
+
+export async function transcribeAndSaveWinnerVideo(id: string, videoLink: string): Promise<void> {
+  const result = await transcribeVideoUrl(videoLink);
+  if (!result) return;
+  await updateWinnerVideoTranscript(id, result.transcript);
 }
