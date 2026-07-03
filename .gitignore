@@ -1,5 +1,6 @@
 # Local / embedded projects (not part of this repo)
 video-transcriber-api/
+tmp-*.pdf
 
 # Dependencies
 node_modules/
