@@ -39,6 +39,8 @@ export async function POST(req: Request) {
   const assigned_va_id = typeof b.assigned_va_id === "string" ? b.assigned_va_id : "";
   const assigned_va_name = typeof b.assigned_va_name === "string" ? b.assigned_va_name : "";
   const notes = typeof b.notes === "string" ? b.notes : "";
+  const password = typeof b.password === "string" ? b.password : "";
+  const linked_phone_id = typeof b.linked_phone_id === "string" ? b.linked_phone_id : "";
   if (!model_id || !platform || !username) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
@@ -53,6 +55,8 @@ export async function POST(req: Request) {
     assigned_va_id,
     assigned_va_name,
     notes,
+    password,
+    linked_phone_id,
   });
   return NextResponse.json({ account });
 }

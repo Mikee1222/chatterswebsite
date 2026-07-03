@@ -6,8 +6,12 @@ import {
   Check,
   ChevronDown,
   ClipboardList,
+  Copy,
   ExternalLink,
   Eye,
+  EyeOff,
+  ImageIcon,
+  Link2,
   Loader2,
   Pencil,
   Plus,
@@ -16,6 +20,7 @@ import {
   Smartphone,
   Star,
   Trash2,
+  Unlink,
   X,
 } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
@@ -35,6 +40,8 @@ import { cn } from "@/lib/utils";
 import type {
   FunnelLink,
   MarketingPlatform,
+  Phone,
+  PhoneDetail,
   ShadowbanReport,
   ShadowbanReportStatus,
   SocialAccount,
@@ -42,7 +49,7 @@ import type {
 } from "@/services/marketing";
 import type { AppNotification, ModelRecord, UserRecord } from "@/types";
 
-type Tab = "platforms" | "accounts" | "funnels" | "reports";
+type Tab = "platforms" | "accounts" | "funnels" | "reports" | "phones";
 type ReportDateRange = "all" | "7d" | "30d" | "custom";
 
 const REGIONS = ["USA", "Greek", "Global"] as const;
@@ -121,6 +128,134 @@ function pill(active: boolean) {
     active
       ? "bg-[#FF1493]/20 text-[#FFB3D9] ring-1 ring-[#FF1493]/35 shadow-[0_0_16px_-6px_rgba(255,20,147,0.35)]"
       : "text-[#B8B4B8]/60 hover:bg-white/5 hover:text-white/90",
+  );
+}
+
+function maskEmail(email: string): string {
+  const trimmed = email.trim();
+  if (!trimmed) return "—";
+  const at = trimmed.indexOf("@");
+  if (at <= 0) return "••••••••";
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at);
+  const visible = local.slice(0, Math.min(2, local.length));
+  return `${visible}${"•".repeat(Math.max(3, local.length - visible.length))}${domain}`;
+}
+
+function maskSecret(value: string): string {
+  if (!value) return "—";
+  return "•".repeat(Math.min(Math.max(value.length, 8), 16));
+}
+
+function MaskedSecretInput({
+  value,
+  onChange,
+  placeholder,
+  className,
+  inputType = "password",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+  inputType?: "password" | "email" | "text";
+}) {
+  const [revealed, setRevealed] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+
+  async function handleCopy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <div className="relative flex items-center gap-1">
+      <input
+        type={revealed ? inputType : "password"}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className={cn(className, "pr-20")}
+        autoComplete="off"
+      />
+      <div className="absolute right-2 flex items-center gap-0.5">
+        {value ? (
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className="rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"
+            aria-label="Copy"
+            title={copied ? "Copied" : "Copy"}
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => setRevealed(!revealed)}
+          className="rounded-lg p-1.5 text-white/40 hover:bg-white/10 hover:text-white"
+          aria-label={revealed ? "Hide" : "Show"}
+        >
+          {revealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function MaskedDisplay({
+  value,
+  mode = "secret",
+}: {
+  value: string;
+  mode?: "secret" | "email";
+}) {
+  const [revealed, setRevealed] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const display = !value ? "—" : revealed ? value : mode === "email" ? maskEmail(value) : maskSecret(value);
+
+  async function handleCopy() {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-sm text-[#B8B4B8]/80">
+      <span>{display}</span>
+      {value ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setRevealed(!revealed)}
+            className="rounded p-1 text-white/35 hover:bg-white/10 hover:text-white"
+            aria-label={revealed ? "Hide" : "Show"}
+          >
+            {revealed ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleCopy()}
+            className="rounded p-1 text-white/35 hover:bg-white/10 hover:text-white"
+            aria-label="Copy"
+            title={copied ? "Copied" : "Copy"}
+          >
+            <Copy className="h-3 w-3" />
+          </button>
+        </>
+      ) : null}
+    </span>
   );
 }
 
@@ -271,6 +406,7 @@ export function AdminMarketingClient({
   platforms: initialPlatforms,
   accounts: initialAccounts,
   funnels: initialFunnels,
+  phones: initialPhones,
   models,
   vaUsers,
   initialReports = [],
@@ -278,6 +414,7 @@ export function AdminMarketingClient({
   platforms: MarketingPlatform[];
   accounts: SocialAccount[];
   funnels: FunnelLink[];
+  phones: Phone[];
   models: ModelRecord[];
   vaUsers: UserRecord[];
   initialReports?: ShadowbanReport[];
@@ -288,8 +425,10 @@ export function AdminMarketingClient({
   const [platforms, setPlatforms] = React.useState(initialPlatforms);
   const [accounts, setAccounts] = React.useState(initialAccounts);
   const [funnels, setFunnels] = React.useState(initialFunnels);
+  const [phones, setPhones] = React.useState(initialPhones);
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [highlightAccountId, setHighlightAccountId] = React.useState<string | null>(null);
 
   const modelNameById = React.useMemo(() => {
     const m: Record<string, string> = {};
@@ -301,6 +440,234 @@ export function AdminMarketingClient({
     () => [...new Set(platforms.map((p) => p.name).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [platforms],
   );
+
+  const phoneNameById = React.useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const p of phones) m[p.id] = p.device_name || p.id;
+    return m;
+  }, [phones]);
+
+  const phonePickerItems = React.useMemo(
+    () => phones.filter((p) => p.active).map((p) => ({ id: p.id, label: p.device_name || p.id })),
+    [phones],
+  );
+
+  // —— Phones ——
+  const [searchPhones, setSearchPhones] = React.useState("");
+  const [phoneDetail, setPhoneDetail] = React.useState<PhoneDetail | null>(null);
+  const [phoneDetailLoading, setPhoneDetailLoading] = React.useState(false);
+  const [phoneModalOpen, setPhoneModalOpen] = React.useState(false);
+  const [editingPhoneId, setEditingPhoneId] = React.useState<string | null>(null);
+  const [phoneDraft, setPhoneDraft] = React.useState<Partial<Phone>>({});
+  const [phonePhotoFiles, setPhonePhotoFiles] = React.useState<File[]>([]);
+  const phonePhotoRef = React.useRef<HTMLInputElement>(null);
+  const [deletePhoneId, setDeletePhoneId] = React.useState<string | null>(null);
+  const [deletePhoneBusy, setDeletePhoneBusy] = React.useState(false);
+  const [linkAccountModalOpen, setLinkAccountModalOpen] = React.useState(false);
+  const [linkAccountTargetId, setLinkAccountTargetId] = React.useState("");
+
+  const filteredPhones = React.useMemo(() => {
+    const q = searchPhones.trim().toLowerCase();
+    return phones.filter((p) => {
+      if (!q) return true;
+      return `${p.device_name} ${p.icloud_email} ${p.assigned_va_name}`.toLowerCase().includes(q);
+    });
+  }, [phones, searchPhones]);
+
+  async function loadPhoneDetail(phoneId: string) {
+    setPhoneDetailLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/marketing/phones/${encodeURIComponent(phoneId)}`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = (await res.json()) as { phone: PhoneDetail };
+      setPhoneDetail(data.phone);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load phone");
+    } finally {
+      setPhoneDetailLoading(false);
+    }
+  }
+
+  function openPhonesTab(phoneId?: string) {
+    setTab("phones");
+    if (phoneId) void loadPhoneDetail(phoneId);
+    else setPhoneDetail(null);
+  }
+
+  function openNewPhone() {
+    setEditingPhoneId(null);
+    setPhoneDraft({ active: true, device_name: "", icloud_email: "", icloud_password: "", recovery_email: "", recovery_phone: "", notes: "" });
+    setPhonePhotoFiles([]);
+    setPhoneModalOpen(true);
+  }
+
+  function openEditPhone(phone: Phone) {
+    setEditingPhoneId(phone.id);
+    setPhoneDraft({ ...phone });
+    setPhonePhotoFiles([]);
+    setPhoneModalOpen(true);
+  }
+
+  function closePhoneModal() {
+    setPhoneModalOpen(false);
+    setEditingPhoneId(null);
+    setPhoneDraft({});
+    setPhonePhotoFiles([]);
+  }
+
+  async function uploadPhonePhotosForId(phoneId: string, files: File[]) {
+    if (!files.length) return;
+    const fd = new FormData();
+    for (const f of files) fd.append("photos", f);
+    const res = await fetch(`/api/admin/marketing/phones/${encodeURIComponent(phoneId)}/photos`, {
+      method: "POST",
+      credentials: "include",
+      body: fd,
+    });
+    if (!res.ok) throw new Error(await res.text());
+  }
+
+  async function savePhoneFromModal(e: React.FormEvent) {
+    e.preventDefault();
+    const deviceName = phoneDraft.device_name?.trim() ?? "";
+    if (!deviceName) {
+      setError("Device name is required.");
+      return;
+    }
+    setError(null);
+    const body = {
+      device_name: deviceName,
+      icloud_email: (phoneDraft.icloud_email ?? "").trim(),
+      icloud_password: phoneDraft.icloud_password ?? "",
+      recovery_email: (phoneDraft.recovery_email ?? "").trim(),
+      recovery_phone: (phoneDraft.recovery_phone ?? "").trim(),
+      assigned_va_id: phoneDraft.assigned_va_id ?? "",
+      notes: (phoneDraft.notes ?? "").trim(),
+      active: phoneDraft.active !== false,
+    };
+    setBusy(editingPhoneId ? `phone-${editingPhoneId}` : "phone-add");
+    try {
+      if (editingPhoneId) {
+        const res = await fetch(`/api/admin/marketing/phones/${encodeURIComponent(editingPhoneId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        if (phonePhotoFiles.length) await uploadPhonePhotosForId(editingPhoneId, phonePhotoFiles);
+        const listRes = await fetch("/api/admin/marketing/phones", { credentials: "include" });
+        const listData = (await listRes.json()) as { phones?: Phone[] };
+        setPhones(listData.phones ?? []);
+        if (phoneDetail?.id === editingPhoneId) await loadPhoneDetail(editingPhoneId);
+      } else {
+        const res = await fetch("/api/admin/marketing/phones", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) throw new Error(await res.text());
+        const data = (await res.json()) as { phone: Phone };
+        if (phonePhotoFiles.length) await uploadPhonePhotosForId(data.phone.id, phonePhotoFiles);
+        const listRes = await fetch("/api/admin/marketing/phones", { credentials: "include" });
+        const listData = (await listRes.json()) as { phones?: Phone[] };
+        setPhones(listData.phones ?? []);
+      }
+      closePhoneModal();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not save phone");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleDeletePhone(id: string) {
+    setDeletePhoneBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/marketing/phones/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setPhones((prev) => prev.filter((p) => p.id !== id));
+      if (phoneDetail?.id === id) setPhoneDetail(null);
+      setDeletePhoneId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Delete failed");
+    } finally {
+      setDeletePhoneBusy(false);
+    }
+  }
+
+  async function handleUnlinkAccount(accountId: string) {
+    setError(null);
+    setBusy(`unlink-${accountId}`);
+    try {
+      const res = await fetch(`/api/admin/marketing/accounts/${encodeURIComponent(accountId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ linked_phone_id: "" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setAccounts((prev) =>
+        prev.map((a) => (a.id === accountId ? { ...a, linked_phone_id: "", linked_phone_name: "" } : a)),
+      );
+      if (phoneDetail) await loadPhoneDetail(phoneDetail.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unlink failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function handleLinkAccountToPhone(accountId: string, phoneId: string) {
+    setError(null);
+    setBusy(`link-${accountId}`);
+    try {
+      const res = await fetch(`/api/admin/marketing/accounts/${encodeURIComponent(accountId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ linked_phone_id: phoneId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const phoneName = phoneNameById[phoneId] ?? "";
+      setAccounts((prev) =>
+        prev.map((a) =>
+          a.id === accountId ? { ...a, linked_phone_id: phoneId, linked_phone_name: phoneName } : a,
+        ),
+      );
+      const listRes = await fetch("/api/admin/marketing/phones", { credentials: "include" });
+      const listData = (await listRes.json()) as { phones?: Phone[] };
+      setPhones(listData.phones ?? []);
+      if (phoneDetail?.id === phoneId) await loadPhoneDetail(phoneId);
+      setLinkAccountModalOpen(false);
+      setLinkAccountTargetId("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Link failed");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function navigateToAccount(accountId: string) {
+    setTab("accounts");
+    setPhoneDetail(null);
+    setHighlightAccountId(accountId);
+    window.setTimeout(() => {
+      const el = document.getElementById(`account-card-${accountId}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    window.setTimeout(() => setHighlightAccountId(null), 3000);
+    const acc = accounts.find((a) => a.id === accountId);
+    if (acc) openEditAccount(acc);
+  }
 
   // —— Platforms ——
   const [pName, setPName] = React.useState("");
@@ -533,7 +900,7 @@ export function AdminMarketingClient({
     return Array.from(groups.values()).sort((x, y) => x.model_name.localeCompare(y.model_name));
   }, [filteredAccounts, modelNameById]);
 
-  function openNewAccount(preset?: { model_id?: string; model_name?: string }) {
+  function openNewAccount(preset?: { model_id?: string; model_name?: string; linked_phone_id?: string }) {
     setEditingAccountId(null);
     const mid = preset?.model_id ?? "";
     setAccountDraft({
@@ -548,6 +915,8 @@ export function AdminMarketingClient({
       assigned_va_name: "",
       notes: "",
       active: true,
+      password: "",
+      linked_phone_id: preset?.linked_phone_id ?? "",
     });
     setAccountModalOpen(true);
   }
@@ -586,6 +955,8 @@ export function AdminMarketingClient({
       assigned_va_id: accountDraft.assigned_va_id ?? "",
       assigned_va_name: va?.full_name?.trim() || va?.email || accountDraft.assigned_va_name || "",
       notes: (accountDraft.notes ?? "").trim(),
+      password: accountDraft.password ?? "",
+      linked_phone_id: accountDraft.linked_phone_id ?? "",
     };
     setBusy(editingAccountId ? `account-${editingAccountId}` : "account-add");
     try {
@@ -850,6 +1221,9 @@ export function AdminMarketingClient({
       <div className="flex flex-wrap gap-2 border-b border-white/10 pb-3">
         <button type="button" className={pill(tab === "accounts")} onClick={() => setTab("accounts")}>
           Social accounts
+        </button>
+        <button type="button" className={pill(tab === "phones")} onClick={() => { setTab("phones"); setPhoneDetail(null); }}>
+          Phones
         </button>
         <button type="button" className={pill(tab === "reports")} onClick={() => setTab("reports")}>
           Shadowban reports
@@ -1155,12 +1529,14 @@ export function AdminMarketingClient({
                     return (
                       <div
                         key={acc.id}
+                        id={`account-card-${acc.id}`}
                         className={cn(
                           "group relative overflow-hidden rounded-xl border bg-[#0D0B0D]/80 p-4 transition duration-200",
                           "shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_4px_16px_-8px_rgba(0,0,0,0.5)]",
                           statusCfg.cardClass,
                           statusCfg.glowClass,
                           !acc.active && "opacity-60",
+                          highlightAccountId === acc.id && "ring-2 ring-[#FF1493]/50 ring-offset-2 ring-offset-[#0D0B0D]",
                         )}
                       >
                         <div className="h-1 w-full rounded-t-xl" style={{ backgroundColor: `${color}99` }} />
@@ -1230,6 +1606,24 @@ export function AdminMarketingClient({
                               </div>
                               <span className="text-xs text-white/40">{acc.assigned_va_name}</span>
                             </div>
+                          ) : null}
+
+                          {acc.password ? (
+                            <div className="mb-3">
+                              <p className="mb-1 text-[10px] uppercase tracking-widest text-white/30">Password</p>
+                              <MaskedDisplay value={acc.password} />
+                            </div>
+                          ) : null}
+
+                          {acc.linked_phone_id ? (
+                            <button
+                              type="button"
+                              onClick={() => openPhonesTab(acc.linked_phone_id)}
+                              className="mb-3 inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF8C]/25 bg-[#D4AF8C]/8 px-2.5 py-1 text-xs text-[#D4AF8C] transition hover:bg-[#D4AF8C]/15"
+                            >
+                              <Smartphone className="h-3 w-3" aria-hidden />
+                              {acc.linked_phone_name || phoneNameById[acc.linked_phone_id] || "Linked phone"}
+                            </button>
                           ) : null}
 
                           <div className="mb-3">
@@ -1309,6 +1703,272 @@ export function AdminMarketingClient({
                 </div>
               </div>
             ))
+          )}
+        </div>
+      ) : null}
+
+      {tab === "phones" ? (
+        <div>
+          {phoneDetail ? (
+            <div className="space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPhoneDetail(null)}
+                  className="text-sm text-[#D4AF8C]/70 hover:text-[#D4AF8C]"
+                >
+                  ← Back to phones
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openEditPhone(phoneDetail)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/70 hover:bg-white/10"
+                  >
+                    <Pencil className="h-3.5 w-3.5" /> Edit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeletePhoneId(phoneDetail.id)}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-red-500/25 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                  </button>
+                </div>
+              </div>
+
+              {phoneDetailLoading ? (
+                <div className={cn(VA_CARD, "flex items-center justify-center gap-2 py-16 text-[#B8B4B8]/50")}>
+                  <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                  Loading…
+                </div>
+              ) : (
+                <>
+                  <article className={cn(VA_CARD, "p-5")}>
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-xl font-bold text-white">{phoneDetail.device_name}</h2>
+                        <p className="mt-1 text-sm text-[#B8B4B8]/45">
+                          {phoneDetail.created_at ? formatDateTimeAthens(phoneDetail.created_at) : "—"}
+                        </p>
+                      </div>
+                      <span
+                        className={cn(
+                          VA_STATUS_BADGE,
+                          phoneDetail.active
+                            ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                            : "border-white/15 bg-white/5 text-[#B8B4B8]/50",
+                        )}
+                      >
+                        {phoneDetail.active ? "Active" : "Inactive"}
+                      </span>
+                    </div>
+
+                    <div className={cn(VA_CHAMPAGNE_DIVIDER, "my-4")} />
+
+                    <dl className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <dt className="text-[10px] uppercase tracking-widest text-white/35">iCloud email</dt>
+                        <dd className="mt-1">
+                          <MaskedDisplay value={phoneDetail.icloud_email} mode="email" />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] uppercase tracking-widest text-white/35">iCloud password</dt>
+                        <dd className="mt-1">
+                          <MaskedDisplay value={phoneDetail.icloud_password} />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] uppercase tracking-widest text-white/35">Recovery email</dt>
+                        <dd className="mt-1">
+                          <MaskedDisplay value={phoneDetail.recovery_email} mode="email" />
+                        </dd>
+                      </div>
+                      <div>
+                        <dt className="text-[10px] uppercase tracking-widest text-white/35">Recovery phone</dt>
+                        <dd className="mt-1 text-sm text-[#B8B4B8]/80">{phoneDetail.recovery_phone || "—"}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-[10px] uppercase tracking-widest text-white/35">Assigned VA</dt>
+                        <dd className="mt-1 text-sm text-white/80">{phoneDetail.assigned_va_name || "—"}</dd>
+                      </div>
+                      {phoneDetail.notes ? (
+                        <div className="sm:col-span-2">
+                          <dt className="text-[10px] uppercase tracking-widest text-white/35">Notes</dt>
+                          <dd className="mt-1 rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-[#B8B4B8]/70">
+                            {phoneDetail.notes}
+                          </dd>
+                        </div>
+                      ) : null}
+                    </dl>
+
+                    {phoneDetail.phone_photos.length > 0 ? (
+                      <div className="mt-5">
+                        <p className="mb-2 text-[10px] uppercase tracking-widest text-white/35">Photos</p>
+                        <div className="flex flex-wrap gap-2">
+                          {phoneDetail.phone_photos.map((ph, i) => (
+                            <a
+                              key={`${ph.url}-${i}`}
+                              href={ph.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="overflow-hidden rounded-xl border border-white/10 transition hover:border-[#D4AF8C]/30"
+                            >
+                              <img src={ph.url} alt="" className="h-20 w-20 object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </article>
+
+                  <section className={cn(VA_CARD, "p-5")}>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-base font-bold text-white">Linked accounts</h3>
+                        <p className="text-xs text-[#B8B4B8]/40">
+                          {phoneDetail.linked_accounts.length} social account
+                          {phoneDetail.linked_accounts.length !== 1 ? "s" : ""}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLinkAccountTargetId("");
+                          setLinkAccountModalOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-to-r from-pink-500 to-rose-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-pink-500/20"
+                      >
+                        <Link2 className="h-3.5 w-3.5" /> Link account
+                      </button>
+                    </div>
+
+                    {phoneDetail.linked_accounts.length === 0 ? (
+                      <p className="py-8 text-center text-sm text-[#B8B4B8]/45">No linked social accounts yet.</p>
+                    ) : (
+                      <div className="space-y-2">
+                        {phoneDetail.linked_accounts.map((acc) => (
+                          <div
+                            key={acc.id}
+                            className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/8 bg-white/[0.02] px-4 py-3"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => navigateToAccount(acc.id)}
+                              className="flex min-w-0 flex-1 items-center gap-2.5 text-left hover:opacity-90"
+                            >
+                              <PlatformIconBadge platform={acc.platform} size="sm" />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-semibold text-white">@{acc.username}</p>
+                                <p className="text-xs text-[#B8B4B8]/45">
+                                  {acc.platform} · {acc.model_name}
+                                </p>
+                              </div>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleUnlinkAccount(acc.id)}
+                              disabled={busy === `unlink-${acc.id}`}
+                              className="inline-flex items-center gap-1 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-[#B8B4B8]/60 hover:bg-white/5 hover:text-white"
+                            >
+                              <Unlink className="h-3 w-3" aria-hidden />
+                              Unlink
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </section>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <div className="mb-6 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-white">Phones</h2>
+                  <p className="mt-0.5 text-sm text-white/40">Device + iCloud tracking for marketing accounts</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={openNewPhone}
+                  className="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-pink-500 to-rose-500 px-5 py-2.5 font-semibold text-white shadow-lg shadow-pink-500/25 transition-all hover:opacity-90"
+                >
+                  <Plus className="h-4 w-4" /> Add phone
+                </button>
+              </div>
+
+              <div className="mb-6 flex flex-wrap gap-3 rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/60 p-4">
+                <div className="relative min-w-48 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B8B4B8]/30" />
+                  <input
+                    placeholder="Search device, email, VA…"
+                    value={searchPhones}
+                    onChange={(e) => setSearchPhones(e.target.value)}
+                    className={cn(ADMIN_FILTER_INPUT, "w-full pl-9")}
+                  />
+                </div>
+              </div>
+
+              {filteredPhones.length === 0 ? (
+                <div className={cn(VA_CARD, "py-20 text-center")}>
+                  <p className="mb-4 flex justify-center">
+                    <Smartphone className="h-12 w-12 text-[#D4AF8C]/35" aria-hidden />
+                  </p>
+                  <p className="text-lg text-[#B8B4B8]/70">No phones yet</p>
+                  <p className="mt-1 text-sm text-[#B8B4B8]/40">Add a device to track iCloud credentials</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {filteredPhones.map((phone) => (
+                    <button
+                      key={phone.id}
+                      type="button"
+                      onClick={() => void loadPhoneDetail(phone.id)}
+                      className={cn(
+                        VA_CARD,
+                        "group w-full p-4 text-left transition hover:border-[#D4AF8C]/25 hover:shadow-[0_0_24px_-8px_rgba(212,175,140,0.2)]",
+                        !phone.active && "opacity-60",
+                      )}
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2.5">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-pink-500/20 bg-gradient-to-br from-pink-500/15 to-rose-500/15">
+                            <Smartphone className="h-5 w-5 text-pink-400" aria-hidden />
+                          </div>
+                          <div>
+                            <p className="font-bold text-white">{phone.device_name}</p>
+                            <p className="text-xs text-[#B8B4B8]/40">{phone.assigned_va_name || "Unassigned"}</p>
+                          </div>
+                        </div>
+                        <span
+                          className={cn(
+                            "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                            phone.active
+                              ? "bg-emerald-500/15 text-emerald-300"
+                              : "bg-white/10 text-white/40",
+                          )}
+                        >
+                          {phone.active ? "Active" : "Off"}
+                        </span>
+                      </div>
+                      <div className="mb-3">
+                        <p className="mb-0.5 text-[10px] uppercase tracking-widest text-white/30">iCloud</p>
+                        <MaskedDisplay value={phone.icloud_email} mode="email" />
+                      </div>
+                      <div className="flex items-center justify-between text-xs text-[#B8B4B8]/45">
+                        <span className="inline-flex items-center gap-1">
+                          <Link2 className="h-3 w-3" aria-hidden />
+                          {phone.linked_account_count} linked
+                        </span>
+                        <span className="text-[#D4AF8C]/60 opacity-0 transition group-hover:opacity-100">View →</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       ) : null}
@@ -1913,6 +2573,15 @@ export function AdminMarketingClient({
                   required
                 />
               </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                Account password
+                <MaskedSecretInput
+                  value={accountDraft.password ?? ""}
+                  onChange={(v) => setAccountDraft((d) => ({ ...d, password: v }))}
+                  className={selectClass}
+                  placeholder="••••••••"
+                />
+              </label>
               <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
                 Link
                 <input
@@ -1984,6 +2653,17 @@ export function AdminMarketingClient({
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Linked phone
+                <SearchablePicker
+                  value={accountDraft.linked_phone_id ?? ""}
+                  onChange={(id) => setAccountDraft((d) => ({ ...d, linked_phone_id: id }))}
+                  items={phonePickerItems}
+                  placeholder="Search device…"
+                  emptyLabel="No linked phone"
+                  className="w-full"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
                 Notes
                 <input
                   value={accountDraft.notes ?? ""}
@@ -2008,6 +2688,180 @@ export function AdminMarketingClient({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      ) : null}
+
+      {phoneModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">{editingPhoneId ? "Edit phone" : "Add phone"}</h3>
+              <button
+                type="button"
+                onClick={closePhoneModal}
+                className="rounded-lg px-2 py-1 text-sm text-white/50 hover:bg-white/10 hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+            <form onSubmit={savePhoneFromModal} className="grid gap-3 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Device name *
+                <input
+                  value={phoneDraft.device_name ?? ""}
+                  onChange={(e) => setPhoneDraft((d) => ({ ...d, device_name: e.target.value }))}
+                  className={selectClass}
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                iCloud email
+                <input
+                  type="email"
+                  value={phoneDraft.icloud_email ?? ""}
+                  onChange={(e) => setPhoneDraft((d) => ({ ...d, icloud_email: e.target.value }))}
+                  className={selectClass}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                iCloud password
+                <MaskedSecretInput
+                  value={phoneDraft.icloud_password ?? ""}
+                  onChange={(v) => setPhoneDraft((d) => ({ ...d, icloud_password: v }))}
+                  className={selectClass}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                Recovery email
+                <input
+                  type="email"
+                  value={phoneDraft.recovery_email ?? ""}
+                  onChange={(e) => setPhoneDraft((d) => ({ ...d, recovery_email: e.target.value }))}
+                  className={selectClass}
+                  autoComplete="off"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50">
+                Recovery phone
+                <input
+                  value={phoneDraft.recovery_phone ?? ""}
+                  onChange={(e) => setPhoneDraft((d) => ({ ...d, recovery_phone: e.target.value }))}
+                  className={selectClass}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Assigned VA
+                <SearchablePicker
+                  value={phoneDraft.assigned_va_id ?? ""}
+                  onChange={(id) => setPhoneDraft((d) => ({ ...d, assigned_va_id: id }))}
+                  items={vaUsers.map((u) => ({ id: u.id, label: u.full_name || u.email || u.id }))}
+                  placeholder="Search VA…"
+                  emptyLabel="No VA assigned"
+                  className="w-full"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                Notes
+                <textarea
+                  value={phoneDraft.notes ?? ""}
+                  onChange={(e) => setPhoneDraft((d) => ({ ...d, notes: e.target.value }))}
+                  rows={2}
+                  className={cn(selectClass, "resize-none")}
+                />
+              </label>
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Phone photos</p>
+                <button
+                  type="button"
+                  onClick={() => phonePhotoRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-white/15 px-4 py-5 text-sm text-white/40 transition hover:border-pink-500/35 hover:bg-pink-500/5"
+                >
+                  <ImageIcon className="h-5 w-5" aria-hidden />
+                  {phonePhotoFiles.length
+                    ? `${phonePhotoFiles.length} file(s) selected`
+                    : "Tap to add photos"}
+                </button>
+                <input
+                  ref={phonePhotoRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => setPhonePhotoFiles(Array.from(e.target.files ?? []))}
+                />
+              </div>
+              {editingPhoneId ? (
+                <label className="flex items-center gap-2 text-sm text-white/60 sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    checked={phoneDraft.active !== false}
+                    onChange={(e) => setPhoneDraft((d) => ({ ...d, active: e.target.checked }))}
+                    className="rounded border-white/20"
+                  />
+                  Active
+                </label>
+              ) : null}
+              <div className="flex gap-2 sm:col-span-2">
+                <button
+                  type="submit"
+                  disabled={busy === "phone-add" || (!!editingPhoneId && busy === `phone-${editingPhoneId}`)}
+                  className="rounded-xl bg-pink-500 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-pink-500/25 hover:bg-pink-400 disabled:opacity-50"
+                >
+                  {editingPhoneId ? "Save changes" : "Add phone"}
+                </button>
+                <button
+                  type="button"
+                  onClick={closePhoneModal}
+                  className="rounded-xl px-4 py-2.5 text-sm text-white/60 hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {linkAccountModalOpen && phoneDetail ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+            <h3 className="mb-1 text-lg font-bold text-white">Link social account</h3>
+            <p className="mb-4 text-sm text-[#B8B4B8]/50">Link an existing account to {phoneDetail.device_name}</p>
+            <SearchablePicker
+              value={linkAccountTargetId}
+              onChange={setLinkAccountTargetId}
+              items={accounts
+                .filter((a) => a.active && a.linked_phone_id !== phoneDetail.id)
+                .map((a) => ({
+                  id: a.id,
+                  label: `@${a.username} · ${a.platform} · ${a.model_name}`,
+                }))}
+              placeholder="Search account…"
+              emptyLabel="Select account"
+              className="mb-4 w-full"
+            />
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={!linkAccountTargetId || busy === `link-${linkAccountTargetId}`}
+                onClick={() => void handleLinkAccountToPhone(linkAccountTargetId, phoneDetail.id)}
+                className="flex-1 rounded-xl bg-pink-500 py-2.5 text-sm font-semibold text-white hover:bg-pink-400 disabled:opacity-40"
+              >
+                Link account
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLinkAccountModalOpen(false);
+                  setLinkAccountTargetId("");
+                }}
+                className="rounded-xl border border-white/10 px-4 py-2.5 text-sm text-white/50 hover:bg-white/5"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -2101,6 +2955,20 @@ export function AdminMarketingClient({
         }}
         onConfirm={() => {
           if (deleteReportId) void handleDeleteReport(deleteReportId);
+        }}
+      />
+
+      <ConfirmDeleteModal
+        open={deletePhoneId != null}
+        title="Deactivate phone?"
+        description="This marks the phone as inactive. Linked social accounts are not changed."
+        confirmLabel="Deactivate"
+        confirming={deletePhoneBusy}
+        onClose={() => {
+          if (!deletePhoneBusy) setDeletePhoneId(null);
+        }}
+        onConfirm={() => {
+          if (deletePhoneId) void handleDeletePhone(deletePhoneId);
         }}
       />
 
