@@ -109,6 +109,8 @@ export const PERMISSIONS = {
 
   LINK_PAGES_VIEW: "link-pages:view",
   LINK_PAGES_MANAGE: "link-pages:manage",
+
+  VIDEO_TRANSCRIBE_ACCESS: "video_transcribe:access",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -116,6 +118,7 @@ export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 export const ALL_PERMISSIONS: Permission[] = Object.values(PERMISSIONS);
 
 const ACTION_LABELS: Record<string, string> = {
+  access: "Access",
   view: "View",
   manage: "Manage",
   create: "Create",
@@ -170,6 +173,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   pricing: "Pricing",
   "mass-lists": "Mass lists",
   "link-pages": "Link pages",
+  video_transcribe: "Transcript videos",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -299,6 +303,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "link-pages:view": "Προβολή link-in-bio σελίδων",
   "link-pages:manage": "Δημιουργία και διαχείριση link-in-bio σελίδων",
+
+  "video_transcribe:access": "Μεταγραφή βίντεο σε κείμενο (upload + transcript)",
 };
 
 export type PermissionGroup = {

@@ -2,10 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { PDFDocument, type PDFFont, type PDFPage, rgb, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
+import { resolveFooterText } from "@/lib/pdf-maker-constants";
 import {
   DEFAULT_PDF_STYLE,
   normalizePdfStyle,
+  type PdfMetaField,
   type PdfSection,
+  type PdfSectionStyle,
   type PdfStyle,
 } from "@/services/pdf-maker";
 
@@ -19,9 +22,13 @@ const BODY_SIZE = 10;
 const BODY_LINE_HEIGHT = 14;
 const SECTION_TITLE_SIZE = 14;
 const SECTION_TITLE_GAP = 22;
-const FIRST_CONTENT_Y = 162;
 const CONTINUATION_CONTENT_Y = 50;
 const CONTENT_MAX_WIDTH = PAGE_W - MARGIN_L - MARGIN_R;
+
+const META_LABEL_SIZE = 8;
+const META_VALUE_SIZE = 11;
+const META_ROW_HEIGHT = 36;
+const META_ROW_GAP = 14;
 
 const NUMBERED_HEADER_SIZE = 11;
 const NUMBERED_HEADER_LINE_HEIGHT = 16;
@@ -39,9 +46,21 @@ const WARNING_EXTRA_AFTER = 4;
 const BULLET_CHAR = "•";
 const BULLET_INDENT = 14;
 
+const SCRIPT_LABEL_COL_WIDTH = CONTENT_MAX_WIDTH * 0.2;
+const SCRIPT_VALUE_COL_WIDTH = CONTENT_MAX_WIDTH * 0.8;
+const SCRIPT_ROW_PADDING_Y = 8;
+const SCRIPT_ROW_MIN_HEIGHT = 28;
+const SCRIPT_LABEL_SIZE = 8;
+const SCRIPT_VALUE_SIZE = 10;
+const SCRIPT_DIVIDER_THICKNESS = 0.5;
+
 const NUMBERED_HEADER_RE = /^(.+?##)\s+—\s+(.+)$/;
+const SCRIPT_ROW_RE = /^([^:]+):\s*(.*)$/;
+const URL_RE = /https?:\/\/[^\s]+/;
 
 type LineKind = "empty" | "warning" | "field_label" | "numbered_header" | "bullet" | "body";
+
+type TextSegment = { text: string; italic: boolean };
 
 type PdfPalette = {
   bg: RGB;
@@ -49,8 +68,11 @@ type PdfPalette = {
   bodyText: RGB;
   headerTitle: RGB;
   accent: RGB;
+  muted: RGB;
   warningBg: RGB;
   warningText: RGB;
+  scriptLabelBg: RGB;
+  scriptBorder: RGB;
 };
 
 type RenderContext = {
@@ -58,6 +80,7 @@ type RenderContext = {
   y: number;
   regularFont: PDFFont;
   boldFont: PDFFont;
+  italicFont: PDFFont;
   pageHeight: number;
   palette: PdfPalette;
   footerText: string;
@@ -100,8 +123,11 @@ function resolvePalette(style: PdfStyle): PdfPalette {
       bodyText: hexToPdfRgb("#1A1A1A", rgb(0.1, 0.1, 0.1)),
       headerTitle: hexToPdfRgb("#0A0A0A", rgb(0.04, 0.04, 0.04)),
       accent,
+      muted: hexToPdfRgb("#6B7280", rgb(0.42, 0.45, 0.5)),
       warningBg: hexToPdfRgb("#FFF0EB", rgb(1, 0.94, 0.92)),
       warningText: hexToPdfRgb("#7A2E1A", rgb(0.48, 0.18, 0.1)),
+      scriptLabelBg: hexToPdfRgb("#F5F0E8", rgb(0.96, 0.94, 0.91)),
+      scriptBorder: hexToPdfRgb("#E5DFD5", rgb(0.9, 0.87, 0.84)),
     };
   }
 
@@ -112,8 +138,11 @@ function resolvePalette(style: PdfStyle): PdfPalette {
     bodyText: hexToPdfRgb(style.textColor, rgb(0.75, 0.75, 0.75)),
     headerTitle: rgb(1, 1, 1),
     accent,
+    muted: hexToPdfRgb("#9CA3AF", rgb(0.61, 0.64, 0.69)),
     warningBg: rgb(0.28, 0.12, 0.1),
     warningText: rgb(1, 0.85, 0.75),
+    scriptLabelBg: hexToPdfRgb("#2A2820", rgb(0.16, 0.16, 0.13)),
+    scriptBorder: hexToPdfRgb("#3D3A34", rgb(0.24, 0.23, 0.2)),
   };
 }
 
@@ -145,6 +174,65 @@ function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: numbe
   }
 
   return lines.length > 0 ? lines : [""];
+}
+
+function wrapTextPreserveUrls(
+  text: string,
+  font: PDFFont,
+  fontSize: number,
+  maxWidth: number,
+): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [""];
+
+  const urlMatch = trimmed.match(URL_RE);
+  if (urlMatch && urlMatch[0] === trimmed) {
+    if (font.widthOfTextAtSize(trimmed, fontSize) <= maxWidth) return [trimmed];
+    const lines: string[] = [];
+    let chunk = "";
+    for (const ch of trimmed) {
+      const candidate = chunk + ch;
+      if (font.widthOfTextAtSize(candidate, fontSize) > maxWidth && chunk) {
+        lines.push(chunk);
+        chunk = ch;
+      } else {
+        chunk = candidate;
+      }
+    }
+    if (chunk) lines.push(chunk);
+    return lines.length > 0 ? lines : [trimmed];
+  }
+
+  return wrapText(trimmed, font, fontSize, maxWidth);
+}
+
+function parseItalicSegments(line: string): TextSegment[] {
+  const segments: TextSegment[] = [];
+  const re = /_(.+?)_/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(line)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({ text: line.slice(lastIndex, match.index), italic: false });
+    }
+    segments.push({ text: match[1], italic: true });
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < line.length) {
+    segments.push({ text: line.slice(lastIndex), italic: false });
+  }
+
+  if (segments.length === 0) {
+    segments.push({ text: line, italic: false });
+  }
+
+  return segments;
+}
+
+function stripItalicMarkers(line: string): string {
+  return line.replace(/_(.+?)_/g, "$1");
 }
 
 function classifyLine(rawLine: string): LineKind {
@@ -195,7 +283,7 @@ function drawFirstPageHeader(
   regularFont: PDFFont,
   boldFont: PDFFont,
   palette: PdfPalette,
-) {
+): number {
   const height = page.getSize().height;
   page.drawText(title, {
     x: MARGIN_L,
@@ -204,6 +292,8 @@ function drawFirstPageHeader(
     font: boldFont,
     color: palette.headerTitle,
   });
+
+  let contentStartY = 92;
   if (subtitle?.trim()) {
     page.drawText(subtitle.trim(), {
       x: MARGIN_L,
@@ -212,10 +302,115 @@ function drawFirstPageHeader(
       font: regularFont,
       color: palette.accent,
     });
+    contentStartY = 100;
   }
+
+  return contentStartY;
+}
+
+function drawMetaRow(
+  page: PDFPage,
+  metaFields: PdfMetaField[],
+  startY: number,
+  regularFont: PDFFont,
+  boldFont: PDFFont,
+  palette: PdfPalette,
+): number {
+  const fields = metaFields.filter((f) => f.label.trim() || f.value.trim()).slice(0, 3);
+  if (fields.length === 0) return startY;
+
+  const colWidth = CONTENT_MAX_WIDTH / fields.length;
+  let y = startY + META_ROW_GAP;
+
+  for (let i = 0; i < fields.length; i++) {
+    const colX = MARGIN_L + i * colWidth;
+    const label = fields[i].label.trim().toUpperCase();
+    const value = fields[i].value.trim();
+
+    if (label) {
+      page.drawText(label, {
+        x: colX,
+        y: yFromTop(page.getSize().height, y),
+        size: META_LABEL_SIZE,
+        font: regularFont,
+        color: palette.muted,
+      });
+    }
+
+    if (value) {
+      const valueWrapped = wrapText(value, boldFont, META_VALUE_SIZE, colWidth - 8);
+      let valueY = y + 12;
+      for (const line of valueWrapped.slice(0, 2)) {
+        if (line) {
+          page.drawText(line, {
+            x: colX,
+            y: yFromTop(page.getSize().height, valueY),
+            size: META_VALUE_SIZE,
+            font: boldFont,
+            color: palette.headerTitle,
+          });
+        }
+        valueY += 13;
+      }
+    }
+  }
+
+  return y + META_ROW_HEIGHT;
+}
+
+function drawRichTextLine(
+  ctx: RenderContext,
+  segments: TextSegment[],
+  fontSize: number,
+  color: RGB,
+  x: number,
+  maxWidth: number,
+) {
+  let cursorX = x;
+  const lineY = ctx.getY();
+
+  for (const segment of segments) {
+    if (!segment.text) continue;
+    const font = segment.italic ? ctx.italicFont : ctx.regularFont;
+    const words = segment.text.split(/(\s+)/);
+
+    for (const token of words) {
+      if (!token) continue;
+      const tokenWidth = font.widthOfTextAtSize(token, fontSize);
+      if (cursorX + tokenWidth > x + maxWidth && cursorX > x) {
+        ctx.setY(lineY + BODY_LINE_HEIGHT);
+        return;
+      }
+      ctx.page.drawText(token, {
+        x: cursorX,
+        y: yFromTop(ctx.pageHeight, lineY),
+        size: fontSize,
+        font,
+        color,
+      });
+      cursorX += tokenWidth;
+    }
+  }
+
+  ctx.setY(lineY + BODY_LINE_HEIGHT);
+}
+
+function drawItalicLine(ctx: RenderContext, rawLine: string) {
+  const segments = parseItalicSegments(rawLine.trim());
+  ctx.ensureSpace(BODY_LINE_HEIGHT);
+  drawRichTextLine(ctx, segments, BODY_SIZE, ctx.palette.muted, MARGIN_L, CONTENT_MAX_WIDTH);
 }
 
 function drawBodyText(ctx: RenderContext, rawLine: string) {
+  const segments = parseItalicSegments(rawLine);
+  const hasItalic = segments.some((s) => s.italic);
+
+  if (hasItalic) {
+    ctx.ensureSpace(BODY_LINE_HEIGHT);
+    drawRichTextLine(ctx, segments, BODY_SIZE, ctx.palette.bodyText, MARGIN_L, CONTENT_MAX_WIDTH);
+    return;
+  }
+
   const wrapped = wrapText(rawLine, ctx.regularFont, BODY_SIZE, CONTENT_MAX_WIDTH);
   for (const line of wrapped) {
     ctx.ensureSpace(BODY_LINE_HEIGHT);
@@ -235,8 +430,7 @@ function drawBodyText(ctx: RenderContext, rawLine: string) {
 function drawWarningBox(ctx: RenderContext, rawLine: string) {
   const text = rawLine.trim().replace(/^⚠\s*/, "").trim();
   const wrapped = wrapText(text, ctx.boldFont, BODY_SIZE, CONTENT_MAX_WIDTH - WARNING_PADDING_X * 2);
-  const boxHeight =
-    wrapped.length * BODY_LINE_HEIGHT + WARNING_PADDING_Y * 2;
+  const boxHeight = wrapped.length * BODY_LINE_HEIGHT + WARNING_PADDING_Y * 2;
   const boxWidth = CONTENT_MAX_WIDTH;
 
   ctx.ensureSpace(boxHeight + WARNING_EXTRA_AFTER);
@@ -417,34 +611,204 @@ function renderContentLine(ctx: RenderContext, rawLine: string) {
   }
 }
 
+function drawUrlLine(ctx: RenderContext, rawLine: string) {
+  const wrapped = wrapTextPreserveUrls(
+    rawLine.trim(),
+    ctx.regularFont,
+    BODY_SIZE,
+    CONTENT_MAX_WIDTH,
+  );
+
+  for (const line of wrapped) {
+    ctx.ensureSpace(BODY_LINE_HEIGHT);
+    if (line) {
+      ctx.page.drawText(line, {
+        x: MARGIN_L,
+        y: yFromTop(ctx.pageHeight, ctx.getY()),
+        size: BODY_SIZE,
+        font: ctx.regularFont,
+        color: ctx.palette.accent,
+      });
+    }
+    ctx.setY(ctx.getY() + BODY_LINE_HEIGHT);
+  }
+}
+
+function renderReferenceLinkSection(ctx: RenderContext, content: string) {
+  const lines = (content ?? "").split("\n");
+  let sawUrl = false;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      ctx.ensureSpace(BODY_LINE_HEIGHT);
+      ctx.setY(ctx.getY() + BODY_LINE_HEIGHT / 2);
+      continue;
+    }
+
+    if (!sawUrl && URL_RE.test(trimmed)) {
+      drawUrlLine(ctx, trimmed);
+      sawUrl = true;
+      continue;
+    }
+
+    drawItalicLine(ctx, trimmed);
+  }
+}
+
+function drawScriptBreakdownRow(
+  ctx: RenderContext,
+  label: string,
+  value: string,
+  drawTopDivider: boolean,
+) {
+  const labelWrapped = wrapText(label.toUpperCase(), ctx.boldFont, SCRIPT_LABEL_SIZE, SCRIPT_LABEL_COL_WIDTH - 12);
+  const valueWrapped = wrapText(value, ctx.regularFont, SCRIPT_VALUE_SIZE, SCRIPT_VALUE_COL_WIDTH - 12);
+  const rowHeight = Math.max(
+    SCRIPT_ROW_MIN_HEIGHT,
+    Math.max(labelWrapped.length, valueWrapped.length) * BODY_LINE_HEIGHT + SCRIPT_ROW_PADDING_Y * 2,
+  );
+
+  ctx.ensureSpace(rowHeight + (drawTopDivider ? 1 : 0));
+
+  const rowTop = ctx.getY();
+  if (drawTopDivider) {
+    ctx.page.drawLine({
+      start: { x: MARGIN_L, y: yFromTop(ctx.pageHeight, rowTop) },
+      end: { x: MARGIN_L + CONTENT_MAX_WIDTH, y: yFromTop(ctx.pageHeight, rowTop) },
+      thickness: SCRIPT_DIVIDER_THICKNESS,
+      color: ctx.palette.scriptBorder,
+    });
+  }
+
+  ctx.page.drawRectangle({
+    x: MARGIN_L,
+    y: yFromTop(ctx.pageHeight, rowTop + rowHeight),
+    width: SCRIPT_LABEL_COL_WIDTH,
+    height: rowHeight,
+    color: ctx.palette.scriptLabelBg,
+    borderColor: ctx.palette.scriptBorder,
+    borderWidth: 0.75,
+  });
+
+  ctx.page.drawRectangle({
+    x: MARGIN_L + SCRIPT_LABEL_COL_WIDTH,
+    y: yFromTop(ctx.pageHeight, rowTop + rowHeight),
+    width: SCRIPT_VALUE_COL_WIDTH,
+    height: rowHeight,
+    color: ctx.palette.bg,
+    borderColor: ctx.palette.scriptBorder,
+    borderWidth: 0.75,
+  });
+
+  const labelBlockHeight = labelWrapped.length * BODY_LINE_HEIGHT;
+  let labelY = rowTop + (rowHeight - labelBlockHeight) / 2 + 4;
+  for (const line of labelWrapped) {
+    if (line) {
+      ctx.page.drawText(line, {
+        x: MARGIN_L + 8,
+        y: yFromTop(ctx.pageHeight, labelY),
+        size: SCRIPT_LABEL_SIZE,
+        font: ctx.boldFont,
+        color: ctx.palette.accent,
+      });
+    }
+    labelY += BODY_LINE_HEIGHT;
+  }
+
+  const valueBlockHeight = valueWrapped.length * BODY_LINE_HEIGHT;
+  let valueY = rowTop + (rowHeight - valueBlockHeight) / 2 + 4;
+  for (const line of valueWrapped) {
+    if (line) {
+      ctx.page.drawText(line, {
+        x: MARGIN_L + SCRIPT_LABEL_COL_WIDTH + 10,
+        y: yFromTop(ctx.pageHeight, valueY),
+        size: SCRIPT_VALUE_SIZE,
+        font: ctx.regularFont,
+        color: ctx.palette.bodyText,
+      });
+    }
+    valueY += BODY_LINE_HEIGHT;
+  }
+
+  ctx.setY(rowTop + rowHeight);
+}
+
+function renderScriptBreakdownSection(ctx: RenderContext, content: string) {
+  const lines = (content ?? "").split("\n");
+  let rowIndex = 0;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    const match = trimmed.match(SCRIPT_ROW_RE);
+    if (!match) {
+      drawBodyText(ctx, trimmed);
+      continue;
+    }
+
+    const label = match[1].trim();
+    const value = match[2].trim();
+    drawScriptBreakdownRow(ctx, label, value, rowIndex > 0);
+    rowIndex += 1;
+  }
+}
+
+function renderSectionContent(ctx: RenderContext, section: PdfSection) {
+  const style: PdfSectionStyle = section.sectionStyle ?? "normal";
+
+  if (style === "reference_link") {
+    renderReferenceLinkSection(ctx, section.content ?? "");
+    return;
+  }
+
+  if (style === "script_breakdown") {
+    renderScriptBreakdownSection(ctx, section.content ?? "");
+    return;
+  }
+
+  const rawLines = (section.content ?? "").split("\n");
+  for (const rawLine of rawLines) {
+    renderContentLine(ctx, rawLine);
+  }
+}
+
 export async function buildPdfBytes(
   title: string,
   subtitle: string | undefined,
   sections: PdfSection[],
   style: PdfStyle = DEFAULT_PDF_STYLE,
+  metaFields: PdfMetaField[] = [],
 ): Promise<Uint8Array> {
   const resolvedStyle = normalizePdfStyle(style);
   const palette = resolvePalette(resolvedStyle);
-  const footerText = resolvedStyle.footerText;
+  const footerText = resolveFooterText(resolvedStyle.footerText, title);
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
   const regularFont = await pdfDoc.embedFont(readFontBytes("DejaVuSans.ttf"));
   const boldFont = await pdfDoc.embedFont(readFontBytes("DejaVuSans-Bold.ttf"));
+  const italicFont = await pdfDoc.embedFont(readFontBytes("DejaVuSans-Oblique.ttf"));
 
   let page = pdfDoc.addPage([PAGE_W, PAGE_H]);
-  let y = FIRST_CONTENT_Y;
+  let y = 162;
   let isFirstPage = true;
 
   drawFirstPageBackground(page, palette);
-  drawFirstPageHeader(page, title, subtitle, regularFont, boldFont, palette);
+  const headerContentStart = drawFirstPageHeader(page, title, subtitle, regularFont, boldFont, palette);
+  const activeMeta = metaFields.filter((f) => f.label.trim() || f.value.trim()).slice(0, 3);
+  y = activeMeta.length > 0
+    ? drawMetaRow(page, activeMeta, headerContentStart, regularFont, boldFont, palette) + 16
+    : headerContentStart + 62;
 
   const renderCtx: RenderContext = {
     page,
     y,
     regularFont,
     boldFont,
+    italicFont,
     pageHeight: PAGE_H,
     palette,
     footerText,
@@ -503,14 +867,11 @@ export async function buildPdfBytes(
       renderCtx.y = y;
     }
 
-    const rawLines = (section.content ?? "").split("\n");
-    for (const rawLine of rawLines) {
-      renderCtx.page = page;
-      renderCtx.pageHeight = page.getSize().height;
-      renderContentLine(renderCtx, rawLine);
-      y = renderCtx.y;
-      page = renderCtx.page;
-    }
+    renderCtx.page = page;
+    renderCtx.pageHeight = page.getSize().height;
+    renderSectionContent(renderCtx, section);
+    y = renderCtx.y;
+    page = renderCtx.page;
 
     y += isFirstPage && section === sections[0] ? 10 : 6;
     renderCtx.y = y;

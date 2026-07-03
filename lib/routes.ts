@@ -183,6 +183,8 @@ export const ROUTES = {
   dailyReview: "/daily-review",
   /** VA winner video submissions (permission-gated). */
   winners: "/winners",
+  /** Standalone video transcription tool (permission-gated). */
+  transcriptVideos: "/transcript-videos",
   /** Fines & bonuses (chatter + VA shared). */
   finesBonuses: "/fines-bonuses",
   /** SOP Library member view (chatter + VA shared). */

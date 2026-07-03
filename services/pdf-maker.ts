@@ -9,9 +9,22 @@ import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
 export const PDF_DOCUMENTS_TABLE = "pdf_documents";
 export const PDF_TEMPLATES_TABLE = "pdf_templates";
 
+export type PdfSectionStyle = "normal" | "reference_link" | "script_breakdown";
+
 export type PdfSection = {
   title?: string;
   content: string;
+  sectionStyle?: PdfSectionStyle;
+};
+
+export type PdfMetaField = {
+  label: string;
+  value: string;
+};
+
+export type PdfTemplateConfig = {
+  defaultMetaFields?: PdfMetaField[];
+  defaultFooterText?: string;
 };
 
 export type PdfStyle = {
@@ -74,6 +87,7 @@ export type PdfTemplate = {
   name: string;
   description: string;
   defaultSections: PdfSection[];
+  config?: PdfTemplateConfig;
 };
 
 export type PdfDocument = {
@@ -82,6 +96,7 @@ export type PdfDocument = {
   subtitle: string;
   template: string;
   sections: PdfSection[];
+  metaFields: PdfMetaField[];
   style: PdfStyle;
   createdBy: string;
   fileUrl: string;
@@ -97,6 +112,8 @@ type TemplateFields = {
   description?: string;
   "Default Sections"?: string;
   default_sections?: string;
+  "Template Config"?: string;
+  template_config?: string;
 };
 
 type DocumentFields = {
@@ -108,6 +125,8 @@ type DocumentFields = {
   template?: string;
   Sections?: string;
   sections?: string;
+  "Meta Fields"?: string;
+  meta_fields?: string;
   "Created By"?: string | string[];
   created_by?: string | string[];
   "File URL"?: string;
@@ -126,19 +145,71 @@ function fieldStr(f: Record<string, unknown>, ...keys: string[]): string {
   return "";
 }
 
+const SECTION_STYLES = new Set<PdfSectionStyle>(["normal", "reference_link", "script_breakdown"]);
+
+function parseSectionStyle(raw: unknown): PdfSectionStyle | undefined {
+  if (typeof raw !== "string") return undefined;
+  const style = raw.trim() as PdfSectionStyle;
+  return SECTION_STYLES.has(style) ? style : undefined;
+}
+
+function parseMetaFieldsJson(raw: unknown): PdfMetaField[] {
+  if (raw == null || raw === "") return [];
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const row = item as Record<string, unknown>;
+        const label = typeof row.label === "string" ? row.label.trim() : "";
+        const value = typeof row.value === "string" ? row.value.trim() : "";
+        if (!label && !value) return null;
+        return { label, value };
+      })
+      .filter((item): item is PdfMetaField => item != null)
+      .slice(0, 3);
+  } catch {
+    return [];
+  }
+}
+
+function parseTemplateConfigJson(raw: unknown): PdfTemplateConfig | undefined {
+  if (raw == null || raw === "") return undefined;
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object") return undefined;
+    const row = parsed as Record<string, unknown>;
+    const config: PdfTemplateConfig = {};
+    const meta = parseMetaFieldsJson(row.defaultMetaFields);
+    if (meta.length > 0) config.defaultMetaFields = meta;
+    if (typeof row.defaultFooterText === "string" && row.defaultFooterText.trim()) {
+      config.defaultFooterText = row.defaultFooterText.trim();
+    }
+    return Object.keys(config).length > 0 ? config : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function parseSectionsJson(raw: unknown): PdfSection[] {
   if (raw == null || raw === "") return [];
   try {
     const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
     if (!Array.isArray(parsed)) return [];
     return parsed.map((item) => {
+      if (typeof item === "string") {
+        const title = item.trim();
+        return title ? { title, content: "" } : { content: "" };
+      }
       if (!item || typeof item !== "object") {
         return { content: String(item ?? "") };
       }
       const row = item as Record<string, unknown>;
       const title = typeof row.title === "string" ? row.title : undefined;
       const content = typeof row.content === "string" ? row.content : String(row.content ?? "");
-      return { title, content };
+      const sectionStyle = parseSectionStyle(row.sectionStyle);
+      return sectionStyle ? { title, content, sectionStyle } : { title, content };
     });
   } catch {
     return [];
@@ -148,12 +219,14 @@ function parseSectionsJson(raw: unknown): PdfSection[] {
 function mapTemplateRecord(rec: AirtableRecord<TemplateFields>): PdfTemplate {
   const f = (rec.fields ?? {}) as Record<string, unknown>;
   const defaultRaw = f["Default Sections"] ?? f.default_sections;
+  const configRaw = f["Template Config"] ?? f.template_config;
   return {
     id: rec.id,
     templateId: fieldStr(f, "Template ID", "template_id"),
     name: fieldStr(f, "Name", "name") || "Untitled template",
     description: fieldStr(f, "Description", "description"),
     defaultSections: parseSectionsJson(defaultRaw),
+    config: parseTemplateConfigJson(configRaw),
   };
 }
 
@@ -171,6 +244,7 @@ function parseStyleJson(raw: unknown): PdfStyle {
 function mapDocumentRecord(rec: AirtableRecord<DocumentFields>): PdfDocument {
   const f = (rec.fields ?? {}) as Record<string, unknown>;
   const sectionsRaw = f.Sections ?? f.sections;
+  const metaRaw = f["Meta Fields"] ?? f.meta_fields;
   const styleRaw = f.Style ?? f.style;
   const createdBy = fieldStr(f, "Created By", "created_by");
   return {
@@ -179,6 +253,7 @@ function mapDocumentRecord(rec: AirtableRecord<DocumentFields>): PdfDocument {
     subtitle: fieldStr(f, "Subtitle", "subtitle"),
     template: fieldStr(f, "Template", "template"),
     sections: parseSectionsJson(sectionsRaw),
+    metaFields: parseMetaFieldsJson(metaRaw),
     style: parseStyleJson(styleRaw),
     createdBy,
     fileUrl: fieldStr(f, "File URL", "file_url"),
@@ -198,17 +273,20 @@ export async function createPdfDocument(input: {
   title: string;
   subtitle?: string;
   sections: PdfSection[];
+  metaFields?: PdfMetaField[];
   template?: string;
   style: PdfStyle;
   createdBy?: string;
   fileUrl: string;
 }): Promise<PdfDocument> {
   const style = normalizePdfStyle(input.style);
+  const metaFields = parseMetaFieldsJson(input.metaFields ?? []);
   const fields: Record<string, unknown> = {
     Title: input.title.trim(),
     Subtitle: input.subtitle?.trim() ?? "",
     Template: input.template?.trim() ?? "",
     Sections: JSON.stringify(input.sections),
+    "Meta Fields": JSON.stringify(metaFields),
     Style: JSON.stringify(style),
     "File URL": input.fileUrl.trim(),
     "Created At": new Date().toISOString(),

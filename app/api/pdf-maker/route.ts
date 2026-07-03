@@ -16,16 +16,23 @@ const styleSchema = z.object({
   footerText: z.string().max(500).optional(),
 });
 
+const metaFieldSchema = z.object({
+  label: z.string().max(200),
+  value: z.string().max(500),
+});
+
 const requestSchema = z.object({
   title: z.string().min(1).max(500),
   subtitle: z.string().max(500).optional(),
   templateId: z.string().max(200).optional(),
   style: styleSchema.optional(),
+  metaFields: z.array(metaFieldSchema).max(3).optional(),
   sections: z
     .array(
       z.object({
         title: z.string().max(500).optional(),
         content: z.string().max(50000),
+        sectionStyle: z.enum(["normal", "reference_link", "script_breakdown"]).optional(),
       }),
     )
     .max(50),
@@ -54,11 +61,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "File upload not configured" }, { status: 503 });
   }
 
-  const { title, subtitle, sections, templateId, style: styleInput } = parsed.data;
+  const { title, subtitle, sections, templateId, style: styleInput, metaFields } = parsed.data;
   const style = styleInput ? normalizePdfStyle(styleInput) : await getDefaultPdfStyle();
 
   try {
-    const pdfBytes = await buildPdfBytes(title, subtitle, sections, style);
+    const pdfBytes = await buildPdfBytes(title, subtitle, sections, style, metaFields ?? []);
     const filename = `pdf-maker/${Date.now()}-${safePdfFilename(title)}`;
     const blob = await put(filename, Buffer.from(pdfBytes), {
       access: "public",
@@ -71,6 +78,7 @@ export async function POST(req: Request) {
       title,
       subtitle,
       sections,
+      metaFields: metaFields ?? [],
       template: templateId,
       style,
       createdBy,

@@ -10,6 +10,10 @@ import {
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
 import {
+  VIDEO_TRANSCRIPT_STATUS_STYLES,
+  type VideoTranscriptStatus,
+} from "@/lib/video-transcripts-helpers";
+import {
   WINNER_VIDEO_STATUS_STYLES,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
@@ -316,6 +320,26 @@ export function WinnerVideoStatusBadge({ status }: { status: WinnerVideoStatus }
         status === "Rejected" && "before:bg-red-500/30",
         status === "Recreated" && "before:bg-sky-500/25",
         status === "Published" && "before:bg-[#D4AF8C]/25",
+      )}
+    >
+      {style.label}
+    </span>
+  );
+}
+
+export function VideoTranscriptStatusBadge({ status }: { status: VideoTranscriptStatus }) {
+  const style = VIDEO_TRANSCRIPT_STATUS_STYLES[status];
+  return (
+    <span
+      className={cn(
+        VA_STATUS_BADGE,
+        "relative",
+        style.className,
+        style.glowClassName,
+        "before:pointer-events-none before:absolute before:-inset-1 before:-z-10 before:rounded-md before:opacity-60 before:blur-md",
+        status === "Processing" && "animate-pulse before:bg-amber-500/25",
+        status === "Done" && "before:bg-emerald-500/25",
+        status === "Failed" && "before:bg-red-500/30",
       )}
     >
       {style.label}

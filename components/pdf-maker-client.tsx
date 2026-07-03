@@ -17,10 +17,18 @@ import type { AppNotification } from "@/types";
 import {
   DEFAULT_PDF_STYLE,
   type PdfDocument,
+  type PdfMetaField,
   type PdfSection,
+  type PdfSectionStyle,
   type PdfStyle,
   type PdfTemplate,
 } from "@/services/pdf-maker";
+import {
+  SKIT_BRIEF_DEFAULT_FOOTER,
+  SKIT_BRIEF_DEFAULT_META_LABELS,
+  SKIT_BRIEF_TEMPLATE_ID,
+  emptyMetaFields,
+} from "@/lib/pdf-maker-constants";
 
 type Tab = "create" | "history";
 
@@ -28,7 +36,14 @@ type Section = {
   id: string;
   title: string;
   content: string;
+  sectionStyle: PdfSectionStyle;
 };
+
+const SECTION_STYLE_OPTIONS: { value: PdfSectionStyle; label: string }[] = [
+  { value: "normal", label: "Normal text" },
+  { value: "reference_link", label: "Reference link" },
+  { value: "script_breakdown", label: "Script breakdown table" },
+];
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -53,15 +68,19 @@ function themePresetColors(theme: PdfStyle["theme"]): Pick<PdfStyle, "background
     : { backgroundColor: "#0A0A0A", textColor: "#DCDCDC" };
 }
 
-function newSection(content = "", title = ""): Section {
-  return { id: crypto.randomUUID(), title: title || "", content };
+function newSection(content = "", title = "", sectionStyle: PdfSectionStyle = "normal"): Section {
+  return { id: crypto.randomUUID(), title: title || "", content, sectionStyle };
 }
 
 function sectionsFromTemplate(template: PdfTemplate): Section[] {
   if (template.defaultSections.length === 0) return [newSection()];
   return template.defaultSections.map((s) =>
-    newSection(s.content, s.title ?? ""),
+    newSection(s.content, s.title ?? "", s.sectionStyle ?? "normal"),
   );
+}
+
+function newMetaField(label = "", value = ""): PdfMetaField {
+  return { label, value };
 }
 
 function formatDate(iso: string): string {
@@ -103,15 +122,18 @@ function previewColors(style: PdfStyle) {
 function PreviewPanel({
   title,
   subtitle,
+  metaFields,
   sections,
   style,
 }: {
   title: string;
   subtitle: string;
+  metaFields: PdfMetaField[];
   sections: Section[];
   style: PdfStyle;
 }) {
   const colors = previewColors(style);
+  const activeMeta = metaFields.filter((f) => f.label.trim() || f.value.trim()).slice(0, 3);
 
   return (
     <div
@@ -132,6 +154,23 @@ function PreviewPanel({
             Subtitle (optional)
           </p>
         )}
+        {activeMeta.length > 0 ? (
+          <div className="mt-4 grid gap-3" style={{ gridTemplateColumns: `repeat(${activeMeta.length}, 1fr)` }}>
+            {activeMeta.map((field, index) => (
+              <div key={`${field.label}-${index}`}>
+                <p
+                  className="text-[10px] font-medium uppercase tracking-wider"
+                  style={{ color: colors.muted }}
+                >
+                  {field.label.trim() || "Label"}
+                </p>
+                <p className="mt-0.5 text-sm font-semibold" style={{ color: colors.title }}>
+                  {field.value.trim() || "—"}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
       <div className="space-y-5 px-5 py-6">
         {sections.map((section, index) => (
@@ -148,12 +187,39 @@ function PreviewPanel({
                 Section {index + 1}
               </p>
             )}
-            <p
-              className="whitespace-pre-wrap text-xs leading-relaxed"
-              style={{ color: colors.body }}
-            >
-              {section.content.trim() || "Section content…"}
-            </p>
+            {section.sectionStyle === "script_breakdown" ? (
+              <div className="space-y-0 overflow-hidden rounded border text-xs" style={{ borderColor: colors.border }}>
+                {(section.content.trim() || "SETTING: …\nACTION: …").split("\n").filter(Boolean).map((line, rowIndex) => {
+                  const colon = line.indexOf(":");
+                  const label = colon >= 0 ? line.slice(0, colon).trim() : line.trim();
+                  const value = colon >= 0 ? line.slice(colon + 1).trim() : "";
+                  return (
+                    <div
+                      key={`${section.id}-row-${rowIndex}`}
+                      className="grid border-t first:border-t-0"
+                      style={{ gridTemplateColumns: "20% 80%", borderColor: colors.border }}
+                    >
+                      <div
+                        className="border-r px-2 py-2 font-semibold uppercase"
+                        style={{ borderColor: colors.border, backgroundColor: colors.banner, color: colors.accent }}
+                      >
+                        {label}
+                      </div>
+                      <div className="px-2 py-2" style={{ color: colors.body }}>
+                        {value || "…"}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p
+                className={`whitespace-pre-wrap text-xs leading-relaxed ${section.sectionStyle === "reference_link" ? "text-pink-400" : ""}`}
+                style={{ color: section.sectionStyle === "reference_link" ? colors.accent : colors.body }}
+              >
+                {section.content.trim() || "Section content…"}
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -173,6 +239,11 @@ export function PdfMakerClient() {
   const [docTitle, setDocTitle] = React.useState("");
   const [subtitle, setSubtitle] = React.useState("");
   const [sections, setSections] = React.useState<Section[]>([newSection()]);
+  const [metaFields, setMetaFields] = React.useState<PdfMetaField[]>([
+    newMetaField(),
+    newMetaField(),
+    newMetaField(),
+  ]);
   const [style, setStyle] = React.useState<PdfStyle>({ ...DEFAULT_PDF_STYLE });
   const [styleOpen, setStyleOpen] = React.useState(false);
   const [styleLoading, setStyleLoading] = React.useState(true);
@@ -237,8 +308,25 @@ export function PdfMakerClient() {
     if (tab === "history") void loadHistory();
   }, [tab, loadHistory]);
 
-  function updateSection(id: string, patch: Partial<Pick<Section, "title" | "content">>) {
+  function updateSection(
+    id: string,
+    patch: Partial<Pick<Section, "title" | "content" | "sectionStyle">>,
+  ) {
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
+  }
+
+  function updateMetaField(index: number, patch: Partial<PdfMetaField>) {
+    setMetaFields((prev) =>
+      prev.map((field, i) => (i === index ? { ...field, ...patch } : field)),
+    );
+  }
+
+  function addMetaField() {
+    setMetaFields((prev) => (prev.length >= 3 ? prev : [...prev, newMetaField()]));
+  }
+
+  function removeMetaField(index: number) {
+    setMetaFields((prev) => (prev.length <= 1 ? prev : prev.filter((_, i) => i !== index)));
   }
 
   function addSection() {
@@ -250,8 +338,26 @@ export function PdfMakerClient() {
   }
 
   function applyTemplate(template: PdfTemplate) {
-    setSelectedTemplateId(template.templateId || template.id);
+    const templateKey = template.templateId || template.id;
+    setSelectedTemplateId(templateKey);
     setSections(sectionsFromTemplate(template));
+
+    const configMeta = template.config?.defaultMetaFields;
+    if (configMeta && configMeta.length > 0) {
+      setMetaFields(configMeta.slice(0, 3).map((f) => newMetaField(f.label, f.value)));
+    } else if (templateKey === SKIT_BRIEF_TEMPLATE_ID) {
+      setMetaFields(emptyMetaFields(SKIT_BRIEF_DEFAULT_META_LABELS));
+    } else {
+      setMetaFields([newMetaField(), newMetaField(), newMetaField()]);
+    }
+
+    const footer =
+      template.config?.defaultFooterText ??
+      (templateKey === SKIT_BRIEF_TEMPLATE_ID ? SKIT_BRIEF_DEFAULT_FOOTER : null);
+    if (footer) {
+      setStyle((prev) => ({ ...prev, footerText: footer }));
+    }
+
     if (!docTitle.trim() && template.name) setDocTitle(template.name);
     if (!subtitle.trim() && template.description) setSubtitle(template.description);
   }
@@ -323,9 +429,13 @@ export function PdfMakerClient() {
           subtitle: subtitle.trim() || undefined,
           templateId: selectedTemplateId ?? undefined,
           style,
+          metaFields: metaFields
+            .filter((f) => f.label.trim() || f.value.trim())
+            .slice(0, 3),
           sections: sections.map((s) => ({
             title: s.title?.trim() || undefined,
             content: s.content,
+            sectionStyle: s.sectionStyle,
           })),
         }),
       });
@@ -491,6 +601,63 @@ export function PdfMakerClient() {
                 />
               </div>
 
+              <div className="space-y-3 rounded-xl border border-gray-800 bg-gray-900/60 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-500">
+                    Header meta fields
+                  </h2>
+                  {metaFields.length < 3 ? (
+                    <button
+                      type="button"
+                      onClick={addMetaField}
+                      className="inline-flex items-center gap-1 rounded-lg border border-pink-500/40 px-2.5 py-1 text-xs font-medium text-pink-500 transition hover:bg-pink-500/10"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Add field
+                    </button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-gray-500">
+                  Optional row below the title — up to 3 label/value pairs (e.g. Type, Model, Date).
+                </p>
+                {metaFields.map((field, index) => (
+                  <div key={`meta-${index}`} className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+                    <div>
+                      <label className="mb-1.5 block text-xs text-gray-400">Label</label>
+                      <input
+                        type="text"
+                        value={field.label}
+                        onChange={(e) => updateMetaField(index, { label: e.target.value })}
+                        placeholder="TYPE"
+                        className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs text-gray-400">Value</label>
+                      <input
+                        type="text"
+                        value={field.value}
+                        onChange={(e) => updateMetaField(index, { value: e.target.value })}
+                        placeholder="Skit"
+                        className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                    {metaFields.length > 1 ? (
+                      <div className="flex items-end">
+                        <button
+                          type="button"
+                          onClick={() => removeMetaField(index)}
+                          className="inline-flex items-center gap-1 rounded px-2 py-2 text-xs text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
+                          aria-label={`Remove meta field ${index + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+
               <div className="rounded-xl border border-gray-800 bg-gray-900/40">
                 <button
                   type="button"
@@ -576,6 +743,9 @@ export function PdfMakerClient() {
                         placeholder="GUNZO AGENCY — CONFIDENTIAL"
                         className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                       />
+                      <p className="mt-1 text-[11px] text-gray-600">
+                        Use {"{title}"} to insert the document title.
+                      </p>
                     </div>
 
                     <div>
@@ -655,12 +825,37 @@ export function PdfMakerClient() {
                     </div>
 
                     <div>
+                      <label className="mb-1.5 block text-xs text-gray-400">Section style</label>
+                      <select
+                        value={section.sectionStyle}
+                        onChange={(e) =>
+                          updateSection(section.id, {
+                            sectionStyle: e.target.value as PdfSectionStyle,
+                          })
+                        }
+                        className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      >
+                        {SECTION_STYLE_OPTIONS.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
                       <label className="mb-1.5 block text-xs text-gray-400">Content</label>
                       <textarea
                         value={section.content}
                         onChange={(e) => updateSection(section.id, { content: e.target.value })}
                         rows={5}
-                        placeholder="Section body text…"
+                        placeholder={
+                          section.sectionStyle === "script_breakdown"
+                            ? "SETTING: Στο σαλόνι\nACTION: Η μοντέλο μπαίνει\nΑΝΤΡΑΣ: Γεια σου"
+                            : section.sectionStyle === "reference_link"
+                              ? "https://example.com/ref\n_Οδηγίες αναφοράς σε πλάγια γραφή_"
+                              : "Section body text…"
+                        }
                         className="w-full resize-y rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
                       />
                     </div>
@@ -691,7 +886,13 @@ export function PdfMakerClient() {
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-pink-500">
                 Live preview
               </h2>
-              <PreviewPanel title={docTitle} subtitle={subtitle} sections={sections} style={style} />
+              <PreviewPanel
+                title={docTitle}
+                subtitle={subtitle}
+                metaFields={metaFields}
+                sections={sections}
+                style={style}
+              />
             </div>
           </div>
         ) : (
