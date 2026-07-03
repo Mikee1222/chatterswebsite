@@ -245,7 +245,8 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.whales, label: "Whales", iconKey: "Users" },
   { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
   { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
-  { href: ROUTES.va.mistakes, label: "Mistakes", iconKey: "AlertTriangle" },
+  // NOTE: "Mistakes" (MISTAKES_VIEW) moved to `sharedPermissionNavItems` so the VA mistakes
+  // feature is gated by a permission and can be toggled per role in Roles & Permissions.
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
   { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
   { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
@@ -654,6 +655,18 @@ const sharedPermissionNavItems: NavItem[] = [
     iconKey: "FileText",
     navSection: "TOOLS",
     requiresPermission: PERMISSIONS.PDF_MAKER_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  // VA mistakes submission ("Mistakes" → /va/mistakes). Gated by MISTAKES_VIEW so any role granted
+  // it surfaces the link. Users who can MANAGE mistakes (admin/manager) see the admin
+  // `/admin/mistakes` review item instead, so this VA submit link is hidden for them.
+  {
+    href: ROUTES.va.mistakes,
+    label: "Mistakes",
+    iconKey: "AlertTriangle",
+    navSection: "PERFORMANCE",
+    requiresPermission: PERMISSIONS.MISTAKES_VIEW,
+    hiddenIfPermission: PERMISSIONS.MISTAKES_MANAGE,
     excludeFromMobileMainTabs: true,
   },
 ];

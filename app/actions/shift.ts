@@ -1210,6 +1210,11 @@ export async function startMistakeShiftWithModels(
   modelRecordIds: string[]
 ): Promise<StartMistakeShiftResult> {
   try {
+    const session = await getSessionFromCookies();
+    if (!session) return { success: false, error: "User session missing. Please log in again." };
+    if (!(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
+      return { success: false, error: "You do not have permission to run a mistake shift." };
+    }
     if (!vaRecordId?.trim()) {
       return { success: false, error: "User session missing. Please log in again." };
     }
@@ -1287,6 +1292,10 @@ export async function addModelToMistakeShift(params: {
   vaName: string;
 }): Promise<AddModelToShiftResult> {
   try {
+    const session = await getSessionFromCookies();
+    if (!session || !(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
+      return { success: false, error: "You do not have permission to modify a mistake shift." };
+    }
     const existing = await listShiftModels(params.shiftRecordId);
     if (existing.some((sm) => sm.model_id === params.modelRecordId)) {
       return { success: false, error: "This model is already in your shift." };
@@ -1318,6 +1327,10 @@ export async function removeModelFromMistakeShift(
   shiftRecordId: string
 ): Promise<RemoveModelFromShiftResult> {
   try {
+    const session = await getSessionFromCookies();
+    if (!session || !(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
+      return { success: false, error: "You do not have permission to modify a mistake shift." };
+    }
     const now = new Date().toISOString();
     await updateShiftModel(shiftModelRecordId, { left_at: now });
     const remaining = await listShiftModels(shiftRecordId);
@@ -1360,6 +1373,10 @@ export async function removeModelFromMistakeShift(
 }
 
 export async function endMistakeShift(shiftRecordId: string) {
+  const session = await getSessionFromCookies();
+  if (!session || !(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
+    throw new Error("Forbidden");
+  }
   const now = new Date().toISOString();
   const shiftModels = await listShiftModels(shiftRecordId);
   for (const sm of shiftModels) {

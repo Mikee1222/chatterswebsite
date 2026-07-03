@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import {
@@ -129,6 +131,7 @@ export default async function VaHomePage() {
   const vaId = user.airtableUserId ?? user.id;
   const displayName = (user.fullName ?? user.email ?? "VA").trim();
   const firstName = displayName.split(/\s+/)[0] ?? displayName;
+  const canMistakeShift = await hasPermission(user, PERMISSIONS.MISTAKES_VIEW);
   const [allShifts, shiftCardData, vaTasks, sopResume] = await Promise.all([
     getShiftsByChatter(vaId, "virtual_assistant").catch(() => []),
     getVaHomeShiftCardData(vaId),
@@ -219,6 +222,7 @@ export default async function VaHomePage() {
         todaysTasks={todaysTasks}
         overdueTasks={overdueTasks}
         recentActivity={recent}
+        canMistakeShift={canMistakeShift}
       />
     </div>
   );

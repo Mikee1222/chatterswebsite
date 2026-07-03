@@ -48,7 +48,7 @@ import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/routes";
 import { getModelT, getModelShellTitle, MODEL_NAV_HREF_TO_LABEL_KEY } from "@/lib/model-i18n";
 import type { ModelLang } from "@/lib/model-i18n";
-import type { Permission } from "@/lib/permissions";
+import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import {
   filterNavItemsByPermissions,
   getMobileMainTabDisplays,
@@ -365,7 +365,10 @@ export function MobileAppShell({
         ) : user.role === "admin" || user.role === "manager" || isCustomNavRole(user.role) ? (
           <AdminFloatingQuickActionsButton user={user} />
         ) : user.role === "model" ? null : role === "virtual_assistant" ? (
-          <VaFloatingActionButton user={user} />
+          <VaFloatingActionButton
+            user={user}
+            canMistakeShift={userPermissions.includes(PERMISSIONS.MISTAKES_VIEW)}
+          />
         ) : (
           <MobileFab user={user} />
         )}

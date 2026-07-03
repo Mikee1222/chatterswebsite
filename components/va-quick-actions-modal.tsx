@@ -18,30 +18,41 @@ const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 const SWIPE_CLOSE_PX = 100;
 
 /** VA role FAB / bottom sheet — same layout and motion as `QuickActionsModal` (chatters) / `ModelQuickActionsModal`. */
-export const VA_QUICK_ACTIONS: {
+type VaQuickAction = {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
-}[] = [
+};
+
+export const VA_QUICK_ACTIONS: VaQuickAction[] = [
   { href: ROUTES.va.shift, label: "Start mistake shift", Icon: Play },
   { href: ROUTES.va.contentAssignments, label: "Assign content to model", Icon: FilePlus2 },
   { href: ROUTES.va.weeklyAvailability, label: "Submit availability", Icon: CalendarCheck },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", Icon: Coins },
 ];
 
+/** Quick actions minus the mistake shift entry when the VA lacks the mistakes:view permission. */
+function getVaQuickActions(canMistakeShift: boolean): VaQuickAction[] {
+  if (canMistakeShift) return VA_QUICK_ACTIONS;
+  return VA_QUICK_ACTIONS.filter((a) => a.href !== ROUTES.va.shift);
+}
+
 export type VaQuickActionsModalProps = {
   open: boolean;
   onClose: () => void;
   /** Opens the VA shadowban report flow (parent should close FAB and show modal). */
   onReportShadowban?: () => void;
+  /** When false, the "Start mistake shift" action is hidden (missing mistakes:view). */
+  canMistakeShift?: boolean;
 };
 
 /**
  * Virtual assistant quick actions as a mobile bottom sheet: spring slide-up, blurred backdrop,
  * swipe-down / backdrop / ESC to close — matches chatter `QuickActionsModal`.
  */
-export function VaQuickActionsModal({ open, onClose, onReportShadowban }: VaQuickActionsModalProps) {
+export function VaQuickActionsModal({ open, onClose, onReportShadowban, canMistakeShift = true }: VaQuickActionsModalProps) {
   const dragControls = useDragControls();
+  const quickActions = getVaQuickActions(canMistakeShift);
 
   React.useEffect(() => {
     if (typeof document === "undefined" || !open) return;
@@ -129,7 +140,7 @@ export function VaQuickActionsModal({ open, onClose, onReportShadowban }: VaQuic
               </div>
 
               <ul className="min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-3 pb-2">
-                {VA_QUICK_ACTIONS.map(({ href, label, Icon }) => (
+                {quickActions.map(({ href, label, Icon }) => (
                   <li key={href + label}>
                     <Link
                       href={href}
@@ -180,6 +191,8 @@ const FAB_BTN_CLASS = cn(
 
 type VaFloatingActionButtonProps = {
   user: SessionUser;
+  /** When false, the "Start mistake shift" action is hidden (missing mistakes:view). */
+  canMistakeShift?: boolean;
 };
 
 /**
@@ -187,8 +200,9 @@ type VaFloatingActionButtonProps = {
  * - Mobile: `VaQuickActionsModal` bottom sheet.
  * - Desktop: compact menu above the button (matches `ModelQuickActionsFab`).
  */
-export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
+export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloatingActionButtonProps) {
   const [open, setOpen] = React.useState(false);
+  const quickActions = getVaQuickActions(canMistakeShift);
   const [shadowbanModalOpen, setShadowbanModalOpen] = React.useState(false);
   const [vaAccounts, setVaAccounts] = React.useState<SocialAccount[]>([]);
   const fabHiddenByOverlay = useMobileFabHidden();
@@ -237,6 +251,7 @@ export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
           open={open}
           onClose={() => setOpen(false)}
           onReportShadowban={openShadowbanReport}
+          canMistakeShift={canMistakeShift}
         />
 
         <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
@@ -273,7 +288,7 @@ export function VaFloatingActionButton({ user }: VaFloatingActionButtonProps) {
             aria-label="Quick actions"
           >
             <ul className="divide-y divide-white/5">
-              {VA_QUICK_ACTIONS.map(({ href, label, Icon }) => (
+              {quickActions.map(({ href, label, Icon }) => (
                 <li key={href + label}>
                   <Link
                     href={href}

@@ -348,6 +348,8 @@ const CHATTER_PERMISSIONS: Permission[] = [
 
 const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.VA_TASKS_VIEW,
+  // VA mistakes submission + mistake shift feature (Mistakes nav item, /va/mistakes, /va-shift).
+  PERMISSIONS.MISTAKES_VIEW,
   PERMISSIONS.MASS_LISTS_VIEW,
   PERMISSIONS.PRICING_VIEW,
   PERMISSIONS.MARKETING_VIEW,

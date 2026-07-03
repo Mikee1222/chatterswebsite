@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { listAllUsers } from "@/services/users";
@@ -16,6 +18,9 @@ import { VaMistakesClient } from "@/components/va-mistakes-client";
 export default async function VaMistakesPage() {
   const session = await getSessionFromCookies();
   if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
+    redirect(ROUTES.dashboard);
+  }
+  if (!(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
     redirect(ROUTES.dashboard);
   }
   await assertVaTypeCanAccessNavHref(session, ROUTES.va.mistakes);

@@ -43,6 +43,8 @@ type Props = {
   todaysTasks: VaHomeTaskItem[];
   overdueTasks: VaHomeTaskItem[];
   recentActivity: ActivityItem[];
+  /** When false, the "Log session" (mistake shift) link is hidden (missing mistakes:view). */
+  canMistakeShift?: boolean;
 };
 
 const sectionItem = {
@@ -202,6 +204,7 @@ export function VaHomeClient({
   todaysTasks,
   overdueTasks,
   recentActivity,
+  canMistakeShift = true,
 }: Props) {
   const reduceMotion = useReducedMotion();
   const [liveDurationMinutes, setLiveDurationMinutes] = React.useState(0);
@@ -260,14 +263,16 @@ export function VaHomeClient({
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Link
-              href={ROUTES.va.shift}
-              className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-2.5 text-sm font-medium text-white/90 transition-all hover:border-pink-400/35 hover:bg-pink-500/10"
-            >
-              <Timer className="h-4 w-4 text-pink-300" aria-hidden />
-              Log session
-              <ArrowRight className="h-4 w-4 opacity-50" aria-hidden />
-            </Link>
+            {canMistakeShift ? (
+              <Link
+                href={ROUTES.va.shift}
+                className="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/[0.07] px-4 py-2.5 text-sm font-medium text-white/90 transition-all hover:border-pink-400/35 hover:bg-pink-500/10"
+              >
+                <Timer className="h-4 w-4 text-pink-300" aria-hidden />
+                Log session
+                <ArrowRight className="h-4 w-4 opacity-50" aria-hidden />
+              </Link>
+            ) : null}
             <Link
               href={ROUTES.va.tasks}
               className="inline-flex items-center gap-2 rounded-2xl border border-pink-400/30 bg-pink-500/15 px-4 py-2.5 text-sm font-semibold text-pink-100 transition-all hover:bg-pink-500/25"
