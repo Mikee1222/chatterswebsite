@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { AUTH_COOKIE_NAME } from "@/lib/auth-config";
 import { ROUTES } from "@/lib/routes";
 import { verifySessionToken } from "@/lib/session-token";
-import { isVaReadableAdminSchedulePath } from "@/lib/va-schedule-overview-access";
+import { isVaReadableAdminSchedulePath, permissionForSharedAdminPath } from "@/lib/va-schedule-overview-access";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getLinkPageByCustomDomainFresh } from "@/services/link-pages";
 
@@ -135,7 +135,9 @@ export async function middleware(request: NextRequest) {
   }
 
   if (getEffectiveStaffRole(user) === "virtual_assistant" && pathname.startsWith("/admin")) {
-    if (!isVaReadableAdminSchedulePath(pathname)) {
+    // Schedule-overview read paths and permission-gated shared admin paths are allowed
+    // through here; the admin layout + page `hasPermission` guards enforce the actual grant.
+    if (!isVaReadableAdminSchedulePath(pathname) && !permissionForSharedAdminPath(pathname)) {
       return NextResponse.redirect(new URL(ROUTES.dashboard, request.url));
     }
   }
