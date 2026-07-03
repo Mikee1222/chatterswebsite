@@ -25,3 +25,10 @@ export function formatLiftedReportNotes(rawNotes: string): string {
   const trimmed = rawNotes.trim();
   return trimmed ? `[Restriction lifted] ${trimmed}` : "[Restriction lifted]";
 }
+
+const REPORT_NOTES_PREFIX_RE = /^\s*\[(ban reported|shadowban reported|restriction lifted)\]\s*/i;
+
+/** User-facing notes with the submit-route type prefix stripped. */
+export function stripShadowbanReportNotesPrefix(notes: string): string {
+  return notes.replace(REPORT_NOTES_PREFIX_RE, "").trim();
+}

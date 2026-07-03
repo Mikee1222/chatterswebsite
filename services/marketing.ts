@@ -618,6 +618,16 @@ export async function getAllShadowbanReports(): Promise<ShadowbanReport[]> {
   return records.map(mapShadowbanReport);
 }
 
+/** Shadowban/ban/lift reports submitted by a specific VA (reported_by_id). */
+export async function getShadowbanReportsByVA(vaId: string): Promise<ShadowbanReport[]> {
+  const vid = airtableFormulaString(vaId);
+  const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
+    filterByFormula: `{reported_by_id} = "${vid}"`,
+    sort: [{ field: "created_at", direction: "desc" }],
+  });
+  return records.map(mapShadowbanReport);
+}
+
 export async function createShadowbanReport(
   data: Partial<ShadowbanReport> & { screenshot?: { url: string }[] },
 ): Promise<ShadowbanReport> {

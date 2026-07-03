@@ -1,8 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ChevronRight, ExternalLink, Link2, CheckCircle2 } from "lucide-react";
-import type { FunnelLink, SocialAccount, SocialAccountStatus } from "@/services/marketing";
+import {
+  AlertTriangle,
+  Ban,
+  ChevronRight,
+  ClipboardList,
+  ExternalLink,
+  Link2,
+  CheckCircle2,
+  ShieldAlert,
+} from "lucide-react";
+import type {
+  FunnelLink,
+  ShadowbanReport,
+  ShadowbanReportStatus,
+  ShadowbanReportType,
+  SocialAccount,
+  SocialAccountStatus,
+} from "@/services/marketing";
+import { stripShadowbanReportNotesPrefix } from "@/lib/shadowban-helpers";
+import { formatDateTimeAthens } from "@/lib/format";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
 import { VARestrictionLiftedModal } from "@/components/va-restriction-lifted-modal";
 import { PlatformIconBadge } from "@/components/social-platform-icon";
@@ -356,6 +374,173 @@ function TrackingLinksSection({ funnels }: { funnels: FunnelLink[] }) {
   );
 }
 
+const REPORT_STATUS_CONFIG: Record<
+  ShadowbanReportStatus,
+  { label: string; badgeClass: string; cardBorder: string }
+> = {
+  pending: {
+    label: "Pending",
+    badgeClass:
+      "border-amber-500/35 bg-amber-500/10 text-amber-300 shadow-[0_0_12px_-4px_rgba(245,158,11,0.35)]",
+    cardBorder: "border-amber-500/25",
+  },
+  approved: {
+    label: "Approved",
+    badgeClass:
+      "border-emerald-500/35 bg-emerald-500/10 text-emerald-300 shadow-[0_0_12px_-4px_rgba(52,211,153,0.35)]",
+    cardBorder: "border-emerald-500/20",
+  },
+  dismissed: {
+    label: "Dismissed",
+    badgeClass: "border-white/15 bg-white/5 text-[#B8B4B8]/55",
+    cardBorder: "border-white/8 opacity-80",
+  },
+};
+
+function ReportTypeBadge({ type }: { type: ShadowbanReportType }) {
+  if (type === "lifted") {
+    return (
+      <span
+        className={cn(
+          VA_STATUS_BADGE,
+          "gap-1 normal-case tracking-normal",
+          "border-emerald-500/40 bg-emerald-500/12 text-emerald-300 shadow-[0_0_12px_-4px_rgba(52,211,153,0.35)]",
+        )}
+      >
+        <CheckCircle2 className="h-3 w-3" aria-hidden />
+        Restriction lifted
+      </span>
+    );
+  }
+  const banned = type === "banned";
+  return (
+    <span
+      className={cn(
+        VA_STATUS_BADGE,
+        "gap-1 normal-case tracking-normal",
+        banned
+          ? "border-red-500/40 bg-red-500/12 text-red-300 shadow-[0_0_12px_-4px_rgba(239,68,68,0.4)]"
+          : "border-amber-500/40 bg-amber-500/12 text-amber-300 shadow-[0_0_12px_-4px_rgba(245,158,11,0.35)]",
+      )}
+    >
+      {banned ? <Ban className="h-3 w-3" aria-hidden /> : <ShieldAlert className="h-3 w-3" aria-hidden />}
+      {banned ? "Banned" : "Shadowbanned"}
+    </span>
+  );
+}
+
+function ReportStatusBadge({ status }: { status: ShadowbanReportStatus }) {
+  const cfg = REPORT_STATUS_CONFIG[status] ?? REPORT_STATUS_CONFIG.pending;
+  return (
+    <span className={cn(VA_STATUS_BADGE, "normal-case tracking-normal", cfg.badgeClass)}>{cfg.label}</span>
+  );
+}
+
+function MyReportCard({ report }: { report: ShadowbanReport }) {
+  const plat = report.platform?.trim() || "Other";
+  const statusCfg = REPORT_STATUS_CONFIG[report.status] ?? REPORT_STATUS_CONFIG.pending;
+  const displayNotes = stripShadowbanReportNotesPrefix(report.notes);
+
+  return (
+    <article
+      className={cn(
+        VA_CARD,
+        "overflow-hidden p-0",
+        statusCfg.cardBorder,
+        report.status === "pending" && report.report_type !== "lifted" && VA_CARD_GLOW,
+        report.status === "pending" &&
+          report.report_type !== "lifted" &&
+          "before:bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.1)_0%,transparent_70%)] max-md:before:opacity-40",
+      )}
+    >
+      <div className="p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0 flex-1 space-y-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <PlatformIconBadge platform={plat} size="sm" />
+              <div className="min-w-0">
+                <p className="truncate font-semibold text-white">@{report.username}</p>
+                <p className="text-xs text-[#B8B4B8]/45">{plat}</p>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={VA_MODEL_TAG}>{report.model_name || "Creator"}</span>
+              <ReportTypeBadge type={report.report_type} />
+              <ReportStatusBadge status={report.status} />
+            </div>
+            {displayNotes ? (
+              <p className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-[#B8B4B8]/65">
+                {displayNotes}
+              </p>
+            ) : null}
+            {report.status !== "pending" ? (
+              <p className="text-xs text-[#B8B4B8]/45">
+                <span className="font-medium text-[#B8B4B8]/70">
+                  {report.status === "approved" ? "Confirmed" : "Dismissed"}
+                </span>
+                {report.reviewed_by ? (
+                  <>
+                    {" "}
+                    by <span className="text-white/70">{report.reviewed_by}</span>
+                  </>
+                ) : null}
+                {report.reviewed_at ? (
+                  <span className="ml-1 text-[#B8B4B8]/35">· {formatDateTimeAthens(report.reviewed_at)}</span>
+                ) : null}
+              </p>
+            ) : null}
+            <p className="text-xs text-[#B8B4B8]/40">
+              Submitted {report.created_at ? formatDateTimeAthens(report.created_at) : "—"}
+            </p>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MyReportsSection({
+  reports,
+  loading,
+}: {
+  reports: ShadowbanReport[];
+  loading: boolean;
+}) {
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className={cn(VA_CHAMPAGNE_DIVIDER, "flex-1")} />
+        <div className="flex shrink-0 items-center gap-2 text-[#D4AF8C]/70">
+          <ClipboardList className="h-4 w-4" aria-hidden />
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">My reports</span>
+        </div>
+        <div className={cn(VA_CHAMPAGNE_DIVIDER, "flex-1")} />
+      </div>
+      <p className="text-center text-xs text-[#B8B4B8]/45">
+        Shadowban, ban, and restriction-lift reports you&apos;ve submitted
+      </p>
+
+      {loading ? (
+        <div className={cn(VA_CARD, "px-6 py-10 text-center text-sm text-[#B8B4B8]/40")}>Loading reports…</div>
+      ) : reports.length === 0 ? (
+        <div className={cn(VA_CARD, "flex flex-col items-center px-6 py-12 text-center")}>
+          <ClipboardList className="mb-4 h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
+          <p className="font-semibold text-white">No reports yet</p>
+          <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">
+            When you report an issue or a restriction lift, it will appear here with its review status.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {reports.map((report) => (
+            <MyReportCard key={report.id} report={report} />
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
 function MarketingEmptyState() {
   return (
     <div className="flex flex-col items-center justify-center py-24 text-center">
@@ -386,6 +571,8 @@ export function VaMarketingClient() {
   const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
   const [liftedTarget, setLiftedTarget] = React.useState<SocialAccount | null>(null);
   const [pendingLiftedAccountIds, setPendingLiftedAccountIds] = React.useState<Set<string>>(() => new Set());
+  const [myReports, setMyReports] = React.useState<ShadowbanReport[]>([]);
+  const [reportsLoading, setReportsLoading] = React.useState(true);
 
   const reload = React.useCallback(async () => {
     setLoading(true);
@@ -423,10 +610,24 @@ export function VaMarketingClient() {
     }
   }, []);
 
+  const reloadReports = React.useCallback(async () => {
+    setReportsLoading(true);
+    try {
+      const res = await fetch("/api/va/marketing/reports", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { reports?: ShadowbanReport[] };
+      if (res.ok) setMyReports(data.reports ?? []);
+    } catch {
+      // read-only history; ignore load failure
+    } finally {
+      setReportsLoading(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     void reload();
     void reloadFunnels();
-  }, [reload, reloadFunnels]);
+    void reloadReports();
+  }, [reload, reloadFunnels, reloadReports]);
 
   const grouped = React.useMemo(() => groupByModel(accounts), [accounts]);
   const activeCount = accounts.filter((a) => (a.account_status ?? "active") === "active").length;
@@ -532,6 +733,8 @@ export function VaMarketingClient() {
           </div>
         )}
 
+        <MyReportsSection reports={myReports} loading={reportsLoading} />
+
         <TrackingLinksSection funnels={funnels} />
       </div>
 
@@ -540,6 +743,7 @@ export function VaMarketingClient() {
         onClose={() => {
           setShadowbanOpen(false);
           void reload();
+          void reloadReports();
         }}
         vaAccounts={accounts}
       />
@@ -550,6 +754,7 @@ export function VaMarketingClient() {
         onClose={() => {
           setLiftedTarget(null);
           void reload();
+          void reloadReports();
         }}
         onSubmitted={() => {
           if (liftedTarget) {
