@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle2, Upload, X } from "lucide-react";
 import { CHATTER_ATTACHMENT_MAX_BYTES } from "@/lib/chatter-attachment-constants";
 
@@ -40,7 +41,7 @@ export function RebillModal({
     return () => window.clearTimeout(t);
   }, [success, onClose]);
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
   const selectedModel = models.find((m) => m.id === modelId);
 
@@ -84,7 +85,7 @@ export function RebillModal({
     }
   }
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[230] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
       <button
         type="button"
@@ -186,6 +187,7 @@ export function RebillModal({
           </form>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
