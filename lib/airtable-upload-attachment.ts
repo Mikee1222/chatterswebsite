@@ -14,7 +14,7 @@ function getCredentials(): { token: string; baseId: string } {
   return { token, baseId };
 }
 
-const MAX_BYTES = 4 * 1024 * 1024;
+const DEFAULT_MAX_BYTES = 4 * 1024 * 1024;
 
 /**
  * POST JSON { contentType, filename, file: base64 } to Airtable; record must already exist.
@@ -25,10 +25,12 @@ export async function uploadAirtableAttachment(opts: {
   filename: string;
   contentType: string;
   bytes: Uint8Array;
+  maxBytes?: number;
 }): Promise<void> {
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
   const buf = Buffer.from(opts.bytes);
-  if (buf.length > MAX_BYTES) {
-    throw new Error(`File too large (max ${MAX_BYTES / (1024 * 1024)} MB).`);
+  if (buf.length > maxBytes) {
+    throw new Error(`File too large (max ${maxBytes / (1024 * 1024)} MB).`);
   }
   const { token, baseId } = getCredentials();
   const pathField = encodeURIComponent(opts.fieldName);

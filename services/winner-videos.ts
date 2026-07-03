@@ -8,6 +8,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { WINNER_VIDEO_MAX_FILE_BYTES } from "@/lib/winner-video-files";
 import {
   coerceWinnerVideoStatus,
   type WinnerVideoStatus,
@@ -38,6 +39,7 @@ export interface WinnerVideoRecord {
   recreation_link: string;
   views_at_submission: number | null;
   screenshot: WinnerVideoAttachment[];
+  video_file: WinnerVideoAttachment[];
   transcript: string;
 }
 
@@ -66,6 +68,7 @@ type WinnerVideoFields = {
   recreation_link?: string;
   views_at_submission?: number | string | null;
   screenshot?: unknown;
+  video_file?: unknown;
   transcript?: string;
 };
 
@@ -109,6 +112,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     recreation_link: String(f.recreation_link ?? ""),
     views_at_submission: coerceViews(f.views_at_submission),
     screenshot: mapAttachments(f.screenshot),
+    video_file: mapAttachments(f.video_file),
     transcript: String(f.transcript ?? ""),
   };
 }
@@ -159,7 +163,7 @@ export async function getWinnerVideoById(id: string): Promise<WinnerVideoRecord 
 export type CreateWinnerVideoInput = {
   reference_model_id?: string;
   reference_model_name: string;
-  video_link: string;
+  video_link?: string;
   note?: string;
   views_at_submission?: number | null;
   submitted_by_id: string;
@@ -172,7 +176,7 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     video_id: `wv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     reference_model_id: data.reference_model_id?.trim() || undefined,
     reference_model_name: data.reference_model_name.trim(),
-    video_link: data.video_link.trim(),
+    video_link: (data.video_link ?? "").trim(),
     note: (data.note ?? "").trim(),
     submitted_by_id: data.submitted_by_id.trim(),
     submitted_by_name: data.submitted_by_name.trim(),
@@ -196,6 +200,27 @@ export async function uploadWinnerVideoScreenshot(
       bytes: file.bytes,
     });
   }
+}
+
+export async function uploadWinnerVideoFile(
+  id: string,
+  files: Array<{ name: string; type: string; bytes: Uint8Array }>,
+): Promise<void> {
+  for (const file of files) {
+    await uploadAirtableAttachment({
+      recordId: id,
+      fieldName: "video_file",
+      filename: file.name,
+      contentType: file.type,
+      bytes: file.bytes,
+      maxBytes: WINNER_VIDEO_MAX_FILE_BYTES,
+    });
+  }
+}
+
+export function getWinnerVideoFileUrl(video: WinnerVideoRecord): string | null {
+  const url = video.video_file[0]?.url?.trim();
+  return url || null;
 }
 
 export type ApproveWinnerVideoInput = {
@@ -373,8 +398,3 @@ export async function updateWinnerVideoTranscript(id: string, transcript: string
   await updateRecord(TABLE, id, { transcript: text });
 }
 
-export async function transcribeAndSaveWinnerVideo(id: string, videoLink: string): Promise<void> {
-  const result = await transcribeVideoUrl(videoLink);
-  if (!result) return;
-  await updateWinnerVideoTranscript(id, result.transcript);
-}

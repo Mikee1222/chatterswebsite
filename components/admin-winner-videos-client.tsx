@@ -30,9 +30,8 @@ import {
   WinnerVideoKanbanBoard,
   WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
-  WinnerVideoTranscriptBlock,
+  WinnerVideoTranscribeSection,
   useWinnerVideoCopy,
-  useWinnerVideoTranscriptPolling,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
@@ -108,7 +107,9 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, filterDateRange, filterDateFrom, filterDateTo]);
 
-  useWinnerVideoTranscriptPolling(videos, reload);
+  function handleTranscriptUpdated(id: string, transcript: string) {
+    setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, transcript } : v)));
+  }
 
   async function patchVideo(id: string, body: Record<string, unknown>) {
     setPendingId(id);
@@ -178,6 +179,7 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
               addToast={addToast}
               onRefresh={() => void reload()}
               refreshing={loading}
+              onTranscriptUpdated={handleTranscriptUpdated}
             />
           ) : (
             videos.map((v) => (
@@ -257,7 +259,7 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
                   </a>
                 ) : null}
                 {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
-                <WinnerVideoTranscriptBlock video={v} addToast={addToast} />
+                <WinnerVideoTranscribeSection video={v} addToast={addToast} onTranscriptUpdated={handleTranscriptUpdated} />
                 {v.views_at_submission != null ? (
                   <p className="mt-1 text-xs text-[#B8B4B8]/50">Views: {v.views_at_submission.toLocaleString()}</p>
                 ) : null}
@@ -285,6 +287,12 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
                 {v.screenshot.length > 0 ? (
                   <div className="mt-3">
                     <AttachmentLinks attachments={v.screenshot} />
+                  </div>
+                ) : null}
+                {v.video_file.length > 0 ? (
+                  <div className="mt-3">
+                    <p className="mb-1 text-xs text-[#B8B4B8]/50">Video file</p>
+                    <AttachmentLinks attachments={v.video_file} />
                   </div>
                 ) : null}
                 {pendingId === v.id ? (

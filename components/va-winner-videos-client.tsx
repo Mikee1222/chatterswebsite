@@ -27,14 +27,14 @@ import {
   WinnerVideoKanbanBoard,
   WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
-  WinnerVideoTranscriptBlock,
+  WinnerVideoTranscribeSection,
   useWinnerVideoCopy,
-  useWinnerVideoTranscriptPolling,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import { filterWinnerVideosClient, type WinnerVideoDateRange, type WinnerVideoViewMode } from "@/lib/winner-videos-filters";
+import { WINNER_VIDEO_ACCEPT, WINNER_VIDEO_MAX_FILE_BYTES } from "@/lib/winner-video-files";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
 
@@ -59,6 +59,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
   const [note, setNote] = React.useState("");
   const [views, setViews] = React.useState("");
   const [screenshotFiles, setScreenshotFiles] = React.useState<File[]>([]);
+  const [videoFile, setVideoFile] = React.useState<File[]>([]);
 
   React.useEffect(() => setSubmissions(initialSubmissions), [initialSubmissions]);
 
@@ -85,6 +86,10 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
     [gunzoModels, referenceModelId],
   );
 
+  function handleTranscriptUpdated(id: string, transcript: string) {
+    setSubmissions((prev) => prev.map((v) => (v.id === id ? { ...v, transcript } : v)));
+  }
+
   async function reload() {
     setLoading(true);
     try {
@@ -96,12 +101,14 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
     }
   }
 
-  useWinnerVideoTranscriptPolling(submissions, reload);
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!referenceModelId || !selectedModelName.trim() || !videoLink.trim()) {
-      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing fields", "Reference model and video link are required.", "high"));
+    if (!referenceModelId || !selectedModelName.trim()) {
+      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing fields", "Reference model is required.", "high"));
+      return;
+    }
+    if (videoFile.length === 0) {
+      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing video", "A video file is required.", "high"));
       return;
     }
     setSaving(true);
@@ -123,6 +130,25 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
         addToast(winnerVideoLocalToast(`wv-err-${Date.now()}`, "Submit failed", data.error ?? "Could not submit video", "high"));
         return;
       }
+      const videoFd = new FormData();
+      videoFd.append("video_file", videoFile[0]!);
+      const videoRes = await fetch(`/api/winner-videos/${encodeURIComponent(data.video.id)}/video-file`, {
+        method: "POST",
+        body: videoFd,
+        credentials: "include",
+      });
+      if (!videoRes.ok) {
+        const videoErr = (await videoRes.json()) as { error?: string };
+        addToast(
+          winnerVideoLocalToast(
+            `wv-vid-err-${Date.now()}`,
+            "Video upload failed",
+            videoErr.error ?? "Could not upload video file",
+            "high",
+          ),
+        );
+        return;
+      }
       if (screenshotFiles.length > 0) {
         const fd = new FormData();
         for (const f of screenshotFiles) fd.append("screenshot", f);
@@ -137,6 +163,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       setNote("");
       setViews("");
       setScreenshotFiles([]);
+      setVideoFile([]);
       await reload();
       addToast(winnerVideoLocalToast(`wv-ok-${Date.now()}`, "Submitted", "Your winner video was logged for review.", "normal"));
     } finally {
@@ -155,7 +182,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
         </p>
       </div>
 
-      <ReviewFormSection title="Submit winner video" description="Optional view count and screenshot help reviewers.">
+      <ReviewFormSection title="Submit winner video" description="Upload the reference video file. Optional link and screenshot help reviewers.">
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
             <ReviewFieldLabel>Reference model</ReviewFieldLabel>
@@ -168,7 +195,19 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
             />
           </div>
           <div>
-            <ReviewFieldLabel>Video link</ReviewFieldLabel>
+            <ReviewFieldLabel>Video file</ReviewFieldLabel>
+            <ManagerReviewFileDropzone
+              files={videoFile}
+              onChange={setVideoFile}
+              accept={WINNER_VIDEO_ACCEPT}
+              multiple={false}
+            />
+            <p className="mt-1 text-xs text-[#B8B4B8]/40">
+              MP4, MOV, WebM — max {WINNER_VIDEO_MAX_FILE_BYTES / (1024 * 1024)} MB
+            </p>
+          </div>
+          <div>
+            <ReviewFieldLabel>Video link (optional)</ReviewFieldLabel>
             <input
               value={videoLink}
               onChange={(e) => setVideoLink(e.target.value)}
@@ -215,6 +254,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
                 setNote("");
                 setViews("");
                 setScreenshotFiles([]);
+                setVideoFile([]);
               }}
             >
               Clear
@@ -270,6 +310,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
             addToast={addToast}
             onRefresh={() => void reload()}
             refreshing={loading}
+            onTranscriptUpdated={handleTranscriptUpdated}
           />
         ) : (
           filteredSubmissions.map((v) => (
@@ -296,7 +337,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
                 </a>
               ) : null}
               {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
-              <WinnerVideoTranscriptBlock video={v} addToast={addToast} />
+              <WinnerVideoTranscribeSection video={v} addToast={addToast} onTranscriptUpdated={handleTranscriptUpdated} />
               {v.views_at_submission != null ? (
                 <p className="mt-1 text-xs text-[#B8B4B8]/50">Views at submission: {v.views_at_submission.toLocaleString()}</p>
               ) : null}
@@ -314,6 +355,12 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
               {v.screenshot.length > 0 ? (
                 <div className="mt-3">
                   <AttachmentLinks attachments={v.screenshot} />
+                </div>
+              ) : null}
+              {v.video_file.length > 0 ? (
+                <div className="mt-3">
+                  <p className="mb-1 text-xs text-[#B8B4B8]/50">Video file</p>
+                  <AttachmentLinks attachments={v.video_file} />
                 </div>
               ) : null}
             </FindingCard>
