@@ -1,6 +1,7 @@
 import { listAllRecords, createRecord, getRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
-import type { ModelScheduleItem, ModelScheduleItemType, ModelTimeOffRequest } from "@/types";
+import { devLog } from "@/lib/dev-log";
+import type { ModelScheduleItem, ModelScheduleItemType, ModelTimeOffRequest, VaTaskStatus } from "@/types";
 
 const TABLE = "model_schedule";
 
@@ -43,6 +44,7 @@ function asItemType(raw: unknown): ModelScheduleItemType {
     "meeting",
     "rest",
     "time_off",
+    "va_content",
     "other",
   ];
   return allowed.includes(v as ModelScheduleItemType) ? (v as ModelScheduleItemType) : "other";
@@ -143,6 +145,92 @@ export async function createModelScheduleItemForCustom(
   if (creator) payload.created_by = [creator];
   const rec = await createRecord<Fields>(TABLE, payload as Fields);
   return mapRecord(rec as AirtableRecord<Fields>);
+}
+
+const VA_TASK_ID_PREFIX = "va_task_id:";
+
+function parseDueForSchedule(iso: string): { date: string; start_time: string; end_time: string } {
+  const d = new Date(iso.trim());
+  if (Number.isNaN(d.getTime())) return { date: "", start_time: "", end_time: "" };
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const date = `${y}-${m}-${day}`;
+  const h = d.getHours();
+  const mi = d.getMinutes();
+  const sec = d.getSeconds();
+  const isAllDay = h === 0 && mi === 0 && sec === 0;
+  if (isAllDay) return { date, start_time: "", end_time: "" };
+  const hh = String(h).padStart(2, "0");
+  const mm = String(mi).padStart(2, "0");
+  return { date, start_time: `${hh}:${mm}`, end_time: "" };
+}
+
+export type VaTaskScheduleSyncInput = {
+  taskId: string;
+  title: string;
+  description?: string;
+  due_date?: string | null;
+  assigned_to_ids: string[];
+  assigned_model_ids: string[];
+  assigned_model_names?: string[];
+  status?: VaTaskStatus;
+  assigned_by_ids?: string[];
+};
+
+/** Best-effort: one `model_schedule` row per assigned model (`item_type` = va_content). */
+export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyncInput): Promise<void> {
+  const dueRaw = input.due_date?.trim();
+  if (!dueRaw) return;
+  const { date, start_time, end_time } = parseDueForSchedule(dueRaw);
+  if (!date) return;
+
+  const modelIds = [...new Set((input.assigned_model_ids ?? []).map((id) => id.trim()).filter(Boolean))];
+  if (modelIds.length === 0) return;
+
+  const vaChatterId = (input.assigned_to_ids ?? []).map((id) => id.trim()).find(Boolean) ?? null;
+  const statusMap: Record<VaTaskStatus, string> = {
+    pending: "scheduled",
+    in_progress: "scheduled",
+    done: "completed",
+    skipped: "completed",
+  };
+  const schedStatus = statusMap[input.status ?? "pending"] ?? "scheduled";
+
+  const detailsLines = [`${VA_TASK_ID_PREFIX}${input.taskId}`];
+  const desc = (input.description ?? "").trim();
+  if (desc) detailsLines.push(desc);
+  const details = detailsLines.join("\n");
+
+  const nameByModelId = new Map<string, string>();
+  (input.assigned_model_ids ?? []).forEach((id, i) => {
+    const name = (input.assigned_model_names ?? [])[i]?.trim();
+    if (name) nameByModelId.set(id, name);
+  });
+
+  const creator = input.assigned_by_ids?.map((id) => id.trim()).find(Boolean);
+
+  for (const modelId of modelIds) {
+    try {
+      const payload: Record<string, unknown> = {
+        model: [modelId],
+        title: input.title.trim() || "VA task",
+        item_type: "va_content",
+        date,
+        start_time,
+        end_time,
+        details,
+        status: schedStatus,
+      };
+      const modelName = nameByModelId.get(modelId);
+      if (modelName) payload.model_name = modelName;
+      if (vaChatterId) payload.chatter = [vaChatterId];
+      if (creator) payload.created_by = [creator];
+      await createRecord<Fields>(TABLE, payload as Fields);
+    } catch (err) {
+      devLog("[va_tasks] model_schedule sync failed", { modelId, taskId: input.taskId, err });
+    }
+  }
 }
 
 /** Single schedule row for a multi-day absence (`date` = first day; range in `details`). */

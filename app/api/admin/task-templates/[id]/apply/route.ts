@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getNotificationUserId } from "@/lib/notification-user";
-import { applyTemplateToTask } from "@/services/task-templates";
+import { applyTemplateToTask, type ApplyTemplateInput } from "@/services/task-templates";
 import type { TaskPhase } from "@/services/task-phases";
 
 type Ctx = { params: Promise<{ id: string }> };
@@ -28,6 +28,11 @@ export async function POST(req: Request, ctx: Ctx) {
     region?: TaskPhase["region"];
     priority?: "low" | "normal" | "high" | "urgent";
     reminderMinutesBefore?: number | null;
+    is_recurring?: boolean;
+    recurrence_type?: string | null;
+    recurrence_days?: string[];
+    recurrence_interval?: number | null;
+    recurrence_end_date?: string | null;
   };
   if (!data.assignedVaId?.trim()) {
     return NextResponse.json({ error: "assignedVaId is required" }, { status: 400 });
@@ -52,6 +57,11 @@ export async function POST(req: Request, ctx: Ctx) {
       assignedById: actorId,
       priority: data.priority,
       reminderMinutesBefore: data.reminderMinutesBefore,
+      is_recurring: Boolean(data.is_recurring),
+      recurrence_type: data.recurrence_type as ApplyTemplateInput["recurrence_type"],
+      recurrence_days: data.recurrence_days as ApplyTemplateInput["recurrence_days"],
+      recurrence_interval: data.recurrence_interval,
+      recurrence_end_date: data.recurrence_end_date,
     });
     return NextResponse.json(result);
   } catch (e) {

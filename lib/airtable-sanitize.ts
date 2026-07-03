@@ -158,6 +158,7 @@ const SELECT_FIELD_ALLOWED_OPTIONS: Record<string, Set<string>> = {
     "meeting",
     "rest",
     "time_off",
+    "va_content",
     "other",
   ]),
   custom_type: new Set([

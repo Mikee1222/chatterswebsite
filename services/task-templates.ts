@@ -298,6 +298,11 @@ export type ApplyTemplateInput = {
   assignedById?: string;
   priority?: VaTaskRecord["priority"];
   reminderMinutesBefore?: number | null;
+  is_recurring?: boolean;
+  recurrence_type?: VaTaskRecord["recurrence_type"];
+  recurrence_days?: VaTaskRecord["recurrence_days"];
+  recurrence_interval?: number | null;
+  recurrence_end_date?: string | null;
 };
 
 export type ApplyTemplateResult = {
@@ -340,6 +345,11 @@ export async function applyTemplateToTask(
     priority: input.priority ?? "normal",
     due_date: input.dueDate ?? undefined,
     reminder_minutes_before: input.reminderMinutesBefore ?? undefined,
+    is_recurring: Boolean(input.is_recurring),
+    recurrence_type: input.is_recurring ? input.recurrence_type || undefined : undefined,
+    recurrence_days: input.is_recurring ? input.recurrence_days : undefined,
+    recurrence_interval: input.is_recurring ? input.recurrence_interval ?? undefined : undefined,
+    recurrence_end_date: input.is_recurring ? input.recurrence_end_date ?? undefined : undefined,
   });
 
   for (const phaseTpl of template.phases) {

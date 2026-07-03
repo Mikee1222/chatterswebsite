@@ -13,8 +13,7 @@ import type { TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
-import { DISPLAY_SERIF_FAMILY } from "@/lib/fonts/display-serif";
-import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
@@ -36,7 +35,7 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 
 const STATUSES: VaTaskStatus[] = ["pending", "in_progress", "done", "skipped"];
 const PRIORITIES: VaTaskPriority[] = ["low", "normal", "high", "urgent"];
-const RECURRENCE_TYPES: VaRecurrenceType[] = ["daily", "weekly", "monthly", "custom"];
+const RECURRENCE_TYPES: VaRecurrenceType[] = ["daily", "weekly", "monthly"];
 const WEEKDAYS: VaRecurrenceDay[] = [
   "Monday",
   "Tuesday",
@@ -124,7 +123,7 @@ function SectionLabel({ icon, label }: { icon: string; label: string }) {
     <div className="mb-4 flex items-center gap-2">
       {icon ? <span className="text-base">{icon}</span> : null}
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">{label}</p>
-      <div className="h-px flex-1 bg-[rgba(255,255,255,0.06)]" />
+      <div className={cn(VA_CHAMPAGNE_DIVIDER, "flex-1")} />
     </div>
   );
 }
@@ -143,7 +142,7 @@ const ADMIN_MODAL_INPUT =
   "w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#151315] px-4 py-3 text-sm text-[#B8B4B8] placeholder:text-[#B8B4B8]/30 outline-none transition focus:border-[#FF1493]/45 focus:ring-1 focus:ring-[#FF1493]/15";
 
 function Divider() {
-  return <div className="h-px bg-[rgba(255,255,255,0.06)]" />;
+  return <div className={cn(VA_CHAMPAGNE_DIVIDER, "h-px")} />;
 }
 
 function ModalToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
@@ -197,10 +196,10 @@ function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
   const k = (priority || "normal").toLowerCase();
   const variant =
     k === "urgent"
-      ? "border-red-500/30 bg-red-500/10 text-red-300"
+      ? "border-red-500/40 bg-red-500/12 text-red-300 shadow-[0_0_14px_-4px_rgba(239,68,68,0.4)]"
       : k === "high"
-        ? "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#D4AF8C]"
-        : "border-white/10 bg-white/[0.04] text-[#B8B4B8]/70";
+        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C] shadow-[0_0_14px_-4px_rgba(212,175,140,0.35)]"
+        : "border-white/12 bg-white/[0.05] text-[#B8B4B8]/70";
   return (
     <span className={cn(VA_STATUS_BADGE, variant)}>{priority}</span>
   );
@@ -302,12 +301,12 @@ function StatusBadge({ status }: { status: VaTaskStatus }) {
   const k = (status || "").toLowerCase();
   const variant =
     k === "pending"
-      ? "border-white/12 bg-white/[0.04] text-[#B8B4B8]/65"
+      ? "border-white/14 bg-white/[0.05] text-[#B8B4B8]/70"
       : k === "done"
-        ? "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#D4AF8C]"
+        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C] shadow-[0_0_14px_-4px_rgba(212,175,140,0.35)]"
         : k === "skipped"
-          ? "border-red-500/30 bg-red-500/10 text-red-300"
-          : "border-[#FF1493]/30 bg-[#FF1493]/10 text-[#FF1493]";
+          ? "border-red-500/35 bg-red-500/12 text-red-300"
+          : "border-[#FF1493]/35 bg-[#FF1493]/12 text-[#FF1493] shadow-[0_0_14px_-4px_rgba(255,20,147,0.35)]";
   return (
     <span className={cn(VA_STATUS_BADGE, variant)}>{status.replace(/_/g, " ")}</span>
   );
@@ -702,6 +701,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
             priority,
             reminderMinutesBefore:
               reminderMinutes != null && Number.isFinite(reminderMinutes) ? reminderMinutes : null,
+            is_recurring: isRecurring,
+            recurrence_type: isRecurring ? recurrenceType || null : null,
+            recurrence_days: isRecurring ? recurrenceDays : [],
+            recurrence_interval: isRecurring ? interval : null,
+            recurrence_end_date: isRecurring && recurrenceEnd.trim() ? recurrenceEnd.trim() : null,
           }),
         });
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -975,7 +979,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                             "text-lg font-semibold leading-snug text-white",
                             task.status === "done" && "text-[#B8B4B8]/45 line-through"
                           )}
-                          style={{ fontFamily: DISPLAY_SERIF_FAMILY }}
                         >
                           {task.title}
                         </h3>
@@ -1210,7 +1213,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#D4AF8C]/65">Administration</p>
-          <h1 className="mt-2 text-[36px] font-semibold leading-tight tracking-tight text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+          <h1 className="mt-2 text-[36px] font-semibold leading-tight tracking-tight text-white">
             VA Tasks
           </h1>
           <p className="mt-2 text-sm text-[#B8B4B8]/55">Assign and manage tasks for your virtual assistants</p>
@@ -1218,7 +1221,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-[#FF1493] px-5 py-2.5 text-sm font-semibold text-white shadow-[0_8px_28px_-8px_rgba(255,20,147,0.55)] transition hover:brightness-110"
+          className={cn(VA_BTN_PRIMARY, "inline-flex shrink-0 items-center justify-center gap-2 px-5 py-2.5")}
         >
           <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
           New task
@@ -1234,7 +1237,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         ].map((s) => (
           <div key={s.label} className={cn(VA_CARD, "p-5 hover:translate-y-0")}>
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B8B4B8]/45">{s.label}</p>
-            <p className={cn("mt-2 text-3xl font-semibold tabular-nums", s.color)} style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+            <p className={cn("mt-2 text-3xl font-semibold tabular-nums", s.color)}>
               {s.value}
             </p>
           </div>
@@ -1283,11 +1286,12 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
       </div>
 
       {regularTasks.length === 0 && recurringGroups.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#151315] px-6 py-16 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-[#D4AF8C]/20 bg-[#D4AF8C]/8 text-[#D4AF8C]/60">
-            <ClipboardList className="h-7 w-7" aria-hidden />
-          </div>
-          <p className="mt-5 text-base font-semibold text-white/90" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>No tasks match</p>
+        <div className={cn(VA_CARD, "flex flex-col items-center justify-center px-6 py-16 text-center")}>
+          <svg className="mb-5 h-14 w-14 text-[#D4AF8C]/35" viewBox="0 0 64 64" fill="none" aria-hidden>
+            <rect x="12" y="10" width="40" height="46" rx="5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M22 24h20M22 34h14M22 44h18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <p className="text-base font-semibold text-white/90">No tasks match</p>
           <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">Adjust search or filters, or create a new task.</p>
         </div>
       ) : (
@@ -1384,7 +1388,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm">
               <div>
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">VA tasks</p>
-                <h2 className="text-xl font-semibold text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+                <h2 className="text-xl font-semibold text-white">
                   {editingId ? "Edit task" : "New task"}
                 </h2>
               </div>
@@ -1622,18 +1626,29 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                     />
                   </div>
                   <div className="flex items-center gap-3">
-                    {createMode === "scratch" || editingId ? (
-                      <>
-                        <ModalToggle value={isRecurring} onChange={setIsRecurring} />
-                        <span className="text-sm text-white/60">Recurring task</span>
-                      </>
-                    ) : null}
+                    <ModalToggle value={isRecurring} onChange={setIsRecurring} />
+                    <span className="text-sm text-white/60">Repeat this task</span>
                   </div>
-                  {isRecurring && (createMode === "scratch" || editingId) ? (
-                    <div className="space-y-3 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-4">
+                  <div className="va-recurrence-panel" data-open={isRecurring ? "true" : "false"}>
+                    <div className={cn(VA_CARD, "mt-3 space-y-3 p-4")}>
                       <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="mb-1.5 block text-xs text-white/40">Repeat every</label>
+                          <label className="mb-1.5 block text-xs text-white/40">Frequency</label>
+                          <select
+                            value={recurrenceType}
+                            onChange={(e) => setRecurrenceType(e.target.value as VaRecurrenceType | "")}
+                            className={ADMIN_MODAL_INPUT}
+                          >
+                            <option value="">Select…</option>
+                            {RECURRENCE_TYPES.map((r) => (
+                              <option key={r} value={r}>
+                                {r.charAt(0).toUpperCase() + r.slice(1)}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1.5 block text-xs text-white/40">Every N</label>
                           <div className="flex items-center gap-2">
                             <input
                               type="number"
@@ -1643,7 +1658,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                               onChange={(e) =>
                                 setRecurrenceInterval(Math.max(1, Math.min(99, Number(e.target.value) || 1)))
                               }
-                              className="w-16 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-sm text-white focus:outline-none"
+                              className="w-16 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-center text-sm text-white focus:outline-none focus:border-[#D4AF8C]/40"
                             />
                             <span className="text-sm text-white/40">
                               {recurrenceType === "daily"
@@ -1658,35 +1673,14 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                     ? recurrenceIntervalNum === 1
                                       ? "month"
                                       : "months"
-                                    : recurrenceType === "custom"
-                                      ? recurrenceIntervalNum === 1
-                                        ? "time"
-                                        : "times"
-                                      : recurrenceIntervalNum === 1
-                                        ? "day"
-                                        : "days"}
+                                    : "interval"}
                             </span>
                           </div>
-                        </div>
-                        <div>
-                          <label className="mb-1.5 block text-xs text-white/40">Type</label>
-                          <select
-                            value={recurrenceType}
-                            onChange={(e) => setRecurrenceType(e.target.value as VaRecurrenceType | "")}
-                            className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white focus:outline-none"
-                          >
-                            <option value="">—</option>
-                            {RECURRENCE_TYPES.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
-                            ))}
-                          </select>
                         </div>
                       </div>
                       {recurrenceType === "weekly" ? (
                         <div>
-                          <label className="mb-2 block text-xs text-white/40">Days</label>
+                          <label className="mb-2 block text-xs text-white/40">Days of week</label>
                           <div className="flex flex-wrap gap-1.5">
                             {WEEKDAY_SHORT.map((day, i) => {
                               const on = recurrenceDays.includes(WEEKDAYS[i]);
@@ -1698,7 +1692,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   className={cn(
                                     "h-10 w-10 rounded-xl border text-xs font-semibold transition-all",
                                     on
-                                      ? "border-pink-500/30 bg-pink-500/20 text-pink-400"
+                                      ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#D4AF8C] shadow-[0_0_12px_-4px_rgba(212,175,140,0.35)]"
                                       : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10",
                                   )}
                                 >
@@ -1715,11 +1709,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                           type="date"
                           value={recurrenceEnd}
                           onChange={(e) => setRecurrenceEnd(e.target.value)}
-                          className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none"
+                          className={cn(ADMIN_MODAL_INPUT, "[color-scheme:dark]")}
                         />
                       </div>
                     </div>
-                  ) : null}
+                  </div>
                 </div>
               </div>
 
@@ -1908,7 +1902,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                       ? !selectedTemplateId
                       : !title.trim())
                 }
-                className="flex-1 rounded-xl bg-[#FF1493] py-3.5 text-base font-semibold text-white shadow-[0_8px_28px_-8px_rgba(255,20,147,0.55)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-40"
+                className={cn(VA_BTN_PRIMARY, "flex-1 py-3.5 text-base active:scale-[0.99] disabled:opacity-40")}
               >
                 {saving
                   ? "Saving…"
@@ -1921,7 +1915,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
               <button
                 type="button"
                 onClick={handleCloseModal}
-                className="rounded-xl border border-[#1f1f1f] bg-[#141414] px-5 py-3.5 text-white/50 transition hover:border-white/20 hover:text-white"
+                className={cn(VA_BTN_SECONDARY, "border-white/15 bg-[#141414] text-white/50 hover:border-white/20 hover:text-white")}
               >
                 Cancel
               </button>

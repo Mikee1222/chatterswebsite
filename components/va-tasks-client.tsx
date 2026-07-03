@@ -29,8 +29,7 @@ import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { SocialAccount } from "@/services/marketing";
 import { cn } from "@/lib/utils";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
-import { DISPLAY_SERIF_FAMILY } from "@/lib/fonts/display-serif";
-import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
 
@@ -80,10 +79,10 @@ function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
   const k = (priority || "normal").toLowerCase();
   const variant =
     k === "urgent"
-      ? "border-red-500/40 bg-red-500/10 text-red-300"
+      ? "border-red-500/45 bg-red-500/15 text-red-200 shadow-[0_0_14px_-4px_rgba(239,68,68,0.45)]"
       : k === "high"
-        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/10 text-[#D4AF8C]"
-        : "border-white/10 bg-white/[0.04] text-[#B8B4B8]/70";
+        ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/12 text-[#D4AF8C] shadow-[0_0_14px_-4px_rgba(212,175,140,0.35)]"
+        : "border-white/12 bg-white/[0.05] text-[#B8B4B8]/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]";
   return (
     <span className={cn(VA_STATUS_BADGE, variant)}>{priority}</span>
   );
@@ -93,12 +92,12 @@ function TaskStatusBadge({ status }: { status: VaTaskStatus }) {
   const k = (status || "").toLowerCase();
   const variant =
     k === "pending"
-      ? "border-white/12 bg-white/[0.04] text-[#B8B4B8]/65"
+      ? "border-white/14 bg-white/[0.05] text-[#B8B4B8]/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]"
       : k === "done"
-        ? "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#D4AF8C]"
+        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C] shadow-[0_0_14px_-4px_rgba(212,175,140,0.35)]"
         : k === "skipped"
-          ? "border-red-500/35 bg-red-500/10 text-red-300"
-          : "border-[#FF1493]/35 bg-[#FF1493]/10 text-[#FF1493]";
+          ? "border-red-500/40 bg-red-500/12 text-red-300 shadow-[0_0_14px_-4px_rgba(239,68,68,0.35)]"
+          : "border-[#FF1493]/40 bg-[#FF1493]/12 text-[#FF1493] shadow-[0_0_16px_-4px_rgba(255,20,147,0.4)]";
   return (
     <span className={cn(VA_STATUS_BADGE, variant)}>{status.replace(/_/g, " ")}</span>
   );
@@ -474,7 +473,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
         className={cn(
           VA_CARD,
           "overflow-hidden",
-          expanded && "border-[#FF1493]/35 shadow-[0_0_0_1px_rgba(255,20,147,0.12)]",
+          expanded && cn("border-[#FF1493]/35", VA_CARD_GLOW),
           task.status === "done" && !expanded && "opacity-70",
         )}
       >
@@ -498,7 +497,6 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 "text-lg font-semibold leading-snug text-white",
                 task.status === "done" && "text-[#B8B4B8]/35 line-through",
               )}
-              style={{ fontFamily: DISPLAY_SERIF_FAMILY }}
             >
               {task.title}
             </h3>
@@ -523,7 +521,6 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 "flex items-center gap-1.5 text-xs tabular-nums",
                 overdue ? "font-medium text-red-400" : "text-[#B8B4B8]/45",
               )}
-              style={{ fontFamily: DISPLAY_SERIF_FAMILY }}
             >
               <Calendar className="h-3.5 w-3.5 shrink-0" aria-hidden />
               <span>
@@ -549,7 +546,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 onClick={(e) => void handleMarkComplete(task, e)}
                 disabled={!onShift || completing === task.id}
                 title={!onShift ? "Start your shift to mark tasks done" : undefined}
-                className="shrink-0 rounded-lg border border-[#D4AF8C]/35 bg-[#D4AF8C]/10 px-4 py-2 text-sm font-semibold text-[#D4AF8C] transition hover:bg-[#D4AF8C]/18 disabled:cursor-not-allowed disabled:opacity-40"
+                className={cn(VA_BTN_SECONDARY, "shrink-0 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40")}
               >
                 {completing === task.id ? "Saving…" : "Mark done"}
               </button>
@@ -565,7 +562,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
         >
           <div className="border-t border-[rgba(255,255,255,0.06)]">
             {task.description ? (
-              <div className="border-t border-[rgba(255,255,255,0.06)] px-5 py-5">
+              <div className="px-5 py-5">
+                <div className={cn(VA_CHAMPAGNE_DIVIDER, "mb-4")} />
                 <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/60">Description</p>
                 <p className="text-sm leading-relaxed text-[#B8B4B8]">{task.description}</p>
               </div>
@@ -706,10 +704,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0A]">
+    <div className="min-h-screen">
       {/* ── Shift bar ── */}
       {onShift ? (
-        <div className="border-b border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]">
+        <div className={cn("border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]", VA_CARD_GLOW)}>
           <div className="mx-auto max-w-5xl space-y-3 px-4 py-3.5 md:px-6">
             {shiftErr ? (
               <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
@@ -723,10 +721,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                   <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#D4AF8C]" />
                 </span>
                 <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]">On shift</span>
-                <span
-                  className="text-base tabular-nums tracking-tight text-white/90"
-                  style={{ fontFamily: DISPLAY_SERIF_FAMILY }}
-                >
+                <span className="text-base tabular-nums tracking-tight text-white/90">
                   {shiftDuration}
                 </span>
               </div>
@@ -742,7 +737,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
           </div>
         </div>
       ) : (
-        <div className="mb-8 w-full border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]">
+        <div className={cn("mb-8 w-full border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]", VA_CARD_GLOW)}>
           <div className="mx-auto max-w-5xl space-y-3 px-4 py-6 md:px-6">
             {shiftErr ? (
               <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
@@ -755,7 +750,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                   <span className="h-2 w-2 rounded-full bg-[#D4AF8C] shadow-[0_0_8px_rgba(212,175,140,0.5)]" />
                   <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">Ready</span>
                 </div>
-                <h2 className="text-xl font-semibold text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+                <h2 className="text-xl font-semibold text-white">
                   Begin your shift
                 </h2>
                 <p className="mt-1 text-sm text-[#B8B4B8]/65">Clock in to unlock your task checklist</p>
@@ -764,7 +759,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 type="button"
                 onClick={() => void handleStartShift()}
                 disabled={shiftBusy || shiftLoading}
-                className="flex items-center gap-2 rounded-xl bg-[#FF1493] px-8 py-3.5 text-base font-semibold text-white shadow-[0_8px_32px_-8px_rgba(255,20,147,0.55)] transition hover:brightness-110 disabled:opacity-40"
+                className={cn(VA_BTN_PRIMARY, "flex items-center gap-2 px-8 py-3.5 text-base disabled:opacity-40")}
               >
                 <Play className="h-5 w-5 fill-white" />
                 {shiftBusy ? "Starting…" : "Start shift"}
@@ -777,7 +772,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 md:px-6">
         {/* ── Page header ── */}
         <div>
-          <h1 className="text-[32px] font-semibold tracking-tight text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+          <h1 className="text-[32px] font-semibold tracking-tight text-white">
             My tasks
           </h1>
           <div className="mt-4 flex flex-wrap gap-2">
@@ -856,11 +851,12 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
           ) : null}
 
           {tasks.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-24 text-center">
-              <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/8">
-                <Check className="h-8 w-8 text-[#D4AF8C]" strokeWidth={2.5} />
-              </div>
-              <p className="text-xl font-semibold text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+            <div className="flex flex-col items-center justify-center py-28 text-center">
+              <svg className="mb-6 h-20 w-20 text-[#D4AF8C]/35" viewBox="0 0 64 64" fill="none" aria-hidden>
+                <circle cx="32" cy="32" r="28" stroke="currentColor" strokeWidth="1.5" opacity="0.35" />
+                <path d="M20 34l8 8 16-18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <p className="text-xl font-semibold text-white">
                 Your slate is clear
               </p>
               <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">
@@ -868,9 +864,12 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
               </p>
             </div>
           ) : regularTasks.length === 0 && recurringGroups.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-center">
-              <ClipboardList className="mb-4 h-10 w-10 text-[#D4AF8C]/25" />
-              <p className="text-base font-semibold text-[#B8B4B8]/80" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <svg className="mb-5 h-14 w-14 text-[#D4AF8C]/30" viewBox="0 0 64 64" fill="none" aria-hidden>
+                <rect x="14" y="12" width="36" height="44" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M22 24h20M22 32h14M22 40h18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <p className="text-base font-semibold text-[#B8B4B8]/80">
                 Nothing matches
               </p>
               <p className="mt-1 text-sm text-[#B8B4B8]/45">Try a different filter or search term.</p>
@@ -930,14 +929,14 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#151315] shadow-2xl"
+            className={cn(VA_CARD, "relative w-full max-w-md overflow-hidden shadow-2xl")}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal
           >
             <div className="flex items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
               <div className="min-w-0">
-                <h3 className="text-lg font-semibold text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>{selected.title}</h3>
+                <h3 className="text-lg font-semibold text-white">{selected.title}</h3>
                 {selected.description ? (
                   <p className="mt-1 text-sm text-[#B8B4B8]/70">{selected.description}</p>
                 ) : null}
@@ -998,7 +997,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 <button
                   type="button"
                   onClick={() => setSelected(null)}
-                  className="rounded-xl border border-white/15 bg-white/5 px-5 py-3 text-sm text-white/85 hover:bg-white/10"
+                  className={cn(VA_BTN_SECONDARY, "bg-white/5 text-white/85 hover:bg-white/10 border-white/15")}
                 >
                   Cancel
                 </button>
@@ -1014,8 +1013,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       {/* ── Shadowban report modal ── */}
       {shadowbanReportTarget ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#151315] p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>Report shadowban</h3>
+          <div className={cn(VA_CARD, "w-full max-w-sm p-6 shadow-2xl")}>
+            <h3 className="text-lg font-semibold text-white">Report shadowban</h3>
             <p className="mt-1 text-sm text-[#B8B4B8]/65">
               @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
             </p>
@@ -1086,8 +1085,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       {/* ── Screenshot upload modal ── */}
       {completingItem ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-3xl border border-[rgba(255,255,255,0.08)] bg-[#151315] p-6 shadow-2xl">
-            <h3 className="text-lg font-semibold text-white" style={{ fontFamily: DISPLAY_SERIF_FAMILY }}>Complete item</h3>
+          <div className={cn(VA_CARD, "w-full max-w-sm p-6 shadow-2xl")}>
+            <h3 className="text-lg font-semibold text-white">Complete item</h3>
             <p className="mt-1 text-sm text-[#B8B4B8]/65">{completingItem.item.title || "Checklist item"}</p>
             {completingItem.item.requires_screenshot ? (
               <div className="mt-5">

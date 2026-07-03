@@ -273,7 +273,24 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
   if (recEnd) payload.recurrence_end_date = recEnd;
   logOutgoingPayload("create", undefined, payload);
   const rec = await createRecord<Fields>(TABLE, payload);
-  return mapRecord(rec as AirtableRecord<Fields>);
+  const task = mapRecord(rec as AirtableRecord<Fields>);
+  try {
+    const { createModelScheduleItemsForVaTask } = await import("@/services/model-schedule");
+    await createModelScheduleItemsForVaTask({
+      taskId: task.id,
+      title: task.title,
+      description: task.description,
+      due_date: task.due_date,
+      assigned_to_ids: task.assigned_to_ids,
+      assigned_model_ids: task.assigned_model_ids,
+      assigned_model_names: task.assigned_model_names,
+      status: task.status,
+      assigned_by_ids: data.assigned_by_ids,
+    });
+  } catch (err) {
+    devLog(`${VA_TASKS_LOG} model_schedule sync error`, err);
+  }
+  return task;
 }
 
 export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise<VaTaskRecord> {

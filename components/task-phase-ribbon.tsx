@@ -3,8 +3,8 @@
 import * as React from "react";
 import type { TaskPhase } from "@/services/task-phases";
 import type { PhaseItem } from "@/services/task-phases";
-import { DISPLAY_SERIF_FAMILY } from "@/lib/fonts/display-serif";
 import { cn } from "@/lib/utils";
+import { VA_CARD } from "@/lib/va-tasks-tokens";
 
 export type PhaseRibbonItem = Pick<
   PhaseItem,
@@ -77,7 +77,7 @@ function PhaseStatusLabel({ status }: { status: TaskPhase["status"] }) {
   return (
     <span
       className={cn(
-        "inline-flex rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
+        "inline-flex rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] backdrop-blur-sm",
         variant,
       )}
     >
@@ -109,7 +109,7 @@ export function TaskPhaseRibbon({
 }: Props) {
   if (phases.length === 0) {
     return (
-      <p className="rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A0A0A] py-10 text-center text-sm text-[#B8B4B8]/35">
+      <p className={cn(VA_CARD, "py-10 text-center text-sm text-[#B8B4B8]/35")}>
         {emptyMessage}
       </p>
     );
@@ -158,7 +158,8 @@ export function TaskPhaseRibbon({
               <div className={contentPl}>
                 <div
                   className={cn(
-                    "overflow-hidden rounded-xl border border-[rgba(255,255,255,0.06)] bg-[#0A0A0A]",
+                    "overflow-hidden rounded-xl",
+                    VA_CARD,
                     !isMini && "p-4",
                     isMini && "px-3 py-2.5",
                   )}
@@ -166,10 +167,9 @@ export function TaskPhaseRibbon({
                   <div className="flex flex-wrap items-start gap-2">
                     <span
                       className={cn(
-                        "flex shrink-0 items-center justify-center rounded-full border border-[#D4AF8C]/25 bg-[#D4AF8C]/8 font-semibold tabular-nums text-[#D4AF8C]",
+                        "flex shrink-0 items-center justify-center rounded-full border border-[#D4AF8C]/25 bg-[#D4AF8C]/8 font-semibold tabular-nums text-[#D4AF8C] shadow-[0_0_10px_-4px_rgba(212,175,140,0.3)]",
                         isMini ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-xs",
                       )}
-                      style={{ fontFamily: DISPLAY_SERIF_FAMILY }}
                     >
                       {phaseIndex + 1}
                     </span>
@@ -180,7 +180,6 @@ export function TaskPhaseRibbon({
                             "font-semibold text-white",
                             isMini ? "text-xs" : "text-sm",
                           )}
-                          style={{ fontFamily: DISPLAY_SERIF_FAMILY }}
                         >
                           {phase.title || `Phase ${phaseIndex + 1}`}
                         </p>
@@ -200,7 +199,8 @@ export function TaskPhaseRibbon({
                   {renderPhaseExtra?.(phase, phaseIndex)}
 
                   {items.length > 0 ? (
-                    <div className={cn("space-y-1", isMini ? "mt-2" : "mt-3 border-t border-[rgba(255,255,255,0.05)] pt-3")}>
+                    <div className={cn("space-y-1", isMini ? "mt-2" : "mt-3 pt-3")}>
+                      {!isMini ? <div className="va-champagne-divider mb-3 h-px w-full" /> : null}
                       {items.map((item, itemIndex) => (
                         <div
                           key={item.id}

@@ -1,7 +1,6 @@
-import { displaySerifClassName } from "@/lib/fonts/display-serif";
 import { cn } from "@/lib/utils";
 
-/** Wraps VA Tasks pages with display serif variables + warm base surface. */
+/** Wraps VA Tasks pages with warm boutique base surface (app default font stack). */
 export function VaTasksDesignShell({
   children,
   className,
@@ -10,13 +9,7 @@ export function VaTasksDesignShell({
   className?: string;
 }) {
   return (
-    <div
-      className={cn(
-        displaySerifClassName,
-        "va-tasks-surface min-h-full text-[#B8B4B8]",
-        className,
-      )}
-    >
+    <div className={cn("va-tasks-surface min-h-full text-[#B8B4B8]", className)}>
       {children}
     </div>
   );

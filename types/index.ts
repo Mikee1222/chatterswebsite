@@ -628,6 +628,7 @@ export type ModelScheduleItemType =
   | "meeting"
   | "rest"
   | "time_off"
+  | "va_content"
   | "other";
 
 export interface ModelScheduleItem {
