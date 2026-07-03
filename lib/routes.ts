@@ -112,6 +112,7 @@ export const ROUTES = {
     marketing: "/admin/marketing",
     informations: "/admin/informations",
     sopLibrary: "/admin/sop-library",
+    pdfMaker: "/admin/pdf-maker",
     vaTasks: "/admin/va-tasks",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",

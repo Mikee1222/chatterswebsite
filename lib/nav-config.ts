@@ -388,6 +388,13 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.SOPS_MANAGE,
   },
   {
+    href: ROUTES.admin.pdfMaker,
+    label: "PDF Maker",
+    iconKey: "FileText",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.SOPS_MANAGE,
+  },
+  {
     href: ROUTES.admin.informations,
     label: "Informations",
     iconKey: "Info",
