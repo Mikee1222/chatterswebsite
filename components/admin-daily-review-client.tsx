@@ -14,12 +14,11 @@ import {
   VA_MODEL_TAG,
 } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import {
-  COMPLIANCE_VS_MASTER,
-  DAILY_REVIEW_KPIS,
-  type MarketingDailyReview,
-  type MarketingDailyReviewDetail,
-  type MarketingExecAudit,
+import { COMPLIANCE_VS_MASTER, DAILY_REVIEW_KPIS } from "@/lib/marketing-reviews-helpers";
+import type {
+  MarketingDailyReview,
+  MarketingDailyReviewDetail,
+  MarketingExecAudit,
 } from "@/services/marketing-reviews";
 import type { UserRecord } from "@/types";
 

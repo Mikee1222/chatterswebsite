@@ -27,10 +27,10 @@ import { cn } from "@/lib/utils";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
-  type MarketingSpotCheck,
   type SpotCheckStatus,
   type SpotCheckType,
-} from "@/services/marketing-reviews";
+} from "@/lib/marketing-reviews-helpers";
+import type { MarketingSpotCheck } from "@/services/marketing-reviews";
 import type { ModelRecord, UserRecord } from "@/types";
 
 type DateRange = "all" | "7d" | "30d" | "custom";
