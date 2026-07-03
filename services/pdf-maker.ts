@@ -4,6 +4,7 @@ import {
   listRecords,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
 
 export const PDF_DOCUMENTS_TABLE = "pdf_documents";
 export const PDF_TEMPLATES_TABLE = "pdf_templates";
@@ -12,6 +13,60 @@ export type PdfSection = {
   title?: string;
   content: string;
 };
+
+export type PdfStyle = {
+  accentColor: string;
+  backgroundColor: string;
+  textColor: string;
+  theme: "dark" | "light";
+  fontFamily: string;
+  footerText: string;
+};
+
+export const DEFAULT_PDF_STYLE: PdfStyle = {
+  accentColor: "#FF1493",
+  backgroundColor: "#0A0A0A",
+  textColor: "#DCDCDC",
+  theme: "dark",
+  fontFamily: "DejaVu",
+  footerText: "GUNZO AGENCY — CONFIDENTIAL",
+};
+
+const PDF_STYLE_SETTING_KEY = "pdf_maker_default_style";
+
+export function normalizePdfStyle(input?: Partial<PdfStyle> | null): PdfStyle {
+  const theme = input?.theme === "light" ? "light" : "dark";
+  return {
+    accentColor: input?.accentColor?.trim() || DEFAULT_PDF_STYLE.accentColor,
+    backgroundColor: input?.backgroundColor?.trim() || DEFAULT_PDF_STYLE.backgroundColor,
+    textColor: input?.textColor?.trim() || DEFAULT_PDF_STYLE.textColor,
+    theme,
+    fontFamily: input?.fontFamily?.trim() || DEFAULT_PDF_STYLE.fontFamily,
+    footerText: input?.footerText?.trim() || DEFAULT_PDF_STYLE.footerText,
+  };
+}
+
+export async function getDefaultPdfStyle(): Promise<PdfStyle> {
+  const stored = await getSystemSetting(PDF_STYLE_SETTING_KEY);
+  if (stored != null && stored.trim() !== "") {
+    try {
+      const parsed = JSON.parse(stored) as Partial<PdfStyle>;
+      return normalizePdfStyle(parsed);
+    } catch {
+      /* invalid JSON → fallback */
+    }
+  }
+  return { ...DEFAULT_PDF_STYLE };
+}
+
+export async function setDefaultPdfStyle(style: PdfStyle): Promise<void> {
+  const normalized = normalizePdfStyle(style);
+  await setSystemSetting(
+    PDF_STYLE_SETTING_KEY,
+    JSON.stringify(normalized),
+    "Default PDF Maker style JSON (colors, theme, footer).",
+  );
+}
 
 export type PdfTemplate = {
   id: string;
@@ -27,6 +82,7 @@ export type PdfDocument = {
   subtitle: string;
   template: string;
   sections: PdfSection[];
+  style: PdfStyle;
   createdBy: string;
   fileUrl: string;
   createdAt: string;
@@ -58,6 +114,8 @@ type DocumentFields = {
   file_url?: string;
   "Created At"?: string;
   created_at?: string;
+  Style?: string;
+  style?: string;
 };
 
 function fieldStr(f: Record<string, unknown>, ...keys: string[]): string {
@@ -99,9 +157,21 @@ function mapTemplateRecord(rec: AirtableRecord<TemplateFields>): PdfTemplate {
   };
 }
 
+function parseStyleJson(raw: unknown): PdfStyle {
+  if (raw == null || raw === "") return { ...DEFAULT_PDF_STYLE };
+  try {
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (!parsed || typeof parsed !== "object") return { ...DEFAULT_PDF_STYLE };
+    return normalizePdfStyle(parsed as Partial<PdfStyle>);
+  } catch {
+    return { ...DEFAULT_PDF_STYLE };
+  }
+}
+
 function mapDocumentRecord(rec: AirtableRecord<DocumentFields>): PdfDocument {
   const f = (rec.fields ?? {}) as Record<string, unknown>;
   const sectionsRaw = f.Sections ?? f.sections;
+  const styleRaw = f.Style ?? f.style;
   const createdBy = fieldStr(f, "Created By", "created_by");
   return {
     id: rec.id,
@@ -109,6 +179,7 @@ function mapDocumentRecord(rec: AirtableRecord<DocumentFields>): PdfDocument {
     subtitle: fieldStr(f, "Subtitle", "subtitle"),
     template: fieldStr(f, "Template", "template"),
     sections: parseSectionsJson(sectionsRaw),
+    style: parseStyleJson(styleRaw),
     createdBy,
     fileUrl: fieldStr(f, "File URL", "file_url"),
     createdAt: fieldStr(f, "Created At", "created_at"),
@@ -128,14 +199,17 @@ export async function createPdfDocument(input: {
   subtitle?: string;
   sections: PdfSection[];
   template?: string;
+  style: PdfStyle;
   createdBy?: string;
   fileUrl: string;
 }): Promise<PdfDocument> {
+  const style = normalizePdfStyle(input.style);
   const fields: Record<string, unknown> = {
     Title: input.title.trim(),
     Subtitle: input.subtitle?.trim() ?? "",
     Template: input.template?.trim() ?? "",
     Sections: JSON.stringify(input.sections),
+    Style: JSON.stringify(style),
     "File URL": input.fileUrl.trim(),
     "Created At": new Date().toISOString(),
     // "Created By" is a singleLineText field in Airtable — must be a plain string, not a linked-record array.

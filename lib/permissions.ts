@@ -59,6 +59,8 @@ export const PERMISSIONS = {
   SOPS_SIGN_OFF: "sops:sign-off",
   SOPS_QUIZ: "sops:quiz",
 
+  PDF_MAKER_MANAGE: "pdf_maker:manage",
+
   CONTENT_VIEW: "content:view",
   CONTENT_MANAGE: "content:manage",
   CONTENT_ASSIGN: "content:assign",
@@ -143,6 +145,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   marketing: "Marketing",
   "va-tasks": "VA tasks",
   sops: "SOPs / training",
+  pdf_maker: "PDF Maker",
   content: "Content",
   "spin-wheel": "Spin wheel",
   notifications: "Notifications",
@@ -233,6 +236,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "sops:manage": "Δημιουργία και επεξεργασία οδηγιών SOP",
   "sops:sign-off": "Επιβεβαίωση αποδοχής οδηγιών SOP",
   "sops:quiz": "Συμμετοχή σε κουίζ εκπαίδευσης SOP",
+
+  "pdf_maker:manage": "Δημιουργία και διαχείριση εγγράφων PDF",
 
   "content:view": "Προβολή αιτημάτων και ημερολογίου περιεχομένου",
   "content:manage": "Διαχείριση αιτημάτων και περιεχομένου μοντέλων",

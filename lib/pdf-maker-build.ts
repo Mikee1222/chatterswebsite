@@ -1,8 +1,13 @@
 import fs from "node:fs";
 import path from "node:path";
-import { PDFDocument, type PDFFont, type PDFPage, rgb } from "pdf-lib";
+import { PDFDocument, type PDFFont, type PDFPage, rgb, type RGB } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
-import type { PdfSection } from "@/services/pdf-maker";
+import {
+  DEFAULT_PDF_STYLE,
+  normalizePdfStyle,
+  type PdfSection,
+  type PdfStyle,
+} from "@/services/pdf-maker";
 
 const PAGE_W = 595.28;
 const PAGE_H = 841.89;
@@ -10,7 +15,6 @@ const MARGIN_L = 50;
 const MARGIN_R = 50;
 const MIN_Y_FROM_BOTTOM = 55;
 const MAX_CONTENT_Y_FROM_TOP = PAGE_H - MIN_Y_FROM_BOTTOM;
-const DEFAULT_FOOTER_TEXT = "GUNZO AGENCY — CONFIDENTIAL";
 const BODY_SIZE = 10;
 const BODY_LINE_HEIGHT = 14;
 const SECTION_TITLE_SIZE = 14;
@@ -33,20 +37,21 @@ const WARNING_PADDING_Y = 8;
 const WARNING_EXTRA_AFTER = 4;
 
 const BULLET_CHAR = "•";
-const BULLET_GAP = 6;
 const BULLET_INDENT = 14;
-
-const BG = rgb(10 / 255, 10 / 255, 10 / 255);
-const PINK = rgb(1, 20 / 255, 147 / 255);
-const WHITE = rgb(1, 1, 1);
-const LIGHT_GRAY = rgb(0.75, 0.75, 0.75);
-const BANNER = rgb(15 / 255, 15 / 255, 15 / 255);
-const WARNING_BG = rgb(0.28, 0.12, 0.1);
-const WARNING_TEXT = rgb(1, 0.85, 0.75);
 
 const NUMBERED_HEADER_RE = /^(.+?##)\s+—\s+(.+)$/;
 
 type LineKind = "empty" | "warning" | "field_label" | "numbered_header" | "bullet" | "body";
+
+type PdfPalette = {
+  bg: RGB;
+  banner: RGB;
+  bodyText: RGB;
+  headerTitle: RGB;
+  accent: RGB;
+  warningBg: RGB;
+  warningText: RGB;
+};
 
 type RenderContext = {
   page: PDFPage;
@@ -54,6 +59,8 @@ type RenderContext = {
   regularFont: PDFFont;
   boldFont: PDFFont;
   pageHeight: number;
+  palette: PdfPalette;
+  footerText: string;
   ensureSpace: (heightNeeded: number) => void;
   setPage: (page: PDFPage) => void;
   setY: (y: number) => void;
@@ -62,6 +69,52 @@ type RenderContext = {
 
 function yFromTop(pageHeight: number, fromTop: number): number {
   return pageHeight - fromTop;
+}
+
+function hexToPdfRgb(hex: string, fallback: RGB): RGB {
+  const h = hex.replace("#", "").trim();
+  if (h.length === 3) {
+    const r = parseInt(h[0] + h[0], 16) / 255;
+    const g = parseInt(h[1] + h[1], 16) / 255;
+    const b = parseInt(h[2] + h[2], 16) / 255;
+    if ([r, g, b].some((v) => Number.isNaN(v))) return fallback;
+    return rgb(r, g, b);
+  }
+  if (h.length >= 6) {
+    const r = parseInt(h.slice(0, 2), 16) / 255;
+    const g = parseInt(h.slice(2, 4), 16) / 255;
+    const b = parseInt(h.slice(4, 6), 16) / 255;
+    if ([r, g, b].some((v) => Number.isNaN(v))) return fallback;
+    return rgb(r, g, b);
+  }
+  return fallback;
+}
+
+function resolvePalette(style: PdfStyle): PdfPalette {
+  const accent = hexToPdfRgb(style.accentColor, rgb(1, 20 / 255, 147 / 255));
+
+  if (style.theme === "light") {
+    return {
+      bg: hexToPdfRgb("#FFFFFF", rgb(1, 1, 1)),
+      banner: hexToPdfRgb("#F5F5F5", rgb(0.96, 0.96, 0.96)),
+      bodyText: hexToPdfRgb("#1A1A1A", rgb(0.1, 0.1, 0.1)),
+      headerTitle: hexToPdfRgb("#0A0A0A", rgb(0.04, 0.04, 0.04)),
+      accent,
+      warningBg: hexToPdfRgb("#FFF0EB", rgb(1, 0.94, 0.92)),
+      warningText: hexToPdfRgb("#7A2E1A", rgb(0.48, 0.18, 0.1)),
+    };
+  }
+
+  const bg = hexToPdfRgb(style.backgroundColor, rgb(10 / 255, 10 / 255, 10 / 255));
+  return {
+    bg,
+    banner: hexToPdfRgb("#0F0F0F", rgb(15 / 255, 15 / 255, 15 / 255)),
+    bodyText: hexToPdfRgb(style.textColor, rgb(0.75, 0.75, 0.75)),
+    headerTitle: rgb(1, 1, 1),
+    accent,
+    warningBg: rgb(0.28, 0.12, 0.1),
+    warningText: rgb(1, 0.85, 0.75),
+  };
 }
 
 function wrapText(text: string, font: PDFFont, fontSize: number, maxWidth: number): string[] {
@@ -109,20 +162,20 @@ function readFontBytes(filename: string): Uint8Array {
   return new Uint8Array(fs.readFileSync(fontPath));
 }
 
-function drawFirstPageBackground(page: PDFPage) {
+function drawFirstPageBackground(page: PDFPage, palette: PdfPalette) {
   const { width, height } = page.getSize();
-  page.drawRectangle({ x: 0, y: 0, width, height, color: BG });
-  page.drawRectangle({ x: 0, y: height - 6, width, height: 6, color: PINK });
-  page.drawRectangle({ x: 0, y: height - 106, width, height: 100, color: BANNER });
+  page.drawRectangle({ x: 0, y: 0, width, height, color: palette.bg });
+  page.drawRectangle({ x: 0, y: height - 6, width, height: 6, color: palette.accent });
+  page.drawRectangle({ x: 0, y: height - 106, width, height: 100, color: palette.banner });
 }
 
-function drawContinuationPageBackground(page: PDFPage) {
+function drawContinuationPageBackground(page: PDFPage, palette: PdfPalette) {
   const { width, height } = page.getSize();
-  page.drawRectangle({ x: 0, y: 0, width, height, color: BG });
-  page.drawRectangle({ x: 0, y: height - 3, width, height: 3, color: PINK });
+  page.drawRectangle({ x: 0, y: 0, width, height, color: palette.bg });
+  page.drawRectangle({ x: 0, y: height - 3, width, height: 3, color: palette.accent });
 }
 
-function drawFooter(page: PDFPage, font: PDFFont, footerText: string) {
+function drawFooter(page: PDFPage, font: PDFFont, footerText: string, accent: RGB) {
   const { width } = page.getSize();
   const size = 8;
   const textWidth = font.widthOfTextAtSize(footerText, size);
@@ -131,7 +184,7 @@ function drawFooter(page: PDFPage, font: PDFFont, footerText: string) {
     y: 28,
     size,
     font,
-    color: PINK,
+    color: accent,
   });
 }
 
@@ -141,6 +194,7 @@ function drawFirstPageHeader(
   subtitle: string | undefined,
   regularFont: PDFFont,
   boldFont: PDFFont,
+  palette: PdfPalette,
 ) {
   const height = page.getSize().height;
   page.drawText(title, {
@@ -148,7 +202,7 @@ function drawFirstPageHeader(
     y: yFromTop(height, 48),
     size: 26,
     font: boldFont,
-    color: WHITE,
+    color: palette.headerTitle,
   });
   if (subtitle?.trim()) {
     page.drawText(subtitle.trim(), {
@@ -156,7 +210,7 @@ function drawFirstPageHeader(
       y: yFromTop(height, 78),
       size: 13,
       font: regularFont,
-      color: PINK,
+      color: palette.accent,
     });
   }
 }
@@ -171,7 +225,7 @@ function drawBodyText(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, ctx.getY()),
         size: BODY_SIZE,
         font: ctx.regularFont,
-        color: LIGHT_GRAY,
+        color: ctx.palette.bodyText,
       });
     }
     ctx.setY(ctx.getY() + BODY_LINE_HEIGHT);
@@ -193,7 +247,7 @@ function drawWarningBox(ctx: RenderContext, rawLine: string) {
     y: yFromTop(ctx.pageHeight, boxTop + boxHeight),
     width: boxWidth,
     height: boxHeight,
-    color: WARNING_BG,
+    color: ctx.palette.warningBg,
   });
 
   let lineY = boxTop + WARNING_PADDING_Y;
@@ -204,7 +258,7 @@ function drawWarningBox(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, lineY),
         size: BODY_SIZE,
         font: ctx.boldFont,
-        color: WARNING_TEXT,
+        color: ctx.palette.warningText,
       });
     }
     lineY += BODY_LINE_HEIGHT;
@@ -237,7 +291,7 @@ function drawFieldLabel(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, lineY),
         size: BODY_SIZE,
         font: ctx.boldFont,
-        color: PINK,
+        color: ctx.palette.accent,
       });
     }
 
@@ -248,7 +302,7 @@ function drawFieldLabel(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, lineY),
         size: BODY_SIZE,
         font: ctx.regularFont,
-        color: LIGHT_GRAY,
+        color: ctx.palette.bodyText,
       });
     }
 
@@ -284,7 +338,7 @@ function drawNumberedHeader(ctx: RenderContext, rawLine: string) {
     y: yFromTop(ctx.pageHeight, accentBottom),
     width: NUMBERED_HEADER_ACCENT_WIDTH,
     height: accentBottom - accentTop,
-    color: PINK,
+    color: ctx.palette.accent,
   });
 
   let lineY = blockTop;
@@ -295,7 +349,7 @@ function drawNumberedHeader(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, lineY),
         size: NUMBERED_HEADER_SIZE,
         font: ctx.boldFont,
-        color: WHITE,
+        color: ctx.palette.headerTitle,
       });
     }
     lineY += NUMBERED_HEADER_LINE_HEIGHT;
@@ -320,7 +374,7 @@ function drawBullet(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, lineY),
         size: BODY_SIZE,
         font: ctx.regularFont,
-        color: LIGHT_GRAY,
+        color: ctx.palette.bodyText,
       });
     }
 
@@ -331,7 +385,7 @@ function drawBullet(ctx: RenderContext, rawLine: string) {
         y: yFromTop(ctx.pageHeight, lineY),
         size: BODY_SIZE,
         font: ctx.regularFont,
-        color: LIGHT_GRAY,
+        color: ctx.palette.bodyText,
       });
     }
 
@@ -367,8 +421,12 @@ export async function buildPdfBytes(
   title: string,
   subtitle: string | undefined,
   sections: PdfSection[],
-  footerText: string = DEFAULT_FOOTER_TEXT,
+  style: PdfStyle = DEFAULT_PDF_STYLE,
 ): Promise<Uint8Array> {
+  const resolvedStyle = normalizePdfStyle(style);
+  const palette = resolvePalette(resolvedStyle);
+  const footerText = resolvedStyle.footerText;
+
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
 
@@ -379,8 +437,8 @@ export async function buildPdfBytes(
   let y = FIRST_CONTENT_Y;
   let isFirstPage = true;
 
-  drawFirstPageBackground(page);
-  drawFirstPageHeader(page, title, subtitle, regularFont, boldFont);
+  drawFirstPageBackground(page, palette);
+  drawFirstPageHeader(page, title, subtitle, regularFont, boldFont, palette);
 
   const renderCtx: RenderContext = {
     page,
@@ -388,6 +446,8 @@ export async function buildPdfBytes(
     regularFont,
     boldFont,
     pageHeight: PAGE_H,
+    palette,
+    footerText,
     ensureSpace: () => {},
     setPage: () => {},
     setY: () => {},
@@ -395,9 +455,9 @@ export async function buildPdfBytes(
   };
 
   function startNewPage() {
-    drawFooter(page, regularFont, footerText);
+    drawFooter(page, regularFont, footerText, palette.accent);
     page = pdfDoc.addPage([PAGE_W, PAGE_H]);
-    drawContinuationPageBackground(page);
+    drawContinuationPageBackground(page, palette);
     y = CONTINUATION_CONTENT_Y;
     isFirstPage = false;
     renderCtx.page = page;
@@ -430,14 +490,14 @@ export async function buildPdfBytes(
         y: yFromTop(page.getSize().height, y),
         size: SECTION_TITLE_SIZE,
         font: boldFont,
-        color: PINK,
+        color: palette.accent,
       });
       const lineY = y + 4;
       page.drawLine({
         start: { x: MARGIN_L, y: yFromTop(page.getSize().height, lineY) },
         end: { x: PAGE_W - MARGIN_R, y: yFromTop(page.getSize().height, lineY) },
         thickness: 0.75,
-        color: PINK,
+        color: palette.accent,
       });
       y += SECTION_TITLE_GAP;
       renderCtx.y = y;
@@ -456,7 +516,7 @@ export async function buildPdfBytes(
     renderCtx.y = y;
   }
 
-  drawFooter(page, regularFont, footerText);
+  drawFooter(page, regularFont, footerText, palette.accent);
   return pdfDoc.save();
 }
 
