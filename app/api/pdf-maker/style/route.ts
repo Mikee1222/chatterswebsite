@@ -21,7 +21,7 @@ const styleSchema = z.object({
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.SOPS_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.PDF_MAKER_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -38,7 +38,7 @@ export async function GET() {
 export async function PUT(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.SOPS_MANAGE))) {
+  if (!(await hasPermission(session, PERMISSIONS.PDF_MAKER_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 

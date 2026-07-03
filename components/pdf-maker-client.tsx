@@ -1,9 +1,26 @@
 "use client";
 
 import * as React from "react";
-import { ExternalLink, FileDown, FileText, History, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  ExternalLink,
+  FileDown,
+  FileText,
+  History,
+  Plus,
+  Trash2,
+} from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
-import type { PdfDocument, PdfSection, PdfTemplate } from "@/services/pdf-maker";
+import { useToast } from "@/contexts/toast-context";
+import type { AppNotification } from "@/types";
+import {
+  DEFAULT_PDF_STYLE,
+  type PdfDocument,
+  type PdfSection,
+  type PdfStyle,
+  type PdfTemplate,
+} from "@/services/pdf-maker";
 
 type Tab = "create" | "history";
 
@@ -12,6 +29,29 @@ type Section = {
   title: string;
   content: string;
 };
+
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function themePresetColors(theme: PdfStyle["theme"]): Pick<PdfStyle, "backgroundColor" | "textColor"> {
+  return theme === "light"
+    ? { backgroundColor: "#FFFFFF", textColor: "#1A1A1A" }
+    : { backgroundColor: "#0A0A0A", textColor: "#DCDCDC" };
+}
 
 function newSection(content = "", title = ""): Section {
   return { id: crypto.randomUUID(), title: title || "", content };
@@ -37,24 +77,60 @@ function formatDate(iso: string): string {
   });
 }
 
+function previewColors(style: PdfStyle) {
+  if (style.theme === "light") {
+    return {
+      bg: "#FFFFFF",
+      banner: "#F5F5F5",
+      border: "#E5E5E5",
+      title: "#0A0A0A",
+      body: "#1A1A1A",
+      muted: "#9CA3AF",
+      accent: style.accentColor,
+    };
+  }
+  return {
+    bg: style.backgroundColor,
+    banner: "#0F0F0F",
+    border: "#1F2937",
+    title: "#FFFFFF",
+    body: style.textColor,
+    muted: "#6B7280",
+    accent: style.accentColor,
+  };
+}
+
 function PreviewPanel({
   title,
   subtitle,
   sections,
+  style,
 }: {
   title: string;
   subtitle: string;
   sections: Section[];
+  style: PdfStyle;
 }) {
+  const colors = previewColors(style);
+
   return (
-    <div className="overflow-hidden rounded-xl border border-gray-800 bg-[#0a0a0a] shadow-lg">
-      <div className="h-1.5 bg-pink-500" />
-      <div className="bg-[#0f0f0f] px-5 py-4">
-        <h3 className="text-lg font-bold text-white">{title.trim() || "Document title"}</h3>
+    <div
+      className="overflow-hidden rounded-xl border shadow-lg"
+      style={{ borderColor: colors.border, backgroundColor: colors.bg }}
+    >
+      <div className="h-1.5" style={{ backgroundColor: colors.accent }} />
+      <div className="px-5 py-4" style={{ backgroundColor: colors.banner }}>
+        <h3 className="text-lg font-bold" style={{ color: colors.title }}>
+          {title.trim() || "Document title"}
+        </h3>
         {subtitle.trim() ? (
-          <p className="mt-1 text-sm text-pink-500">{subtitle}</p>
+          <p className="mt-1 text-sm" style={{ color: colors.accent }}>
+            {subtitle}
+          </p>
         ) : (
-          <p className="mt-1 text-sm text-gray-600 italic">Subtitle (optional)</p>
+          <p className="mt-1 text-sm italic" style={{ color: colors.muted }}>
+            Subtitle (optional)
+          </p>
         )}
       </div>
       <div className="space-y-5 px-5 py-6">
@@ -62,30 +138,45 @@ function PreviewPanel({
           <div key={section.id}>
             {section.title?.trim() ? (
               <div className="mb-2">
-                <h4 className="text-sm font-semibold text-pink-500">{section.title}</h4>
-                <div className="mt-1 h-px bg-pink-500/60" />
+                <h4 className="text-sm font-semibold" style={{ color: colors.accent }}>
+                  {section.title}
+                </h4>
+                <div className="mt-1 h-px opacity-60" style={{ backgroundColor: colors.accent }} />
               </div>
             ) : (
-              <p className="mb-2 text-xs text-gray-600">Section {index + 1}</p>
+              <p className="mb-2 text-xs" style={{ color: colors.muted }}>
+                Section {index + 1}
+              </p>
             )}
-            <p className="whitespace-pre-wrap text-xs leading-relaxed text-gray-300">
+            <p
+              className="whitespace-pre-wrap text-xs leading-relaxed"
+              style={{ color: colors.body }}
+            >
               {section.content.trim() || "Section content…"}
             </p>
           </div>
         ))}
       </div>
-      <div className="border-t border-gray-800 py-3 text-center text-[10px] font-medium tracking-wide text-pink-500">
-        GUNZO AGENCY - CONFIDENTIAL
+      <div
+        className="border-t py-3 text-center text-[10px] font-medium tracking-wide"
+        style={{ borderColor: colors.border, color: colors.accent }}
+      >
+        {style.footerText}
       </div>
     </div>
   );
 }
 
 export function PdfMakerClient() {
+  const { addToast } = useToast();
   const [tab, setTab] = React.useState<Tab>("create");
   const [docTitle, setDocTitle] = React.useState("");
   const [subtitle, setSubtitle] = React.useState("");
   const [sections, setSections] = React.useState<Section[]>([newSection()]);
+  const [style, setStyle] = React.useState<PdfStyle>({ ...DEFAULT_PDF_STYLE });
+  const [styleOpen, setStyleOpen] = React.useState(false);
+  const [styleLoading, setStyleLoading] = React.useState(true);
+  const [savingDefaultStyle, setSavingDefaultStyle] = React.useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = React.useState<string | null>(null);
   const [templates, setTemplates] = React.useState<PdfTemplate[]>([]);
   const [templatesLoading, setTemplatesLoading] = React.useState(true);
@@ -109,6 +200,20 @@ export function PdfMakerClient() {
     }
   }, []);
 
+  const loadDefaultStyle = React.useCallback(async () => {
+    setStyleLoading(true);
+    try {
+      const res = await fetch("/api/pdf-maker/style", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { style?: PdfStyle };
+      if (data.style) setStyle(data.style);
+    } catch {
+      /* ignore */
+    } finally {
+      setStyleLoading(false);
+    }
+  }, []);
+
   const loadHistory = React.useCallback(async () => {
     setHistoryLoading(true);
     try {
@@ -125,7 +230,8 @@ export function PdfMakerClient() {
 
   React.useEffect(() => {
     void loadTemplates();
-  }, [loadTemplates]);
+    void loadDefaultStyle();
+  }, [loadTemplates, loadDefaultStyle]);
 
   React.useEffect(() => {
     if (tab === "history") void loadHistory();
@@ -150,6 +256,53 @@ export function PdfMakerClient() {
     if (!subtitle.trim() && template.description) setSubtitle(template.description);
   }
 
+  function setTheme(nextTheme: PdfStyle["theme"]) {
+    setStyle((prev) => ({
+      ...prev,
+      theme: nextTheme,
+      ...themePresetColors(nextTheme),
+    }));
+  }
+
+  async function handleSaveDefaultStyle() {
+    setSavingDefaultStyle(true);
+    try {
+      const res = await fetch("/api/pdf-maker/style", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(style),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string; style?: PdfStyle };
+      if (!res.ok) {
+        addToast(
+          localToast(
+            `pdf-style-err-${Date.now()}`,
+            "Could not save default",
+            typeof data.error === "string" ? data.error : "Save failed.",
+            "high",
+          ),
+        );
+        return;
+      }
+      if (data.style) setStyle(data.style);
+      addToast(
+        localToast(
+          `pdf-style-ok-${Date.now()}`,
+          "Default style saved",
+          "New PDFs will use these settings by default.",
+          "normal",
+        ),
+      );
+    } catch {
+      addToast(
+        localToast(`pdf-style-net-${Date.now()}`, "Could not save default", "Network error.", "high"),
+      );
+    } finally {
+      setSavingDefaultStyle(false);
+    }
+  }
+
   async function handleGenerate(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -169,6 +322,7 @@ export function PdfMakerClient() {
           title: docTitle.trim(),
           subtitle: subtitle.trim() || undefined,
           templateId: selectedTemplateId ?? undefined,
+          style,
           sections: sections.map((s) => ({
             title: s.title?.trim() || undefined,
             content: s.content,
@@ -337,6 +491,121 @@ export function PdfMakerClient() {
                 />
               </div>
 
+              <div className="rounded-xl border border-gray-800 bg-gray-900/40">
+                <button
+                  type="button"
+                  onClick={() => setStyleOpen((open) => !open)}
+                  className="flex w-full items-center justify-between px-4 py-3 text-left"
+                  aria-expanded={styleOpen}
+                >
+                  <span className="inline-flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-pink-500">
+                    {styleOpen ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                    Customize style
+                  </span>
+                  {styleLoading ? (
+                    <Spinner className="h-4 w-4 border-gray-600 border-t-pink-500" />
+                  ) : (
+                    <span className="text-xs text-gray-500">
+                      {style.theme === "light" ? "Light" : "Dark"} · {style.accentColor}
+                    </span>
+                  )}
+                </button>
+
+                {styleOpen ? (
+                  <div className="space-y-4 border-t border-gray-800 px-4 py-4">
+                    <div className="flex flex-wrap items-end gap-4">
+                      <div>
+                        <label htmlFor="pdf-accent-color" className="mb-1.5 block text-xs text-gray-400">
+                          Accent color
+                        </label>
+                        <input
+                          id="pdf-accent-color"
+                          type="color"
+                          value={style.accentColor}
+                          onChange={(e) =>
+                            setStyle((prev) => ({ ...prev, accentColor: e.target.value }))
+                          }
+                          className="h-10 w-14 cursor-pointer rounded border border-gray-700 bg-gray-950 p-1"
+                        />
+                      </div>
+
+                      <div>
+                        <span className="mb-1.5 block text-xs text-gray-400">Theme</span>
+                        <div className="inline-flex rounded-lg border border-gray-700 p-0.5">
+                          <button
+                            type="button"
+                            onClick={() => setTheme("dark")}
+                            className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                              style.theme === "dark"
+                                ? "bg-pink-500 text-white"
+                                : "text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            Dark
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTheme("light")}
+                            className={`rounded-md px-3 py-1.5 text-xs font-medium transition ${
+                              style.theme === "light"
+                                ? "bg-pink-500 text-white"
+                                : "text-gray-400 hover:text-white"
+                            }`}
+                          >
+                            Light
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label htmlFor="pdf-footer-text" className="mb-1.5 block text-xs text-gray-400">
+                        Footer text
+                      </label>
+                      <input
+                        id="pdf-footer-text"
+                        type="text"
+                        value={style.footerText}
+                        onChange={(e) =>
+                          setStyle((prev) => ({ ...prev, footerText: e.target.value }))
+                        }
+                        placeholder="GUNZO AGENCY — CONFIDENTIAL"
+                        className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label htmlFor="pdf-font-family" className="mb-1.5 block text-xs text-gray-400">
+                        Font family
+                      </label>
+                      <input
+                        id="pdf-font-family"
+                        type="text"
+                        value={style.fontFamily}
+                        disabled
+                        className="w-full cursor-not-allowed rounded-lg border border-gray-800 bg-gray-950/60 px-3 py-2 text-sm text-gray-500"
+                      />
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => void handleSaveDefaultStyle()}
+                      disabled={savingDefaultStyle || styleLoading}
+                      className="inline-flex items-center gap-2 rounded-lg border border-pink-500/40 px-3 py-1.5 text-xs font-medium text-pink-500 transition hover:bg-pink-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {savingDefaultStyle ? (
+                        <Spinner className="h-3.5 w-3.5 border-gray-600 border-t-pink-500" />
+                      ) : null}
+                      Save as default
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-500">
@@ -422,7 +691,7 @@ export function PdfMakerClient() {
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-pink-500">
                 Live preview
               </h2>
-              <PreviewPanel title={docTitle} subtitle={subtitle} sections={sections} />
+              <PreviewPanel title={docTitle} subtitle={subtitle} sections={sections} style={style} />
             </div>
           </div>
         ) : (
