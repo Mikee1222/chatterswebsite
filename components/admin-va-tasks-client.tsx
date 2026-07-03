@@ -65,6 +65,8 @@ interface DraftPhase {
   serverId?: string;
   title: string;
   region: TaskPhase["region"];
+  /** Optional deadline (datetime-local string). Blank = phase not eligible for overdue check (A4). */
+  scheduled_time: string;
   items: DraftPhaseItem[];
 }
 
@@ -169,6 +171,7 @@ function phaseToDraft(p: TaskPhase): DraftPhase {
     serverId: p.id,
     title: p.title,
     region: p.region ?? "Global",
+    scheduled_time: toDatetimeLocalValue(p.scheduled_time),
     items: (p.items ?? []).map((i) => ({
       tempId: i.id,
       serverId: i.id,
@@ -524,6 +527,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         tempId: `tmp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         title: "",
         region: "Global",
+        scheduled_time: "",
         items: [],
       },
     ]);
@@ -588,12 +592,14 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
     for (let phaseIndex = 0; phaseIndex < draftPhases.length; phaseIndex++) {
       const dp = draftPhases[phaseIndex];
+      const scheduledIso = fromDatetimeLocal(dp.scheduled_time) ?? null;
       const phaseBody = {
         task_id: taskId,
         task_title: taskTitle,
         phase_number: phaseIndex + 1,
         title: dp.title.trim() || `Phase ${phaseIndex + 1}`,
         region: dp.region,
+        scheduled_time: scheduledIso,
       };
 
       let phaseAirtableId = dp.serverId;
@@ -605,6 +611,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           body: JSON.stringify({
             title: phaseBody.title,
             region: phaseBody.region,
+            scheduled_time: scheduledIso,
           }),
         });
       } else {
@@ -1828,6 +1835,19 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                             <option value="USA">🇺🇸 USA</option>
                             <option value="Global">Global</option>
                           </select>
+                          <div>
+                            <label className="mb-1 block text-[10px] text-[#B8B4B8]/40">
+                              Deadline (optional) — leave blank to skip overdue alerts
+                            </label>
+                            <input
+                              type="datetime-local"
+                              value={dp.scheduled_time}
+                              onChange={(e) =>
+                                updateDraftPhase(dp.tempId, { scheduled_time: e.target.value })
+                              }
+                              className="w-full rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#151315] px-2 py-1.5 text-xs text-[#B8B4B8] focus:outline-none focus:border-[#D4AF8C]/35"
+                            />
+                          </div>
                           <button
                             type="button"
                             onClick={() => addDraftPhaseItem(dp.tempId)}

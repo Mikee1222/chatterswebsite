@@ -2,6 +2,8 @@
 
 import { createRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
+import { notify, notifyAdmins } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { ModelContentRequest, ModelContentRequestStatus, ModelContentRequestType } from "@/types";
 
 const TABLE = "model_content_requests";
@@ -85,7 +87,23 @@ export async function createModelContentRequest(input: {
     created_at: now,
     updated_at: now,
   } as Fields);
-  return mapRecord(rec as AirtableRecord<Fields>);
+  const created = mapRecord(rec as AirtableRecord<Fields>);
+
+  // C3: notify admins that a model filed a new content request.
+  await notifyAdmins({
+    event_type: NOTIFICATION_EVENT.MODEL_CONTENT_REQUEST_CREATED,
+    priority: NOTIFICATION_PRIORITY.HIGH,
+    title: "🎬 New content request",
+    body: `A model filed a new content request: "${created.title || created.type}".`,
+    entity_type: NOTIFICATION_ENTITY.MODEL_CONTENT_REQUEST,
+    entity_id: created.id,
+    actor_user_id: created.model_user_id || undefined,
+    _triggerSource: "model_content_request_created",
+  }).catch((err) => {
+    console.error("[model_content_request_created] notify failed", err);
+  });
+
+  return created;
 }
 
 export async function updateModelContentRequest(
@@ -98,5 +116,23 @@ export async function updateModelContentRequest(
   if (input.status !== undefined) fields.status = input.status;
   if (input.admin_notes !== undefined) fields.admin_notes = input.admin_notes;
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);
-  return mapRecord(rec as AirtableRecord<Fields>);
+  const updated = mapRecord(rec as AirtableRecord<Fields>);
+
+  // C3: notify the filing model when the request status changes.
+  if (input.status !== undefined && updated.model_user_id) {
+    await notify({
+      user_id: updated.model_user_id,
+      event_type: NOTIFICATION_EVENT.MODEL_CONTENT_REQUEST_REVIEWED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "🎬 Content request updated",
+      body: `Your content request "${updated.title || updated.type}" is now ${updated.status.replace(/_/g, " ")}.`,
+      entity_type: NOTIFICATION_ENTITY.MODEL_CONTENT_REQUEST,
+      entity_id: updated.id,
+      _triggerSource: "model_content_request_reviewed",
+    }).catch((err) => {
+      console.error("[model_content_request_reviewed] notify failed", err);
+    });
+  }
+
+  return updated;
 }

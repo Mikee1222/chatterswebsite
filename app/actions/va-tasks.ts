@@ -5,7 +5,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { getNotificationUserId } from "@/lib/notification-user";
-import { notifyAdmins } from "@/services/notification-service";
+import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
   createVaTask,
@@ -16,6 +16,7 @@ import {
   type VaTaskCreateInput,
   type VaTaskUpdateInput,
 } from "@/services/va-tasks";
+import { getActiveVaTaskShift } from "@/services/shifts";
 import { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import type { VaTaskRecord, VaTaskStatus } from "@/types";
 import { hasPermission } from "@/lib/rbac";
@@ -39,10 +40,40 @@ export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTa
     revalidatePath(ROUTES.va.tasks);
     revalidatePath(ROUTES.va.home);
     revalidatePath(ROUTES.va.schedule);
+    await notifyVaTaskAssigned(task, actorId, user.fullName);
     return { success: true, task };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Create failed." };
   }
+}
+
+/** Notify each assigned VA that a new task was assigned to them (C2). Never throws. */
+async function notifyVaTaskAssigned(
+  task: VaTaskRecord,
+  actorId?: string | null,
+  actorName?: string | null
+): Promise<void> {
+  const recipients = (task.assigned_to_ids ?? []).filter((uid) => uid && uid !== actorId);
+  if (recipients.length === 0) return;
+  const title = task.title?.trim() || "New task";
+  await Promise.all(
+    recipients.map((uid) =>
+      notify({
+        user_id: uid,
+        event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "🗂️ New task assigned",
+        body: `You've been assigned "${title}". Open My tasks to get started.`,
+        entity_type: NOTIFICATION_ENTITY.VA_TASK,
+        entity_id: task.id,
+        actor_user_id: actorId ?? undefined,
+        actor_name: actorName ?? undefined,
+        _triggerSource: "create_va_task",
+      }).catch((err) => {
+        console.error("[va_task_assigned] notify failed", err);
+      })
+    )
+  );
 }
 
 export async function updateVaTaskAction(id: string, data: VaTaskUpdateInput): Promise<VaTaskActionResult> {
@@ -77,6 +108,14 @@ export async function updateVaTaskStatusAction(input: {
 
   const visible = task.assigned_to_ids.length === 0 || task.assigned_to_ids.includes(vaId);
   if (!visible) return { success: false, error: "This task is not assigned to you." };
+
+  // A8: gate completion behind an active task shift (same rule as the My-tasks UI).
+  if (input.status === "done") {
+    const activeShift = await getActiveVaTaskShift(user.airtableUserId ?? user.id);
+    if (!activeShift) {
+      return { success: false, error: "Start your task shift before marking tasks done." };
+    }
+  }
 
   const notes = (input.completed_notes ?? "").trim();
   const patch: VaTaskUpdateInput = {
@@ -113,7 +152,7 @@ export async function updateVaTaskStatusAction(input: {
           );
 
           if (!alreadyExists) {
-            await createVaTask({
+            const spawned = await createVaTask({
               title: task.title,
               description: task.description,
               assigned_to_ids: [...task.assigned_to_ids],
@@ -130,6 +169,10 @@ export async function updateVaTaskStatusAction(input: {
               recurrence_end_date: task.recurrence_end_date,
               reminder_minutes_before: task.reminder_minutes_before,
             });
+            const { clonePhasesToTask } = await import("@/services/task-phases");
+            await clonePhasesToTask(task.id, spawned).catch((cloneErr) =>
+              console.error("[va-tasks] clone phases for next occurrence failed", cloneErr),
+            );
             console.log(`[va-tasks] spawned next occurrence for "${task.title}" → ${nextDue}`);
           } else {
             console.log(`[va-tasks] skipping spawn — pending recurring task already exists for "${task.title}"`);

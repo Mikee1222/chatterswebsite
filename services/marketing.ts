@@ -33,6 +33,9 @@ export interface SocialAccount {
 
 export type ShadowbanReportStatus = "pending" | "approved" | "dismissed";
 
+/** What was reported for the account: a shadowban (limited reach) or a full ban. */
+export type ShadowbanReportType = "shadowbanned" | "banned";
+
 export interface ShadowbanReport {
   id: string;
   report_id: string;
@@ -44,12 +47,30 @@ export interface ShadowbanReport {
   reported_by_id: string;
   reported_by_name: string;
   reported_by_role: string;
+  /** Derived from the report (report_type field or the notes prefix). Drives account_status on approval. */
+  report_type: ShadowbanReportType;
   screenshot: { url: string }[];
   notes: string;
   status: ShadowbanReportStatus;
   reviewed_by: string;
   created_at: string;
   reviewed_at: string | null;
+}
+
+/**
+ * Resolve the report type from an Airtable shadowban_reports row.
+ * The submit route encodes the type in the notes prefix ("[Ban reported]" / "[Shadowban reported]"),
+ * and (forward-compatible) may also set a dedicated `report_type` field.
+ */
+export function deriveShadowbanReportType(fields: {
+  report_type?: unknown;
+  notes?: unknown;
+}): ShadowbanReportType {
+  const rt = typeof fields.report_type === "string" ? fields.report_type.trim().toLowerCase() : "";
+  if (rt === "banned") return "banned";
+  if (rt === "shadowbanned") return "shadowbanned";
+  const notes = typeof fields.notes === "string" ? fields.notes : "";
+  return /^\s*\[ban reported\]/i.test(notes) ? "banned" : "shadowbanned";
 }
 
 export interface FunnelLink {
@@ -106,6 +127,7 @@ type ShadowbanReportFields = {
   reported_by_id?: string;
   reported_by_name?: string;
   reported_by_role?: string;
+  report_type?: string;
   screenshot?: unknown;
   notes?: string;
   status?: string;
@@ -201,6 +223,7 @@ function mapShadowbanReport(rec: AirtableRecord<ShadowbanReportFields>): Shadowb
     reported_by_id: (f.reported_by_id as string) ?? "",
     reported_by_name: (f.reported_by_name as string) ?? "",
     reported_by_role: (f.reported_by_role as string) ?? "",
+    report_type: deriveShadowbanReportType(f),
     screenshot: normalizeAttachmentUrls(f.screenshot),
     notes: (f.notes as string) ?? "",
     status: asShadowbanReportStatus(f.status),

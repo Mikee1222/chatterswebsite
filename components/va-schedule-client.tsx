@@ -166,6 +166,7 @@ export function VaScheduleClient({
   const [selectedDay, setSelectedDay] = React.useState<string | null>(null);
   const [detailTask, setDetailTask] = React.useState<VaTaskRecord | null>(null);
   const [completing, setCompleting] = React.useState(false);
+  const [completeErr, setCompleteErr] = React.useState<string | null>(null);
 
   const todayYmd = getTodayYmd();
   const thisWeekMonday = getThisWeekMonday();
@@ -290,6 +291,7 @@ export function VaScheduleClient({
 
   async function markTaskDone(task: VaTaskRecord) {
     setCompleting(true);
+    setCompleteErr(null);
     try {
       const res = await updateVaTaskStatusAction({
         taskId: task.id,
@@ -299,6 +301,8 @@ export function VaScheduleClient({
       if (res.success) {
         setDetailTask(null);
         router.refresh();
+      } else {
+        setCompleteErr(res.error || "Could not mark task done.");
       }
     } finally {
       setCompleting(false);
@@ -696,7 +700,10 @@ export function VaScheduleClient({
       {detailTask ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
-          onClick={() => setDetailTask(null)}
+          onClick={() => {
+            setDetailTask(null);
+            setCompleteErr(null);
+          }}
           role="presentation"
         >
           <div
@@ -713,6 +720,11 @@ export function VaScheduleClient({
             {detailTask.due_date ? (
               <p className="mt-3 text-sm text-white/50">Due {formatDateTimeAthens(detailTask.due_date)}</p>
             ) : null}
+            {completeErr ? (
+              <p className="mt-4 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                {completeErr}
+              </p>
+            ) : null}
             <div className="mt-5 flex flex-wrap gap-2">
               {detailTask.status !== "done" && detailTask.status !== "skipped" ? (
                 <button
@@ -727,7 +739,10 @@ export function VaScheduleClient({
               ) : null}
               <button
                 type="button"
-                onClick={() => setDetailTask(null)}
+                onClick={() => {
+                  setDetailTask(null);
+                  setCompleteErr(null);
+                }}
                 className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/60 hover:bg-white/10"
               >
                 Close

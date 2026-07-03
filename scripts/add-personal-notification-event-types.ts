@@ -29,6 +29,19 @@ const PERSONAL_EVENTS = [
   "schedule_published",
   "login_new_device",
   "password_changed",
+  // Distinct task/phase lifecycle options (A7) — previously mislabeled as task_shift_started/ended.
+  "task_completed",
+  "task_overdue",
+  "tasks_not_started",
+  "va_task_reminder",
+  "va_task_assigned",
+  "phase_task_completed",
+  "phase_completed",
+  "phase_overdue",
+  "all_phases_completed",
+  // Model content request lifecycle (C3).
+  "model_content_request_created",
+  "model_content_request_reviewed",
 ] as const;
 
 function loadBaseIdFromWrangler(): string | null {

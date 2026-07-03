@@ -143,6 +143,18 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_user_only",
     description: "Assigned VA when they receive a content assignment.",
   },
+  va_task_assigned: {
+    rule: "assigned_user_only",
+    description: "Assigned VA when a new VA task is created for them.",
+  },
+  model_content_request_created: {
+    rule: "admin_only",
+    description: "Admins/managers when a model files a content request.",
+  },
+  model_content_request_reviewed: {
+    rule: "assigned_model_only",
+    description: "The filing model when their content request status changes.",
+  },
   va_content_scheduled: {
     rule: "assigned_model_only",
     description: "The model user when content delivery is scheduled.",
@@ -507,6 +519,7 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "system_alert",
   "payment_submitted",
   "billing_payment_submitted",
+  "model_content_request_created",
 ];
 
 /** Event types that go only to the assigned/acting user (no admins). */
@@ -526,6 +539,7 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "weekly_availability_friday_reminder",
   "va_task_reminder",
   "va_content_scheduled",
+  "va_task_assigned",
   "task_completed",
   "task_overdue",
   "phase_completed",

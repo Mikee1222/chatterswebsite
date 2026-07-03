@@ -12,6 +12,8 @@ import { createVaTask } from "@/services/va-tasks";
 import { createPhase, createPhaseItem, getPhasesByTask, type TaskPhase } from "@/services/task-phases";
 import { getUserByAirtableId } from "@/services/users";
 import { listAllModelss } from "@/services/modelss";
+import { notify } from "@/services/notification-service";
+import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { VaTaskRecord } from "@/types";
 
 const TABLE_TEMPLATES = "task_templates";
@@ -380,5 +382,23 @@ export async function applyTemplateToTask(
   }
 
   const phases = await getPhasesByTask(task.id);
+
+  // C2: notify the assigned VA that a new task (from template) was assigned to them.
+  if (vaId && vaId !== input.assignedById) {
+    await notify({
+      user_id: vaId,
+      event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "🗂️ New task assigned",
+      body: `You've been assigned "${task.title}". Open My tasks to get started.`,
+      entity_type: NOTIFICATION_ENTITY.VA_TASK,
+      entity_id: task.id,
+      actor_user_id: input.assignedById ?? undefined,
+      _triggerSource: "apply_template_to_task",
+    }).catch((err) => {
+      console.error("[va_task_assigned] notify failed", err);
+    });
+  }
+
   return { task, phases };
 }

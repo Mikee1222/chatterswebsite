@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getRecord, listAllRecords } from "@/lib/airtable-server";
-import { updateAccount, updateShadowbanReport } from "@/services/marketing";
+import { deriveShadowbanReportType, updateAccount, updateShadowbanReport } from "@/services/marketing";
 import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { shadowbanResolvedPersonal } from "@/lib/notification-copy";
@@ -46,6 +46,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     platform?: string;
     reported_by_id?: string;
     reported_by_name?: string;
+    report_type?: string;
+    notes?: string;
     status?: string;
   };
 
@@ -67,8 +69,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
       });
       const acc = accounts[0];
       if (acc) {
+        const reportType = deriveShadowbanReportType(f);
         await updateAccount(acc.id, {
-          account_status: "shadowbanned",
+          account_status: reportType === "banned" ? "banned" : "shadowbanned",
           shadowban_reported_at: now,
           shadowban_reported_by: String(f.reported_by_name ?? "").trim() || "Reporter",
         });

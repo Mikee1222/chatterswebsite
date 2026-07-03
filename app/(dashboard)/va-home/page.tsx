@@ -147,7 +147,7 @@ export default async function VaHomePage() {
     .slice(0, 10)
     .map(toHomeTaskRow);
 
-  const pendingReports = vaTasks
+  const overdueTasks = vaTasks
     .filter((t) => {
       if (!isOpenTask(t.status) || !t.due_date) return false;
       const y = localYmdFromDue(t.due_date);
@@ -217,7 +217,7 @@ export default async function VaHomePage() {
         todayHours={hoursFromMinutes(todayMinutes)}
         shiftCardData={shiftCardData}
         todaysTasks={todaysTasks}
-        pendingReports={pendingReports}
+        overdueTasks={overdueTasks}
         recentActivity={recent}
       />
     </div>

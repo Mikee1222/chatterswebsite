@@ -305,7 +305,7 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
     for (const userId of recipientIds) {
       await notify({
         user_id: userId,
-        event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
+        event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: "⚠️ Task Overdue",
         body: `⚠️ Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
@@ -394,11 +394,13 @@ export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronR
       );
       if (seriesHasOpen) continue;
 
-      await createVaTask({
+      const spawnedTask = await createVaTask({
         title: task.title,
         description: task.description,
         assigned_to_ids: [...task.assigned_to_ids],
         assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
+        assigned_model_ids: [...(task.assigned_model_ids ?? [])],
+        assigned_model_names: [...(task.assigned_model_names ?? [])],
         status: "pending",
         priority: task.priority,
         due_date: nextDue,
@@ -409,6 +411,10 @@ export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronR
         recurrence_end_date: task.recurrence_end_date,
         reminder_minutes_before: task.reminder_minutes_before,
       });
+      const { clonePhasesToTask } = await import("@/services/task-phases");
+      await clonePhasesToTask(task.id, spawnedTask).catch((cloneErr) =>
+        console.error("[cron] clone phases for recurring task failed", cloneErr),
+      );
       spawned += 1;
       console.log(`[cron] spawned recurring task "${task.title}" → ${nextDue}`);
       allTasks = await getAllVaTasks();

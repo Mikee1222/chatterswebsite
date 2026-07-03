@@ -1,21 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ExternalLink, Smartphone } from "lucide-react";
-import type { SocialAccount } from "@/services/marketing";
+import { AlertTriangle, ExternalLink, Link2, Smartphone } from "lucide-react";
+import type { FunnelLink, SocialAccount } from "@/services/marketing";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
+import { getSocialColor } from "@/lib/social-platform-config";
 import { cn } from "@/lib/utils";
-
-const SOCIAL_COLORS: Record<string, string> = {
-  Instagram: "#E1306C",
-  Facebook: "#1877F2",
-  TikTok: "#000000",
-  Twitter: "#1DA1F2",
-  YouTube: "#FF0000",
-  Snapchat: "#FFFC00",
-  Telegram: "#229ED9",
-  GetMyLinks: "#9333EA",
-};
 
 const STATUS_STYLES: Record<string, string> = {
   active: "border-emerald-500/35 bg-emerald-500/15 text-emerald-300",
@@ -42,6 +32,7 @@ function groupByModel(accounts: SocialAccount[]): Map<string, { modelName: strin
 
 export function VaMarketingClient() {
   const [accounts, setAccounts] = React.useState<SocialAccount[]>([]);
+  const [funnels, setFunnels] = React.useState<FunnelLink[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [err, setErr] = React.useState<string | null>(null);
   const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
@@ -66,9 +57,20 @@ export function VaMarketingClient() {
     }
   }, []);
 
+  const reloadFunnels = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/va/marketing/funnels", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { funnels?: FunnelLink[] };
+      if (res.ok) setFunnels(data.funnels ?? []);
+    } catch {
+      // read-only extra; ignore load failure
+    }
+  }, []);
+
   React.useEffect(() => {
     void reload();
-  }, [reload]);
+    void reloadFunnels();
+  }, [reload, reloadFunnels]);
 
   const grouped = React.useMemo(() => groupByModel(accounts), [accounts]);
   const activeCount = accounts.filter((a) => (a.account_status ?? "active") === "active").length;
@@ -143,7 +145,7 @@ export function VaMarketingClient() {
                 <div className="grid gap-3 p-5 sm:grid-cols-2">
                   {group.accounts.map((acc) => {
                     const plat = acc.platform?.trim() || "Other";
-                    const color = SOCIAL_COLORS[plat] ?? "#888888";
+                    const color = getSocialColor(plat);
                     const href = acc.account_link?.trim() || "#";
                     const st = acc.account_status ?? "active";
                     return (
@@ -186,6 +188,49 @@ export function VaMarketingClient() {
             ))}
           </div>
         )}
+
+        {funnels.length > 0 ? (
+          <section className="overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d]">
+            <div className="flex items-center gap-2 border-b border-[#1f1f1f] px-5 py-4">
+              <Link2 className="h-4 w-4 text-pink-400" aria-hidden />
+              <div>
+                <h2 className="text-base font-bold text-white">Funnel links</h2>
+                <p className="text-xs text-white/40">Read-only — shared promo links for your creators</p>
+              </div>
+            </div>
+            <div className="grid gap-3 p-5 sm:grid-cols-2">
+              {funnels.map((f) => {
+                const color = getSocialColor(f.platform);
+                return (
+                  <a
+                    key={f.id}
+                    href={f.url || "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => {
+                      if (!f.url?.trim()) e.preventDefault();
+                    }}
+                    className="flex items-center justify-between gap-3 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-4 transition hover:border-pink-500/30"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-white">{f.label}</p>
+                      <p className="truncate text-xs text-white/40">
+                        {[f.model_name, f.platform, f.region].filter(Boolean).join(" · ")}
+                      </p>
+                    </div>
+                    <span
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-white"
+                      style={{ backgroundColor: `${color}12`, borderColor: `${color}35` }}
+                    >
+                      Open
+                      <ExternalLink className="h-3 w-3 text-white/40" />
+                    </span>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
       </div>
 
       <VAShadowbanReportModal

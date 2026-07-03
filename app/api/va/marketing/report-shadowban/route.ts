@@ -45,20 +45,29 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
+  if (!(screenshot instanceof Blob) || screenshot.size === 0) {
+    return NextResponse.json(
+      { error: "A screenshot is required to submit a shadowban/ban report." },
+      { status: 400 },
+    );
+  }
+
   let screenshotAttachment: { url: string }[] = [];
-  if (screenshot instanceof Blob && screenshot.size > 0) {
-    try {
-      const name =
-        screenshot instanceof File && screenshot.name
-          ? screenshot.name
-          : `screenshot-${Date.now()}.png`;
-      const blob = await put(`shadowban-reports/${account_id}/${Date.now()}-${name}`, screenshot, {
-        access: "public",
-      });
-      screenshotAttachment = [{ url: blob.url }];
-    } catch (e) {
-      console.error("[shadowban report] screenshot upload failed:", e);
-    }
+  try {
+    const name =
+      screenshot instanceof File && screenshot.name
+        ? screenshot.name
+        : `screenshot-${Date.now()}.png`;
+    const blob = await put(`shadowban-reports/${account_id}/${Date.now()}-${name}`, screenshot, {
+      access: "public",
+    });
+    screenshotAttachment = [{ url: blob.url }];
+  } catch (e) {
+    console.error("[shadowban report] screenshot upload failed:", e);
+    return NextResponse.json(
+      { error: "Screenshot upload failed. Please try again." },
+      { status: 502 },
+    );
   }
 
   const reporterId = session.airtableUserId ?? session.id;

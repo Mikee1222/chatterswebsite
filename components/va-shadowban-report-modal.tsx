@@ -3,26 +3,17 @@
 import * as React from "react";
 import { Check, X, ClipboardList } from "lucide-react";
 import type { SocialAccount } from "@/services/marketing";
-
-const PLATFORM_ICONS: Record<string, string> = {
-  Instagram: "",
-  Facebook: "",
-  TikTok: "",
-  Twitter: "",
-  YouTube: "▶",
-  Snapchat: "",
-  Telegram: "",
-  GetMyLinks: "",
-  Other: "",
-};
+import { PLATFORM_ICONS } from "@/lib/social-platform-config";
 
 export type VAShadowbanReportModalProps = {
   open: boolean;
   onClose: () => void;
   vaAccounts: SocialAccount[];
+  /** When provided, the report targets this account and the picker is hidden. */
+  presetAccount?: SocialAccount | null;
 };
 
-export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowbanReportModalProps) {
+export function VAShadowbanReportModal({ open, onClose, vaAccounts, presetAccount }: VAShadowbanReportModalProps) {
   const [selectedAccount, setSelectedAccount] = React.useState<SocialAccount | null>(null);
   const [reportType, setReportType] = React.useState<"shadowbanned" | "banned">("shadowbanned");
   const [screenshot, setScreenshot] = React.useState<File | null>(null);
@@ -31,6 +22,10 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
   const [success, setSuccess] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (open && presetAccount) setSelectedAccount(presetAccount);
+  }, [open, presetAccount]);
 
   const screenshotPreviewUrl = React.useMemo(
     () => (screenshot ? URL.createObjectURL(screenshot) : null),
@@ -152,7 +147,18 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
 
             <div className="mb-4">
               <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">Account *</label>
-              {vaAccounts.length > 0 ? (
+              {presetAccount ? (
+                <div className="flex items-center gap-3 rounded-xl border border-pink-500/25 bg-pink-500/10 px-3 py-2.5">
+                  <span className="text-xl">{PLATFORM_ICONS[presetAccount.platform] ?? ""}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white">@{presetAccount.username}</p>
+                    <p className="truncate text-xs text-white/40">
+                      {presetAccount.platform} · {presetAccount.model_name}
+                    </p>
+                  </div>
+                  <Check className="h-4 w-4 shrink-0 text-pink-400" />
+                </div>
+              ) : vaAccounts.length > 0 ? (
                 <div className="max-h-40 space-y-2 overflow-y-auto">
                   {vaAccounts.map((acc) => (
                     <button
@@ -185,7 +191,7 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
 
             <div className="mb-4">
               <label className="mb-2 block text-xs uppercase tracking-widest text-white/40">
-                Screenshot * <span className="normal-case text-white/25">(paste Ctrl+V anywhere)</span>
+                Screenshot * <span className="normal-case text-white/25">(paste anywhere)</span>
               </label>
               <div
                 role="button"
@@ -212,7 +218,7 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts }: VAShadowba
                 ) : (
                   <>
                     <p className="mb-1 flex justify-center"><ClipboardList className="h-8 w-8 text-white/30" aria-hidden /></p>
-                    <p className="text-sm text-white/30">Paste or click to upload</p>
+                    <p className="text-sm text-white/30">Paste (Ctrl+V) or tap</p>
                   </>
                 )}
                 <input

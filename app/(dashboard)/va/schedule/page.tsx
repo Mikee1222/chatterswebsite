@@ -62,13 +62,6 @@ export default async function VaSchedulePage({ searchParams }: { searchParams?: 
     matchesVaProgram(p, airtableId, plainId, session.fullName, session.email)
   );
 
-  console.log("[va-schedule] userId:", userId, "airtableId:", airtableId, "plainId:", plainId);
-  console.log("[va-schedule] allPrograms:", allWeeklyPrograms.length, "filtered:", weeklyProgram.length);
-  console.log(
-    "[va-schedule] sample chatter_ids:",
-    allWeeklyPrograms.slice(0, 5).map((p) => ({ id: p.chatter_id, name: p.chatter_name }))
-  );
-
   const activeShifts = activeAll.filter(
     (s) =>
       (norm(airtableId) && norm(s.chatter_id) === norm(airtableId)) ||

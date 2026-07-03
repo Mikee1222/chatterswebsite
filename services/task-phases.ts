@@ -246,6 +246,7 @@ export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> 
     title: data.title ?? `Phase ${data.phase_number ?? 1}`,
     description: data.description ?? "",
     status: "pending",
+    ...(data.scheduled_time !== undefined ? { scheduled_time: data.scheduled_time } : {}),
     assigned_va_id: assignees.assigned_va_id,
     assigned_va_name: assignees.assigned_va_name,
     assigned_model_id: assignees.assigned_model_id,
@@ -261,6 +262,7 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   if (data.title !== undefined) patch.title = data.title;
   if (data.description !== undefined) patch.description = data.description;
   if (data.status !== undefined) patch.status = data.status;
+  if (data.scheduled_time !== undefined) patch.scheduled_time = data.scheduled_time;
   if (data.actual_start_time !== undefined) patch.actual_start_time = data.actual_start_time;
   if (data.actual_end_time !== undefined) patch.actual_end_time = data.actual_end_time;
   if (data.region !== undefined) patch.region = data.region;
@@ -328,6 +330,44 @@ export async function updatePhaseItem(id: string, data: Partial<PhaseItem>): Pro
 
 export async function deletePhaseItem(id: string): Promise<void> {
   await deleteRecord(TABLE_ITEMS, id);
+}
+
+/**
+ * Clone all phases + checklist items from one task onto another (fresh `pending` copies).
+ * Shared by the recurring-task spawn paths (updateVaTaskStatusAction + cron backfill) so the
+ * next occurrence keeps its phase/checklist structure instead of spawning an empty shell.
+ */
+export async function clonePhasesToTask(
+  sourceTaskId: string,
+  targetTask: { id: string; title: string },
+): Promise<number> {
+  const phases = await getPhasesByTask(sourceTaskId);
+  let cloned = 0;
+  for (const phase of phases) {
+    const created = await createPhase({
+      task_id: targetTask.id,
+      task_title: targetTask.title,
+      phase_number: phase.phase_number,
+      title: phase.title,
+      description: phase.description,
+      region: phase.region,
+      assigned_model_id: phase.assigned_model_id,
+      assigned_model_name: phase.assigned_model_name,
+    });
+    const stablePhaseId = created.phase_id || created.id;
+    for (const item of phase.items) {
+      await createPhaseItem({
+        phase_id: stablePhaseId,
+        task_id: targetTask.id,
+        title: item.title,
+        description: item.description,
+        requires_screenshot: item.requires_screenshot,
+        sort_order: item.sort_order,
+      });
+    }
+    cloned += 1;
+  }
+  return cloned;
 }
 
 export async function completePhaseItem(

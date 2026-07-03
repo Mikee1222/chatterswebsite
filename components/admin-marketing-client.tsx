@@ -11,6 +11,7 @@ import type {
   SocialAccountStatus,
 } from "@/services/marketing";
 import type { ModelRecord, UserRecord } from "@/types";
+import { PLATFORM_ICONS, SOCIAL_COLORS as PLATFORM_COLORS } from "@/lib/social-platform-config";
 
 type Tab = "platforms" | "accounts" | "funnels" | "reports";
 
@@ -42,30 +43,6 @@ const STATUS_CONFIG: Record<
     border: "border-red-500/20",
     dot: "bg-red-500",
   },
-};
-
-const PLATFORM_ICONS: Record<string, string> = {
-  Instagram: "",
-  Facebook: "",
-  TikTok: "",
-  Twitter: "",
-  YouTube: "▶",
-  Snapchat: "",
-  Telegram: "",
-  GetMyLinks: "",
-  Other: "",
-};
-
-const PLATFORM_COLORS: Record<string, string> = {
-  Instagram: "#E4405F",
-  Facebook: "#1877F2",
-  TikTok: "#000000",
-  Twitter: "#1D9BF0",
-  YouTube: "#FF0000",
-  Snapchat: "#FFFC00",
-  Telegram: "#26A5E4",
-  GetMyLinks: "#ec4899",
-  Other: "#888888",
 };
 
 function pill(active: boolean) {
@@ -390,9 +367,10 @@ export function AdminMarketingClient({
       const listData = (await listRes.json()) as { reports?: ShadowbanReport[] };
       setReports(listData.reports ?? []);
       if (action === "approve" && reportBefore) {
+        const newStatus: SocialAccountStatus = reportBefore.report_type === "banned" ? "banned" : "shadowbanned";
         setAccounts((prev) =>
           prev.map((a) =>
-            a.account_id === reportBefore.account_id ? { ...a, account_status: "shadowbanned" as const } : a,
+            a.account_id === reportBefore.account_id ? { ...a, account_status: newStatus } : a,
           ),
         );
       }
@@ -871,7 +849,7 @@ export function AdminMarketingClient({
                               </div>
                             </div>
 
-                            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100">
                               {acc.account_link ? (
                                 <a
                                   href={acc.account_link}
@@ -1118,7 +1096,7 @@ export function AdminMarketingClient({
                         onClick={() => void handleReviewReport(report.id, "approve")}
                         className="flex-1 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-semibold text-red-400 transition-all hover:bg-red-500/30"
                       >
-                        Approve — mark as shadowbanned
+                        Approve — mark as {report.report_type === "banned" ? "banned" : "shadowbanned"}
                       </button>
                       <button
                         type="button"
@@ -1565,7 +1543,7 @@ export function AdminMarketingClient({
                 ) : (
                   <>
                     <p className="mb-1 flex justify-center"><ClipboardList className="h-8 w-8 text-white/30" aria-hidden /></p>
-                    <p className="text-sm text-white/40">Paste (Ctrl+V) or click</p>
+                    <p className="text-sm text-white/40">Paste (Ctrl+V) or tap</p>
                   </>
                 )}
               </button>

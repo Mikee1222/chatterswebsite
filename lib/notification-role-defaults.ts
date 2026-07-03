@@ -138,7 +138,9 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   break_exceeded: ["chatter"],
   break_too_long: ["chatter"],
   va_task_reminder: ["virtual_assistant"],
+  va_task_assigned: ["virtual_assistant"],
   va_content_assigned: ["virtual_assistant"],
+  model_content_request_reviewed: ["model"],
   va_content_scheduled: ["model"],
   va_content_completed: ["model"],
   model_content_scheduled: ["model", "virtual_assistant"],
@@ -418,6 +420,7 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Ενημερώνει τον admin για tasks που δεν έχουν ξεκινήσει"
     ),
     eventEntry("va_task_reminder", "Reminder before VA task due", "Υπενθύμιση στον VA για επερχόμενο task"),
+    eventEntry("va_task_assigned", "New VA task assigned", "Αποστέλλεται στον VA όταν του ανατίθεται νέο task"),
     ...pairedEvents(
       "model_content_scheduled",
       "Model schedules content assignment",
@@ -531,6 +534,17 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Model missed scheduled live (admin)",
       "Αποστέλλεται στο model που δεν εμφανίστηκε στο προγραμματισμένο live",
       "Ενημερώνει τον admin για model που έχασε προγραμματισμένο live"
+    ),
+    {
+      key: "model_content_request_created",
+      label: "Model content request filed (admin)",
+      description: "Ενημερώνει τον admin όταν ένα model υποβάλλει αίτημα περιεχομένου",
+      scope: buildAdminScope(),
+    },
+    eventEntry(
+      "model_content_request_reviewed",
+      "Model content request reviewed",
+      "Αποστέλλεται στο model όταν αλλάζει η κατάσταση του αιτήματος περιεχομένου"
     ),
   ],
   period: [
@@ -711,18 +725,8 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
     },
   ],
   marketing: [
-    eventEntry(
-      "shadowban_report",
-      "Shadowban report (legacy)",
-      "Αποστέλλεται στον VA/model για αναφορά shadowban",
-      "Entity-gated legacy; prefer shadowban_submitted / shadowban_resolved."
-    ),
-    adminEventEntry(
-      "shadowban_report",
-      "Shadowban report (legacy admin)",
-      "Ενημερώνει τον admin για αναφορά shadowban",
-      "Entity-gated admin monitoring for shadowban reports (legacy)."
-    ),
+    // Legacy `shadowban_report` (+admin) removed from the Roles UI (D4). Still mapped in
+    // notifications-schema for historical rows; use shadowban_submitted / shadowban_resolved.
     ...pairedEvents(
       "shadowban_submitted",
       "Shadowban report submitted",

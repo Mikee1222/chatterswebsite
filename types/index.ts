@@ -1043,10 +1043,14 @@ export type NotificationEventType =
   | "task_overdue"
   | "tasks_not_started"
   | "va_task_reminder"
+  | "va_task_assigned"
   | "phase_task_completed"
   | "phase_completed"
   | "phase_overdue"
   | "all_phases_completed"
+  // Model content requests
+  | "model_content_request_created"
+  | "model_content_request_reviewed"
   // Custom
   | "custom_request_created"
   | "custom_request_updated"

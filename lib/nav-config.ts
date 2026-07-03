@@ -232,6 +232,9 @@ const vaNav: NavItem[] = [
   { href: ROUTES.va.home, label: "Home", iconKey: "Home" },
   { href: ROUTES.va.schedule, label: "My schedule", iconKey: "Calendar" },
   { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo" },
+  // C1: marketing VAs manage their social accounts here. Shown to all VAs by default;
+  // admins hide it for the `chatting` va_type via the hidden_nav config (getHiddenNavForVaType).
+  { href: ROUTES.va.marketingAccounts, label: "Marketing", iconKey: "Radio" },
   { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays" },
   { href: ROUTES.va.whales, label: "Whales", iconKey: "Users" },
   { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
@@ -301,7 +304,8 @@ const adminNav: NavItem[] = [
   {
     href: ROUTES.admin.taskTemplates,
     label: "Task Templates",
-        iconKey: "ListTodo",
+    // D3: distinct icon from "VA tasks" (ListTodo) so the two are not confused in the sidebar.
+    iconKey: "LayoutDashboard",
     navSection: "TEAM",
     requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
   },

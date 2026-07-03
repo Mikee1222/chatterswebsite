@@ -4,10 +4,10 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
+  AlertTriangle,
   Calendar,
   Check,
   ChevronRight,
-  ClipboardList,
   ExternalLink,
   ImageIcon,
   ListChecks,
@@ -24,6 +24,9 @@ import { FormField } from "@/components/ui/form-field";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
+import { CustomSelect } from "@/components/ui/custom-select";
+import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
+import { getSocialColor } from "@/lib/social-platform-config";
 import type { VaTaskRecord, VaTaskPriority, VaTaskStatus } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { SocialAccount } from "@/services/marketing";
@@ -116,17 +119,6 @@ const fieldMotion = {
   transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
 } as const;
 
-const SOCIAL_COLORS: Record<string, string> = {
-  Instagram: "#E1306C",
-  Facebook: "#1877F2",
-  TikTok: "#000000",
-  Twitter: "#1DA1F2",
-  YouTube: "#FF0000",
-  Snapchat: "#FFFC00",
-  Telegram: "#229ED9",
-  GetMyLinks: "#9333EA",
-};
-
 export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   const router = useRouter();
   const tasks = initialTasks;
@@ -159,19 +151,6 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   }, [proofPreviewUrl]);
 
   const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
-  const [shadowbanFile, setShadowbanFile] = React.useState<File | null>(null);
-  const [shadowbanNotes, setShadowbanNotes] = React.useState("");
-  const [shadowbanSubmitting, setShadowbanSubmitting] = React.useState(false);
-  const shadowbanProofRef = React.useRef<HTMLInputElement>(null);
-  const shadowbanPreviewUrl = React.useMemo(
-    () => (shadowbanFile ? URL.createObjectURL(shadowbanFile) : null),
-    [shadowbanFile],
-  );
-  React.useEffect(() => {
-    return () => {
-      if (shadowbanPreviewUrl) URL.revokeObjectURL(shadowbanPreviewUrl);
-    };
-  }, [shadowbanPreviewUrl]);
 
   const [activeShift, setActiveShift] = React.useState<ActiveShift | null>(null);
   const [shiftLoading, setShiftLoading] = React.useState(true);
@@ -254,11 +233,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       const f = found.getAsFile();
       if (!f) return;
       if (completingItem) setProofFile(f);
-      else if (shadowbanReportTarget) setShadowbanFile(f);
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
-  }, [completingItem, shadowbanReportTarget]);
+  }, [completingItem]);
 
   const taskStats = React.useMemo(() => {
     let pending = 0;
@@ -380,44 +358,15 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     }
   }
 
-  async function handleSubmitShadowbanReport() {
-    if (!shadowbanReportTarget || !shadowbanFile) return;
-    setShadowbanSubmitting(true);
-    setErr(null);
-    try {
-      const fd = new FormData();
-      fd.append("account_id", shadowbanReportTarget.account_id);
-      fd.append("model_id", shadowbanReportTarget.model_id);
-      fd.append("model_name", shadowbanReportTarget.model_name);
-      fd.append("platform", shadowbanReportTarget.platform);
-      fd.append("username", shadowbanReportTarget.username);
-      fd.append("notes", shadowbanNotes);
-      fd.append("screenshot", shadowbanFile);
-      const res = await fetch("/api/va/marketing/report-shadowban", {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setErr(payload.error?.trim() || "Could not submit report");
-        return;
-      }
-      const mId = shadowbanReportTarget.model_id?.trim();
-      if (mId) {
-        const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(mId)}`, {
-          credentials: "include",
-        });
-        const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
-        if (accRes.ok) {
-          setModelAccounts((prev) => ({ ...prev, [mId]: accData.accounts ?? [] }));
-        }
-      }
-      setShadowbanReportTarget(null);
-      setShadowbanFile(null);
-      setShadowbanNotes("");
-    } finally {
-      setShadowbanSubmitting(false);
+  async function reloadModelAccounts(modelId: string) {
+    const mId = modelId.trim();
+    if (!mId) return;
+    const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(mId)}`, {
+      credentials: "include",
+    });
+    const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
+    if (accRes.ok) {
+      setModelAccounts((prev) => ({ ...prev, [mId]: accData.accounts ?? [] }));
     }
   }
 
@@ -601,9 +550,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                           <div className="flex flex-wrap gap-2">
                             {accs.map((acc) => {
                               const plat = acc.platform?.trim() || "";
-                              const color = SOCIAL_COLORS[plat] ?? "#888888";
+                              const color = getSocialColor(plat);
                               const href = acc.account_link?.trim() || "#";
                               const st = acc.account_status ?? "active";
+                              const flagged = st === "shadowbanned" || st === "banned";
                               return (
                                 <div key={acc.id} className="group/acc relative">
                                   <a
@@ -617,6 +567,20 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                                     }}
                                   >
                                     <span className="font-semibold text-white">@{acc.username}</span>
+                                    {flagged ? (
+                                      <span
+                                        className={cn(
+                                          "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide",
+                                          st === "banned"
+                                            ? "border-red-500/40 bg-red-500/15 text-red-300"
+                                            : "border-amber-500/40 bg-amber-500/15 text-amber-300",
+                                        )}
+                                        title={st === "banned" ? "Account banned" : "Account shadowbanned"}
+                                      >
+                                        <AlertTriangle className="h-2.5 w-2.5" aria-hidden />
+                                        {st === "banned" ? "Banned" : "Flagged"}
+                                      </span>
+                                    ) : null}
                                     <ExternalLink className="h-3 w-3 text-white/30" />
                                   </a>
                                   {st === "active" ? (
@@ -625,10 +589,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                                       onClick={(e) => {
                                         e.preventDefault();
                                         setShadowbanReportTarget(acc);
-                                        setShadowbanFile(null);
-                                        setShadowbanNotes("");
                                       }}
-                                      className="mt-1 text-[10px] text-[#D4AF8C]/60 opacity-0 transition group-hover/acc:opacity-100 hover:text-[#D4AF8C]"
+                                      className="mt-1 text-[10px] text-[#D4AF8C]/60 opacity-0 transition group-hover/acc:opacity-100 [@media(pointer:coarse)]:opacity-60 hover:text-[#D4AF8C]"
                                     >
                                       Report shadowban
                                     </button>
@@ -821,26 +783,24 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
             onChange={(e) => setSearch(e.target.value)}
             className={cn(FILTER_INPUT, "min-w-[10rem] flex-1")}
           />
-          <select
+          <CustomSelect
             value={filterPriority}
-            onChange={(e) => setFilterPriority(e.target.value)}
-            className={cn(FILTER_INPUT, "min-w-[9rem]")}
-          >
-            <option value="">All priorities</option>
-            <option value="urgent">Urgent</option>
-            <option value="high">High</option>
-            <option value="normal">Normal</option>
-            <option value="low">Low</option>
-          </select>
+            onChange={setFilterPriority}
+            portaled
+            placeholder="All priorities"
+            className="min-w-[9rem]"
+            options={[
+              { value: "", label: "All priorities" },
+              { value: "urgent", label: "Urgent" },
+              { value: "high", label: "High" },
+              { value: "normal", label: "Normal" },
+              { value: "low", label: "Low" },
+            ]}
+          />
         </div>
 
-        {/* ── Tasks (dimmed off shift) ── */}
-        <div
-          className={cn(
-            "space-y-4 transition-opacity duration-300",
-            !onShift && "pointer-events-none opacity-50",
-          )}
-        >
+        {/* ── Tasks (readable off-shift; action buttons gated individually) ── */}
+        <div className="space-y-4">
           {err && !selected ? (
             <div
               className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
@@ -1010,77 +970,17 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
         </div>
       ) : null}
 
-      {/* ── Shadowban report modal ── */}
-      {shadowbanReportTarget ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className={cn(VA_CARD, "w-full max-w-sm p-6 shadow-2xl")}>
-            <h3 className="text-lg font-semibold text-white">Report shadowban</h3>
-            <p className="mt-1 text-sm text-[#B8B4B8]/65">
-              @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
-            </p>
-            <div className="mt-5">
-              <label className="mb-2 block text-xs text-white/40">
-                Screenshot <span className="text-amber-400">*</span>
-              </label>
-              <button
-                type="button"
-                onClick={() => shadowbanProofRef.current?.click()}
-                className={cn(
-                  "w-full rounded-2xl border-2 border-dashed p-5 text-center transition-colors",
-                  shadowbanFile
-                    ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/5"
-                    : "border-[#D4AF8C]/20 hover:border-[#D4AF8C]/40 hover:bg-[#D4AF8C]/[0.03]",
-                )}
-              >
-                {shadowbanPreviewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={shadowbanPreviewUrl} alt="Evidence" className="mx-auto max-h-28 rounded-xl object-contain" />
-                ) : (
-                  <>
-                    <ClipboardList className="mx-auto mb-1 h-8 w-8 text-[#D4AF8C]/35" />
-                    <p className="text-sm text-[#B8B4B8]/50">Paste (Ctrl+V) or tap to upload</p>
-                  </>
-                )}
-              </button>
-              <input
-                ref={shadowbanProofRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => setShadowbanFile(e.target.files?.[0] ?? null)}
-              />
-            </div>
-            <textarea
-              value={shadowbanNotes}
-              onChange={(e) => setShadowbanNotes(e.target.value)}
-              rows={2}
-              placeholder="What did you notice?"
-              className="mt-4 w-full resize-none rounded-2xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-white placeholder:text-white/20 focus:outline-none"
-            />
-            <div className="mt-5 flex gap-2">
-              <button
-                type="button"
-                onClick={() => void handleSubmitShadowbanReport()}
-                disabled={!shadowbanFile || shadowbanSubmitting}
-                className="flex-1 rounded-2xl border border-amber-500/30 bg-amber-500/20 py-3 font-bold text-amber-400 disabled:opacity-40"
-              >
-                {shadowbanSubmitting ? "Submitting…" : "Submit report"}
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setShadowbanReportTarget(null);
-                  setShadowbanFile(null);
-                  setShadowbanNotes("");
-                }}
-                className="rounded-2xl border border-white/10 px-5 py-3 text-white/50"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* ── Shadowban report modal (shared component) ── */}
+      <VAShadowbanReportModal
+        open={!!shadowbanReportTarget}
+        presetAccount={shadowbanReportTarget}
+        vaAccounts={[]}
+        onClose={() => {
+          const mId = shadowbanReportTarget?.model_id;
+          setShadowbanReportTarget(null);
+          if (mId) void reloadModelAccounts(mId);
+        }}
+      />
 
       {/* ── Screenshot upload modal ── */}
       {completingItem ? (

@@ -28,13 +28,17 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return isAdmin ? ROUTES.admin.vaTasks : ROUTES.va.tasks;
     case "va_content_assignment":
       if (isModel) return ROUTES.model.contentCalendar;
-      return ROUTES.va.tasks;
+      return ROUTES.va.contentAssignments;
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
       if (isAdmin) return ROUTES.admin.liveShifts;
       if (isModel) return ROUTES.model.liveStreams;
       return ROUTES.va.liveShifts;
+    case "model_content_request":
+      if (isAdmin) return ROUTES.admin.modelContentRequests;
+      if (isModel) return ROUTES.model.home;
+      return ROUTES.dashboard;
     case "custom_request":
       if (isAdmin) return ROUTES.admin.customRequests;
       if (isVa) return ROUTES.va.customRequests;
@@ -108,13 +112,17 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.vaTasks : ROUTES.va.tasks;
     case "va_content_assignment":
       if (isModel) return ROUTES.model.contentCalendar;
-      return ROUTES.va.tasks;
+      return ROUTES.va.contentAssignments;
     case "model":
       return isAdmin ? ROUTES.admin.models : ROUTES.chatter.myWhales;
     case "model_live_stream":
       if (isAdmin) return ROUTES.admin.liveShifts;
       if (isModel) return ROUTES.model.liveStreams;
       return ROUTES.va.liveShifts;
+    case "model_content_request":
+      if (isAdmin) return ROUTES.admin.modelContentRequests;
+      if (isModel) return ROUTES.model.home;
+      return ROUTES.dashboard;
     case "custom_request":
       if (isAdmin) return ROUTES.admin.customRequests;
       if (isVa) return ROUTES.va.customRequests;
@@ -188,6 +196,9 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "task_overdue":
     case "tasks_not_started":
     case "va_task_reminder":
+    case "va_task_assigned":
+    case "model_content_request_created":
+    case "model_content_request_reviewed":
     case "model_content_completed":
     case "model_content_scheduled":
     case "va_content_assigned":
