@@ -669,6 +669,22 @@ const sharedPermissionNavItems: NavItem[] = [
     excludeFromMobileMainTabs: true,
   },
   {
+    href: ROUTES.creativeScripts,
+    label: "Scripts to Write",
+    iconKey: "FileText",
+    navSection: "CREATIVE",
+    requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.myScripts,
+    label: "My Scripts",
+    iconKey: "FileText",
+    navSection: "CREATIVE",
+    requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.admin.pdfMaker,
     label: "PDF Maker",
     iconKey: "FileText",

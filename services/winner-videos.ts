@@ -13,6 +13,12 @@ import {
   coerceWinnerVideoStatus,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
+import {
+  coerceScriptStatus,
+  coerceScriptVideoType,
+  type ScriptStatus,
+  type ScriptVideoType,
+} from "@/lib/creative-scripts-helpers";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
@@ -41,11 +47,22 @@ export interface WinnerVideoRecord {
   screenshot: WinnerVideoAttachment[];
   video_file: WinnerVideoAttachment[];
   transcript: string;
+  script_status: ScriptStatus;
+  script_video_type: ScriptVideoType | "";
+  script_text: string;
+  script_submitted_by_name: string;
+  script_submitted_by_id: string;
+  script_submitted_at: string | null;
+  script_reviewed_by_name: string;
+  script_reviewed_at: string | null;
+  script_rejection_reason: string;
 }
 
 export interface WinnerVideoFilters {
   status?: WinnerVideoStatus | "";
+  script_status?: ScriptStatus | "";
   submitted_by_id?: string;
+  script_submitted_by_id?: string;
   date_from?: string;
   date_to?: string;
 }
@@ -70,6 +87,15 @@ type WinnerVideoFields = {
   screenshot?: unknown;
   video_file?: unknown;
   transcript?: string;
+  script_status?: string;
+  script_video_type?: string;
+  script_text?: string;
+  script_submitted_by_name?: string;
+  script_submitted_by_id?: string;
+  script_submitted_at?: string;
+  script_reviewed_by_name?: string;
+  script_reviewed_at?: string | null;
+  script_rejection_reason?: string;
 };
 
 function escapeFormulaString(value: string): string {
@@ -114,6 +140,15 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     screenshot: mapAttachments(f.screenshot),
     video_file: mapAttachments(f.video_file),
     transcript: String(f.transcript ?? ""),
+    script_status: coerceScriptStatus(f.script_status),
+    script_video_type: coerceScriptVideoType(f.script_video_type),
+    script_text: String(f.script_text ?? ""),
+    script_submitted_by_name: String(f.script_submitted_by_name ?? ""),
+    script_submitted_by_id: String(f.script_submitted_by_id ?? ""),
+    script_submitted_at: f.script_submitted_at?.trim() ? String(f.script_submitted_at) : null,
+    script_reviewed_by_name: String(f.script_reviewed_by_name ?? ""),
+    script_reviewed_at: f.script_reviewed_at?.trim() ? String(f.script_reviewed_at) : null,
+    script_rejection_reason: String(f.script_rejection_reason ?? ""),
   };
 }
 
@@ -124,6 +159,14 @@ function buildFilter(filters: WinnerVideoFilters): string | undefined {
   }
   if (filters.status) {
     parts.push(`{status} = "${escapeFormulaString(filters.status)}"`);
+  }
+  if (filters.script_status) {
+    parts.push(`{script_status} = "${escapeFormulaString(filters.script_status)}"`);
+  }
+  if (filters.script_submitted_by_id?.trim()) {
+    parts.push(
+      `{script_submitted_by_id} = "${escapeFormulaString(filters.script_submitted_by_id.trim())}"`,
+    );
   }
   if (filters.date_from?.trim()) {
     parts.push(`IS_AFTER({submitted_at}, "${escapeFormulaString(filters.date_from.trim())}")`);
@@ -230,14 +273,21 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
   if (!existing) throw new Error("Winner video not found");
 
   const now = new Date().toISOString();
-  await updateRecord(TABLE, id, {
+  const patch: WinnerVideoFields = {
     status: "Approved",
     assigned_creator_name: data.assigned_creator_name.trim(),
     recreation_deadline: data.recreation_deadline.trim(),
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,
     rejection_reason: "",
-  });
+  };
+
+  const currentScriptStatus = existing.script_status;
+  if (!currentScriptStatus || currentScriptStatus === "Not Applicable") {
+    patch.script_status = "Needs Script";
+  }
+
+  await updateRecord(TABLE, id, patch);
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after approve");
@@ -277,6 +327,7 @@ export async function rejectWinnerVideo(id: string, data: RejectWinnerVideoInput
     rejection_reason: reason,
     reviewed_by_name: data.reviewed_by_name.trim(),
     reviewed_at: now,
+    script_status: "Not Applicable",
   });
 
   const updated = await getWinnerVideoById(id);
@@ -391,5 +442,159 @@ export async function updateWinnerVideoTranscript(id: string, transcript: string
   const text = transcript.trim();
   if (!text) return;
   await updateRecord(TABLE, id, { transcript: text });
+}
+
+export async function getScriptsQueue(): Promise<WinnerVideoRecord[]> {
+  return getAllWinnerVideos({ script_status: "Needs Script" });
+}
+
+export async function getMyScripts(submitterId: string): Promise<WinnerVideoRecord[]> {
+  const id = submitterId.trim();
+  if (!id) return [];
+  return getAllWinnerVideos({ script_submitted_by_id: id });
+}
+
+export async function getPendingScriptsForReview(): Promise<WinnerVideoRecord[]> {
+  return getAllWinnerVideos({ script_status: "Pending Review" });
+}
+
+export type SubmitCreativeScriptInput = {
+  assigned_creator_name: string;
+  script_video_type: ScriptVideoType;
+  script_text: string;
+  script_submitted_by_name: string;
+  script_submitted_by_id: string;
+};
+
+async function writeCreativeScriptSubmission(
+  id: string,
+  data: SubmitCreativeScriptInput,
+): Promise<WinnerVideoRecord> {
+  const scriptText = data.script_text.trim();
+  const modelName = data.assigned_creator_name.trim();
+  const videoType = data.script_video_type;
+  if (!modelName) throw new Error("Model is required");
+  if (!videoType) throw new Error("Script type is required");
+  if (!scriptText) throw new Error("Script text is required");
+
+  const now = new Date().toISOString();
+  await updateRecord(TABLE, id, {
+    assigned_creator_name: modelName,
+    script_status: "Pending Review",
+    script_video_type: videoType,
+    script_text: scriptText,
+    script_submitted_by_name: data.script_submitted_by_name.trim(),
+    script_submitted_by_id: data.script_submitted_by_id.trim(),
+    script_submitted_at: now,
+    script_rejection_reason: "",
+    script_reviewed_by_name: "",
+    script_reviewed_at: null,
+  });
+
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after script submit");
+  return updated;
+}
+
+export async function submitCreativeScript(
+  id: string,
+  data: SubmitCreativeScriptInput,
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  if (existing.script_status !== "Needs Script") {
+    throw new Error("This video is not available for script submission");
+  }
+  return writeCreativeScriptSubmission(id, data);
+}
+
+export type ResubmitCreativeScriptInput = SubmitCreativeScriptInput;
+
+export async function resubmitCreativeScript(
+  id: string,
+  data: ResubmitCreativeScriptInput,
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  if (existing.script_status !== "Rejected") {
+    throw new Error("Only rejected scripts can be resubmitted");
+  }
+  return writeCreativeScriptSubmission(id, data);
+}
+
+export type ReviewCreativeScriptInput = {
+  script_text: string;
+  reviewed_by_name: string;
+  script_rejection_reason?: string;
+};
+
+export async function approveCreativeScript(
+  id: string,
+  data: ReviewCreativeScriptInput,
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  if (existing.script_status !== "Pending Review") {
+    throw new Error("Script is not pending review");
+  }
+
+  const scriptText = data.script_text.trim();
+  if (!scriptText) throw new Error("Script text is required");
+
+  const now = new Date().toISOString();
+  await updateRecord(TABLE, id, {
+    script_status: "Approved",
+    script_text: scriptText,
+    script_reviewed_by_name: data.reviewed_by_name.trim(),
+    script_reviewed_at: now,
+    script_rejection_reason: "",
+  });
+
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after script approval");
+  return updated;
+}
+
+export async function rejectCreativeScript(
+  id: string,
+  data: ReviewCreativeScriptInput,
+): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  if (existing.script_status !== "Pending Review") {
+    throw new Error("Script is not pending review");
+  }
+
+  const reason = (data.script_rejection_reason ?? "").trim();
+  if (!reason) throw new Error("Rejection reason is required");
+
+  const scriptText = data.script_text.trim();
+  if (!scriptText) throw new Error("Script text is required");
+
+  const now = new Date().toISOString();
+  await updateRecord(TABLE, id, {
+    script_status: "Rejected",
+    script_text: scriptText,
+    script_rejection_reason: reason,
+    script_reviewed_by_name: data.reviewed_by_name.trim(),
+    script_reviewed_at: now,
+  });
+
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after script rejection");
+  return updated;
+}
+
+export async function saveCreativeScriptText(id: string, script_text: string): Promise<WinnerVideoRecord> {
+  const existing = await getWinnerVideoById(id);
+  if (!existing) throw new Error("Winner video not found");
+  const text = script_text.trim();
+  if (!text) throw new Error("Script text is required");
+
+  await updateRecord(TABLE, id, { script_text: text });
+
+  const updated = await getWinnerVideoById(id);
+  if (!updated) throw new Error("Winner video not found after save");
+  return updated;
 }
 

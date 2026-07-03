@@ -67,6 +67,9 @@ export const PERMISSIONS = {
   WINNER_VIDEOS_SUBMIT: "winner_videos:submit",
   WINNER_VIDEOS_MANAGE: "winner_videos:manage",
 
+  CREATIVE_SCRIPTS_SUBMIT: "creative_scripts:submit",
+  CREATIVE_SCRIPTS_MANAGE: "creative_scripts:manage",
+
   DAILY_REVIEW_SUBMIT: "daily_review:submit",
   DAILY_REVIEW_MANAGE: "daily_review:manage",
 
@@ -160,6 +163,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   pdf_maker: "PDF Maker",
   spotcheck: "Spot checks",
   winner_videos: "Winner videos",
+  creative_scripts: "Creative scripts",
   daily_review: "Daily review",
   content: "Content",
   "spin-wheel": "Spin wheel",
@@ -260,6 +264,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "winner_videos:submit": "Υποβολή winner video tracking submissions",
   "winner_videos:manage": "Διαχείριση και έγκριση winner video submissions",
+
+  "creative_scripts:submit": "Συγγραφή scripts για approved winner videos",
+  "creative_scripts:manage": "Έλεγχος, επεξεργασία και έγκριση creative scripts",
 
   "daily_review:submit": "Υποβολή ημερήσιας αξιολόγησης marketing εποπτείας",
   "daily_review:manage": "Διαχείριση ημερήσιων αξιολογήσεων και exec audits marketing",

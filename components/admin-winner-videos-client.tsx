@@ -41,19 +41,30 @@ import { WINNER_VIDEO_STATUSES, type WinnerVideoStatus } from "@/lib/winner-vide
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
+import { AdminCreativeScriptsReview } from "@/components/admin-creative-scripts-review";
+
+type AdminTab = "submissions" | "scripts";
 
 type Props = {
   initialVideos: WinnerVideoRecord[];
+  initialPendingScripts?: WinnerVideoRecord[];
   gunzoModels: ModelRecord[];
+  canManageScripts?: boolean;
 };
 
-export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
+export function AdminWinnerVideosClient({
+  initialVideos,
+  initialPendingScripts = [],
+  gunzoModels,
+  canManageScripts = false,
+}: Props) {
   const { addToast } = useToast();
   const copySubmission = useWinnerVideoCopy(addToast);
   const [videos, setVideos] = React.useState(initialVideos);
   const [loading, setLoading] = React.useState(false);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
   const [viewMode, setViewMode] = React.useState<WinnerVideoViewMode>("list");
+  const [adminTab, setAdminTab] = React.useState<AdminTab>("submissions");
 
   const [filterStatus, setFilterStatus] = React.useState<WinnerVideoStatus | "">("");
   const [filterDateRange, setFilterDateRange] = React.useState<WinnerVideoDateRange>("all");
@@ -142,6 +153,44 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
         </p>
       </div>
 
+      {canManageScripts ? (
+        <div
+          className="inline-flex rounded-lg border border-white/[0.08] bg-[#0D0B0D]/70 p-0.5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
+          role="tablist"
+          aria-label="Winner videos views"
+        >
+          {(
+            [
+              { id: "submissions" as const, label: "All submissions" },
+              { id: "scripts" as const, label: "Scripts pending review" },
+            ] as const
+          ).map(({ id, label }) => {
+            const active = adminTab === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                onClick={() => setAdminTab(id)}
+                className={cn(
+                  "rounded-md px-4 py-2 text-sm font-medium transition duration-200 motion-reduce:transition-none",
+                  active
+                    ? "border border-[#FF1493]/35 bg-[#FF1493]/12 text-[#FFB3D9] shadow-[0_0_14px_-4px_rgba(255,20,147,0.35)]"
+                    : "border border-transparent text-[#B8B4B8]/60 hover:text-[#B8B4B8]/85",
+                )}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      {canManageScripts && adminTab === "scripts" ? (
+        <AdminCreativeScriptsReview initialScripts={initialPendingScripts} />
+      ) : (
+        <>
       <WinnerVideoFilters
         filterStatus={filterStatus}
         onFilterStatusChange={setFilterStatus}
@@ -435,6 +484,8 @@ export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
           </div>
         </ReviewModalShell>
       ) : null}
+        </>
+      )}
     </div>
   );
 }

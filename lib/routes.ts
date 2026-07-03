@@ -183,6 +183,10 @@ export const ROUTES = {
   dailyReview: "/daily-review",
   /** VA winner video submissions (permission-gated). */
   winners: "/winners",
+  /** Creative script queue — write scripts for approved winner videos. */
+  creativeScripts: "/creative-scripts",
+  /** Submitter view of own creative scripts. */
+  myScripts: "/my-scripts",
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
   /** Fines & bonuses (chatter + VA shared). */
