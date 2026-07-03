@@ -292,7 +292,7 @@ export async function deleteTaskTemplate(id: string): Promise<void> {
 
 export type ApplyTemplateInput = {
   assignedVaId: string;
-  assignedModelId: string;
+  assignedModelIds: string[];
   dueDate?: string | null;
   region?: TaskPhase["region"];
   assignedById?: string;
@@ -313,17 +313,20 @@ export async function applyTemplateToTask(
   if (!template || !template.is_active) throw new Error("Template not found or inactive");
 
   const vaId = input.assignedVaId.trim();
-  const modelId = input.assignedModelId.trim();
+  const modelIds = [...new Set((input.assignedModelIds ?? []).map((id) => id.trim()).filter(Boolean))];
   if (!vaId) throw new Error("VA is required");
-  if (!modelId) throw new Error("Model is required");
+  if (modelIds.length === 0) throw new Error("At least one model is required");
 
   const [vaUser, modelss] = await Promise.all([
     getUserByAirtableId(vaId),
     listAllModelss().catch(() => []),
   ]);
   const vaName = (vaUser?.full_name || vaUser?.email || "").trim();
-  const model = modelss.find((m) => m.id === modelId);
-  const modelName = (model?.model_name ?? "").trim();
+  const modelNames = modelIds
+    .map((id) => (modelss.find((m) => m.id === id)?.model_name ?? "").trim())
+    .filter(Boolean);
+  const primaryModelId = modelIds[0];
+  const primaryModelName = modelNames[0] ?? "";
   const region = input.region ?? "Global";
 
   const task = await createVaTask({
@@ -331,8 +334,8 @@ export async function applyTemplateToTask(
     description: template.description,
     assigned_to_ids: [vaId],
     assigned_by_ids: input.assignedById ? [input.assignedById] : [],
-    assigned_model_ids: [modelId],
-    assigned_model_names: modelName ? [modelName] : [],
+    assigned_model_ids: modelIds,
+    assigned_model_names: modelNames,
     status: "pending",
     priority: input.priority ?? "normal",
     due_date: input.dueDate ?? undefined,
@@ -349,8 +352,8 @@ export async function applyTemplateToTask(
       region,
       assigned_va_id: vaId,
       assigned_va_name: vaName,
-      assigned_model_id: modelId,
-      assigned_model_name: modelName,
+      assigned_model_id: primaryModelId,
+      assigned_model_name: primaryModelName,
     });
 
     const stablePhaseId = phase.phase_id || phase.id;

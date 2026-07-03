@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Bell, Check, ClipboardList, Clock, Pencil, Plus, Trash2, Users, X, ImageIcon, Camera, Zap } from "lucide-react";
+import { Bell, Check, ClipboardList, Clock, Pencil, Plus, Search, Trash2, Users, X, ImageIcon, Camera, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
@@ -203,6 +203,98 @@ function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium capitalize", variant)}>
       {priority}
     </span>
+  );
+}
+
+function ModelMultiSelect({
+  models,
+  selectedIds,
+  onChange,
+}: {
+  models: ModelRecord[];
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+}) {
+  const [query, setQuery] = React.useState("");
+
+  const filtered = React.useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return models;
+    return models.filter((m) => m.model_name.toLowerCase().includes(q));
+  }, [models, query]);
+
+  const selected = models.filter((m) => selectedIds.includes(m.id));
+
+  return (
+    <div className="space-y-3">
+      {selected.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {selected.map((m) => (
+            <span
+              key={m.id}
+              className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/25 bg-rose-500/10 py-1 pl-1 pr-2 text-xs text-rose-200"
+            >
+              <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500/20 text-[10px] font-semibold text-rose-300">
+                {(m.model_name || "?").trim().slice(0, 1).toUpperCase() || "?"}
+              </span>
+              <span className="max-w-[140px] truncate">{m.model_name}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${m.model_name}`}
+                onClick={() => onChange(selectedIds.filter((id) => id !== m.id))}
+                className="rounded-full p-0.5 text-rose-300/60 hover:bg-rose-500/20 hover:text-rose-100"
+              >
+                <X className="h-3 w-3" aria-hidden />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/35" aria-hidden />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search models…"
+          className="h-10 w-full rounded-xl border border-white/10 bg-white/5 pl-9 pr-3 text-sm text-white placeholder:text-white/35 focus:border-pink-500 focus:outline-none focus:ring-2 focus:ring-pink-500/20"
+        />
+      </div>
+      <div className="max-h-44 space-y-1 overflow-y-auto rounded-xl border border-white/10 bg-black/25 p-2">
+        {filtered.length === 0 ? (
+          <p className="px-2 py-3 text-xs text-white/45">No models match your search.</p>
+        ) : (
+          filtered.map((m) => {
+            const checked = selectedIds.includes(m.id);
+            return (
+              <label
+                key={m.id}
+                className={cn(
+                  "flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition hover:bg-white/5",
+                  checked && "bg-rose-500/10",
+                )}
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={() => {
+                    const set = new Set(selectedIds);
+                    if (set.has(m.id)) set.delete(m.id);
+                    else set.add(m.id);
+                    onChange([...set]);
+                  }}
+                  className="h-4 w-4 rounded border-white/25"
+                />
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-rose-500/15 text-[10px] font-semibold text-rose-300">
+                  {(m.model_name || "?").trim().slice(0, 1).toUpperCase() || "?"}
+                </span>
+                <span className="truncate text-white/80">{m.model_name}</span>
+              </label>
+            );
+          })
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -419,10 +511,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
     setAssignedTo((prev) => (prev.includes(vaId) ? prev.filter((id) => id !== vaId) : [...prev, vaId]));
   }
 
-  function toggleModel(modelId: string) {
-    setAssignedModels((prev) => (prev.includes(modelId) ? prev.filter((id) => id !== modelId) : [...prev, modelId]));
-  }
-
   function toggleRecurrenceDay(day: VaRecurrenceDay) {
     setRecurrenceDays((prev) => {
       const set = new Set(prev);
@@ -590,8 +678,8 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         setError("Select exactly one VA for template tasks");
         return;
       }
-      if (assignedModels.length !== 1) {
-        setError("Select exactly one model for template tasks");
+      if (assignedModels.length === 0) {
+        setError("Select at least one model for template tasks");
         return;
       }
     }
@@ -610,7 +698,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           credentials: "include",
           body: JSON.stringify({
             assignedVaId: assignedTo[0],
-            assignedModelId: assignedModels[0],
+            assignedModelIds: assignedModels,
             dueDate: dueIso ?? null,
             region: templateRegion,
             priority,
@@ -1558,30 +1646,13 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
 
                 <div className="mt-4">
                   <label className="mb-2 block text-xs font-medium text-white/40">
-                    {createMode === "template" && !editingId ? "Assign model *" : "Assign models (optional)"}
+                    {createMode === "template" && !editingId ? "Assign models *" : "Assign models (optional)"}
                   </label>
-                  <div className="flex flex-wrap gap-2">
-                    {modelss.map((m) => {
-                      const on = assignedModels.includes(m.id);
-                      return (
-                        <button
-                          key={m.id}
-                          type="button"
-                          onClick={() => toggleModel(m.id)}
-                          className={cn(
-                            "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
-                            on
-                              ? "border-rose-500/30 bg-rose-500/20 text-rose-400"
-                              : "border-white/10 bg-white/5 text-white/40 hover:bg-white/8",
-                          )}
-                        >
-                          <Users className="h-4 w-4 text-rose-400/70" aria-hidden />
-                          {m.model_name}
-                          {on ? <Check className="h-3 w-3" /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <ModelMultiSelect
+                    models={modelss}
+                    selectedIds={assignedModels}
+                    onChange={setAssignedModels}
+                  />
                 </div>
               </div>
 
