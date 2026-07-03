@@ -55,7 +55,7 @@ export async function POST(req: Request) {
       addRandomSuffix: false,
     });
 
-    const createdBy = (session.airtableUserId ?? session.id)?.trim();
+    const createdBy = (session.fullName?.trim() || session.email?.trim() || "Unknown");
     const record = await createPdfDocument({
       title,
       subtitle,

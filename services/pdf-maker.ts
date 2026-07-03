@@ -4,7 +4,6 @@ import {
   listRecords,
   type AirtableRecord,
 } from "@/lib/airtable-server";
-import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
 
 export const PDF_DOCUMENTS_TABLE = "pdf_documents";
 export const PDF_TEMPLATES_TABLE = "pdf_templates";
@@ -103,9 +102,7 @@ function mapTemplateRecord(rec: AirtableRecord<TemplateFields>): PdfTemplate {
 function mapDocumentRecord(rec: AirtableRecord<DocumentFields>): PdfDocument {
   const f = (rec.fields ?? {}) as Record<string, unknown>;
   const sectionsRaw = f.Sections ?? f.sections;
-  const createdBy =
-    firstLinkedId(f["Created By"] ?? f.created_by) ??
-    fieldStr(f, "Created By", "created_by");
+  const createdBy = fieldStr(f, "Created By", "created_by");
   return {
     id: rec.id,
     title: fieldStr(f, "Title", "title") || "Untitled",
@@ -141,9 +138,9 @@ export async function createPdfDocument(input: {
     Sections: JSON.stringify(input.sections),
     "File URL": input.fileUrl.trim(),
     "Created At": new Date().toISOString(),
+    // "Created By" is a singleLineText field in Airtable — must be a plain string, not a linked-record array.
+    "Created By": String(input.createdBy || "Unknown"),
   };
-  const creatorLink = toLinkedRecordPayload(input.createdBy?.trim() ?? null);
-  if (creatorLink) fields["Created By"] = creatorLink;
 
   const rec = await createRecord<DocumentFields>(PDF_DOCUMENTS_TABLE, fields);
   return mapDocumentRecord(rec);
