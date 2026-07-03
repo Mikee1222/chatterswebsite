@@ -351,10 +351,12 @@ export function QuickActionMarkFixed({
   onClick,
   disabled,
   className,
+  children = "Mark Fixed",
 }: {
   onClick: () => void;
   disabled?: boolean;
   className?: string;
+  children?: React.ReactNode;
 }) {
   return (
     <button
@@ -367,7 +369,7 @@ export function QuickActionMarkFixed({
       )}
     >
       <Check className="h-3.5 w-3.5" aria-hidden />
-      Mark Fixed
+      {children}
     </button>
   );
 }
@@ -376,10 +378,12 @@ export function QuickActionEscalate({
   onClick,
   disabled,
   className,
+  children = "Escalate",
 }: {
   onClick: () => void;
   disabled?: boolean;
   className?: string;
+  children?: React.ReactNode;
 }) {
   return (
     <button
@@ -391,7 +395,7 @@ export function QuickActionEscalate({
         className,
       )}
     >
-      Escalate
+      {children}
     </button>
   );
 }

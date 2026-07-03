@@ -23,10 +23,11 @@ export async function POST(req: Request) {
   }
 
   const body = (await req.json()) as Record<string, unknown>;
+  const reference_model_id = String(body.reference_model_id ?? "").trim();
   const reference_model_name = String(body.reference_model_name ?? "").trim();
   const video_link = String(body.video_link ?? "").trim();
   if (!reference_model_name || !video_link) {
-    return NextResponse.json({ error: "Reference model name and video link are required" }, { status: 400 });
+    return NextResponse.json({ error: "Reference model and video link are required" }, { status: 400 });
   }
 
   const viewsRaw = body.views_at_submission;
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
         : null;
 
   const video = await createWinnerVideo({
+    reference_model_id: reference_model_id || undefined,
     reference_model_name,
     video_link,
     note: String(body.note ?? ""),

@@ -4,6 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getWinnerVideosBySubmitter } from "@/services/winner-videos";
+import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { VaWinnerVideosClient } from "@/components/va-winner-videos-client";
 
 export default async function WinnersSubmitPage() {
@@ -13,11 +14,14 @@ export default async function WinnersSubmitPage() {
     redirect(ROUTES.dashboard);
   }
 
-  const submissions = await getWinnerVideosBySubmitter(user.airtableUserId ?? user.id).catch(() => []);
+  const [submissions, gunzoModels] = await Promise.all([
+    getWinnerVideosBySubmitter(user.airtableUserId ?? user.id).catch(() => []),
+    listActiveGunzoTeamModelss().catch(() => []),
+  ]);
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
-      <VaWinnerVideosClient initialSubmissions={submissions} />
+      <VaWinnerVideosClient initialSubmissions={submissions} gunzoModels={gunzoModels} />
     </div>
   );
 }

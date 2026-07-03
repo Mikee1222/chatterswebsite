@@ -22,6 +22,7 @@ export type WinnerVideoAttachment = { url: string; filename?: string };
 export interface WinnerVideoRecord {
   id: string;
   video_id: string;
+  reference_model_id: string;
   reference_model_name: string;
   video_link: string;
   note: string;
@@ -48,6 +49,7 @@ export interface WinnerVideoFilters {
 
 type WinnerVideoFields = {
   video_id?: string;
+  reference_model_id?: string;
   reference_model_name?: string;
   video_link?: string;
   note?: string;
@@ -89,6 +91,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
   return {
     id: rec.id,
     video_id: String(f.video_id ?? rec.id),
+    reference_model_id: String(f.reference_model_id ?? ""),
     reference_model_name: String(f.reference_model_name ?? ""),
     video_link: String(f.video_link ?? ""),
     note: String(f.note ?? ""),
@@ -151,6 +154,7 @@ export async function getWinnerVideoById(id: string): Promise<WinnerVideoRecord 
 }
 
 export type CreateWinnerVideoInput = {
+  reference_model_id?: string;
   reference_model_name: string;
   video_link: string;
   note?: string;
@@ -163,6 +167,7 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
   const now = new Date().toISOString();
   const rec = await createRecord<WinnerVideoFields>(TABLE, {
     video_id: `wv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    reference_model_id: data.reference_model_id?.trim() || undefined,
     reference_model_name: data.reference_model_name.trim(),
     video_link: data.video_link.trim(),
     note: (data.note ?? "").trim(),

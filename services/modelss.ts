@@ -146,6 +146,11 @@ export async function getModelById(recordId: string): Promise<ModelRecord | null
   }
 }
 
+/** Active modelss on the Gunzo team (excludes chatting_agency). */
+export async function listActiveGunzoTeamModelss(): Promise<ModelRecord[]> {
+  return listAllModelss('AND({team} = "gunzo_team", {status} = "active")');
+}
+
 export async function getFreeModelss() {
   const modelss = await listAllModelss('{current_status} = "free"');
   return modelss;

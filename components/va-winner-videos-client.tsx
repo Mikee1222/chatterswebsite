@@ -6,6 +6,7 @@ import {
   AttachmentLinks,
   FindingCard,
   ManagerReviewFileDropzone,
+  ManagerReviewSelect,
   ManagerReviewTextarea,
   ReviewEmptyState,
   ReviewFieldLabel,
@@ -18,10 +19,12 @@ import {
   VA_FILTER_INPUT,
   WinnerVideoStatusBadge,
   displayOrDash,
+  type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
+import type { ModelRecord } from "@/types";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {
@@ -42,21 +45,35 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 
 type Props = {
   initialSubmissions: WinnerVideoRecord[];
+  gunzoModels: ModelRecord[];
 };
 
-export function VaWinnerVideosClient({ initialSubmissions }: Props) {
+export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props) {
   const { addToast } = useToast();
   const [submissions, setSubmissions] = React.useState(initialSubmissions);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
-  const [referenceModelName, setReferenceModelName] = React.useState("");
+  const [referenceModelId, setReferenceModelId] = React.useState("");
   const [videoLink, setVideoLink] = React.useState("");
   const [note, setNote] = React.useState("");
   const [views, setViews] = React.useState("");
   const [screenshotFiles, setScreenshotFiles] = React.useState<File[]>([]);
 
   React.useEffect(() => setSubmissions(initialSubmissions), [initialSubmissions]);
+
+  const modelOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "Select Gunzo-team model…" },
+      ...gunzoModels.map((m) => ({ value: m.id, label: m.model_name })),
+    ],
+    [gunzoModels],
+  );
+
+  const selectedModelName = React.useMemo(
+    () => gunzoModels.find((m) => m.id === referenceModelId)?.model_name ?? "",
+    [gunzoModels, referenceModelId],
+  );
 
   async function reload() {
     setLoading(true);
@@ -71,7 +88,7 @@ export function VaWinnerVideosClient({ initialSubmissions }: Props) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!referenceModelName.trim() || !videoLink.trim()) {
+    if (!referenceModelId || !selectedModelName.trim() || !videoLink.trim()) {
       addToast(localToast(`wv-val-${Date.now()}`, "Missing fields", "Reference model and video link are required.", "high"));
       return;
     }
@@ -82,7 +99,8 @@ export function VaWinnerVideosClient({ initialSubmissions }: Props) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          reference_model_name: referenceModelName.trim(),
+          reference_model_id: referenceModelId,
+          reference_model_name: selectedModelName.trim(),
           video_link: videoLink.trim(),
           note: note.trim(),
           views_at_submission: views.trim() ? Number(views) : null,
@@ -102,7 +120,7 @@ export function VaWinnerVideosClient({ initialSubmissions }: Props) {
           credentials: "include",
         });
       }
-      setReferenceModelName("");
+      setReferenceModelId("");
       setVideoLink("");
       setNote("");
       setViews("");
@@ -128,12 +146,13 @@ export function VaWinnerVideosClient({ initialSubmissions }: Props) {
       <ReviewFormSection title="Submit winner video" description="Optional view count and screenshot help reviewers.">
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
-            <ReviewFieldLabel>Reference model name</ReviewFieldLabel>
-            <input
-              value={referenceModelName}
-              onChange={(e) => setReferenceModelName(e.target.value)}
-              className={VA_FILTER_INPUT}
-              placeholder="e.g. Model handle or display name"
+            <ReviewFieldLabel>Reference model</ReviewFieldLabel>
+            <ManagerReviewSelect
+              value={referenceModelId}
+              onChange={setReferenceModelId}
+              options={modelOptions}
+              placeholder="Select Gunzo-team model…"
+              required
             />
           </div>
           <div>
@@ -179,7 +198,7 @@ export function VaWinnerVideosClient({ initialSubmissions }: Props) {
               type="button"
               className={VA_BTN_SECONDARY}
               onClick={() => {
-                setReferenceModelName("");
+                setReferenceModelId("");
                 setVideoLink("");
                 setNote("");
                 setViews("");

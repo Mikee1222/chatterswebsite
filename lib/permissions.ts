@@ -369,7 +369,11 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SETTINGS_VIEW,
   PERMISSIONS.WEEKLY_PROGRAM_VIEW,
-  PERMISSIONS.WINNER_VIDEOS_SUBMIT,
+  // NOTE: winner_videos:submit is intentionally NOT a VA default. Like spotcheck:submit
+  // and daily_review:submit, it is an optional per-role permission that admins grant via
+  // the Roles UI. Because resolveRolePermissions() unions code defaults into stored perms
+  // (defaults act as a mandatory floor), any permission listed here can NEVER be toggled
+  // off in the UI. Keep opt-in submit-style permissions out of defaults.
 ];
 
 const MODEL_PERMISSIONS: Permission[] = [

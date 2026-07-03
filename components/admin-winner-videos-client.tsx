@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Check, ExternalLink, Loader2, Trophy, X } from "lucide-react";
+import { ExternalLink, Loader2, Trophy, X } from "lucide-react";
 import {
   AttachmentLinks,
   DashPlaceholder,
@@ -10,8 +10,11 @@ import {
   FindingCard,
   ManagerReviewSelect,
   ManagerReviewTextarea,
+  QuickActionEscalate,
+  QuickActionMarkFixed,
   ReviewEmptyState,
   ReviewFieldLabel,
+  ReviewFormSection,
   ReviewLoadingState,
   ReviewModalShell,
   ReviewPageEyebrow,
@@ -28,6 +31,7 @@ import { formatDateTimeAthens } from "@/lib/format";
 import { WINNER_VIDEO_STATUSES, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
+import type { ModelRecord } from "@/types";
 
 type DateRange = "all" | "7d" | "30d";
 
@@ -56,9 +60,10 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 
 type Props = {
   initialVideos: WinnerVideoRecord[];
+  gunzoModels: ModelRecord[];
 };
 
-export function AdminWinnerVideosClient({ initialVideos }: Props) {
+export function AdminWinnerVideosClient({ initialVideos, gunzoModels }: Props) {
   const { addToast } = useToast();
   const [videos, setVideos] = React.useState(initialVideos);
   const [loading, setLoading] = React.useState(false);
@@ -70,12 +75,25 @@ export function AdminWinnerVideosClient({ initialVideos }: Props) {
   const [approveId, setApproveId] = React.useState<string | null>(null);
   const [rejectId, setRejectId] = React.useState<string | null>(null);
   const [recreatedId, setRecreatedId] = React.useState<string | null>(null);
-  const [creatorName, setCreatorName] = React.useState("");
+  const [creatorId, setCreatorId] = React.useState("");
   const [deadline, setDeadline] = React.useState("");
   const [rejectReason, setRejectReason] = React.useState("");
   const [recreationLink, setRecreationLink] = React.useState("");
 
   React.useEffect(() => setVideos(initialVideos), [initialVideos]);
+
+  const modelOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "Select Gunzo-team creator…" },
+      ...gunzoModels.map((m) => ({ value: m.id, label: m.model_name })),
+    ],
+    [gunzoModels],
+  );
+
+  const selectedCreatorName = React.useMemo(
+    () => gunzoModels.find((m) => m.id === creatorId)?.model_name ?? "",
+    [gunzoModels, creatorId],
+  );
 
   const statusOptions = React.useMemo<CustomSelectOption[]>(
     () => [{ value: "", label: "All statuses" }, ...WINNER_VIDEO_STATUSES.map((s) => ({ value: s, label: s }))],
@@ -179,8 +197,9 @@ export function AdminWinnerVideosClient({ initialVideos }: Props) {
         <ReviewEmptyState icon={Trophy} title="No winner videos" description="Submissions from VAs will appear here." />
       ) : (
         <div className="space-y-4">
+          <ReviewSectionHeader>Submissions</ReviewSectionHeader>
           {videos.map((v) => (
-            <FindingCard key={v.id}>
+            <FindingCard key={v.id} pending={v.status === "Pending" && pendingId === v.id}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="space-y-1">
                   <div className="flex flex-wrap items-center gap-2">
@@ -197,31 +216,26 @@ export function AdminWinnerVideosClient({ initialVideos }: Props) {
                 <div className="flex flex-wrap gap-2">
                   {v.status === "Pending" ? (
                     <>
-                      <button
-                        type="button"
+                      <QuickActionMarkFixed
                         disabled={pendingId === v.id}
                         onClick={() => {
                           setApproveId(v.id);
-                          setCreatorName("");
+                          setCreatorId("");
                           setDeadline("");
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/50"
                       >
-                        <Check className="h-3.5 w-3.5" aria-hidden />
                         Approve
-                      </button>
-                      <button
-                        type="button"
+                      </QuickActionMarkFixed>
+                      <QuickActionEscalate
                         disabled={pendingId === v.id}
                         onClick={() => {
                           setRejectId(v.id);
                           setRejectReason("");
                         }}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:border-red-500/50"
                       >
                         <X className="h-3.5 w-3.5" aria-hidden />
                         Reject
-                      </button>
+                      </QuickActionEscalate>
                     </>
                   ) : null}
                   {v.status === "Approved" ? (
@@ -280,7 +294,7 @@ export function AdminWinnerVideosClient({ initialVideos }: Props) {
                   href={v.recreation_link}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-flex items-center gap-1 text-xs text-sky-300 hover:underline"
+                  className="mt-2 inline-flex items-center gap-1 text-xs text-[#D4AF8C] hover:text-[#FF1493] hover:underline"
                 >
                   Recreation link <ExternalLink className="h-3 w-3" aria-hidden />
                 </a>
@@ -302,49 +316,55 @@ export function AdminWinnerVideosClient({ initialVideos }: Props) {
 
       {approveId ? (
         <ReviewModalShell title="Approve winner video" onClose={() => setApproveId(null)}>
-          <p className="mb-4 text-sm text-[#B8B4B8]/60">Assign a creator and recreation deadline.</p>
-          <div className="space-y-4">
-          <div>
-            <ReviewFieldLabel>Assigned creator name</ReviewFieldLabel>
-            <input
-              value={creatorName}
-              onChange={(e) => setCreatorName(e.target.value)}
-              className={VA_FILTER_INPUT}
-              placeholder="Creator / model name"
-            />
-          </div>
-          <div>
-            <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
-            <input
-              type="date"
-              value={deadline}
-              onChange={(e) => setDeadline(e.target.value)}
-              className={VA_FILTER_INPUT}
-            />
-          </div>
-          <div className="flex justify-end gap-2">
-            <button type="button" className={VA_BTN_SECONDARY} onClick={() => setApproveId(null)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={VA_BTN_PRIMARY}
-              onClick={() => {
-                if (!approveId) return;
-                void (async () => {
-                  const ok = await patchVideo(approveId, {
-                    action: "approve",
-                    assigned_creator_name: creatorName,
-                    recreation_deadline: deadline,
-                  });
-                  if (ok) setApproveId(null);
-                })();
-              }}
-            >
-              Approve
-            </button>
-          </div>
-          </div>
+          <p className="mb-4 text-sm text-[#B8B4B8]/60">
+            Pick the Gunzo-team creator who will recreate this video.
+          </p>
+          <ReviewFormSection title="Creator assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
+            <div className="space-y-4">
+              <div>
+                <ReviewFieldLabel>Assigned creator</ReviewFieldLabel>
+                <ManagerReviewSelect
+                  value={creatorId}
+                  onChange={setCreatorId}
+                  options={modelOptions}
+                  placeholder="Select Gunzo-team creator…"
+                  required
+                />
+              </div>
+              <div>
+                <ReviewFieldLabel>Recreation deadline</ReviewFieldLabel>
+                <input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                  className={VA_FILTER_INPUT}
+                  required
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <button type="button" className={VA_BTN_SECONDARY} onClick={() => setApproveId(null)}>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={VA_BTN_PRIMARY}
+                  onClick={() => {
+                    if (!approveId || !creatorId || !selectedCreatorName.trim() || !deadline) return;
+                    void (async () => {
+                      const ok = await patchVideo(approveId, {
+                        action: "approve",
+                        assigned_creator_name: selectedCreatorName.trim(),
+                        recreation_deadline: deadline,
+                      });
+                      if (ok) setApproveId(null);
+                    })();
+                  }}
+                >
+                  Approve
+                </button>
+              </div>
+            </div>
+          </ReviewFormSection>
         </ReviewModalShell>
       ) : null}
 
@@ -361,6 +381,7 @@ export function AdminWinnerVideosClient({ initialVideos }: Props) {
               onChange={(e) => setRejectReason(e.target.value)}
               rows={4}
               placeholder="Explain what needs to change…"
+              className="focus:border-red-500/55 focus:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35),0_0_0_1px_rgba(239,68,68,0.25),0_0_20px_-6px_rgba(239,68,68,0.35)]"
             />
           </div>
           <div className="flex justify-end gap-2">
