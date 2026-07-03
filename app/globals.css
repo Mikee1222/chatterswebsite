@@ -463,3 +463,55 @@ summary,
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ========== VA Tasks — phase ribbon timeline ========== */
+.va-tasks-surface {
+  --va-pink: #ff1493;
+  --va-champagne: #d4af8c;
+  --va-card: #151315;
+  --va-body: #b8b4b8;
+}
+
+.va-ribbon-segment {
+  background: linear-gradient(to bottom, rgba(255, 20, 147, 0.55), rgba(212, 175, 140, 0.45));
+  transform-origin: top;
+}
+
+.va-ribbon-segment--filled {
+  animation: va-ribbon-fill 450ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.va-ribbon-segment--active {
+  background: linear-gradient(to bottom, rgba(255, 20, 147, 0.75), rgba(212, 175, 140, 0.25));
+  opacity: 0.85;
+}
+
+.va-ribbon-segment--pending {
+  background: transparent;
+  border-left: 1px dashed rgba(212, 175, 140, 0.28);
+  width: 0;
+  margin-left: -0.5px;
+}
+
+@keyframes va-ribbon-fill {
+  from {
+    transform: scaleY(0);
+    opacity: 0.35;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .va-ribbon-segment--filled {
+    animation: none;
+    transform: scaleY(1);
+    opacity: 1;
+  }
+
+  .va-tasks-surface .hover\:-translate-y-0\.5:hover {
+    transform: none;
+  }
+}
