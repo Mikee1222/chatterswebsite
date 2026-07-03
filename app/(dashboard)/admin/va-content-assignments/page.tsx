@@ -7,11 +7,13 @@ import { listAllModelss } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { listAllVAContentAssignments } from "@/services/va-content-assignments";
 import { AdminVaContentClient, type AdminVaContentAssignmentDTO } from "@/components/admin-va-content-client";
+import { hasPermission } from "@/lib/rbac";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminVaContentAssignmentsPage() {
   const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CONTENT_ASSIGN);
+  const canManage = await hasPermission(session, PERMISSIONS.CONTENT_MANAGE);
 
   const [assignments, users, models] = await Promise.all([
     listAllVAContentAssignments(),
@@ -46,7 +48,12 @@ export default async function AdminVaContentAssignmentsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 md:px-6">
-      <AdminVaContentClient rows={rows} vaOptions={vaUsers} modelOptions={modelOptions} />
+      <AdminVaContentClient
+        rows={rows}
+        vaOptions={vaUsers}
+        modelOptions={modelOptions}
+        canManage={canManage}
+      />
     </div>
   );
 }

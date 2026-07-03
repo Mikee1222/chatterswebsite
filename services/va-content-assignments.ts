@@ -11,6 +11,12 @@ import {
   formulaLinkedContains,
   formulaTextEquals,
 } from "@/lib/airtable-linked";
+import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import {
+  validateAssignmentFileCount,
+  validateAssignmentFileSizes,
+  type ParsedAssignmentFile,
+} from "@/lib/va-content-assignment-files";
 import type { VaContentAssignmentRecord } from "@/types";
 
 const TABLE = "va_content_assignments";
@@ -759,11 +765,48 @@ export type CreateVaContentAssignmentAdminInput = {
   deadline: string | null;
   /** Public HTTPS URL — Airtable will pull into `file_attachment` when set. */
   file_url?: string | null;
+  /** Admin direct assign: row starts as `pending` (model-visible) instead of `pending_approval`. */
+  direct_assign?: boolean;
 };
 
+/** Upload local files into `file_attachment` on an existing assignment row (sequential). */
+export async function uploadVAContentAssignmentAttachments(
+  assignmentRecordId: string,
+  files: ParsedAssignmentFile[]
+): Promise<{ uploaded: number; error?: string }> {
+  const countErr = validateAssignmentFileCount(files.length);
+  if (countErr) return { uploaded: 0, error: countErr };
+  const sizeErr = validateAssignmentFileSizes(files);
+  if (sizeErr) return { uploaded: 0, error: sizeErr };
+
+  let uploaded = 0;
+  for (const file of files) {
+    try {
+      await uploadAirtableAttachment({
+        recordId: assignmentRecordId,
+        fieldName: "file_attachment",
+        filename: file.name,
+        contentType: file.type,
+        bytes: file.data,
+      });
+      uploaded += 1;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      return {
+        uploaded,
+        error:
+          uploaded > 0
+            ? `Uploaded ${uploaded} of ${files.length} files, then failed on "${file.name}": ${msg}`
+            : `File upload failed for "${file.name}": ${msg}`,
+      };
+    }
+  }
+  return { uploaded };
+}
+
 /**
- * Create a `va_content_assignments` row (VA dashboard or API passes `va_user_record_id`; admin UI removed).
- * For local files, create the row first then call `uploadAirtableAttachment` with the returned `id`.
+ * Create a `va_content_assignments` row (VA self-assign or admin direct-assign).
+ * For local files, create the row first then call `uploadVAContentAssignmentAttachments`.
  */
 export async function createVaContentAssignmentAdmin(
   input: CreateVaContentAssignmentAdminInput
@@ -778,7 +821,7 @@ export async function createVaContentAssignmentAdmin(
     description: input.description.trim(),
     content_type: (input.content_type || "Other").trim(),
     priority: priorityNorm,
-    status: "pending_approval",
+    status: input.direct_assign ? "pending" : "pending_approval",
     model_notes: "",
     va_notes: "",
   };

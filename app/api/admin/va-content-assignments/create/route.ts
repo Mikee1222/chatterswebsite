@@ -3,8 +3,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { readAssignmentFilesFromFormData } from "@/lib/va-content-assignment-files";
 import {
   createVaContentAssignmentAdmin,
@@ -12,10 +12,11 @@ import {
 } from "@/services/va-content-assignments";
 import { getUserByAirtableId } from "@/services/users";
 import { getModelById } from "@/services/modelss";
-import { notifyAdmins } from "@/services/notification-service";
+import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 const formSchema = z.object({
+  va_user_record_id: z.string().trim().min(1),
   model_record_id: z.string().trim().min(1),
   title: z.string().trim().min(1).max(500),
   description: z.string().trim().max(20000),
@@ -28,11 +29,7 @@ const formSchema = z.object({
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "content:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.contentAssignments);
-  if (blocked) return blocked;
-  const vaUserRecordId = (session.airtableUserId ?? session.id)?.trim();
-  if (!vaUserRecordId) {
+  if (!(await hasPermission(session, PERMISSIONS.CONTENT_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
@@ -44,13 +41,20 @@ export async function POST(req: Request) {
   }
 
   const raw = {
+    va_user_record_id: String(fd.get("va_user_record_id") ?? ""),
     model_record_id: String(fd.get("model_record_id") ?? ""),
     title: String(fd.get("title") ?? ""),
     description: String(fd.get("description") ?? ""),
     content_type: String(fd.get("content_type") ?? "Other"),
     priority: String(fd.get("priority") ?? "normal"),
-    deadline: fd.get("deadline") != null && String(fd.get("deadline")).trim() !== "" ? String(fd.get("deadline")) : null,
-    file_url: fd.get("file_url") != null && String(fd.get("file_url")).trim() !== "" ? String(fd.get("file_url")) : null,
+    deadline:
+      fd.get("deadline") != null && String(fd.get("deadline")).trim() !== ""
+        ? String(fd.get("deadline"))
+        : null,
+    file_url:
+      fd.get("file_url") != null && String(fd.get("file_url")).trim() !== ""
+        ? String(fd.get("file_url"))
+        : null,
   };
   const parsed = formSchema.safeParse(raw);
   if (!parsed.success) {
@@ -62,7 +66,7 @@ export async function POST(req: Request) {
 
   try {
     const row = await createVaContentAssignmentAdmin({
-      va_user_record_id: vaUserRecordId,
+      va_user_record_id: parsed.data.va_user_record_id,
       model_record_id: parsed.data.model_record_id,
       title: parsed.data.title,
       description: parsed.data.description,
@@ -70,6 +74,7 @@ export async function POST(req: Request) {
       priority: parsed.data.priority,
       deadline: parsed.data.deadline ?? null,
       file_url: hasLocalFiles ? null : parsed.data.file_url ?? null,
+      direct_assign: true,
     });
 
     if (hasLocalFiles) {
@@ -77,7 +82,7 @@ export async function POST(req: Request) {
       if (upload.error) {
         return NextResponse.json(
           {
-            error: `Assignment saved but file upload failed: ${upload.error}. Try a public file URL or re-upload in Airtable.`,
+            error: `Assignment created but file upload failed: ${upload.error}`,
             id: row.id,
           },
           { status: 502 }
@@ -85,28 +90,25 @@ export async function POST(req: Request) {
       }
     }
 
-    const [modelRec, vaProfile] = await Promise.all([
-      getModelById(parsed.data.model_record_id).catch(() => null),
-      getUserByAirtableId(vaUserRecordId).catch(() => null),
-    ]);
-    const modelName = (modelRec?.model_name ?? "").trim() || "the model";
-    const vaName =
-      (vaProfile?.full_name ?? "").trim() ||
-      (vaProfile?.email ?? "").trim() ||
-      "A VA";
-
-    await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+    const displayTitle = parsed.data.title.trim() || "VA content assignment";
+    await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
+      personal_user_id: parsed.data.va_user_record_id,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📋 New VA Assignment Needs Review",
-      body: `📋 ${vaName} created an assignment for ${modelName}: "${parsed.data.title.trim()}". Needs your approval.`,
+      title: "📋 New VA Content Assignment",
+      body: `📋 ${displayTitle} — assigned by admin. Open Content assignments or your calendar.`,
       entity_type: "va_content_assignment",
       entity_id: row.id,
-      _triggerSource: "va_content_create_admin_queue",
     }).catch(() => {});
 
-    revalidatePath(ROUTES.va.contentAssignments);
+    const [modelRec, vaProfile] = await Promise.all([
+      getModelById(parsed.data.model_record_id).catch(() => null),
+      getUserByAirtableId(parsed.data.va_user_record_id).catch(() => null),
+    ]);
+    void modelRec;
+    void vaProfile;
+
     revalidatePath(ROUTES.admin.vaContentAssignments);
+    revalidatePath(ROUTES.va.contentAssignments);
     revalidatePath(ROUTES.model.contentCalendar);
     revalidatePath(ROUTES.model.contentAssignments);
 

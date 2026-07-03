@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import * as Dialog from "@radix-ui/react-dialog";
 import {
   Bell,
   CalendarClock,
@@ -22,10 +21,10 @@ import { MobileCard } from "@/components/mobile-card";
 import { FormInput } from "@/components/ui/form-input";
 import { GlassModal } from "@/components/ui/glass-modal";
 import { PaginationControls } from "@/components/ui/pagination-controls";
+import { VaContentAssignmentForm } from "@/components/va-content-assignment-form";
 import { gradientClassForContentType } from "@/lib/detail-modal-gradients";
 import { formatDateEuropean } from "@/lib/format";
 import { usePagination } from "@/lib/use-pagination";
-import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { VaContentAssignmentRecord } from "@/types";
 
@@ -38,6 +37,8 @@ export type AdminVaContentClientProps = {
   rows: AdminVaContentAssignmentDTO[];
   vaOptions: { id: string; full_name: string; status: string }[];
   modelOptions: { id: string; model_name: string }[];
+  /** When true, admin can create assignments on behalf of any VA (`content:manage`). */
+  canManage?: boolean;
 };
 
 type StatusFilterValue =
@@ -158,7 +159,7 @@ const STATUS_TABS: StatusFilterValue[] = [
   "rejected",
 ];
 
-export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaContentClientProps) {
+export function AdminVaContentClient({ rows, vaOptions, modelOptions, canManage = false }: AdminVaContentClientProps) {
   const router = useRouter();
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [createOpen, setCreateOpen] = React.useState(false);
@@ -399,16 +400,18 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
             agency side.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          className={cn(
-            "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-pink-400/35 px-4 py-2.5 text-sm font-semibold text-pink-50 shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.35)] transition hover:brightness-110",
-            "bg-gradient-to-r from-pink-500/25 to-fuchsia-600/20"
-          )}
-        >
-          + New assignment
-        </button>
+        {canManage ? (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-pink-400/35 px-4 py-2.5 text-sm font-semibold text-pink-50 shadow-[0_0_24px_-8px_hsl(330_80%_55%/0.35)] transition hover:brightness-110",
+              "bg-gradient-to-r from-pink-500/25 to-fuchsia-600/20"
+            )}
+          >
+            + New assignment
+          </button>
+        ) : null}
       </header>
 
       <div className="-mx-1 overflow-x-auto px-1 pb-1 snap-x snap-mandatory">
@@ -704,50 +707,22 @@ export function AdminVaContentClient({ rows, vaOptions, modelOptions }: AdminVaC
         </>
       )}
 
-      <Dialog.Root open={createOpen} onOpenChange={setCreateOpen}>
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-[200] bg-black/70 backdrop-blur-sm data-[state=open]:animate-in" />
-          <Dialog.Content className="fixed left-1/2 top-1/2 z-[201] w-[min(calc(100vw-2rem),440px)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-white/10 bg-zinc-950/95 p-6 shadow-2xl backdrop-blur-xl">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-pink-500/25 bg-pink-500/15 text-pink-200">
-                <ClipboardList className="h-5 w-5" aria-hidden />
-              </div>
-              <div className="min-w-0 flex-1">
-                <Dialog.Title className="text-lg font-semibold text-white">Create new assignments</Dialog.Title>
-                <Dialog.Description className="mt-2 text-sm leading-relaxed text-white/55">
-                  In the app, new VA content rows are created by accounts with the{" "}
-                  <span className="font-medium text-white/75">Virtual Assistant</span> role from their{" "}
-                  <span className="font-medium text-white/75">Content assignments</span> workspace (the form posts as
-                  that VA user). Admins and managers can still add or edit rows in Airtable if needed.
-                </Dialog.Description>
-              </div>
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-lg p-1.5 text-white/50 transition hover:bg-white/10 hover:text-white"
-                  aria-label="Close"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </Dialog.Close>
-            </div>
-            <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/45">
-              VA path (sign in as a VA):{" "}
-              <span className="font-mono text-white/65">{ROUTES.va.contentAssignments}</span>
-            </p>
-            <div className="mt-5 flex justify-end">
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/15"
-                >
-                  Got it
-                </button>
-              </Dialog.Close>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+      {canManage && createOpen ? (
+        <GlassModal
+          onClose={() => setCreateOpen(false)}
+          title="New assignment"
+          subtitle="Assign content work directly to a VA and model"
+          className="md:max-w-lg"
+        >
+          <VaContentAssignmentForm
+            models={modelOptions}
+            vaOptions={vaOptions}
+            embedded
+            submitLabel="Create & send to model"
+            onSuccess={() => setCreateOpen(false)}
+          />
+        </GlassModal>
+      ) : null}
 
       {reviewModal ? (
         <GlassModal
