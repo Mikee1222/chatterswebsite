@@ -26,18 +26,18 @@ import {
 } from "@/components/manager-review-ui";
 import {
   WinnerVideoCopyButton,
+  WinnerVideoContentTypeBadge,
   WinnerVideoFilters,
   WinnerVideoKanbanBoard,
   WinnerVideoRefreshButton,
   WinnerVideoSubmissionsToolbar,
-  WinnerVideoTranscribeSection,
   useWinnerVideoCopy,
   winnerVideoLocalToast,
 } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
-import { appendWinnerVideoDateParams, type WinnerVideoDateRange, type WinnerVideoViewMode } from "@/lib/winner-videos-filters";
-import { WINNER_VIDEO_STATUSES, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import { appendWinnerVideoContentTypeParam, appendWinnerVideoDateParams, WINNER_VIDEO_CONTENT_TYPE_FILTER_OPTIONS, type WinnerVideoDateRange, type WinnerVideoViewMode } from "@/lib/winner-videos-filters";
+import { WINNER_VIDEO_STATUSES, type WinnerVideoContentType, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
@@ -67,6 +67,7 @@ export function AdminWinnerVideosClient({
   const [adminTab, setAdminTab] = React.useState<AdminTab>("submissions");
 
   const [filterStatus, setFilterStatus] = React.useState<WinnerVideoStatus | "">("");
+  const [filterContentType, setFilterContentType] = React.useState<WinnerVideoContentType | "">("");
   const [filterDateRange, setFilterDateRange] = React.useState<WinnerVideoDateRange>("all");
   const [filterDateFrom, setFilterDateFrom] = React.useState("");
   const [filterDateTo, setFilterDateTo] = React.useState("");
@@ -104,6 +105,7 @@ export function AdminWinnerVideosClient({
     try {
       const params = new URLSearchParams();
       if (filterStatus) params.set("status", filterStatus);
+      appendWinnerVideoContentTypeParam(params, filterContentType);
       appendWinnerVideoDateParams(params, filterDateRange, filterDateFrom, filterDateTo);
       const res = await fetch(`/api/admin/winner-videos?${params}`, { credentials: "include" });
       const data = (await res.json()) as { videos?: WinnerVideoRecord[] };
@@ -116,11 +118,7 @@ export function AdminWinnerVideosClient({
   React.useEffect(() => {
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, filterDateRange, filterDateFrom, filterDateTo]);
-
-  function handleTranscriptUpdated(id: string, transcript: string) {
-    setVideos((prev) => prev.map((v) => (v.id === id ? { ...v, transcript } : v)));
-  }
+  }, [filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
 
   async function patchVideo(id: string, body: Record<string, unknown>) {
     setPendingId(id);
@@ -147,9 +145,9 @@ export function AdminWinnerVideosClient({
     <div className="space-y-8">
       <div>
         <ReviewPageEyebrow>Content</ReviewPageEyebrow>
-        <h1 className="mt-1 text-2xl font-bold text-white">Winner Videos</h1>
+        <h1 className="mt-1 text-2xl font-bold text-white">Research</h1>
         <p className="mt-1 text-sm text-[#B8B4B8]/60">
-          Review VA winner submissions. Step-type analytics dashboards are planned as a future task.
+          Review VA research submissions. Step-type analytics dashboards are planned as a future task.
         </p>
       </div>
 
@@ -157,7 +155,7 @@ export function AdminWinnerVideosClient({
         <div
           className="inline-flex rounded-lg border border-white/[0.08] bg-[#0D0B0D]/70 p-0.5 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)]"
           role="tablist"
-          aria-label="Winner videos views"
+          aria-label="Research views"
         >
           {(
             [
@@ -195,6 +193,9 @@ export function AdminWinnerVideosClient({
         filterStatus={filterStatus}
         onFilterStatusChange={setFilterStatus}
         statusOptions={statusOptions}
+        filterContentType={filterContentType}
+        onFilterContentTypeChange={setFilterContentType}
+        contentTypeOptions={WINNER_VIDEO_CONTENT_TYPE_FILTER_OPTIONS}
         filterDateRange={filterDateRange}
         onFilterDateRangeChange={setFilterDateRange}
         filterDateFrom={filterDateFrom}
@@ -206,7 +207,7 @@ export function AdminWinnerVideosClient({
       {loading ? (
         <ReviewLoadingState />
       ) : videos.length === 0 ? (
-        <ReviewEmptyState icon={Trophy} title="No winner videos" description="Submissions from VAs will appear here." />
+        <ReviewEmptyState icon={Trophy} title="No research finds" description="Submissions from VAs will appear here." />
       ) : (
         <div className="space-y-4">
           <ReviewSectionHeader
@@ -228,7 +229,6 @@ export function AdminWinnerVideosClient({
               addToast={addToast}
               onRefresh={() => void reload()}
               refreshing={loading}
-              onTranscriptUpdated={handleTranscriptUpdated}
             />
           ) : (
             videos.map((v) => (
@@ -237,6 +237,7 @@ export function AdminWinnerVideosClient({
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <WinnerVideoStatusBadge status={v.status} />
+                      {v.content_type ? <WinnerVideoContentTypeBadge contentType={v.content_type} /> : null}
                       <span className="text-xs text-[#B8B4B8]/45">
                         {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : <DashPlaceholder />}
                       </span>
@@ -308,7 +309,6 @@ export function AdminWinnerVideosClient({
                   </a>
                 ) : null}
                 {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
-                <WinnerVideoTranscribeSection video={v} addToast={addToast} onTranscriptUpdated={handleTranscriptUpdated} />
                 {v.views_at_submission != null ? (
                   <p className="mt-1 text-xs text-[#B8B4B8]/50">Views: {v.views_at_submission.toLocaleString()}</p>
                 ) : null}
@@ -338,12 +338,6 @@ export function AdminWinnerVideosClient({
                     <AttachmentLinks attachments={v.screenshot} />
                   </div>
                 ) : null}
-                {v.video_file.length > 0 ? (
-                  <div className="mt-3">
-                    <p className="mb-1 text-xs text-[#B8B4B8]/50">Video file</p>
-                    <AttachmentLinks attachments={v.video_file} />
-                  </div>
-                ) : null}
                 {pendingId === v.id ? (
                   <p className="mt-2 flex items-center gap-2 text-xs text-[#B8B4B8]/50">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden /> Saving…
@@ -356,7 +350,7 @@ export function AdminWinnerVideosClient({
       )}
 
       {approveId ? (
-        <ReviewModalShell title="Approve winner video" onClose={() => setApproveId(null)}>
+        <ReviewModalShell title="Approve research find" onClose={() => setApproveId(null)}>
           <p className="mb-4 text-sm text-[#B8B4B8]/60">Pick the Gunzo-team creator who will recreate this video.</p>
           <ReviewFormSection title="Creator assignment" className="border border-white/[0.06] shadow-[inset_0_2px_8px_rgba(0,0,0,0.25)]">
             <div className="space-y-4">
@@ -408,7 +402,7 @@ export function AdminWinnerVideosClient({
       ) : null}
 
       {rejectId ? (
-        <ReviewModalShell title="Reject winner video" onClose={() => setRejectId(null)}>
+        <ReviewModalShell title="Reject research find" onClose={() => setRejectId(null)}>
           <p className="mb-4 text-sm text-[#B8B4B8]/60">A rejection reason is required — the submitter will be notified.</p>
           <div className="space-y-4">
             <div>

@@ -8,6 +8,29 @@ export const WINNER_VIDEO_STATUSES = [
 
 export type WinnerVideoStatus = (typeof WINNER_VIDEO_STATUSES)[number];
 
+export const WINNER_VIDEO_CONTENT_TYPES = ["Skit", "UGC"] as const;
+
+export type WinnerVideoContentType = (typeof WINNER_VIDEO_CONTENT_TYPES)[number];
+
+export function coerceWinnerVideoContentType(raw: unknown): WinnerVideoContentType | "" {
+  const s = String(raw ?? "").trim() as WinnerVideoContentType;
+  return (WINNER_VIDEO_CONTENT_TYPES as readonly string[]).includes(s) ? s : "";
+}
+
+export const WINNER_VIDEO_CONTENT_TYPE_STYLES: Record<
+  WinnerVideoContentType,
+  { label: string; className: string }
+> = {
+  Skit: {
+    label: "Skit",
+    className: "border-violet-500/35 bg-violet-500/12 text-violet-200",
+  },
+  UGC: {
+    label: "UGC",
+    className: "border-teal-500/35 bg-teal-500/12 text-teal-200",
+  },
+};
+
 export function coerceWinnerVideoStatus(raw: unknown): WinnerVideoStatus {
   const s = String(raw ?? "").trim() as WinnerVideoStatus;
   return (WINNER_VIDEO_STATUSES as readonly string[]).includes(s) ? s : "Pending";

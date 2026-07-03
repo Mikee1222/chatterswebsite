@@ -23,6 +23,7 @@ import {
 } from "@/components/manager-review-ui";
 import {
   WinnerVideoCopyButton,
+  WinnerVideoContentTypeBadge,
   WinnerVideoFilters,
   WinnerVideoKanbanBoard,
   WinnerVideoRefreshButton,
@@ -34,7 +35,7 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import { filterWinnerVideosClient, type WinnerVideoDateRange, type WinnerVideoViewMode } from "@/lib/winner-videos-filters";
-import { WINNER_VIDEO_ACCEPT, WINNER_VIDEO_MAX_FILE_BYTES } from "@/lib/winner-video-files";
+import { WINNER_VIDEO_CONTENT_TYPES, type WinnerVideoContentType } from "@/lib/winner-videos-helpers";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
 
@@ -55,11 +56,11 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
   const [filterDateTo, setFilterDateTo] = React.useState("");
 
   const [referenceModelId, setReferenceModelId] = React.useState("");
+  const [contentType, setContentType] = React.useState<WinnerVideoContentType | "">("");
   const [videoLink, setVideoLink] = React.useState("");
   const [note, setNote] = React.useState("");
   const [views, setViews] = React.useState("");
   const [screenshotFiles, setScreenshotFiles] = React.useState<File[]>([]);
-  const [videoFile, setVideoFile] = React.useState<File[]>([]);
 
   React.useEffect(() => setSubmissions(initialSubmissions), [initialSubmissions]);
 
@@ -79,6 +80,14 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       ...gunzoModels.map((m) => ({ value: m.id, label: m.model_name })),
     ],
     [gunzoModels],
+  );
+
+  const contentTypeOptions = React.useMemo<CustomSelectOption[]>(
+    () => [
+      { value: "", label: "Select content type…" },
+      ...WINNER_VIDEO_CONTENT_TYPES.map((type) => ({ value: type, label: type })),
+    ],
+    [],
   );
 
   const selectedModelName = React.useMemo(
@@ -107,8 +116,12 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing fields", "Reference model is required.", "high"));
       return;
     }
-    if (videoFile.length === 0) {
-      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing video", "A video file is required.", "high"));
+    if (!contentType) {
+      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing fields", "Content type is required.", "high"));
+      return;
+    }
+    if (!videoLink.trim()) {
+      addToast(winnerVideoLocalToast(`wv-val-${Date.now()}`, "Missing link", "A video link is required.", "high"));
       return;
     }
     setSaving(true);
@@ -120,6 +133,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
         body: JSON.stringify({
           reference_model_id: referenceModelId,
           reference_model_name: selectedModelName.trim(),
+          content_type: contentType,
           video_link: videoLink.trim(),
           note: note.trim(),
           views_at_submission: views.trim() ? Number(views) : null,
@@ -127,26 +141,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       });
       const data = (await res.json()) as { video?: WinnerVideoRecord; error?: string };
       if (!res.ok || !data.video) {
-        addToast(winnerVideoLocalToast(`wv-err-${Date.now()}`, "Submit failed", data.error ?? "Could not submit video", "high"));
-        return;
-      }
-      const videoFd = new FormData();
-      videoFd.append("video_file", videoFile[0]!);
-      const videoRes = await fetch(`/api/winner-videos/${encodeURIComponent(data.video.id)}/video-file`, {
-        method: "POST",
-        body: videoFd,
-        credentials: "include",
-      });
-      if (!videoRes.ok) {
-        const videoErr = (await videoRes.json()) as { error?: string };
-        addToast(
-          winnerVideoLocalToast(
-            `wv-vid-err-${Date.now()}`,
-            "Video upload failed",
-            videoErr.error ?? "Could not upload video file",
-            "high",
-          ),
-        );
+        addToast(winnerVideoLocalToast(`wv-err-${Date.now()}`, "Submit failed", data.error ?? "Could not submit", "high"));
         return;
       }
       if (screenshotFiles.length > 0) {
@@ -159,13 +154,13 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
         });
       }
       setReferenceModelId("");
+      setContentType("");
       setVideoLink("");
       setNote("");
       setViews("");
       setScreenshotFiles([]);
-      setVideoFile([]);
       await reload();
-      addToast(winnerVideoLocalToast(`wv-ok-${Date.now()}`, "Submitted", "Your winner video was logged for review.", "normal"));
+      addToast(winnerVideoLocalToast(`wv-ok-${Date.now()}`, "Submitted", "Your research find was logged for review.", "normal"));
     } finally {
       setSaving(false);
     }
@@ -175,14 +170,14 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
     <div className="mx-auto max-w-2xl space-y-8">
       <div>
         <ReviewPageEyebrow>Content</ReviewPageEyebrow>
-        <h1 className="mt-1 text-2xl font-bold text-white">Winners</h1>
+        <h1 className="mt-1 text-2xl font-bold text-white">Research</h1>
         <p className="mt-1 text-sm text-[#B8B4B8]/60">
           Submit winning reference videos for recreation tracking. Analytics dashboards for step-type completion are a
           future task.
         </p>
       </div>
 
-      <ReviewFormSection title="Submit winner video" description="Upload the reference video file. Optional link and screenshot help reviewers.">
+      <ReviewFormSection title="Submit research find" description="Share the reference video link. Optional note and screenshot help reviewers.">
         <form onSubmit={(e) => void handleSubmit(e)} className="space-y-4">
           <div>
             <ReviewFieldLabel>Reference model</ReviewFieldLabel>
@@ -195,25 +190,24 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
             />
           </div>
           <div>
-            <ReviewFieldLabel>Video file</ReviewFieldLabel>
-            <ManagerReviewFileDropzone
-              files={videoFile}
-              onChange={setVideoFile}
-              accept={WINNER_VIDEO_ACCEPT}
-              multiple={false}
+            <ReviewFieldLabel>Content type</ReviewFieldLabel>
+            <ManagerReviewSelect
+              value={contentType}
+              onChange={(v) => setContentType(v as WinnerVideoContentType | "")}
+              options={contentTypeOptions}
+              placeholder="Select content type…"
+              required
             />
-            <p className="mt-1 text-xs text-[#B8B4B8]/40">
-              MP4, MOV, WebM — max {WINNER_VIDEO_MAX_FILE_BYTES / (1024 * 1024)} MB
-            </p>
           </div>
           <div>
-            <ReviewFieldLabel>Video link (optional)</ReviewFieldLabel>
+            <ReviewFieldLabel>Video link</ReviewFieldLabel>
             <input
               value={videoLink}
               onChange={(e) => setVideoLink(e.target.value)}
               className={VA_FILTER_INPUT}
               placeholder="https://…"
               type="url"
+              required
             />
           </div>
           <div>
@@ -250,18 +244,18 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
               className={VA_BTN_SECONDARY}
               onClick={() => {
                 setReferenceModelId("");
+                setContentType("");
                 setVideoLink("");
                 setNote("");
                 setViews("");
                 setScreenshotFiles([]);
-                setVideoFile([]);
               }}
             >
               Clear
             </button>
             <button type="submit" disabled={saving} className={VA_BTN_PRIMARY}>
               {saving ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
-              Submit video
+              Submit find
             </button>
           </div>
         </form>
@@ -299,7 +293,7 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
             title={submissions.length === 0 ? "No submissions yet" : "No matching submissions"}
             description={
               submissions.length === 0
-                ? "Your winner video submissions will appear here with review status."
+                ? "Your research submissions will appear here with review status."
                 : "Try adjusting your date filters."
             }
           />
@@ -310,13 +304,13 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
             addToast={addToast}
             onRefresh={() => void reload()}
             refreshing={loading}
-            onTranscriptUpdated={handleTranscriptUpdated}
           />
         ) : (
           filteredSubmissions.map((v) => (
             <FindingCard key={v.id}>
               <div className="flex flex-wrap items-center gap-2">
                 <WinnerVideoStatusBadge status={v.status} />
+                {v.content_type ? <WinnerVideoContentTypeBadge contentType={v.content_type} /> : null}
                 <span className="text-xs text-[#B8B4B8]/45">
                   {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : "—"}
                 </span>
@@ -337,7 +331,6 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
                 </a>
               ) : null}
               {v.note?.trim() ? <p className="mt-2 text-sm text-[#B8B4B8]/70">{v.note}</p> : null}
-              <WinnerVideoTranscribeSection video={v} addToast={addToast} onTranscriptUpdated={handleTranscriptUpdated} />
               {v.views_at_submission != null ? (
                 <p className="mt-1 text-xs text-[#B8B4B8]/50">Views at submission: {v.views_at_submission.toLocaleString()}</p>
               ) : null}
@@ -355,12 +348,6 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
               {v.screenshot.length > 0 ? (
                 <div className="mt-3">
                   <AttachmentLinks attachments={v.screenshot} />
-                </div>
-              ) : null}
-              {v.video_file.length > 0 ? (
-                <div className="mt-3">
-                  <p className="mb-1 text-xs text-[#B8B4B8]/50">Video file</p>
-                  <AttachmentLinks attachments={v.video_file} />
                 </div>
               ) : null}
             </FindingCard>

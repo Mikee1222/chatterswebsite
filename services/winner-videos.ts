@@ -10,7 +10,9 @@ import {
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { WINNER_VIDEO_MAX_FILE_BYTES } from "@/lib/winner-video-files";
 import {
+  coerceWinnerVideoContentType,
   coerceWinnerVideoStatus,
+  type WinnerVideoContentType,
   type WinnerVideoStatus,
 } from "@/lib/winner-videos-helpers";
 import {
@@ -56,10 +58,12 @@ export interface WinnerVideoRecord {
   script_reviewed_by_name: string;
   script_reviewed_at: string | null;
   script_rejection_reason: string;
+  content_type: WinnerVideoContentType | "";
 }
 
 export interface WinnerVideoFilters {
   status?: WinnerVideoStatus | "";
+  content_type?: WinnerVideoContentType | "";
   script_status?: ScriptStatus | "";
   submitted_by_id?: string;
   script_submitted_by_id?: string;
@@ -96,6 +100,7 @@ type WinnerVideoFields = {
   script_reviewed_by_name?: string;
   script_reviewed_at?: string | null;
   script_rejection_reason?: string;
+  content_type?: string;
 };
 
 function escapeFormulaString(value: string): string {
@@ -149,6 +154,7 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     script_reviewed_by_name: String(f.script_reviewed_by_name ?? ""),
     script_reviewed_at: f.script_reviewed_at?.trim() ? String(f.script_reviewed_at) : null,
     script_rejection_reason: String(f.script_rejection_reason ?? ""),
+    content_type: coerceWinnerVideoContentType(f.content_type),
   };
 }
 
@@ -159,6 +165,9 @@ function buildFilter(filters: WinnerVideoFilters): string | undefined {
   }
   if (filters.status) {
     parts.push(`{status} = "${escapeFormulaString(filters.status)}"`);
+  }
+  if (filters.content_type) {
+    parts.push(`{content_type} = "${escapeFormulaString(filters.content_type)}"`);
   }
   if (filters.script_status) {
     parts.push(`{script_status} = "${escapeFormulaString(filters.script_status)}"`);
@@ -206,6 +215,7 @@ export async function getWinnerVideoById(id: string): Promise<WinnerVideoRecord 
 export type CreateWinnerVideoInput = {
   reference_model_id?: string;
   reference_model_name: string;
+  content_type: WinnerVideoContentType;
   video_link?: string;
   note?: string;
   views_at_submission?: number | null;
@@ -219,6 +229,7 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     video_id: `wv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     reference_model_id: data.reference_model_id?.trim() || undefined,
     reference_model_name: data.reference_model_name.trim(),
+    content_type: data.content_type,
     video_link: (data.video_link ?? "").trim(),
     note: (data.note ?? "").trim(),
     submitted_by_id: data.submitted_by_id.trim(),

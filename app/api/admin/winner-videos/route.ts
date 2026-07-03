@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getAllWinnerVideos, type WinnerVideoFilters } from "@/services/winner-videos";
-import type { WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import { coerceWinnerVideoContentType, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -16,6 +16,9 @@ export async function GET(req: Request) {
   const filters: WinnerVideoFilters = {};
   const status = searchParams.get("status");
   if (status) filters.status = status as WinnerVideoStatus;
+  const contentType = searchParams.get("content_type");
+  const coercedContentType = coerceWinnerVideoContentType(contentType);
+  if (coercedContentType) filters.content_type = coercedContentType;
   const submittedBy = searchParams.get("submitted_by_id");
   if (submittedBy) filters.submitted_by_id = submittedBy;
   const dateFrom = searchParams.get("date_from");

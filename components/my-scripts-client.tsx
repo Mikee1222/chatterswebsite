@@ -142,7 +142,7 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
       <div>
         <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
         <h1 className="mt-1 text-2xl font-bold text-white">My Scripts</h1>
-        <p className="mt-1 text-sm text-[#B8B4B8]/60">Scripts you have submitted for winner video recreations.</p>
+        <p className="mt-1 text-sm text-[#B8B4B8]/60">Scripts you have submitted for research find recreations.</p>
       </div>
 
       {loading ? (

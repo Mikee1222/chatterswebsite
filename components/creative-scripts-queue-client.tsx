@@ -134,7 +134,7 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
         <ReviewPageEyebrow>Creative</ReviewPageEyebrow>
         <h1 className="mt-1 text-2xl font-bold text-white">Scripts to Write</h1>
         <p className="mt-1 text-sm text-[#B8B4B8]/60">
-          Approved winner videos waiting for a creative script. Pick one, write the script, and submit for review.
+          Approved research finds waiting for a creative script. Pick one, write the script, and submit for review.
         </p>
       </div>
 
@@ -144,7 +144,7 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
         <ReviewEmptyState
           icon={FileText}
           title="No scripts to write"
-          description="When a winner video is approved, it will appear here for scripting."
+          description="When a research find is approved, it will appear here for scripting."
         />
       ) : (
         <div className="space-y-4">

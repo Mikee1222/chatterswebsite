@@ -20,11 +20,18 @@ import {
 } from "@/lib/winner-videos-copy";
 import {
   WINNER_VIDEO_DATE_RANGE_OPTIONS,
+  winnerVideoContentTypeLabel,
   winnerVideoDateRangeLabel,
   type WinnerVideoDateRange,
   type WinnerVideoViewMode,
 } from "@/lib/winner-videos-filters";
-import { WINNER_VIDEO_STATUSES, WINNER_VIDEO_STATUS_STYLES, type WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import {
+  WINNER_VIDEO_CONTENT_TYPE_STYLES,
+  WINNER_VIDEO_STATUSES,
+  WINNER_VIDEO_STATUS_STYLES,
+  type WinnerVideoContentType,
+  type WinnerVideoStatus,
+} from "@/lib/winner-videos-helpers";
 import { formatDateTimeAthens } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { VA_BTN_SECONDARY } from "@/components/manager-review-ui";
@@ -66,6 +73,20 @@ const KANBAN_COLUMN_GLOW: Record<WinnerVideoStatus, string> = {
   Recreated: "border-sky-500/25 bg-sky-500/[0.04] shadow-[0_0_24px_-12px_rgba(14,165,233,0.22)]",
   Published: "border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.04] shadow-[0_0_24px_-12px_rgba(212,175,140,0.22)]",
 };
+
+export function WinnerVideoContentTypeBadge({ contentType }: { contentType: WinnerVideoContentType }) {
+  const style = WINNER_VIDEO_CONTENT_TYPE_STYLES[contentType];
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-md border px-2 py-0.5 text-xs font-medium backdrop-blur-sm",
+        style.className,
+      )}
+    >
+      {style.label}
+    </span>
+  );
+}
 
 export function WinnerVideoViewToggle({
   viewMode,
@@ -392,6 +413,9 @@ type WinnerVideoFiltersProps = {
   filterStatus?: WinnerVideoStatus | "";
   onFilterStatusChange?: (status: WinnerVideoStatus | "") => void;
   statusOptions?: CustomSelectOption[];
+  filterContentType?: WinnerVideoContentType | "";
+  onFilterContentTypeChange?: (contentType: WinnerVideoContentType | "") => void;
+  contentTypeOptions?: CustomSelectOption[];
   filterDateRange: WinnerVideoDateRange;
   onFilterDateRangeChange: (range: WinnerVideoDateRange) => void;
   filterDateFrom: string;
@@ -404,6 +428,9 @@ export function WinnerVideoFilters({
   filterStatus,
   onFilterStatusChange,
   statusOptions,
+  filterContentType,
+  onFilterContentTypeChange,
+  contentTypeOptions,
   filterDateRange,
   onFilterDateRangeChange,
   filterDateFrom,
@@ -412,8 +439,9 @@ export function WinnerVideoFilters({
   onFilterDateToChange,
 }: WinnerVideoFiltersProps) {
   const hasStatus = Boolean(filterStatus);
+  const hasContentType = Boolean(filterContentType);
   const hasDate = filterDateRange !== "all";
-  const hasFilters = hasStatus || hasDate;
+  const hasFilters = hasStatus || hasContentType || hasDate;
 
   return (
     <FilterBar>
@@ -425,6 +453,15 @@ export function WinnerVideoFilters({
             options={statusOptions}
             triggerClassName="min-w-[9rem]"
             aria-label="Filter by status"
+          />
+        ) : null}
+        {contentTypeOptions && onFilterContentTypeChange ? (
+          <ManagerReviewSelect
+            value={filterContentType ?? ""}
+            onChange={(v) => onFilterContentTypeChange(v as WinnerVideoContentType | "")}
+            options={contentTypeOptions}
+            triggerClassName="min-w-[9rem]"
+            aria-label="Filter by content type"
           />
         ) : null}
         <ManagerReviewSelect
@@ -464,6 +501,12 @@ export function WinnerVideoFilters({
           {hasStatus && filterStatus ? (
             <FilterChip label={`Status: ${filterStatus}`} onRemove={() => onFilterStatusChange?.("")} />
           ) : null}
+          {hasContentType && filterContentType ? (
+            <FilterChip
+              label={`Type: ${winnerVideoContentTypeLabel(filterContentType)}`}
+              onRemove={() => onFilterContentTypeChange?.("")}
+            />
+          ) : null}
           {hasDate ? (
             <FilterChip
               label={winnerVideoDateRangeLabel(filterDateRange)}
@@ -500,9 +543,12 @@ export function WinnerVideoKanbanCard({
   return (
     <FindingCard className="p-3">
       <div className="flex items-start justify-between gap-2">
-        <p className="min-w-0 flex-1 text-sm font-semibold leading-snug text-white">
-          {video.reference_model_name?.trim() || "—"}
-        </p>
+        <div className="min-w-0 flex-1 space-y-1">
+          <p className="text-sm font-semibold leading-snug text-white">
+            {video.reference_model_name?.trim() || "—"}
+          </p>
+          {video.content_type ? <WinnerVideoContentTypeBadge contentType={video.content_type} /> : null}
+        </div>
         <div className="flex shrink-0 items-center gap-1">
           {onRefresh ? <WinnerVideoRefreshButton onClick={onRefresh} refreshing={refreshing} /> : null}
           <WinnerVideoCopyButton onClick={() => onCopy(video)} />

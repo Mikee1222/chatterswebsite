@@ -1,6 +1,7 @@
-import type { WinnerVideoStatus } from "@/lib/winner-videos-helpers";
+import type { WinnerVideoStatus, WinnerVideoContentType } from "@/lib/winner-videos-helpers";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { CustomSelectOption } from "@/components/manager-review-ui";
+import { WINNER_VIDEO_CONTENT_TYPES } from "@/lib/winner-videos-helpers";
 
 export type WinnerVideoDateRange = "all" | "7d" | "30d" | "custom";
 
@@ -10,6 +11,24 @@ export function isoDateDaysAgo(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return d.toISOString().slice(0, 10);
+}
+
+export const WINNER_VIDEO_CONTENT_TYPE_FILTER_OPTIONS: CustomSelectOption[] = [
+  { value: "", label: "All types" },
+  ...WINNER_VIDEO_CONTENT_TYPES.map((type) => ({ value: type, label: type })),
+];
+
+export function winnerVideoContentTypeLabel(contentType: WinnerVideoContentType | ""): string {
+  if (contentType === "Skit") return "Skit";
+  if (contentType === "UGC") return "UGC";
+  return "All types";
+}
+
+export function appendWinnerVideoContentTypeParam(
+  params: URLSearchParams,
+  contentType: WinnerVideoContentType | "",
+): void {
+  if (contentType) params.set("content_type", contentType);
 }
 
 export const WINNER_VIDEO_DATE_RANGE_OPTIONS: CustomSelectOption[] = [
@@ -58,6 +77,7 @@ export function filterWinnerVideosClient(
   videos: WinnerVideoRecord[],
   opts: {
     status?: WinnerVideoStatus | "";
+    contentType?: WinnerVideoContentType | "";
     dateRange: WinnerVideoDateRange;
     dateFrom: string;
     dateTo: string;
@@ -67,6 +87,10 @@ export function filterWinnerVideosClient(
 
   if (opts.status) {
     result = result.filter((v) => v.status === opts.status);
+  }
+
+  if (opts.contentType) {
+    result = result.filter((v) => v.content_type === opts.contentType);
   }
 
   if (opts.dateRange === "7d") {

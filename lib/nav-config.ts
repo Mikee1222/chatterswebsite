@@ -418,7 +418,7 @@ const adminNav: NavItem[] = [
   },
   {
     href: ROUTES.admin.winnerVideos,
-    label: "Winner Videos",
+    label: "Research",
     iconKey: "Trophy",
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
@@ -661,7 +661,7 @@ const sharedPermissionNavItems: NavItem[] = [
   },
   {
     href: ROUTES.winners,
-    label: "Winners",
+    label: "Research",
     iconKey: "Trophy",
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_SUBMIT,
