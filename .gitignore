@@ -1,3 +1,6 @@
+# Local / embedded projects (not part of this repo)
+video-transcriber-api/
+
 # Dependencies
 node_modules/
 node_modules 2/
