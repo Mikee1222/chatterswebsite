@@ -1,55 +1,270 @@
 "use client";
 
 import * as React from "react";
-import { Check, ChevronDown, ExternalLink, Plus, Pencil, Trash2, Search, Smartphone, CheckCircle2, ImageIcon, ClipboardList } from "lucide-react";
+import {
+  Ban,
+  Check,
+  ChevronDown,
+  ClipboardList,
+  ExternalLink,
+  Eye,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  ShieldAlert,
+  Smartphone,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
+import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { PlatformIconBadge } from "@/components/social-platform-icon";
+import { useToast } from "@/contexts/toast-context";
+import { formatDateTimeAthens, formatRelativeTime } from "@/lib/format";
+import { getSocialColor } from "@/lib/social-platform-config";
+import type { ShadowbanReportType } from "@/lib/shadowban-helpers";
+import {
+  VA_CARD,
+  VA_CHAMPAGNE_DIVIDER,
+  VA_FILTER_INPUT,
+  VA_MODEL_TAG,
+  VA_STATUS_BADGE,
+} from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type {
   FunnelLink,
   MarketingPlatform,
   ShadowbanReport,
+  ShadowbanReportStatus,
   SocialAccount,
   SocialAccountStatus,
 } from "@/services/marketing";
-import type { ModelRecord, UserRecord } from "@/types";
-import { PLATFORM_ICONS, SOCIAL_COLORS as PLATFORM_COLORS } from "@/lib/social-platform-config";
+import type { AppNotification, ModelRecord, UserRecord } from "@/types";
 
 type Tab = "platforms" | "accounts" | "funnels" | "reports";
+type ReportDateRange = "all" | "7d" | "30d" | "custom";
 
 const REGIONS = ["USA", "Greek", "Global"] as const;
 const ACCOUNT_TYPES = ["main", "secondary"] as const;
 
+const ADMIN_FILTER_INPUT = VA_FILTER_INPUT;
+const ADMIN_SELECT = cn(ADMIN_FILTER_INPUT, "min-w-[9rem]");
+
+function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
+  return {
+    id,
+    notification_id: id,
+    user_id: "local",
+    category: "system",
+    event_type: "system_alert",
+    priority,
+    title,
+    body,
+    entity_type: "system",
+    entity_id: "",
+    read_at: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
 const STATUS_CONFIG: Record<
   SocialAccountStatus,
-  { label: string; color: string; bg: string; border: string; dot: string }
+  {
+    label: string;
+    color: string;
+    bg: string;
+    border: string;
+    dot: string;
+    cardClass: string;
+    glowClass: string;
+    pulse: boolean;
+  }
 > = {
   active: {
     label: "Active",
-    color: "text-green-400",
-    bg: "bg-green-500/10",
-    border: "border-green-500/20",
-    dot: "bg-green-400",
+    color: "text-emerald-300",
+    bg: "bg-emerald-500/10",
+    border: "border-emerald-500/25",
+    dot: "bg-emerald-400 shadow-[0_0_6px_rgba(52,211,153,0.35)]",
+    cardClass: "border-[rgba(255,255,255,0.06)]",
+    glowClass: "",
+    pulse: false,
   },
   shadowbanned: {
     label: "Shadowbanned",
-    color: "text-amber-400",
-    bg: "bg-amber-500/10",
-    border: "border-amber-500/20",
-    dot: "bg-amber-400",
+    color: "text-amber-300",
+    bg: "bg-amber-500/12",
+    border: "border-amber-500/35",
+    dot: "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.55)]",
+    cardClass: "border-amber-500/30",
+    glowClass:
+      "before:pointer-events-none before:absolute before:-inset-4 before:-z-10 before:rounded-[20px] before:bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.18)_0%,transparent_72%)] before:opacity-70 before:blur-xl max-md:before:opacity-45",
+    pulse: true,
   },
   banned: {
     label: "Banned",
-    color: "text-red-400",
-    bg: "bg-red-500/10",
-    border: "border-red-500/20",
-    dot: "bg-red-500",
+    color: "text-red-300",
+    bg: "bg-red-500/15",
+    border: "border-red-500/40",
+    dot: "bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.65)]",
+    cardClass: "border-red-500/35",
+    glowClass:
+      "before:pointer-events-none before:absolute before:-inset-5 before:-z-10 before:rounded-[22px] before:bg-[radial-gradient(ellipse_at_center,rgba(239,68,68,0.22)_0%,transparent_68%)] before:opacity-90 before:blur-2xl max-md:before:opacity-50",
+    pulse: true,
   },
 };
 
 function pill(active: boolean) {
   return cn(
-    "rounded-full px-4 py-2 text-sm font-medium transition-colors",
-    active ? "bg-pink-500/25 text-pink-200 ring-1 ring-pink-400/40" : "text-white/60 hover:bg-white/5 hover:text-white/90",
+    "relative rounded-full px-4 py-2 text-sm font-medium transition-colors",
+    active
+      ? "bg-[#FF1493]/20 text-[#FFB3D9] ring-1 ring-[#FF1493]/35 shadow-[0_0_16px_-6px_rgba(255,20,147,0.35)]"
+      : "text-[#B8B4B8]/60 hover:bg-white/5 hover:text-white/90",
   );
+}
+
+function SearchablePicker({
+  value,
+  onChange,
+  items,
+  placeholder,
+  emptyLabel,
+  className,
+}: {
+  value: string;
+  onChange: (id: string) => void;
+  items: { id: string; label: string }[];
+  placeholder: string;
+  emptyLabel: string;
+  className?: string;
+}) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  const [open, setOpen] = React.useState(false);
+  const [q, setQ] = React.useState("");
+
+  React.useEffect(() => {
+    function onDoc(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, []);
+
+  const filtered = React.useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return items.slice(0, 50);
+    return items.filter((i) => i.label.toLowerCase().includes(qq)).slice(0, 50);
+  }, [items, q]);
+
+  const selectedLabel = items.find((i) => i.id === value)?.label ?? "";
+
+  return (
+    <div ref={ref} className={cn("relative min-w-[10rem]", className)}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={cn(ADMIN_FILTER_INPUT, "flex w-full items-center justify-between text-left")}
+      >
+        <span className={cn("truncate", selectedLabel ? "text-[#B8B4B8]" : "text-[#B8B4B8]/40")}>
+          {selectedLabel || emptyLabel}
+        </span>
+        <ChevronDown className="h-4 w-4 shrink-0 text-[#B8B4B8]/40" aria-hidden />
+      </button>
+      {open ? (
+        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-hidden rounded-xl border border-white/10 bg-[#0D0B0D]/98 py-2 shadow-2xl backdrop-blur-xl">
+          <input
+            type="search"
+            placeholder={placeholder}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            className={cn(ADMIN_FILTER_INPUT, "mx-2 mb-1 !h-9 w-[calc(100%-1rem)] text-sm")}
+          />
+          <div className="max-h-52 overflow-y-auto px-1">
+            <button
+              type="button"
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm text-[#B8B4B8]/50 hover:bg-white/5"
+              onClick={() => {
+                onChange("");
+                setOpen(false);
+                setQ("");
+              }}
+            >
+              {emptyLabel}
+            </button>
+            {filtered.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-[#B8B4B8]/40">No matches</p>
+            ) : (
+              filtered.map((i) => (
+                <button
+                  key={i.id}
+                  type="button"
+                  className="block w-full truncate rounded-lg px-3 py-2 text-left text-sm text-[#B8B4B8]/90 hover:bg-white/10"
+                  onClick={() => {
+                    onChange(i.id);
+                    setOpen(false);
+                    setQ("");
+                  }}
+                >
+                  {i.label}
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/8 px-2.5 py-1 text-xs text-[#D4AF8C]">
+      {label}
+      <button type="button" onClick={onRemove} className="rounded-full p-0.5 hover:bg-[#D4AF8C]/15" aria-label={`Remove ${label}`}>
+        <X className="h-3 w-3" aria-hidden />
+      </button>
+    </span>
+  );
+}
+
+function ReportTypeBadge({ type }: { type: ShadowbanReportType }) {
+  const banned = type === "banned";
+  return (
+    <span
+      className={cn(
+        VA_STATUS_BADGE,
+        "gap-1 normal-case tracking-normal",
+        banned
+          ? "border-red-500/40 bg-red-500/12 text-red-300 shadow-[0_0_12px_-4px_rgba(239,68,68,0.4)]"
+          : "border-amber-500/40 bg-amber-500/12 text-amber-300 shadow-[0_0_12px_-4px_rgba(245,158,11,0.35)]",
+      )}
+    >
+      {banned ? <Ban className="h-3 w-3" aria-hidden /> : <ShieldAlert className="h-3 w-3" aria-hidden />}
+      {banned ? "Banned" : "Shadowbanned"}
+    </span>
+  );
+}
+
+function reportInDateRange(createdAt: string, range: ReportDateRange, from: string, to: string): boolean {
+  if (!createdAt) return range === "all";
+  const t = new Date(createdAt).getTime();
+  if (!Number.isFinite(t)) return false;
+  const now = Date.now();
+  if (range === "7d") return t >= now - 7 * 24 * 60 * 60 * 1000;
+  if (range === "30d") return t >= now - 30 * 24 * 60 * 60 * 1000;
+  if (range === "custom") {
+    if (from) {
+      const fromT = new Date(`${from}T00:00:00`).getTime();
+      if (Number.isFinite(fromT) && t < fromT) return false;
+    }
+    if (to) {
+      const toT = new Date(`${to}T23:59:59`).getTime();
+      if (Number.isFinite(toT) && t > toT) return false;
+    }
+    return true;
+  }
+  return true;
 }
 
 export function AdminMarketingClient({
@@ -58,14 +273,18 @@ export function AdminMarketingClient({
   funnels: initialFunnels,
   models,
   vaUsers,
+  initialReports = [],
 }: {
   platforms: MarketingPlatform[];
   accounts: SocialAccount[];
   funnels: FunnelLink[];
   models: ModelRecord[];
   vaUsers: UserRecord[];
+  initialReports?: ShadowbanReport[];
 }) {
-  const [tab, setTab] = React.useState<Tab>("accounts");
+  const { addToast } = useToast();
+  const initialPending = initialReports.filter((r) => r.status === "pending").length;
+  const [tab, setTab] = React.useState<Tab>(initialPending > 0 ? "reports" : "accounts");
   const [platforms, setPlatforms] = React.useState(initialPlatforms);
   const [accounts, setAccounts] = React.useState(initialAccounts);
   const [funnels, setFunnels] = React.useState(initialFunnels);
@@ -141,7 +360,19 @@ export function AdminMarketingClient({
   const [accountModalOpen, setAccountModalOpen] = React.useState(false);
   const [editingAccountId, setEditingAccountId] = React.useState<string | null>(null);
   const [accountDraft, setAccountDraft] = React.useState<Partial<SocialAccount>>({});
-  const [reports, setReports] = React.useState<ShadowbanReport[]>([]);
+  const [reports, setReports] = React.useState<ShadowbanReport[]>(initialReports);
+  const [reportsLoading, setReportsLoading] = React.useState(false);
+  const [filterReportStatus, setFilterReportStatus] = React.useState<"" | ShadowbanReportStatus>("");
+  const [filterReportType, setFilterReportType] = React.useState<"" | ShadowbanReportType>("");
+  const [filterReportPlatform, setFilterReportPlatform] = React.useState("");
+  const [filterReportVA, setFilterReportVA] = React.useState("");
+  const [filterReportCreator, setFilterReportCreator] = React.useState("");
+  const [filterReportDateRange, setFilterReportDateRange] = React.useState<ReportDateRange>("all");
+  const [filterReportDateFrom, setFilterReportDateFrom] = React.useState("");
+  const [filterReportDateTo, setFilterReportDateTo] = React.useState("");
+  const [deleteReportId, setDeleteReportId] = React.useState<string | null>(null);
+  const [deleteReportBusy, setDeleteReportBusy] = React.useState(false);
+  const [screenshotPreview, setScreenshotPreview] = React.useState<string | null>(null);
   const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
   const [shadowbanFile, setShadowbanFile] = React.useState<File | null>(null);
   const [shadowbanNotes, setShadowbanNotes] = React.useState("");
@@ -159,12 +390,16 @@ export function AdminMarketingClient({
 
   React.useEffect(() => {
     let cancelled = false;
+    setReportsLoading(true);
     fetch("/api/admin/marketing/shadowban-reports", { credentials: "include" })
       .then((r) => r.json())
       .then((d: { reports?: ShadowbanReport[] }) => {
         if (!cancelled) setReports(d.reports ?? []);
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setReportsLoading(false);
+      });
     return () => {
       cancelled = true;
     };
@@ -202,6 +437,86 @@ export function AdminMarketingClient({
       return `${a.model_name} ${a.platform} ${a.username} ${a.account_link} ${a.notes}`.toLowerCase().includes(q);
     });
   }, [accounts, searchAccounts, filterModel, filterVA, filterPlatform, filterStatus]);
+
+  const reportPlatformOptions = React.useMemo(
+    () => [...new Set(reports.map((r) => r.platform).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
+    [reports],
+  );
+
+  const reportVaOptions = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of reports) {
+      if (r.reported_by_id) map.set(r.reported_by_id, r.reported_by_name || r.reported_by_id);
+    }
+    return [...map.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [reports]);
+
+  const reportCreatorOptions = React.useMemo(() => {
+    const map = new Map<string, string>();
+    for (const r of reports) {
+      if (r.model_id) map.set(r.model_id, r.model_name || r.model_id);
+    }
+    for (const m of models) {
+      if (m.id) map.set(m.id, m.model_name || m.model_id || m.id);
+    }
+    return [...map.entries()].map(([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+  }, [reports, models]);
+
+  const filteredReports = React.useMemo(() => {
+    return reports.filter((r) => {
+      if (filterReportStatus && r.status !== filterReportStatus) return false;
+      if (filterReportType && r.report_type !== filterReportType) return false;
+      if (filterReportPlatform && r.platform !== filterReportPlatform) return false;
+      if (filterReportVA && r.reported_by_id !== filterReportVA) return false;
+      if (filterReportCreator && r.model_id !== filterReportCreator) return false;
+      if (!reportInDateRange(r.created_at, filterReportDateRange, filterReportDateFrom, filterReportDateTo)) {
+        return false;
+      }
+      return true;
+    });
+  }, [
+    reports,
+    filterReportStatus,
+    filterReportType,
+    filterReportPlatform,
+    filterReportVA,
+    filterReportCreator,
+    filterReportDateRange,
+    filterReportDateFrom,
+    filterReportDateTo,
+  ]);
+
+  const reportStats = React.useMemo(() => {
+    const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const pending = reports.filter((r) => r.status === "pending").length;
+    const bannedThisWeek = reports.filter(
+      (r) => r.report_type === "banned" && r.created_at && new Date(r.created_at).getTime() >= weekAgo,
+    ).length;
+    const shadowbannedThisWeek = reports.filter(
+      (r) =>
+        r.report_type === "shadowbanned" && r.created_at && new Date(r.created_at).getTime() >= weekAgo,
+    ).length;
+    return { pending, bannedThisWeek, shadowbannedThisWeek };
+  }, [reports]);
+
+  const hasReportFilters =
+    !!filterReportStatus ||
+    !!filterReportType ||
+    !!filterReportPlatform ||
+    !!filterReportVA ||
+    !!filterReportCreator ||
+    filterReportDateRange !== "all";
+
+  const clearReportFilters = React.useCallback(() => {
+    setFilterReportStatus("");
+    setFilterReportType("");
+    setFilterReportPlatform("");
+    setFilterReportVA("");
+    setFilterReportCreator("");
+    setFilterReportDateRange("all");
+    setFilterReportDateFrom("");
+    setFilterReportDateTo("");
+  }, []);
 
   const accountsByModel = React.useMemo(() => {
     const groups = new Map<string, { model_id: string; model_name: string; accounts: SocialAccount[] }>();
@@ -352,6 +667,34 @@ export function AdminMarketingClient({
     }
   }
 
+  async function handleDeleteReport(id: string) {
+    const prev = reports;
+    setReports((r) => r.filter((x) => x.id !== id));
+    setDeleteReportBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/marketing/shadowban-reports/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error(await res.text());
+      addToast(localToast(`sbr-del-${Date.now()}`, "Report deleted", "Shadowban report removed.", "normal"));
+      setDeleteReportId(null);
+    } catch (err) {
+      setReports(prev);
+      addToast(
+        localToast(
+          `sbr-del-err-${Date.now()}`,
+          "Delete failed",
+          err instanceof Error ? err.message : "Could not delete report",
+          "high",
+        ),
+      );
+    } finally {
+      setDeleteReportBusy(false);
+    }
+  }
+
   async function handleReviewReport(reportId: string, action: "approve" | "dismiss") {
     const reportBefore = reports.find((r) => r.id === reportId);
     setError(null);
@@ -489,14 +832,15 @@ export function AdminMarketingClient({
     }
   }
 
-  const selectClass =
-    "rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-sm text-white outline-none focus:border-pink-400/50";
+  const selectClass = cn(ADMIN_FILTER_INPUT, "rounded-xl");
+
+  const pendingCount = reportStats.pending;
 
   return (
-    <div className="mx-auto max-w-7xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-5">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight text-white">Marketing</h1>
-        <p className="mt-1 text-sm text-white/55">Platforms, model social accounts, and funnel links.</p>
+        <p className="mt-1 text-sm text-[#B8B4B8]/55">Control room for platforms, social accounts, funnel links, and shadowban reports.</p>
       </div>
 
       {error ? (
@@ -509,6 +853,11 @@ export function AdminMarketingClient({
         </button>
         <button type="button" className={pill(tab === "reports")} onClick={() => setTab("reports")}>
           Shadowban reports
+          {pendingCount > 0 ? (
+            <span className="ml-2 inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-amber-500/25 px-1.5 py-0.5 text-[10px] font-bold text-amber-300 ring-1 ring-amber-500/30">
+              {pendingCount}
+            </span>
+          ) : null}
         </button>
         <button type="button" className={pill(tab === "funnels")} onClick={() => setTab("funnels")}>
           Funnel links
@@ -587,7 +936,9 @@ export function AdminMarketingClient({
                     <tr>
                       <td className="px-4 py-3 tabular-nums">{p.sort_order}</td>
                       <td className="px-4 py-3 font-medium text-white">{p.name}</td>
-                      <td className="px-4 py-3 text-lg">{p.icon}</td>
+                      <td className="px-4 py-3">
+                        <PlatformIconBadge platform={p.name} size="sm" />
+                      </td>
                       <td className="px-4 py-3">
                         <span className="inline-flex items-center gap-2">
                           <span
@@ -706,45 +1057,33 @@ export function AdminMarketingClient({
             </button>
           </div>
 
-          <div className="mb-6 flex flex-wrap gap-3 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
+          <div className="mb-6 flex flex-wrap gap-3 rounded-2xl border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/60 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
             <div className="relative min-w-48 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/30" />
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B8B4B8]/30" />
               <input
                 placeholder="Search username, model..."
                 value={searchAccounts}
                 onChange={(e) => setSearchAccounts(e.target.value)}
-                className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-9 pr-4 text-sm text-white placeholder:text-white/20 focus:border-pink-500/50 focus:outline-none"
+                className={cn(ADMIN_FILTER_INPUT, "w-full pl-9")}
               />
             </div>
-            <select
-              value={filterModel}
-              onChange={(e) => setFilterModel(e.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
-            >
-              <option value="">All models</option>
+            <select value={filterModel} onChange={(e) => setFilterModel(e.target.value)} className={ADMIN_SELECT}>
+              <option value="">All creators</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.model_name || m.model_id}
                 </option>
               ))}
             </select>
-            <select
-              value={filterPlatform}
-              onChange={(e) => setFilterPlatform(e.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
-            >
+            <select value={filterPlatform} onChange={(e) => setFilterPlatform(e.target.value)} className={ADMIN_SELECT}>
               <option value="">All platforms</option>
               {[...new Set(accounts.map((a) => a.platform).filter(Boolean))].sort().map((p) => (
                 <option key={p} value={p}>
-                  {PLATFORM_ICONS[p] ?? ""} {p}
+                  {p}
                 </option>
               ))}
             </select>
-            <select
-              value={filterVA}
-              onChange={(e) => setFilterVA(e.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
-            >
+            <select value={filterVA} onChange={(e) => setFilterVA(e.target.value)} className={ADMIN_SELECT}>
               <option value="">All VAs</option>
               {vaUsers.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -752,11 +1091,7 @@ export function AdminMarketingClient({
                 </option>
               ))}
             </select>
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white"
-            >
+            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className={ADMIN_SELECT}>
               <option value="">All statuses</option>
               <option value="active">Active</option>
               <option value="shadowbanned">Shadowbanned</option>
@@ -772,7 +1107,7 @@ export function AdminMarketingClient({
                   setFilterVA("");
                   setFilterStatus("");
                 }}
-                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white/40 hover:text-white"
+                className="rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-[#B8B4B8]/50 hover:text-white"
               >
                 Clear
               </button>
@@ -780,10 +1115,12 @@ export function AdminMarketingClient({
           </div>
 
           {accountsByModel.length === 0 ? (
-            <div className="py-20 text-center text-white/20">
-              <p className="mb-4 flex justify-center"><Smartphone className="h-12 w-12 text-white/30" aria-hidden /></p>
-              <p className="text-lg">No social accounts yet</p>
-              <p className="mt-1 text-sm">Add the first account to get started</p>
+            <div className={cn(VA_CARD, "py-20 text-center")}>
+              <p className="mb-4 flex justify-center">
+                <Smartphone className="h-12 w-12 text-[#D4AF8C]/35" aria-hidden />
+              </p>
+              <p className="text-lg text-[#B8B4B8]/70">No social accounts yet</p>
+              <p className="mt-1 text-sm text-[#B8B4B8]/40">Add the first account to get started</p>
             </div>
           ) : (
             accountsByModel.map((group) => (
@@ -811,45 +1148,34 @@ export function AdminMarketingClient({
 
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {group.accounts.map((acc) => {
-                    const color =
-                      platformColorByName[acc.platform] ?? PLATFORM_COLORS[acc.platform] ?? "#888888";
-                    const icon = PLATFORM_ICONS[acc.platform] ?? "";
-                    const statusCfg = STATUS_CONFIG[acc.account_status ?? "active"];
+                    const color = platformColorByName[acc.platform] ?? getSocialColor(acc.platform);
+                    const st: SocialAccountStatus = acc.account_status ?? "active";
+                    const statusCfg = STATUS_CONFIG[st];
 
                     return (
                       <div
                         key={acc.id}
                         className={cn(
-                          "group relative overflow-hidden rounded-2xl border transition-all hover:scale-[1.01]",
-                          acc.account_status === "banned"
-                            ? "border-red-500/25 bg-red-500/[0.03]"
-                            : acc.account_status === "shadowbanned"
-                              ? "border-amber-500/25 bg-amber-500/[0.03]"
-                              : "border-white/10 bg-white/[0.02] hover:bg-white/[0.04]",
+                          "group relative overflow-hidden rounded-xl border bg-[#0D0B0D]/80 p-4 transition duration-200",
+                          "shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_4px_16px_-8px_rgba(0,0,0,0.5)]",
+                          statusCfg.cardClass,
+                          statusCfg.glowClass,
                           !acc.active && "opacity-60",
                         )}
                       >
-                        <div className="h-1 w-full" style={{ backgroundColor: `${color}99` }} />
+                        <div className="h-1 w-full rounded-t-xl" style={{ backgroundColor: `${color}99` }} />
 
-                        <div className="p-4">
-                          <div className="mb-3 flex items-start justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div
-                                className="flex h-10 w-10 items-center justify-center rounded-xl text-xl"
-                                style={{
-                                  backgroundColor: `${color}26`,
-                                  border: `1px solid ${color}4d`,
-                                }}
-                              >
-                                {icon}
-                              </div>
-                              <div>
-                                <p className="text-sm font-bold text-white">@{acc.username}</p>
-                                <p className="text-xs text-white/40">{acc.platform}</p>
+                        <div>
+                          <div className="mb-3 flex items-start justify-between gap-2">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <PlatformIconBadge platform={acc.platform} />
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-bold text-white">@{acc.username}</p>
+                                <p className="text-xs text-[#B8B4B8]/45">{acc.platform}</p>
                               </div>
                             </div>
 
-                            <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                            <div className="flex shrink-0 gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100">
                               {acc.account_link ? (
                                 <a
                                   href={acc.account_link}
@@ -880,26 +1206,21 @@ export function AdminMarketingClient({
                           <div className="mb-3 flex flex-wrap gap-1.5">
                             <span
                               className={cn(
-                                "rounded-full border px-2 py-0.5 text-xs font-semibold",
+                                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold",
                                 acc.account_type === "main"
-                                  ? "border-green-500/20 bg-green-500/10 text-green-400"
+                                  ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-300"
                                   : "border-blue-500/20 bg-blue-500/10 text-blue-400",
                               )}
                             >
-                              {acc.account_type === "main" ? "⭐ Main" : "2nd"}
-                            </span>
-                            <span
-                              className={cn(
-                                "rounded-full border px-2 py-0.5 text-xs font-semibold",
-                                acc.region === "Greek"
-                                  ? "border-blue-500/20 bg-blue-500/10 text-blue-400"
-                                  : acc.region === "USA"
-                                    ? "border-red-500/20 bg-red-500/10 text-red-400"
-                                    : "border-purple-500/20 bg-purple-500/10 text-purple-400",
+                              {acc.account_type === "main" ? (
+                                <>
+                                  <Star className="h-3 w-3" aria-hidden /> Main
+                                </>
+                              ) : (
+                                "2nd"
                               )}
-                            >
-                              {acc.region === "Greek" ? "🇬🇷" : acc.region === "USA" ? "🇺🇸" : ""} {acc.region}
                             </span>
+                            <span className={VA_MODEL_TAG}>{acc.region}</span>
                           </div>
 
                           {acc.assigned_va_name ? (
@@ -938,7 +1259,7 @@ export function AdminMarketingClient({
                                 className={cn(
                                   "h-2 w-2 rounded-full",
                                   statusCfg.dot,
-                                  acc.account_status === "active" ? "animate-pulse" : "",
+                                  statusCfg.pulse ? "animate-pulse motion-reduce:animate-none" : "",
                                 )}
                               />
                               <span className={statusCfg.color}>{statusCfg.label}</span>
@@ -993,127 +1314,296 @@ export function AdminMarketingClient({
       ) : null}
 
       {tab === "reports" ? (
-        <div>
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-lg font-bold text-white">Shadowban reports</h2>
-              <p className="text-sm text-white/40">Submitted by VAs — review and approve</p>
+              <p className="text-sm text-[#B8B4B8]/45">Submitted by VAs — review, approve, or dismiss</p>
             </div>
-            {reports.filter((r) => r.status === "pending").length > 0 ? (
-              <div className="flex items-center gap-2 rounded-xl border border-amber-500/25 bg-amber-500/15 px-3 py-1.5">
-                <div className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
-                <span className="text-sm font-semibold text-amber-400">
-                  {reports.filter((r) => r.status === "pending").length} pending
-                </span>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className={cn(VA_STATUS_BADGE, "border-amber-500/30 bg-amber-500/10 text-amber-300")}>
+                {reportStats.pending} pending
+              </span>
+              <span className={cn(VA_STATUS_BADGE, "border-red-500/30 bg-red-500/10 text-red-300")}>
+                {reportStats.bannedThisWeek} banned (7d)
+              </span>
+              <span className={cn(VA_STATUS_BADGE, "border-amber-500/25 bg-amber-500/8 text-amber-200/80")}>
+                {reportStats.shadowbannedThisWeek} shadowbanned (7d)
+              </span>
+            </div>
+          </div>
+
+          <div className={cn(VA_CARD, "space-y-3 p-4")}>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={filterReportStatus}
+                onChange={(e) => setFilterReportStatus(e.target.value as "" | ShadowbanReportStatus)}
+                className={ADMIN_SELECT}
+              >
+                <option value="">All statuses</option>
+                <option value="pending">Pending</option>
+                <option value="approved">Approved</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+              <select
+                value={filterReportType}
+                onChange={(e) => setFilterReportType(e.target.value as "" | ShadowbanReportType)}
+                className={ADMIN_SELECT}
+              >
+                <option value="">All types</option>
+                <option value="shadowbanned">Shadowbanned</option>
+                <option value="banned">Banned</option>
+              </select>
+              <select
+                value={filterReportPlatform}
+                onChange={(e) => setFilterReportPlatform(e.target.value)}
+                className={ADMIN_SELECT}
+              >
+                <option value="">All platforms</option>
+                {reportPlatformOptions.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+              <SearchablePicker
+                value={filterReportVA}
+                onChange={setFilterReportVA}
+                items={reportVaOptions}
+                placeholder="Search VA…"
+                emptyLabel="All reporters"
+              />
+              <SearchablePicker
+                value={filterReportCreator}
+                onChange={setFilterReportCreator}
+                items={reportCreatorOptions}
+                placeholder="Search creator…"
+                emptyLabel="All creators"
+              />
+              <select
+                value={filterReportDateRange}
+                onChange={(e) => setFilterReportDateRange(e.target.value as ReportDateRange)}
+                className={ADMIN_SELECT}
+              >
+                <option value="all">All time</option>
+                <option value="7d">Last 7 days</option>
+                <option value="30d">Last 30 days</option>
+                <option value="custom">Custom range</option>
+              </select>
+              {filterReportDateRange === "custom" ? (
+                <>
+                  <input
+                    type="date"
+                    value={filterReportDateFrom}
+                    onChange={(e) => setFilterReportDateFrom(e.target.value)}
+                    className={ADMIN_SELECT}
+                    aria-label="From date"
+                  />
+                  <input
+                    type="date"
+                    value={filterReportDateTo}
+                    onChange={(e) => setFilterReportDateTo(e.target.value)}
+                    className={ADMIN_SELECT}
+                    aria-label="To date"
+                  />
+                </>
+              ) : null}
+            </div>
+            {hasReportFilters ? (
+              <div className="flex flex-wrap items-center gap-2">
+                {filterReportStatus ? (
+                  <FilterChip label={`Status: ${filterReportStatus}`} onRemove={() => setFilterReportStatus("")} />
+                ) : null}
+                {filterReportType ? (
+                  <FilterChip label={`Type: ${filterReportType}`} onRemove={() => setFilterReportType("")} />
+                ) : null}
+                {filterReportPlatform ? (
+                  <FilterChip label={`Platform: ${filterReportPlatform}`} onRemove={() => setFilterReportPlatform("")} />
+                ) : null}
+                {filterReportVA ? (
+                  <FilterChip
+                    label={`VA: ${reportVaOptions.find((v) => v.id === filterReportVA)?.label ?? filterReportVA}`}
+                    onRemove={() => setFilterReportVA("")}
+                  />
+                ) : null}
+                {filterReportCreator ? (
+                  <FilterChip
+                    label={`Creator: ${reportCreatorOptions.find((c) => c.id === filterReportCreator)?.label ?? filterReportCreator}`}
+                    onRemove={() => setFilterReportCreator("")}
+                  />
+                ) : null}
+                {filterReportDateRange !== "all" ? (
+                  <FilterChip
+                    label={`Date: ${filterReportDateRange === "custom" ? `${filterReportDateFrom || "…"} – ${filterReportDateTo || "…"}` : filterReportDateRange}`}
+                    onRemove={() => {
+                      setFilterReportDateRange("all");
+                      setFilterReportDateFrom("");
+                      setFilterReportDateTo("");
+                    }}
+                  />
+                ) : null}
+                <button type="button" onClick={clearReportFilters} className="text-xs text-[#D4AF8C]/70 hover:text-[#D4AF8C]">
+                  Clear all
+                </button>
               </div>
             ) : null}
           </div>
 
-          {reports.length === 0 ? (
-            <div className="py-16 text-center text-white/20">
-              <p className="mb-3 flex justify-center"><CheckCircle2 className="h-10 w-10 text-emerald-400" aria-hidden /></p>
-              <p>No shadowban reports</p>
+          {reportsLoading ? (
+            <div className={cn(VA_CARD, "flex items-center justify-center gap-2 py-16 text-[#B8B4B8]/50")}>
+              <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+              Loading reports…
+            </div>
+          ) : filteredReports.length === 0 ? (
+            <div className={cn(VA_CARD, "py-16 text-center")}>
+              <p className="mb-3 flex justify-center">
+                <ShieldAlert className="h-10 w-10 text-[#D4AF8C]/35" aria-hidden />
+              </p>
+              <p className="text-[#B8B4B8]/70">{reports.length === 0 ? "No shadowban reports" : "No reports match filters"}</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {reports.map((report) => (
-                <div
-                  key={report.id}
-                  className={cn(
-                    "rounded-2xl border p-5",
-                    report.status === "pending"
-                      ? "border-amber-500/20 bg-amber-500/[0.03]"
-                      : report.status === "approved"
-                        ? "border-red-500/15 bg-red-500/[0.02] opacity-70"
-                        : "border-white/8 opacity-50",
-                  )}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-2 flex flex-wrap items-center gap-2">
-                        <span className="text-xl">{PLATFORM_ICONS[report.platform] ?? ""}</span>
-                        <span className="font-bold text-white">@{report.username}</span>
-                        <span className="text-sm text-white/40">{report.platform}</span>
-                        <span className="text-xs text-white/30">·</span>
-                        <span className="text-sm text-white/40">{report.model_name || "—"}</span>
-                        <span
-                          className={cn(
-                            "ml-auto rounded-full border px-2 py-0.5 text-xs font-semibold",
-                            report.status === "pending"
-                              ? "border-amber-500/25 bg-amber-500/15 text-amber-400"
-                              : report.status === "approved"
-                                ? "border-red-500/25 bg-red-500/15 text-red-400"
-                                : "border-white/10 bg-white/5 text-white/30",
-                          )}
-                        >
-                          {report.status}
-                        </span>
+              {filteredReports.map((report) => {
+                const shotUrl = report.screenshot?.[0]?.url;
+                return (
+                  <article
+                    key={report.id}
+                    className={cn(
+                      VA_CARD,
+                      "overflow-hidden p-0",
+                      report.status === "pending"
+                        ? "border-amber-500/25"
+                        : report.status === "approved"
+                          ? "border-red-500/20 opacity-90"
+                          : "border-white/8 opacity-75",
+                    )}
+                  >
+                    <div className="p-5">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1 space-y-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <PlatformIconBadge platform={report.platform} size="sm" />
+                            <div className="min-w-0">
+                              <p className="font-bold text-white">@{report.username}</p>
+                              <p className="text-xs text-[#B8B4B8]/45">{report.platform}</p>
+                            </div>
+                            <ReportTypeBadge type={report.report_type} />
+                            <span
+                              className={cn(
+                                VA_STATUS_BADGE,
+                                "ml-auto normal-case tracking-normal",
+                                report.status === "pending"
+                                  ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                                  : report.status === "approved"
+                                    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                    : "border-white/15 bg-white/5 text-[#B8B4B8]/50",
+                              )}
+                            >
+                              {report.status}
+                            </span>
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={VA_MODEL_TAG}>{report.model_name || "Unknown creator"}</span>
+                            <span className="text-xs text-[#B8B4B8]/35">·</span>
+                            <span className="text-sm text-[#B8B4B8]/70">
+                              Reported by <span className="font-medium text-white/90">{report.reported_by_name || "—"}</span>
+                            </span>
+                          </div>
+
+                          <p
+                            className="text-xs text-[#B8B4B8]/45"
+                            title={report.created_at ? formatDateTimeAthens(report.created_at) : undefined}
+                          >
+                            {report.created_at ? formatRelativeTime(report.created_at) : "—"}
+                            {report.created_at ? (
+                              <span className="ml-1 text-[#B8B4B8]/30">({formatDateTimeAthens(report.created_at)})</span>
+                            ) : null}
+                          </p>
+
+                          {report.notes ? (
+                            <p className="rounded-xl border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-[#B8B4B8]/65">
+                              {report.notes}
+                            </p>
+                          ) : null}
+
+                          {shotUrl ? (
+                            <button
+                              type="button"
+                              onClick={() => setScreenshotPreview(shotUrl)}
+                              className="inline-flex items-center gap-1.5 text-xs text-[#D4AF8C] hover:text-[#D4AF8C]/80"
+                            >
+                              <Eye className="h-3.5 w-3.5" aria-hidden />
+                              View screenshot
+                            </button>
+                          ) : null}
+
+                          {report.status !== "pending" ? (
+                            <div className={cn(VA_CHAMPAGNE_DIVIDER, "my-2")} />
+                          ) : null}
+                          {report.status !== "pending" ? (
+                            <div className="text-xs text-[#B8B4B8]/45">
+                              <span className="font-medium text-[#B8B4B8]/70">Resolution: </span>
+                              {report.status === "approved" ? "Approved" : "Dismissed"}
+                              {report.reviewed_by ? (
+                                <>
+                                  {" "}
+                                  by <span className="text-white/70">{report.reviewed_by}</span>
+                                </>
+                              ) : null}
+                              {report.reviewed_at ? (
+                                <span title={formatDateTimeAthens(report.reviewed_at)}>
+                                  {" "}
+                                  · {formatRelativeTime(report.reviewed_at)}
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        {shotUrl ? (
+                          <button
+                            type="button"
+                            onClick={() => setScreenshotPreview(shotUrl)}
+                            className="shrink-0 overflow-hidden rounded-xl border border-white/10 transition hover:border-[#D4AF8C]/30"
+                          >
+                            <img src={shotUrl} alt="" className="h-20 w-28 object-cover" />
+                          </button>
+                        ) : null}
                       </div>
-                      <div className="mb-3 flex flex-wrap gap-3 text-xs text-white/30">
-                        <span>
-                          Reported by {report.reported_by_name} ({report.reported_by_role})
-                        </span>
-                        <span>·</span>
-                        <span>
-                          {report.created_at
-                            ? new Date(report.created_at).toLocaleString("el-GR", { timeZone: "Europe/Athens" })
-                            : "—"}
-                        </span>
-                      </div>
-                      {report.notes ? (
-                        <p className="mb-3 rounded-xl bg-white/5 px-3 py-2 text-sm text-white/50">&ldquo;{report.notes}&rdquo;</p>
-                      ) : null}
-                      {report.screenshot?.[0]?.url ? (
-                        <a
-                          href={report.screenshot[0].url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="mb-3 inline-flex items-center gap-1.5 text-xs text-blue-400 hover:text-blue-300"
+
+                      <div className="mt-4 flex flex-wrap gap-2 border-t border-white/8 pt-4">
+                        {report.status === "pending" ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void handleReviewReport(report.id, "approve")}
+                              className="flex-1 rounded-xl border border-red-500/30 bg-red-500/15 py-2.5 text-sm font-semibold text-red-300 transition hover:bg-red-500/25"
+                            >
+                              Approve — mark {report.report_type === "banned" ? "banned" : "shadowbanned"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => void handleReviewReport(report.id, "dismiss")}
+                              className="rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 text-sm text-[#B8B4B8]/60 hover:bg-white/10"
+                            >
+                              Dismiss
+                            </button>
+                          </>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => setDeleteReportId(report.id)}
+                          className="ml-auto inline-flex items-center gap-1.5 rounded-xl border border-red-500/20 px-3 py-2 text-xs text-red-400/80 hover:bg-red-500/10"
                         >
-                          <span className="inline-flex items-center gap-1"><ImageIcon className="h-3.5 w-3.5" aria-hidden />View screenshot</span>
-                        </a>
-                      ) : null}
+                          <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                          Delete
+                        </button>
+                      </div>
                     </div>
-                    {report.screenshot?.[0]?.url ? (
-                      <a
-                        href={report.screenshot[0].url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="shrink-0 transition-opacity hover:opacity-80"
-                      >
-                        <img
-                          src={report.screenshot[0].url}
-                          alt=""
-                          className="h-16 w-24 rounded-xl border border-white/10 object-cover"
-                        />
-                      </a>
-                    ) : null}
-                  </div>
-                  {report.status === "pending" ? (
-                    <div className="mt-3 flex gap-2 border-t border-white/8 pt-3">
-                      <button
-                        type="button"
-                        onClick={() => void handleReviewReport(report.id, "approve")}
-                        className="flex-1 rounded-xl border border-red-500/30 bg-red-500/20 py-2 text-sm font-semibold text-red-400 transition-all hover:bg-red-500/30"
-                      >
-                        Approve — mark as {report.report_type === "banned" ? "banned" : "shadowbanned"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void handleReviewReport(report.id, "dismiss")}
-                        className="rounded-xl border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/40 transition-all hover:bg-white/10"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  ) : null}
-                  {report.status !== "pending" && report.reviewed_by ? (
-                    <p className="mt-2 border-t border-white/5 pt-2 text-xs text-white/20">
-                      Reviewed by {report.reviewed_by}
-                    </p>
-                  ) : null}
-                </div>
-              ))}
+                  </article>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1207,7 +1697,16 @@ export function AdminMarketingClient({
                           {f.url}
                         </a>
                       </td>
-                      <td className="px-3 py-2.5">{f.platform || "—"}</td>
+                      <td className="px-3 py-2.5">
+                        {f.platform ? (
+                          <span className="inline-flex items-center gap-2">
+                            <PlatformIconBadge platform={f.platform} size="sm" />
+                            {f.platform}
+                          </span>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
                       <td className="px-3 py-2.5">{f.region}</td>
                       <td className="px-3 py-2.5">
                         <button
@@ -1391,15 +1890,16 @@ export function AdminMarketingClient({
                               : undefined
                           }
                         >
-                          <span className="text-lg">{p.icon}</span>
+                          <PlatformIconBadge platform={p.name} size="sm" />
                           {p.name}
                         </button>
                       );
                     })}
                 </div>
                 {accountDraft.platform ? (
-                  <p className="mt-2 text-xs text-white/25">
-                    Selected: {platforms.find((p) => p.name === accountDraft.platform)?.icon}{""}
+                  <p className="mt-2 flex items-center gap-2 text-xs text-[#B8B4B8]/35">
+                    Selected:
+                    <PlatformIconBadge platform={accountDraft.platform} size="sm" />
                     {accountDraft.platform}
                   </p>
                 ) : null}
@@ -1517,8 +2017,8 @@ export function AdminMarketingClient({
           <div className="w-full max-w-sm rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <h3 className="mb-1 text-lg font-bold text-white">Report shadowban</h3>
             <div className="mb-5 flex items-center gap-2">
-              <span className="text-xl">{PLATFORM_ICONS[shadowbanReportTarget.platform] ?? ""}</span>
-              <p className="text-sm text-white/50">
+              <PlatformIconBadge platform={shadowbanReportTarget.platform} size="sm" />
+              <p className="text-sm text-[#B8B4B8]/55">
                 @{shadowbanReportTarget.username} · {shadowbanReportTarget.platform}
               </p>
             </div>
@@ -1586,6 +2086,42 @@ export function AdminMarketingClient({
                 Cancel
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      <ConfirmDeleteModal
+        open={deleteReportId != null}
+        title="Delete shadowban report?"
+        description="This permanently removes the report from Airtable. The social account status will not change."
+        confirmLabel="Delete report"
+        confirming={deleteReportBusy}
+        onClose={() => {
+          if (!deleteReportBusy) setDeleteReportId(null);
+        }}
+        onConfirm={() => {
+          if (deleteReportId) void handleDeleteReport(deleteReportId);
+        }}
+      />
+
+      {screenshotPreview ? (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            className="absolute inset-0"
+            aria-label="Close screenshot"
+            onClick={() => setScreenshotPreview(null)}
+          />
+          <div className="relative max-h-[90vh] max-w-4xl overflow-hidden rounded-2xl border border-white/15 bg-[#0D0B0D] p-2 shadow-2xl">
+            <button
+              type="button"
+              onClick={() => setScreenshotPreview(null)}
+              className="absolute right-3 top-3 rounded-lg bg-black/60 p-2 text-white/80 hover:bg-black/80"
+              aria-label="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img src={screenshotPreview} alt="Report screenshot" className="max-h-[85vh] w-full object-contain" />
           </div>
         </div>
       ) : null}

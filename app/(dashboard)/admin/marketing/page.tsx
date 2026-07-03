@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { getAllAccounts, getAllFunnels, getAllPlatforms } from "@/services/marketing";
+import { getAllAccounts, getAllFunnels, getAllPlatforms, getAllShadowbanReports } from "@/services/marketing";
 import { listAllModelss } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { AdminMarketingClient } from "@/components/admin-marketing-client";
@@ -11,12 +11,13 @@ import { AdminMarketingClient } from "@/components/admin-marketing-client";
 export default async function AdminMarketingPage() {
   const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_VIEW);
 
-  const [platforms, accounts, funnels, models, allUsers] = await Promise.all([
+  const [platforms, accounts, funnels, models, allUsers, initialReports] = await Promise.all([
     getAllPlatforms().catch(() => []),
     getAllAccounts().catch(() => []),
     getAllFunnels().catch(() => []),
     listAllModelss().catch(() => []),
     listAllUsers().catch(() => []),
+    getAllShadowbanReports().catch(() => []),
   ]);
 
   const vaUsers = allUsers.filter(
@@ -31,6 +32,7 @@ export default async function AdminMarketingPage() {
         funnels={funnels}
         models={models}
         vaUsers={vaUsers}
+        initialReports={initialReports}
       />
     </div>
   );

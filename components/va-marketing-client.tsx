@@ -4,7 +4,8 @@ import * as React from "react";
 import { AlertTriangle, ChevronRight, ExternalLink, Link2, Smartphone } from "lucide-react";
 import type { FunnelLink, SocialAccount, SocialAccountStatus } from "@/services/marketing";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
-import { getPlatformIcon, getSocialColor } from "@/lib/social-platform-config";
+import { PlatformIconBadge } from "@/components/social-platform-icon";
+import { getSocialColor, getPlatformAccentGlow } from "@/lib/social-platform-config";
 import {
   VA_CARD,
   VA_CARD_GLOW,
@@ -33,34 +34,6 @@ function groupByModel<T extends { model_id?: string; model_name?: string }>(
     }
   }
   return map;
-}
-
-/** Branded ambient glow per platform (accent on top of getSocialColor border fills). */
-function getPlatformAccentGlow(platform: string): string {
-  const p = platform.trim().toLowerCase();
-  if (p === "instagram") {
-    return "shadow-[0_0_20px_-6px_rgba(225,48,108,0.55),0_0_12px_-4px_rgba(253,29,29,0.35),0_0_8px_-4px_rgba(252,175,69,0.3)]";
-  }
-  if (p === "tiktok") {
-    return "shadow-[0_0_18px_-5px_rgba(37,244,238,0.45),0_0_14px_-5px_rgba(254,44,85,0.4)]";
-  }
-  if (p === "youtube") {
-    return "shadow-[0_0_16px_-5px_rgba(255,0,0,0.45)]";
-  }
-  if (p === "twitter") {
-    return "shadow-[0_0_16px_-5px_rgba(29,161,242,0.45)]";
-  }
-  if (p === "facebook") {
-    return "shadow-[0_0_16px_-5px_rgba(24,119,242,0.45)]";
-  }
-  if (p === "snapchat") {
-    return "shadow-[0_0_16px_-5px_rgba(255,252,0,0.35)]";
-  }
-  if (p === "telegram") {
-    return "shadow-[0_0_16px_-5px_rgba(34,158,217,0.45)]";
-  }
-  const color = getSocialColor(platform);
-  return `shadow-[0_0_16px_-6px_${color}66]`;
 }
 
 const STATUS_CONFIG: Record<
@@ -128,26 +101,6 @@ function StatusBadge({ status }: { status: SocialAccountStatus }) {
     <span className={cn(VA_STATUS_BADGE, "gap-1.5 normal-case tracking-normal", cfg.badgeClass)}>
       <StatusDot status={status} />
       {cfg.label}
-    </span>
-  );
-}
-
-function PlatformIconBadge({ platform }: { platform: string }) {
-  const color = getSocialColor(platform);
-  const glyph = getPlatformIcon(platform);
-  const initial = platform.trim().charAt(0).toUpperCase() || "?";
-
-  return (
-    <span
-      className={cn(
-        "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-bold text-white",
-        getPlatformAccentGlow(platform),
-        "max-md:shadow-none",
-      )}
-      style={{ backgroundColor: `${color}18`, borderColor: `${color}40` }}
-      aria-hidden
-    >
-      {glyph || initial}
     </span>
   );
 }

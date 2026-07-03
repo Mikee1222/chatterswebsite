@@ -1,6 +1,6 @@
 "use server";
 
-import { createRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { createRecord, deleteRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { deriveShadowbanReportType, type ShadowbanReportType } from "@/lib/shadowban-helpers";
 
 const TABLE_PLATFORMS = "marketing_platforms";
@@ -404,6 +404,10 @@ export async function updateShadowbanReport(id: string, data: Partial<ShadowbanR
   if (data.reviewed_at !== undefined) patch.reviewed_at = data.reviewed_at;
   if (Object.keys(patch).length === 0) return;
   await updateRecord(TABLE_SHADOWBAN_REPORTS, id, patch);
+}
+
+export async function deleteShadowbanReport(id: string): Promise<void> {
+  await deleteRecord(TABLE_SHADOWBAN_REPORTS, id);
 }
 
 export async function deleteAccount(id: string): Promise<void> {
