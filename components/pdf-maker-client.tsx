@@ -1,8 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { FileDown, Plus, Trash2 } from "lucide-react";
+import { ExternalLink, FileDown, FileText, History, Plus, Trash2 } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
+import type { PdfDocument, PdfSection, PdfTemplate } from "@/services/pdf-maker";
+
+type Tab = "create" | "history";
 
 type Section = {
   id: string;
@@ -10,22 +13,123 @@ type Section = {
   content: string;
 };
 
-function newSection(): Section {
-  return { id: crypto.randomUUID(), title: "", content: "" };
+function newSection(content = "", title = ""): Section {
+  return { id: crypto.randomUUID(), title: title || "", content };
 }
 
-function slugifyFilename(title: string): string {
-  const base = title.trim() || "document";
-  const safe = base.replace(/[^\w\s-]/g, "").replace(/\s+/g, "-").replace(/-+/g, "-");
-  return `${safe || "document"}.pdf`;
+function sectionsFromTemplate(template: PdfTemplate): Section[] {
+  if (template.defaultSections.length === 0) return [newSection()];
+  return template.defaultSections.map((s) =>
+    newSection(s.content, s.title ?? ""),
+  );
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return d.toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function PreviewPanel({
+  title,
+  subtitle,
+  sections,
+}: {
+  title: string;
+  subtitle: string;
+  sections: Section[];
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-800 bg-[#0a0a0a] shadow-lg">
+      <div className="h-1.5 bg-pink-500" />
+      <div className="bg-[#0f0f0f] px-5 py-4">
+        <h3 className="text-lg font-bold text-white">{title.trim() || "Document title"}</h3>
+        {subtitle.trim() ? (
+          <p className="mt-1 text-sm text-pink-500">{subtitle}</p>
+        ) : (
+          <p className="mt-1 text-sm text-gray-600 italic">Subtitle (optional)</p>
+        )}
+      </div>
+      <div className="space-y-5 px-5 py-6">
+        {sections.map((section, index) => (
+          <div key={section.id}>
+            {section.title?.trim() ? (
+              <div className="mb-2">
+                <h4 className="text-sm font-semibold text-pink-500">{section.title}</h4>
+                <div className="mt-1 h-px bg-pink-500/60" />
+              </div>
+            ) : (
+              <p className="mb-2 text-xs text-gray-600">Section {index + 1}</p>
+            )}
+            <p className="whitespace-pre-wrap text-xs leading-relaxed text-gray-300">
+              {section.content.trim() || "Section content…"}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="border-t border-gray-800 py-3 text-center text-[10px] font-medium tracking-wide text-pink-500">
+        GUNZO AGENCY - CONFIDENTIAL
+      </div>
+    </div>
+  );
 }
 
 export function PdfMakerClient() {
+  const [tab, setTab] = React.useState<Tab>("create");
   const [docTitle, setDocTitle] = React.useState("");
   const [subtitle, setSubtitle] = React.useState("");
   const [sections, setSections] = React.useState<Section[]>([newSection()]);
+  const [selectedTemplateId, setSelectedTemplateId] = React.useState<string | null>(null);
+  const [templates, setTemplates] = React.useState<PdfTemplate[]>([]);
+  const [templatesLoading, setTemplatesLoading] = React.useState(true);
+  const [history, setHistory] = React.useState<PdfDocument[]>([]);
+  const [historyLoading, setHistoryLoading] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
+  const [deletingId, setDeletingId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+
+  const loadTemplates = React.useCallback(async () => {
+    setTemplatesLoading(true);
+    try {
+      const res = await fetch("/api/pdf-maker/templates", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { templates?: PdfTemplate[] };
+      setTemplates(Array.isArray(data.templates) ? data.templates : []);
+    } catch {
+      /* ignore */
+    } finally {
+      setTemplatesLoading(false);
+    }
+  }, []);
+
+  const loadHistory = React.useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const res = await fetch("/api/pdf-maker/history", { credentials: "include" });
+      if (!res.ok) return;
+      const data = (await res.json()) as { documents?: PdfDocument[] };
+      setHistory(Array.isArray(data.documents) ? data.documents : []);
+    } catch {
+      /* ignore */
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    void loadTemplates();
+  }, [loadTemplates]);
+
+  React.useEffect(() => {
+    if (tab === "history") void loadHistory();
+  }, [tab, loadHistory]);
 
   function updateSection(id: string, patch: Partial<Pick<Section, "title" | "content">>) {
     setSections((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -37,6 +141,13 @@ export function PdfMakerClient() {
 
   function removeSection(id: string) {
     setSections((prev) => (prev.length <= 1 ? prev : prev.filter((s) => s.id !== id)));
+  }
+
+  function applyTemplate(template: PdfTemplate) {
+    setSelectedTemplateId(template.templateId || template.id);
+    setSections(sectionsFromTemplate(template));
+    if (!docTitle.trim() && template.name) setDocTitle(template.name);
+    if (!subtitle.trim() && template.description) setSubtitle(template.description);
   }
 
   async function handleGenerate(e: React.FormEvent) {
@@ -57,28 +168,29 @@ export function PdfMakerClient() {
         body: JSON.stringify({
           title: docTitle.trim(),
           subtitle: subtitle.trim() || undefined,
+          templateId: selectedTemplateId ?? undefined,
           sections: sections.map((s) => ({
-            title: s.title.trim() || undefined,
+            title: s.title?.trim() || undefined,
             content: s.content,
           })),
         }),
       });
 
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        downloadUrl?: string;
+      };
+
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
         setError(typeof data.error === "string" ? data.error : "Failed to generate PDF.");
         return;
       }
 
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = slugifyFilename(docTitle);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
+      if (data.downloadUrl) {
+        window.open(data.downloadUrl, "_blank", "noopener,noreferrer");
+      }
+
+      if (tab === "history") void loadHistory();
     } catch {
       setError("Network error. Please try again.");
     } finally {
@@ -86,129 +198,305 @@ export function PdfMakerClient() {
     }
   }
 
+  async function handleDelete(recordId: string) {
+    setDeletingId(recordId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/pdf-maker/history/${recordId}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(typeof data.error === "string" ? data.error : "Failed to delete document.");
+        return;
+      }
+      setHistory((prev) => prev.filter((d) => d.id !== recordId));
+    } catch {
+      setError("Network error. Please try again.");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <div className="min-h-full bg-gray-950 px-4 py-8 text-white sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-6xl">
         <div className="mb-8 border-b border-pink-500/30 pb-6">
           <h1 className="text-2xl font-bold tracking-tight text-white">PDF Maker</h1>
           <p className="mt-1 text-sm text-gray-400">
-            Build a branded GUNZO document and download it as a PDF.
+            Build a branded GUNZO document, preview it live, and save to history.
           </p>
         </div>
 
-        <form onSubmit={handleGenerate} className="space-y-6">
-          <div>
-            <label htmlFor="pdf-title" className="mb-1.5 block text-sm font-medium text-pink-500">
-              Document title
-            </label>
-            <input
-              id="pdf-title"
-              type="text"
-              value={docTitle}
-              onChange={(e) => setDocTitle(e.target.value)}
-              placeholder="e.g. Onboarding Guide"
-              className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="pdf-subtitle" className="mb-1.5 block text-sm font-medium text-gray-400">
-              Subtitle <span className="text-gray-600">(optional)</span>
-            </label>
-            <input
-              id="pdf-subtitle"
-              type="text"
-              value={subtitle}
-              onChange={(e) => setSubtitle(e.target.value)}
-              placeholder="e.g. Internal use only"
-              className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-            />
-          </div>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-500">Sections</h2>
-              <button
-                type="button"
-                onClick={addSection}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-pink-500/40 px-3 py-1.5 text-xs font-medium text-pink-500 transition hover:bg-pink-500/10"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add section
-              </button>
-            </div>
-
-            {sections.map((section, index) => (
-              <div
-                key={section.id}
-                className="rounded-xl border border-gray-800 bg-gray-900/60 p-4 space-y-3"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-gray-500">Section {index + 1}</span>
-                  {sections.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => removeSection(section.id)}
-                      className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
-                      aria-label={`Remove section ${index + 1}`}
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                      Remove
-                    </button>
-                  )}
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs text-gray-400">
-                    Section title <span className="text-gray-600">(optional)</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={section.title}
-                    onChange={(e) => updateSection(section.id, { title: e.target.value })}
-                    placeholder="Section heading"
-                    className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-1.5 block text-xs text-gray-400">Content</label>
-                  <textarea
-                    value={section.content}
-                    onChange={(e) => updateSection(section.id, { content: e.target.value })}
-                    rows={5}
-                    placeholder="Section body text…"
-                    className="w-full resize-y rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {error && (
-            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400" role="alert">
-              {error}
-            </p>
-          )}
-
+        <div className="mb-6 flex gap-2">
           <button
-            type="submit"
-            disabled={loading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-pink-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+            type="button"
+            onClick={() => setTab("create")}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              tab === "create"
+                ? "bg-pink-500 text-white"
+                : "border border-gray-800 text-gray-400 hover:border-pink-500/40 hover:text-pink-500"
+            }`}
           >
-            {loading ? (
-              <>
-                <Spinner className="h-4 w-4 border-pink-200/40 border-t-white" />
-                Generating…
-              </>
-            ) : (
-              <>
-                <FileDown className="h-4 w-4" />
-                Generate PDF
-              </>
-            )}
+            <FileText className="h-4 w-4" />
+            Create
           </button>
-        </form>
+          <button
+            type="button"
+            onClick={() => setTab("history")}
+            className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium transition ${
+              tab === "history"
+                ? "bg-pink-500 text-white"
+                : "border border-gray-800 text-gray-400 hover:border-pink-500/40 hover:text-pink-500"
+            }`}
+          >
+            <History className="h-4 w-4" />
+            History
+          </button>
+        </div>
+
+        {error && (
+          <p
+            className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400"
+            role="alert"
+          >
+            {error}
+          </p>
+        )}
+
+        {tab === "create" ? (
+          <div className="grid gap-8 lg:grid-cols-2">
+            <form onSubmit={handleGenerate} className="space-y-6">
+              <div>
+                <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-pink-500">
+                  Templates
+                </h2>
+                {templatesLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-gray-500">
+                    <Spinner className="h-4 w-4 border-gray-600 border-t-pink-500" />
+                    Loading templates…
+                  </div>
+                ) : templates.length === 0 ? (
+                  <p className="text-sm text-gray-500">No templates available.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {templates.map((template) => {
+                      const active =
+                        selectedTemplateId === template.templateId ||
+                        selectedTemplateId === template.id;
+                      return (
+                        <button
+                          key={template.id}
+                          type="button"
+                          onClick={() => applyTemplate(template)}
+                          className={`rounded-xl border p-4 text-left transition ${
+                            active
+                              ? "border-pink-500 bg-pink-500/10"
+                              : "border-gray-800 bg-gray-900/60 hover:border-pink-500/40"
+                          }`}
+                        >
+                          <p className="font-medium text-white">{template.name}</p>
+                          {template.description ? (
+                            <p className="mt-1 text-xs text-gray-400 line-clamp-2">
+                              {template.description}
+                            </p>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label htmlFor="pdf-title" className="mb-1.5 block text-sm font-medium text-pink-500">
+                  Document title
+                </label>
+                <input
+                  id="pdf-title"
+                  type="text"
+                  value={docTitle}
+                  onChange={(e) => setDocTitle(e.target.value)}
+                  placeholder="e.g. Onboarding Guide"
+                  className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="pdf-subtitle" className="mb-1.5 block text-sm font-medium text-gray-400">
+                  Subtitle <span className="text-gray-600">(optional)</span>
+                </label>
+                <input
+                  id="pdf-subtitle"
+                  type="text"
+                  value={subtitle}
+                  onChange={(e) => setSubtitle(e.target.value)}
+                  placeholder="e.g. Internal use only"
+                  className="w-full rounded-lg border border-gray-800 bg-gray-900 px-3 py-2 text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-semibold uppercase tracking-wide text-pink-500">
+                    Sections
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={addSection}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-pink-500/40 px-3 py-1.5 text-xs font-medium text-pink-500 transition hover:bg-pink-500/10"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add section
+                  </button>
+                </div>
+
+                {sections.map((section, index) => (
+                  <div
+                    key={section.id}
+                    className="space-y-3 rounded-xl border border-gray-800 bg-gray-900/60 p-4"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-gray-500">Section {index + 1}</span>
+                      {sections.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => removeSection(section.id)}
+                          className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-gray-500 transition hover:bg-red-500/10 hover:text-red-400"
+                          aria-label={`Remove section ${index + 1}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Remove
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs text-gray-400">
+                        Section title <span className="text-gray-600">(optional)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={section.title}
+                        onChange={(e) => updateSection(section.id, { title: e.target.value })}
+                        placeholder="Section heading"
+                        className="w-full rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="mb-1.5 block text-xs text-gray-400">Content</label>
+                      <textarea
+                        value={section.content}
+                        onChange={(e) => updateSection(section.id, { content: e.target.value })}
+                        rows={5}
+                        placeholder="Section body text…"
+                        className="w-full resize-y rounded-lg border border-gray-800 bg-gray-950 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-pink-500 focus:outline-none focus:ring-1 focus:ring-pink-500"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-pink-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
+              >
+                {loading ? (
+                  <>
+                    <Spinner className="h-4 w-4 border-pink-200/40 border-t-white" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <FileDown className="h-4 w-4" />
+                    Generate PDF
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="lg:sticky lg:top-6 lg:self-start">
+              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-pink-500">
+                Live preview
+              </h2>
+              <PreviewPanel title={docTitle} subtitle={subtitle} sections={sections} />
+            </div>
+          </div>
+        ) : (
+          <div>
+            {historyLoading ? (
+              <div className="flex items-center justify-center gap-2 py-16 text-gray-500">
+                <Spinner className="h-5 w-5 border-gray-600 border-t-pink-500" />
+                Loading history…
+              </div>
+            ) : history.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-gray-800 bg-gray-900/40 px-6 py-16 text-center">
+                <FileText className="mx-auto h-10 w-10 text-gray-700" />
+                <p className="mt-4 text-sm font-medium text-gray-400">No PDFs yet</p>
+                <p className="mt-1 text-xs text-gray-600">
+                  Generated documents will appear here with download and delete actions.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTab("create")}
+                  className="mt-6 inline-flex items-center gap-2 rounded-lg bg-pink-500 px-4 py-2 text-sm font-medium text-white hover:bg-pink-600"
+                >
+                  <Plus className="h-4 w-4" />
+                  Create your first PDF
+                </button>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2">
+                {history.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="flex flex-col rounded-xl border border-gray-800 bg-gray-900/60 p-4"
+                  >
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-white">{doc.title}</h3>
+                      {doc.subtitle ? (
+                        <p className="mt-0.5 text-sm text-pink-500">{doc.subtitle}</p>
+                      ) : null}
+                      <p className="mt-2 text-xs text-gray-500">{formatDate(doc.createdAt)}</p>
+                      {doc.template ? (
+                        <p className="mt-1 text-xs text-gray-600">Template: {doc.template}</p>
+                      ) : null}
+                    </div>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {doc.fileUrl ? (
+                        <a
+                          href={doc.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-pink-500/40 px-3 py-1.5 text-xs font-medium text-pink-500 transition hover:bg-pink-500/10"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          Download
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => void handleDelete(doc.id)}
+                        disabled={deletingId === doc.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-700 px-3 py-1.5 text-xs font-medium text-gray-400 transition hover:border-red-500/40 hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+                      >
+                        {deletingId === doc.id ? (
+                          <Spinner className="h-3.5 w-3.5 border-gray-600 border-t-red-400" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

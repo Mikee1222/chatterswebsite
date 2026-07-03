@@ -489,6 +489,8 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
   sop_signoffs: new Set(["created_at"]),
   sop_feedback: new Set(["created_at"]),
   sop_quiz_attempts: new Set(["created_at"]),
+  pdf_documents: new Set([]),
+  pdf_templates: new Set(["created_at"]),
 };
 
 /** Tables where a normally global-stripped field is a normal writable column. */
@@ -531,6 +533,7 @@ const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
   whales: new Set(["created_by"]),
   link_pages: new Set(["created_at", "updated_at"]),
   link_page_blocks: new Set(["created_at", "updated_at"]),
+  pdf_documents: new Set(["created_at", "created_by"]),
 };
 
 function getNonWritableNormalizedForTable(tableName: string): Set<string> {
