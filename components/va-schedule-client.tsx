@@ -80,14 +80,18 @@ function monthFirstYmd(mondayYmd: string): string {
   return `${y}-${String(m).padStart(2, "0")}-01`;
 }
 
-function toLocalYmd(isoLike: string | null): string {
+/**
+ * Airtable stores `due_date` as a UTC instant; the schedule (like the rest of the app —
+ * see SCHEDULE_TIME_ZONE in lib/format.ts and `ymdInAthens`) interprets it in Europe/Athens.
+ * Using the runtime-local timezone here bucketed tasks under the wrong calendar day
+ * (UTC during SSR, the browser's timezone after hydration), so a task due today could land
+ * on the previous day and never render under today's cell.
+ */
+function toAthensYmd(isoLike: string | null): string {
   if (!isoLike?.trim()) return "";
   const d = new Date(isoLike.trim());
   if (Number.isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(d);
 }
 
 function getRecurringPreviewDates(
@@ -113,7 +117,7 @@ function getRecurringPreviewDates(
 
     if (!next) break;
 
-    const nextYmd = toLocalYmd(next) || next.slice(0, 10);
+    const nextYmd = toAthensYmd(next) || next.slice(0, 10);
     if (!nextYmd) break;
     if (nextYmd > calendarEnd) break;
     if (nextYmd >= calendarStart) dates.push(nextYmd);
@@ -217,7 +221,7 @@ export function VaScheduleClient({
     const map = new Map<string, VaTaskRecord[]>();
     for (const t of tasks) {
       if (!t.due_date?.trim()) continue;
-      const y = toLocalYmd(t.due_date);
+      const y = toAthensYmd(t.due_date);
       if (!y) continue;
       const list = map.get(y) ?? [];
       list.push(t);
@@ -262,7 +266,7 @@ export function VaScheduleClient({
 
       for (const date of futureDates) {
         const alreadyHasRealTask = tasks.some((t) => {
-          const y = toLocalYmd(t.due_date);
+          const y = toAthensYmd(t.due_date);
           return y === date && vaTaskSeriesKey(t) === series;
         });
         if (alreadyHasRealTask) continue;
