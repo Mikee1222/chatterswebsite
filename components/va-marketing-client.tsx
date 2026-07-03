@@ -1,33 +1,387 @@
 "use client";
 
 import * as React from "react";
-import { AlertTriangle, ExternalLink, Link2, Smartphone } from "lucide-react";
-import type { FunnelLink, SocialAccount } from "@/services/marketing";
+import { AlertTriangle, ChevronRight, ExternalLink, Link2, Smartphone } from "lucide-react";
+import type { FunnelLink, SocialAccount, SocialAccountStatus } from "@/services/marketing";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
-import { getSocialColor } from "@/lib/social-platform-config";
+import { getPlatformIcon, getSocialColor } from "@/lib/social-platform-config";
+import {
+  VA_CARD,
+  VA_CARD_GLOW,
+  VA_CHAMPAGNE_DIVIDER,
+  VA_MODEL_TAG,
+  VA_STATUS_BADGE,
+} from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 
-const STATUS_STYLES: Record<string, string> = {
-  active: "border-emerald-500/35 bg-emerald-500/15 text-emerald-300",
-  shadowbanned: "border-amber-500/35 bg-amber-500/15 text-amber-300",
-  banned: "border-red-500/35 bg-red-500/15 text-red-300",
-};
+type ModelGroup<T> = { modelName: string; items: T[] };
 
-function groupByModel(accounts: SocialAccount[]): Map<string, { modelName: string; accounts: SocialAccount[] }> {
-  const map = new Map<string, { modelName: string; accounts: SocialAccount[] }>();
-  for (const acc of accounts) {
-    const key = acc.model_id?.trim() || "unknown";
+function groupByModel<T extends { model_id?: string; model_name?: string }>(
+  rows: T[],
+): Map<string, ModelGroup<T>> {
+  const map = new Map<string, ModelGroup<T>>();
+  for (const row of rows) {
+    const key = row.model_id?.trim() || "unknown";
     const existing = map.get(key);
     if (existing) {
-      existing.accounts.push(acc);
+      existing.items.push(row);
     } else {
       map.set(key, {
-        modelName: acc.model_name?.trim() || "Creator",
-        accounts: [acc],
+        modelName: row.model_name?.trim() || "Creator",
+        items: [row],
       });
     }
   }
   return map;
+}
+
+/** Branded ambient glow per platform (accent on top of getSocialColor border fills). */
+function getPlatformAccentGlow(platform: string): string {
+  const p = platform.trim().toLowerCase();
+  if (p === "instagram") {
+    return "shadow-[0_0_20px_-6px_rgba(225,48,108,0.55),0_0_12px_-4px_rgba(253,29,29,0.35),0_0_8px_-4px_rgba(252,175,69,0.3)]";
+  }
+  if (p === "tiktok") {
+    return "shadow-[0_0_18px_-5px_rgba(37,244,238,0.45),0_0_14px_-5px_rgba(254,44,85,0.4)]";
+  }
+  if (p === "youtube") {
+    return "shadow-[0_0_16px_-5px_rgba(255,0,0,0.45)]";
+  }
+  if (p === "twitter") {
+    return "shadow-[0_0_16px_-5px_rgba(29,161,242,0.45)]";
+  }
+  if (p === "facebook") {
+    return "shadow-[0_0_16px_-5px_rgba(24,119,242,0.45)]";
+  }
+  if (p === "snapchat") {
+    return "shadow-[0_0_16px_-5px_rgba(255,252,0,0.35)]";
+  }
+  if (p === "telegram") {
+    return "shadow-[0_0_16px_-5px_rgba(34,158,217,0.45)]";
+  }
+  const color = getSocialColor(platform);
+  return `shadow-[0_0_16px_-6px_${color}66]`;
+}
+
+const STATUS_CONFIG: Record<
+  SocialAccountStatus,
+  {
+    cardClass: string;
+    glowClass: string;
+    badgeClass: string;
+    dotClass: string;
+    pulse: boolean;
+    label: string;
+  }
+> = {
+  active: {
+    cardClass: "border-[rgba(255,255,255,0.06)]",
+    glowClass: "",
+    badgeClass:
+      "border-emerald-500/30 bg-emerald-500/8 text-emerald-300/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]",
+    dotClass: "bg-emerald-400/75 shadow-[0_0_6px_rgba(52,211,153,0.35)]",
+    pulse: false,
+    label: "Active",
+  },
+  shadowbanned: {
+    cardClass: "border-amber-500/30",
+    glowClass:
+      "before:pointer-events-none before:absolute before:-inset-4 before:-z-10 before:rounded-[20px] before:bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.18)_0%,transparent_72%)] before:opacity-70 before:blur-xl max-md:before:opacity-45",
+    badgeClass:
+      "border-amber-500/40 bg-amber-500/12 text-amber-300 shadow-[0_0_14px_-4px_rgba(245,158,11,0.4)]",
+    dotClass: "bg-amber-400 shadow-[0_0_10px_rgba(245,158,11,0.55)]",
+    pulse: true,
+    label: "Shadowbanned",
+  },
+  banned: {
+    cardClass: "border-red-500/35",
+    glowClass:
+      "before:pointer-events-none before:absolute before:-inset-5 before:-z-10 before:rounded-[22px] before:bg-[radial-gradient(ellipse_at_center,rgba(239,68,68,0.22)_0%,transparent_68%)] before:opacity-90 before:blur-2xl max-md:before:opacity-50",
+    badgeClass:
+      "border-red-500/45 bg-red-500/15 text-red-300 shadow-[0_0_16px_-4px_rgba(239,68,68,0.5)]",
+    dotClass: "bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.65)]",
+    pulse: true,
+    label: "Banned",
+  },
+};
+
+function StatusDot({ status }: { status: SocialAccountStatus }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
+  return (
+    <span className="relative flex h-2 w-2 shrink-0" aria-hidden>
+      {cfg.pulse ? (
+        <span
+          className={cn(
+            "absolute inline-flex h-full w-full animate-pulse rounded-full opacity-60 motion-reduce:animate-none",
+            status === "banned" ? "bg-red-500" : "bg-amber-400",
+          )}
+        />
+      ) : null}
+      <span className={cn("relative inline-flex h-2 w-2 rounded-full", cfg.dotClass)} />
+    </span>
+  );
+}
+
+function StatusBadge({ status }: { status: SocialAccountStatus }) {
+  const cfg = STATUS_CONFIG[status] ?? STATUS_CONFIG.active;
+  return (
+    <span className={cn(VA_STATUS_BADGE, "gap-1.5 normal-case tracking-normal", cfg.badgeClass)}>
+      <StatusDot status={status} />
+      {cfg.label}
+    </span>
+  );
+}
+
+function PlatformIconBadge({ platform }: { platform: string }) {
+  const color = getSocialColor(platform);
+  const glyph = getPlatformIcon(platform);
+  const initial = platform.trim().charAt(0).toUpperCase() || "?";
+
+  return (
+    <span
+      className={cn(
+        "relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border text-sm font-bold text-white",
+        getPlatformAccentGlow(platform),
+        "max-md:shadow-none",
+      )}
+      style={{ backgroundColor: `${color}18`, borderColor: `${color}40` }}
+      aria-hidden
+    >
+      {glyph || initial}
+    </span>
+  );
+}
+
+function AccountCard({ acc }: { acc: SocialAccount }) {
+  const plat = acc.platform?.trim() || "Other";
+  const color = getSocialColor(plat);
+  const href = acc.account_link?.trim() || "#";
+  const st: SocialAccountStatus = acc.account_status ?? "active";
+  const cfg = STATUS_CONFIG[st] ?? STATUS_CONFIG.active;
+
+  return (
+    <article
+      className={cn(
+        "relative overflow-hidden rounded-xl border bg-[#0D0B0D]/80 p-4 transition duration-200 motion-reduce:transition-none",
+        "shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_4px_16px_-8px_rgba(0,0,0,0.5)]",
+        "hover:border-[#D4AF8C]/25 max-md:hover:translate-y-0",
+        cfg.cardClass,
+        cfg.glowClass,
+      )}
+    >
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <PlatformIconBadge platform={plat} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-white">@{acc.username}</p>
+            <p className="mt-0.5 text-xs text-[#B8B4B8]/50">{plat}</p>
+          </div>
+        </div>
+        <StatusBadge status={st} />
+      </div>
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(e) => {
+          if (!acc.account_link?.trim()) e.preventDefault();
+        }}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-white transition",
+          "hover:scale-[1.02] motion-reduce:transform-none",
+          getPlatformAccentGlow(plat),
+          "max-md:shadow-none",
+        )}
+        style={{ backgroundColor: `${color}12`, borderColor: `${color}35` }}
+      >
+        Open profile
+        <ExternalLink className="h-3 w-3 text-white/40" />
+      </a>
+    </article>
+  );
+}
+
+function CreatorPortfolio({
+  modelId,
+  modelName,
+  accounts,
+}: {
+  modelId: string;
+  modelName: string;
+  accounts: SocialAccount[];
+}) {
+  const issueCount = accounts.filter((a) => (a.account_status ?? "active") !== "active").length;
+
+  return (
+    <section key={modelId} className={cn(VA_CARD, "overflow-hidden")}>
+      <header className="px-5 pb-4 pt-5">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/60">Creator</p>
+        <h2 className="mt-1.5 text-lg font-semibold text-white">{modelName}</h2>
+        <div className={cn(VA_CHAMPAGNE_DIVIDER, "mt-3")} />
+        <div className="mt-3 flex flex-wrap gap-2">
+          <span className={VA_MODEL_TAG}>
+            {accounts.length} account{accounts.length === 1 ? "" : "s"}
+          </span>
+          {issueCount > 0 ? (
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/8 px-2.5 py-0.5 text-xs font-medium text-amber-300 shadow-[0_0_12px_-4px_rgba(245,158,11,0.3)] max-md:shadow-none">
+              <AlertTriangle className="h-3 w-3" aria-hidden />
+              {issueCount} need{issueCount === 1 ? "s" : ""} attention
+            </span>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="relative px-5 pb-5">
+        <div
+          className="absolute bottom-5 left-[1.125rem] top-0 w-px bg-gradient-to-b from-[#D4AF8C]/50 via-[#FF1493]/30 to-transparent"
+          aria-hidden
+        />
+        <div className="space-y-3 pl-7">
+          {accounts.map((acc) => (
+            <AccountCard key={acc.id} acc={acc} />
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TrackingLinksSection({ funnels }: { funnels: FunnelLink[] }) {
+  const grouped = React.useMemo(() => groupByModel(funnels), [funnels]);
+  const [expanded, setExpanded] = React.useState<Set<string>>(() => new Set());
+
+  if (funnels.length === 0) return null;
+
+  function toggle(modelId: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(modelId)) next.delete(modelId);
+      else next.add(modelId);
+      return next;
+    });
+  }
+
+  return (
+    <section className="space-y-4">
+      <div className="flex items-center gap-3">
+        <div className={cn(VA_CHAMPAGNE_DIVIDER, "flex-1")} />
+        <div className="flex shrink-0 items-center gap-2 text-[#D4AF8C]/70">
+          <Link2 className="h-4 w-4" aria-hidden />
+          <span className="text-[10px] font-semibold uppercase tracking-[0.14em]">Tracking links</span>
+        </div>
+        <div className={cn(VA_CHAMPAGNE_DIVIDER, "flex-1")} />
+      </div>
+      <p className="text-center text-xs text-[#B8B4B8]/45">Read-only promo links shared for your creators</p>
+
+      <div className="space-y-3">
+        {[...grouped.entries()].map(([modelId, group]) => {
+          const isOpen = expanded.has(modelId);
+          return (
+            <div
+              key={modelId}
+              className={cn(
+                VA_CARD,
+                "overflow-hidden border-[rgba(255,255,255,0.05)] bg-[#121012]/90 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]",
+              )}
+            >
+              <button
+                type="button"
+                onClick={() => toggle(modelId)}
+                className="flex w-full items-center justify-between gap-3 px-5 py-4 text-left transition hover:bg-white/[0.02]"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[#B8B4B8]/90">{group.modelName}</p>
+                  <p className="mt-0.5 text-xs text-[#B8B4B8]/40">
+                    {group.items.length} link{group.items.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <ChevronRight
+                  className={cn(
+                    "h-4 w-4 shrink-0 text-[#D4AF8C]/45 transition-transform duration-300 motion-reduce:transition-none",
+                    isOpen && "rotate-90",
+                  )}
+                  aria-hidden
+                />
+              </button>
+              <div
+                className={cn(
+                  "overflow-hidden transition-[max-height] duration-300 ease-in-out motion-reduce:transition-none",
+                  isOpen ? "max-h-[2000px]" : "max-h-0",
+                )}
+              >
+                <div className="border-t border-[rgba(255,255,255,0.05)] px-5 py-4">
+                  <div className={cn(VA_CHAMPAGNE_DIVIDER, "mb-4")} />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {group.items.map((f) => {
+                      const color = getSocialColor(f.platform);
+                      return (
+                        <a
+                          key={f.id}
+                          href={f.url || "#"}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => {
+                            if (!f.url?.trim()) e.preventDefault();
+                          }}
+                          className={cn(
+                            VA_CARD,
+                            "flex items-center justify-between gap-3 p-4 transition hover:border-[#D4AF8C]/20",
+                          )}
+                        >
+                          <div className="flex min-w-0 items-center gap-3">
+                            <PlatformIconBadge platform={f.platform} />
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-white">{f.label}</p>
+                              <p className="truncate text-xs text-[#B8B4B8]/45">
+                                {[f.platform, f.region].filter(Boolean).join(" · ")}
+                              </p>
+                            </div>
+                          </div>
+                          <span
+                            className={cn(
+                              "inline-flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1.5 text-[10px] font-medium text-white",
+                              getPlatformAccentGlow(f.platform),
+                              "max-md:shadow-none",
+                            )}
+                            style={{ backgroundColor: `${color}12`, borderColor: `${color}35` }}
+                          >
+                            Open
+                            <ExternalLink className="h-3 w-3 text-white/40" />
+                          </span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function MarketingEmptyState() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center">
+      <svg className="mb-6 h-20 w-20 text-[#D4AF8C]/35" viewBox="0 0 64 64" fill="none" aria-hidden>
+        <rect x="18" y="10" width="28" height="44" rx="6" stroke="currentColor" strokeWidth="1.5" opacity="0.5" />
+        <circle cx="32" cy="48" r="2" fill="currentColor" opacity="0.4" />
+        <path
+          d="M26 20h12M26 28h8"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          opacity="0.45"
+        />
+      </svg>
+      <p className="text-xl font-semibold text-white">No accounts yet</p>
+      <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">
+        When an admin assigns social handles to you, they&apos;ll show up here — grouped by creator, ready to open.
+      </p>
+    </div>
+  );
 }
 
 export function VaMarketingClient() {
@@ -75,19 +429,31 @@ export function VaMarketingClient() {
   const grouped = React.useMemo(() => groupByModel(accounts), [accounts]);
   const activeCount = accounts.filter((a) => (a.account_status ?? "active") === "active").length;
   const issueCount = accounts.length - activeCount;
+  const bannedCount = accounts.filter((a) => a.account_status === "banned").length;
+  const shadowbanCount = accounts.filter((a) => a.account_status === "shadowbanned").length;
 
   return (
     <div className="min-h-screen">
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 pt-6 md:px-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <h1 className="text-[32px] font-extrabold tracking-tight text-white">Marketing accounts</h1>
-            <p className="mt-2 text-sm text-white/45">Social handles assigned to you across your creators</p>
+            <h1 className="text-[32px] font-semibold tracking-tight text-white">Marketing accounts</h1>
+            <p className="mt-2 text-sm text-[#B8B4B8]/65">
+              Social handles assigned to you across your creators
+            </p>
           </div>
           <button
             type="button"
             onClick={() => setShadowbanOpen(true)}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-300 transition hover:bg-amber-500/25"
+            className={cn(
+              "inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-medium transition",
+              "border-amber-500/35 bg-transparent text-amber-300/90",
+              "shadow-[inset_0_1px_0_rgba(245,158,11,0.1)]",
+              "hover:border-amber-500/50 hover:bg-amber-500/8",
+              issueCount > 0 && bannedCount > 0
+                ? "border-red-500/40 text-red-300/90 hover:border-red-500/55 hover:bg-red-500/8"
+                : null,
+            )}
           >
             <AlertTriangle className="h-4 w-4" aria-hidden />
             Report issue
@@ -95,18 +461,44 @@ export function VaMarketingClient() {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/[0.06] px-3 py-1 text-sm text-white/70">
+          <span className="inline-flex items-center gap-2 rounded-full border border-[rgba(255,255,255,0.08)] bg-[#151315] px-3.5 py-1.5 text-sm text-[#B8B4B8]/75">
             Total
-            <strong className="font-bold tabular-nums text-white">{accounts.length}</strong>
+            <span className="rounded-full border border-[#D4AF8C]/30 bg-[#D4AF8C]/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-[#D4AF8C]">
+              {accounts.length}
+            </span>
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-sm text-emerald-300">
+          <span className="inline-flex items-center gap-2 rounded-full border border-emerald-500/25 bg-emerald-500/8 px-3.5 py-1.5 text-sm text-emerald-300/90">
             Active
-            <strong className="font-bold tabular-nums text-emerald-200">{activeCount}</strong>
+            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums text-emerald-200">
+              {activeCount}
+            </span>
           </span>
-          {issueCount > 0 ? (
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-sm text-amber-300">
-              Issues
-              <strong className="font-bold tabular-nums text-amber-200">{issueCount}</strong>
+          {shadowbanCount > 0 ? (
+            <span
+              className={cn(
+                "relative inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/8 px-3.5 py-1.5 text-sm text-amber-300",
+                VA_CARD_GLOW,
+                "before:bg-[radial-gradient(ellipse_at_center,rgba(245,158,11,0.12)_0%,transparent_70%)] max-md:before:opacity-40",
+              )}
+            >
+              Shadowbanned
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
+                {shadowbanCount}
+              </span>
+            </span>
+          ) : null}
+          {bannedCount > 0 ? (
+            <span
+              className={cn(
+                "relative inline-flex items-center gap-2 rounded-full border border-red-500/35 bg-red-500/10 px-3.5 py-1.5 text-sm text-red-300",
+                VA_CARD_GLOW,
+                "before:bg-[radial-gradient(ellipse_at_center,rgba(239,68,68,0.16)_0%,transparent_70%)] max-md:before:opacity-40",
+              )}
+            >
+              Banned
+              <span className="rounded-full border border-red-500/30 bg-red-500/12 px-1.5 py-0.5 text-[11px] font-bold tabular-nums">
+                {bannedCount}
+              </span>
             </span>
           ) : null}
         </div>
@@ -118,119 +510,25 @@ export function VaMarketingClient() {
         ) : null}
 
         {loading ? (
-          <div className="rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d] px-6 py-16 text-center text-sm text-white/40">
+          <div className={cn(VA_CARD, "px-6 py-16 text-center text-sm text-[#B8B4B8]/40")}>
             Loading accounts…
           </div>
         ) : accounts.length === 0 ? (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d] px-6 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.06] text-white/35">
-              <Smartphone className="h-7 w-7" aria-hidden />
-            </div>
-            <p className="mt-5 text-base font-semibold text-white/90">No accounts assigned</p>
-            <p className="mt-2 max-w-sm text-sm text-white/50">
-              When an admin assigns social accounts to you, they will appear here.
-            </p>
-          </div>
+          <MarketingEmptyState />
         ) : (
           <div className="space-y-5">
             {[...grouped.entries()].map(([modelId, group]) => (
-              <section
+              <CreatorPortfolio
                 key={modelId}
-                className="overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d]"
-              >
-                <div className="border-b border-[#1f1f1f] px-5 py-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-pink-400">Creator</p>
-                  <h2 className="mt-1 text-lg font-bold text-white">{group.modelName}</h2>
-                </div>
-                <div className="grid gap-3 p-5 sm:grid-cols-2">
-                  {group.accounts.map((acc) => {
-                    const plat = acc.platform?.trim() || "Other";
-                    const color = getSocialColor(plat);
-                    const href = acc.account_link?.trim() || "#";
-                    const st = acc.account_status ?? "active";
-                    return (
-                      <div
-                        key={acc.id}
-                        className="rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-4 transition hover:border-pink-500/30"
-                      >
-                        <div className="mb-3 flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-white">@{acc.username}</p>
-                            <p className="text-xs text-white/40">{plat}</p>
-                          </div>
-                          <span
-                            className={cn(
-                              "shrink-0 rounded-md border px-2 py-0.5 text-[10px] font-semibold capitalize",
-                              STATUS_STYLES[st] ?? STATUS_STYLES.active,
-                            )}
-                          >
-                            {st}
-                          </span>
-                        </div>
-                        <a
-                          href={href}
-                          target="_blank"
-                          rel="noreferrer"
-                          onClick={(e) => {
-                            if (!acc.account_link?.trim()) e.preventDefault();
-                          }}
-                          className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-white transition hover:scale-[1.02]"
-                          style={{ backgroundColor: `${color}12`, borderColor: `${color}35` }}
-                        >
-                          Open profile
-                          <ExternalLink className="h-3 w-3 text-white/40" />
-                        </a>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
+                modelId={modelId}
+                modelName={group.modelName}
+                accounts={group.items}
+              />
             ))}
           </div>
         )}
 
-        {funnels.length > 0 ? (
-          <section className="overflow-hidden rounded-2xl border border-[#1f1f1f] bg-[#0d0d0d]">
-            <div className="flex items-center gap-2 border-b border-[#1f1f1f] px-5 py-4">
-              <Link2 className="h-4 w-4 text-pink-400" aria-hidden />
-              <div>
-                <h2 className="text-base font-bold text-white">Funnel links</h2>
-                <p className="text-xs text-white/40">Read-only — shared promo links for your creators</p>
-              </div>
-            </div>
-            <div className="grid gap-3 p-5 sm:grid-cols-2">
-              {funnels.map((f) => {
-                const color = getSocialColor(f.platform);
-                return (
-                  <a
-                    key={f.id}
-                    href={f.url || "#"}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={(e) => {
-                      if (!f.url?.trim()) e.preventDefault();
-                    }}
-                    className="flex items-center justify-between gap-3 rounded-xl border border-[#1f1f1f] bg-[#0a0a0a] p-4 transition hover:border-pink-500/30"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-white">{f.label}</p>
-                      <p className="truncate text-xs text-white/40">
-                        {[f.model_name, f.platform, f.region].filter(Boolean).join(" · ")}
-                      </p>
-                    </div>
-                    <span
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium text-white"
-                      style={{ backgroundColor: `${color}12`, borderColor: `${color}35` }}
-                    >
-                      Open
-                      <ExternalLink className="h-3 w-3 text-white/40" />
-                    </span>
-                  </a>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
+        <TrackingLinksSection funnels={funnels} />
       </div>
 
       <VAShadowbanReportModal
