@@ -358,8 +358,8 @@ export function PdfMakerClient() {
       setStyle((prev) => ({ ...prev, footerText: footer }));
     }
 
-    if (!docTitle.trim() && template.name) setDocTitle(template.name);
-    if (!subtitle.trim() && template.description) setSubtitle(template.description);
+    setDocTitle(template.name ?? "");
+    setSubtitle(template.description ?? "");
   }
 
   function setTheme(nextTheme: PdfStyle["theme"]) {
