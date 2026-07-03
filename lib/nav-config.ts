@@ -424,26 +424,9 @@ const adminNav: NavItem[] = [
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.MARKETING_VIEW,
   },
-  {
-    href: ROUTES.spotChecks,
-    label: "Spot Checks",
-    iconKey: "ListTodo",
-    navSection: "SUPERVISION",
-    requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
-    // Users who can manage spot checks see the MANAGER REVIEW item instead.
-    hiddenIfPermission: PERMISSIONS.SPOTCHECK_MANAGE,
-    excludeFromMobileMainTabs: true,
-  },
-  {
-    href: ROUTES.dailyReview,
-    label: "Daily Review",
-    iconKey: "CalendarCheck",
-    navSection: "SUPERVISION",
-    requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
-    // Users who can manage daily reviews see the MANAGER REVIEW item instead.
-    hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
-    excludeFromMobileMainTabs: true,
-  },
+  // NOTE: The SUBMIT-tier supervision items (Spot Checks / Daily Review) live in
+  // `sharedSupervisionNavItems` below so any role granted the permission surfaces them.
+  // Only the MANAGER REVIEW (manage-tier) items remain here.
   {
     href: ROUTES.admin.spotChecks,
     label: "Spot checks",
@@ -636,6 +619,46 @@ const modelNav: NavItem[] = [
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
 ];
 
+/**
+ * Permission-gated nav items that must reach ANY role granted the underlying permission,
+ * regardless of that role's base nav array (chatter/va/model/admin/custom). These are
+ * appended to every role's base list BEFORE permission filtering, so `requiresPermission`
+ * decides show/hide. Add future permission-only shared items here.
+ *
+ * Only SUBMIT-tier supervision items belong here. The MANAGER REVIEW (manage-tier) items
+ * stay in `adminNav`; `hiddenIfPermission` dedupes users who also hold the manage grant
+ * (they see the richer MANAGER REVIEW item instead of the submit item).
+ */
+const sharedSupervisionNavItems: NavItem[] = [
+  {
+    href: ROUTES.spotChecks,
+    label: "Spot Checks",
+    iconKey: "ListTodo",
+    navSection: "SUPERVISION",
+    requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
+    // Users who can manage spot checks see the MANAGER REVIEW item instead.
+    hiddenIfPermission: PERMISSIONS.SPOTCHECK_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.dailyReview,
+    label: "Daily Review",
+    iconKey: "CalendarCheck",
+    navSection: "SUPERVISION",
+    requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
+    // Users who can manage daily reviews see the MANAGER REVIEW item instead.
+    hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+];
+
+/** Append shared permission-gated items to a role's base list, skipping any already present. */
+function appendSharedNavItems(base: NavItem[]): NavItem[] {
+  const existing = new Set(base.map((i) => i.href));
+  const shared = sharedSupervisionNavItems.filter((i) => !existing.has(i.href));
+  return shared.length === 0 ? base : [...base, ...shared];
+}
+
 /** Shared admin nav items shown to custom roles regardless of grants (Home, Settings, etc.). */
 function getCustomRoleSharedAdminNavItems(): NavItem[] {
   return adminNav
@@ -648,18 +671,24 @@ function getCustomRoleSharedAdminNavItems(): NavItem[] {
 /** Canonical lists before hide filter (settings UI + internal). */
 export function getBaseNavItemsForRole(role: NavRoleKey): NavItem[] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
-  if (r === "chatter") return [...chatterNav];
-  if (r === "virtual_assistant") return [...vaNav];
+  // Every base list gets the shared permission-gated items appended before the caller
+  // applies permission filtering, so granting e.g. spotcheck:submit surfaces the link
+  // for chatter/va/model/custom roles too — not just admin.
+  if (r === "chatter") return appendSharedNavItems([...chatterNav]);
+  if (r === "virtual_assistant") return appendSharedNavItems([...vaNav]);
   if (r === "admin" || r === "manager") {
     const items = [...adminNav];
-    if (r === "manager") return items.filter((i) => !i.adminOnly);
-    return items;
+    if (r === "manager") return appendSharedNavItems(items.filter((i) => !i.adminOnly));
+    return appendSharedNavItems(items);
   }
-  if (r === "model") return [...modelNav];
+  if (r === "model") return appendSharedNavItems([...modelNav]);
   if (!isSystemNavRole(r)) {
-    return [...adminNav.filter((item) => item.requiresPermission), ...getCustomRoleSharedAdminNavItems()];
+    return appendSharedNavItems([
+      ...adminNav.filter((item) => item.requiresPermission),
+      ...getCustomRoleSharedAdminNavItems(),
+    ]);
   }
-  return [{ href: ROUTES.dashboard, label: "Dashboard", iconKey: "LayoutDashboard" }];
+  return appendSharedNavItems([{ href: ROUTES.dashboard, label: "Dashboard", iconKey: "LayoutDashboard" }]);
 }
 
 /**
