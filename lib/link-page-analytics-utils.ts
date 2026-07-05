@@ -1,4 +1,7 @@
 import type { AnalyticsTrend, AnalyticsTrendDirection } from "@/types";
+import { ymdInAthens } from "@/lib/airtable-datetime";
+
+export { ymdInAthens };
 
 const ATHENS_TZ = "Europe/Athens";
 
@@ -108,12 +111,6 @@ export function countryToFlag(country: string): string {
   return String.fromCodePoint(
     ...[...upper].map((c) => 0x1f1e6 - 65 + c.charCodeAt(0))
   );
-}
-
-export function ymdInAthens(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-CA", { timeZone: ATHENS_TZ }).format(d);
 }
 
 export function hourInAthens(iso: string): number {

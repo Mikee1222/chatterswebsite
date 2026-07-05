@@ -4,10 +4,35 @@
  * Sending time-only strings like "10:00" causes: Cannot parse date value "10:00" for field X.
  */
 
+import { parseWeekStart } from "@/lib/weekly-program";
 import type { WeeklyProgramDay } from "@/types";
+
+/** IANA zone for Airtable UTC instants → schedule calendar day (see va-schedule-client). */
+const ATHENS_IANA = "Europe/Athens";
 
 /** Fixed Greece summer offset (UTC+3). Server runs UTC; business calendar uses this offset (no DST split). */
 const ATHENS_OFFSET_MS = 3 * 60 * 60 * 1000;
+
+/**
+ * Bucket an Airtable datetime (UTC ISO) to a YYYY-MM-DD calendar key in Europe/Athens.
+ * Use for due_date → schedule cell matching (Month and Week share this).
+ */
+export function ymdInAthens(iso: string | null | undefined): string {
+  if (iso == null || !String(iso).trim()) return "";
+  const d = new Date(String(iso).trim());
+  if (Number.isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-CA", { timeZone: ATHENS_IANA }).format(d);
+}
+
+/**
+ * Normalize URL/state week_start to Monday using the Athens business calendar.
+ * Falls back to the current Athens week when the input is missing or invalid.
+ */
+export function normalizeWeekStartAthens(ymd: string | null | undefined): string {
+  const parsed = parseWeekStart(ymd);
+  if (parsed == null) return getWeekStartYmdInAthens(0);
+  return getMondayOfWeekFromYmdAthens(parsed);
+}
 
 /**
  * “Now” shifted so UTC calendar getters approximate Europe/Athens wall time in summer (+3).

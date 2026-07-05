@@ -13,6 +13,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
+import { ymdInAthens, getTodayYmdAthens, getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
 import { ROUTES } from "@/lib/routes";
 import {
   WEEKLY_PROGRAM_DAY_OPTIONS,
@@ -20,8 +21,6 @@ import {
   addWeeks,
   formatWeekLabel,
   getMondayOfWeek,
-  getThisWeekMonday,
-  getTodayYmd,
 } from "@/lib/weekly-program";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { getNextOccurrence, vaTaskSeriesKey } from "@/lib/recurrence";
@@ -74,24 +73,13 @@ function collectProgramModelNames(
     .filter((n): n is string => Boolean(n));
 }
 
+/**
+ * Month grid anchor: first day of the month containing `weekStart` (Athens-aligned week).
+ */
 function monthFirstYmd(mondayYmd: string): string {
   const [y, m] = mondayYmd.split("-").map(Number);
   if (!y || !m) return mondayYmd;
   return `${y}-${String(m).padStart(2, "0")}-01`;
-}
-
-/**
- * Airtable stores `due_date` as a UTC instant; the schedule (like the rest of the app —
- * see SCHEDULE_TIME_ZONE in lib/format.ts and `ymdInAthens`) interprets it in Europe/Athens.
- * Using the runtime-local timezone here bucketed tasks under the wrong calendar day
- * (UTC during SSR, the browser's timezone after hydration), so a task due today could land
- * on the previous day and never render under today's cell.
- */
-function toAthensYmd(isoLike: string | null): string {
-  if (!isoLike?.trim()) return "";
-  const d = new Date(isoLike.trim());
-  if (Number.isNaN(d.getTime())) return "";
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(d);
 }
 
 function getRecurringPreviewDates(
@@ -117,7 +105,7 @@ function getRecurringPreviewDates(
 
     if (!next) break;
 
-    const nextYmd = toAthensYmd(next) || next.slice(0, 10);
+    const nextYmd = ymdInAthens(next) || next.slice(0, 10);
     if (!nextYmd) break;
     if (nextYmd > calendarEnd) break;
     if (nextYmd >= calendarStart) dates.push(nextYmd);
@@ -172,8 +160,8 @@ export function VaScheduleClient({
   const [completing, setCompleting] = React.useState(false);
   const [completeErr, setCompleteErr] = React.useState<string | null>(null);
 
-  const todayYmd = getTodayYmd();
-  const thisWeekMonday = getThisWeekMonday();
+  const todayYmd = getTodayYmdAthens();
+  const thisWeekMonday = getWeekStartYmdInAthens(0);
 
   const weekDates = React.useMemo(
     () =>
@@ -221,7 +209,7 @@ export function VaScheduleClient({
     const map = new Map<string, VaTaskRecord[]>();
     for (const t of tasks) {
       if (!t.due_date?.trim()) continue;
-      const y = toAthensYmd(t.due_date);
+      const y = ymdInAthens(t.due_date);
       if (!y) continue;
       const list = map.get(y) ?? [];
       list.push(t);
@@ -266,7 +254,7 @@ export function VaScheduleClient({
 
       for (const date of futureDates) {
         const alreadyHasRealTask = tasks.some((t) => {
-          const y = toAthensYmd(t.due_date);
+          const y = ymdInAthens(t.due_date);
           return y === date && vaTaskSeriesKey(t) === series;
         });
         if (alreadyHasRealTask) continue;

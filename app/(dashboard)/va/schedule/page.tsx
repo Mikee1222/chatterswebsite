@@ -3,12 +3,12 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
+import { normalizeWeekStartAthens } from "@/lib/airtable-datetime";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getVaTasksForUser } from "@/services/va-tasks";
 import { getActiveShifts } from "@/services/shifts";
 import { listAllModelss } from "@/services/modelss";
 import { VaScheduleClient } from "@/components/va-schedule-client";
-import { normalizeWeekStart } from "@/lib/weekly-program";
 
 function norm(s: string | null | undefined): string {
   return (s ?? "").trim();
@@ -45,7 +45,7 @@ export default async function VaSchedulePage({ searchParams }: { searchParams?: 
 
   const sp = searchParams ? await searchParams : undefined;
   const weekParam = sp?.week_start;
-  const weekStart = normalizeWeekStart(typeof weekParam === "string" ? weekParam : undefined);
+  const weekStart = normalizeWeekStartAthens(typeof weekParam === "string" ? weekParam : undefined);
 
   const [allWeeklyPrograms, tasks, activeAll, modelss] = await Promise.all([
     getProgramsForWeekVa(weekStart).catch(() => []),
