@@ -168,17 +168,19 @@ export async function getTaskTemplateDetail(templateId: string): Promise<TaskTem
   }
 
   const tid = templateRec.id;
-  const escTid = airtableFormulaString(tid);
   const [phaseRecords, itemRecords] = await Promise.all([
     listAllRecords<PhaseFields>(TABLE_PHASES, {
-      filterByFormula: `FIND("${escTid}", ARRAYJOIN({template}))`,
       sort: [{ field: "phase_number", direction: "asc" }],
     }),
     listAllRecords<ItemFields>(TABLE_ITEMS, {}),
   ]);
 
+  const phasesForTemplate = phaseRecords.filter((rec) =>
+    linkedRecordIds(rec.fields?.template).includes(tid),
+  );
+
   const items = itemRecords.map(mapItem);
-  const phases = phaseRecords.map((rec) => {
+  const phases = phasesForTemplate.map((rec) => {
     const phaseItems = items
       .filter((i) => i.phase_template_ids.includes(rec.id))
       .sort((a, b) => a.sort_order - b.sort_order);
@@ -218,16 +220,16 @@ async function replaceTemplatePhases(
   templateAirtableId: string,
   phases: NonNullable<TaskTemplateCreateInput["phases"]>,
 ): Promise<void> {
-  const escTid = airtableFormulaString(templateAirtableId);
-  const existingPhases = await listAllRecords<PhaseFields>(TABLE_PHASES, {
-    filterByFormula: `FIND("${escTid}", ARRAYJOIN({template}))`,
-  });
+  const allPhases = await listAllRecords<PhaseFields>(TABLE_PHASES, {});
+  const existingPhases = allPhases.filter((rec) =>
+    linkedRecordIds(rec.fields?.template).includes(templateAirtableId),
+  );
 
+  const allItems = await listAllRecords<ItemFields>(TABLE_ITEMS, {});
   for (const phaseRec of existingPhases) {
-    const escPhase = airtableFormulaString(phaseRec.id);
-    const existingItems = await listAllRecords<ItemFields>(TABLE_ITEMS, {
-      filterByFormula: `FIND("${escPhase}", ARRAYJOIN({phase_template}))`,
-    });
+    const existingItems = allItems.filter((itemRec) =>
+      linkedRecordIds(itemRec.fields?.phase_template).includes(phaseRec.id),
+    );
     for (const itemRec of existingItems) {
       const { deleteRecord } = await import("@/lib/airtable-server");
       await deleteRecord(TABLE_ITEMS, itemRec.id);
