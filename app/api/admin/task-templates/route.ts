@@ -1,13 +1,16 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { createTaskTemplate, getAllTaskTemplatesAdmin } from "@/services/task-templates";
 import type { TaskTemplateCategory } from "@/services/task-templates";
 
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "va-tasks:view"))) {
+  const canManageTemplates = await hasPermission(session, PERMISSIONS.TASK_TEMPLATES_MANAGE);
+  const canManageVaTasks = await hasPermission(session, PERMISSIONS.VA_TASKS_MANAGE);
+  if (!canManageTemplates && !canManageVaTasks) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const templates = await getAllTaskTemplatesAdmin();
@@ -17,7 +20,7 @@ export async function GET() {
 export async function POST(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "va-tasks:manage"))) {
+  if (!(await hasPermission(session, PERMISSIONS.TASK_TEMPLATES_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   let body: unknown;

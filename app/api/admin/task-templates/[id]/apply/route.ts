@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { getNotificationUserId } from "@/lib/notification-user";
 import { applyTemplateToTask, type ApplyTemplateInput } from "@/services/task-templates";
 import type { TaskPhase } from "@/services/task-phases";
@@ -10,7 +11,7 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function POST(req: Request, ctx: Ctx) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "va-tasks:manage"))) {
+  if (!(await hasPermission(session, PERMISSIONS.VA_TASKS_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;

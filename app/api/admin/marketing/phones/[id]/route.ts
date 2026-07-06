@@ -50,6 +50,11 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
-  await deletePhone(id);
-  return NextResponse.json({ success: true });
+  try {
+    await deletePhone(id);
+    return NextResponse.json({ success: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Delete failed";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }

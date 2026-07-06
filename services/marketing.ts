@@ -488,10 +488,6 @@ export async function updatePhone(id: string, data: Partial<Phone>): Promise<voi
   await updateRecord(TABLE_PHONES, id, patch);
 }
 
-export async function deletePhone(id: string): Promise<void> {
-  await updateRecord(TABLE_PHONES, id, { [FIELD_PHONE_ACTIVE]: false });
-}
-
 export async function uploadPhonePhotos(
   phoneId: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>,
@@ -513,6 +509,13 @@ export async function unlinkAccountFromPhone(accountId: string): Promise<void> {
     [FIELD_LINKED_PHONE]: [],
     last_updated: new Date().toISOString(),
   });
+}
+
+export async function deletePhone(id: string): Promise<void> {
+  const accounts = await getAllAccounts();
+  const linked = accounts.filter((a) => a.linked_phone_id === id);
+  await Promise.all(linked.map((a) => unlinkAccountFromPhone(a.id)));
+  await deleteRecord(TABLE_PHONES, id);
 }
 
 // Social Accounts

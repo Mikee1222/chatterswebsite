@@ -5,7 +5,7 @@ import { getAllTaskTemplatesAdmin } from "@/services/task-templates";
 import { AdminTaskTemplatesClient } from "@/components/admin-task-templates-client";
 
 export default async function AdminTaskTemplatesPage() {
-  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.VA_TASKS_VIEW);
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.TASK_TEMPLATES_MANAGE);
 
   const templates = await getAllTaskTemplatesAdmin().catch(() => []);
 

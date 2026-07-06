@@ -601,6 +601,16 @@ export function AdminMarketingClient({
   }
 
   async function handleDeletePhone(id: string) {
+    const prevPhones = phones;
+    const prevAccounts = accounts;
+    const prevPhoneDetail = phoneDetail;
+    setPhones((prev) => prev.filter((p) => p.id !== id));
+    setAccounts((prev) =>
+      prev.map((a) =>
+        a.linked_phone_id === id ? { ...a, linked_phone_id: "", linked_phone_name: "" } : a,
+      ),
+    );
+    if (phoneDetail?.id === id) setPhoneDetail(null);
     setDeletePhoneBusy(true);
     setError(null);
     try {
@@ -608,12 +618,30 @@ export function AdminMarketingClient({
         method: "DELETE",
         credentials: "include",
       });
-      if (!res.ok) throw new Error(await res.text());
-      setPhones((prev) => prev.filter((p) => p.id !== id));
-      if (phoneDetail?.id === id) setPhoneDetail(null);
+      if (!res.ok) {
+        let message = "Delete failed";
+        try {
+          const data = (await res.json()) as { error?: string };
+          message = data.error ?? message;
+        } catch {
+          message = (await res.text()) || message;
+        }
+        throw new Error(message);
+      }
+      addToast(localToast(`phone-del-${Date.now()}`, "Phone deleted", "Phone removed from Airtable.", "normal"));
       setDeletePhoneId(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Delete failed");
+      setPhones(prevPhones);
+      setAccounts(prevAccounts);
+      setPhoneDetail(prevPhoneDetail);
+      addToast(
+        localToast(
+          `phone-del-err-${Date.now()}`,
+          "Delete failed",
+          err instanceof Error ? err.message : "Could not delete phone",
+          "high",
+        ),
+      );
     } finally {
       setDeletePhoneBusy(false);
     }
@@ -3058,9 +3086,9 @@ export function AdminMarketingClient({
 
       <ConfirmDeleteModal
         open={deletePhoneId != null}
-        title="Deactivate phone?"
-        description="This marks the phone as inactive. Linked social accounts are not changed."
-        confirmLabel="Deactivate"
+        title="Delete phone?"
+        description="This permanently removes the phone from Airtable. Linked social accounts will be unlinked."
+        confirmLabel="Delete phone"
         confirming={deletePhoneBusy}
         onClose={() => {
           if (!deletePhoneBusy) setDeletePhoneId(null);

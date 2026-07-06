@@ -310,7 +310,7 @@ const adminNav: NavItem[] = [
     // D3: distinct icon from "VA tasks" (ListTodo) so the two are not confused in the sidebar.
     iconKey: "LayoutDashboard",
     navSection: "TEAM",
-    requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
+    requiresPermission: PERMISSIONS.TASK_TEMPLATES_MANAGE,
   },
   {
     href: ROUTES.admin.modelAvailability,
