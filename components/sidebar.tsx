@@ -346,22 +346,17 @@ export function Sidebar({
               : ROUTES.admin.home
             : ROUTES.dashboard;
 
-  const brandRoleLabel =
-    role === "virtual_assistant"
+  const resolvedRoleColor = resolveRoleColor(roleColor, user.role);
+  const roleStyle = SOP_COLOR_STYLES[resolvedRoleColor];
+  const displayRoleLabel =
+    roleLabel?.trim() ||
+    (role === "virtual_assistant"
       ? "VA"
       : user.role === "model"
         ? modelUiLanguage
           ? getModelT(modelUiLanguage)("nav.sidebarBrand")
           : "Model"
-        : isAdminAreaUser
-          ? "Admin"
-          : "Chatter";
-
-  const resolvedRoleColor = resolveRoleColor(roleColor, user.role);
-  const roleStyle = SOP_COLOR_STYLES[resolvedRoleColor];
-  const displayRoleLabel =
-    roleLabel?.trim() ||
-    user.role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+        : user.role.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()));
 
   const toggleSection = (section: string) => {
     setCollapsedSections((prev) => {
@@ -562,7 +557,7 @@ export function Sidebar({
                   roleStyle.badge
                 )}
               >
-                {brandRoleLabel}
+                {displayRoleLabel}
               </span>
             </Link>
           )}
