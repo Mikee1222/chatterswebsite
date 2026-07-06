@@ -76,6 +76,7 @@ type Props = {
   tasks: VaTaskRecord[];
   vaUsers: VaUserOption[];
   modelss: ModelRecord[];
+  canManage?: boolean;
 };
 
 function toLocalYmd(isoLike: string | null): string {
@@ -318,7 +319,7 @@ function StatusBadge({ status }: { status: VaTaskStatus }) {
   );
 }
 
-export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
+export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const [localTasks, setLocalTasks] = React.useState(tasks);
@@ -998,34 +999,38 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         </h3>
                       </div>
                       <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                        {task.status !== "done" && task.status !== "skipped" ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleRemind(task)}
-                            disabled={reminding === task.id}
-                            className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-40"
-                          >
-                            <Bell className="h-3 w-3" aria-hidden />
-                            {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
-                          </button>
+                        {canManage ? (
+                          <>
+                            {task.status !== "done" && task.status !== "skipped" ? (
+                              <button
+                                type="button"
+                                onClick={() => void handleRemind(task)}
+                                disabled={reminding === task.id}
+                                className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-40"
+                              >
+                                <Bell className="h-3 w-3" aria-hidden />
+                                {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => openEdit(task)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
+                            >
+                              <Pencil className="h-3 w-3" aria-hidden />
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
+                              onClick={() => setTaskPendingDelete(task)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3" aria-hidden />
+                              Delete
+                            </button>
+                          </>
                         ) : null}
-                        <button
-                          type="button"
-                          onClick={() => openEdit(task)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
-                        >
-                          <Pencil className="h-3 w-3" aria-hidden />
-                          Edit
-                        </button>
-                        <button
-                          type="button"
-                          disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
-                          onClick={() => setTaskPendingDelete(task)}
-                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
-                        >
-                          <Trash2 className="h-3 w-3" aria-hidden />
-                          Delete
-                        </button>
                       </div>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1086,7 +1091,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                         <div className="mt-5">
                           <TaskPhaseRibbon
                             phases={taskPhases[task.id] ?? []}
-                            renderPhaseExtra={(phase) => (
+                            renderPhaseExtra={
+                              canManage
+                                ? (phase) => (
                               <>
                                 {(phase.actual_start_time || phase.actual_end_time) ? (
                                   <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#B8B4B8]/40">
@@ -1137,8 +1144,22 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   Add checklist item
                                 </button>
                               </>
-                            )}
-                            renderItem={(item, phase, idx) => (
+                                )
+                                : (phase) =>
+                                    phase.actual_start_time || phase.actual_end_time ? (
+                                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#B8B4B8]/40">
+                                        {phase.actual_start_time ? (
+                                          <span>Started {formatPhaseActualTime(phase.actual_start_time)}</span>
+                                        ) : null}
+                                        {phase.actual_end_time ? (
+                                          <span>Ended {formatPhaseActualTime(phase.actual_end_time)}</span>
+                                        ) : null}
+                                      </div>
+                                    ) : null
+                            }
+                            renderItem={
+                              canManage
+                                ? (item, phase, idx) => (
                               <div className="group flex items-start gap-3">
                                 <div
                                   className={cn(
@@ -1222,8 +1243,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                                   </button>
                                 </div>
                               </div>
-                            )}
+                                )
+                                : undefined
+                            }
                           />
+                          {canManage ? (
                           <button
                             type="button"
                             onClick={() => void handleAddPhase(task.id, task.title)}
@@ -1232,6 +1256,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
                             <Plus className="h-4 w-4" />
                             Add phase
                           </button>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
@@ -1250,6 +1275,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           </h1>
           <p className="mt-2 text-sm text-[#B8B4B8]/55">Assign and manage tasks for your virtual assistants</p>
         </div>
+        {canManage ? (
         <button
           type="button"
           onClick={openCreate}
@@ -1258,6 +1284,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
           <Plus className="h-4 w-4" strokeWidth={2.5} aria-hidden />
           New task
         </button>
+        ) : null}
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -1324,7 +1351,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
             <path d="M22 24h20M22 34h14M22 44h18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
           </svg>
           <p className="text-base font-semibold text-white/90">No tasks match</p>
-          <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">Adjust search or filters, or create a new task.</p>
+          <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">
+            {canManage ? "Adjust search or filters, or create a new task." : "Adjust search or filters to find tasks."}
+          </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -1414,7 +1443,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         </div>
       )}
 
-      {modalOpen ? (
+      {canManage && modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm md:items-center">
           <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-[20px] border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D] shadow-2xl md:max-w-2xl md:rounded-[20px]">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm">
@@ -1986,6 +2015,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         </div>
       ) : null}
 
+      {canManage ? (
       <ConfirmDeleteModal
         open={taskPendingDelete != null}
         title="Delete task?"
@@ -2002,6 +2032,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss }: Props) {
         onConfirm={confirmDeleteTask}
         confirming={confirmingTaskDelete}
       />
+      ) : null}
     </div>
   );
 }
