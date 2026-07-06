@@ -772,9 +772,8 @@ export async function getNavItemsForUser(
   const { getNavRoleForSession } = await import("@/lib/staff-session-role");
   const { getUserPermissions } = await import("@/lib/rbac");
   const role = getNavRoleForSession(user as import("@/lib/auth-config").AuthUser);
-  const base = getNavItemsForRole(role, hiddenItems);
   const perms = await getUserPermissions(user as import("@/lib/auth-config").AuthUser);
-  return filterNavItemsByPermissions(base, perms);
+  return buildNavItemsForUser(role, perms, hiddenItems);
 }
 
 /**
@@ -791,6 +790,45 @@ export function filterNavItemsByPermissions(
     if (item.hiddenIfPermission && set.has(item.hiddenIfPermission)) return false;
     return true;
   });
+}
+
+/**
+ * Custom roles with `va-tasks:view` but not `va-tasks:manage` use the personal
+ * `/va-tasks` page (same as virtual_assistant), not the admin-wide task board.
+ */
+export function shouldUsePersonalVaTasksNav(
+  role: string,
+  granted: ReadonlySet<Permission> | readonly Permission[]
+): boolean {
+  const set = granted instanceof Set ? granted : new Set(granted);
+  return (
+    isCustomNavRole(role) &&
+    set.has(PERMISSIONS.VA_TASKS_VIEW) &&
+    !set.has(PERMISSIONS.VA_TASKS_MANAGE)
+  );
+}
+
+/** Rewrite admin VA Tasks href → personal task view when appropriate. */
+export function resolvePermissionAwareNavHrefs(
+  items: NavItem[],
+  role: string,
+  granted: ReadonlySet<Permission> | readonly Permission[]
+): NavItem[] {
+  if (!shouldUsePersonalVaTasksNav(role, granted)) return items;
+  return items.map((item) =>
+    item.href === ROUTES.admin.vaTasks ? { ...item, href: ROUTES.va.tasks } : item
+  );
+}
+
+/** Role base list → hidden-nav filter → permission filter → href resolution. */
+export function buildNavItemsForUser(
+  role: NavRoleKey,
+  granted: ReadonlySet<Permission> | readonly Permission[],
+  hiddenItems?: string[]
+): NavItem[] {
+  const base = getNavItemsForRole(role, hiddenItems);
+  const filtered = filterNavItemsByPermissions(base, granted);
+  return resolvePermissionAwareNavHrefs(filtered, role, granted);
 }
 
 /**

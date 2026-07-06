@@ -50,9 +50,8 @@ import { getModelT, getModelShellTitle, MODEL_NAV_HREF_TO_LABEL_KEY } from "@/li
 import type { ModelLang } from "@/lib/model-i18n";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import {
-  filterNavItemsByPermissions,
+  buildNavItemsForUser,
   getMobileMainTabDisplays,
-  getNavItemsForRole,
   isCustomNavRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
@@ -265,8 +264,7 @@ export function MobileAppShell({
   );
 
   const baseNavItems: NavItem[] = React.useMemo(() => {
-    const items = getNavItemsForRole(role, hiddenForRole);
-    return filterNavItemsByPermissions(items, userPermissions);
+    return buildNavItemsForUser(role, userPermissions, hiddenForRole);
   }, [role, hiddenForRole, userPermissions]);
 
   const allItems: NavItem[] = React.useMemo(() => {

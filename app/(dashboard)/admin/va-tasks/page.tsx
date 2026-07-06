@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission, requireAdminRoute } from "@/lib/rbac";
+import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
+import { getUserPermissions, hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllVaTasks } from "@/services/va-tasks";
@@ -10,6 +11,8 @@ import { AdminVaTasksClient } from "@/components/admin-va-tasks-client";
 
 export default async function AdminVaTasksPage() {
   const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.VA_TASKS_VIEW);
+  const perms = await getUserPermissions(user);
+  if (shouldUsePersonalVaTasksNav(user.role, perms)) redirect(ROUTES.va.tasks);
   const canManage = await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE);
 
   const [tasks, allUsers, modelss] = await Promise.all([

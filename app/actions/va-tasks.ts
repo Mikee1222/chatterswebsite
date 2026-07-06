@@ -19,7 +19,8 @@ import {
 import { getActiveVaTaskShift } from "@/services/shifts";
 import { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import type { VaTaskRecord, VaTaskStatus } from "@/types";
-import { hasPermission } from "@/lib/rbac";
+import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
+import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 
 export type VaTaskActionResult = { success: true; task?: VaTaskRecord } | { success: false; error: string };
@@ -97,8 +98,13 @@ export async function updateVaTaskStatusAction(input: {
   completed_notes?: string;
 }): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant")
-    return { success: false, error: "Only VAs can update task status here." };
+  if (!user) return { success: false, error: "Unauthorized." };
+  const perms = await getUserPermissions(user);
+  const canUpdatePersonal =
+    getEffectiveStaffRole(user) === "virtual_assistant" ||
+    shouldUsePersonalVaTasksNav(user.role, perms);
+  if (!canUpdatePersonal)
+    return { success: false, error: "Only assigned users can update task status here." };
 
   const vaId = getNotificationUserId(user) ?? user.airtableUserId ?? user.id;
   if (!vaId) return { success: false, error: "Missing user id." };

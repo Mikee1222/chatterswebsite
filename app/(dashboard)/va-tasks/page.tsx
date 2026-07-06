@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
+import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
+import { getUserPermissions } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getVaTasksForUser } from "@/services/va-tasks";
@@ -8,8 +10,15 @@ import { VaTasksClient } from "@/components/va-tasks-client";
 
 export default async function VaTasksPage() {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
-  await assertVaTypeCanAccessNavHref(user, ROUTES.va.tasks);
+  if (!user) redirect(ROUTES.dashboard);
+
+  const isVa = getEffectiveStaffRole(user) === "virtual_assistant";
+  if (isVa) {
+    await assertVaTypeCanAccessNavHref(user, ROUTES.va.tasks);
+  } else {
+    const perms = await getUserPermissions(user);
+    if (!shouldUsePersonalVaTasksNav(user.role, perms)) redirect(ROUTES.dashboard);
+  }
 
   const vaId = user.airtableUserId ?? user.id;
   const tasks = await getVaTasksForUser(vaId).catch(() => []);

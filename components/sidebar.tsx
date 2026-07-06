@@ -53,8 +53,7 @@ import { getModelT, MODEL_NAV_HREF_TO_LABEL_KEY } from "@/lib/model-i18n";
 import type { ModelLang } from "@/lib/model-i18n";
 import type { Permission } from "@/lib/permissions";
 import {
-  filterNavItemsByPermissions,
-  getNavItemsForRole,
+  buildNavItemsForUser,
   isCustomNavRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
@@ -291,8 +290,7 @@ export function Sidebar({
   );
 
   const baseItems: NavItem[] = React.useMemo(() => {
-    const items = getNavItemsForRole(role, hiddenForRole);
-    return filterNavItemsByPermissions(items, userPermissions);
+    return buildNavItemsForUser(role, userPermissions, hiddenForRole);
   }, [role, hiddenForRole, userPermissions]);
 
   const items: NavItem[] = React.useMemo(() => {

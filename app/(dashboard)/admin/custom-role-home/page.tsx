@@ -24,7 +24,8 @@ import {
 } from "lucide-react";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getUserPermissions, isAdminAreaUser } from "@/lib/rbac";
-import { PERMISSION_DESCRIPTIONS, type Permission } from "@/lib/permissions";
+import { PERMISSION_DESCRIPTIONS, PERMISSIONS, type Permission } from "@/lib/permissions";
+import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -190,6 +191,16 @@ export default async function CustomRoleHomePage() {
   const permissionSet = new Set(permissions);
   const visibleCards = SHORTCUT_CARDS.filter((card) => permissionSet.has(card.permission));
 
+  const resolveShortcutHref = (card: ShortcutCard): string => {
+    if (
+      card.permission === PERMISSIONS.VA_TASKS_VIEW &&
+      shouldUsePersonalVaTasksNav(user.role, permissionSet)
+    ) {
+      return ROUTES.va.tasks;
+    }
+    return card.href;
+  };
+
   return (
     <div className="space-y-8">
       <div>
@@ -211,7 +222,7 @@ export default async function CustomRoleHomePage() {
             return (
               <Link
                 key={`${card.permission}-${card.href}`}
-                href={card.href}
+                href={resolveShortcutHref(card)}
                 className={cardClass}
               >
                 <div className="flex items-start gap-4">
