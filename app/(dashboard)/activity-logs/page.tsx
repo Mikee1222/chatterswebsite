@@ -1,5 +1,6 @@
-import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ActivityLogsAdminClient } from "@/components/activity-logs-admin-client";
 import { buildActivityLogsFilterByFormula, listActivityLogs } from "@/services/activity-logs";
 import { listAllUsers } from "@/services/users";
@@ -11,9 +12,7 @@ export default async function ActivityLogsPage({
   searchParams: Promise<{ action?: string; actor?: string }>;
 }) {
   const session = await getSessionFromCookies();
-  if (!session || (session.role !== "admin" && session.role !== "manager")) {
-    redirect("/home");
-  }
+  await requireAdminRoute(session, PERMISSIONS.ACTIVITY_LOGS_VIEW);
 
   const params = await searchParams;
   const filterByFormula = buildActivityLogsFilterByFormula({

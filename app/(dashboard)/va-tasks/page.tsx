@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
-import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
+import { qualifiesForAdminVaTasksNav } from "@/lib/nav-config";
 import { getUserPermissions } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
@@ -13,17 +13,16 @@ export default async function VaTasksPage() {
   const user = await getSessionFromCookies();
   if (!user) redirect(ROUTES.dashboard);
 
-  const isVa = getEffectiveStaffRole(user) === "virtual_assistant";
-  if (isVa) {
+  const perms = await getUserPermissions(user);
+  if (!perms.includes(PERMISSIONS.VA_TASKS_VIEW)) {
+    redirect(ROUTES.dashboard);
+  }
+  if (qualifiesForAdminVaTasksNav(perms)) {
+    redirect(ROUTES.admin.vaTasks);
+  }
+
+  if (getEffectiveStaffRole(user) === "virtual_assistant") {
     await assertVaTypeCanAccessNavHref(user, ROUTES.va.tasks);
-  } else {
-    const perms = await getUserPermissions(user);
-    if (!shouldUsePersonalVaTasksNav(user.role, perms)) {
-      if (perms.includes(PERMISSIONS.TASK_PROGRESS_VIEW)) {
-        redirect(ROUTES.admin.vaTasks);
-      }
-      redirect(ROUTES.dashboard);
-    }
   }
 
   const vaId = user.airtableUserId ?? user.id;

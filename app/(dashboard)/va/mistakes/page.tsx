@@ -18,13 +18,14 @@ import { VaMistakesClient } from "@/components/va-mistakes-client";
 
 export default async function VaMistakesPage() {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "virtual_assistant") {
-    redirect(ROUTES.dashboard);
-  }
+  if (!session) redirect(ROUTES.dashboard);
   if (!(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
     redirect(ROUTES.dashboard);
   }
-  await assertVaTypeCanAccessNavHref(session, ROUTES.va.mistakes);
+
+  if (getEffectiveStaffRole(session) === "virtual_assistant") {
+    await assertVaTypeCanAccessNavHref(session, ROUTES.va.mistakes);
+  }
 
   const vaId = (session.airtableUserId ?? session.id)?.trim();
   if (!vaId) redirect(ROUTES.dashboard);

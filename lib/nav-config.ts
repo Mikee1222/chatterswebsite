@@ -240,7 +240,7 @@ const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
-  { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true },
+  { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true, requiresPermission: PERMISSIONS.MISTAKES_VIEW },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings", excludeFromMobileMainTabs: true },
 ];
 
@@ -595,6 +595,7 @@ const adminNav: NavItem[] = [
     label: "Activity logs",
     iconKey: "Activity",
     navSection: "SETTINGS",
+    requiresPermission: PERMISSIONS.ACTIVITY_LOGS_VIEW,
   },
   {
     href: ROUTES.admin.notificationDiagnostic,

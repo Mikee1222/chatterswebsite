@@ -128,6 +128,8 @@ export const PERMISSIONS = {
   BLUR_TOOL_ACCESS: "blur_tool:access",
 
   MY_PROFILES_VIEW: "my_profiles:view",
+
+  ACTIVITY_LOGS_VIEW: "activity_logs:view",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -199,6 +201,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   video_transcribe: "Transcript videos",
   blur_tool: "Blur tool",
   my_profiles: "My profiles",
+  activity_logs: "Activity logs",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -347,6 +350,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "blur_tool:access": "Πρόσβαση στο εργαλείο θολώματος εικόνων (blur tool)",
 
   "my_profiles:view": "Προβολή ανατεθειμένων μοντέλων, λογαριασμών και τηλεφώνων VA",
+
+  "activity_logs:view": "Προβολή αρχείου καταγραφής δραστηριότητας συστήματος",
 };
 
 export type PermissionGroup = {
@@ -400,6 +405,7 @@ const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SPIN_WHEEL_VIEW,
   PERMISSIONS.SETTINGS_VIEW,
+  PERMISSIONS.MISTAKES_VIEW,
 ];
 
 const VA_PERMISSIONS: Permission[] = [
@@ -417,9 +423,8 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SETTINGS_VIEW,
   PERMISSIONS.VA_PROGRAM_VIEW,
-  PERMISSIONS.BLUR_TOOL_ACCESS,
-  PERMISSIONS.MY_PROFILES_VIEW,
-  // NOTE: winner_videos:submit, video_transcribe:access, and similar opt-in tool permissions
+  // NOTE: blur_tool:access, my_profiles:view, winner_videos:submit, video_transcribe:access,
+  // and similar opt-in tool permissions
   // are intentionally NOT VA defaults. Because resolveRolePermissions() unions code defaults
   // into stored perms (defaults act as a mandatory floor), any permission listed here can
   // NEVER be toggled off in the UI. Keep opt-in permissions out of VA/chatter defaults; for

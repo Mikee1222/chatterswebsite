@@ -1,13 +1,15 @@
 import { redirect } from "next/navigation";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getMistakesByChatter } from "@/services/chatter-mistakes";
 import { ChatterMistakesClient } from "@/components/chatter-mistakes-client";
 
 export default async function ChatterMistakesPage() {
   const session = await getSessionFromCookies();
-  if (!session || getEffectiveStaffRole(session) !== "chatter") {
+  if (!session) redirect(ROUTES.dashboard);
+  if (!(await hasPermission(session, PERMISSIONS.MISTAKES_VIEW))) {
     redirect(ROUTES.dashboard);
   }
 
