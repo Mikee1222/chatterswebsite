@@ -7,11 +7,17 @@ type ModelOption = { id: string; name: string };
 
 /**
  * GET /api/chatter/active-models — active modelss rows for rebill/tip modals (chatter only).
+ *
+ * Gated on `shifts:view` to match the rebill/tip POST endpoints this list feeds
+ * (`/api/chatter/rebills`, `/api/chatter/tips`). It must NOT require the admin-only
+ * `shifts:active-view` (that's the /admin/live-shifts real-time board permission),
+ * or chatters get 403 here, the fetch fails silently, and the model dropdown renders
+ * "No active models" even though active models exist.
  */
 export async function GET() {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, "shifts:active-view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(session, "shifts:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
     const modelss = await listAllModelss('{status} = "active"');

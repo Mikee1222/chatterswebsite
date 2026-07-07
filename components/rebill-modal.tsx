@@ -4,6 +4,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, Upload, X } from "lucide-react";
 import { CHATTER_ATTACHMENT_MAX_BYTES } from "@/lib/chatter-attachment-constants";
+import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 
 export type ChatterModalModelOption = { id: string; name: string };
 
@@ -77,6 +78,7 @@ export function RebillModal({
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(json.error || "Could not log rebill.");
+      rememberSubscriberUsername(subUsername);
       setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Submission failed.");
@@ -141,19 +143,7 @@ export function RebillModal({
 
             <label className="block text-xs font-medium uppercase tracking-wide text-white/45">
               Subscriber username
-              <div className="relative mt-1.5">
-                <span className="pointer-events-none absolute left-3 top-1/2 z-[1] -translate-y-1/2 text-white/35">
-                  @
-                </span>
-                <input
-                  value={subUsername}
-                  onChange={(e) => setSubUsername(e.target.value)}
-                  placeholder="username"
-                  className="w-full rounded-xl border border-white/10 bg-white/5 py-2.5 pl-7 pr-4 text-white placeholder:text-white/35"
-                  autoComplete="off"
-                  required
-                />
-              </div>
+              <SubscriberUsernameInput value={subUsername} onChange={setSubUsername} required />
             </label>
 
             <input
