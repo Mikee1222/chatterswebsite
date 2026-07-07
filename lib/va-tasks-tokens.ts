@@ -16,6 +16,9 @@ export const VA_TASKS = {
 export const VA_CARD =
   "va-card rounded-2xl transition-[transform,border-color] duration-200 motion-reduce:transition-none hover:-translate-y-px";
 
+/** Flat inner surface for nested phase ribbon rows — avoids stacked mask-composite layers. */
+export const VA_CARD_INNER = "va-card-inner";
+
 /** Hover-only glow — avoid always-on blur on large surfaces (GPU cost). */
 export const VA_CARD_GLOW =
   "relative before:pointer-events-none before:absolute before:-inset-4 before:-z-10 before:rounded-[24px] before:bg-[radial-gradient(ellipse_at_center,rgba(255,20,147,0.12)_0%,transparent_70%)] before:opacity-0 before:blur-xl before:transition-opacity before:duration-200 hover:before:opacity-70 motion-reduce:before:transition-none";

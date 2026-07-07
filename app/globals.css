@@ -481,13 +481,11 @@ summary,
 .va-card {
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(135deg, #151315 0%, #1a1618 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 4px 16px -4px rgba(0, 0, 0, 0.5),
-    0 12px 40px -16px rgba(0, 0, 0, 0.45);
+  background: #151315;
+  box-shadow: 0 2px 8px -4px rgba(0, 0, 0, 0.45);
 }
 
+/* Champagne ring only on hover — always-on mask-composite on 40+ list cards was scroll/paint bottleneck */
 .va-card::before {
   content: "";
   position: absolute;
@@ -500,7 +498,18 @@ summary,
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.va-card:hover::before {
   opacity: 0.65;
+}
+
+/* Nested phase ribbon surfaces — no pseudo-element or extra shadow (multiplied per expanded task) */
+.va-card-inner {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: #151315;
 }
 
 .va-champagne-divider {
@@ -555,6 +564,10 @@ summary,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .va-card::before {
+    transition: none;
+  }
+
   .va-ribbon-segment--filled {
     animation: none;
     transform: scaleY(1);

@@ -4,7 +4,7 @@ import * as React from "react";
 import type { TaskPhase } from "@/services/task-phases";
 import type { PhaseItem } from "@/services/task-phases";
 import { cn } from "@/lib/utils";
-import { VA_CARD } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CARD_INNER } from "@/lib/va-tasks-tokens";
 
 export type PhaseRibbonItem = Pick<
   PhaseItem,
@@ -48,13 +48,13 @@ type Props = {
 function nodeClass(status: TaskPhase["status"], variant: "default" | "mini") {
   const size = variant === "mini" ? "h-2.5 w-2.5" : "h-3.5 w-3.5";
   if (status === "completed") {
-    return cn(size, "border-2 border-[#0D0B0D] bg-[#D4AF8C] shadow-[0_0_8px_rgba(212,175,140,0.35)]");
+    return cn(size, "border-2 border-[#0D0B0D] bg-[#D4AF8C]");
   }
   if (status === "overdue") {
     return cn(size, "border-2 border-[#0D0B0D] bg-red-500/90");
   }
   if (status === "in_progress") {
-    return cn(size, "border-2 border-[#FF1493] bg-[#FF1493]/80 shadow-[0_0_10px_rgba(255,20,147,0.45)]");
+    return cn(size, "border-2 border-[#FF1493] bg-[#FF1493]/80");
   }
   return cn(size, "border-2 border-[#D4AF8C]/35 bg-[#151315]");
 }
@@ -160,7 +160,7 @@ export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
                 <div
                   className={cn(
                     "overflow-hidden rounded-xl",
-                    VA_CARD,
+                    VA_CARD_INNER,
                     !isMini && "p-4",
                     isMini && "px-3 py-2.5",
                   )}
@@ -168,7 +168,7 @@ export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
                   <div className="flex flex-wrap items-start gap-2">
                     <span
                       className={cn(
-                        "flex shrink-0 items-center justify-center rounded-full border border-[#D4AF8C]/25 bg-[#D4AF8C]/8 font-semibold tabular-nums text-[#D4AF8C] shadow-[0_0_10px_-4px_rgba(212,175,140,0.3)]",
+                        "flex shrink-0 items-center justify-center rounded-full border border-[#D4AF8C]/25 bg-[#D4AF8C]/8 font-semibold tabular-nums text-[#D4AF8C]",
                         isMini ? "h-5 w-5 text-[10px]" : "h-7 w-7 text-xs",
                       )}
                     >
