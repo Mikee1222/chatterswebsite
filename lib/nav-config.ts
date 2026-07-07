@@ -225,7 +225,13 @@ const chatterNav: NavItem[] = [
   },
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
   { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true },
-  { href: ROUTES.chatter.informations, label: "Informations", iconKey: "Info", excludeFromMobileMainTabs: true },
+  {
+    href: ROUTES.chatter.informations,
+    label: "Informations",
+    iconKey: "Info",
+    excludeFromMobileMainTabs: true,
+    requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
+  },
   { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
   { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
@@ -408,6 +414,7 @@ const adminNav: NavItem[] = [
     label: "Informations",
     iconKey: "Info",
     navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
   },
   {
     href: ROUTES.admin.marketing,

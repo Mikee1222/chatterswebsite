@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasAnyPermission, hasPermission } from "@/lib/rbac";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import {
   createMassList,
   getAllMassLists,
@@ -37,11 +38,11 @@ export async function GET() {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   try {
-    if (await hasPermission(user, "mass-lists:manage")) {
+    if (await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE)) {
       const lists = await getAllMassListsAdmin();
       return NextResponse.json(lists);
     }
-    if (await hasAnyPermission(user, ["mass-lists:view"])) {
+    if (await hasPermission(user, PERMISSIONS.INFORMATIONS_VIEW)) {
       const lists = await getAllMassLists();
       return NextResponse.json(lists);
     }
@@ -55,7 +56,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "mass-lists:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   let body: unknown;
   try {
     body = await req.json();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import {
   createModelTier,
   getAllModelTiers,
@@ -32,11 +33,13 @@ function parseBody(json: unknown): Omit<ModelTierRecord, "id"> | null {
 export async function GET() {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "models:view")) && !(await hasPermission(user, "models:manage"))) {
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_VIEW))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   try {
-    const rows = (await hasPermission(user, "models:manage")) ? await getAllModelTiersAdmin() : await getAllModelTiers();
+    const rows = (await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE))
+      ? await getAllModelTiersAdmin()
+      : await getAllModelTiers();
     return NextResponse.json(rows);
   } catch (e) {
     const message = e instanceof Error ? e.message : "Failed to load tiers";
@@ -47,7 +50,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "models:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   let body: unknown;
   try {
     body = await req.json();

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import {
   deletePricingRow,
   deletePricingSpecial,
@@ -88,7 +89,9 @@ function readType(json: unknown): "row" | "special" | null {
 export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "pricing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   let body: unknown;
@@ -123,7 +126,9 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 export async function DELETE(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "pricing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const { id } = await ctx.params;
   if (!id?.trim()) return NextResponse.json({ error: "Missing id" }, { status: 400 });
   let body: unknown = null;

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import {
   createPricingRow,
   createPricingSpecial,
@@ -71,11 +72,11 @@ function parseSpecialCreate(json: unknown): Omit<PricingSpecial, "id"> | null {
 export async function GET() {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "pricing:view")) && !(await hasPermission(user, "pricing:manage"))) {
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_VIEW))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   try {
-    const admin = await hasPermission(user, "pricing:manage");
+    const admin = await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE);
     const [rows, specials] = await Promise.all([
       admin ? getAllPricingRowsAdmin() : getAllPricingRows(),
       admin ? getAllPricingSpecialsAdmin() : getAllPricingSpecials(),
@@ -90,7 +91,9 @@ export async function GET() {
 export async function POST(req: Request) {
   const user = await getSessionFromCookies();
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(user, "pricing:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE))) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   let body: unknown;
   try {
     body = await req.json();

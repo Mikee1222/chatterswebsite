@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllMassLists } from "@/services/mass-lists";
 import { getAllModelTiers } from "@/services/model-tiers";
@@ -9,7 +10,7 @@ import { InformationsClient } from "@/components/informations-client";
 
 export default async function InformationsPage() {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "chatter") {
+  if (!user || !(await hasPermission(user, PERMISSIONS.INFORMATIONS_VIEW))) {
     redirect(ROUTES.dashboard);
   }
 

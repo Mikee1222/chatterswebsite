@@ -80,11 +80,13 @@ function AdminMassCard({
   onEdit,
   onToggleActive,
   onDelete,
+  canManage = false,
 }: {
   list: MassListRecord;
   onEdit: () => void;
   onToggleActive: () => void;
   onDelete: () => void;
+  canManage?: boolean;
 }) {
   const isInclude = list.type === "include";
   return (
@@ -103,30 +105,34 @@ function AdminMassCard({
       }}
     >
       <div className="absolute right-2 top-2 flex items-center gap-1">
-        <button
-          type="button"
-          onClick={onEdit}
-          className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 hover:text-white"
-          aria-label="Edit list"
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button
-          type="button"
-          onClick={onToggleActive}
-          className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 hover:text-white"
-          aria-label={list.is_active ? "Deactivate list" : "Activate list"}
-        >
-          {list.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-        </button>
-        <button
-          type="button"
-          onClick={onDelete}
-          className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-rose-300/90 transition hover:bg-rose-500/20"
-          aria-label="Delete list"
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        {canManage ? (
+          <>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 hover:text-white"
+              aria-label="Edit list"
+            >
+              <Pencil className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={onToggleActive}
+              className="rounded-lg border border-white/10 bg-white/5 p-2 text-white/60 transition hover:bg-white/10 hover:text-white"
+              aria-label={list.is_active ? "Deactivate list" : "Activate list"}
+            >
+              {list.is_active ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+            </button>
+            <button
+              type="button"
+              onClick={onDelete}
+              className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-2 text-rose-300/90 transition hover:bg-rose-500/20"
+              aria-label="Delete list"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        ) : null}
       </div>
       <span className="absolute left-3 top-3 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md border border-white/10 bg-white/5 px-1.5 text-[11px] font-medium tabular-nums text-white/45">
         {list.sort_order}
@@ -178,6 +184,7 @@ function AdminSection({
   onEdit,
   onToggle,
   onDelete,
+  canManage = false,
 }: {
   title: string;
   accent: "include" | "exclude";
@@ -185,6 +192,7 @@ function AdminSection({
   onEdit: (r: MassListRecord) => void;
   onToggle: (r: MassListRecord) => void;
   onDelete: (r: MassListRecord) => void;
+  canManage?: boolean;
 }) {
   const border =
     accent === "include"
@@ -211,6 +219,7 @@ function AdminSection({
                 onEdit={() => onEdit(list)}
                 onToggleActive={() => onToggle(list)}
                 onDelete={() => onDelete(list)}
+                canManage={canManage}
               />
             </motion.li>
           ))}
@@ -331,11 +340,13 @@ export function AdminInformationsClient({
   tiers: initialTiers,
   pricingRows: initialPricingRows,
   pricingSpecials: initialPricingSpecials,
+  canManage = false,
 }: {
   lists: MassListRecord[];
   tiers: ModelTierRecord[];
   pricingRows: PricingRow[];
   pricingSpecials: PricingSpecial[];
+  canManage?: boolean;
 }) {
   const [tab, setTab] = React.useState<TabId>("lists");
 
@@ -857,7 +868,9 @@ export function AdminInformationsClient({
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-white">Informations</h1>
           <p className="mt-1 text-sm text-white/55">
-            Manage mass message lists, model tiers, and pricing tables for chatters.
+            {canManage
+              ? "Manage mass message lists, model tiers, and pricing tables for chatters."
+              : "View mass message lists, model tiers, and pricing tables."}
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             {tabBtn("lists", "Mass Lists")}
@@ -866,19 +879,19 @@ export function AdminInformationsClient({
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-2 self-start">
-          {tab === "lists" ? (
+          {canManage && tab === "lists" ? (
             <ButtonPrimary type="button" onClick={openCreate}>
               New List
             </ButtonPrimary>
           ) : null}
-          {tab === "tiers" ? (
+          {canManage && tab === "tiers" ? (
             <>
               <ButtonPrimary type="button" onClick={() => openTierModalCreate()}>
                 Add Model
               </ButtonPrimary>
             </>
           ) : null}
-          {tab === "pricing" ? (
+          {canManage && tab === "pricing" ? (
             <>
               <ButtonPrimary type="button" onClick={openRowCreate}>
                 Add Row
@@ -900,6 +913,7 @@ export function AdminInformationsClient({
             onEdit={openEdit}
             onToggle={handleToggle}
             onDelete={handleDelete}
+            canManage={canManage}
           />
           <AdminSection
             title="Exclude"
@@ -908,6 +922,7 @@ export function AdminInformationsClient({
             onEdit={openEdit}
             onToggle={handleToggle}
             onDelete={handleDelete}
+            canManage={canManage}
           />
         </div>
       ) : null}
@@ -929,9 +944,11 @@ export function AdminInformationsClient({
                   <h2 className={`text-base font-bold tracking-tight ${meta.header}`}>
                     {meta.emoji} {meta.title}
                   </h2>
-                  <ButtonSecondary type="button" className="!px-3 !py-1.5 text-xs" onClick={() => openTierModalCreate(mt)}>
-                    Add Model
-                  </ButtonSecondary>
+                  {canManage ? (
+                    <ButtonSecondary type="button" className="!px-3 !py-1.5 text-xs" onClick={() => openTierModalCreate(mt)}>
+                      Add Model
+                    </ButtonSecondary>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {col.length === 0 ? (
@@ -947,24 +964,26 @@ export function AdminInformationsClient({
                         }`}
                       >
                         {t.model_name}
-                        <span className="ml-1 inline-flex gap-0.5 opacity-80 group-hover:opacity-100">
-                          <button
-                            type="button"
-                            className="rounded p-0.5 text-white/50 hover:bg-white/10 hover:text-white"
-                            aria-label={`Edit ${t.model_name}`}
-                            onClick={() => openTierModalEdit(t)}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded p-0.5 text-rose-300/70 hover:bg-rose-500/15"
-                            aria-label={`Delete ${t.model_name}`}
-                            onClick={() => handleTierDelete(t)}
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </span>
+                        {canManage ? (
+                          <span className="ml-1 inline-flex gap-0.5 opacity-80 group-hover:opacity-100">
+                            <button
+                              type="button"
+                              className="rounded p-0.5 text-white/50 hover:bg-white/10 hover:text-white"
+                              aria-label={`Edit ${t.model_name}`}
+                              onClick={() => openTierModalEdit(t)}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded p-0.5 text-rose-300/70 hover:bg-rose-500/15"
+                              aria-label={`Delete ${t.model_name}`}
+                              onClick={() => handleTierDelete(t)}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ) : null}
                       </span>
                     ))
                   )}
@@ -1043,7 +1062,7 @@ export function AdminInformationsClient({
                                   <th className="px-3 py-2">Description</th>
                                   <th className="px-3 py-2">Notes</th>
                                   <th className="px-3 py-2">Sort</th>
-                                  <th className="px-3 py-2 text-right">Actions</th>
+                                  {canManage ? <th className="px-3 py-2 text-right">Actions</th> : null}
                                 </tr>
                               </thead>
                               <tbody>
@@ -1058,24 +1077,26 @@ export function AdminInformationsClient({
                                     <td className="max-w-[220px] truncate px-3 py-2 text-white/70">{r.description}</td>
                                     <td className="max-w-[140px] truncate px-3 py-2 text-white/50">{r.notes || "—"}</td>
                                     <td className="px-3 py-2 tabular-nums text-white/45">{r.sort_order}</td>
-                                    <td className="px-3 py-2 text-right">
-                                      <button
-                                        type="button"
-                                        className="mr-1 inline-flex rounded-lg border border-white/10 p-1.5 text-white/55 hover:bg-white/10 hover:text-white"
-                                        aria-label="Edit row"
-                                        onClick={() => openRowEdit(r)}
-                                      >
-                                        <Pencil className="h-3.5 w-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="inline-flex rounded-lg border border-rose-500/20 p-1.5 text-rose-300/80 hover:bg-rose-500/15"
-                                        aria-label="Delete row"
-                                        onClick={() => handleRowDelete(r)}
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5" />
-                                      </button>
-                                    </td>
+                                    {canManage ? (
+                                      <td className="px-3 py-2 text-right">
+                                        <button
+                                          type="button"
+                                          className="mr-1 inline-flex rounded-lg border border-white/10 p-1.5 text-white/55 hover:bg-white/10 hover:text-white"
+                                          aria-label="Edit row"
+                                          onClick={() => openRowEdit(r)}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          className="inline-flex rounded-lg border border-rose-500/20 p-1.5 text-rose-300/80 hover:bg-rose-500/15"
+                                          aria-label="Delete row"
+                                          onClick={() => handleRowDelete(r)}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                      </td>
+                                    ) : null}
                                   </tr>
                                 ))}
                               </tbody>
@@ -1109,20 +1130,24 @@ export function AdminInformationsClient({
                         </p>
                       </div>
                       <div className="flex gap-1">
-                        <button
-                          type="button"
-                          className="rounded-lg border border-white/10 p-1.5 text-white/55 hover:bg-white/10"
-                          onClick={() => openSpecialEdit(s)}
-                        >
-                          <Pencil className="h-3.5 w-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          className="rounded-lg border border-rose-500/20 p-1.5 text-rose-300/80 hover:bg-rose-500/15"
-                          onClick={() => handleSpecialDelete(s)}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </button>
+                        {canManage ? (
+                          <>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-white/10 p-1.5 text-white/55 hover:bg-white/10"
+                              onClick={() => openSpecialEdit(s)}
+                            >
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-lg border border-rose-500/20 p-1.5 text-rose-300/80 hover:bg-rose-500/15"
+                              onClick={() => handleSpecialDelete(s)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                          </>
+                        ) : null}
                       </div>
                     </div>
                     <p className="mt-2 text-sm text-white/60">{s.description}</p>
@@ -1137,7 +1162,7 @@ export function AdminInformationsClient({
         </div>
       ) : null}
 
-      {modalOpen ? (
+      {canManage && modalOpen ? (
         <GlassModal
           onClose={() => !saving && closeModal()}
           title={editing ? "Edit List" : "New List"}
@@ -1264,7 +1289,7 @@ export function AdminInformationsClient({
         </GlassModal>
       ) : null}
 
-      {tierModalOpen ? (
+      {canManage && tierModalOpen ? (
         <GlassModal
           onClose={closeTierModal}
           title={tierEditing ? "Edit Model Tier" : "Add Model Tier"}
@@ -1338,7 +1363,7 @@ export function AdminInformationsClient({
         </GlassModal>
       ) : null}
 
-      {rowModalOpen ? (
+      {canManage && rowModalOpen ? (
         <GlassModal
           onClose={closeRowModal}
           title={rowEditing ? "Edit Pricing Row" : "Add Pricing Row"}
@@ -1482,7 +1507,7 @@ export function AdminInformationsClient({
         </GlassModal>
       ) : null}
 
-      {specialModalOpen ? (
+      {canManage && specialModalOpen ? (
         <GlassModal
           onClose={closeSpecialModal}
           title={specialEditing ? "Edit Special" : "Add Special"}

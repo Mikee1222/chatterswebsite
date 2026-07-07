@@ -1,14 +1,14 @@
-import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
-import { requireAdminRoute } from "@/lib/rbac";
-import { ROUTES } from "@/lib/routes";
+import { hasPermission, requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { getAllMassListsAdmin } from "@/services/mass-lists";
 import { getAllModelTiersAdmin } from "@/services/model-tiers";
 import { getAllPricingRowsAdmin, getAllPricingSpecialsAdmin } from "@/services/pricing";
 import { AdminInformationsClient } from "@/components/admin-informations-client";
 
 export default async function AdminInformationsPage() {
-  const session = await requireAdminRoute(await getSessionFromCookies());
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.INFORMATIONS_VIEW);
+  const canManage = await hasPermission(user, PERMISSIONS.INFORMATIONS_MANAGE);
 
   const [lists, tiers, pricingRows, pricingSpecials] = await Promise.all([
     getAllMassListsAdmin().catch(() => []),
@@ -24,6 +24,7 @@ export default async function AdminInformationsPage() {
         tiers={tiers}
         pricingRows={pricingRows}
         pricingSpecials={pricingSpecials}
+        canManage={canManage}
       />
     </div>
   );

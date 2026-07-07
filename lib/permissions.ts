@@ -105,6 +105,9 @@ export const PERMISSIONS = {
   FEEDBACK_VIEW: "feedback:view",
   FEEDBACK_MANAGE: "feedback:manage",
 
+  INFORMATIONS_VIEW: "informations:view",
+  INFORMATIONS_MANAGE: "informations:manage",
+
   PRICING_VIEW: "pricing:view",
   PRICING_MANAGE: "pricing:manage",
 
@@ -176,6 +179,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   settings: "Settings",
   roles: "Roles & permissions",
   feedback: "Feedback",
+  informations: "Informations",
   pricing: "Pricing",
   "mass-lists": "Mass lists",
   "link-pages": "Link pages",
@@ -305,6 +309,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "feedback:view": "Προβολή ανατροφοδότησης χρηστών",
   "feedback:manage": "Διαχείριση και απάντηση ανατροφοδότησης",
 
+  "informations:view": "Προβολή mass lists, model tiers και pricing",
+  "informations:manage": "Δημιουργία και επεξεργασία mass lists, model tiers και pricing",
+
   "pricing:view": "Προβολή τιμολογίου υπηρεσιών και πακέτων",
   "pricing:manage": "Ρύθμιση τιμών και πακέτων υπηρεσιών",
 
@@ -354,8 +361,7 @@ const MANAGER_EXCLUDED: Permission[] = [
 const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.SHIFTS_START,
   PERMISSIONS.SHIFTS_VIEW,
-  PERMISSIONS.MASS_LISTS_VIEW,
-  PERMISSIONS.PRICING_VIEW,
+  PERMISSIONS.INFORMATIONS_VIEW,
   PERMISSIONS.WHALES_VIEW,
   PERMISSIONS.WHALES_MANAGE,
   PERMISSIONS.CUSTOM_REQUESTS_VIEW,
@@ -373,8 +379,7 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.VA_TASKS_VIEW,
   // VA mistakes submission + mistake shift feature (Mistakes nav item, /va/mistakes, /va-shift).
   PERMISSIONS.MISTAKES_VIEW,
-  PERMISSIONS.MASS_LISTS_VIEW,
-  PERMISSIONS.PRICING_VIEW,
+  PERMISSIONS.INFORMATIONS_VIEW,
   PERMISSIONS.MARKETING_VIEW,
   PERMISSIONS.MARKETING_SHADOWBAN_REPORT,
   PERMISSIONS.CONTENT_VIEW,
