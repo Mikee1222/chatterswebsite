@@ -5,7 +5,8 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getPointsConfig } from "@/services/points-config";
 import { getAllSpinPrizes } from "@/services/spin-wheel";
-import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
+import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
+import { listAllUsers } from "@/services/users";
 import { RewardsConfigClient } from "@/components/rewards-config-client";
 
 export default async function AdminRewardsConfigPage() {

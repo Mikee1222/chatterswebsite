@@ -10,6 +10,7 @@ import {
   type ListParams,
 } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
+import { filterActiveUsersForAssignment, isUserActiveForAssignment } from "@/lib/assignment-filters";
 import type { UserRecord, UserRole, VaType, CompensationType, UserContractAttachment } from "@/types";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
@@ -141,17 +142,6 @@ export async function listUsers(params: ListParams = {}) {
 export async function listAllUsers(): Promise<UserRecord[]> {
   const records = await listAllRecords<Fields>(TABLE, {});
   return records.map((r) => mapRecord(r));
-}
-
-/** True when user is active and can log in — for new-work assignment pickers. */
-export function isUserActiveForAssignment(user: Pick<UserRecord, "status" | "can_login">): boolean {
-  if (user.can_login === false) return false;
-  return (user.status ?? "").trim().toLowerCase() === "active";
-}
-
-/** Active, login-enabled users only (excludes inactive and suspended). */
-export function filterActiveUsersForAssignment(users: UserRecord[]): UserRecord[] {
-  return users.filter(isUserActiveForAssignment);
 }
 
 /** Active, login-enabled users — for assignment pickers and staff lists. */

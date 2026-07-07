@@ -7,7 +7,8 @@ import {
   getAllChallengesForAdmin,
   getCompletionCountsByChallenge,
 } from "@/services/challenges";
-import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
+import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
+import { listAllUsers } from "@/services/users";
 import { AdminChallengesClient } from "@/components/admin-challenges-client";
 
 export default async function AdminChallengesPage() {

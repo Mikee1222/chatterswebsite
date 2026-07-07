@@ -9,7 +9,7 @@ import { adminWeeklyProgramVaUrl } from "@/lib/routes";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getRequestsForWeekVa } from "@/services/weekly-availability-requests-va";
 import { listAllUsers } from "@/services/users";
-import { getCachedModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getLastAssignmentBatch } from "@/services/shifts";
 import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-program-conflicts";
 import { AdminWeeklyProgramVaClient } from "@/components/admin-weekly-program-va-client";

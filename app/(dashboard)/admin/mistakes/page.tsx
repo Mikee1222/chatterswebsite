@@ -4,7 +4,8 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listMistakesForAdmin, getAllMistakeReasons } from "@/services/chatter-mistakes";
-import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
+import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
+import { listAllUsers } from "@/services/users";
 import { listActiveModelsForAssignment } from "@/services/modelss";
 import { AdminMistakesClient } from "@/components/admin-mistakes-client";
 

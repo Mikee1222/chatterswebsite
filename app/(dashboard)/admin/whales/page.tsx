@@ -5,8 +5,9 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { listWhalesPaginated, getWhaleStatusCounts, type WhalesListFilters } from "@/services/whales";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
-import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
-import { getCachedModelss, filterActiveModelsForAssignment } from "@/services/modelss";
+import { filterActiveModelsForAssignment, filterActiveUsersForAssignment } from "@/lib/assignment-filters";
+import { getCachedModelss } from "@/lib/modelss-cache";
+import { listAllUsers } from "@/services/users";
 import { AdminWhalesClient } from "@/components/admin-whales-client";
 import type { Whale } from "@/types";
 

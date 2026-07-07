@@ -6,7 +6,8 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { listActiveModelsForAssignment } from "@/services/modelss";
-import { filterActiveUsersForAssignment, listAllUsers } from "@/services/users";
+import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
+import { listAllUsers } from "@/services/users";
 import {
   getMistakeReasons,
   getMistakesByVA,

@@ -5,7 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
 import { getActiveShifts, getShiftsForMonth } from "@/services/shifts";
-import { getCachedModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { listAllCustomRequests } from "@/services/custom-requests";
 import { listAllUsers } from "@/services/users";
 import { eurToUsd } from "@/lib/exchange";

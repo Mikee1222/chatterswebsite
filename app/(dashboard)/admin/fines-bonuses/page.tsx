@@ -4,7 +4,8 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listFinesBonuses } from "@/services/fines-bonuses";
-import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
+import { filterActiveUsersForAssignment } from "@/lib/assignment-filters";
+import { listAllUsers } from "@/services/users";
 import { AdminFinesBonusesClient } from "@/components/admin-fines-bonuses-client";
 
 export default async function AdminFinesBonusesPage() {

@@ -3,7 +3,7 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { getCachedModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getActiveShifts, getActiveShiftModels } from "@/services/shifts";
 import { listAllModelPeriods } from "@/services/model-periods";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";

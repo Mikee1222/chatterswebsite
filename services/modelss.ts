@@ -1,8 +1,8 @@
 "use server";
 
-import { unstable_cache } from "next/cache";
 import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
+import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
 import type { ModelRecord } from "@/types";
 import { listAllUsers } from "@/services/users";
 
@@ -77,15 +77,6 @@ function filterCompleteModels(modelss: ModelRecord[]): ModelRecord[] {
   return modelss.filter((m) => m.model_name?.trim() && m.model_id?.trim());
 }
 
-/** True when modelss.status is active — for new-work assignment pickers. */
-export function isModelActiveForAssignment(model: Pick<ModelRecord, "status">): boolean {
-  return (model.status ?? "").trim().toLowerCase() === "active";
-}
-
-export function filterActiveModelsForAssignment(modelss: ModelRecord[]): ModelRecord[] {
-  return modelss.filter(isModelActiveForAssignment);
-}
-
 /** Active modelss only — for assignment dropdowns (not admin list pages). */
 export async function listActiveModelsForAssignment(): Promise<ModelRecord[]> {
   return filterActiveModelsForAssignment(await listAllModelss());
@@ -124,13 +115,6 @@ export async function listAllModelss(filterByFormula?: string) {
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
   return filterCompleteModels(records.map(mapRecord));
 }
-
-/** Full modelss list cached 60s — use on heavy admin pages instead of listAllModelss(). */
-export const getCachedModelss = unstable_cache(
-  async () => listAllModelss(),
-  ["all-modelss-v1"],
-  { revalidate: 60 }
-);
 
 /**
  * Returns only modelss that have a linked user account with role=model, status=active.

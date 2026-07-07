@@ -49,7 +49,7 @@ import type {
   SocialAccountStatus,
 } from "@/services/marketing";
 import type { AppNotification, ModelRecord, UserRecord } from "@/types";
-import { isModelActiveForAssignment } from "@/services/modelss";
+import { isModelActiveForAssignment } from "@/lib/assignment-filters";
 
 type Tab = "platforms" | "accounts" | "funnels" | "reports" | "phones";
 type ReportDateRange = "all" | "7d" | "30d" | "custom";
