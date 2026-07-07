@@ -138,7 +138,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   const renderPhaseExtra = React.useCallback(
     (phase: PhaseRibbonPhase) => {
       const accs = phase.assigned_model_id ? getModelAccounts(phase.assigned_model_id) : [];
-      const startedMins = minutesSince(phase.start_time ?? phase.actual_start_time);
+      const startedMins = minutesSince(phase.start_time);
       if (accs.length === 0 && !(phase.status === "in_progress" && startedMins != null)) return null;
       return (
         <div className="mt-3 space-y-3 border-t border-[rgba(255,255,255,0.05)] pt-3">

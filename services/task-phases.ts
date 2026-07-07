@@ -28,8 +28,6 @@ export interface TaskPhase {
   assigned_model_name: string;
   region: "USA" | "Greek" | "Global";
   completed_at: string | null;
-  actual_start_time: string | null;
-  actual_end_time: string | null;
   created_at: string;
   items: PhaseItem[];
 }
@@ -70,8 +68,6 @@ type PhaseFields = {
   assigned_model_name?: string;
   region?: string;
   completed_at?: string | null;
-  actual_start_time?: string | null;
-  actual_end_time?: string | null;
   created_at?: string;
 };
 
@@ -138,8 +134,6 @@ function mapPhase(rec: AirtableRecord<PhaseFields>, items: PhaseItem[] = []): Ta
     assigned_model_name: (f.assigned_model_name as string) ?? "",
     region: asRegion(f.region),
     completed_at: (f.completed_at as string | null) ?? null,
-    actual_start_time: (f.actual_start_time as string | null) ?? null,
-    actual_end_time: (f.actual_end_time as string | null) ?? null,
     created_at: (f.created_at as string) ?? "",
     items,
   };
@@ -269,8 +263,8 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   if (data.description !== undefined) patch.description = data.description;
   if (data.status !== undefined) patch.status = data.status;
   if (data.scheduled_time !== undefined) patch.scheduled_time = data.scheduled_time;
-  if (data.actual_start_time !== undefined) patch.actual_start_time = data.actual_start_time;
-  if (data.actual_end_time !== undefined) patch.actual_end_time = data.actual_end_time;
+  if (data.start_time !== undefined) patch.start_time = data.start_time;
+  if (data.end_time !== undefined) patch.end_time = data.end_time;
   if (data.region !== undefined) patch.region = data.region;
   if (data.completed_at !== undefined) patch.completed_at = data.completed_at;
 
@@ -438,7 +432,7 @@ export async function completePhaseItem(
   if (phaseAirtableId && completedCount === 1 && phaseRow?.fields.status === "pending") {
     await updateRecord(TABLE_PHASES, phaseAirtableId, {
       status: "in_progress",
-      actual_start_time: now,
+      start_time: now,
     });
   }
 
@@ -448,7 +442,7 @@ export async function completePhaseItem(
       await updateRecord(TABLE_PHASES, phaseAirtableId, {
         status: "completed",
         completed_at: now,
-        actual_end_time: now,
+        end_time: now,
       });
     }
 

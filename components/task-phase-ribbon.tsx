@@ -27,8 +27,7 @@ export type PhaseRibbonPhase = Pick<
   | "assigned_model_id"
   | "assigned_model_name"
   | "start_time"
-  | "actual_start_time"
-  | "actual_end_time"
+  | "end_time"
 > & {
   items?: PhaseRibbonItem[];
 };

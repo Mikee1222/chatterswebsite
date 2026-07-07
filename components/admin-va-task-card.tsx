@@ -141,13 +141,13 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
       if (canManage) {
         return (
           <>
-            {phase.actual_start_time || phase.actual_end_time ? (
+            {phase.start_time || phase.end_time ? (
               <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#B8B4B8]/40">
-                {phase.actual_start_time ? (
-                  <span>Started {formatPhaseActualTime(phase.actual_start_time)}</span>
+                {phase.start_time ? (
+                  <span>Started {formatPhaseActualTime(phase.start_time)}</span>
                 ) : null}
-                {phase.actual_end_time ? (
-                  <span>Ended {formatPhaseActualTime(phase.actual_end_time)}</span>
+                {phase.end_time ? (
+                  <span>Ended {formatPhaseActualTime(phase.end_time)}</span>
                 ) : null}
               </div>
             ) : null}
@@ -192,14 +192,14 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
           </>
         );
       }
-      if (phase.actual_start_time || phase.actual_end_time) {
+      if (phase.start_time || phase.end_time) {
         return (
           <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#B8B4B8]/40">
-            {phase.actual_start_time ? (
-              <span>Started {formatPhaseActualTime(phase.actual_start_time)}</span>
+            {phase.start_time ? (
+              <span>Started {formatPhaseActualTime(phase.start_time)}</span>
             ) : null}
-            {phase.actual_end_time ? (
-              <span>Ended {formatPhaseActualTime(phase.actual_end_time)}</span>
+            {phase.end_time ? (
+              <span>Ended {formatPhaseActualTime(phase.end_time)}</span>
             ) : null}
           </div>
         );

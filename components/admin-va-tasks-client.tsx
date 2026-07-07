@@ -1797,8 +1797,7 @@ export function AdminVaTasksClient({
                       assigned_model_id: "",
                       assigned_model_name: "",
                       start_time: null,
-                      actual_start_time: null,
-                      actual_end_time: null,
+                      end_time: null,
                       items: dp.items.map((it) => ({
                         id: it.tempId,
                         title: it.title,
