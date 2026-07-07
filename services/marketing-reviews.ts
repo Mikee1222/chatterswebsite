@@ -21,6 +21,7 @@ import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { listUsersWithPermission } from "@/services/users";
 import { PERMISSIONS } from "@/lib/permissions";
+import { spotCheckLogged, spotCheckStatusChanged } from "@/lib/notification-copy";
 
 export type { SpotCheckStatus, SpotCheckType } from "@/lib/marketing-reviews-helpers";
 
@@ -315,6 +316,11 @@ export async function createSpotCheck(
   const spotCheck = mapSpotCheck(rec);
 
   const holders = await listUsersWithPermission(PERMISSIONS.SPOTCHECK_MANAGE).catch(() => []);
+  const loggedCopy = spotCheckLogged(
+    spotCheck.manager_name,
+    spotCheck.type,
+    spotCheck.exec_va_name || spotCheck.creator_name || ""
+  );
   for (const u of holders) {
     if (!u.id) continue;
     if (spotCheck.manager_id && u.id === spotCheck.manager_id) continue;
@@ -322,8 +328,8 @@ export async function createSpotCheck(
       user_id: u.id,
       event_type: NOTIFICATION_EVENT.SPOT_CHECK_LOGGED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "New spot check logged",
-      body: `${spotCheck.manager_name || "A supervisor"} logged a ${spotCheck.type} spot check for ${spotCheck.exec_va_name || spotCheck.creator_name || "a team member"}.`,
+      title: loggedCopy.title,
+      body: loggedCopy.body,
       entity_type: NOTIFICATION_ENTITY.SPOT_CHECK,
       entity_id: spotCheck.id,
       actor_user_id: spotCheck.manager_id || undefined,
@@ -360,12 +366,16 @@ export async function updateSpotCheck(id: string, data: Partial<MarketingSpotChe
     (data.status === "Fixed" || data.status === "Escalated") &&
     before.manager_id
   ) {
+    const statusCopy = spotCheckStatusChanged(
+      data.status,
+      before.exec_va_name || before.creator_name || ""
+    );
     await notify({
       user_id: before.manager_id,
       event_type: NOTIFICATION_EVENT.SPOT_CHECK_STATUS_CHANGED,
       priority: data.status === "Escalated" ? NOTIFICATION_PRIORITY.HIGH : NOTIFICATION_PRIORITY.NORMAL,
-      title: `Spot check ${data.status.toLowerCase()}`,
-      body: `Your spot check for ${before.exec_va_name || before.creator_name || "a team member"} was marked ${data.status}.`,
+      title: statusCopy.title,
+      body: statusCopy.body,
       entity_type: NOTIFICATION_ENTITY.SPOT_CHECK,
       entity_id: id,
       _triggerSource: "update_spot_check_status",

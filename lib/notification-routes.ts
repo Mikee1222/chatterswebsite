@@ -288,9 +288,18 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "tip_rejected":
     case "rebill_verified":
     case "rebill_rejected":
+    case "rebill_submitted":
+    case "extra_revenue_submitted":
       return "Rebill";
+    case "expense_submitted":
+      return "Expense";
     case "model_schedule_created":
+    case "period_logged":
       return "Model";
+    case "time_off_requested":
+      return "Model";
+    case "feedback_submitted":
+      return "System";
     case "fine_issued":
     case "fine_issued_admin":
     case "bonus_awarded":

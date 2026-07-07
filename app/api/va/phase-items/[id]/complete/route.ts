@@ -55,8 +55,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     actor_user_id: vaId,
     actor_name: vaName,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "✅ Phase Item Done",
-    body: `✅ ${vaName} completed: "${itemTitle}"`,
+    title: "✅ Phase item done",
+    body: `${vaName} completed "${itemTitle}".`,
     entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE_ITEM,
     entity_id: itemRowId,
   });
@@ -65,8 +65,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.PHASE_COMPLETED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "🎯 Phase Completed",
-      body: `🎯 All items in the phase were completed by ${vaName}`,
+      title: "🎯 Phase completed",
+      body: `${vaName} completed all items in the phase.`,
       entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
       entity_id: phaseAirtableId,
     });
@@ -76,8 +76,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.ALL_PHASES_COMPLETED,
       priority: NOTIFICATION_PRIORITY.HIGH,
-      title: "🏆 All Phases Completed!",
-      body: `🏆 ${vaName} completed all phases for task`,
+      title: "🏆 All phases completed!",
+      body: `${vaName} completed all phases for the task.`,
       entity_type: NOTIFICATION_ENTITY.VA_TASK,
       entity_id: taskId,
     });

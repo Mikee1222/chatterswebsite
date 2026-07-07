@@ -29,7 +29,7 @@ async function notifyMistakeReviewed(
     context: Record<string, unknown>;
   }
 ) {
-  const decision = opts.approved ? "Εγκρίθηκε" : "Απορρίφθηκε";
+  const decision = opts.approved ? "Approved" : "Rejected";
   const copy = chatterMistakeReviewedSelf(decision, opts.copyOpts);
   await notifyByRoleConfig(NOTIFICATION_EVENT.CHATTER_MISTAKE_REVIEWED, {
     recipient_mode: "personal_only",

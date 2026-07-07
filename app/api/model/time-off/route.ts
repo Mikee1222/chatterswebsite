@@ -40,10 +40,10 @@ export async function POST(req: Request) {
       created_by_record_id: ctx.userRecordId,
     });
     await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: NOTIFICATION_EVENT.TIME_OFF_REQUESTED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: `🌴 Time Off Requested`,
-      body: `🌴 ${modelName} requested time off ${parsed.data.start_date}–${parsed.data.end_date}. ${parsed.data.reason.slice(0, 500)}`,
+      title: "🌴 Time off requested",
+      body: `${modelName} requested time off from ${parsed.data.start_date} to ${parsed.data.end_date}. Reason: ${parsed.data.reason.slice(0, 500)}`,
       entity_type: NOTIFICATION_ENTITY.ACCOUNT,
       entity_id: ctx.linkedModelId,
       actor_name: modelName,

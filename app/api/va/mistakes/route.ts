@@ -137,7 +137,7 @@ export async function POST(req: Request) {
       personal_user_id: vaId,
       priority: NOTIFICATION_PRIORITY.HIGH,
       title: "⚠️ Mistake report submitted",
-      body: `⚠️ Your ${reason.category} mistake report for ${parsed.data.chatter_name} was submitted.`,
+      body: `Your ${reason.category} mistake report for ${parsed.data.chatter_name} was submitted.`,
       entity_type: NOTIFICATION_ENTITY.CHATTER_MISTAKE,
       entity_id: recordId,
       actor_user_id: vaId,

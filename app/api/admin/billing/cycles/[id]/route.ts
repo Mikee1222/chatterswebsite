@@ -9,6 +9,7 @@ import {
   updateBillingCycle,
 } from "@/services/client-billing";
 import { formatDueDateElGr, kindLabelFor } from "@/services/client-billing-notifications";
+import { formatMoney } from "@/lib/notification-copy";
 import { findExistingNotification } from "@/services/notifications";
 
 const BILLING_CYCLE_ANNOUNCED_AIRTABLE =
@@ -84,8 +85,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
             user_id: clientId,
             event_type: "system_alert",
             priority: "high",
-            title: "📋 Payment Due",
-            body: `⏰ Your ${kindLabel} payment of $${Number(amountDue).toFixed(2)} ${cycle.currency ?? "USD"} is due on ${dueDateFormatted}.`,
+            title: "💳 Payment due",
+            body: `Your ${kindLabel} payment of ${formatMoney(amountDue, cycle.currency ?? "USD")} is due on ${dueDateFormatted}.`,
             entity_type: "billing_cycle",
             entity_id: cycle.id,
             _triggerSource: "admin.billing.cycles.PATCH",

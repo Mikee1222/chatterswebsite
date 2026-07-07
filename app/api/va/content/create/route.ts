@@ -98,8 +98,8 @@ export async function POST(req: Request) {
     await notifyAdmins({
       event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📋 New VA Assignment Needs Review",
-      body: `📋 ${vaName} created an assignment for ${modelName}: "${parsed.data.title.trim()}". Needs your approval.`,
+      title: "📋 New VA assignment needs review",
+      body: `${vaName} created an assignment for ${modelName}: "${parsed.data.title.trim()}". Needs your approval.`,
       entity_type: "va_content_assignment",
       entity_id: row.id,
       _triggerSource: "va_content_create_admin_queue",

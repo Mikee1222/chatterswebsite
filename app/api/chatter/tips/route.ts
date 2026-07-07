@@ -5,6 +5,7 @@ import { createRecord } from "@/lib/airtable-server";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { formatMoney } from "@/lib/notification-copy";
 
 function normalizeSubUsername(raw: string): string {
   let s = raw.trim();
@@ -58,8 +59,8 @@ export async function POST(req: Request) {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "💵 New Tip Submitted",
-    body: `💵 ${reporterName} logged $${amount_usd.toFixed(2)} tip for ${model_name || "a model"} — @${sub_username}`,
+    title: "💵 New tip submitted",
+    body: `${reporterName} logged a ${formatMoney(amount_usd, "USD")} tip for ${model_name || "a model"} — @${sub_username}.`,
     entity_type: "tip",
     entity_id: tipId,
     actor_user_id: session.airtableUserId ?? session.id,

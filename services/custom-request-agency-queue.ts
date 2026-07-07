@@ -37,7 +37,7 @@ export async function agencyApproveCustomRequest(recordId: string): Promise<Agen
     await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_APPROVED, {
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "✅ Custom request approved",
-      body: `✅ A custom request "${customTitle}" has been approved. Please check your schedule.`,
+      body: `A custom request "${customTitle}" has been approved. Please check your schedule.`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: recordId,
       actor_user_id: modelUserId,
@@ -70,7 +70,7 @@ export async function agencyDeclineCustomRequest(
     await notifyByRoleConfig(NOTIFICATION_EVENT.CUSTOM_DECLINED, {
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "❌ Custom request declined",
-      body: `❌ ${customTitle} was declined. Reason: ${reason.slice(0, 280)}${reason.length > 280 ? "…" : ""}`,
+      body: `${customTitle} was declined. Reason: ${reason.slice(0, 280)}${reason.length > 280 ? "…" : ""}`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: recordId,
       personal_user_id: modelUserId,

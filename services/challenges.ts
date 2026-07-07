@@ -289,8 +289,8 @@ async function completeChallengeIfNeeded(userId: string, ch: ChallengeRow, curre
     await notifyByRoleConfig(NOTIFICATION_EVENT.CHALLENGE_COMPLETED, {
       recipient_mode: "personal_only",
       personal_user_id: userId,
-      title: "🏆 Challenge Completed!",
-      body: `🎉 You completed '${safeTitle}' and earned ${reward} pts!`,
+      title: "🏆 Challenge completed!",
+      body: `You completed '${safeTitle}' and earned ${reward} pts!`,
       entity_type: "challenge",
       entity_id: ch.id,
     });

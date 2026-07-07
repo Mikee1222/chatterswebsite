@@ -59,8 +59,8 @@ export async function sendPeriodThreeDayReminder({ modelId, predictedDate }: Not
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_3_DAY_REMINDER,
-    title: "📅 Cycle Reminder",
-    body: `📅 Your next period is predicted around ${predictedDate} (in 3 days).`,
+    title: "📅 Cycle reminder",
+    body: `Your next period is predicted around ${predictedDate} (in 3 days).`,
     entityId: `period:reminder3:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
   });
@@ -70,8 +70,8 @@ export async function sendPeriodPredictedDayNotification({ modelId, predictedDat
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTED_DAY,
-    title: "🌸 Predicted Period Day",
-    body: `🌸 Today is your predicted period day (${predictedDate}).`,
+    title: "🌸 Predicted period day",
+    body: `Today is your predicted period day (${predictedDate}).`,
     entityId: `period:predicted:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.HIGH,
   });
@@ -81,8 +81,8 @@ export async function sendPeriodConfirmedEarlyNotification({ modelId, predictedD
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_CONFIRMED_EARLY,
-    title: "✅ Period Confirmed",
-    body: `✅ Cycle updated. Period was confirmed before ${predictedDate}.`,
+    title: "✅ Period confirmed",
+    body: `Cycle updated. Period was confirmed before ${predictedDate}.`,
     entityId: `period:confirmed:${predictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
   });
@@ -112,8 +112,8 @@ export async function sendPeriodOverdueNotification({
   await notifyByRoleConfig(NOTIFICATION_EVENT.PERIOD_OVERDUE, {
     personal_user_id: userId,
     priority: NOTIFICATION_PRIORITY.HIGH,
-    title: "⚠️ Period Overdue",
-    body: `⚠️ Your period appears overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`,
+    title: "⚠️ Period overdue",
+    body: `Your period appears overdue by ${overdueDays} day${overdueDays === 1 ? "" : "s"}.`,
     entity_type: NOTIFICATION_ENTITY.PERIOD,
     entity_id: entityId,
     context: { modelName },
@@ -132,8 +132,8 @@ export async function sendPeriodPredictionResetNotification({
   return notifyModelOnce({
     modelId,
     eventType: NOTIFICATION_EVENT.PERIOD_PREDICTION_RESET,
-    title: "🔄 Prediction Reset",
-    body: `🔄 Prediction from ${previousPredictedDate} was reset until next period log.`,
+    title: "🔄 Prediction reset",
+    body: `Prediction from ${previousPredictedDate} was reset until next period log.`,
     entityId: `period:reset:${previousPredictedDate}`,
     priority: NOTIFICATION_PRIORITY.NORMAL,
   });

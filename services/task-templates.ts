@@ -14,6 +14,7 @@ import { getUserByAirtableId } from "@/services/users";
 import { listAllModelss } from "@/services/modelss";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { vaTaskAssigned } from "@/lib/notification-copy";
 import { coerceTaskStepType, DEFAULT_TASK_STEP_TYPE, type TaskStepType } from "@/lib/task-step-types";
 import type { VaTaskRecord } from "@/types";
 
@@ -400,8 +401,8 @@ export async function applyTemplateToTask(
       user_id: vaId,
       event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "🗂️ New task assigned",
-      body: `You've been assigned "${task.title}". Open My tasks to get started.`,
+      title: vaTaskAssigned(task.title).title,
+      body: vaTaskAssigned(task.title).body,
       entity_type: NOTIFICATION_ENTITY.VA_TASK,
       entity_id: task.id,
       actor_user_id: input.assignedById ?? undefined,

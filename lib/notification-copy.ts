@@ -35,12 +35,12 @@ export function shiftStartedSelf(
   if (list) {
     return {
       title: "🟢 Shift started",
-      body: `🟢 You're live with ${list}. Let's go!`,
+      body: `You're live with ${list}. Let's go!`,
     };
   }
   return {
     title: "🟢 Shift started",
-    body: "🟢 You're live — no models assigned yet.",
+    body: "You're live — no models assigned yet.",
   };
 }
 
@@ -57,12 +57,12 @@ export function shiftStartedAdmin(
   if (count > 0 && list) {
     return {
       title: `🟢 ${chatterName} is on shift`,
-      body: `🟢 Started at ${time} with ${count} model(s): ${list}.`,
+      body: `Started at ${time} with ${count} model(s): ${list}.`,
     };
   }
   return {
     title: `🟢 ${chatterName} is on shift`,
-    body: `🟢 Started at ${time} with no models yet.`,
+    body: `Started at ${time} with no models yet.`,
   };
 }
 
@@ -75,12 +75,12 @@ export function shiftCompletedSelf(
   if (workedMinutes != null && workedMinutes > 0) {
     return {
       title: "✅ Shift complete",
-      body: `✅ Great work! You were on for ${workedMinutes} min.`,
+      body: `Great work! You were on for ${workedMinutes} min.`,
     };
   }
   return {
     title: "✅ Shift complete",
-    body: "✅ Your shift has ended.",
+    body: "Your shift has ended.",
   };
 }
 
@@ -95,18 +95,18 @@ export function shiftCompletedAdmin(
   if (workedMinutes != null && workedMinutes > 0) {
     return {
       title: `✅ ${chatterName} clocked out`,
-      body: `✅ Shift ended at ${time}. Total: ${workedMinutes} min.`,
+      body: `Shift ended at ${time}. Total: ${workedMinutes} min.`,
     };
   }
   return {
     title: `✅ ${chatterName} clocked out`,
-    body: `✅ Shift ended at ${time}.`,
+    body: `Shift ended at ${time}.`,
   };
 }
 
 /** Break started — self. */
 export function breakStartedSelf(): { title: string; body: string } {
-  return { title: "☕ Enjoy your break", body: "☕ You're on break. Back soon!" };
+  return { title: "☕ Enjoy your break", body: "You're on break. Back soon!" };
 }
 
 /** Break started — admin. */
@@ -118,14 +118,14 @@ export function breakStartedAdmin(chatterName: string, startedAt?: string | Date
   return {
     title: `☕ ${chatterName} is on break`,
     body: time
-      ? `☕ Break started at ${time} — they'll be back shortly.`
-      : "☕ Break started — they'll be back shortly.",
+      ? `Break started at ${time} — they'll be back shortly.`
+      : "Break started — they'll be back shortly.",
   };
 }
 
 /** Break ended — self. */
 export function breakEndedSelf(): { title: string; body: string } {
-  return { title: "👋 Welcome back", body: "👋 Break over — you're back on shift!" };
+  return { title: "👋 Welcome back", body: "Break over — you're back on shift!" };
 }
 
 /** Break ended — admin. */
@@ -140,8 +140,8 @@ export function breakEndedAdmin(
   return {
     title: `👋 ${chatterName} is back`,
     body: hasDuration
-      ? `👋 Returned from break at ${time} after ${duration} min.`
-      : `👋 Returned from break at ${time}.`,
+      ? `Returned from break at ${time} after ${duration} min.`
+      : `Returned from break at ${time}.`,
   };
 }
 
@@ -156,12 +156,12 @@ export function taskShiftStartedAdmin(
   if (list) {
     return {
       title: `📋 ${vaName} started a task shift`,
-      body: `📋 Working with ${list} from ${time}.`,
+      body: `Working with ${list} from ${time}.`,
     };
   }
   return {
     title: `📋 ${vaName} started a task shift`,
-    body: `📋 Task shift started at ${time}.`,
+    body: `Task shift started at ${time}.`,
   };
 }
 
@@ -170,7 +170,7 @@ export function taskShiftEndedAdmin(vaName: string, endTime: string | Date): { t
   const time = formatTimeShort(endTime);
   return {
     title: `✅ ${vaName} finished task shift`,
-    body: `✅ Completed at ${time}.`,
+    body: `Completed at ${time}.`,
   };
 }
 
@@ -178,7 +178,7 @@ export function taskShiftEndedAdmin(vaName: string, endTime: string | Date): { t
 export function whaleRegisteredAdmin(whaleName: string): { title: string; body: string } {
   return {
     title: "🐋 New whale registered",
-    body: `🐋 ${whaleName} has been added to the CRM.`,
+    body: `${whaleName} has been added to the CRM.`,
   };
 }
 
@@ -186,7 +186,7 @@ export function whaleRegisteredAdmin(whaleName: string): { title: string; body: 
 export function whaleRegisteredSelf(whaleUsername: string): { title: string; body: string } {
   return {
     title: "🐋 Whale added",
-    body: `🐋 ${whaleUsername} is saved in My Whales.`,
+    body: `${whaleUsername} is saved in My Whales.`,
   };
 }
 
@@ -194,7 +194,7 @@ export function whaleRegisteredSelf(whaleUsername: string): { title: string; bod
 export function whaleRegisteredAdminFromChatter(chatterName: string, whaleUsername: string): { title: string; body: string } {
   return {
     title: "🐋 New whale added",
-    body: `🐋 ${chatterName} added a new whale: ${whaleUsername}. Tap to assign a model.`,
+    body: `${chatterName} added a new whale: ${whaleUsername}. Tap to assign a model.`,
   };
 }
 
@@ -206,7 +206,7 @@ export function whaleRegisteredAdminFromChatterWithModel(
 ): { title: string; body: string } {
   return {
     title: "🐋 New whale added",
-    body: `🐋 ${chatterName} added ${whaleUsername} with model ${modelName}.`,
+    body: `${chatterName} added ${whaleUsername} with model ${modelName}.`,
   };
 }
 
@@ -214,7 +214,7 @@ export function whaleRegisteredAdminFromChatterWithModel(
 export function whaleSubmittedAwaitingAssignmentChatter(whaleUsername: string): { title: string; body: string } {
   return {
     title: "🐋 Whale submitted",
-    body: `🐋 We received @${whaleUsername}. An admin will assign a chatter — it will appear in My whales once assigned.`,
+    body: `We received @${whaleUsername}. An admin will assign a chatter — it will appear in My whales once assigned.`,
   };
 }
 
@@ -225,7 +225,7 @@ export function whaleNeedsChatterAssignmentAdmin(chatterName: string, whaleUsern
     : `${chatterName} added @${whaleUsername}. Assign a chatter in Whales.`;
   return {
     title: "🐋 Whale needs assignment",
-    body: `🐋 ${detail}`,
+    body: detail,
   };
 }
 
@@ -233,7 +233,7 @@ export function whaleNeedsChatterAssignmentAdmin(chatterName: string, whaleUsern
 export function whaleAssignedToYou(whaleUsername: string): { title: string; body: string } {
   return {
     title: "🐋 Whale assigned to you",
-    body: `🐋 You've been assigned @${whaleUsername}. Open My whales to manage.`,
+    body: `You've been assigned @${whaleUsername}. Open My whales to manage.`,
   };
 }
 
@@ -241,7 +241,7 @@ export function whaleAssignedToYou(whaleUsername: string): { title: string; body
 export function whaleAssignedAdmin(whaleName: string, assigneeName: string): { title: string; body: string } {
   return {
     title: "🐋 Whale assigned",
-    body: `🐋 ${whaleName} assigned to ${assigneeName}.`,
+    body: `${whaleName} assigned to ${assigneeName}.`,
   };
 }
 
@@ -249,7 +249,7 @@ export function whaleAssignedAdmin(whaleName: string, assigneeName: string): { t
 export function customRequestCreatedAdmin(chatterName: string): { title: string; body: string } {
   return {
     title: "📝 New custom request",
-    body: `📝 ${chatterName} submitted a new custom request.`,
+    body: `${chatterName} submitted a new custom request.`,
   };
 }
 
@@ -257,7 +257,7 @@ export function customRequestCreatedAdmin(chatterName: string): { title: string;
 export function customStatusChangedChatter(status: string): { title: string; body: string } {
   return {
     title: "📝 Custom updated",
-    body: `📝 Your custom request status changed to ${status}.`,
+    body: `Your custom request status changed to ${status}.`,
   };
 }
 
@@ -265,7 +265,7 @@ export function customStatusChangedChatter(status: string): { title: string; bod
 export function modelBecameFreeAdmin(modelName: string): { title: string; body: string } {
   return {
     title: "🟢 Model is now free",
-    body: `🟢 ${modelName} is no longer on shift.`,
+    body: `${modelName} is no longer on shift.`,
   };
 }
 
@@ -273,7 +273,7 @@ export function modelBecameFreeAdmin(modelName: string): { title: string; body: 
 export function modelTakenAdmin(modelName: string, chatterName: string): { title: string; body: string } {
   return {
     title: "🔒 Model taken",
-    body: `🔒 ${modelName} is now on shift with ${chatterName}.`,
+    body: `${modelName} is now on shift with ${chatterName}.`,
   };
 }
 
@@ -282,7 +282,7 @@ export function modelLiveStartedChatter(modelName: string, platform: string): { 
   const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
     title: `🔴 ${modelName} is live on ${platformLabel}!`,
-    body: `🔴 Pause chatting — ${modelName} just started a live stream on ${platformLabel}.`,
+    body: `Pause chatting — ${modelName} just started a live stream on ${platformLabel}.`,
   };
 }
 
@@ -291,7 +291,7 @@ export function modelLiveStartedAdmin(modelName: string, platform: string): { ti
   const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
     title: `🔴 ${modelName} went live on ${platformLabel}`,
-    body: `🔴 ${modelName} started a live stream on ${platformLabel}.`,
+    body: `${modelName} started a live stream on ${platformLabel}.`,
   };
 }
 
@@ -300,7 +300,7 @@ export function modelLiveEndedChatter(modelName: string, platform: string): { ti
   const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
     title: `⏹️ ${modelName} finished on ${platformLabel}`,
-    body: `⏹️ ${modelName} finished on ${platformLabel}. Resume chatting.`,
+    body: `${modelName} finished on ${platformLabel}. Resume chatting.`,
   };
 }
 
@@ -309,7 +309,7 @@ export function modelLiveEndedAdmin(modelName: string, platform: string): { titl
   const platformLabel = modelLiveStreamPlatformLabel(platform);
   return {
     title: `⏹️ ${modelName} live ended on ${platformLabel}`,
-    body: `⏹️ ${modelName} finished the live stream on ${platformLabel}.`,
+    body: `${modelName} finished the live stream on ${platformLabel}.`,
   };
 }
 
@@ -317,31 +317,31 @@ export function modelLiveEndedAdmin(modelName: string, platform: string): { titl
 export function availabilitySubmittedSelf(): { title: string; body: string } {
   return {
     title: "📅 Availability submitted",
-    body: "📅 Your availability for next week has been recorded.",
+    body: "Your availability for next week has been recorded.",
   };
 }
 
 /** Availability reminder — self. */
 export function availabilityReminderSelf(): { title: string; body: string } {
   return {
-    title: "⏰ Reminder: Submit your availability",
-    body: "⏰ Please submit your availability for next week before midnight.",
+    title: "⏰ Reminder: submit your availability",
+    body: "Please submit your availability for next week before midnight.",
   };
 }
 
 /** Weekly program published — chatter. */
 export function weeklyProgramPublishedChatter(): { title: string; body: string } {
   return {
-    title: "📅 Weekly Program is Ready",
-    body: "📅 Your schedule for next week has been published. Check your program.",
+    title: "📅 Weekly program is ready",
+    body: "Your schedule for next week has been published. Check your program.",
   };
 }
 
 /** VA weekly program published. */
 export function weeklyProgramVaPublished(): { title: string; body: string } {
   return {
-    title: "📅 VA Weekly Program is Ready",
-    body: "📅 Your VA schedule for next week has been published.",
+    title: "📅 VA weekly program is ready",
+    body: "Your VA schedule for next week has been published.",
   };
 }
 
@@ -349,7 +349,7 @@ export function weeklyProgramVaPublished(): { title: string; body: string } {
 export function customDeadlineApproachingChatter(customTitle: string): { title: string; body: string } {
   return {
     title: "⏰ Custom deadline approaching",
-    body: `⏰ ${customTitle} is due in less than 48 hours.`,
+    body: `${customTitle} is due in less than 48 hours.`,
   };
 }
 
@@ -375,7 +375,7 @@ export function customScheduledAdmin(
   const who = modelName?.trim() ? `${modelName.trim()} — ` : "";
   return {
     title: "📅 Custom scheduled",
-    body: `📅 ${who}Scheduled for ${scheduledDate}${at}.`,
+    body: `${who}Scheduled for ${scheduledDate}${at}.`,
   };
 }
 
@@ -387,7 +387,7 @@ export function customScheduledChatter(customTitle: string, scheduledDate: strin
   const when = timeRange ? `${scheduledDate} (${timeRange})` : scheduledDate;
   return {
     title: "📅 Custom scheduled",
-    body: `📅 ${customTitle} is scheduled for ${when}.`,
+    body: `${customTitle} is scheduled for ${when}.`,
   };
 }
 
@@ -395,7 +395,58 @@ export function customScheduledChatter(customTitle: string, scheduledDate: strin
 export function customUploadedChatter(customTitle: string): { title: string; body: string } {
   return {
     title: "✅ Custom uploaded",
-    body: `✅ ${customTitle} was marked as uploaded by your model.`,
+    body: `${customTitle} was marked as uploaded by your model.`,
+  };
+}
+
+/** Custom scheduled — model-facing (their own calendar). Shared builder. */
+export function customScheduledModel(customTitle: string): { title: string; body: string } {
+  const t = customTitle?.trim() || "a custom";
+  return {
+    title: "📅 Custom scheduled",
+    body: `A custom "${t}" has been scheduled. Check your calendar.`,
+  };
+}
+
+/** Custom upload confirmed — model-facing acknowledgement. Shared builder. */
+export function customUploadConfirmedModel(customTitle: string): { title: string; body: string } {
+  const t = customTitle?.trim() || "your custom";
+  return {
+    title: "✅ Upload confirmed",
+    body: `Your upload for "${t}" has been received.`,
+  };
+}
+
+/** VA task assigned — assigned VA. Shared builder (task-templates + va-tasks). */
+export function vaTaskAssigned(taskTitle: string): { title: string; body: string } {
+  const title = taskTitle?.trim() || "a new task";
+  return {
+    title: "📋 New task assigned",
+    body: `You've been assigned "${title}". Open My tasks to get started.`,
+  };
+}
+
+/** Spot check logged — reviewers (spotcheck:manage holders). Shared builder. */
+export function spotCheckLogged(
+  managerName: string,
+  type: string,
+  subjectName: string
+): { title: string; body: string } {
+  return {
+    title: "📋 New spot check logged",
+    body: `${managerName || "A supervisor"} logged a ${type} spot check for ${subjectName || "a team member"}.`,
+  };
+}
+
+/** Spot check status changed — original submitter. Shared builder. */
+export function spotCheckStatusChanged(
+  status: string,
+  subjectName: string
+): { title: string; body: string } {
+  const escalated = status.trim().toLowerCase() === "escalated";
+  return {
+    title: `${escalated ? "⚠️" : "✅"} Spot check ${status.toLowerCase()}`,
+    body: `Your spot check for ${subjectName || "a team member"} was marked ${status}.`,
   };
 }
 
@@ -408,7 +459,7 @@ export function formSubmittedAdmin(
   const t = formatTimeShort(submittedAt);
   return {
     title: "📋 Form submitted",
-    body: `📋 ${formName} from ${actorName} at ${t}.`,
+    body: `${formName} from ${actorName} at ${t}.`,
   };
 }
 
@@ -419,11 +470,11 @@ export function whaleSessionSubmittedSelf(
   currency: string,
   modelName?: string
 ): { title: string; body: string } {
-  const amt = typeof amount === "number" ? amount : amount;
+  const amt = formatMoney(amount, currency);
   const model = modelName ? ` · ${modelName}` : "";
   return {
     title: "💰 Whale session logged",
-    body: `💰 ${whaleUsername}${model} · ${amt} ${currency}.`,
+    body: `${whaleUsername}${model} · ${amt}.`,
   };
 }
 
@@ -435,18 +486,37 @@ export function whaleSessionSubmittedAdmin(
   currency: string,
   modelName?: string
 ): { title: string; body: string } {
-  const amt = typeof amount === "number" ? amount : amount;
+  const amt = formatMoney(amount, currency);
   const model = modelName ? ` · ${modelName}` : "";
   return {
     title: "💰 New whale session",
-    body: `💰 ${chatterName} submitted a session for ${whaleUsername}${model}. ${amt} ${currency}.`,
+    body: `${chatterName} submitted a session for ${whaleUsername}${model}. ${amt}.`,
   };
 }
 
-function formatFineBonusAmount(amount: number | string): string {
-  if (typeof amount === "number") return amount.toFixed(2);
-  const n = Number.parseFloat(String(amount));
-  return Number.isFinite(n) ? n.toFixed(2) : String(amount);
+/**
+ * Standard money formatting for notification copy: symbol before the number, 2 decimals.
+ * Defaults to EUR (agency-primary currency); pass "USD" for OnlyFans earnings flows (tips).
+ * Unknown currency codes fall back to "CODE 12.00".
+ */
+export function formatMoney(amount: number | string, currency = "EUR"): string {
+  const n = typeof amount === "number" ? amount : Number.parseFloat(String(amount));
+  const value = Number.isFinite(n) ? n.toFixed(2) : String(amount);
+  const code = currency.trim().toUpperCase();
+  if (code === "EUR" || code === "€") return `€${value}`;
+  if (code === "USD" || code === "$") return `$${value}`;
+  if (code === "GBP" || code === "£") return `£${value}`;
+  return `${code} ${value}`;
+}
+
+/** Decision value used across fine/bonus and mistake review flows. */
+export const REVIEW_DECISION = {
+  APPROVED: "Approved",
+  REJECTED: "Rejected",
+} as const;
+
+function isApprovedDecision(decision: string): boolean {
+  return decision.trim().toLowerCase() === "approved";
 }
 
 /** Fine issued — personal (chatter/VA). */
@@ -455,10 +525,10 @@ export function fineIssuedPersonal(
   adminName: string,
   reason: string
 ): { title: string; body: string } {
-  const amt = formatFineBonusAmount(amount);
+  const amt = formatMoney(amount, "EUR");
   return {
-    title: "Σου επιβλήθηκε πρόστιμο",
-    body: `Πρόστιμο ${amt}€ από ${adminName}. Λόγος: ${reason}`,
+    title: "⚠️ You've been fined",
+    body: `${adminName} issued you a ${amt} fine. Reason: ${reason}`,
   };
 }
 
@@ -469,10 +539,10 @@ export function fineIssuedAdmin(
   amount: number | string,
   reason: string
 ): { title: string; body: string } {
-  const amt = formatFineBonusAmount(amount);
+  const amt = formatMoney(amount, "EUR");
   return {
-    title: `Πρόστιμο — ${chatterName}`,
-    body: `${adminName} επέβαλε πρόστιμο ${amt}€ στον ${chatterName}. Λόγος: ${reason}`,
+    title: `⚠️ Fine issued — ${chatterName}`,
+    body: `${adminName} issued a ${amt} fine to ${chatterName}. Reason: ${reason}`,
   };
 }
 
@@ -482,10 +552,10 @@ export function bonusAwardedPersonal(
   adminName: string,
   reason: string
 ): { title: string; body: string } {
-  const amt = formatFineBonusAmount(amount);
+  const amt = formatMoney(amount, "EUR");
   return {
-    title: "Πήρες μπόνους!",
-    body: `Μπόνους ${amt}€ από ${adminName}. Λόγος: ${reason}`,
+    title: "💰 You earned a bonus",
+    body: `${adminName} awarded you a ${amt} bonus. Reason: ${reason}`,
   };
 }
 
@@ -496,10 +566,10 @@ export function bonusAwardedAdmin(
   amount: number | string,
   reason: string
 ): { title: string; body: string } {
-  const amt = formatFineBonusAmount(amount);
+  const amt = formatMoney(amount, "EUR");
   return {
-    title: `Μπόνους — ${chatterName}`,
-    body: `${adminName} έδωσε μπόνους ${amt}€ στον ${chatterName}. Λόγος: ${reason}`,
+    title: `💰 Bonus awarded — ${chatterName}`,
+    body: `${adminName} awarded a ${amt} bonus to ${chatterName}. Reason: ${reason}`,
   };
 }
 
@@ -508,11 +578,13 @@ export function fineBonusReviewedPersonal(
   decision: string,
   adminName?: string
 ): { title: string; body: string } {
-  const admin = adminName?.trim() || "admin";
-  const approved = decision === "Εγκρίθηκε";
+  const admin = adminName?.trim() || "an admin";
+  const approved = isApprovedDecision(decision);
   return {
-    title: "Το πρόστιμο/μπόνους σου κρίθηκε",
-    body: approved ? `Εγκρίθηκε από ${admin}.` : `Απορρίφθηκε από ${admin}.`,
+    title: approved ? "✅ Fine/bonus approved" : "❌ Fine/bonus rejected",
+    body: approved
+      ? `Your fine/bonus was approved by ${admin}.`
+      : `Your fine/bonus was rejected by ${admin}.`,
   };
 }
 
@@ -522,9 +594,10 @@ export function fineBonusReviewedAdmin(
   adminName: string,
   decision: string
 ): { title: string; body: string } {
+  const approved = isApprovedDecision(decision);
   return {
-    title: `Πρόστιμο/μπόνους κρίθηκε — ${chatterName}`,
-    body: `${adminName} έκρινε πρόστιμο/μπόνους του ${chatterName}: ${decision}`,
+    title: `${approved ? "✅" : "❌"} Fine/bonus reviewed — ${chatterName}`,
+    body: `${adminName} ${approved ? "approved" : "rejected"} the fine/bonus for ${chatterName}.`,
   };
 }
 
@@ -539,22 +612,22 @@ export function chatterMistakeReviewedSelf(
     adminNotes?: string;
   } = {}
 ): { title: string; body: string } {
-  const approved = decision === "Εγκρίθηκε";
+  const approved = isApprovedDecision(decision);
   if (approved) {
     if (opts.isVaReport) {
       return {
-        title: "✅ Λάθος εγκρίθηκε",
-        body: `✅ Η αναφορά σου για ${opts.chatterName ?? "chatter"} εγκρίθηκε.`,
+        title: "✅ Mistake report approved",
+        body: `Your mistake report for ${opts.chatterName ?? "the chatter"} was approved.`,
       };
     }
     return {
-      title: "⚠️ Καταχωρήθηκε λάθος",
-      body: `⚠️ Καταχωρήθηκε λάθος: ${opts.reasonLabel ?? "—"}. Πόντοι που αφαιρέθηκαν: ${opts.points ?? 0}.`,
+      title: "⚠️ Mistake logged",
+      body: `A mistake was logged: ${opts.reasonLabel ?? "—"}. Points deducted: ${opts.points ?? 0}.`,
     };
   }
   return {
-    title: "❌ Αναφορά απορρίφθηκε",
-    body: `❌ Η αναφορά σου${opts.chatterName ? ` για ${opts.chatterName}` : ""} απορρίφθηκε: ${opts.adminNotes?.trim() || "—"}`,
+    title: "❌ Mistake report rejected",
+    body: `Your mistake report${opts.chatterName ? ` for ${opts.chatterName}` : ""} was rejected: ${opts.adminNotes?.trim() || "no reason provided"}.`,
   };
 }
 
@@ -565,10 +638,10 @@ export function spinResultSelf(
 ): { title: string; body: string } {
   const details = prizeDetails?.trim();
   return {
-    title: `Κέρδισες ${prizeName}! 🎉`,
+    title: `🎉 You won ${prizeName}!`,
     body: details
-      ? `Το spin wheel σου έδωσε: ${prizeName}. ${details}`
-      : `Το spin wheel σου έδωσε: ${prizeName}.`,
+      ? `The spin wheel gave you: ${prizeName}. ${details}`
+      : `The spin wheel gave you: ${prizeName}.`,
   };
 }
 
@@ -578,17 +651,17 @@ export function spinResultAdmin(
   prizeName: string
 ): { title: string; body: string } {
   return {
-    title: `Spin wheel — ${chatterName}`,
-    body: `${chatterName} έκανε spin και κέρδισε: ${prizeName}`,
+    title: `🎉 Spin wheel — ${chatterName}`,
+    body: `${chatterName} spun the wheel and won: ${prizeName}.`,
   };
 }
 
 /** Period overdue — admin monitoring. */
 export function periodOverdueAdmin(modelName: string): { title: string; body: string } {
-  const name = modelName.trim() || "Model";
+  const name = modelName.trim() || "A model";
   return {
-    title: `Περίοδος — ${name}`,
-    body: `${name} δεν έχει καταχωρήσει περίοδο`,
+    title: `⚠️ Period overdue — ${name}`,
+    body: `${name} hasn't logged their period yet.`,
   };
 }
 
@@ -599,8 +672,8 @@ export function billingCycleAnnouncedAdmin(
 ): { title: string; body: string } {
   const client = clientName.trim() || "Client";
   return {
-    title: `Χρέωση — ${client}`,
-    body: `Νέος κύκλος χρέωσης — ${client}: ${amount}`,
+    title: `💰 Billing cycle — ${client}`,
+    body: `A new billing cycle was announced for ${client}: ${amount}.`,
   };
 }
 
@@ -610,8 +683,8 @@ export function shadowbanSubmittedPersonal(
   platform: string
 ): { title: string; body: string } {
   return {
-    title: "Αναφορά shadowban υποβλήθηκε",
-    body: `Η αναφορά σου για @${username} (${platform}) καταχωρήθηκε.`,
+    title: "⚠️ Shadowban report submitted",
+    body: `Your shadowban report for @${username} (${platform}) was recorded.`,
   };
 }
 
@@ -623,8 +696,8 @@ export function shadowbanSubmittedAdmin(
   modelName: string
 ): { title: string; body: string } {
   return {
-    title: `Shadowban — @${username}`,
-    body: `${reporterName} ανέφερε shadowban στο ${platform} για ${modelName || "model"} (@${username})`,
+    title: `⚠️ Shadowban — @${username}`,
+    body: `${reporterName} reported a shadowban on ${platform} for ${modelName || "a model"} (@${username}).`,
   };
 }
 
@@ -648,12 +721,12 @@ export function shadowbanResolvedPersonal(
   }
   return approved
     ? {
-        title: "✅ Αναφορά shadowban εγκρίθηκε",
-        body: `Η αναφορά σου για @${username} (${platform}) εγκρίθηκε.`,
+        title: "✅ Shadowban report approved",
+        body: `Your shadowban report for @${username} (${platform}) was approved.`,
       }
     : {
-        title: "Αναφορά shadowban απορρίφθηκε",
-        body: `Η αναφορά σου για @${username} (${platform}) απορρίφθηκε.`,
+        title: "❌ Shadowban report rejected",
+        body: `Your shadowban report for @${username} (${platform}) was rejected.`,
       };
 }
 
@@ -671,8 +744,8 @@ export function shadowbanResolvedAdmin(
     };
   }
   return {
-    title: `Shadowban ${approved ? "εγκρίθηκε" : "απορρίφθηκε"} — @${username}`,
-    body: `${reviewerName} ${approved ? "επικύρωσε" : "απέρριψε"} αναφορά shadowban για @${username}.`,
+    title: `${approved ? "✅" : "❌"} Shadowban ${approved ? "approved" : "rejected"} — @${username}`,
+    body: `${reviewerName} ${approved ? "approved" : "rejected"} the shadowban report for @${username}.`,
   };
 }
 
@@ -702,10 +775,10 @@ export function shadowbanLiftedReportedAdmin(
 
 /** SOP quiz passed — personal. */
 export function sopQuizPassedPersonal(sopTitle: string): { title: string; body: string } {
-  const title = sopTitle.trim() || "SOP";
+  const title = sopTitle.trim() || "the SOP";
   return {
-    title: "✅ Quiz ολοκληρώθηκε",
-    body: `Πέρασες το quiz του ${title}`,
+    title: "✅ Quiz passed",
+    body: `You passed the ${title} quiz. Nice work!`,
   };
 }
 
@@ -715,51 +788,51 @@ export function sopQuizPassedAdmin(
   sopTitle: string,
   score: number
 ): { title: string; body: string } {
-  const title = sopTitle.trim() || "SOP";
+  const title = sopTitle.trim() || "the SOP";
   return {
-    title: `Quiz — ${userName}`,
-    body: `${userName} πέρασε το quiz του ${title} (${score}%)`,
+    title: `✅ Quiz passed — ${userName}`,
+    body: `${userName} passed the ${title} quiz (${score}%).`,
   };
 }
 
 /** SOP quiz failed — personal. */
 export function sopQuizFailedPersonal(sopTitle: string): { title: string; body: string } {
-  const title = sopTitle.trim() || "SOP";
+  const title = sopTitle.trim() || "the SOP";
   return {
-    title: "❌ Quiz απέτυχε",
-    body: `Απέτυχες στο quiz του ${title}. Δοκίμασε ξανά.`,
+    title: "❌ Quiz failed",
+    body: `You didn't pass the ${title} quiz. Review the material and try again.`,
   };
 }
 
 /** Schedule published — personal. */
 export function schedulePublishedPersonal(): { title: string; body: string } {
   return {
-    title: "📅 Πρόγραμμα δημοσιεύτηκε",
-    body: "Το εβδομαδιαίο πρόγραμμα δημοσιεύτηκε",
+    title: "📅 Schedule published",
+    body: "Your weekly schedule has been published. Check your program.",
   };
 }
 
 /** Schedule published — admin. */
 export function schedulePublishedAdmin(weekLabel: string): { title: string; body: string } {
   return {
-    title: "Πρόγραμμα δημοσιεύτηκε",
-    body: `Το εβδομαδιαίο πρόγραμμα (${weekLabel}) δημοσιεύτηκε.`,
+    title: "📅 Schedule published",
+    body: `The weekly schedule for ${weekLabel} has been published.`,
   };
 }
 
 /** Login from new device — personal. */
 export function loginNewDevicePersonal(device: string, time: string): { title: string; body: string } {
   return {
-    title: "🔐 Νέα σύνδεση",
-    body: `Νέα σύνδεση από ${device} στις ${time}`,
+    title: "🔐 New sign-in",
+    body: `A new sign-in from ${device} was detected at ${time}. If this wasn't you, change your password.`,
   };
 }
 
 /** Password changed — personal. */
 export function passwordChangedPersonal(time: string): { title: string; body: string } {
   return {
-    title: "🔑 Κωδικός άλλαξε",
-    body: `Ο κωδικός σου άλλαξε στις ${time}`,
+    title: "🔑 Password changed",
+    body: `Your password was changed at ${time}. If this wasn't you, contact an admin immediately.`,
   };
 }
 
@@ -843,17 +916,17 @@ export function buildAdminTitle(
   const actor = ctxActor(ctx);
   switch (baseEventType) {
     case "shift_started":
-      return `${actor} ξεκίνησε βάρδια`;
+      return `🟢 ${actor} started their shift`;
     case "shift_ended":
-      return `${actor} τελείωσε βάρδια`;
+      return `✅ ${actor} ended their shift`;
     case "shift_late":
-      return `${actor} άργησε ${ctx.minutes ?? "?"} λεπτά`;
+      return `⏱️ ${actor} was ${ctx.minutes ?? "?"} min late`;
     case "break_exceeded":
-      return `${actor} - διάλειμμα ${ctx.minutes ?? "?"} λεπτά`;
+      return `⚠️ ${actor} — break over 45 min`;
     case "model_live_started":
-      return `${ctx.modelName ?? actor} πήγε live`;
+      return modelLiveStartedAdmin(String(ctx.modelName ?? actor), String(ctx.platform ?? "")).title;
     case "custom_approved":
-      return `Custom εγκρίθηκε — ${ctx.modelName ?? "model"}`;
+      return `✅ Custom approved — ${ctx.modelName ?? "model"}`;
     case "whale_registered": {
       const whale = String(ctx.whaleUsername ?? ctx.whaleName ?? "Whale");
       if (ctx.modelName) {
@@ -865,11 +938,11 @@ export function buildAdminTitle(
       return whaleRegisteredAdmin(whale).title;
     }
     case "whale_spent":
-      return `${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} έκανε αγορά`;
+      return `🐋 ${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} made a purchase`;
     case "chatter_mistake":
-      return `Λάθος καταχωρήθηκε — ${actor}`;
+      return `⚠️ Mistake logged — ${actor}`;
     case "chatter_mistake_reviewed":
-      return `Λάθος ${ctx.decision ?? "—"} — ${actor}`;
+      return `${isApprovedDecision(String(ctx.decision ?? "")) ? "✅" : "❌"} Mistake ${isApprovedDecision(String(ctx.decision ?? "")) ? "approved" : "rejected"} — ${actor}`;
     case "fine_issued":
       return fineIssuedAdmin(
         String(ctx.chatterName ?? actor),
@@ -923,7 +996,7 @@ export function buildAdminTitle(
     case "sop_quiz_passed":
       return sopQuizPassedAdmin(actor, String(ctx.sopTitle ?? "SOP"), Number(ctx.score ?? 0)).title;
     case "schedule_published":
-      return schedulePublishedAdmin(String(ctx.weekLabel ?? "εβδομάδα")).title;
+      return schedulePublishedAdmin(String(ctx.weekLabel ?? "the week")).title;
     default:
       return fallbackTitle?.trim() || `${actor} — ${baseEventType.replace(/_/g, " ")}`;
   }
@@ -949,7 +1022,7 @@ export function buildAdminBody(
       return copy.body;
     }
     case "shift_late":
-      return `${actor} ξεκίνησε ${ctx.minutes ?? "?"} λεπτά αργότερα από το πρόγραμμα.`;
+      return `${actor} started ${ctx.minutes ?? "?"} minutes later than scheduled.`;
     case "break_started": {
       const copy = breakStartedAdmin(actor, ctx.startTime);
       return copy.body;
@@ -959,7 +1032,7 @@ export function buildAdminBody(
       return copy.body;
     }
     case "break_exceeded":
-      return `${actor} είναι σε διάλειμμα ${ctx.minutes ?? "?"} λεπτά. Όριο: 45 λεπτά.`;
+      return `${actor} has been on break for ${ctx.minutes ?? "?"} minutes. Limit: 45 minutes.`;
     case "task_shift_started": {
       const copy = taskShiftStartedAdmin(actor, ctx.startTime ?? new Date(), models);
       return copy.body;
@@ -989,7 +1062,7 @@ export function buildAdminBody(
       return copy.body;
     }
     case "custom_approved":
-      return `Custom request του ${ctx.fanUsername ?? "fan"} εγκρίθηκε. Model: ${ctx.modelName ?? "—"}, Τιμή: ${ctx.price ?? "—"}`;
+      return `Custom request for ${ctx.fanUsername ?? "a fan"} was approved. Model: ${ctx.modelName ?? "—"}, Price: ${ctx.price ?? "—"}.`;
     case "whale_registered": {
       const copy = whaleRegisteredAdmin(String(ctx.whaleName ?? ctx.whaleUsername ?? "Whale"));
       return copy.body;
@@ -1002,7 +1075,7 @@ export function buildAdminBody(
       return copy.body;
     }
     case "whale_spent":
-      return `${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} ξόδεψε ${ctx.amount ?? "?"}. Chatter: ${ctx.chatterName ?? actor}. Model: ${ctx.modelName ?? modelList}`;
+      return `${ctx.whaleName ?? ctx.whaleUsername ?? "Whale"} spent ${ctx.amount ?? "?"}. Chatter: ${ctx.chatterName ?? actor}. Model: ${ctx.modelName ?? modelList}.`;
     case "whale_session_submitted": {
       const copy = whaleSessionSubmittedAdmin(
         actor,
@@ -1014,11 +1087,11 @@ export function buildAdminBody(
       return copy.body;
     }
     case "chatter_mistake":
-      return `${actor} έκανε λάθος: ${ctx.mistakeType ?? "—"}. Καταχωρήθηκε από ${ctx.adminName ?? "admin"}`;
+      return `${actor} made a mistake: ${ctx.mistakeType ?? "—"}. Logged by ${ctx.adminName ?? "an admin"}.`;
     case "chatter_mistake_reviewed":
-      return ctx.decision === "Εγκρίθηκε"
-        ? `${actor} επικύρωσε λάθος${ctx.chatterName ? ` για ${ctx.chatterName}` : ""}.`
-        : `${actor} απέρριψε αναφορά λάθους${ctx.chatterName ? ` για ${ctx.chatterName}` : ""}.`;
+      return isApprovedDecision(String(ctx.decision ?? ""))
+        ? `${actor} approved a mistake${ctx.chatterName ? ` for ${ctx.chatterName}` : ""}.`
+        : `${actor} rejected a mistake report${ctx.chatterName ? ` for ${ctx.chatterName}` : ""}.`;
     case "fine_issued":
       return fineIssuedAdmin(
         String(ctx.chatterName ?? actor),
@@ -1082,7 +1155,7 @@ export function buildAdminBody(
     case "sop_quiz_passed":
       return sopQuizPassedAdmin(actor, String(ctx.sopTitle ?? "SOP"), Number(ctx.score ?? 0)).body;
     case "schedule_published":
-      return schedulePublishedAdmin(String(ctx.weekLabel ?? "εβδομάδα")).body;
+      return schedulePublishedAdmin(String(ctx.weekLabel ?? "the week")).body;
     default:
       return fallbackBody?.trim() || `${actor}. Models: ${modelList}.`;
   }

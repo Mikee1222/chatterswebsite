@@ -94,7 +94,7 @@ export async function POST(req: Request) {
 
     await notify({
       user_id: ctx.userRecordId,
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: NOTIFICATION_EVENT.PERIOD_LOGGED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
       title: "📅 Period logged",
       body: `Your period has been logged starting ${start_date}. Next expected: ${nextExpected}.`,
@@ -107,9 +107,9 @@ export async function POST(req: Request) {
     for (const vaUserId of vaIds) {
       await notify({
         user_id: vaUserId,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        event_type: NOTIFICATION_EVENT.PERIOD_LOGGED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: `📅 ${modelName} — Period started`,
+        title: `📅 ${modelName} — period started`,
         body: `${modelName}'s period started (${start_date}). Next expected: ${nextExpected}.`,
         entity_type: NOTIFICATION_ENTITY.PERIOD,
         entity_id: `period:log:va:${vaUserId}:${ctx.linkedModelId}:${start_date}`,
@@ -118,9 +118,9 @@ export async function POST(req: Request) {
     }
 
     await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: NOTIFICATION_EVENT.PERIOD_LOGGED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: `📅 ${modelName} — Period started`,
+      title: `📅 ${modelName} — period started`,
       body: `Period started: ${start_date}. Next expected: ${nextExpected}.`,
       entity_type: NOTIFICATION_ENTITY.PERIOD,
       entity_id: `period:log:admin:${ctx.linkedModelId}:${start_date}`,

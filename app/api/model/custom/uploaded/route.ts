@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireModelApiContext } from "@/lib/model-api-auth";
 import { getCustomRequestById, updateCustomRequestModelSchedule } from "@/services/custom-requests";
 import { notify, notifyAdmins } from "@/services/notification-service";
+import { customUploadConfirmedModel } from "@/lib/notification-copy";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { notifyAssignedVirtualAssistantCustomUploaded } from "@/services/custom-request-notify-vas";
@@ -76,8 +77,8 @@ export async function POST(req: Request) {
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Upload confirmed",
-        body: `Your upload for "${customTitle}" has been received.`,
+        title: customUploadConfirmedModel(customTitle).title,
+        body: customUploadConfirmedModel(customTitle).body,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: `${recordId}:upload_model_confirm`,
         actor_name: modelName,

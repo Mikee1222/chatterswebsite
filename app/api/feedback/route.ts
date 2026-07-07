@@ -82,10 +82,10 @@ export async function POST(req: Request) {
   });
 
   await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+    event_type: NOTIFICATION_EVENT.FEEDBACK_SUBMITTED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "💬 New Feedback Submitted",
-    body: `💬 ${reporterName} (${session.role}): "${title}" on ${page || "unknown page"}`,
+    title: "💬 New feedback submitted",
+    body: `${reporterName} (${session.role}) submitted ${allowedType} feedback: "${title}" on ${page || "an unknown page"}.`,
     entity_type: "system",
     entity_id: feedbackId,
     actor_user_id: session.airtableUserId ?? session.id,

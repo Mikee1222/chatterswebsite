@@ -2,6 +2,7 @@
 import { listAllRecords } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
 import { NOTIFICATION_EVENT } from "@/lib/notification-types";
+import { formatMoney } from "@/lib/notification-copy";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { notify, notifyByRoleConfig } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
@@ -90,7 +91,7 @@ export async function notifyClientBillingAnnounced(
   const kindLabel = kindLabelFor(cycleData.kind);
   const period = formatBillingPeriod(cycleData.period_start, cycleData.period_end);
   const amountDue = await amountDueForClient(cycleId, clientId, cycleData.amount_due);
-  const amount = `${amountDue.toFixed(2)} ${cycleData.currency}`;
+  const amount = formatMoney(amountDue, cycleData.currency);
   const dueDateFormatted = formatDueDateElGr(cycleData.due_date);
 
   const clients = await import("@/services/users").then((m) => m.listAllUsers()).catch(() => []);
@@ -101,8 +102,8 @@ export async function notifyClientBillingAnnounced(
   await notifyByRoleConfig(NOTIFICATION_EVENT.BILLING_CYCLE_ANNOUNCED, {
     personal_user_id: clientId,
     priority: "high",
-    title: `📋 Payment Due — ${kindLabel} ${period}`,
-    body: `💳 Your ${kindLabel} payment of 💰 ${amount} is due by ${dueDateFormatted}.`,
+    title: `💳 Payment due — ${kindLabel} ${period}`,
+    body: `Your ${kindLabel} payment of ${amount} is due by ${dueDateFormatted}.`,
     entity_type: "billing_cycle",
     entity_id: cycleId,
     context: { clientName, amount },
@@ -194,12 +195,12 @@ export async function sendBillingDueReminders() {
       const feeUsd = revenue?.fields.fee_usd;
       const amountDue =
         typeof feeUsd === "number" && Number.isFinite(feeUsd) ? feeUsd : cycleAmountDue;
-      const amount = `${amountDue.toFixed(2)} ${currency}`;
+      const amount = formatMoney(amountDue, currency);
 
-      const reminderTitle = isOverdue ? "🚨 Payment Overdue" : "⏰ Payment Due in 2 Days";
+      const reminderTitle = isOverdue ? "🚨 Payment overdue" : "⏰ Payment due in 2 days";
       const reminderBody = isOverdue
-        ? `🚨 Your ${kindLabel} payment of 💰 ${amount} was due on ${dueDate}. Please pay as soon as possible.`
-        : `💳 Your payment is due in 2 days. Please submit proof before the deadline.`;
+        ? `Your ${kindLabel} payment of ${amount} was due on ${dueDate}. Please pay as soon as possible.`
+        : `Your ${kindLabel} payment of ${amount} is due in 2 days. Please submit proof before the deadline.`;
 
       await notify({
         user_id: clientId,

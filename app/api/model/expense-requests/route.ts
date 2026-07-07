@@ -48,10 +48,10 @@ export async function POST(req: Request) {
   const modelName = (ctx.modelRecord.model_name ?? "").trim() || "Model";
   const assignmentTitle = parsed.data.assignment_title.trim();
   await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+    event_type: NOTIFICATION_EVENT.EXPENSE_SUBMITTED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: `💰 Expense Request Submitted`,
-    body: `💰 ${parsed.data.airbnb_link} for '${assignmentTitle}'`,
+    title: "💰 Expense request submitted",
+    body: `${modelName} submitted an expense request for "${assignmentTitle}": ${parsed.data.airbnb_link}`,
     entity_type: NOTIFICATION_ENTITY.EXPENSE_REQUEST,
     entity_id: row.id,
     actor_user_id: ctx.userRecordId,

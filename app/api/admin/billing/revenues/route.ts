@@ -7,6 +7,7 @@ import {
   getBillingCycleRevenues,
   getBillingCycleRevenuesForCycles,
 } from "@/services/client-billing";
+import { formatMoney } from "@/lib/notification-copy";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -72,7 +73,7 @@ export async function POST(req: Request) {
       if (clientId) {
         const { notify } = await import("@/services/notification-service");
         const amount = parsed.data.turnover_usd
-          ? `$${((parsed.data.turnover_usd * parsed.data.fee_percent) / 100).toFixed(2)}`
+          ? formatMoney((parsed.data.turnover_usd * parsed.data.fee_percent) / 100, "USD")
           : "";
 
         console.log("[billing/revenues POST] notifying client:", clientId);
@@ -81,8 +82,8 @@ export async function POST(req: Request) {
           user_id: String(clientId),
           event_type: "system_alert",
           priority: "high",
-          title: "📋 New Revenue Entry",
-          body: `💳 A new revenue entry has been added to your billing cycle.${amount ? ` Fee: ${amount}` : ""}`,
+          title: "📋 New revenue entry",
+          body: `A new revenue entry has been added to your billing cycle.${amount ? ` Fee: ${amount}` : ""}`,
           entity_type: "billing_cycle",
           entity_id: String(parsed.data.billing_cycle[0]),
         }).catch((e) => console.error("[billing/revenues POST] notify failed:", e));

@@ -7,6 +7,7 @@ import {
 } from "@/services/custom-requests";
 import { createModelScheduleItemForCustom } from "@/services/model-schedule";
 import { notify, notifyAdmins } from "@/services/notification-service";
+import { customScheduledModel } from "@/lib/notification-copy";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { notifyAssignedVirtualAssistantCustomUploaded } from "@/services/custom-request-notify-vas";
@@ -99,12 +100,13 @@ export async function POST(req: Request) {
     const customTitle = (existing.request_title || "Custom request").trim() || "Custom request";
     const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(ctx.linkedModelId);
     if (modelUserId) {
+      const modelCopy = customScheduledModel(customTitle);
       await notify({
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_SCHEDULED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "📅 Custom scheduled",
-        body: `A custom "${customTitle}" has been scheduled. Check your calendar.`,
+        title: modelCopy.title,
+        body: modelCopy.body,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: recordId,
         actor_name: modelName,

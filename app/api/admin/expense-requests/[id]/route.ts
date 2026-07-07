@@ -52,13 +52,15 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
         st === "approved" ? NOTIFICATION_EVENT.EXPENSE_APPROVED : NOTIFICATION_EVENT.EXPENSE_REJECTED;
       await notifyByRoleConfig(eventType, {
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: st === "approved" ? "✅ Expense Request Approved" : "❌ Expense Request Declined",
+        title: st === "approved" ? "✅ Expense request approved" : "❌ Expense request declined",
         body:
-          note && note.length > 0
-            ? note
-            : st === "approved"
-              ? "Your request is now approved."
-              : "No reason provided.",
+          st === "approved"
+            ? note.length > 0
+              ? `Your expense request was approved: ${note}`
+              : "Your expense request was approved."
+            : note.length > 0
+              ? `Your expense request was declined: ${note}`
+              : "Your expense request was declined. No reason was provided.",
         entity_type: NOTIFICATION_ENTITY.EXPENSE_REQUEST,
         entity_id: updated.id,
         actor_user_id: session.airtableUserId ?? session.id,

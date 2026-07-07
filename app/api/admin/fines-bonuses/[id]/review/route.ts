@@ -56,7 +56,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     }
 
     const approved = parsed.data.action === "approve";
-    const decision = approved ? "Εγκρίθηκε" : "Απορρίφθηκε";
+    const decision = approved ? "Approved" : "Rejected";
     const copy = fineBonusReviewedPersonal(decision, adminName);
 
     await notifyByRoleConfig(NOTIFICATION_EVENT.FINE_BONUS_REVIEWED, {

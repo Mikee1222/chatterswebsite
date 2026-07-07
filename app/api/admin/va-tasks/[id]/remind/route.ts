@@ -32,8 +32,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
   }
 
   const dueLine = task.due_date?.trim()
-    ? `Due: ${formatDateTimeAthens(task.due_date)}`
-    : "Please complete or update this task.";
+    ? `It's due ${formatDateTimeAthens(task.due_date)}.`
+    : "Please complete or update it soon.";
 
   const slot = Date.now();
   await Promise.all(
@@ -42,8 +42,8 @@ export async function POST(_req: Request, ctx: { params: Promise<{ id: string }>
         user_id: userId,
         event_type: NOTIFICATION_EVENT.VA_TASK_REMINDER,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: `📋 Task Reminder: ${task.title}`,
-        body: `📋 An admin asked you to review this task. ${dueLine}`,
+        title: `📋 Reminder: ${task.title}`,
+        body: `An admin asked you to follow up on "${task.title}". ${dueLine}`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_admin_remind:${task.id}:${slot}:${userId}`,
       }).catch(() => {})

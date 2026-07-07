@@ -120,6 +120,13 @@ export const NOTIFICATION_EVENT = {
   REBILL_VERIFIED: "rebill_verified" as const,
   REBILL_REJECTED: "rebill_rejected" as const,
   MODEL_SCHEDULE_CREATED: "model_schedule_created" as const,
+  // Dedicated submission events (split out from generic system_alert)
+  FEEDBACK_SUBMITTED: "feedback_submitted" as const,
+  REBILL_SUBMITTED: "rebill_submitted" as const,
+  EXTRA_REVENUE_SUBMITTED: "extra_revenue_submitted" as const,
+  EXPENSE_SUBMITTED: "expense_submitted" as const,
+  TIME_OFF_REQUESTED: "time_off_requested" as const,
+  PERIOD_LOGGED: "period_logged" as const,
   // Admin monitoring variants (paired with personal events above)
   SHIFT_STARTED_ADMIN: "shift_started_admin" as const,
   SHIFT_ENDED_ADMIN: "shift_ended_admin" as const,
@@ -287,6 +294,12 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   rebill_verified: "normal",
   rebill_rejected: "normal",
   model_schedule_created: "normal",
+  feedback_submitted: "normal",
+  rebill_submitted: "normal",
+  extra_revenue_submitted: "normal",
+  expense_submitted: "normal",
+  time_off_requested: "normal",
+  period_logged: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */

@@ -1153,6 +1153,13 @@ export type NotificationEventType =
   | "sop_academy_reminder"
   | "sop_academy_training_complete"
   | "sop_academy_signed_off"
+  // Dedicated submission events (split out from generic system_alert)
+  | "feedback_submitted"
+  | "rebill_submitted"
+  | "extra_revenue_submitted"
+  | "expense_submitted"
+  | "time_off_requested"
+  | "period_logged"
   // Admin monitoring variants (_admin suffix)
   | "shift_started_admin"
   | "shift_ended_admin"

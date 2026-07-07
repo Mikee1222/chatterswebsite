@@ -94,8 +94,8 @@ export async function POST(req: Request) {
     await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
       personal_user_id: parsed.data.va_user_record_id,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "📋 New VA Content Assignment",
-      body: `📋 ${displayTitle} — assigned by admin. Open Content assignments or your calendar.`,
+      title: "📋 New VA content assignment",
+      body: `${displayTitle} — assigned by admin. Open Content assignments or your calendar.`,
       entity_type: "va_content_assignment",
       entity_id: row.id,
     }).catch(() => {});

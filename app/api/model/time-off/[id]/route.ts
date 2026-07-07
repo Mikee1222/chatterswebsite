@@ -29,10 +29,10 @@ export async function DELETE(_req: Request, ctx: { params: Promise<{ id: string 
   }
 
   await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+    event_type: NOTIFICATION_EVENT.TIME_OFF_REQUESTED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: `❌ Time Off Cancelled: ${modelName}`,
-    body: `❌ ${modelName} cancelled a pending time-off request (record ${recordId}).`,
+    title: `❌ Time off cancelled — ${modelName}`,
+    body: `${modelName} cancelled a pending time-off request.`,
     entity_type: NOTIFICATION_ENTITY.ACCOUNT,
     entity_id: modelCtx.linkedModelId,
     actor_name: modelName,

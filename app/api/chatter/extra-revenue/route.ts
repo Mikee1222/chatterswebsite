@@ -6,6 +6,7 @@ import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { createExtraRevenueSubmission, type FineBonusPaymentMethod } from "@/services/fines-bonuses";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { formatMoney } from "@/lib/notification-copy";
 
 const PAYMENT_METHODS = new Set<FineBonusPaymentMethod>(["PayPal", "Revolut", "Other"]);
 
@@ -77,10 +78,10 @@ export async function POST(req: Request) {
     });
 
     await notifyAdmins({
-      event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+      event_type: NOTIFICATION_EVENT.EXTRA_REVENUE_SUBMITTED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "💸 Extra Revenue Submitted",
-      body: `💸 ${userName} submitted extra revenue for ${model_name}`,
+      title: "💰 Extra revenue submitted",
+      body: `${userName} submitted ${formatMoney(amount, "EUR")} of extra revenue for ${model_name}.`,
       entity_type: "fine_bonus",
       entity_id: id,
       actor_user_id: userId,

@@ -469,6 +469,32 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     description: "The model (and assigned chatter/VA) when a schedule/calendar item is created for them.",
   },
 
+  // ---- Dedicated submission events (split out from generic system_alert) ----
+  feedback_submitted: {
+    rule: "admin_only",
+    description: "Admins/managers when a user submits feedback (bug/suggestion).",
+  },
+  rebill_submitted: {
+    rule: "admin_only",
+    description: "Admins/managers when a chatter submits a rebill for review.",
+  },
+  extra_revenue_submitted: {
+    rule: "admin_only",
+    description: "Admins/managers when a chatter submits extra revenue.",
+  },
+  expense_submitted: {
+    rule: "admin_only",
+    description: "Admins/managers when a model submits an expense request.",
+  },
+  time_off_requested: {
+    rule: "admin_only",
+    description: "Admins/managers when a model requests or cancels time off.",
+  },
+  period_logged: {
+    rule: "admin_and_assigned_party",
+    description: "The model (self), their VAs, and admins when a period is logged.",
+  },
+
   // ---- Admin monitoring variants (_admin suffix) ----
   shift_started_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
   shift_ended_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
@@ -585,6 +611,11 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "payment_submitted",
   "billing_payment_submitted",
   "model_content_request_created",
+  "feedback_submitted",
+  "rebill_submitted",
+  "extra_revenue_submitted",
+  "expense_submitted",
+  "time_off_requested",
 ];
 
 /** Event types that go only to the assigned/acting user (no admins). */

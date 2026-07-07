@@ -144,8 +144,8 @@ export async function runSundayAvailabilityReminders(): Promise<SundayAvailabili
       user_id: uid,
       event_type: NOTIFICATION_EVENT.SCHEDULE_UPDATED,
       priority: NOTIFICATION_PRIORITY.NORMAL,
-      title: "⏰ Reminder: Submit your availability",
-      body: "⏰ Please submit your availability for next week before midnight.",
+      title: "⏰ Reminder: submit your availability",
+      body: "Please submit your availability for next week before midnight.",
       entity_type: "system",
       entity_id: entityId,
     }).catch(() => {});
@@ -309,8 +309,8 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
         user_id: userId,
         event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⚠️ Task Overdue",
-        body: `⚠️ Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
+        title: "⚠️ Task overdue",
+        body: `Your task "${task.title}" was due ${daysOverdue} day(s) ago. Please complete or update it.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
       }).catch(() => {});
@@ -323,7 +323,7 @@ export async function runVaTaskOverdueEscalation(): Promise<VaTaskOverdueEscalat
         event_type: NOTIFICATION_EVENT.TASK_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: `⚠️ VA task overdue: ${task.title}`,
-        body: `⚠️ ${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
+        body: `${vaName}'s task "${task.title}" is ${daysOverdue} days overdue.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_overdue_admin:${task.id}:${new Date(now).toISOString().slice(0, 10)}`,
       }).catch(() => {});
@@ -448,7 +448,7 @@ export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestA
         event_type: NOTIFICATION_EVENT.CUSTOM_DEADLINE_APPROACHING,
         priority: NOTIFICATION_PRIORITY.HIGH,
         title: "⏰ Custom request needs attention",
-        body: `⚠️ Custom request "${request.request_title}" has been ${request.model_status} for over 2 days with no update.`,
+        body: `Custom request "${request.request_title}" has been ${request.model_status} for over 2 days with no update.`,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: `custom_stuck_va:${request.id}`,
       }).catch(() => {});
@@ -459,7 +459,7 @@ export async function runStuckCustomRequestAlerts(): Promise<StuckCustomRequestA
       event_type: NOTIFICATION_EVENT.CUSTOM_OVERDUE,
       priority: NOTIFICATION_PRIORITY.HIGH,
       title: `⚠️ Custom request stuck: ${request.request_title}`,
-      body: `⚠️ Request from ${request.chatter_name || "Unknown chatter"} has been in "${request.model_status}" status for 2+ days. Fan: ${request.fan_username || "Unknown fan"}.`,
+      body: `Request from ${request.chatter_name || "Unknown chatter"} has been in "${request.model_status}" status for 2+ days. Fan: ${request.fan_username || "Unknown fan"}.`,
       entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
       entity_id: `custom_stuck_admin:${request.id}`,
     }).catch(() => {});
@@ -609,8 +609,8 @@ export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.PHASE_OVERDUE,
         priority: NOTIFICATION_PRIORITY.HIGH,
-        title: "⚠️ Phase Overdue",
-        body: `⚠️ "${phaseTitle}" deadline passed with incomplete items`,
+        title: "⚠️ Phase overdue",
+        body: `"${phaseTitle}" deadline passed with incomplete items.`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
         entity_id: phase.id,
       }).catch(() => {});
@@ -622,7 +622,7 @@ export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
           event_type: NOTIFICATION_EVENT.PHASE_OVERDUE,
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: `⚠️ Phase overdue: ${phaseTitle}`,
-          body: `⚠️ The deadline for "${phaseTitle}" has passed. Please complete remaining items.`,
+          body: `The deadline for "${phaseTitle}" has passed. Please complete remaining items.`,
           entity_type: NOTIFICATION_ENTITY.VA_TASK_PHASE,
           entity_id: phase.id,
         }).catch(() => {});

@@ -224,6 +224,12 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   rebill_verified: ["chatter"],
   rebill_rejected: ["chatter"],
   model_schedule_created: ["model", "chatter", "virtual_assistant"],
+  feedback_submitted: ["admin", "manager"],
+  rebill_submitted: ["admin", "manager"],
+  extra_revenue_submitted: ["admin", "manager"],
+  expense_submitted: ["admin", "manager"],
+  time_off_requested: ["admin", "manager"],
+  period_logged: ["model", "virtual_assistant", "admin", "manager"],
 };
 
 /** Build per-role scope for personal (non-_admin) events. Admin/manager use _admin variants instead. */
@@ -591,6 +597,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Period prediction reset",
       "Αποστέλλεται στο model όταν επαναφέρεται η πρόβλεψη περιόδου"
     ),
+    eventEntry(
+      "period_logged",
+      "Period logged",
+      "Αποστέλλεται στο model, τους VA και τους admin όταν καταχωρείται περίοδος"
+    ),
   ],
   whale: [
     ...pairedEvents(
@@ -704,6 +715,16 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "rebill_rejected",
       "Rebill rejected",
       "Αποστέλλεται στον chatter όταν το rebill του απορρίπτεται"
+    ),
+    eventEntry(
+      "rebill_submitted",
+      "Rebill submitted (admin)",
+      "Ενημερώνει τον admin όταν ένας chatter υποβάλλει rebill προς έλεγχο"
+    ),
+    eventEntry(
+      "extra_revenue_submitted",
+      "Extra revenue submitted (admin)",
+      "Ενημερώνει τον admin όταν ένας chatter υποβάλλει extra revenue"
     ),
   ],
   reward: [
@@ -972,6 +993,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Αποστέλλεται στο model όταν απορρίπτεται expense request",
       "Ενημερώνει τον admin για απόρριψη expense request"
     ),
+    eventEntry(
+      "expense_submitted",
+      "Expense request submitted (admin)",
+      "Ενημερώνει τον admin όταν ένα model υποβάλλει expense request"
+    ),
   ],
   training_alerts: [
     eventEntry(
@@ -1031,6 +1057,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Schedule item created",
       "Αποστέλλεται στο model (και τον assigned chatter/VA) όταν δημιουργείται νέο στοιχείο στο πρόγραμμά τους"
     ),
+    eventEntry(
+      "time_off_requested",
+      "Time off requested (admin)",
+      "Ενημερώνει τον admin όταν ένα model ζητά ή ακυρώνει άδεια"
+    ),
     ...pairedEvents(
       "availability_submitted",
       "Availability submitted",
@@ -1041,6 +1072,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
   ],
   system: [
     eventEntry("system_alert", "General system message", "Γενικό μήνυμα συστήματος"),
+    eventEntry(
+      "feedback_submitted",
+      "Feedback submitted (admin)",
+      "Ενημερώνει τον admin όταν ένας χρήστης υποβάλλει feedback (bug/πρόταση)"
+    ),
     ...pairedEvents(
       "user_created",
       "New user account created",

@@ -6,6 +6,7 @@ import { ROUTES } from "@/lib/routes";
 import {
   customScheduledAdmin,
   customScheduledChatter,
+  customScheduledModel,
   formatTimeShort,
 } from "@/lib/notification-copy";
 import {
@@ -151,12 +152,13 @@ export async function POST(request: Request) {
 
     const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(model_id);
     if (modelUserId) {
+      const modelCopy = customScheduledModel(customTitle);
       await notify({
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_SCHEDULED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "📅 Custom scheduled",
-        body: `A custom "${customTitle}" has been scheduled. Check your calendar.`,
+        title: modelCopy.title,
+        body: modelCopy.body,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: record_id,
         actor_user_id: access.actorUserId,

@@ -50,7 +50,7 @@ export async function runCheckBreakReminders(): Promise<CheckBreakRemindersResul
           event_type: NOTIFICATION_EVENT.SHIFT_STARTING_SOON,
           priority: NOTIFICATION_PRIORITY.HIGH,
           title: "⏰ Break reminder",
-          body: "⏰ Your break is ending soon — time to get back to work!",
+          body: "Your break is ending soon — time to get back to work!",
           entity_type: NOTIFICATION_ENTITY.SHIFT,
           entity_id: `break_reminder:${shift.id}:${raw}`,
           _triggerSource: "break_reminder_cron",

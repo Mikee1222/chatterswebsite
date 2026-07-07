@@ -71,8 +71,8 @@ async function sendAcademyReminderOnce(input: {
   ).catch(() => false);
   if (exists) return false;
 
-  const title = "📚 SOP Academy";
-  const body = `📚 Ολοκλήρωσε το training σου (${input.completed}/${input.total})`;
+  const title = "📚 Continue your SOP training";
+  const body = `You've completed ${input.completed} of ${input.total} steps. Finish your SOP Academy training when you have a moment.`;
 
   await notifyByRoleConfig(NOTIFICATION_EVENT.SOP_ACADEMY_REMINDER, {
     recipient_mode: "personal_only",
@@ -201,8 +201,8 @@ export async function notifyAdminsSopTrainingComplete(input: {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SOP_ACADEMY_TRAINING_COMPLETE,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "📚 SOP Training Completed",
-    body: `🎉 ${input.userName} completed all ${input.totalFunctions} steps for ${input.roleName}.`,
+    title: "📚 SOP training completed",
+    body: `${input.userName} completed all ${input.totalFunctions} steps for ${input.roleName}.`,
     entity_type: ENTITY_TYPE,
     entity_id: entityId,
     actor_user_id: input.userId,
@@ -220,8 +220,8 @@ export async function notifyAdminsSopSignoff(input: {
   await notifyAdmins({
     event_type: NOTIFICATION_EVENT.SOP_ACADEMY_SIGNED_OFF,
     priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "✅ SOP Training Sign-Off",
-    body: `✅ ${input.userName} signed off on ${input.roleName} academy training.`,
+    title: "✅ SOP training sign-off",
+    body: `${input.userName} signed off on ${input.roleName} academy training.`,
     entity_type: ENTITY_TYPE,
     entity_id: entityId,
     actor_user_id: input.userId,

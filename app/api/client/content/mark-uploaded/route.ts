@@ -3,7 +3,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireClientModelAccess } from "@/lib/client-content-auth";
 import { ROUTES } from "@/lib/routes";
-import { customUploadedChatter } from "@/lib/notification-copy";
+import { customUploadedChatter, customUploadConfirmedModel } from "@/lib/notification-copy";
 import {
   NOTIFICATION_EVENT,
   NOTIFICATION_ENTITY,
@@ -102,8 +102,8 @@ export async function POST(request: Request) {
         user_id: modelUserId,
         event_type: NOTIFICATION_EVENT.CUSTOM_UPLOADED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Upload confirmed",
-        body: `Your upload for "${customTitle}" has been received.`,
+        title: customUploadConfirmedModel(customTitle).title,
+        body: customUploadConfirmedModel(customTitle).body,
         entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
         entity_id: `${record_id}:upload_model_confirm`,
         actor_user_id: access.actorUserId,

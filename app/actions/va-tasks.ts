@@ -7,6 +7,7 @@ import { ROUTES } from "@/lib/routes";
 import { getNotificationUserId } from "@/lib/notification-user";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { vaTaskAssigned } from "@/lib/notification-copy";
 import {
   createVaTask,
   updateVaTask,
@@ -56,15 +57,15 @@ async function notifyVaTaskAssigned(
 ): Promise<void> {
   const recipients = (task.assigned_to_ids ?? []).filter((uid) => uid && uid !== actorId);
   if (recipients.length === 0) return;
-  const title = task.title?.trim() || "New task";
+  const copy = vaTaskAssigned(task.title ?? "");
   await Promise.all(
     recipients.map((uid) =>
       notify({
         user_id: uid,
         event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "🗂️ New task assigned",
-        body: `You've been assigned "${title}". Open My tasks to get started.`,
+        title: copy.title,
+        body: copy.body,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: task.id,
         actor_user_id: actorId ?? undefined,
@@ -199,8 +200,8 @@ export async function updateVaTaskStatusAction(input: {
       await notifyAdmins({
         event_type: NOTIFICATION_EVENT.TASK_COMPLETED,
         priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ VA Task Completed",
-        body: `✅ Task completed: ${task.title} by ${vaName}`,
+        title: "✅ VA task completed",
+        body: `${vaName} completed the task "${task.title}".`,
         entity_type: NOTIFICATION_ENTITY.VA_TASK,
         entity_id: `va_task_done:${input.taskId}:${Date.now()}`,
       }).catch((e) => console.error("[notify] va_task_completed failed", e));
