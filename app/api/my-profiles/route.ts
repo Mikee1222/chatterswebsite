@@ -11,6 +11,6 @@ export async function GET() {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const data = await getMyProfilesData(session.id);
+  const data = await getMyProfilesData(session.airtableUserId ?? session.id);
   return NextResponse.json(data);
 }

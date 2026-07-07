@@ -446,10 +446,14 @@ export async function getPhones(): Promise<Phone[]> {
 }
 
 export async function getPhonesByVA(vaId: string): Promise<Phone[]> {
-  const vid = airtableFormulaString(vaId);
+  const id = vaId.trim();
+  if (!id) return [];
+  // NOTE: "Assigned VA" is a multipleRecordLinks field. ARRAYJOIN() on it yields the
+  // linked users' PRIMARY field text (e.g. user_id), never their Airtable record IDs —
+  // so a filterByFormula matching on the record ID never matches. Fetch and match the
+  // linked record ID in JS instead (same record-ID scoping as getAccountsByVA).
   const [phoneRecords, accounts, vaNameById] = await Promise.all([
     listAllRecords<PhoneFields>(TABLE_PHONES, {
-      filterByFormula: `FIND("${vid}", ARRAYJOIN({${FIELD_ASSIGNED_VA}}))`,
       sort: [{ field: FIELD_PHONE_CREATED_AT, direction: "desc" }],
     }),
     getAllAccounts(),
@@ -458,7 +462,7 @@ export async function getPhonesByVA(vaId: string): Promise<Phone[]> {
   const counts = countAccountsByPhoneId(accounts);
   return phoneRecords
     .map((rec) => mapPhone(rec, vaNameById, counts[rec.id] ?? 0))
-    .filter((phone) => phone.assigned_va_id === vaId);
+    .filter((phone) => phone.assigned_va_id === id);
 }
 
 export async function getPhoneDetail(phoneId: string): Promise<PhoneDetail | null> {

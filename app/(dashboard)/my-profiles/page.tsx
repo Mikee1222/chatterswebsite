@@ -14,7 +14,7 @@ export default async function MyProfilesPage() {
     redirect(ROUTES.dashboard);
   }
 
-  const initialData = await getMyProfilesData(session.id);
+  const initialData = await getMyProfilesData(session.airtableUserId ?? session.id);
 
   return (
     <VaTasksDesignShell>
