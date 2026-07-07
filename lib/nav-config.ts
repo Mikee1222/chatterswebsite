@@ -170,6 +170,8 @@ export type NavItem = {
    * (they see the richer MANAGER REVIEW item instead).
    */
   hiddenIfPermission?: Permission;
+  /** When set, item is hidden if the user has any of these permissions. */
+  hiddenIfAnyPermission?: Permission[];
   /** When true, item never fills a mobile bottom-bar slot (stays in the More sheet only). */
   excludeFromMobileMainTabs?: boolean;
   /**
@@ -310,11 +312,7 @@ const adminNav: NavItem[] = [
     label: "VA tasks",
     iconKey: "ListTodo",
     navSection: "TEAM",
-    requiresAnyPermission: [
-      PERMISSIONS.VA_TASKS_VIEW,
-      PERMISSIONS.VA_TASKS_MANAGE,
-      PERMISSIONS.TASK_PROGRESS_VIEW,
-    ],
+    requiresAnyPermission: [PERMISSIONS.VA_TASKS_MANAGE, PERMISSIONS.TASK_PROGRESS_VIEW],
   },
   {
     href: ROUTES.admin.taskTemplates,
@@ -653,6 +651,16 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresPermission: PERMISSIONS.ACCOUNTS_VIEW,
   },
   {
+    href: ROUTES.va.tasks,
+    label: "VA tasks",
+    iconKey: "ListTodo",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
+    // Users who can manage VA tasks or view Progress Overview see the admin item instead.
+    hiddenIfAnyPermission: [PERMISSIONS.VA_TASKS_MANAGE, PERMISSIONS.TASK_PROGRESS_VIEW],
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.spotChecks,
     label: "Spot Checks",
     iconKey: "ListTodo",
@@ -737,7 +745,10 @@ function appendSharedNavItems(base: NavItem[]): NavItem[] {
 /** Shared admin nav items shown to custom roles regardless of grants (Home, Settings, etc.). */
 function getCustomRoleSharedAdminNavItems(): NavItem[] {
   return adminNav
-    .filter((item) => !item.requiresPermission && !item.adminOnly)
+    .filter(
+      (item) =>
+        !item.requiresPermission && !item.requiresAnyPermission && !item.adminOnly
+    )
     .map((item) =>
       item.href === ROUTES.admin.home ? { ...item, href: ROUTES.admin.customRoleHome } : item
     );
@@ -802,8 +813,17 @@ export function filterNavItemsByPermissions(
     if (item.requiresAnyPermission && !item.requiresAnyPermission.some((p) => set.has(p))) return false;
     if (item.requiresPermission && !set.has(item.requiresPermission)) return false;
     if (item.hiddenIfPermission && set.has(item.hiddenIfPermission)) return false;
+    if (item.hiddenIfAnyPermission?.some((p) => set.has(p))) return false;
     return true;
   });
+}
+
+/** Admin VA Tasks nav (list and/or Progress Overview) — manage or progress-only grants. */
+export function qualifiesForAdminVaTasksNav(
+  granted: ReadonlySet<Permission> | readonly Permission[]
+): boolean {
+  const set = granted instanceof Set ? granted : new Set(granted);
+  return set.has(PERMISSIONS.VA_TASKS_MANAGE) || set.has(PERMISSIONS.TASK_PROGRESS_VIEW);
 }
 
 /**
@@ -815,12 +835,7 @@ export function shouldUsePersonalVaTasksNav(
   granted: ReadonlySet<Permission> | readonly Permission[]
 ): boolean {
   const set = granted instanceof Set ? granted : new Set(granted);
-  return (
-    isCustomNavRole(role) &&
-    set.has(PERMISSIONS.VA_TASKS_VIEW) &&
-    !set.has(PERMISSIONS.VA_TASKS_MANAGE) &&
-    !set.has(PERMISSIONS.TASK_PROGRESS_VIEW)
-  );
+  return isCustomNavRole(role) && set.has(PERMISSIONS.VA_TASKS_VIEW) && !qualifiesForAdminVaTasksNav(set);
 }
 
 /** Rewrite admin VA Tasks href → personal task view when appropriate. */

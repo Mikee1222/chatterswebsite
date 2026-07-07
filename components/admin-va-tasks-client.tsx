@@ -529,6 +529,12 @@ export function AdminVaTasksClient({
   const [progressPhasesLoading, setProgressPhasesLoading] = React.useState(false);
   const [progressPhasesError, setProgressPhasesError] = React.useState<string | null>(null);
 
+  React.useEffect(() => {
+    if (!canShowList && canViewProgress) {
+      setViewMode("progress");
+    }
+  }, [canShowList, canViewProgress]);
+
   const dateFilteredTasks = React.useMemo(
     () => filterTasksByAthensYmd(localTasks, selectedYmd),
     [localTasks, selectedYmd],

@@ -26,7 +26,7 @@ import {
 import { getSessionFromCookies } from "@/lib/auth";
 import { getUserPermissions, isAdminAreaUser } from "@/lib/rbac";
 import { PERMISSION_DESCRIPTIONS, PERMISSIONS, type Permission } from "@/lib/permissions";
-import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
+import { shouldUsePersonalVaTasksNav, qualifiesForAdminVaTasksNav } from "@/lib/nav-config";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 
@@ -101,6 +101,13 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
     href: ROUTES.admin.vaTasks,
     icon: CheckSquare,
     description: PERMISSION_DESCRIPTIONS["va-tasks:view"],
+  },
+  {
+    permission: "task_progress:view",
+    title: "VA Tasks",
+    href: ROUTES.admin.vaTasks,
+    icon: CheckSquare,
+    description: PERMISSION_DESCRIPTIONS["task_progress:view"],
   },
   {
     permission: "sops:manage",
@@ -197,7 +204,16 @@ export default async function CustomRoleHomePage() {
   if (permissions.length === 0) redirect(ROUTES.dashboard);
 
   const permissionSet = new Set(permissions);
-  const visibleCards = SHORTCUT_CARDS.filter((card) => permissionSet.has(card.permission));
+  const visibleCards = SHORTCUT_CARDS.filter((card) => {
+    if (!permissionSet.has(card.permission)) return false;
+    if (
+      card.permission === PERMISSIONS.VA_TASKS_VIEW &&
+      qualifiesForAdminVaTasksNav(permissionSet)
+    ) {
+      return false;
+    }
+    return true;
+  });
 
   const resolveShortcutHref = (card: ShortcutCard): string => {
     if (
@@ -205,6 +221,12 @@ export default async function CustomRoleHomePage() {
       shouldUsePersonalVaTasksNav(user.role, permissionSet)
     ) {
       return ROUTES.va.tasks;
+    }
+    if (
+      card.permission === PERMISSIONS.TASK_PROGRESS_VIEW ||
+      card.permission === PERMISSIONS.VA_TASKS_MANAGE
+    ) {
+      return ROUTES.admin.vaTasks;
     }
     return card.href;
   };
