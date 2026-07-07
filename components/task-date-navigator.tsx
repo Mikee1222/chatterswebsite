@@ -16,7 +16,7 @@ type TaskDateNavigatorProps = {
 const NAV_BTN =
   "flex h-9 w-9 items-center justify-center rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#151315] text-[#B8B4B8]/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition hover:border-[#D4AF8C]/30 hover:bg-[#1A1618] hover:text-[#D4AF8C] disabled:opacity-40";
 
-export function TaskDateNavigator({ value, onChange, className }: TaskDateNavigatorProps) {
+export const TaskDateNavigator = React.memo(function TaskDateNavigator({ value, onChange, className }: TaskDateNavigatorProps) {
   const todayYmd = getVaTasksViewTodayYmd();
   const isToday = value === todayYmd;
   const dateInputRef = React.useRef<HTMLInputElement>(null);
@@ -94,4 +94,4 @@ export function TaskDateNavigator({ value, onChange, className }: TaskDateNaviga
       ) : null}
     </div>
   );
-}
+});

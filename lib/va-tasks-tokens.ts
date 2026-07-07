@@ -14,7 +14,7 @@ export const VA_TASKS = {
 
 /** Gradient card surface with champagne border ring (see globals `.va-card`). */
 export const VA_CARD =
-  "va-card rounded-2xl transition-[transform,box-shadow,border-color] duration-200 motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.65),0_0_32px_-8px_rgba(255,20,147,0.12)]";
+  "va-card rounded-2xl transition-[transform,border-color] duration-200 motion-reduce:transition-none hover:-translate-y-px";
 
 /** Hover-only glow — avoid always-on blur on large surfaces (GPU cost). */
 export const VA_CARD_GLOW =
@@ -27,7 +27,7 @@ export const VA_STATUS_BADGE =
   "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]";
 
 export const VA_MODEL_TAG =
-  "rounded-full border border-[#D4AF8C]/40 bg-[#D4AF8C]/[0.06] px-2.5 py-0.5 text-xs font-medium text-[#D4AF8C] shadow-[0_0_12px_-4px_rgba(212,175,140,0.35)]";
+  "rounded-full border border-[#D4AF8C]/40 bg-[#D4AF8C]/[0.06] px-2.5 py-0.5 text-xs font-medium text-[#D4AF8C]";
 
 export const VA_CHAMPAGNE_DIVIDER = "va-champagne-divider h-px w-full";
 

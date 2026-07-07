@@ -18,6 +18,7 @@ import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-da
 import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
+import { AdminVaTasksFilters } from "@/components/admin-va-tasks-filters";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -143,10 +144,11 @@ function priorityBorderClass(priority: VaTaskPriority) {
   return "border-l-blue-500";
 }
 
-const ADMIN_FILTER_INPUT = VA_FILTER_INPUT;
-
 const ADMIN_MODAL_INPUT =
   "w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#151315] px-4 py-3 text-sm text-[#B8B4B8] placeholder:text-[#B8B4B8]/30 outline-none transition focus:border-[#FF1493]/45 focus:ring-1 focus:ring-[#FF1493]/15";
+
+const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
+const TASK_LIST_INITIAL_CAP = 40;
 
 function Divider() {
   return <div className={cn(VA_CHAMPAGNE_DIVIDER, "h-px")} />;
@@ -205,9 +207,9 @@ function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
   const k = (priority || "normal").toLowerCase();
   const variant =
     k === "urgent"
-      ? "border-red-500/40 bg-red-500/12 text-red-300 shadow-[0_0_14px_-4px_rgba(239,68,68,0.4)]"
+      ? "border-red-500/40 bg-red-500/12 text-red-300"
       : k === "high"
-        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C] shadow-[0_0_14px_-4px_rgba(212,175,140,0.35)]"
+        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C]"
         : "border-white/12 bg-white/[0.05] text-[#B8B4B8]/70";
   return (
     <span className={cn(VA_STATUS_BADGE, variant)}>{priority}</span>
@@ -312,10 +314,10 @@ function StatusBadge({ status }: { status: VaTaskStatus }) {
     k === "pending"
       ? "border-white/14 bg-white/[0.05] text-[#B8B4B8]/70"
       : k === "done"
-        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C] shadow-[0_0_14px_-4px_rgba(212,175,140,0.35)]"
+        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C]"
         : k === "skipped"
           ? "border-red-500/35 bg-red-500/12 text-red-300"
-          : "border-[#FF1493]/35 bg-[#FF1493]/12 text-[#FF1493] shadow-[0_0_14px_-4px_rgba(255,20,147,0.35)]";
+          : "border-[#FF1493]/35 bg-[#FF1493]/12 text-[#FF1493]";
   return (
     <span className={cn(VA_STATUS_BADGE, variant)}>{status.replace(/_/g, " ")}</span>
   );
@@ -332,6 +334,8 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
   const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const [loadingPhases, setLoadingPhases] = React.useState<string | null>(null);
+  const taskPhasesRef = React.useRef(taskPhases);
+  taskPhasesRef.current = taskPhases;
 
   React.useEffect(() => setLocalTasks(tasks), [tasks]);
 
@@ -348,13 +352,14 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     [vaUsers]
   );
 
-  const [search, setSearch] = React.useState("");
+  const [deferredSearch, setDeferredSearch] = React.useState("");
+  const handleDeferredSearchChange = React.useCallback((q: string) => setDeferredSearch(q), []);
   const [filterVa, setFilterVa] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState("");
   const [filterPriority, setFilterPriority] = React.useState("");
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
-  const deferredSearch = React.useDeferredValue(search);
+  const [showAllTasks, setShowAllTasks] = React.useState(false);
 
   const dateFilteredTasks = React.useMemo(
     () => filterTasksByAthensYmd(localTasks, selectedYmd),
@@ -480,13 +485,22 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
   }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority]);
 
   const { regularTasks, recurringGroups } = React.useMemo(
-    () => groupRecurringTasks(filteredTasks, { forDateView: true }),
+    () => groupRecurringTasks(filteredTasks, DATE_VIEW_GROUP_OPTS),
     [filteredTasks],
   );
 
   const dateGrouped = React.useMemo(
-    () => groupRecurringTasks(dateFilteredTasks, { forDateView: true }),
+    () => groupRecurringTasks(dateFilteredTasks, DATE_VIEW_GROUP_OPTS),
     [dateFilteredTasks],
+  );
+
+  React.useEffect(() => {
+    setShowAllTasks(false);
+  }, [selectedYmd, deferredSearch, filterVa, filterStatus, filterPriority]);
+
+  const visibleRegularTasks = React.useMemo(
+    () => (showAllTasks ? regularTasks : regularTasks.slice(0, TASK_LIST_INITIAL_CAP)),
+    [regularTasks, showAllTasks],
   );
 
   const taskStats = React.useMemo(() => {
@@ -845,8 +859,8 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     }
   }
 
-  async function loadPhases(taskId: string) {
-    if (taskPhases[taskId]) return;
+  const loadPhases = React.useCallback(async (taskId: string) => {
+    if (taskPhasesRef.current[taskId]) return;
     setLoadingPhases(taskId);
     try {
       const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
@@ -855,7 +869,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     } finally {
       setLoadingPhases(null);
     }
-  }
+  }, []);
 
   async function handleAddPhase(taskId: string, taskTitle: string) {
     const phases = taskPhases[taskId] ?? [];
@@ -1320,44 +1334,17 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
       </div>
 
       <div className={cn(VA_CARD, "flex flex-wrap gap-3 p-4 hover:translate-y-0")}>
-        <input
-          type="search"
-          placeholder="Search tasks…"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className={cn(ADMIN_FILTER_INPUT, "min-w-[10rem] flex-1")}
+        <AdminVaTasksFilters
+          onDeferredSearchChange={handleDeferredSearchChange}
+          filterVa={filterVa}
+          onFilterVaChange={setFilterVa}
+          filterStatus={filterStatus}
+          onFilterStatusChange={setFilterStatus}
+          filterPriority={filterPriority}
+          onFilterPriorityChange={setFilterPriority}
+          vaOptions={vaOptionsForFilter}
+          className="w-full"
         />
-        <CustomSelect
-          value={filterVa}
-          onChange={setFilterVa}
-          options={vaOptionsForFilter}
-          triggerClassName={cn(ADMIN_FILTER_INPUT, "min-w-[10rem]")}
-          portaled
-        />
-        <select
-          value={filterStatus}
-          onChange={(e) => setFilterStatus(e.target.value)}
-          className={cn(ADMIN_FILTER_INPUT, "min-w-[9rem]")}
-        >
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, " ")}
-            </option>
-          ))}
-        </select>
-        <select
-          value={filterPriority}
-          onChange={(e) => setFilterPriority(e.target.value)}
-          className={cn(ADMIN_FILTER_INPUT, "min-w-[9rem]")}
-        >
-          <option value="">All priorities</option>
-          {PRIORITIES.map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
       </div>
 
       {localTasks.length > 0 && dateFilteredTasks.length === 0 ? (
@@ -1378,9 +1365,18 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {regularTasks.map((task) => (
+          {visibleRegularTasks.map((task) => (
             <React.Fragment key={task.id}>{renderAdminTaskCard(task)}</React.Fragment>
           ))}
+          {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
+            <button
+              type="button"
+              onClick={() => setShowAllTasks(true)}
+              className="md:col-span-2 w-full rounded-2xl border border-[rgba(255,255,255,0.08)] bg-[#151315] px-4 py-3 text-sm font-medium text-[#D4AF8C]/80 transition hover:border-[#D4AF8C]/30 hover:text-[#D4AF8C]"
+            >
+              Show all {regularTasks.length} tasks ({regularTasks.length - TASK_LIST_INITIAL_CAP} more)
+            </button>
+          ) : null}
           {recurringGroups.map((group) => (
             <div key={group.title} className="mb-3 md:col-span-2">
               {group.currentTask ? (

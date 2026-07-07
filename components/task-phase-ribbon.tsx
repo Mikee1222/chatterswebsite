@@ -66,7 +66,7 @@ function segmentClass(status: TaskPhase["status"], isLast: boolean) {
   return "va-ribbon-segment va-ribbon-segment--pending";
 }
 
-function PhaseStatusLabel({ status }: { status: TaskPhase["status"] }) {
+const PhaseStatusLabel = React.memo(function PhaseStatusLabel({ status }: { status: TaskPhase["status"] }) {
   const variant =
     status === "completed"
       ? "border-[#D4AF8C]/35 bg-[#D4AF8C]/10 text-[#D4AF8C]"
@@ -78,14 +78,14 @@ function PhaseStatusLabel({ status }: { status: TaskPhase["status"] }) {
   return (
     <span
       className={cn(
-        "inline-flex rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] backdrop-blur-sm",
+        "inline-flex rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]",
         variant,
       )}
     >
       {status.replace(/_/g, " ")}
     </span>
   );
-}
+});
 
 function DefaultItemRow({ item }: { item: PhaseRibbonItem }) {
   return (
@@ -100,7 +100,7 @@ function DefaultItemRow({ item }: { item: PhaseRibbonItem }) {
   );
 }
 
-export function TaskPhaseRibbon({
+export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
   phases,
   variant = "default",
   className,
@@ -223,4 +223,4 @@ export function TaskPhaseRibbon({
       </div>
     </div>
   );
-}
+});
