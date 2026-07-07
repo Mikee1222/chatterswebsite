@@ -1,13 +1,19 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission } from "@/lib/rbac";
+import { hasAnyPermission, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createPhase, getPhasesByTask } from "@/services/task-phases";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.VA_TASKS_VIEW))) {
+  if (
+    !(await hasAnyPermission(session, [
+      PERMISSIONS.VA_TASKS_VIEW,
+      PERMISSIONS.VA_TASKS_MANAGE,
+      PERMISSIONS.TASK_PROGRESS_VIEW,
+    ]))
+  ) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);

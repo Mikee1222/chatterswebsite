@@ -162,6 +162,8 @@ export type NavItem = {
   adminOnly?: boolean;
   /** When set, item is hidden unless the user has this permission. */
   requiresPermission?: Permission;
+  /** When set, item is shown if the user has any of these permissions. */
+  requiresAnyPermission?: Permission[];
   /**
    * When set, item is hidden if the user HAS this permission.
    * Used to dedupe submit-only nav items for users who also have the manage permission
@@ -308,7 +310,11 @@ const adminNav: NavItem[] = [
     label: "VA tasks",
     iconKey: "ListTodo",
     navSection: "TEAM",
-    requiresPermission: PERMISSIONS.VA_TASKS_VIEW,
+    requiresAnyPermission: [
+      PERMISSIONS.VA_TASKS_VIEW,
+      PERMISSIONS.VA_TASKS_MANAGE,
+      PERMISSIONS.TASK_PROGRESS_VIEW,
+    ],
   },
   {
     href: ROUTES.admin.taskTemplates,
@@ -753,7 +759,7 @@ export function getBaseNavItemsForRole(role: NavRoleKey): NavItem[] {
   if (r === "model") return appendSharedNavItems([...modelNav]);
   if (!isSystemNavRole(r)) {
     return appendSharedNavItems([
-      ...adminNav.filter((item) => item.requiresPermission),
+      ...adminNav.filter((item) => item.requiresPermission || item.requiresAnyPermission),
       ...getCustomRoleSharedAdminNavItems(),
     ]);
   }
@@ -793,6 +799,7 @@ export function filterNavItemsByPermissions(
 ): NavItem[] {
   const set = granted instanceof Set ? granted : new Set(granted);
   return items.filter((item) => {
+    if (item.requiresAnyPermission && !item.requiresAnyPermission.some((p) => set.has(p))) return false;
     if (item.requiresPermission && !set.has(item.requiresPermission)) return false;
     if (item.hiddenIfPermission && set.has(item.hiddenIfPermission)) return false;
     return true;
@@ -811,7 +818,8 @@ export function shouldUsePersonalVaTasksNav(
   return (
     isCustomNavRole(role) &&
     set.has(PERMISSIONS.VA_TASKS_VIEW) &&
-    !set.has(PERMISSIONS.VA_TASKS_MANAGE)
+    !set.has(PERMISSIONS.VA_TASKS_MANAGE) &&
+    !set.has(PERMISSIONS.TASK_PROGRESS_VIEW)
   );
 }
 

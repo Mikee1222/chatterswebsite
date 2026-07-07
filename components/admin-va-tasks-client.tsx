@@ -157,6 +157,8 @@ type Props = {
   roleLabels: Record<string, string>;
   modelss: ModelRecord[];
   canManage?: boolean;
+  canViewList?: boolean;
+  canViewProgress?: boolean;
 };
 
 function toLocalYmd(isoLike: string | null): string {
@@ -484,9 +486,13 @@ export function AdminVaTasksClient({
   roleLabels,
   modelss,
   canManage = false,
+  canViewList = false,
+  canViewProgress = false,
 }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
+  const canShowList = canManage || canViewList;
+  const defaultViewMode = canShowList ? "list" : "progress";
   const [localTasks, setLocalTasks] = React.useState(tasks);
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
@@ -519,7 +525,7 @@ export function AdminVaTasksClient({
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
   const [showAllTasks, setShowAllTasks] = React.useState(false);
-  const [viewMode, setViewMode] = React.useState<"list" | "progress">("list");
+  const [viewMode, setViewMode] = React.useState<"list" | "progress">(defaultViewMode);
   const [progressPhasesLoading, setProgressPhasesLoading] = React.useState(false);
   const [progressPhasesError, setProgressPhasesError] = React.useState<string | null>(null);
 
@@ -694,10 +700,10 @@ export function AdminVaTasksClient({
   }, [progressViewTasks]);
 
   React.useEffect(() => {
-    if (viewMode === "progress" && canManage) {
+    if (viewMode === "progress" && canViewProgress) {
       void loadProgressPhases();
     }
-  }, [viewMode, canManage, loadProgressPhases, selectedYmd]);
+  }, [viewMode, canViewProgress, loadProgressPhases, selectedYmd]);
 
   React.useEffect(() => {
     setShowAllTasks(false);
@@ -1239,13 +1245,18 @@ export function AdminVaTasksClient({
         ) : null}
       </div>
 
-      {canManage ? (
+      {canShowList && canViewProgress ? (
         <div className="flex flex-wrap items-center justify-end">
-          <AdminVaTasksViewToggle viewMode={viewMode} onChange={setViewMode} />
+          <AdminVaTasksViewToggle
+            viewMode={viewMode}
+            onChange={setViewMode}
+            showList={canShowList}
+            showProgress={canViewProgress}
+          />
         </div>
       ) : null}
 
-      {viewMode === "list" ? (
+      {viewMode === "list" && canShowList ? (
         <>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
@@ -1279,7 +1290,7 @@ export function AdminVaTasksClient({
         </>
       ) : null}
 
-      {viewMode === "progress" && canManage ? (
+      {viewMode === "progress" && canViewProgress ? (
         <AdminVaTasksProgressOverview
           tasks={progressViewTasks}
           vaUsers={vaUsers}
@@ -1291,12 +1302,12 @@ export function AdminVaTasksClient({
         />
       ) : null}
 
-      {viewMode === "list" && localTasks.length > 0 && dateFilteredTasks.length === 0 ? (
+      {viewMode === "list" && canShowList && localTasks.length > 0 && dateFilteredTasks.length === 0 ? (
         <div className={cn(VA_CARD, "flex flex-col items-center justify-center px-6 py-12 text-center")}>
           <p className="text-base font-semibold text-white/90">No tasks for this date</p>
           <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">Try another day or jump back to today.</p>
         </div>
-      ) : viewMode === "list" && regularTasks.length === 0 && recurringGroups.length === 0 ? (
+      ) : viewMode === "list" && canShowList && regularTasks.length === 0 && recurringGroups.length === 0 ? (
         <div className={cn(VA_CARD, "flex flex-col items-center justify-center px-6 py-16 text-center")}>
           <svg className="mb-5 h-14 w-14 text-[#D4AF8C]/35" viewBox="0 0 64 64" fill="none" aria-hidden>
             <rect x="12" y="10" width="40" height="46" rx="5" stroke="currentColor" strokeWidth="1.5" />
@@ -1307,7 +1318,7 @@ export function AdminVaTasksClient({
             {canManage ? "Adjust search or filters, or create a new task." : "Adjust search or filters to find tasks."}
           </p>
         </div>
-      ) : viewMode === "list" ? (
+      ) : viewMode === "list" && canShowList ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {visibleRegularTasks.map((task) => renderTaskCard(task))}
           {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (

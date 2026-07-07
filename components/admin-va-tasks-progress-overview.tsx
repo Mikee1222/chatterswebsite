@@ -387,12 +387,25 @@ export function AdminVaTasksProgressOverview({
 export function AdminVaTasksViewToggle({
   viewMode,
   onChange,
+  showList = true,
+  showProgress = true,
   className,
 }: {
   viewMode: "list" | "progress";
   onChange: (mode: "list" | "progress") => void;
+  showList?: boolean;
+  showProgress?: boolean;
   className?: string;
 }) {
+  const modes = (
+    [
+      showList ? ({ mode: "list" as const, label: "List" }) : null,
+      showProgress ? ({ mode: "progress" as const, label: "Progress Overview" }) : null,
+    ] as const
+  ).filter(Boolean) as Array<{ mode: "list" | "progress"; label: string }>;
+
+  if (modes.length === 0) return null;
+
   return (
     <div
       className={cn(
@@ -402,12 +415,7 @@ export function AdminVaTasksViewToggle({
       role="group"
       aria-label="View mode"
     >
-      {(
-        [
-          { mode: "list" as const, label: "List" },
-          { mode: "progress" as const, label: "Progress Overview" },
-        ] as const
-      ).map(({ mode, label }) => {
+      {modes.map(({ mode, label }) => {
         const active = viewMode === mode;
         return (
           <button

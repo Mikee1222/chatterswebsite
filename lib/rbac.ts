@@ -72,6 +72,15 @@ function expandLegacyProgramPermissions(perms: Set<Permission>): Set<Permission>
   return expanded;
 }
 
+/** Roles that could manage VA tasks before task_progress:view shipped inherit progress overview read access. */
+function expandTaskProgressPermissions(perms: Set<Permission>): Set<Permission> {
+  const expanded = expandLegacyProgramPermissions(perms);
+  if (perms.has(PERMISSIONS.VA_TASKS_MANAGE)) {
+    expanded.add(PERMISSIONS.TASK_PROGRESS_VIEW);
+  }
+  return expanded;
+}
+
 function resolveRoleForPermissions(user: AuthUser): string {
   const staff = getEffectiveStaffRole(user);
   if (staff) return staff;
@@ -97,7 +106,7 @@ async function loadPermissionsForRole(role: string): Promise<Set<Permission>> {
     perms = DEFAULT_ROLE_PERMISSIONS[key as UserRole] ?? [];
   }
 
-  const set = expandLegacyProgramPermissions(new Set(perms));
+  const set = expandTaskProgressPermissions(new Set(perms));
   rolePermissionsCache.set(key, { permissions: set, expiresAt: now + CACHE_TTL_MS });
   return set;
 }
