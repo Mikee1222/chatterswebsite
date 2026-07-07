@@ -227,8 +227,8 @@ export function AdminEarningsClient() {
 
       {error ? <p className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</p> : null}
 
-      <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/5">
-        <table className="w-full">
+      <div className="overflow-x-auto rounded-2xl border border-white/10 bg-white/5">
+        <table className="w-full min-w-[640px]">
           <thead className="border-b border-white/10 bg-white/5">
             <tr>
               <th className="p-4 text-left text-sm text-white/60">Date</th>

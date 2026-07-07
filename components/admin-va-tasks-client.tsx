@@ -1236,7 +1236,7 @@ export function AdminVaTasksClient({
 
       {canManage && modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm md:items-center">
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-[20px] border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D] shadow-2xl md:max-w-2xl md:rounded-[20px]">
+          <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[20px] border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D] shadow-2xl md:max-w-2xl md:rounded-[20px]">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm">
               <div>
                 <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">VA tasks</p>

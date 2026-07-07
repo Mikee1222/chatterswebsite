@@ -35,7 +35,7 @@ export function FloatingActionButton({ user }: FloatingActionButtonProps) {
   if (getEffectiveStaffRole(user) !== "chatter" || fabHiddenByOverlay) return null;
 
   const fabBottomStyle = {
-    bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",
+    bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 20px)",
     right: "max(1rem, env(safe-area-inset-right, 0px))",
   } as const;
 

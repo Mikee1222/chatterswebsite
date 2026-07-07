@@ -2768,7 +2768,7 @@ export function AdminMarketingClient({
 
       {accountModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+          <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">{editingAccountId ? "Edit account" : "Add social account"}</h3>
               <button
@@ -2973,7 +2973,7 @@ export function AdminMarketingClient({
 
       {phoneModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
+          <div className="max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-3xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h3 className="text-lg font-bold text-white">{editingPhoneId ? "Edit phone" : "Add phone"}</h3>
               <button

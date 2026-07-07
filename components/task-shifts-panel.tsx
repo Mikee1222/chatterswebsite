@@ -148,7 +148,8 @@ export function TaskShiftsPanel({
 
       <div className="glass-card overflow-hidden">
         <h2 className="border-b border-white/10 p-4 text-lg font-semibold text-white">Active task shifts</h2>
-        <table className="w-full text-sm">
+        <div className="overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b border-white/10 text-left text-white/60">
               <th className="p-3 font-medium">Staff</th>
@@ -182,6 +183,7 @@ export function TaskShiftsPanel({
             )}
           </tbody>
         </table>
+        </div>
       </div>
     </div>
   );

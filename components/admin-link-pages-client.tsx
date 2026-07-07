@@ -7,6 +7,7 @@ import {
   BarChart3,
   CheckCircle2,
   ChevronDown,
+  ChevronLeft,
   ChevronRight,
   ChevronUp,
   Copy,
@@ -1046,6 +1047,9 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const [selectedId, setSelectedId] = React.useState<string | null>(initialPages[0]?.id ?? null);
   const [selectedPage, setSelectedPage] = React.useState<LinkPageWithBlocks | null>(null);
   const [tab, setTab] = React.useState<Tab>("editor");
+  // Mobile-only: below md, we switch between the list view and a full-width
+  // detail (editor / analytics) view. Desktop keeps the split-pane always visible.
+  const [mobileDetail, setMobileDetail] = React.useState(false);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<"all" | "draft" | "published" | "archived">("all");
   const [loading, setLoading] = React.useState(false);
@@ -1656,11 +1660,17 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
   const isWideTab = tab === "analytics" || tab === "ab_test";
 
   return (
-    <div className="flex h-[calc(100vh-4rem)] overflow-hidden" style={{ background: BG }}>
-      {/* ── LEFT PANEL ── */}
+    <div
+      className="flex flex-col md:h-[calc(100dvh-4rem)] md:flex-row md:overflow-hidden"
+      style={{ background: BG }}
+    >
+      {/* ── LEFT PANEL (list) ── */}
       <aside
-        className="flex shrink-0 flex-col border-r"
-        style={{ width: 280, background: PANEL, borderColor: BORDER }}
+        className={cn(
+          "w-full shrink-0 flex-col border-r md:flex md:w-[280px]",
+          mobileDetail ? "hidden" : "flex"
+        )}
+        style={{ background: PANEL, borderColor: BORDER }}
       >
         <div className="border-b p-4" style={{ borderColor: BORDER }}>
           <div className="mb-3 flex items-start justify-between gap-2">
@@ -1683,7 +1693,10 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
             type="button"
             onClick={() => {
               setGlobalAnalyticsOpen((v) => !v);
-              if (!globalAnalyticsOpen) setTab("editor");
+              if (!globalAnalyticsOpen) {
+                setTab("editor");
+                setMobileDetail(true);
+              }
             }}
             className={cn(
               "mb-3 flex w-full items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium transition-colors",
@@ -1740,6 +1753,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
                 onClick={() => {
                   setSelectedId(p.id);
                   setGlobalAnalyticsOpen(false);
+                  setMobileDetail(true);
                 }}
                 className={cn(
                   "mb-1.5 flex w-full items-start gap-3 rounded-xl border p-3 text-left transition-all",
@@ -1782,9 +1796,27 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
         </div>
       </aside>
 
+      {/* ── DETAIL AREA (analytics / editor + preview) ── */}
+      <div
+        className={cn(
+          "min-w-0 flex-1 flex-col md:flex md:flex-row md:overflow-hidden",
+          mobileDetail ? "flex" : "hidden"
+        )}
+      >
+        {/* Mobile-only back affordance to return to the list */}
+        <button
+          type="button"
+          onClick={() => setMobileDetail(false)}
+          className="flex shrink-0 items-center gap-2 border-b px-4 py-3 text-sm font-medium text-white/70 transition-colors hover:text-white md:hidden"
+          style={{ borderColor: BORDER, background: PANEL }}
+        >
+          <ChevronLeft className="h-4 w-4" />
+          Back to pages
+        </button>
+
       {/* ── GLOBAL ANALYTICS (full width) ── */}
       {globalAnalyticsOpen ? (
-        <main className="flex flex-1 flex-col overflow-hidden" style={{ background: BG }}>
+        <main className="flex flex-1 flex-col md:overflow-hidden" style={{ background: BG }}>
           <GlobalAnalyticsPanel
             summary={globalAnalytics}
             loading={globalAnalyticsLoading}
@@ -1802,8 +1834,11 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
         <>
           {/* ── CENTER PANEL ── */}
           <section
-            className="flex shrink-0 flex-col overflow-hidden border-r"
-            style={{ width: isWideTab ? undefined : 400, flex: isWideTab ? 1 : undefined, background: PANEL, borderColor: BORDER }}
+            className={cn(
+              "flex w-full flex-col border-r md:shrink-0 md:overflow-hidden",
+              isWideTab ? "md:w-auto md:flex-1" : "md:w-[400px]"
+            )}
+            style={{ background: PANEL, borderColor: BORDER }}
           >
             {!selectedPage && !loading ? (
               <EmptyState message="Select or create a page" />
@@ -2046,7 +2081,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
           {/* ── RIGHT PANEL — Live Preview ── */}
           {showPreview ? (
             <aside
-              className="flex shrink-0 flex-col overflow-hidden"
+              className="hidden shrink-0 flex-col overflow-hidden md:flex"
               style={{ width: 400, background: PANEL }}
             >
               <div className="flex shrink-0 items-center justify-between border-b px-4 py-3" style={{ borderColor: BORDER }}>
@@ -2192,6 +2227,7 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
           ) : null}
         </>
       )}
+      </div>
 
       <ConfirmDialog
         open={deleteOpen}
