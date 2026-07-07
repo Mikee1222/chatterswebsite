@@ -2,14 +2,8 @@ import Image from "next/image";
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { login } from "@/app/actions/auth";
 import { AnimatedBackground } from "@/components/animated-background";
-import { FormError, Checkbox } from "@/components/ui/form";
-import { LoginPasswordField } from "@/components/login-password-field";
-import { FormField } from "@/components/ui/form-field";
-import { FormInput } from "@/components/ui/form-input";
-import { FormSubmitButton } from "@/components/ui/form-submit-button";
-import { Lock, Mail } from "lucide-react";
+import { LoginForm } from "@/components/login-form";
 
 export default async function LoginPage({
   searchParams,
@@ -50,47 +44,7 @@ export default async function LoginPage({
             <div className="mx-auto mt-6 h-px w-12 rounded-full bg-pink-500/50" />
 
             <div className="mt-6 space-y-5">
-              {error ? (
-                <div>
-                  <FormError>{error}</FormError>
-                </div>
-              ) : null}
-              <form action={login} className="space-y-4">
-                <FormField label="Email" icon={<Mail />} htmlFor="email" required>
-                  <FormInput
-                    id="email"
-                    name="email"
-                    type="email"
-                    autoComplete="email"
-                    required
-                    placeholder="you@example.com"
-                  />
-                </FormField>
-                <FormField label="Password" icon={<Lock />} htmlFor="password" required>
-                  <LoginPasswordField
-                    id="password"
-                    name="password"
-                    required
-                    omitLabel
-                    placeholder="••••••••"
-                    className="pr-12"
-                  />
-                </FormField>
-                <div className="space-y-2 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none md:rounded-xl md:border md:border-white/10 md:bg-[#1a1a1a] md:px-4 md:py-3 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
-                  <Checkbox
-                    id="remember_me"
-                    name="remember_me"
-                    value="on"
-                    label="Remember me for 30 days"
-                    className="items-center gap-3"
-                  />
-                  <p className="text-xs leading-relaxed text-white/45 max-md:pl-0 max-md:pt-0.5 md:pl-8">
-                    If unchecked, you stay signed in until you close the browser or after 24 hours of use. Checked keeps
-                    you signed in for up to 30 days.
-                  </p>
-                </div>
-                <FormSubmitButton className="w-full">Sign in</FormSubmitButton>
-              </form>
+              <LoginForm error={error} />
             </div>
           </div>
         </div>

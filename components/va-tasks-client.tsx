@@ -22,6 +22,9 @@ import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { VaTaskCard, EMPTY_TASK_PHASES } from "@/components/va-task-card";
 import { VaTasksSearchBar } from "@/components/va-tasks-search-bar";
+import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
+import { useToast } from "@/contexts/toast-context";
+import { applyOptimisticItemCompletion } from "@/lib/va-task-phase-optimistic";
 
 type Props = { tasks: VaTaskRecord[]; userName?: string };
 
@@ -199,6 +202,7 @@ function VaShiftBar({
 
 export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   const router = useRouter();
+  const { addToast } = useToast();
   const tasks = initialTasks;
   const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
   const [notes, setNotes] = React.useState("");
@@ -229,8 +233,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   );
   const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
   const [proofFile, setProofFile] = React.useState<File | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
+  const [screenshotUploading, setScreenshotUploading] = React.useState(false);
   const proofRef = React.useRef<HTMLInputElement>(null);
+  const phaseRollbackRef = React.useRef<Record<string, TaskPhase[]>>({});
+  const inflightItemIdsRef = React.useRef(new Set<string>());
   const proofPreviewUrl = React.useMemo(
     () => (proofFile ? URL.createObjectURL(proofFile) : null),
     [proofFile],
@@ -328,16 +334,29 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     router.refresh();
   };
 
-  async function reloadPhasesForTask(taskId: string) {
-    const res = await fetch(`/api/va/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
-    const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-    if (res.ok) {
-      setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
-    }
-  }
-
   const taskPhasesRef = React.useRef(taskPhases);
   taskPhasesRef.current = taskPhases;
+
+  const optimisticallyCompleteItem = React.useCallback((taskId: string, itemId: string) => {
+    setTaskPhases((prev) => {
+      const phases = prev[taskId];
+      if (!phases) return prev;
+      phaseRollbackRef.current[taskId] = phases;
+      return { ...prev, [taskId]: applyOptimisticItemCompletion(phases, itemId, userName) };
+    });
+  }, [userName]);
+
+  const rollbackOptimisticItem = React.useCallback((taskId: string) => {
+    const saved = phaseRollbackRef.current[taskId];
+    if (saved) {
+      setTaskPhases((prev) => ({ ...prev, [taskId]: saved }));
+      delete phaseRollbackRef.current[taskId];
+    }
+  }, []);
+
+  const clearOptimisticRollback = React.useCallback((taskId: string) => {
+    delete phaseRollbackRef.current[taskId];
+  }, []);
 
   const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
     if (taskPhasesRef.current[task.id]) return;
@@ -358,32 +377,57 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     }
   }, []);
 
-  async function handleCompleteItem() {
-    if (!completingItem) return;
-    const { item, taskId } = completingItem;
-    if (item.requires_screenshot && !proofFile) return;
-    setSubmitting(true);
-    try {
-      const fd = new FormData();
-      if (proofFile) fd.append("screenshot", proofFile);
-      const res = await fetch(`/api/va/phase-items/${encodeURIComponent(item.id)}/complete`, {
-        method: "POST",
-        credentials: "include",
-        body: fd,
-      });
-      const payload = (await res.json().catch(() => ({}))) as { allPhasesCompleted?: boolean; error?: string };
-      if (!res.ok) {
-        setErr(payload.error?.trim() || "Could not complete item");
-        return;
+  const submitPhaseItemCompletion = React.useCallback(
+    async (item: PhaseItem, taskId: string, screenshot?: File | null) => {
+      if (inflightItemIdsRef.current.has(item.id)) return null;
+      inflightItemIdsRef.current.add(item.id);
+
+      optimisticallyCompleteItem(taskId, item.id);
+
+      try {
+        const fd = new FormData();
+        if (screenshot) fd.append("screenshot", screenshot);
+        const res = await fetch(`/api/va/phase-items/${encodeURIComponent(item.id)}/complete`, {
+          method: "POST",
+          credentials: "include",
+          body: fd,
+        });
+        const payload = (await res.json().catch(() => ({}))) as {
+          allPhasesCompleted?: boolean;
+          error?: string;
+        };
+        if (!res.ok) {
+          rollbackOptimisticItem(taskId);
+          addToast(
+            winnerVideoLocalToast(
+              `va-item-err-${item.id}-${Date.now()}`,
+              "Could not complete item",
+              payload.error?.trim() || "Please try again.",
+              "high",
+            ),
+          );
+          return null;
+        }
+        clearOptimisticRollback(taskId);
+        if (payload.allPhasesCompleted) router.refresh();
+        return payload;
+      } catch {
+        rollbackOptimisticItem(taskId);
+        addToast(
+          winnerVideoLocalToast(
+            `va-item-err-${item.id}-${Date.now()}`,
+            "Could not complete item",
+            "Network error — please try again.",
+            "high",
+          ),
+        );
+        return null;
+      } finally {
+        inflightItemIdsRef.current.delete(item.id);
       }
-      await reloadPhasesForTask(taskId);
-      setCompletingItem(null);
-      setProofFile(null);
-      if (payload.allPhasesCompleted) router.refresh();
-    } finally {
-      setSubmitting(false);
-    }
-  }
+    },
+    [addToast, clearOptimisticRollback, optimisticallyCompleteItem, rollbackOptimisticItem, router],
+  );
 
   async function reloadModelAccounts(modelId: string) {
     const mId = modelId.trim();
@@ -424,10 +468,33 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     setErr(null);
   }, []);
 
-  const handleStartCompleteItem = React.useCallback((item: PhaseItem, taskId: string) => {
-    setCompletingItem({ item, taskId });
-    setProofFile(null);
-  }, []);
+  const handleCompleteItemClick = React.useCallback(
+    (item: PhaseItem, taskId: string) => {
+      if (item.requires_screenshot) {
+        setCompletingItem({ item, taskId });
+        setProofFile(null);
+        return;
+      }
+      void submitPhaseItemCompletion(item, taskId);
+    },
+    [submitPhaseItemCompletion],
+  );
+
+  React.useEffect(() => {
+    if (!completingItem?.item.requires_screenshot || !proofFile || screenshotUploading) return;
+    const { item, taskId } = completingItem;
+    setScreenshotUploading(true);
+    void (async () => {
+      const result = await submitPhaseItemCompletion(item, taskId, proofFile);
+      setScreenshotUploading(false);
+      if (result) {
+        setCompletingItem(null);
+        setProofFile(null);
+      } else {
+        setProofFile(null);
+      }
+    })();
+  }, [completingItem, proofFile, screenshotUploading, submitPhaseItemCompletion]);
 
   const handleShadowbanReport = React.useCallback((acc: SocialAccount) => {
     setShadowbanReportTarget(acc);
@@ -545,7 +612,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                   onLoadPhases={loadPhasesAndAccounts}
                   onMarkComplete={handleMarkComplete}
                   onOpenTask={handleOpenTask}
-                  onStartCompleteItem={handleStartCompleteItem}
+                  onCompleteItem={handleCompleteItemClick}
                   onShadowbanReport={handleShadowbanReport}
                 />
               ))}
@@ -572,7 +639,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                       onLoadPhases={loadPhasesAndAccounts}
                       onMarkComplete={handleMarkComplete}
                       onOpenTask={handleOpenTask}
-                      onStartCompleteItem={handleStartCompleteItem}
+                      onCompleteItem={handleCompleteItemClick}
                       onShadowbanReport={handleShadowbanReport}
                     />
                   ) : (
@@ -716,60 +783,57 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
         }}
       />
 
-      {/* ── Screenshot upload modal ── */}
+      {/* ── Screenshot upload modal (auto-submits on paste/upload) ── */}
       {completingItem ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className={cn(VA_CARD, "w-full max-w-sm p-6 shadow-2xl")}>
-            <h3 className="text-lg font-semibold text-white">Complete item</h3>
+            <h3 className="text-lg font-semibold text-white">Screenshot proof</h3>
             <p className="mt-1 text-sm text-[#B8B4B8]/65">{completingItem.item.title || "Checklist item"}</p>
-            {completingItem.item.requires_screenshot ? (
-              <div className="mt-5">
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]">Screenshot proof required</p>
-                <button
-                  type="button"
-                  onClick={() => proofRef.current?.click()}
-                  className={cn(
-                    "w-full rounded-2xl border-2 border-dashed p-6 text-center transition-colors",
-                    proofFile
-                      ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/5"
-                      : "border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.03] hover:border-[#D4AF8C]/45",
-                  )}
-                >
-                  {proofFile && proofPreviewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={proofPreviewUrl} alt="Proof" className="mx-auto max-h-32 rounded-xl object-contain" />
-                  ) : (
-                    <>
-                      <Camera className="mx-auto mb-2 h-10 w-10 text-[#D4AF8C]/40" />
-                      <p className="text-sm text-[#D4AF8C]/75">Paste (Ctrl+V) or tap to upload</p>
-                    </>
-                  )}
-                  <input
-                    ref={proofRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-                  />
-                </button>
-              </div>
-            ) : null}
-            <div className="mt-6 flex gap-2">
+            <div className="mt-5">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]">
+                Paste or upload to complete
+              </p>
               <button
                 type="button"
-                onClick={() => void handleCompleteItem()}
-                disabled={submitting || (completingItem.item.requires_screenshot && !proofFile)}
-                className="flex-1 rounded-2xl border border-[#D4AF8C]/35 bg-[#D4AF8C]/12 py-3 text-sm font-semibold text-[#D4AF8C] disabled:opacity-40"
+                disabled={screenshotUploading}
+                onClick={() => proofRef.current?.click()}
+                className={cn(
+                  "w-full rounded-2xl border-2 border-dashed p-6 text-center transition-colors disabled:opacity-60",
+                  proofFile
+                    ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/5"
+                    : "border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.03] hover:border-[#D4AF8C]/45",
+                )}
               >
-                {submitting ? "Saving…" : "Mark complete"}
+                {screenshotUploading ? (
+                  <p className="text-sm text-[#D4AF8C]/75">Saving…</p>
+                ) : proofFile && proofPreviewUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={proofPreviewUrl} alt="Proof" className="mx-auto max-h-32 rounded-xl object-contain" />
+                ) : (
+                  <>
+                    <Camera className="mx-auto mb-2 h-10 w-10 text-[#D4AF8C]/40" />
+                    <p className="text-sm text-[#D4AF8C]/75">Paste (Ctrl+V) or tap to upload</p>
+                  </>
+                )}
+                <input
+                  ref={proofRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
+                />
               </button>
+            </div>
+            <div className="mt-6 flex justify-end">
               <button
                 type="button"
+                disabled={screenshotUploading}
                 onClick={() => {
                   setCompletingItem(null);
                   setProofFile(null);
+                  setScreenshotUploading(false);
                 }}
-                className="rounded-2xl border border-white/10 px-5 py-3 text-sm text-white/50"
+                className="rounded-2xl border border-white/10 px-5 py-3 text-sm text-white/50 disabled:opacity-40"
               >
                 Cancel
               </button>

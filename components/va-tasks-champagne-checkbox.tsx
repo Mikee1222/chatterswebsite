@@ -20,12 +20,13 @@ export function ChampagneCheckbox({ checked, disabled, onClick, title, className
   const prevChecked = React.useRef(checked);
 
   React.useEffect(() => {
-    if (checked && !prevChecked.current && !reduceMotion) {
+    const wasChecked = prevChecked.current;
+    prevChecked.current = checked;
+    if (checked && !wasChecked && !reduceMotion) {
       setPulse(true);
       const t = window.setTimeout(() => setPulse(false), 220);
       return () => window.clearTimeout(t);
     }
-    prevChecked.current = checked;
   }, [checked, reduceMotion]);
 
   return (

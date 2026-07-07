@@ -196,3 +196,28 @@
   background-color: rgba(236, 72, 153, 0.35);
   color: #fff;
 }
+
+/* ========== Auth — Sign In submit loading ========== */
+@keyframes auth-submit-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 28px -6px rgba(233, 30, 140, 0.45),
+      0 0 0 0 rgba(212, 175, 140, 0);
+  }
+  50% {
+    box-shadow:
+      0 0 42px -4px rgba(233, 30, 140, 0.62),
+      0 0 28px -6px rgba(212, 175, 140, 0.28);
+  }
+}
+
+.auth-submit-loading-pulse {
+  animation: auth-submit-pulse 2.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-submit-loading-pulse {
+    animation: none;
+  }
+}

@@ -95,7 +95,7 @@ export type VaTaskCardProps = {
   onLoadPhases: (task: VaTaskRecord) => void | Promise<void>;
   onMarkComplete: (task: VaTaskRecord, e?: React.MouseEvent) => void;
   onOpenTask: (task: VaTaskRecord) => void;
-  onStartCompleteItem: (item: PhaseItem, taskId: string) => void;
+  onCompleteItem: (item: PhaseItem, taskId: string) => void;
   onShadowbanReport: (acc: SocialAccount) => void;
 };
 
@@ -119,7 +119,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onLoadPhases,
   onMarkComplete,
   onOpenTask,
-  onStartCompleteItem,
+  onCompleteItem,
   onShadowbanReport,
 }: VaTaskCardProps) {
   const [expanded, setExpanded] = React.useState(false);
@@ -224,7 +224,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
               if (itemDisabled) return;
               const fullItem = phases.flatMap((p) => p.items ?? []).find((i) => i.id === item.id);
               if (!fullItem) return;
-              onStartCompleteItem(fullItem, task.id);
+              onCompleteItem(fullItem, task.id);
             }}
           />
           <div className="min-w-0 flex-1">
@@ -261,7 +261,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         </div>
       );
     },
-    [onShift, onStartCompleteItem, phases, task.id],
+    [onShift, onCompleteItem, phases, task.id],
   );
 
   return (
@@ -388,6 +388,6 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.onLoadPhases === next.onLoadPhases &&
   prev.onMarkComplete === next.onMarkComplete &&
   prev.onOpenTask === next.onOpenTask &&
-  prev.onStartCompleteItem === next.onStartCompleteItem &&
+  prev.onCompleteItem === next.onCompleteItem &&
   prev.onShadowbanReport === next.onShadowbanReport,
 );
