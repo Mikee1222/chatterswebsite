@@ -18,6 +18,8 @@ import { getAllVaTasks, updateVaTask } from "@/services/va-tasks";
 import { listModelPersonalEventsInDateRange, personalEventEmoji, personalEventLabel } from "@/services/model-personal-events";
 import { listAllModelss } from "@/services/modelss";
 import { listAllVAContentAssignments } from "@/services/va-content-assignments";
+import { listAllWhales } from "@/services/whales";
+import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { listAllRecords, updateRecord } from "@/lib/airtable-server";
 
 /** Stored Airtable event_type for va_task_reminder (see EVENT_TYPE_TO_AIRTABLE). */
@@ -514,6 +516,59 @@ export async function runPersonalEventReminders(): Promise<PersonalEventReminder
   }
 
   return { ok: true, events_scanned: events.length, reminders_sent };
+}
+
+export type WhaleFollowupReminderResult = {
+  ok: true;
+  whales_scanned: number;
+  reminders_sent: number;
+};
+
+/** Stored Airtable event_type for whale_followup (see EVENT_TYPE_TO_AIRTABLE). */
+const AIRTABLE_EVENT_WHALE_FOLLOWUP = EVENT_TYPE_TO_AIRTABLE["whale_followup"] ?? "whale_assigned";
+
+/**
+ * Notify the assigned chatter when a whale's `next_followup` date is due today (or overdue).
+ * De-duped per whale per calendar day (Athens), so an overdue whale nudges once daily until the
+ * chatter updates `next_followup`.
+ */
+export async function runWhaleFollowupReminders(): Promise<WhaleFollowupReminderResult> {
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Athens" }).format(new Date());
+  const whales = await listAllWhales();
+  let reminders_sent = 0;
+
+  for (const whale of whales) {
+    const followupDate = (whale.next_followup ?? "").slice(0, 10);
+    if (!followupDate || followupDate > today) continue;
+    if ((whale.status ?? "").toLowerCase() !== "active") continue;
+    const chatterId = whale.assigned_chatter_id?.trim();
+    if (!chatterId) continue;
+
+    const entityId = `whale_followup:${whale.id}:${today}`;
+    const dup = await findExistingNotification(
+      chatterId,
+      NOTIFICATION_ENTITY.WHALE,
+      entityId,
+      AIRTABLE_EVENT_WHALE_FOLLOWUP
+    ).catch(() => true);
+    if (dup) continue;
+
+    const overdue = followupDate < today;
+    await notify({
+      user_id: chatterId,
+      event_type: "whale_followup",
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: overdue ? "🐋 Whale follow-up overdue" : "🐋 Whale follow-up due today",
+      body: overdue
+        ? `Follow-up with ${whale.username || "your whale"} was due on ${followupDate}.`
+        : `Time to follow up with ${whale.username || "your whale"} today.`,
+      entity_type: NOTIFICATION_ENTITY.WHALE,
+      entity_id: entityId,
+    }).catch(() => {});
+    reminders_sent++;
+  }
+
+  return { ok: true, whales_scanned: whales.length, reminders_sent };
 }
 
 export type PhaseOverdueCronResult = {

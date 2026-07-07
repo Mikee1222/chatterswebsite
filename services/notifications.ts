@@ -118,7 +118,14 @@ export async function createNotification(fields: {
 
   try {
     console.log("[createNotification] about to write to Airtable...");
-    const rec = await createRecord(NOTIFICATIONS_TABLE, payload as Record<string, string | number | boolean | null>);
+    // Safety net: typecast lets Airtable auto-create a missing event_type/category option
+    // instead of silently rejecting the write. Explicit script-based provisioning remains
+    // the primary path; this prevents silent notification loss if a mapping drifts.
+    const rec = await createRecord(
+      NOTIFICATIONS_TABLE,
+      payload as Record<string, string | number | boolean | null>,
+      { typecast: true }
+    );
     console.log("[createNotification] SUCCESS, record id:", rec.id);
     // 7. Right after successful airtable notification create
     devLog(NOTIF, "7 after_airtable_create", JSON.stringify({

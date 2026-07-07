@@ -396,6 +396,38 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "Submitting VA when their winner video is rejected.",
   },
+  winner_video_submitted: {
+    rule: "admin_only",
+    description: "winner_videos:manage holders when a new research/winner video is submitted.",
+  },
+  research_assigned_to_creative: {
+    rule: "assigned_party_only",
+    description: "The Creative assigned to write the script when a winner video is approved.",
+  },
+  creative_script_submitted: {
+    rule: "admin_only",
+    description: "creative_scripts:manage holders when a script is submitted for review.",
+  },
+  creative_script_approved: {
+    rule: "assigned_party_only",
+    description: "Submitting Creative when their script is approved.",
+  },
+  creative_script_rejected: {
+    rule: "assigned_party_only",
+    description: "Submitting Creative when their script is rejected (with reason).",
+  },
+  creative_script_resubmitted: {
+    rule: "admin_only",
+    description: "creative_scripts:manage holders when a rejected script is resubmitted.",
+  },
+  spot_check_logged: {
+    rule: "admin_only",
+    description: "spotcheck:manage holders when a new spot check is logged.",
+  },
+  spot_check_status_changed: {
+    rule: "assigned_party_only",
+    description: "Original submitter when a spot check is marked Fixed or Escalated.",
+  },
   sop_quiz_passed: {
     rule: "assigned_party_only",
     description: "Chatter/VA when they pass an SOP quiz.",

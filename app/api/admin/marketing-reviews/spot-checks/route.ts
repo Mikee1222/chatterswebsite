@@ -42,6 +42,7 @@ export async function POST(req: Request) {
   const managerName = session.fullName?.trim() || session.email?.trim() || "Manager";
   const spotCheck = await createSpotCheck({
     manager_name: managerName,
+    manager_id: session.airtableUserId ?? session.id,
     type: body.type as SpotCheckType | undefined,
     exec_va_id: String(body.exec_va_id ?? ""),
     exec_va_name: String(body.exec_va_name ?? ""),

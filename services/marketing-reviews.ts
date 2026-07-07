@@ -17,6 +17,10 @@ import {
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
+import { notify } from "@/services/notification-service";
+import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { listUsersWithPermission } from "@/services/users";
+import { PERMISSIONS } from "@/lib/permissions";
 
 export type { SpotCheckStatus, SpotCheckType } from "@/lib/marketing-reviews-helpers";
 
@@ -31,6 +35,7 @@ export interface MarketingSpotCheck {
   subject: string;
   timestamp: string;
   manager_name: string;
+  manager_id: string;
   type: SpotCheckType;
   exec_va_id: string;
   exec_va_name: string;
@@ -98,6 +103,7 @@ type SpotCheckFields = {
   subject?: string;
   timestamp?: string;
   manager_name?: string;
+  manager_id?: string;
   type?: string;
   exec_va_id?: string;
   exec_va_name?: string;
@@ -175,6 +181,7 @@ function mapSpotCheck(rec: AirtableRecord<SpotCheckFields>): MarketingSpotCheck 
     subject: String(f.subject ?? ""),
     timestamp: f.timestamp != null ? String(f.timestamp) : "",
     manager_name: String(f.manager_name ?? ""),
+    manager_id: String(f.manager_id ?? ""),
     type: coerceSpotCheckType(f.type),
     exec_va_id: String(f.exec_va_id ?? ""),
     exec_va_name: String(f.exec_va_name ?? ""),
@@ -294,6 +301,7 @@ export async function createSpotCheck(
     subject,
     timestamp: now,
     manager_name: data.manager_name,
+    ...(data.manager_id ? { manager_id: data.manager_id } : {}),
     type: data.type ?? "Other",
     exec_va_id: data.exec_va_id ?? "",
     exec_va_name: data.exec_va_name ?? "",
@@ -304,7 +312,26 @@ export async function createSpotCheck(
     status: data.status ?? "Pending",
     ...(data.resolution_time != null ? { resolution_time: data.resolution_time } : {}),
   });
-  return mapSpotCheck(rec);
+  const spotCheck = mapSpotCheck(rec);
+
+  const holders = await listUsersWithPermission(PERMISSIONS.SPOTCHECK_MANAGE).catch(() => []);
+  for (const u of holders) {
+    if (!u.id) continue;
+    if (spotCheck.manager_id && u.id === spotCheck.manager_id) continue;
+    await notify({
+      user_id: u.id,
+      event_type: NOTIFICATION_EVENT.SPOT_CHECK_LOGGED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "New spot check logged",
+      body: `${spotCheck.manager_name || "A supervisor"} logged a ${spotCheck.type} spot check for ${spotCheck.exec_va_name || spotCheck.creator_name || "a team member"}.`,
+      entity_type: NOTIFICATION_ENTITY.SPOT_CHECK,
+      entity_id: spotCheck.id,
+      actor_user_id: spotCheck.manager_id || undefined,
+      _triggerSource: "create_spot_check",
+    }).catch((err) => console.error("[spot_check_logged] notify failed", err));
+  }
+
+  return spotCheck;
 }
 
 export async function updateSpotCheck(id: string, data: Partial<MarketingSpotCheck>): Promise<void> {
@@ -320,7 +347,30 @@ export async function updateSpotCheck(id: string, data: Partial<MarketingSpotChe
   if (data.status !== undefined) patch.status = data.status;
   if (data.resolution_time !== undefined) patch.resolution_time = data.resolution_time;
   if (Object.keys(patch).length === 0) return;
+
+  // Load prior state so we can detect a status transition into a terminal state and
+  // notify the original submitter (manager_id) exactly once per transition.
+  const before = data.status !== undefined ? await getSpotCheckById(id) : null;
   await updateRecord(TABLE_SPOT_CHECKS, id, patch);
+
+  if (
+    before &&
+    data.status !== undefined &&
+    data.status !== before.status &&
+    (data.status === "Fixed" || data.status === "Escalated") &&
+    before.manager_id
+  ) {
+    await notify({
+      user_id: before.manager_id,
+      event_type: NOTIFICATION_EVENT.SPOT_CHECK_STATUS_CHANGED,
+      priority: data.status === "Escalated" ? NOTIFICATION_PRIORITY.HIGH : NOTIFICATION_PRIORITY.NORMAL,
+      title: `Spot check ${data.status.toLowerCase()}`,
+      body: `Your spot check for ${before.exec_va_name || before.creator_name || "a team member"} was marked ${data.status}.`,
+      entity_type: NOTIFICATION_ENTITY.SPOT_CHECK,
+      entity_id: id,
+      _triggerSource: "update_spot_check_status",
+    }).catch((err) => console.error("[spot_check_status_changed] notify failed", err));
+  }
 }
 
 export async function deleteSpotCheck(id: string): Promise<void> {

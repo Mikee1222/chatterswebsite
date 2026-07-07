@@ -102,6 +102,14 @@ export const NOTIFICATION_EVENT = {
   SHADOWBAN_LIFTED_REPORTED: "shadowban_lifted_reported" as const,
   WINNER_VIDEO_APPROVED: "winner_video_approved" as const,
   WINNER_VIDEO_REJECTED: "winner_video_rejected" as const,
+  WINNER_VIDEO_SUBMITTED: "winner_video_submitted" as const,
+  RESEARCH_ASSIGNED_TO_CREATIVE: "research_assigned_to_creative" as const,
+  CREATIVE_SCRIPT_SUBMITTED: "creative_script_submitted" as const,
+  CREATIVE_SCRIPT_APPROVED: "creative_script_approved" as const,
+  CREATIVE_SCRIPT_REJECTED: "creative_script_rejected" as const,
+  CREATIVE_SCRIPT_RESUBMITTED: "creative_script_resubmitted" as const,
+  SPOT_CHECK_LOGGED: "spot_check_logged" as const,
+  SPOT_CHECK_STATUS_CHANGED: "spot_check_status_changed" as const,
   SOP_QUIZ_PASSED: "sop_quiz_passed" as const,
   SOP_QUIZ_FAILED: "sop_quiz_failed" as const,
   SCHEDULE_PUBLISHED: "schedule_published" as const,
@@ -261,6 +269,14 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   schedule_published: "normal",
   login_new_device: "high",
   password_changed: "high",
+  winner_video_submitted: "normal",
+  research_assigned_to_creative: "high",
+  creative_script_submitted: "normal",
+  creative_script_approved: "normal",
+  creative_script_rejected: "high",
+  creative_script_resubmitted: "normal",
+  spot_check_logged: "normal",
+  spot_check_status_changed: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */
@@ -280,6 +296,8 @@ export const NOTIFICATION_ENTITY = {
   SOP_ACADEMY: "sop_academy",
   EXPENSE_REQUEST: "expense_request",
   WINNER_VIDEO: "winner_video",
+  CREATIVE_SCRIPT: "creative_script",
+  SPOT_CHECK: "spot_check",
 } as const;
 
 /** Priorities. */

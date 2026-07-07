@@ -307,7 +307,8 @@ export async function getRecord<T = Record<string, unknown>>(
  */
 export async function createRecord<T = Record<string, unknown>>(
   tableName: string,
-  fields: T
+  fields: T,
+  options: { typecast?: boolean } = {}
 ): Promise<AirtableRecord<T>> {
   const { baseId } = getConfig();
   const sanitized = sanitizePayloadForAirtable(tableName, fields as Record<string, unknown>, "create");
@@ -316,12 +317,16 @@ export async function createRecord<T = Record<string, unknown>>(
       table: tableName,
       fields: sanitized,
       fieldKeys: Object.keys(sanitized),
+      typecast: options.typecast ?? false,
     });
   }
   const url = `${AIRTABLE_API}/${baseId}/${encodeURIComponent(tableName)}`;
   const data = await airtableFetch<{ id: string; createdTime: string; fields: T }>(url, {
     method: "POST",
-    body: JSON.stringify({ fields: sanitized }),
+    body: JSON.stringify({
+      fields: sanitized,
+      ...(options.typecast ? { typecast: true } : {}),
+    }),
   });
   invalidateListRecordsReadCacheForTable(tableName);
   return { id: data.id, createdTime: data.createdTime, fields: data.fields };

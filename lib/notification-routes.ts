@@ -69,6 +69,10 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       if (isAdmin) return ROUTES.admin.winnerVideos;
       if (isVa) return ROUTES.winners;
       return ROUTES.dashboard;
+    case "creative_script":
+      return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
+    case "spot_check":
+      return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "challenge":
       if (isAdmin) return ROUTES.admin.challenges;
       return ROUTES.chatter.challenges;
@@ -148,6 +152,10 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       if (isAdmin) return ROUTES.admin.winnerVideos;
       if (isVa) return ROUTES.winners;
       return ROUTES.dashboard;
+    case "creative_script":
+      return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
+    case "spot_check":
+      return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
     case "billing_cycle":
       return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
     case "payment_submission":
@@ -242,6 +250,14 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "shadowban_lifted_reported":
     case "winner_video_approved":
     case "winner_video_rejected":
+    case "winner_video_submitted":
+    case "research_assigned_to_creative":
+    case "creative_script_submitted":
+    case "creative_script_approved":
+    case "creative_script_rejected":
+    case "creative_script_resubmitted":
+    case "spot_check_logged":
+    case "spot_check_status_changed":
       return "Marketing";
     case "login_new_device":
     case "password_changed":

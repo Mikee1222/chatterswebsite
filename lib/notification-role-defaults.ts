@@ -192,6 +192,14 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   shadowban_lifted_reported: ["virtual_assistant"],
   winner_video_approved: ["virtual_assistant"],
   winner_video_rejected: ["virtual_assistant"],
+  winner_video_submitted: ["admin", "manager", "virtual_assistant"],
+  research_assigned_to_creative: ["admin", "manager", "virtual_assistant"],
+  creative_script_submitted: ["admin", "manager", "virtual_assistant"],
+  creative_script_approved: ["admin", "manager", "virtual_assistant"],
+  creative_script_rejected: ["admin", "manager", "virtual_assistant"],
+  creative_script_resubmitted: ["admin", "manager", "virtual_assistant"],
+  spot_check_logged: ["admin", "manager"],
+  spot_check_status_changed: ["admin", "manager"],
   billing_cycle_announced: ["client"],
   payment_submitted: ["client"],
   sop_quiz_passed: ["chatter", "virtual_assistant"],
@@ -760,6 +768,46 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "winner_video_rejected",
       "Winner video rejected",
       "Αποστέλλεται στον VA όταν απορρίπτεται η winner video υποβολή του"
+    ),
+    eventEntry(
+      "winner_video_submitted",
+      "New winner video submitted",
+      "Ενημερώνει τους διαχειριστές winner videos για νέα υποβολή research/winner video"
+    ),
+    eventEntry(
+      "research_assigned_to_creative",
+      "Research assigned to Creative",
+      "Αποστέλλεται στον Creative όταν του ανατίθεται script για approved winner video"
+    ),
+    eventEntry(
+      "creative_script_submitted",
+      "Creative script submitted",
+      "Ενημερώνει τους reviewers όταν υποβάλλεται creative script προς έλεγχο"
+    ),
+    eventEntry(
+      "creative_script_approved",
+      "Creative script approved",
+      "Αποστέλλεται στον Creative όταν εγκρίνεται το script του"
+    ),
+    eventEntry(
+      "creative_script_rejected",
+      "Creative script rejected",
+      "Αποστέλλεται στον Creative όταν απορρίπτεται το script του (με λόγο)"
+    ),
+    eventEntry(
+      "creative_script_resubmitted",
+      "Creative script resubmitted",
+      "Ενημερώνει τους reviewers όταν ένα απορριφθέν script υποβάλλεται ξανά"
+    ),
+    eventEntry(
+      "spot_check_logged",
+      "New spot check logged",
+      "Ενημερώνει τους διαχειριστές spot check για νέο spot check"
+    ),
+    eventEntry(
+      "spot_check_status_changed",
+      "Spot check status changed",
+      "Αποστέλλεται στον submitter όταν ένα spot check γίνεται Fixed ή Escalated"
     ),
   ],
   custom_request_alerts: [

@@ -22,8 +22,42 @@ import {
 } from "@/lib/creative-scripts-helpers";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { listUsersWithPermission } from "@/services/users";
+import { PERMISSIONS, type Permission } from "@/lib/permissions";
+import type { NotificationEventType, NotificationPriority } from "@/types";
 
 const TABLE = "winner_videos";
+
+/** Notify every active user whose role grants `permission` (e.g. winner_videos:manage reviewers). */
+async function notifyPermissionHolders(params: {
+  permission: Permission;
+  event_type: NotificationEventType;
+  priority: NotificationPriority;
+  title: string;
+  body: string;
+  entity_type: string;
+  entity_id: string;
+  actor_user_id?: string;
+  excludeUserId?: string;
+  triggerSource: string;
+}): Promise<void> {
+  const holders = await listUsersWithPermission(params.permission).catch(() => []);
+  for (const u of holders) {
+    if (!u.id) continue;
+    if (params.excludeUserId && u.id === params.excludeUserId) continue;
+    await notify({
+      user_id: u.id,
+      event_type: params.event_type,
+      priority: params.priority,
+      title: params.title,
+      body: params.body,
+      entity_type: params.entity_type,
+      entity_id: params.entity_id,
+      actor_user_id: params.actor_user_id,
+      _triggerSource: params.triggerSource,
+    }).catch((err) => console.error(`[${params.event_type}] notify holder failed`, err));
+  }
+}
 
 export type WinnerVideoAttachment = { url: string; filename?: string };
 
@@ -250,7 +284,22 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     status: "Pending",
     views_at_submission: data.views_at_submission ?? undefined,
   });
-  return mapWinnerVideo(rec);
+  const video = mapWinnerVideo(rec);
+
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
+    event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
+    priority: NOTIFICATION_PRIORITY.NORMAL,
+    title: "New winner video submitted",
+    body: `${video.submitted_by_name || "A VA"} submitted a winner video for ${video.reference_model_name || "a reference model"}.`,
+    entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
+    entity_id: video.id,
+    actor_user_id: data.submitted_by_id.trim() || undefined,
+    excludeUserId: data.submitted_by_id.trim() || undefined,
+    triggerSource: "create_winner_video",
+  });
+
+  return video;
 }
 
 export async function uploadWinnerVideoScreenshot(
@@ -316,6 +365,21 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
       actor_user_id: data.reviewed_by_id,
       _triggerSource: "approve_winner_video",
     }).catch((err) => console.error("[winner_video_approved] notify failed", err));
+  }
+
+  const assignedCreativeId = data.assigned_creative_id.trim();
+  if (assignedCreativeId) {
+    await notify({
+      user_id: assignedCreativeId,
+      event_type: NOTIFICATION_EVENT.RESEARCH_ASSIGNED_TO_CREATIVE,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: "New script assignment",
+      body: `You've been assigned to write a script for ${existing.reference_model_name || "an approved winner video"}.`,
+      entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+      entity_id: id,
+      actor_user_id: data.reviewed_by_id,
+      _triggerSource: "assign_research_to_creative",
+    }).catch((err) => console.error("[research_assigned_to_creative] notify failed", err));
   }
 
   return updated;
@@ -519,7 +583,22 @@ export async function submitCreativeScript(
   if (existing.script_status !== "Needs Script") {
     throw new Error("This video is not available for script submission");
   }
-  return writeCreativeScriptSubmission(id, data);
+  const updated = await writeCreativeScriptSubmission(id, data);
+
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
+    event_type: NOTIFICATION_EVENT.CREATIVE_SCRIPT_SUBMITTED,
+    priority: NOTIFICATION_PRIORITY.NORMAL,
+    title: "Creative script submitted",
+    body: `${updated.script_submitted_by_name || "A Creative"} submitted a script for ${updated.assigned_creator_name || "a model"} for review.`,
+    entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+    entity_id: id,
+    actor_user_id: data.script_submitted_by_id.trim() || undefined,
+    excludeUserId: data.script_submitted_by_id.trim() || undefined,
+    triggerSource: "submit_creative_script",
+  });
+
+  return updated;
 }
 
 export type ResubmitCreativeScriptInput = SubmitCreativeScriptInput;
@@ -533,7 +612,22 @@ export async function resubmitCreativeScript(
   if (existing.script_status !== "Rejected") {
     throw new Error("Only rejected scripts can be resubmitted");
   }
-  return writeCreativeScriptSubmission(id, data);
+  const updated = await writeCreativeScriptSubmission(id, data);
+
+  await notifyPermissionHolders({
+    permission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
+    event_type: NOTIFICATION_EVENT.CREATIVE_SCRIPT_RESUBMITTED,
+    priority: NOTIFICATION_PRIORITY.NORMAL,
+    title: "Creative script resubmitted",
+    body: `${updated.script_submitted_by_name || "A Creative"} resubmitted the script for ${updated.assigned_creator_name || "a model"} after rejection.`,
+    entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+    entity_id: id,
+    actor_user_id: data.script_submitted_by_id.trim() || undefined,
+    excludeUserId: data.script_submitted_by_id.trim() || undefined,
+    triggerSource: "resubmit_creative_script",
+  });
+
+  return updated;
 }
 
 export type ReviewCreativeScriptInput = {
@@ -566,6 +660,20 @@ export async function approveCreativeScript(
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script approval");
+
+  if (existing.script_submitted_by_id) {
+    await notify({
+      user_id: existing.script_submitted_by_id,
+      event_type: NOTIFICATION_EVENT.CREATIVE_SCRIPT_APPROVED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "Creative script approved",
+      body: `Your script for ${existing.assigned_creator_name || "a model"} was approved.`,
+      entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+      entity_id: id,
+      _triggerSource: "approve_creative_script",
+    }).catch((err) => console.error("[creative_script_approved] notify failed", err));
+  }
+
   return updated;
 }
 
@@ -596,6 +704,20 @@ export async function rejectCreativeScript(
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after script rejection");
+
+  if (existing.script_submitted_by_id) {
+    await notify({
+      user_id: existing.script_submitted_by_id,
+      event_type: NOTIFICATION_EVENT.CREATIVE_SCRIPT_REJECTED,
+      priority: NOTIFICATION_PRIORITY.HIGH,
+      title: "Creative script rejected",
+      body: reason,
+      entity_type: NOTIFICATION_ENTITY.CREATIVE_SCRIPT,
+      entity_id: id,
+      _triggerSource: "reject_creative_script",
+    }).catch((err) => console.error("[creative_script_rejected] notify failed", err));
+  }
+
   return updated;
 }
 
