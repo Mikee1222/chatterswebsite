@@ -16,14 +16,15 @@ export const VA_TASKS = {
 export const VA_CARD =
   "va-card rounded-2xl transition-[transform,box-shadow,border-color] duration-200 motion-reduce:transition-none hover:-translate-y-0.5 hover:shadow-[0_16px_48px_-12px_rgba(0,0,0,0.65),0_0_32px_-8px_rgba(255,20,147,0.12)]";
 
+/** Hover-only glow — avoid always-on blur on large surfaces (GPU cost). */
 export const VA_CARD_GLOW =
-  "relative before:pointer-events-none before:absolute before:-inset-6 before:-z-10 before:rounded-[28px] before:bg-[radial-gradient(ellipse_at_center,rgba(255,20,147,0.14)_0%,transparent_70%)] before:opacity-80 before:blur-2xl";
+  "relative before:pointer-events-none before:absolute before:-inset-4 before:-z-10 before:rounded-[24px] before:bg-[radial-gradient(ellipse_at_center,rgba(255,20,147,0.12)_0%,transparent_70%)] before:opacity-0 before:blur-xl before:transition-opacity before:duration-200 hover:before:opacity-70 motion-reduce:before:transition-none";
 
 export const VA_FILTER_INPUT =
   "h-10 rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#0D0B0D]/90 px-3 text-sm text-[#B8B4B8] outline-none shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] transition placeholder:text-[#B8B4B8]/35 focus:border-[#FF1493]/50 focus:ring-1 focus:ring-[#FF1493]/20";
 
 export const VA_STATUS_BADGE =
-  "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] backdrop-blur-sm";
+  "inline-flex items-center rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em]";
 
 export const VA_MODEL_TAG =
   "rounded-full border border-[#D4AF8C]/40 bg-[#D4AF8C]/[0.06] px-2.5 py-0.5 text-xs font-medium text-[#D4AF8C] shadow-[0_0_12px_-4px_rgba(212,175,140,0.35)]";

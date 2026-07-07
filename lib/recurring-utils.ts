@@ -9,10 +9,19 @@ export interface RecurringSeriesGroup {
   totalCompleted: number;
 }
 
-export function groupRecurringTasks(tasks: VaTaskRecord[]): {
+export type GroupRecurringTasksOptions = {
+  /** When true (date-filtered lists), show the instance on that day regardless of status. */
+  forDateView?: boolean;
+};
+
+export function groupRecurringTasks(
+  tasks: VaTaskRecord[],
+  options?: GroupRecurringTasksOptions,
+): {
   regularTasks: VaTaskRecord[];
   recurringGroups: RecurringSeriesGroup[];
 } {
+  const forDateView = options?.forDateView === true;
   const regularTasks: VaTaskRecord[] = [];
   const recurringMap = new Map<string, VaTaskRecord[]>();
 
@@ -34,9 +43,12 @@ export function groupRecurringTasks(tasks: VaTaskRecord[]): {
       return db - da;
     });
 
-    const current =
-      instances.find((t) => t.status === "pending" || t.status === "in_progress") ?? null;
-    const history = instances.filter((t) => t.status === "done" || t.status === "skipped");
+    const current = forDateView
+      ? (instances[0] ?? null)
+      : (instances.find((t) => t.status === "pending" || t.status === "in_progress") ?? null);
+    const history = forDateView
+      ? instances.slice(1)
+      : instances.filter((t) => t.status === "done" || t.status === "skipped");
     const totalCompleted = instances.filter((t) => t.status === "done").length;
 
     recurringGroups.push({

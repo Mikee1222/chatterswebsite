@@ -31,17 +31,14 @@ import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { SocialAccount } from "@/services/marketing";
 import { cn } from "@/lib/utils";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
-import { getTodayYmdAthens } from "@/lib/airtable-datetime";
-import { filterTasksByAthensYmd } from "@/lib/va-task-date-filter";
-import { VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
+import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
+import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
 
 type Props = { tasks: VaTaskRecord[]; userName?: string };
-
-type ActiveShift = { id: string; start_time: string; status: string };
 
 const FILTER_INPUT = VA_FILTER_INPUT;
 
@@ -122,43 +119,16 @@ const fieldMotion = {
   transition: { duration: 0.28, ease: [0.22, 1, 0.36, 1] },
 } as const;
 
-export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
-  const router = useRouter();
-  const tasks = initialTasks;
-  const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
-  const [notes, setNotes] = React.useState("");
-  const [statusPick, setStatusPick] = React.useState<VaTaskStatus>("done");
-  const [busy, setBusy] = React.useState(false);
-  const [err, setErr] = React.useState<string | null>(null);
-  const [completing, setCompleting] = React.useState<string | null>(null);
+type ActiveShift = { id: string; start_time: string; status: string };
 
-  const todayYmd = getTodayYmdAthens();
-  const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
-  const isViewingToday = selectedYmd === todayYmd;
-
-  const [search, setSearch] = React.useState("");
-  const [filterStatus, setFilterStatus] = React.useState("");
-  const [filterPriority, setFilterPriority] = React.useState("");
-
-  const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
-  const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
-  const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
-  const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
-  const [proofFile, setProofFile] = React.useState<File | null>(null);
-  const [submitting, setSubmitting] = React.useState(false);
-  const proofRef = React.useRef<HTMLInputElement>(null);
-  const proofPreviewUrl = React.useMemo(
-    () => (proofFile ? URL.createObjectURL(proofFile) : null),
-    [proofFile],
-  );
-  React.useEffect(() => {
-    return () => {
-      if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
-    };
-  }, [proofPreviewUrl]);
-
-  const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
-
+/** Isolated shift UI + 1s timer so the task list does not re-render every second. */
+function VaShiftBar({
+  isViewingToday,
+  onShiftChange,
+}: {
+  isViewingToday: boolean;
+  onShiftChange: (onShift: boolean) => void;
+}) {
   const [activeShift, setActiveShift] = React.useState<ActiveShift | null>(null);
   const [shiftLoading, setShiftLoading] = React.useState(true);
   const [shiftBusy, setShiftBusy] = React.useState(false);
@@ -178,6 +148,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   React.useEffect(() => {
     void fetchActiveShift();
   }, [fetchActiveShift]);
+
+  React.useEffect(() => {
+    onShiftChange(!!activeShift);
+  }, [activeShift, onShiftChange]);
 
   React.useEffect(() => {
     if (!activeShift?.start_time) {
@@ -231,7 +205,105 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     }
   }
 
+  if (!isViewingToday) return null;
+
   const onShift = !!activeShift;
+
+  if (onShift) {
+    return (
+      <div className="border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]">
+        <div className="mx-auto max-w-5xl space-y-3 px-4 py-3.5 md:px-6">
+          {shiftErr ? (
+            <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
+              {shiftErr}
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center justify-between gap-4 border-l-2 border-[#D4AF8C] pl-4">
+            <div className="flex items-center gap-3">
+              <span className="relative flex h-2.5 w-2.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#D4AF8C] opacity-50 motion-reduce:animate-none" />
+                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#D4AF8C]" />
+              </span>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]">On shift</span>
+              <span className="text-base tabular-nums tracking-tight text-white/90">{shiftDuration}</span>
+            </div>
+            <ShiftButton variant="end" loading={shiftBusy} onClick={() => void handleEndShift()} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-8 w-full border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]">
+      <div className="mx-auto max-w-5xl space-y-3 px-4 py-6 md:px-6">
+        {shiftErr ? (
+          <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
+            {shiftErr}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center justify-between gap-6">
+          <div>
+            <div className="mb-3 flex items-center gap-2">
+              <span className="h-2 w-2 rounded-full bg-[#D4AF8C] shadow-[0_0_8px_rgba(212,175,140,0.5)]" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">Ready</span>
+            </div>
+            <h2 className="text-xl font-semibold text-white">Begin your shift</h2>
+            <p className="mt-1 text-sm text-[#B8B4B8]/65">Clock in to unlock your task checklist</p>
+          </div>
+          <ShiftButton
+            variant="start"
+            size="lg"
+            loading={shiftBusy}
+            disabled={shiftLoading}
+            onClick={() => void handleStartShift()}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
+  const router = useRouter();
+  const tasks = initialTasks;
+  const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
+  const [notes, setNotes] = React.useState("");
+  const [statusPick, setStatusPick] = React.useState<VaTaskStatus>("done");
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const [completing, setCompleting] = React.useState<string | null>(null);
+
+  const todayYmd = getVaTasksViewTodayYmd();
+  const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
+  const isViewingToday = selectedYmd === todayYmd;
+
+  const [search, setSearch] = React.useState("");
+  const deferredSearch = React.useDeferredValue(search);
+  const [filterStatus, setFilterStatus] = React.useState("");
+  const [filterPriority, setFilterPriority] = React.useState("");
+
+  const [onShift, setOnShift] = React.useState(false);
+  const handleShiftChange = React.useCallback((next: boolean) => setOnShift(next), []);
+
+  const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
+  const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
+  const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
+  const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
+  const [proofFile, setProofFile] = React.useState<File | null>(null);
+  const [submitting, setSubmitting] = React.useState(false);
+  const proofRef = React.useRef<HTMLInputElement>(null);
+  const proofPreviewUrl = React.useMemo(
+    () => (proofFile ? URL.createObjectURL(proofFile) : null),
+    [proofFile],
+  );
+  React.useEffect(() => {
+    return () => {
+      if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
+    };
+  }, [proofPreviewUrl]);
+
+  const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
 
   React.useEffect(() => {
     function onPaste(e: ClipboardEvent) {
@@ -265,7 +337,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   }, [dateFilteredTasks]);
 
   const filteredTasks = React.useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     let list = [...dateFilteredTasks];
     if (q) {
       list = list.filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(q));
@@ -282,10 +354,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       if (!da && db) return 1;
       return createdMs(b) - createdMs(a);
     });
-  }, [dateFilteredTasks, search, filterStatus, filterPriority]);
+  }, [dateFilteredTasks, deferredSearch, filterStatus, filterPriority]);
 
   const { regularTasks, recurringGroups } = React.useMemo(
-    () => groupRecurringTasks(filteredTasks),
+    () => groupRecurringTasks(filteredTasks, { forDateView: true }),
     [filteredTasks],
   );
 
@@ -434,7 +506,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
         className={cn(
           VA_CARD,
           "overflow-hidden",
-          expanded && cn("border-[#FF1493]/35", VA_CARD_GLOW),
+          expanded && "border-[#FF1493]/35",
           task.status === "done" && !expanded && "opacity-70",
         )}
       >
@@ -679,60 +751,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
   return (
     <div className="min-h-screen">
-      {/* ── Shift bar (today only — reflects live shift state) ── */}
-      {isViewingToday && onShift ? (
-        <div className={cn("border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]", VA_CARD_GLOW)}>
-          <div className="mx-auto max-w-5xl space-y-3 px-4 py-3.5 md:px-6">
-            {shiftErr ? (
-              <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
-                {shiftErr}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center justify-between gap-4 border-l-2 border-[#D4AF8C] pl-4">
-              <div className="flex items-center gap-3">
-                <span className="relative flex h-2.5 w-2.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#D4AF8C] opacity-50 motion-reduce:animate-none" />
-                  <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-[#D4AF8C]" />
-                </span>
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]">On shift</span>
-                <span className="text-base tabular-nums tracking-tight text-white/90">
-                  {shiftDuration}
-                </span>
-              </div>
-              <ShiftButton variant="end" loading={shiftBusy} onClick={() => void handleEndShift()} />
-            </div>
-          </div>
-        </div>
-      ) : isViewingToday ? (
-        <div className={cn("mb-8 w-full border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]", VA_CARD_GLOW)}>
-          <div className="mx-auto max-w-5xl space-y-3 px-4 py-6 md:px-6">
-            {shiftErr ? (
-              <div className="rounded-lg border border-rose-500/35 bg-rose-500/10 px-4 py-3 text-sm text-rose-200" role="alert">
-                {shiftErr}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center justify-between gap-6">
-              <div>
-                <div className="mb-3 flex items-center gap-2">
-                  <span className="h-2 w-2 rounded-full bg-[#D4AF8C] shadow-[0_0_8px_rgba(212,175,140,0.5)]" />
-                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/80">Ready</span>
-                </div>
-                <h2 className="text-xl font-semibold text-white">
-                  Begin your shift
-                </h2>
-                <p className="mt-1 text-sm text-[#B8B4B8]/65">Clock in to unlock your task checklist</p>
-              </div>
-              <ShiftButton
-                variant="start"
-                size="lg"
-                loading={shiftBusy}
-                disabled={shiftLoading}
-                onClick={() => void handleStartShift()}
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <VaShiftBar isViewingToday={isViewingToday} onShiftChange={handleShiftChange} />
 
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 md:px-6">
         {/* ── Page header ── */}

@@ -14,8 +14,7 @@ import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
-import { getTodayYmdAthens } from "@/lib/airtable-datetime";
-import { filterTasksByAthensYmd } from "@/lib/va-task-date-filter";
+import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
@@ -353,8 +352,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
   const [filterVa, setFilterVa] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState("");
   const [filterPriority, setFilterPriority] = React.useState("");
-  const todayYmd = getTodayYmdAthens();
+  const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
+  const deferredSearch = React.useDeferredValue(search);
 
   const dateFilteredTasks = React.useMemo(
     () => filterTasksByAthensYmd(localTasks, selectedYmd),
@@ -463,7 +463,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
   };
 
   const filteredTasks = React.useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = deferredSearch.trim().toLowerCase();
     return dateFilteredTasks.filter((t) => {
       if (q) {
         const blob = `${t.title} ${t.description}`.toLowerCase();
@@ -477,21 +477,24 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
       }
       return true;
     });
-  }, [dateFilteredTasks, search, filterVa, filterStatus, filterPriority]);
+  }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority]);
 
   const { regularTasks, recurringGroups } = React.useMemo(
-    () => groupRecurringTasks(filteredTasks),
+    () => groupRecurringTasks(filteredTasks, { forDateView: true }),
     [filteredTasks],
   );
 
-  const dateStatsSource = React.useMemo(() => {
-    const { regularTasks: dateRegular, recurringGroups: dateRecurring } = groupRecurringTasks(dateFilteredTasks);
-    const currents = dateRecurring.map((g) => g.currentTask).filter(Boolean) as VaTaskRecord[];
-    return [...dateRegular, ...currents];
-  }, [dateFilteredTasks]);
+  const dateGrouped = React.useMemo(
+    () => groupRecurringTasks(dateFilteredTasks, { forDateView: true }),
+    [dateFilteredTasks],
+  );
 
   const taskStats = React.useMemo(() => {
-    const { recurringGroups: dateRecurring } = groupRecurringTasks(dateFilteredTasks);
+    const { regularTasks: dateRegular, recurringGroups: dateRecurring } = dateGrouped;
+    const dateStatsSource = [
+      ...dateRegular,
+      ...(dateRecurring.map((g) => g.currentTask).filter(Boolean) as VaTaskRecord[]),
+    ];
     const doneFromRecurring = dateRecurring.reduce((sum, g) => sum + g.totalCompleted, 0);
     const doneFromRegular = dateFilteredTasks.filter((t) => t.status === "done" && !t.is_recurring).length;
     return {
@@ -500,7 +503,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
       inProgress: dateStatsSource.filter((t) => t.status === "in_progress").length,
       done: doneFromRecurring + doneFromRegular,
     };
-  }, [dateFilteredTasks, dateStatsSource]);
+  }, [dateFilteredTasks, dateGrouped]);
 
   const [expandedRecurringHistory, setExpandedRecurringHistory] = React.useState(() => new Set<string>());
 

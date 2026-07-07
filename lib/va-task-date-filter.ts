@@ -1,6 +1,11 @@
 import { ymdInAthens } from "@/lib/airtable-datetime";
 import type { VaTaskRecord } from "@/types";
 
+/** Today YYYY-MM-DD for VA task date nav — matches {@link ymdInAthens} task bucketing (schedule). */
+export function getVaTasksViewTodayYmd(): string {
+  return ymdInAthens(new Date().toISOString());
+}
+
 /** True when task `due_date` buckets to the given Athens YYYY-MM-DD. */
 export function taskMatchesAthensYmd(task: VaTaskRecord, ymd: string): boolean {
   if (!ymd.trim()) return false;
