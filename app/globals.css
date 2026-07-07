@@ -253,6 +253,16 @@ summary,
     padding-bottom: 1.5rem !important;
   }
 }
+@media (max-width: 767px) {
+  /* Reserve space for the fixed bottom nav (+ floating FAB clearance) + iPhone home-indicator
+     safe area, so the LAST item of any page scrolls fully into view instead of hiding behind
+     the bar. !important guarantees this survives any Tailwind responsive utility ordering. */
+  main[data-main-content].mobile-app-main {
+    padding-bottom: calc(
+      var(--mobile-bottom-nav-height) + 3.75rem + env(safe-area-inset-bottom, 0px)
+    ) !important;
+  }
+}
 
 /* ========== Mobile main content: cards, type, buttons, spacing, accents ========== */
 @media (max-width: 767px) {

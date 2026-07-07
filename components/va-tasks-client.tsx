@@ -731,7 +731,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
-            className={cn(VA_CARD, "relative w-full max-w-md overflow-hidden shadow-2xl")}
+            className={cn(VA_CARD, "relative flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-y-auto overscroll-contain shadow-2xl")}
             onClick={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal
@@ -827,7 +827,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       {/* ── Screenshot upload modal ── */}
       {completingItem ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className={cn(VA_CARD, "w-full max-w-md p-6 shadow-2xl")}>
+          <div className={cn(VA_CARD, "max-h-[calc(100dvh-2rem)] w-full max-w-md overflow-y-auto overscroll-contain p-6 shadow-2xl")}>
             <h3 className="text-lg font-semibold text-white">Screenshot proof</h3>
             <p className="mt-1 text-sm text-[#B8B4B8]/65">{completingItem.item.title || "Checklist item"}</p>
             {isEngagementScreenshotItem(completingItem.item) ? (

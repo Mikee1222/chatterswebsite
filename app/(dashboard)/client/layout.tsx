@@ -28,7 +28,7 @@ export default async function ClientLayout({
           <ClientPortalNav userEmail={user.email} />
           <div className="dashboard-content relative flex min-w-0 flex-1 flex-col overflow-hidden pl-0 md:pl-64">
             <ClientPortalHeader />
-            <main className="relative z-20 flex-1 overflow-y-auto bg-transparent p-4 pb-20 pt-2 md:p-8 md:pb-8 md:pt-0">
+            <main className="relative z-20 flex-1 overflow-y-auto bg-transparent p-4 pb-[calc(var(--mobile-bottom-nav-height,76px)+1.5rem+env(safe-area-inset-bottom,0px))] pt-2 md:p-8 md:pb-8 md:pt-0">
               {children}
             </main>
             <ClientMobileBottomNav />
