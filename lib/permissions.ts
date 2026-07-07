@@ -371,6 +371,8 @@ const MANAGER_EXCLUDED: Permission[] = [
   PERMISSIONS.NOTIFICATIONS_DIAGNOSTIC,
   PERMISSIONS.REWARDS_CONFIG,
   PERMISSIONS.MISTAKES_REASONS_MANAGE,
+  // Opt-in tool access — grant per role via Roles UI; not an implicit manager default.
+  PERMISSIONS.VIDEO_TRANSCRIBE_ACCESS,
 ];
 
 const CHATTER_PERMISSIONS: Permission[] = [
@@ -405,11 +407,11 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SETTINGS_VIEW,
   PERMISSIONS.VA_PROGRAM_VIEW,
-  // NOTE: winner_videos:submit is intentionally NOT a VA default. Like spotcheck:submit
-  // and daily_review:submit, it is an optional per-role permission that admins grant via
-  // the Roles UI. Because resolveRolePermissions() unions code defaults into stored perms
-  // (defaults act as a mandatory floor), any permission listed here can NEVER be toggled
-  // off in the UI. Keep opt-in submit-style permissions out of defaults.
+  // NOTE: winner_videos:submit, video_transcribe:access, and similar opt-in tool permissions
+  // are intentionally NOT VA defaults. Because resolveRolePermissions() unions code defaults
+  // into stored perms (defaults act as a mandatory floor), any permission listed here can
+  // NEVER be toggled off in the UI. Keep opt-in permissions out of VA/chatter defaults; for
+  // manager, add them to MANAGER_EXCLUDED so the Airtable toggle stays authoritative.
 ];
 
 const MODEL_PERMISSIONS: Permission[] = [
