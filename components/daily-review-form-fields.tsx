@@ -4,19 +4,16 @@ import * as React from "react";
 import {
   DashPlaceholder,
   ManagerReviewFileDropzone,
-  ManagerReviewSelect,
   ManagerReviewTextarea,
   ReviewFieldLabel,
   ReviewSectionHeader,
   TogglePill,
   VA_CHAMPAGNE_DIVIDER,
   VA_MODEL_TAG,
-  type CustomSelectOption,
 } from "@/components/manager-review-ui";
+import { StaffAssigneePicker, staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { COMPLIANCE_VS_MASTER, DAILY_REVIEW_KPIS } from "@/lib/marketing-reviews-helpers";
 import { VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
-import { cn } from "@/lib/utils";
-import type { UserRecord } from "@/types";
 
 export type DailyReviewFormState = {
   kpis: string[];
@@ -29,7 +26,8 @@ export type DailyReviewFormState = {
 
 type Props = {
   state: DailyReviewFormState;
-  marketingVas: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   managerName?: string;
   reviewLabel?: string;
   readOnly?: boolean;
@@ -43,7 +41,8 @@ type Props = {
 
 export function DailyReviewFormFields({
   state,
-  marketingVas,
+  staffUsers,
+  roleLabels,
   managerName,
   reviewLabel,
   readOnly,
@@ -54,14 +53,6 @@ export function DailyReviewFormFields({
   onChange,
   onAttachFiles,
 }: Props) {
-  const vaOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "—" },
-      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
-    ],
-    [marketingVas],
-  );
-
   return (
     <div className="space-y-5">
       {reviewLabel ? (
@@ -117,7 +108,9 @@ export function DailyReviewFormFields({
           {state.topPerformerId ? (
             <p className="text-sm text-[#B8B4B8]/70">
               <span className="text-[#B8B4B8]/45">Top performer: </span>
-              {marketingVas.find((v) => v.id === state.topPerformerId)?.full_name ?? <DashPlaceholder />}
+              {staffUsers.find((v) => v.id === state.topPerformerId)
+                ? staffDisplayName(staffUsers.find((v) => v.id === state.topPerformerId)!)
+                : <DashPlaceholder />}
             </p>
           ) : null}
           {state.issues ? (
@@ -138,15 +131,16 @@ export function DailyReviewFormFields({
         </>
       ) : (
         <>
-          <label className="block space-y-1.5 text-sm">
-            <ReviewFieldLabel>Top performer VA</ReviewFieldLabel>
-            <ManagerReviewSelect
-              value={state.topPerformerId}
-              onChange={(v) => onChange?.({ topPerformerId: v })}
-              options={vaOptions}
-              className="w-full max-w-md"
+          <div className="block max-w-md space-y-1.5 text-sm">
+            <ReviewFieldLabel>Top performer</ReviewFieldLabel>
+            <StaffAssigneePicker
+              users={staffUsers}
+              roleLabels={roleLabels}
+              selectedIds={state.topPerformerId ? [state.topPerformerId] : []}
+              onChange={(ids) => onChange?.({ topPerformerId: ids[0] ?? "" })}
+              singleSelect
             />
-          </label>
+          </div>
           <label className="block space-y-1.5 text-sm">
             <ReviewFieldLabel>Issues found</ReviewFieldLabel>
             <ManagerReviewTextarea

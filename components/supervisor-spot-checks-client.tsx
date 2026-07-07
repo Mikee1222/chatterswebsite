@@ -16,10 +16,11 @@ import {
   displayOrDash,
 } from "@/components/manager-review-ui";
 import { SpotCheckForm, type SpotCheckFormValues } from "@/components/spot-check-form";
+import { staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import type { MarketingSpotCheck } from "@/services/marketing-reviews";
-import type { ModelRecord, UserRecord } from "@/types";
+import type { ModelRecord } from "@/types";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {
@@ -40,23 +41,21 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 
 type Props = {
   initialSubmissions: MarketingSpotCheck[];
-  vaUsers: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   models: ModelRecord[];
 };
 
-export function SupervisorSpotChecksClient({ initialSubmissions, vaUsers, models }: Props) {
+export function SupervisorSpotChecksClient({
+  initialSubmissions,
+  staffUsers,
+  roleLabels,
+  models,
+}: Props) {
   const { addToast } = useToast();
   const [submissions, setSubmissions] = React.useState(initialSubmissions);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
-
-  const marketingVas = React.useMemo(
-    () =>
-      vaUsers.filter(
-        (u) => u.va_type === "marketing" || u.va_type === "both" || !u.va_type,
-      ),
-    [vaUsers],
-  );
 
   async function reload() {
     setLoading(true);
@@ -72,7 +71,7 @@ export function SupervisorSpotChecksClient({ initialSubmissions, vaUsers, models
   async function handleSubmit(values: SpotCheckFormValues) {
     setSaving(true);
     try {
-      const va = marketingVas.find((v) => v.id === values.exec_va_id);
+      const member = staffUsers.find((v) => v.id === values.exec_va_id);
       const model = models.find((m) => m.id === values.creator_id);
       const res = await fetch("/api/spot-checks", {
         method: "POST",
@@ -80,7 +79,7 @@ export function SupervisorSpotChecksClient({ initialSubmissions, vaUsers, models
         body: JSON.stringify({
           type: values.type,
           exec_va_id: values.exec_va_id,
-          exec_va_name: va?.full_name ?? "",
+          exec_va_name: member ? staffDisplayName(member) : "",
           creator_id: values.creator_id,
           creator_name: model?.model_name ?? "",
           what_was_wrong: values.what_was_wrong,
@@ -121,7 +120,8 @@ export function SupervisorSpotChecksClient({ initialSubmissions, vaUsers, models
         description="New submissions start as Pending for admin review."
       >
         <SpotCheckForm
-          vaUsers={vaUsers}
+          staffUsers={staffUsers}
+          roleLabels={roleLabels}
           models={models}
           saving={saving}
           submitLabel="Submit finding"

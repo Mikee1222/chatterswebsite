@@ -27,7 +27,7 @@ import type {
   MarketingDailyReview,
   MarketingDailyReviewDetail,
 } from "@/services/marketing-reviews";
-import type { UserRecord } from "@/types";
+import { staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 
 const API_BASE = "/api/daily-reviews";
 
@@ -77,10 +77,16 @@ function detailToExecAudits(review: MarketingDailyReviewDetail | null): ExecAudi
 type Props = {
   initialSubmissions: MarketingDailyReview[];
   todayReview: MarketingDailyReviewDetail | null;
-  vaUsers: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
 };
 
-export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, vaUsers }: Props) {
+export function SupervisorDailyReviewClient({
+  initialSubmissions,
+  todayReview,
+  staffUsers,
+  roleLabels,
+}: Props) {
   const { addToast } = useToast();
   const [myReviews, setMyReviews] = React.useState(initialSubmissions);
   const [selectedDate, setSelectedDate] = React.useState(todayReviewIso());
@@ -91,11 +97,6 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
   const [formState, setFormState] = React.useState<DailyReviewFormState>(() => detailToFormState(todayReview));
   const [execAudits, setExecAudits] = React.useState<ExecAuditDraft[]>(() => detailToExecAudits(todayReview));
   const [attachFiles, setAttachFiles] = React.useState<File[]>([]);
-
-  const marketingVas = React.useMemo(
-    () => vaUsers.filter((u) => u.va_type === "marketing" || u.va_type === "both" || !u.va_type),
-    [vaUsers],
-  );
 
   function applyReviewToForm(review: MarketingDailyReviewDetail | null) {
     setFormState(detailToFormState(review));
@@ -174,7 +175,7 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
     if (!activeReview) return;
     setSaving(true);
     try {
-      const topVa = marketingVas.find((v) => v.id === formState.topPerformerId);
+      const topPerformer = staffUsers.find((v) => v.id === formState.topPerformerId);
       const res = await fetch(`${API_BASE}/${activeReview.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -182,7 +183,7 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
           overall_kpis_reviewed: formState.kpis,
           account_compliance_vs_master: formState.compliance,
           top_performer_id: formState.topPerformerId,
-          top_performer_name: topVa?.full_name ?? "",
+          top_performer_name: topPerformer ? staffDisplayName(topPerformer) : "",
           issues_found: formState.issues,
           actions_assigned: formState.actions,
           time_spent_minutes: formState.timeSpent ? Number(formState.timeSpent) : null,
@@ -280,7 +281,8 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
           <section className={cn(VA_CARD, "space-y-5 p-5 shadow-[0_0_20px_rgba(255,20,147,0.06)]")}>
             <DailyReviewFormFields
               state={formState}
-              marketingVas={marketingVas}
+              staffUsers={staffUsers}
+              roleLabels={roleLabels}
               managerName={activeReview.manager_name}
               reviewLabel={activeReview.review_label}
               showAttachments
@@ -327,7 +329,8 @@ export function SupervisorDailyReviewClient({ initialSubmissions, todayReview, v
                   key={audit.id ?? `new-${index}`}
                   audit={audit}
                   index={index}
-                  marketingVas={marketingVas}
+                  staffUsers={staffUsers}
+                  roleLabels={roleLabels}
                   onChange={(patch) =>
                     setExecAudits((prev) => prev.map((a, i) => (i === index ? { ...a, ...patch } : a)))
                   }

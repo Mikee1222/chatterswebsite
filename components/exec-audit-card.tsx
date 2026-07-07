@@ -4,13 +4,11 @@ import { Trash2 } from "lucide-react";
 import {
   DashPlaceholder,
   FindingCard,
-  ManagerReviewSelect,
   ManagerReviewTextarea,
   ReviewFieldLabel,
   TogglePill,
-  type CustomSelectOption,
 } from "@/components/manager-review-ui";
-import type { UserRecord } from "@/types";
+import { StaffAssigneePicker, staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 import * as React from "react";
 
 export type ExecAuditDraft = {
@@ -51,37 +49,32 @@ export function emptyExecAuditDraft(): ExecAuditDraft {
 type Props = {
   audit: ExecAuditDraft;
   index: number;
-  marketingVas: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   readOnly?: boolean;
   onChange?: (patch: Partial<ExecAuditDraft>) => void;
   onDelete?: () => void;
 };
 
-export function ExecAuditCard({ audit, index, marketingVas, readOnly, onChange, onDelete }: Props) {
-  const vaOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "Select VA" },
-      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
-    ],
-    [marketingVas],
-  );
-
+export function ExecAuditCard({ audit, index, staffUsers, roleLabels, readOnly, onChange, onDelete }: Props) {
   return (
     <FindingCard className="space-y-4">
       <div className="flex items-start justify-between gap-2">
         {readOnly ? (
           <p className="font-medium text-white">{audit.exec_va_name?.trim() ? audit.exec_va_name : <DashPlaceholder />}</p>
         ) : (
-          <div className="w-full max-w-sm space-y-1.5">
+          <div className="w-full space-y-1.5">
             <ReviewFieldLabel className="text-xs">Exec / VA</ReviewFieldLabel>
-            <ManagerReviewSelect
-              value={audit.exec_va_id}
-              onChange={(v) => {
-                const va = marketingVas.find((u) => u.id === v);
-                onChange?.({ exec_va_id: v, exec_va_name: va?.full_name ?? "" });
+            <StaffAssigneePicker
+              users={staffUsers}
+              roleLabels={roleLabels}
+              selectedIds={audit.exec_va_id ? [audit.exec_va_id] : []}
+              onChange={(ids) => {
+                const id = ids[0] ?? "";
+                const member = staffUsers.find((u) => u.id === id);
+                onChange?.({ exec_va_id: id, exec_va_name: member ? staffDisplayName(member) : "" });
               }}
-              options={vaOptions}
-              className="w-full"
+              singleSelect
             />
           </div>
         )}

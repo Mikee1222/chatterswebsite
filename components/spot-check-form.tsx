@@ -9,6 +9,7 @@ import {
   VA_BTN_PRIMARY,
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
+import { StaffAssigneePicker, staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { cn } from "@/lib/utils";
 import {
   SPOT_CHECK_STATUSES,
@@ -16,7 +17,7 @@ import {
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
-import type { ModelRecord, UserRecord } from "@/types";
+import type { ModelRecord } from "@/types";
 
 export type SpotCheckFormValues = {
   type: SpotCheckType;
@@ -29,7 +30,8 @@ export type SpotCheckFormValues = {
 };
 
 type Props = {
-  vaUsers: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   models: ModelRecord[];
   saving?: boolean;
   submitLabel?: string;
@@ -51,7 +53,8 @@ const DEFAULT_VALUES: SpotCheckFormValues = {
 };
 
 export function SpotCheckForm({
-  vaUsers,
+  staffUsers,
+  roleLabels,
   models,
   saving = false,
   submitLabel = "Save finding",
@@ -62,24 +65,9 @@ export function SpotCheckForm({
 }: Props) {
   const [values, setValues] = React.useState<SpotCheckFormValues>(DEFAULT_VALUES);
 
-  const marketingVas = React.useMemo(
-    () =>
-      vaUsers.filter(
-        (u) => u.va_type === "marketing" || u.va_type === "both" || !u.va_type,
-      ),
-    [vaUsers],
-  );
-
   const typeOptions = React.useMemo<CustomSelectOption[]>(
     () => SPOT_CHECK_TYPES.map((t) => ({ value: t, label: t })),
     [],
-  );
-  const vaOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "—" },
-      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
-    ],
-    [marketingVas],
   );
   const modelOptions = React.useMemo<CustomSelectOption[]>(
     () => [
@@ -116,15 +104,16 @@ export function SpotCheckForm({
           required
         />
       </label>
-      <label className="block space-y-1.5 text-sm">
+      <div className="block space-y-1.5 text-sm">
         <ReviewFieldLabel>Exec / VA</ReviewFieldLabel>
-        <ManagerReviewSelect
-          value={values.exec_va_id}
-          onChange={(v) => setValues((prev) => ({ ...prev, exec_va_id: v }))}
-          options={vaOptions}
-          className="w-full"
+        <StaffAssigneePicker
+          users={staffUsers}
+          roleLabels={roleLabels}
+          selectedIds={values.exec_va_id ? [values.exec_va_id] : []}
+          onChange={(ids) => setValues((prev) => ({ ...prev, exec_va_id: ids[0] ?? "" }))}
+          singleSelect
         />
-      </label>
+      </div>
       <label className="block space-y-1.5 text-sm">
         <ReviewFieldLabel>Creator</ReviewFieldLabel>
         <ManagerReviewSelect

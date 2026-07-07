@@ -39,6 +39,7 @@ import {
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import { SpotCheckForm, type SpotCheckFormValues } from "@/components/spot-check-form";
+import { StaffAssigneePicker, staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import { ROUTES } from "@/lib/routes";
@@ -80,10 +81,18 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
 type Props = {
   initialSpotChecks: MarketingSpotCheck[];
   vaUsers: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   models: ModelRecord[];
 };
 
-export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Props) {
+export function AdminSpotChecksClient({
+  initialSpotChecks,
+  vaUsers,
+  staffUsers,
+  roleLabels,
+  models,
+}: Props) {
   const { addToast } = useToast();
   const [spotChecks, setSpotChecks] = React.useState(initialSpotChecks);
   const [loading, setLoading] = React.useState(false);
@@ -104,6 +113,7 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
   const [filterDateTo, setFilterDateTo] = React.useState("");
 
   const [editDraft, setEditDraft] = React.useState<Partial<MarketingSpotCheck>>({});
+  const [reassigningId, setReassigningId] = React.useState<string | null>(null);
 
   const marketingVas = React.useMemo(
     () =>
@@ -147,13 +157,12 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
     ],
     [],
   );
-  const reassignOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "Reassign VA…" },
-      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
-    ],
-    [marketingVas],
-  );
+
+  function memberName(id: string | undefined): string {
+    if (!id) return "";
+    const member = staffUsers.find((u) => u.id === id);
+    return member ? staffDisplayName(member) : "";
+  }
 
   function markPending(id: string, on: boolean) {
     setPendingIds((prev) => {
@@ -211,7 +220,7 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
   async function handleCreate(values: SpotCheckFormValues) {
     setSaving(true);
     try {
-      const va = marketingVas.find((v) => v.id === values.exec_va_id);
+      const execName = memberName(values.exec_va_id);
       const model = models.find((m) => m.id === values.creator_id);
       const res = await fetch("/api/admin/marketing-reviews/spot-checks", {
         method: "POST",
@@ -219,7 +228,7 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
         body: JSON.stringify({
           type: values.type,
           exec_va_id: values.exec_va_id,
-          exec_va_name: va?.full_name ?? "",
+          exec_va_name: execName,
           creator_id: values.creator_id,
           creator_name: model?.model_name ?? "",
           what_was_wrong: values.what_was_wrong,
@@ -286,15 +295,16 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
     }
   }
 
-  async function handleReassign(id: string, vaId: string) {
-    if (!vaId) return;
-    const va = marketingVas.find((v) => v.id === vaId);
+  async function handleReassign(id: string, memberId: string) {
+    if (!memberId) return;
+    const name = memberName(memberId);
     const ok = await patchSpotCheck(
       id,
-      { exec_va_id: vaId, exec_va_name: va?.full_name ?? "" },
-      { exec_va_id: vaId, exec_va_name: va?.full_name ?? "" },
+      { exec_va_id: memberId, exec_va_name: name },
+      { exec_va_id: memberId, exec_va_name: name },
     );
     if (ok) {
+      setReassigningId(null);
       addToast(localToast(`sc-re-${Date.now()}`, "Reassigned", `Exec/VA updated.`, "normal"));
     }
   }
@@ -315,14 +325,14 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
   async function handleSaveEdit(id: string) {
     setSaving(true);
     try {
-      const va = marketingVas.find((v) => v.id === editDraft.exec_va_id);
+      const execName = memberName(editDraft.exec_va_id);
       const model = models.find((m) => m.id === editDraft.creator_id);
       const res = await fetch(`/api/admin/marketing-reviews/spot-checks/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...editDraft,
-          exec_va_name: va?.full_name ?? editDraft.exec_va_name,
+          exec_va_name: execName || editDraft.exec_va_name,
           creator_name: model?.model_name ?? editDraft.creator_name,
         }),
       });
@@ -363,13 +373,6 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
   const editStatusOptions = React.useMemo<CustomSelectOption[]>(
     () => SPOT_CHECK_STATUSES.map((s) => ({ value: s, label: s })),
     [],
-  );
-  const editVaOptions = React.useMemo<CustomSelectOption[]>(
-    () => [
-      { value: "", label: "—" },
-      ...marketingVas.map((v) => ({ value: v.id, label: v.full_name || v.email || "—" })),
-    ],
-    [marketingVas],
   );
   const editModelOptions = React.useMemo<CustomSelectOption[]>(
     () => [
@@ -556,14 +559,14 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
                         onClick={() => void handleQuickStatus(sc.id, "Escalated")}
                       />
                     ) : null}
-                    <ManagerReviewSelect
-                      value={sc.exec_va_id}
+                    <button
+                      type="button"
                       disabled={isPending}
-                      onChange={(vaId) => void handleReassign(sc.id, vaId)}
-                      options={reassignOptions}
-                      triggerClassName="h-8 min-h-0 max-w-[10rem] py-0 text-xs"
-                      aria-label="Reassign VA"
-                    />
+                      onClick={() => setReassigningId(reassigningId === sc.id ? null : sc.id)}
+                      className={cn(VA_BTN_SECONDARY, "h-8 px-3 py-0 text-xs")}
+                    >
+                      Reassign
+                    </button>
                     <div className="flex min-w-0 flex-1 basis-full items-center gap-2 sm:basis-auto">
                       <input
                         type="text"
@@ -591,6 +594,22 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
                       Delete
                     </QuickActionDelete>
                   </div>
+
+                  {reassigningId === sc.id ? (
+                    <div className="mt-4 border-t border-white/6 pt-4">
+                      <ReviewFieldLabel className="mb-2 block">Reassign exec / VA</ReviewFieldLabel>
+                      <StaffAssigneePicker
+                        users={staffUsers}
+                        roleLabels={roleLabels}
+                        selectedIds={sc.exec_va_id ? [sc.exec_va_id] : []}
+                        onChange={(ids) => {
+                          const id = ids[0];
+                          if (id) void handleReassign(sc.id, id);
+                        }}
+                        singleSelect
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 {expanded ? (
@@ -615,15 +634,24 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
                           className="w-full"
                         />
                       </label>
-                      <label className="block space-y-1.5 text-sm">
+                      <div className="block space-y-1.5 text-sm md:col-span-2">
                         <ReviewFieldLabel>Exec / VA</ReviewFieldLabel>
-                        <ManagerReviewSelect
-                          value={editDraft.exec_va_id ?? sc.exec_va_id}
-                          onChange={(v) => setEditDraft((d) => ({ ...d, exec_va_id: v }))}
-                          options={editVaOptions}
-                          className="w-full"
+                        <StaffAssigneePicker
+                          users={staffUsers}
+                          roleLabels={roleLabels}
+                          selectedIds={(editDraft.exec_va_id ?? sc.exec_va_id) ? [editDraft.exec_va_id ?? sc.exec_va_id] : []}
+                          onChange={(ids) => {
+                            const id = ids[0] ?? "";
+                            const member = staffUsers.find((u) => u.id === id);
+                            setEditDraft((d) => ({
+                              ...d,
+                              exec_va_id: id,
+                              exec_va_name: member ? staffDisplayName(member) : "",
+                            }));
+                          }}
+                          singleSelect
                         />
-                      </label>
+                      </div>
                       <label className="block space-y-1.5 text-sm">
                         <ReviewFieldLabel>Creator</ReviewFieldLabel>
                         <ManagerReviewSelect
@@ -676,7 +704,8 @@ export function AdminSpotChecksClient({ initialSpotChecks, vaUsers, models }: Pr
       {modalOpen ? (
         <ReviewModalShell title="Log finding" onClose={() => setModalOpen(false)} saving={saving}>
           <SpotCheckForm
-            vaUsers={vaUsers}
+            staffUsers={staffUsers}
+            roleLabels={roleLabels}
             models={models}
             saving={saving}
             submitLabel="Save finding"

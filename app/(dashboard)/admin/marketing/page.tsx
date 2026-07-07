@@ -2,16 +2,17 @@ import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { ROUTES } from "@/lib/routes";
+import { buildRoleLabels, filterVaUsers, toStaffUserOptions } from "@/lib/staff-assignee-data";
 import { getAllAccounts, getAllFunnels, getAllPlatforms, getAllShadowbanReports, getPhones } from "@/services/marketing";
 import { listAllModelss } from "@/services/modelss";
+import { getRoles } from "@/services/roles";
 import { listActiveUsers } from "@/services/users";
 import { AdminMarketingClient } from "@/components/admin-marketing-client";
 
 export default async function AdminMarketingPage() {
-  const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_VIEW);
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_VIEW);
 
-  const [platforms, accounts, funnels, phones, models, allUsers, initialReports] = await Promise.all([
+  const [platforms, accounts, funnels, phones, models, allUsers, initialReports, roles] = await Promise.all([
     getAllPlatforms().catch(() => []),
     getAllAccounts().catch(() => []),
     getAllFunnels().catch(() => []),
@@ -19,11 +20,12 @@ export default async function AdminMarketingPage() {
     listAllModelss().catch(() => []),
     listActiveUsers().catch(() => []),
     getAllShadowbanReports().catch(() => []),
+    getRoles().catch(() => []),
   ]);
 
-  const vaUsers = allUsers.filter(
-    (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
-  );
+  const vaUsers = filterVaUsers(allUsers);
+  const staffUsers = toStaffUserOptions(allUsers);
+  const roleLabels = buildRoleLabels(roles);
 
   return (
     <div className="w-full max-w-full px-4 py-6 md:px-6">
@@ -34,6 +36,8 @@ export default async function AdminMarketingPage() {
         phones={phones}
         models={models}
         vaUsers={vaUsers}
+        staffUsers={staffUsers}
+        roleLabels={roleLabels}
         initialReports={initialReports}
       />
     </div>

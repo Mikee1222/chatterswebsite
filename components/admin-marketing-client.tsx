@@ -50,6 +50,7 @@ import type {
 } from "@/services/marketing";
 import type { AppNotification, ModelRecord, UserRecord } from "@/types";
 import { isModelActiveForAssignment } from "@/lib/assignment-filters";
+import { StaffAssigneePicker, staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 
 type Tab = "platforms" | "accounts" | "funnels" | "reports" | "phones";
 type ReportDateRange = "all" | "7d" | "30d" | "custom";
@@ -547,6 +548,8 @@ export function AdminMarketingClient({
   phones: initialPhones,
   models,
   vaUsers,
+  staffUsers,
+  roleLabels,
   initialReports = [],
 }: {
   platforms: MarketingPlatform[];
@@ -555,6 +558,8 @@ export function AdminMarketingClient({
   phones: Phone[];
   models: ModelRecord[];
   vaUsers: UserRecord[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   initialReports?: ShadowbanReport[];
 }) {
   const { addToast } = useToast();
@@ -1137,7 +1142,7 @@ export function AdminMarketingClient({
       return;
     }
     setError(null);
-    const va = vaUsers.find((u) => u.id === (accountDraft.assigned_va_id ?? ""));
+    const assignee = staffUsers.find((u) => u.id === (accountDraft.assigned_va_id ?? ""));
     const body = {
       model_id: modelId,
       model_name: accountDraft.model_name?.trim() || modelNameById[modelId] || "",
@@ -1147,7 +1152,7 @@ export function AdminMarketingClient({
       account_type: (accountDraft.account_type === "secondary" ? "secondary" : "main") as "main" | "secondary",
       region: (accountDraft.region === "USA" || accountDraft.region === "Greek" ? accountDraft.region : "Global") as SocialAccount["region"],
       assigned_va_id: accountDraft.assigned_va_id ?? "",
-      assigned_va_name: va?.full_name?.trim() || va?.email || accountDraft.assigned_va_name || "",
+      assigned_va_name: assignee ? staffDisplayName(assignee) : accountDraft.assigned_va_name || "",
       notes: (accountDraft.notes ?? "").trim(),
       password: accountDraft.password ?? "",
       linked_phone_id: accountDraft.linked_phone_id ?? "",
@@ -2908,29 +2913,24 @@ export function AdminMarketingClient({
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
-                Assigned VA
-                <select
-                  value={accountDraft.assigned_va_id ?? ""}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    const u = vaUsers.find((x) => x.id === id);
+              <div className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                <span>Assigned VA</span>
+                <StaffAssigneePicker
+                  users={staffUsers}
+                  roleLabels={roleLabels}
+                  selectedIds={accountDraft.assigned_va_id ? [accountDraft.assigned_va_id] : []}
+                  onChange={(ids) => {
+                    const id = ids[0] ?? "";
+                    const u = staffUsers.find((x) => x.id === id);
                     setAccountDraft((d) => ({
                       ...d,
                       assigned_va_id: id,
-                      assigned_va_name: u?.full_name?.trim() || u?.email || "",
+                      assigned_va_name: u ? staffDisplayName(u) : "",
                     }));
                   }}
-                  className={selectClass}
-                >
-                  <option value="">—</option>
-                  {vaUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.full_name || u.email}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  singleSelect
+                />
+              </div>
               <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
                 Linked phone
                 <SearchablePicker
@@ -3030,17 +3030,16 @@ export function AdminMarketingClient({
                   className={selectClass}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
-                Assigned VA
-                <SearchablePicker
-                  value={phoneDraft.assigned_va_id ?? ""}
-                  onChange={(id) => setPhoneDraft((d) => ({ ...d, assigned_va_id: id }))}
-                  items={vaUsers.map((u) => ({ id: u.id, label: u.full_name || u.email || u.id }))}
-                  placeholder="Search VA…"
-                  emptyLabel="No VA assigned"
-                  className="w-full"
+              <div className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
+                <span>Assigned VA</span>
+                <StaffAssigneePicker
+                  users={staffUsers}
+                  roleLabels={roleLabels}
+                  selectedIds={phoneDraft.assigned_va_id ? [phoneDraft.assigned_va_id] : []}
+                  onChange={(ids) => setPhoneDraft((d) => ({ ...d, assigned_va_id: ids[0] ?? "" }))}
+                  singleSelect
                 />
-              </label>
+              </div>
               <label className="flex flex-col gap-1 text-xs text-white/50 sm:col-span-2">
                 Notes
                 <textarea
