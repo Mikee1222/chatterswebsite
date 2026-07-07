@@ -223,14 +223,6 @@ const DAILY_MARKETING_SEED = {
           requires_screenshot: false,
           sort_order: 7,
         },
-        {
-          title: "Παρατηρήσεις",
-          description:
-            "Γράψε τι παρατήρησες στο προφίλ — extra πράγματα που έκανες, τι πήγε λάθος και γιατί, αν άργησε κάτι",
-          step_type: "Other",
-          requires_screenshot: false,
-          sort_order: 8,
-        },
       ],
     },
   ],

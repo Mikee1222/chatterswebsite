@@ -25,6 +25,7 @@ import {
 } from "@/lib/va-tasks-tokens";
 import { TaskPhaseRibbon, type PhaseRibbonItem, type PhaseRibbonPhase } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
+import { ManagerReviewTextarea, ReviewSectionHeader } from "@/components/manager-review-ui";
 
 /** Stable empty array so React.memo is not busted by `?? []` on every parent render. */
 export const EMPTY_TASK_PHASES: TaskPhase[] = [];
@@ -97,6 +98,8 @@ export type VaTaskCardProps = {
   onOpenTask: (task: VaTaskRecord) => void;
   onCompleteItem: (item: PhaseItem, taskId: string) => void;
   onShadowbanReport: (acc: SocialAccount) => void;
+  onSaveObservations?: (taskId: string, notes: string) => Promise<boolean>;
+  observationsSaving?: boolean;
 };
 
 function allPhasesCompleted(phases: TaskPhase[]): boolean {
@@ -121,8 +124,24 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onOpenTask,
   onCompleteItem,
   onShadowbanReport,
+  onSaveObservations,
+  observationsSaving = false,
 }: VaTaskCardProps) {
   const [expanded, setExpanded] = React.useState(false);
+  const [observations, setObservations] = React.useState(task.completed_notes ?? "");
+  const [observationsDirty, setObservationsDirty] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!observationsDirty) {
+      setObservations(task.completed_notes ?? "");
+    }
+  }, [task.id, task.completed_notes, observationsDirty]);
+
+  const saveObservations = React.useCallback(async () => {
+    if (!onSaveObservations || !observationsDirty) return;
+    const ok = await onSaveObservations(task.id, observations);
+    if (ok) setObservationsDirty(false);
+  }, [onSaveObservations, observations, observationsDirty, task.id]);
   const overdue = isPastDue(task.due_date) && task.status !== "done" && task.status !== "skipped";
   const modelNames = task.assigned_model_names ?? [];
   const showDone = showDoneButton(task, phases);
@@ -247,15 +266,23 @@ export const VaTaskCard = React.memo(function VaTaskCard({
                 {item.completed_at ? ` · ${timeAgoShort(item.completed_at)}` : ""}
               </p>
             ) : null}
-            {item.screenshot?.[0]?.url ? (
-              <a
-                href={item.screenshot[0].url}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-0.5 flex items-center gap-1 text-[10px] text-[#D4AF8C]/75 hover:text-[#D4AF8C]"
-              >
-                <ImageIcon className="h-3 w-3" /> View proof
-              </a>
+            {item.screenshot && item.screenshot.length > 0 ? (
+              <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                {item.screenshot.map((shot, idx) =>
+                  shot.url ? (
+                    <a
+                      key={`${shot.url}-${idx}`}
+                      href={shot.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center gap-1 text-[10px] text-[#D4AF8C]/75 hover:text-[#D4AF8C]"
+                    >
+                      <ImageIcon className="h-3 w-3" />
+                      {item.screenshot!.length > 1 ? `Proof ${idx + 1}` : "View proof"}
+                    </a>
+                  ) : null,
+                )}
+              </div>
             ) : null}
           </div>
         </div>
@@ -374,6 +401,40 @@ export const VaTaskCard = React.memo(function VaTaskCard({
 
             <TaskPhaseRibbon phases={phases} renderPhaseExtra={renderPhaseExtra} renderItem={renderItem} />
           </div>
+
+          <div className="border-t border-[rgba(255,255,255,0.06)] px-5 py-5">
+            <ReviewSectionHeader
+              className="mb-3"
+              action={
+                onSaveObservations ? (
+                  <button
+                    type="button"
+                    onClick={() => void saveObservations()}
+                    disabled={observationsSaving || !observationsDirty}
+                    className={cn(
+                      VA_BTN_SECONDARY,
+                      "px-3 py-1.5 text-xs disabled:cursor-not-allowed disabled:opacity-40",
+                    )}
+                  >
+                    {observationsSaving ? "Saving…" : "Save"}
+                  </button>
+                ) : null
+              }
+            >
+              Παρατηρήσεις
+            </ReviewSectionHeader>
+            <ManagerReviewTextarea
+              rows={4}
+              value={observations}
+              onChange={(e) => {
+                setObservationsDirty(true);
+                setObservations(e.target.value);
+              }}
+              onBlur={() => void saveObservations()}
+              placeholder="Γράψε τι παρατήρησες στο προφίλ — extra πράγματα που έκανες, τι πήγε λάθος και γιατί, αν άργησε κάτι"
+              className="text-sm"
+            />
+          </div>
         </div>
       ) : null}
     </article>
@@ -389,5 +450,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.onMarkComplete === next.onMarkComplete &&
   prev.onOpenTask === next.onOpenTask &&
   prev.onCompleteItem === next.onCompleteItem &&
-  prev.onShadowbanReport === next.onShadowbanReport,
+  prev.onShadowbanReport === next.onShadowbanReport &&
+  prev.onSaveObservations === next.onSaveObservations &&
+  prev.observationsSaving === next.observationsSaving,
 );

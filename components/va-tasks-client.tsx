@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Check, ListChecks, Camera, StickyNote, X } from "lucide-react";
+import { Check, ListChecks, StickyNote, X } from "lucide-react";
 import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
 import { selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
@@ -25,6 +25,11 @@ import { VaTasksSearchBar } from "@/components/va-tasks-search-bar";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
 import { applyOptimisticItemCompletion } from "@/lib/va-task-phase-optimistic";
+import { ManagerReviewFileDropzone } from "@/components/manager-review-ui";
+import {
+  ENGAGEMENT_SCREENSHOT_TARGET,
+  isEngagementScreenshotItem,
+} from "@/lib/va-task-screenshots";
 
 type Props = { tasks: VaTaskRecord[]; userName?: string };
 
@@ -232,20 +237,11 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     [],
   );
   const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
-  const [proofFile, setProofFile] = React.useState<File | null>(null);
+  const [proofFiles, setProofFiles] = React.useState<File[]>([]);
   const [screenshotUploading, setScreenshotUploading] = React.useState(false);
-  const proofRef = React.useRef<HTMLInputElement>(null);
+  const [observationsSavingId, setObservationsSavingId] = React.useState<string | null>(null);
   const phaseRollbackRef = React.useRef<Record<string, TaskPhase[]>>({});
   const inflightItemIdsRef = React.useRef(new Set<string>());
-  const proofPreviewUrl = React.useMemo(
-    () => (proofFile ? URL.createObjectURL(proofFile) : null),
-    [proofFile],
-  );
-  React.useEffect(() => {
-    return () => {
-      if (proofPreviewUrl) URL.revokeObjectURL(proofPreviewUrl);
-    };
-  }, [proofPreviewUrl]);
 
   const [shadowbanReportTarget, setShadowbanReportTarget] = React.useState<SocialAccount | null>(null);
 
@@ -255,7 +251,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       if (!found) return;
       const f = found.getAsFile();
       if (!f) return;
-      if (completingItem) setProofFile(f);
+      if (completingItem) setProofFiles((prev) => [...prev, f]);
     }
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);
@@ -378,7 +374,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   }, []);
 
   const submitPhaseItemCompletion = React.useCallback(
-    async (item: PhaseItem, taskId: string, screenshot?: File | null) => {
+    async (item: PhaseItem, taskId: string, screenshots: File[] = []) => {
       if (inflightItemIdsRef.current.has(item.id)) return null;
       inflightItemIdsRef.current.add(item.id);
 
@@ -386,7 +382,9 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
       try {
         const fd = new FormData();
-        if (screenshot) fd.append("screenshot", screenshot);
+        for (const file of screenshots) {
+          fd.append("screenshots", file);
+        }
         const res = await fetch(`/api/va/phase-items/${encodeURIComponent(item.id)}/complete`, {
           method: "POST",
           credentials: "include",
@@ -472,7 +470,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     (item: PhaseItem, taskId: string) => {
       if (item.requires_screenshot) {
         setCompletingItem({ item, taskId });
-        setProofFile(null);
+        setProofFiles([]);
         return;
       }
       void submitPhaseItemCompletion(item, taskId);
@@ -480,21 +478,60 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     [submitPhaseItemCompletion],
   );
 
-  React.useEffect(() => {
-    if (!completingItem?.item.requires_screenshot || !proofFile || screenshotUploading) return;
+  const handleSubmitScreenshotProof = React.useCallback(async () => {
+    if (!completingItem || proofFiles.length === 0 || screenshotUploading) return;
     const { item, taskId } = completingItem;
     setScreenshotUploading(true);
-    void (async () => {
-      const result = await submitPhaseItemCompletion(item, taskId, proofFile);
-      setScreenshotUploading(false);
+    try {
+      const result = await submitPhaseItemCompletion(item, taskId, proofFiles);
       if (result) {
         setCompletingItem(null);
-        setProofFile(null);
-      } else {
-        setProofFile(null);
+        setProofFiles([]);
       }
-    })();
-  }, [completingItem, proofFile, screenshotUploading, submitPhaseItemCompletion]);
+    } finally {
+      setScreenshotUploading(false);
+    }
+  }, [completingItem, proofFiles, screenshotUploading, submitPhaseItemCompletion]);
+
+  const handleSaveObservations = React.useCallback(
+    async (taskId: string, notes: string) => {
+      setObservationsSavingId(taskId);
+      try {
+        const res = await fetch(`/api/va/tasks/${encodeURIComponent(taskId)}/notes`, {
+          method: "PATCH",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ completed_notes: notes }),
+        });
+        if (!res.ok) {
+          const data = (await res.json().catch(() => ({}))) as { error?: string };
+          addToast(
+            winnerVideoLocalToast(
+              `va-notes-err-${taskId}-${Date.now()}`,
+              "Could not save observations",
+              data.error?.trim() || "Please try again.",
+              "high",
+            ),
+          );
+          return false;
+        }
+        return true;
+      } catch {
+        addToast(
+          winnerVideoLocalToast(
+            `va-notes-err-${taskId}-${Date.now()}`,
+            "Could not save observations",
+            "Network error — please try again.",
+            "high",
+          ),
+        );
+        return false;
+      } finally {
+        setObservationsSavingId(null);
+      }
+    },
+    [addToast],
+  );
 
   const handleShadowbanReport = React.useCallback((acc: SocialAccount) => {
     setShadowbanReportTarget(acc);
@@ -614,6 +651,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                   onOpenTask={handleOpenTask}
                   onCompleteItem={handleCompleteItemClick}
                   onShadowbanReport={handleShadowbanReport}
+                  onSaveObservations={handleSaveObservations}
+                  observationsSaving={observationsSavingId === task.id}
                 />
               ))}
               {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
@@ -641,6 +680,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                       onOpenTask={handleOpenTask}
                       onCompleteItem={handleCompleteItemClick}
                       onShadowbanReport={handleShadowbanReport}
+                      onSaveObservations={handleSaveObservations}
+                      observationsSaving={observationsSavingId === group.currentTask.id}
                     />
                   ) : (
                     <div className="rounded-2xl border border-[#D4AF8C]/15 bg-[#151315] px-4 py-3">
@@ -783,59 +824,63 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
         }}
       />
 
-      {/* ── Screenshot upload modal (auto-submits on paste/upload) ── */}
+      {/* ── Screenshot upload modal ── */}
       {completingItem ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className={cn(VA_CARD, "w-full max-w-sm p-6 shadow-2xl")}>
+          <div className={cn(VA_CARD, "w-full max-w-md p-6 shadow-2xl")}>
             <h3 className="text-lg font-semibold text-white">Screenshot proof</h3>
             <p className="mt-1 text-sm text-[#B8B4B8]/65">{completingItem.item.title || "Checklist item"}</p>
-            <div className="mt-5">
-              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]">
-                Paste or upload to complete
+            {isEngagementScreenshotItem(completingItem.item) ? (
+              <p className="mt-2 text-xs text-[#D4AF8C]/75">
+                Upload 3–5 screenshots showing your engagement work.
               </p>
-              <button
-                type="button"
-                disabled={screenshotUploading}
-                onClick={() => proofRef.current?.click()}
-                className={cn(
-                  "w-full rounded-2xl border-2 border-dashed p-6 text-center transition-colors disabled:opacity-60",
-                  proofFile
-                    ? "border-[#D4AF8C]/45 bg-[#D4AF8C]/5"
-                    : "border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.03] hover:border-[#D4AF8C]/45",
-                )}
-              >
-                {screenshotUploading ? (
-                  <p className="text-sm text-[#D4AF8C]/75">Saving…</p>
-                ) : proofFile && proofPreviewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={proofPreviewUrl} alt="Proof" className="mx-auto max-h-32 rounded-xl object-contain" />
-                ) : (
-                  <>
-                    <Camera className="mx-auto mb-2 h-10 w-10 text-[#D4AF8C]/40" />
-                    <p className="text-sm text-[#D4AF8C]/75">Paste (Ctrl+V) or tap to upload</p>
-                  </>
-                )}
-                <input
-                  ref={proofRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => setProofFile(e.target.files?.[0] ?? null)}
-                />
-              </button>
+            ) : null}
+            <div className="mt-5 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]">
+                  Paste or upload images
+                </p>
+                {isEngagementScreenshotItem(completingItem.item) ? (
+                  <span className="text-[10px] font-semibold tabular-nums text-[#D4AF8C]/80">
+                    {proofFiles.length}/{ENGAGEMENT_SCREENSHOT_TARGET} uploaded
+                  </span>
+                ) : proofFiles.length > 0 ? (
+                  <span className="text-[10px] font-semibold tabular-nums text-[#D4AF8C]/80">
+                    {proofFiles.length} uploaded
+                  </span>
+                ) : null}
+              </div>
+              <ManagerReviewFileDropzone
+                files={proofFiles}
+                onChange={setProofFiles}
+                accept="image/*"
+                multiple
+              />
+              <p className="text-xs text-[#B8B4B8]/45">Tip: Ctrl+V to paste from clipboard</p>
             </div>
-            <div className="mt-6 flex justify-end">
+            <div className="mt-6 flex justify-end gap-2">
               <button
                 type="button"
                 disabled={screenshotUploading}
                 onClick={() => {
                   setCompletingItem(null);
-                  setProofFile(null);
+                  setProofFiles([]);
                   setScreenshotUploading(false);
                 }}
                 className="rounded-2xl border border-white/10 px-5 py-3 text-sm text-white/50 disabled:opacity-40"
               >
                 Cancel
+              </button>
+              <button
+                type="button"
+                disabled={screenshotUploading || proofFiles.length === 0}
+                onClick={() => void handleSubmitScreenshotProof()}
+                className={cn(
+                  VA_BTN_SECONDARY,
+                  "border-[#D4AF8C]/35 px-5 py-3 text-sm text-[#D4AF8C] disabled:cursor-not-allowed disabled:opacity-40",
+                )}
+              >
+                {screenshotUploading ? "Saving…" : "Complete item"}
               </button>
             </div>
           </div>

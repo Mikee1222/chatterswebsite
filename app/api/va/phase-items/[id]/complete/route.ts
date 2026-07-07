@@ -23,13 +23,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   const formData = await req.formData();
-  const screenshotEntry = formData.get("screenshot");
-  const screenshotFile = screenshotEntry instanceof File && screenshotEntry.size > 0 ? screenshotEntry : null;
+  const screenshotEntries = [
+    ...formData.getAll("screenshot"),
+    ...formData.getAll("screenshots"),
+  ].filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
   const screenshotAttachments: { url: string }[] = [];
-  if (screenshotFile) {
+  for (const screenshotFile of screenshotEntries) {
     try {
-      const blob = await put(`phase-items/${itemRowId}/${screenshotFile.name}`, screenshotFile, {
+      const blob = await put(`phase-items/${itemRowId}/${Date.now()}-${screenshotFile.name}`, screenshotFile, {
         access: "public",
       });
       screenshotAttachments.push({ url: blob.url });
