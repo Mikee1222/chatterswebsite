@@ -15,7 +15,7 @@ import { FindingCard, ReviewLoadingState } from "@/components/manager-review-ui"
 import type { TaskPhase } from "@/services/task-phases";
 import type { VaTaskRecord } from "@/types";
 import { cn } from "@/lib/utils";
-import { VA_CARD, VA_CHAMPAGNE_DIVIDER, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CHAMPAGNE_DIVIDER, VA_MODEL_TAG, VA_STATUS_BADGE } from "@/lib/va-tasks-tokens";
 import {
   buildAgencyProgressStats,
   buildVaProgressSummaries,
@@ -56,6 +56,19 @@ function ProgressBar({ value, max, className }: { value: number; max: number; cl
         aria-valuemax={max}
       />
     </div>
+  );
+}
+
+function ModelTags({ names, className }: { names: string[]; className?: string }) {
+  if (names.length === 0) return null;
+  return (
+    <span className={cn("inline-flex flex-wrap items-center gap-1.5", className)}>
+      {names.map((name) => (
+        <span key={name} className={VA_MODEL_TAG}>
+          {name}
+        </span>
+      ))}
+    </span>
   );
 }
 
@@ -226,6 +239,7 @@ function VaProgressCard({ summary }: { summary: VaProgressSummary }) {
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-base font-semibold text-white">{summary.vaName}</h3>
+            {summary.modelNames ? <ModelTags names={summary.modelNames} /> : null}
             <span className={cn(VA_STATUS_BADGE, STATUS_BADGE[summary.status])}>{STATUS_LABEL[summary.status]}</span>
             {summary.hasOverdue ? (
               <span className={cn(VA_STATUS_BADGE, "border-red-500/35 bg-red-500/10 text-red-300")}>
@@ -256,9 +270,15 @@ function VaProgressCard({ summary }: { summary: VaProgressSummary }) {
       ) : null}
 
       <div className="mt-4 space-y-3">
-        {summary.tasks.map(({ task, phases }) => (
+        {summary.tasks.map(({ task, phases }) => {
+          const taskModelNames = (task.assigned_model_names ?? []).map((n) => n.trim()).filter(Boolean);
+          const showTaskModels = taskModelNames.length > 0 && summary.modelNames === null;
+          return (
           <div key={task.id}>
-            <p className="mb-2 text-xs font-medium text-[#B8B4B8]/50">{task.title}</p>
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <p className="text-xs font-medium text-[#B8B4B8]/50">{task.title}</p>
+              {showTaskModels ? <ModelTags names={taskModelNames} /> : null}
+            </div>
             <div className="space-y-2">
               {phases.map((phase, idx) => (
                 <PhaseBlock key={phase.id} phase={phase} phaseIndex={idx} defaultExpanded={idx === 0} />
@@ -268,7 +288,8 @@ function VaProgressCard({ summary }: { summary: VaProgressSummary }) {
               ) : null}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </FindingCard>
   );

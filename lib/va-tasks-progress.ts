@@ -11,6 +11,8 @@ export type VaTaskWithPhases = {
 export type VaProgressSummary = {
   vaId: string;
   vaName: string;
+  /** Set when all tasks share the same assigned models; omitted when models differ per task. */
+  modelNames: string[] | null;
   tasks: VaTaskWithPhases[];
   totalItems: number;
   completedItems: number;
@@ -112,6 +114,22 @@ export function resolveTaskAssigneeIds(
   return task.assigned_to_ids.filter((id) => allowed.has(id));
 }
 
+function normalizeModelNames(names: string[] | null | undefined): string[] {
+  return (names ?? []).map((n) => n.trim()).filter(Boolean);
+}
+
+/** Card-level model names when every task shares the same set; otherwise null (show per-task). */
+export function resolveCardLevelModelNames(tasks: VaTaskWithPhases[]): string[] | null {
+  if (tasks.length === 0) return null;
+  const perTask = tasks.map(({ task }) => normalizeModelNames(task.assigned_model_names));
+  const signature = (names: string[]) => [...names].sort().join("\0");
+  const firstSig = signature(perTask[0]!);
+  if (perTask.every((names) => signature(names) === firstSig)) {
+    return perTask[0]!.length > 0 ? perTask[0]! : null;
+  }
+  return null;
+}
+
 export function buildVaProgressSummaries(
   tasksWithPhases: VaTaskWithPhases[],
   vaUsers: Array<{ id: string; full_name: string; email: string }>,
@@ -157,6 +175,7 @@ export function buildVaProgressSummaries(
     summaries.push({
       vaId: assigneeId,
       vaName: (nameById[assigneeId] || staffUser?.full_name || staffUser?.email || assigneeId).trim(),
+      modelNames: resolveCardLevelModelNames(tasks),
       tasks,
       totalItems,
       completedItems,
