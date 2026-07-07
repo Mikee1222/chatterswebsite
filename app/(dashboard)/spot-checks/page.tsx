@@ -5,8 +5,8 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { filterSpotChecksByManager, spotCheckManagerName } from "@/lib/marketing-reviews-helpers";
 import { getSpotChecks } from "@/services/marketing-reviews";
-import { listAllModelss } from "@/services/modelss";
-import { listAllUsers } from "@/services/users";
+import { listActiveModelsForAssignment } from "@/services/modelss";
+import { listActiveUsers } from "@/services/users";
 import { SupervisorSpotChecksClient } from "@/components/supervisor-spot-checks-client";
 
 export default async function SpotChecksSubmitPage() {
@@ -17,14 +17,14 @@ export default async function SpotChecksSubmitPage() {
   }
 
   const managerName = spotCheckManagerName(user);
-  const [allSpotChecks, models, allUsers] = await Promise.all([
+  const [allSpotChecks, models, activeUsers] = await Promise.all([
     getSpotChecks().catch(() => []),
-    listAllModelss().catch(() => []),
-    listAllUsers().catch(() => []),
+    listActiveModelsForAssignment().catch(() => []),
+    listActiveUsers().catch(() => []),
   ]);
 
   const mySubmissions = filterSpotChecksByManager(allSpotChecks, managerName);
-  const vaUsers = allUsers.filter(
+  const vaUsers = activeUsers.filter(
     (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
   );
 

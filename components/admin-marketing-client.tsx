@@ -49,6 +49,7 @@ import type {
   SocialAccountStatus,
 } from "@/services/marketing";
 import type { AppNotification, ModelRecord, UserRecord } from "@/types";
+import { isModelActiveForAssignment } from "@/services/modelss";
 
 type Tab = "platforms" | "accounts" | "funnels" | "reports" | "phones";
 type ReportDateRange = "all" | "7d" | "30d" | "custom";
@@ -450,6 +451,11 @@ export function AdminMarketingClient({
     for (const x of models) m[x.id] = x.model_name || x.model_id || x.id;
     return m;
   }, [models]);
+
+  const assignmentModels = React.useMemo(
+    () => models.filter((m) => isModelActiveForAssignment(m)),
+    [models],
+  );
 
   const platformNames = React.useMemo(
     () => [...new Set(platforms.map((p) => p.name).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
@@ -2407,7 +2413,7 @@ export function AdminMarketingClient({
                 Model
                 <select value={fModelId} onChange={(e) => setFModelId(e.target.value)} className={selectClass} required>
                   <option value="">Select…</option>
-                  {models.map((m) => (
+                  {assignmentModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.model_name || m.model_id}
                     </option>
@@ -2638,7 +2644,7 @@ export function AdminMarketingClient({
                   required
                 >
                   <option value="">Select…</option>
-                  {models.map((m) => (
+                  {assignmentModels.map((m) => (
                     <option key={m.id} value={m.id}>
                       {m.model_name || m.model_id}
                     </option>

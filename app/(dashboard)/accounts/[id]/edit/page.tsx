@@ -3,7 +3,7 @@ import { ROUTES } from "@/lib/routes";
 import { getUserByAirtableId, listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditAccountForm } from "@/components/edit-account-form";
-import { listAllModelss } from "@/services/modelss";
+import { listAllModelss, isModelActiveForAssignment } from "@/services/modelss";
 import { getVaReviewHistory } from "@/services/marketing-reviews";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
@@ -34,6 +34,7 @@ export default async function EditAccountPage({
       .filter((mid): mid is string => Boolean(mid?.trim()))
   );
   const modelOptions = allModels
+    .filter((m) => isModelActiveForAssignment(m) || m.id === record.linked_model_id)
     .map((m) => ({
       id: m.id,
       model_name: m.model_name,

@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getClientModelAssignmentsForModel } from "@/services/client-portal";
 import { getModelById } from "@/services/modelss";
-import { listAllUsers } from "@/services/users";
+import { listAllUsers, isUserActiveForAssignment } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditModelForm } from "@/components/edit-model-form";
 import { hasPermission } from "@/lib/rbac";
@@ -27,6 +27,7 @@ export default async function EditModelPage({
   const modelUsers = allUsers.filter((u) => u.role === "model");
   const currentLinkedUser = modelUsers.find((u) => u.linked_model_id === model.id) ?? null;
   const userOptions = modelUsers
+    .filter((u) => isUserActiveForAssignment(u) || u.id === currentLinkedUser?.id)
     .map((u) => ({
       id: u.id,
       name: u.full_name?.trim() || u.email,

@@ -4,8 +4,8 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listMistakesForAdmin, getAllMistakeReasons } from "@/services/chatter-mistakes";
-import { listAllUsers } from "@/services/users";
-import { listAllModelss } from "@/services/modelss";
+import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
+import { listActiveModelsForAssignment } from "@/services/modelss";
 import { AdminMistakesClient } from "@/components/admin-mistakes-client";
 
 export default async function AdminMistakesPage() {
@@ -15,10 +15,10 @@ export default async function AdminMistakesPage() {
     listMistakesForAdmin({}).catch(() => []),
     getAllMistakeReasons().catch(() => []),
     listAllUsers().catch(() => []),
-    listAllModelss().catch(() => []),
+    listActiveModelsForAssignment().catch(() => []),
   ]);
 
-  const chatterOptions = users
+  const chatterOptions = filterActiveUsersForAssignment(users)
     .filter((u) => u.role === "chatter")
     .map((u) => ({
       id: u.id,

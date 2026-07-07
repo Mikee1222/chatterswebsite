@@ -7,7 +7,7 @@ import {
   getAllChallengesForAdmin,
   getCompletionCountsByChallenge,
 } from "@/services/challenges";
-import { listAllUsers } from "@/services/users";
+import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
 import { AdminChallengesClient } from "@/components/admin-challenges-client";
 
 export default async function AdminChallengesPage() {
@@ -21,7 +21,7 @@ export default async function AdminChallengesPage() {
     listAllUsers().catch(() => []),
   ]);
 
-  const chatters = users
+  const chatters = filterActiveUsersForAssignment(users)
     .filter((u) => u.role === "chatter")
     .map((u) => ({ id: u.id, name: u.full_name?.trim() || u.email || u.id }))
     .sort((a, b) => a.name.localeCompare(b.name));

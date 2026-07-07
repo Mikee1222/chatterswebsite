@@ -5,7 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getPointsConfig } from "@/services/points-config";
 import { getAllSpinPrizes } from "@/services/spin-wheel";
-import { listAllUsers } from "@/services/users";
+import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
 import { RewardsConfigClient } from "@/components/rewards-config-client";
 
 export default async function AdminRewardsConfigPage() {
@@ -18,7 +18,7 @@ export default async function AdminRewardsConfigPage() {
     getAllSpinPrizes().catch(() => []),
   ]);
 
-  const chatters = users
+  const chatters = filterActiveUsersForAssignment(users)
     .filter((u) => u.role === "chatter")
     .map((u) => ({ id: u.id, name: u.full_name?.trim() || u.email || u.id }))
     .sort((a, b) => a.name.localeCompare(b.name));

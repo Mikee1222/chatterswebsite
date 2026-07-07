@@ -5,8 +5,8 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { listWhalesPaginated, getWhaleStatusCounts, type WhalesListFilters } from "@/services/whales";
 import { listAllWhaleTransactions } from "@/services/whale-transactions";
-import { listAllUsers } from "@/services/users";
-import { getCachedModelss } from "@/services/modelss";
+import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
+import { getCachedModelss, filterActiveModelsForAssignment } from "@/services/modelss";
 import { AdminWhalesClient } from "@/components/admin-whales-client";
 import type { Whale } from "@/types";
 
@@ -73,10 +73,10 @@ export default async function AdminWhalesPage({
     if (filters.modelId) whales = whales.filter((w) => w.assigned_model_id === filters.modelId);
   }
 
-  const chatters = users.filter((u) => u.role === "chatter");
+  const chatters = filterActiveUsersForAssignment(users).filter((u) => u.role === "chatter");
   const byModel = aggregateRevenueByModel(transactions);
   const byChatter = aggregateRevenueByChatter(transactions);
-  const modelOptions = modelss.map((m) => ({ id: m.id, name: m.model_name ?? "" }));
+  const modelOptions = filterActiveModelsForAssignment(modelss).map((m) => ({ id: m.id, name: m.model_name ?? "" }));
 
   return (
     <AdminWhalesClient

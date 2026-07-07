@@ -1,10 +1,37 @@
 "use client";
 
 import * as React from "react";
+import { motion, useReducedMotion } from "framer-motion";
 import type { TaskPhase } from "@/services/task-phases";
 import type { PhaseItem } from "@/services/task-phases";
 import { cn } from "@/lib/utils";
 import { VA_CARD, VA_CARD_INNER } from "@/lib/va-tasks-tokens";
+
+const PhaseProgressCounter = React.memo(function PhaseProgressCounter({
+  doneCount,
+  total,
+  isMini,
+}: {
+  doneCount: number;
+  total: number;
+  isMini: boolean;
+}) {
+  const reduceMotion = useReducedMotion();
+  return (
+    <motion.span
+      key={doneCount}
+      initial={reduceMotion ? false : { scale: 1.2, opacity: 0.7 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      className={cn(
+        "shrink-0 rounded-md border border-[#D4AF8C]/20 bg-[#D4AF8C]/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[#D4AF8C]",
+        isMini && "text-[9px]",
+      )}
+    >
+      {doneCount}/{total}
+    </motion.span>
+  );
+});
 
 export type PhaseRibbonItem = Pick<
   PhaseItem,
@@ -190,9 +217,7 @@ export const TaskPhaseRibbon = React.memo(function TaskPhaseRibbon({
                       ) : null}
                     </div>
                     {total > 0 ? (
-                      <span className="shrink-0 rounded-md border border-[#D4AF8C]/20 bg-[#D4AF8C]/8 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider tabular-nums text-[#D4AF8C]">
-                        {doneCount}/{total}
-                      </span>
+                      <PhaseProgressCounter doneCount={doneCount} total={total} isMini={isMini} />
                     ) : null}
                   </div>
 

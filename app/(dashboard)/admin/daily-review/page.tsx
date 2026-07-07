@@ -3,22 +3,22 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { getDailyReviewByDate, getDailyReviewDetail, getDailyReviews } from "@/services/marketing-reviews";
-import { listAllUsers } from "@/services/users";
+import { listActiveUsers } from "@/services/users";
 import { AdminDailyReviewClient } from "@/components/admin-daily-review-client";
 
 export default async function AdminDailyReviewPage() {
   await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.DAILY_REVIEW_MANAGE);
 
   const today = todayReviewIso();
-  const [reviews, todayRow, allUsers] = await Promise.all([
+  const [reviews, todayRow, activeUsers] = await Promise.all([
     getDailyReviews().catch(() => []),
     getDailyReviewByDate(today).catch(() => null),
-    listAllUsers().catch(() => []),
+    listActiveUsers().catch(() => []),
   ]);
 
   const todayReview = todayRow ? await getDailyReviewDetail(todayRow.id).catch(() => null) : null;
 
-  const vaUsers = allUsers.filter(
+  const vaUsers = activeUsers.filter(
     (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
   );
 

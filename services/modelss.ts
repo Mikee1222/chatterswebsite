@@ -77,6 +77,20 @@ function filterCompleteModels(modelss: ModelRecord[]): ModelRecord[] {
   return modelss.filter((m) => m.model_name?.trim() && m.model_id?.trim());
 }
 
+/** True when modelss.status is active — for new-work assignment pickers. */
+export function isModelActiveForAssignment(model: Pick<ModelRecord, "status">): boolean {
+  return (model.status ?? "").trim().toLowerCase() === "active";
+}
+
+export function filterActiveModelsForAssignment(modelss: ModelRecord[]): ModelRecord[] {
+  return modelss.filter(isModelActiveForAssignment);
+}
+
+/** Active modelss only — for assignment dropdowns (not admin list pages). */
+export async function listActiveModelsForAssignment(): Promise<ModelRecord[]> {
+  return filterActiveModelsForAssignment(await listAllModelss());
+}
+
 /** Fields we can write for modelss; linked fields as arrays, snapshots as strings. */
 export type ModelssWriteFields = {
   of_user_id?: string;

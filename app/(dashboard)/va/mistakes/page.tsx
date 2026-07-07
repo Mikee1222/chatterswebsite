@@ -5,8 +5,8 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
-import { listAllUsers } from "@/services/users";
-import { listAllModelss } from "@/services/modelss";
+import { listActiveModelsForAssignment } from "@/services/modelss";
+import { filterActiveUsersForAssignment, listAllUsers } from "@/services/users";
 import {
   getMistakeReasons,
   getMistakesByVA,
@@ -30,13 +30,13 @@ export default async function VaMistakesPage() {
 
   const [users, models, reasons, mistakes] = await Promise.all([
     listAllUsers().catch(() => []),
-    listAllModelss().catch(() => []),
+    listActiveModelsForAssignment().catch(() => []),
     getMistakeReasons().catch(() => [] as MistakeReasonRecord[]),
     getMistakesByVA(vaId).catch(() => [] as MistakeRecord[]),
   ]);
 
-  const chatters = users
-    .filter((u) => u.role === "chatter" && (u.status ?? "").toLowerCase() === "active")
+  const chatters = filterActiveUsersForAssignment(users)
+    .filter((u) => u.role === "chatter")
     .map((u) => ({
       id: u.id,
       name: (u.full_name ?? "").trim() || u.email || "Chatter",
@@ -44,7 +44,6 @@ export default async function VaMistakesPage() {
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const modelOptions = models
-    .filter((m) => (m.status ?? "").toLowerCase() === "active")
     .map((m) => ({
       id: m.id,
       model_name: (m.model_name ?? "").trim() || "Model",

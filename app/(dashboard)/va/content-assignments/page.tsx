@@ -3,7 +3,7 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
-import { listAllModelss } from "@/services/modelss";
+import { listActiveModelsForAssignment } from "@/services/modelss";
 import { listVAContentAssignmentsForVaUser } from "@/services/va-content-assignments";
 import { VaContentAssignmentsClient } from "@/components/va-content-assignments-client";
 
@@ -18,7 +18,7 @@ export default async function VaContentAssignmentsPage() {
   if (!vaId) redirect(ROUTES.dashboard);
 
   const [models, assignments] = await Promise.all([
-    listAllModelss(),
+    listActiveModelsForAssignment(),
     listVAContentAssignmentsForVaUser(vaId),
   ]);
 

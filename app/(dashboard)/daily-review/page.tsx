@@ -13,7 +13,7 @@ import {
   getDailyReviewDetail,
   getDailyReviews,
 } from "@/services/marketing-reviews";
-import { listAllUsers } from "@/services/users";
+import { listActiveUsers } from "@/services/users";
 import { SupervisorDailyReviewClient } from "@/components/supervisor-daily-review-client";
 
 export default async function DailyReviewSubmitPage() {
@@ -25,15 +25,15 @@ export default async function DailyReviewSubmitPage() {
 
   const managerName = spotCheckManagerName(user);
   const today = todayReviewIso();
-  const [allReviews, todayRow, allUsers] = await Promise.all([
+  const [allReviews, todayRow, activeUsers] = await Promise.all([
     getDailyReviews().catch(() => []),
     getDailyReviewByDate(today).catch(() => null),
-    listAllUsers().catch(() => []),
+    listActiveUsers().catch(() => []),
   ]);
 
   const mySubmissions = filterDailyReviewsByManager(allReviews, managerName);
   const todayReview = todayRow ? await getDailyReviewDetail(todayRow.id).catch(() => null) : null;
-  const vaUsers = allUsers.filter(
+  const vaUsers = activeUsers.filter(
     (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
   );
 

@@ -2,20 +2,20 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getSpotChecks } from "@/services/marketing-reviews";
-import { listAllModelss } from "@/services/modelss";
-import { listAllUsers } from "@/services/users";
+import { listActiveModelsForAssignment } from "@/services/modelss";
+import { listActiveUsers } from "@/services/users";
 import { AdminSpotChecksClient } from "@/components/admin-spot-checks-client";
 
 export default async function AdminSpotChecksPage() {
   await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SPOTCHECK_MANAGE);
 
-  const [spotChecks, models, allUsers] = await Promise.all([
+  const [spotChecks, models, activeUsers] = await Promise.all([
     getSpotChecks().catch(() => []),
-    listAllModelss().catch(() => []),
-    listAllUsers().catch(() => []),
+    listActiveModelsForAssignment().catch(() => []),
+    listActiveUsers().catch(() => []),
   ]);
 
-  const vaUsers = allUsers.filter(
+  const vaUsers = activeUsers.filter(
     (u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant",
   );
 

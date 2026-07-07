@@ -3,8 +3,8 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { listAllModelss } from "@/services/modelss";
-import { listAllUsers } from "@/services/users";
+import { listActiveModelsForAssignment } from "@/services/modelss";
+import { listActiveUsers } from "@/services/users";
 import { listAllVAContentAssignments } from "@/services/va-content-assignments";
 import { AdminVaContentClient, type AdminVaContentAssignmentDTO } from "@/components/admin-va-content-client";
 import { hasPermission } from "@/lib/rbac";
@@ -17,8 +17,8 @@ export default async function AdminVaContentAssignmentsPage() {
 
   const [assignments, users, models] = await Promise.all([
     listAllVAContentAssignments(),
-    listAllUsers(),
-    listAllModelss(),
+    listActiveUsers(),
+    listActiveModelsForAssignment(),
   ]);
 
   const vaUsers = users

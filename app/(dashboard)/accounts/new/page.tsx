@@ -2,7 +2,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { CreateAccountForm } from "@/components/create-account-form";
-import { listAllModelss } from "@/services/modelss";
+import { listAllModelss, isModelActiveForAssignment } from "@/services/modelss";
 import { listAllUsers } from "@/services/users";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
@@ -32,6 +32,7 @@ export default async function NewAccountPage({
       .filter((id): id is string => Boolean(id?.trim()))
   );
   const modelOptions = allModels
+    .filter((m) => isModelActiveForAssignment(m))
     .map((m) => ({
       id: m.id,
       model_name: m.model_name,

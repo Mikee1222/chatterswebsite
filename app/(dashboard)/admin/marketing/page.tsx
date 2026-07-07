@@ -5,7 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllAccounts, getAllFunnels, getAllPlatforms, getAllShadowbanReports, getPhones } from "@/services/marketing";
 import { listAllModelss } from "@/services/modelss";
-import { listAllUsers } from "@/services/users";
+import { listActiveUsers } from "@/services/users";
 import { AdminMarketingClient } from "@/components/admin-marketing-client";
 
 export default async function AdminMarketingPage() {
@@ -17,7 +17,7 @@ export default async function AdminMarketingPage() {
     getAllFunnels().catch(() => []),
     getPhones().catch(() => []),
     listAllModelss().catch(() => []),
-    listAllUsers().catch(() => []),
+    listActiveUsers().catch(() => []),
     getAllShadowbanReports().catch(() => []),
   ]);
 

@@ -5,7 +5,7 @@ import { getUserPermissions, hasAnyPermission, hasPermission, requireAdminRoute 
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllVaTasks } from "@/services/va-tasks";
-import { listAllModelss } from "@/services/modelss";
+import { listActiveModelsForAssignment } from "@/services/modelss";
 import { listActiveUsers } from "@/services/users";
 import { getRoles } from "@/services/roles";
 import { AdminVaTasksClient } from "@/components/admin-va-tasks-client";
@@ -27,7 +27,7 @@ export default async function AdminVaTasksPage() {
   const [tasks, activeUsers, modelss, roles] = await Promise.all([
     getAllVaTasks(),
     listActiveUsers(),
-    listAllModelss().catch(() => []),
+    listActiveModelsForAssignment().catch(() => []),
     getRoles().catch(() => []),
   ]);
   const vaUsers = activeUsers

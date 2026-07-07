@@ -4,7 +4,7 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listFinesBonuses } from "@/services/fines-bonuses";
-import { listAllUsers } from "@/services/users";
+import { listAllUsers, filterActiveUsersForAssignment } from "@/services/users";
 import { AdminFinesBonusesClient } from "@/components/admin-fines-bonuses-client";
 
 export default async function AdminFinesBonusesPage() {
@@ -15,7 +15,7 @@ export default async function AdminFinesBonusesPage() {
     listAllUsers().catch(() => []),
   ]);
 
-  const userOptions = users
+  const userOptions = filterActiveUsersForAssignment(users)
     .filter((u) => u.role === "chatter" || u.role === "virtual_assistant")
     .map((u) => ({
       id: u.id,

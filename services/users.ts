@@ -143,14 +143,20 @@ export async function listAllUsers(): Promise<UserRecord[]> {
   return records.map((r) => mapRecord(r));
 }
 
+/** True when user is active and can log in — for new-work assignment pickers. */
+export function isUserActiveForAssignment(user: Pick<UserRecord, "status" | "can_login">): boolean {
+  if (user.can_login === false) return false;
+  return (user.status ?? "").trim().toLowerCase() === "active";
+}
+
+/** Active, login-enabled users only (excludes inactive and suspended). */
+export function filterActiveUsersForAssignment(users: UserRecord[]): UserRecord[] {
+  return users.filter(isUserActiveForAssignment);
+}
+
 /** Active, login-enabled users — for assignment pickers and staff lists. */
 export async function listActiveUsers(): Promise<UserRecord[]> {
-  const users = await listAllUsers();
-  return users.filter((u) => {
-    if ((u.status ?? "").trim().toLowerCase() === "inactive") return false;
-    if (u.can_login === false) return false;
-    return true;
-  });
+  return filterActiveUsersForAssignment(await listAllUsers());
 }
 
 /**
@@ -163,8 +169,7 @@ export async function listUsersWithPermission(permission: Permission): Promise<U
   const roleCache = new Map<string, Set<Permission>>();
   const out: UserRecord[] = [];
   for (const u of users) {
-    if ((u.status ?? "").trim().toLowerCase() === "inactive") continue;
-    if (u.can_login === false) continue;
+    if (!isUserActiveForAssignment(u)) continue;
     const roleKey = (u.role ?? "").trim().toLowerCase();
     if (!roleKey) continue;
     let perms = roleCache.get(roleKey);

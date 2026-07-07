@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { listAllModelss } from "@/services/modelss";
+import { listActiveModelsForAssignment } from "@/services/modelss";
 import { listCustomRequestsByChatter } from "@/services/custom-requests";
 import { FormCard } from "@/components/ui/form";
 import { RequestCustomForm } from "@/components/request-custom-form";
@@ -16,7 +16,7 @@ export default async function RequestCustomPage() {
   const chatterRecordId = user.airtableUserId ?? user.id;
   const chatterName = (user.fullName ?? user.email ?? "") as string;
   const [modelss, requests] = await Promise.all([
-    listAllModelss().catch(() => []),
+    listActiveModelsForAssignment().catch(() => []),
     listCustomRequestsByChatter(chatterRecordId).catch(() => []),
   ]);
   if (process.env.NODE_ENV !== "production") {

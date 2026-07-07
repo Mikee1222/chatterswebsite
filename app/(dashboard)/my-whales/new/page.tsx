@@ -4,7 +4,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { FormCard } from "@/components/ui/form";
 import { NewWhaleForm } from "@/components/new-whale-form";
-import { listAllModelss } from "@/services/modelss";
+import { listActiveModelsForAssignment } from "@/services/modelss";
 
 export default async function NewWhalePage() {
   const user = await getSessionFromCookies();
@@ -12,7 +12,7 @@ export default async function NewWhalePage() {
 
   const chatterId = user.airtableUserId ?? user.id;
   const chatterName = user.fullName ?? user.email;
-  const modelss = await listAllModelss().catch(() => []);
+  const modelss = await listActiveModelsForAssignment().catch(() => []);
 
   return (
     <div className="max-w-lg">
