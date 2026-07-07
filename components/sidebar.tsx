@@ -115,8 +115,11 @@ const ADMIN_SECTION_ORDER = [
   "TEAM",
   "CREATORS",
   "CONTENT",
+  "MARKETING",
+  "REVIEW & QA",
   "FINANCE",
-  "PERFORMANCE",
+  "REWARDS",
+  "TOOLS",
   "SETTINGS",
 ] as const;
 

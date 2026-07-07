@@ -290,9 +290,9 @@ const adminNav: NavItem[] = [
   },
 
   // ── TEAM ──
-  // NOTE: "Accounts" (ACCOUNTS_VIEW) moved to `sharedPermissionNavItems` (TEAM section)
-  // so any role granted the permission — not just admin — surfaces the link, matching the
-  // page's bare hasPermission guard.
+  // Staff management + team programs. NOTE: "Accounts" and the weekly programs live in
+  // `sharedPermissionNavItems` (also TEAM section) so any role granted the permission — not
+  // just admin — surfaces the link, matching each page's bare hasPermission guard.
   {
     href: ROUTES.admin.vaTasks,
     label: "VA tasks",
@@ -308,29 +308,9 @@ const adminNav: NavItem[] = [
     navSection: "TEAM",
     requiresPermission: PERMISSIONS.TASK_TEMPLATES_MANAGE,
   },
-  {
-    href: ROUTES.admin.modelAvailability,
-    label: "Model availability",
-    iconKey: "CalendarCheck",
-    navSection: "TEAM",
-    requiresPermission: PERMISSIONS.MODELS_AVAILABILITY,
-  },
-  {
-    href: ROUTES.admin.modelSchedules,
-    label: "Model schedules",
-    iconKey: "Calendar",
-    navSection: "TEAM",
-    requiresPermission: PERMISSIONS.MODELS_SCHEDULES,
-  },
-  {
-    href: ROUTES.admin.modelTasks,
-    label: "Model tasks",
-    iconKey: "FileText",
-    navSection: "TEAM",
-    requiresPermission: PERMISSIONS.MODELS_MANAGE,
-  },
 
   // ── CREATORS ──
+  // Everything centered on the models/clients themselves + their scheduling and assets.
   {
     href: ROUTES.admin.models,
     label: "Models",
@@ -339,18 +319,25 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.MODELS_VIEW,
   },
   {
-    href: ROUTES.admin.clients,
-    label: "Clients",
-    iconKey: "Users",
+    href: ROUTES.admin.modelAvailability,
+    label: "Model availability",
+    iconKey: "CalendarCheck",
     navSection: "CREATORS",
-    requiresPermission: PERMISSIONS.CLIENTS_VIEW,
+    requiresPermission: PERMISSIONS.MODELS_AVAILABILITY,
   },
   {
-    href: ROUTES.admin.whales,
-    label: "Whales",
-    iconKey: "Users",
+    href: ROUTES.admin.modelSchedules,
+    label: "Model schedules",
+    iconKey: "Calendar",
     navSection: "CREATORS",
-    requiresPermission: PERMISSIONS.WHALES_MANAGE,
+    requiresPermission: PERMISSIONS.MODELS_SCHEDULES,
+  },
+  {
+    href: ROUTES.admin.modelTasks,
+    label: "Model tasks",
+    iconKey: "FileText",
+    navSection: "CREATORS",
+    requiresPermission: PERMISSIONS.MODELS_MANAGE,
   },
   {
     href: ROUTES.admin.modelLiveStreams,
@@ -374,8 +361,24 @@ const adminNav: NavItem[] = [
     navSection: "CREATORS",
     requiresPermission: PERMISSIONS.LINK_PAGES_VIEW,
   },
+  {
+    href: ROUTES.admin.clients,
+    label: "Clients",
+    iconKey: "Users",
+    navSection: "CREATORS",
+    requiresPermission: PERMISSIONS.CLIENTS_VIEW,
+  },
+  {
+    href: ROUTES.admin.whales,
+    label: "Whales",
+    iconKey: "Users",
+    navSection: "CREATORS",
+    requiresPermission: PERMISSIONS.WHALES_MANAGE,
+  },
 
   // ── CONTENT ──
+  // NOTE: "PDF Maker" / "Transcript Videos" (utilities) live in `sharedPermissionNavItems`
+  // under TOOLS; the submit-tier Research + creative scripts also live there under CONTENT.
   {
     href: ROUTES.admin.vaContentAssignments,
     label: "VA Content",
@@ -391,51 +394,68 @@ const adminNav: NavItem[] = [
     requiresPermission: PERMISSIONS.CONTENT_VIEW,
   },
   {
-    href: ROUTES.admin.sopLibrary,
-    label: "SOP Library",
-    iconKey: "BookOpen",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.SOPS_MANAGE,
-  },
-  // NOTE: "PDF Maker" (PDF_MAKER_MANAGE) moved to `sharedPermissionNavItems` (TOOLS section)
-  // so any role granted the permission — not just admin — surfaces the link.
-  {
-    href: ROUTES.admin.informations,
-    label: "Informations",
-    iconKey: "Info",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
-  },
-  {
-    href: ROUTES.admin.marketing,
-    label: "Marketing",
-    iconKey: "TrendingUp",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.MARKETING_VIEW,
-  },
-  {
     href: ROUTES.admin.winnerVideos,
     label: "Research",
     iconKey: "Trophy",
     navSection: "CONTENT",
     requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
   },
-  // NOTE: The SUBMIT-tier supervision items (Spot Checks / Daily Review) live in
-  // `sharedPermissionNavItems` below so any role granted the permission surfaces them.
-  // Only the MANAGER REVIEW (manage-tier) items remain here.
+  {
+    href: ROUTES.admin.sopLibrary,
+    label: "SOP Library",
+    iconKey: "BookOpen",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.SOPS_MANAGE,
+  },
+
+  // ── MARKETING ──
+  {
+    href: ROUTES.admin.marketing,
+    label: "Marketing",
+    iconKey: "TrendingUp",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.MARKETING_VIEW,
+  },
+  {
+    href: ROUTES.admin.informations,
+    label: "Informations",
+    iconKey: "Info",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
+  },
+
+  // ── REVIEW & QA ──
+  // Manage-tier supervision + mistakes review. The matching SUBMIT-tier items live in
+  // `sharedPermissionNavItems` (also REVIEW & QA); `hiddenIfPermission` dedupes users who
+  // hold the manage grant so they see this richer review item instead of the submit item.
   {
     href: ROUTES.admin.spotChecks,
     label: "Spot checks",
     iconKey: "ListTodo",
-    navSection: "MANAGER REVIEW",
+    navSection: "REVIEW & QA",
     requiresPermission: PERMISSIONS.SPOTCHECK_MANAGE,
   },
   {
     href: ROUTES.admin.dailyReview,
     label: "Daily review",
     iconKey: "CalendarCheck",
-    navSection: "MANAGER REVIEW",
+    navSection: "REVIEW & QA",
     requiresPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
+  },
+  {
+    href: ROUTES.admin.mistakes,
+    label: "Mistakes",
+    iconKey: "AlertTriangle",
+    navSection: "REVIEW & QA",
+    requiresPermission: PERMISSIONS.MISTAKES_VIEW,
+  },
+  {
+    href: ROUTES.admin.mistakeReasons,
+    label: "Mistake reasons",
+    iconKey: "Settings2",
+    navSection: "REVIEW & QA",
+    adminOnly: true,
+    requiresPermission: PERMISSIONS.MISTAKES_REASONS_MANAGE,
   },
 
   // ── FINANCE ──
@@ -506,34 +526,20 @@ const adminNav: NavItem[] = [
   // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.
   // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
 
-  // ── PERFORMANCE ──
-  {
-    href: ROUTES.admin.mistakes,
-    label: "Mistakes",
-    iconKey: "AlertTriangle",
-    navSection: "PERFORMANCE",
-    requiresPermission: PERMISSIONS.MISTAKES_VIEW,
-  },
-  {
-    href: ROUTES.admin.mistakeReasons,
-    label: "Mistake reasons",
-    iconKey: "Settings2",
-    navSection: "PERFORMANCE",
-    adminOnly: true,
-    requiresPermission: PERMISSIONS.MISTAKES_REASONS_MANAGE,
-  },
+  // ── REWARDS ──
+  // Gamification: points, rewards, challenges, spin wheel.
   {
     href: ROUTES.admin.rewards,
     label: "Rewards",
     iconKey: "Trophy",
-    navSection: "PERFORMANCE",
+    navSection: "REWARDS",
     requiresPermission: PERMISSIONS.REWARDS_VIEW,
   },
   {
     href: ROUTES.admin.challenges,
     label: "Challenges",
     iconKey: "Target",
-    navSection: "PERFORMANCE",
+    navSection: "REWARDS",
     adminOnly: true,
     requiresPermission: PERMISSIONS.CHALLENGES_MANAGE,
   },
@@ -541,14 +547,14 @@ const adminNav: NavItem[] = [
     href: ROUTES.admin.spinResults,
     label: "Spin results",
     iconKey: "Sparkles",
-    navSection: "PERFORMANCE",
+    navSection: "REWARDS",
     requiresPermission: PERMISSIONS.SPIN_WHEEL_VIEW,
   },
   {
     href: ROUTES.admin.rewardsConfig,
     label: "Rewards Config",
     iconKey: "Sparkles",
-    navSection: "PERFORMANCE",
+    navSection: "REWARDS",
     adminOnly: true,
     requiresPermission: PERMISSIONS.REWARDS_CONFIG,
   },
@@ -569,7 +575,7 @@ const adminNav: NavItem[] = [
     navSection: "SETTINGS",
     requiresPermission: PERMISSIONS.FEEDBACK_VIEW,
   },
-  // NOTE: "Blur tool" (BLUR_TOOL_ACCESS) moved to `sharedPermissionNavItems`.
+  // NOTE: "Blur tool" (BLUR_TOOL_ACCESS) moved to `sharedPermissionNavItems` (TOOLS).
   {
     href: ROUTES.settings,
     label: "Settings",
@@ -617,14 +623,18 @@ const modelNav: NavItem[] = [
  * appended to every role's base list BEFORE permission filtering, so `requiresPermission`
  * decides show/hide. Add future permission-only shared items here.
  *
- * Covers unrelated features (SUPERVISION submit-tier items + standalone TOOLS). Each item
- * carries its own `navSection` so it renders under the correct group per viewport.
+ * Covers unrelated features (submit-tier review items, creative scripts, standalone TOOLS).
+ * Each item carries its own `navSection` so it renders under the correct group per viewport.
  *
- * For SUPERVISION: only SUBMIT-tier items belong here. The MANAGER REVIEW (manage-tier) items
- * stay in `adminNav`; `hiddenIfPermission` dedupes users who also hold the manage grant
- * (they see the richer MANAGER REVIEW item instead of the submit item).
+ * For REVIEW & QA: only SUBMIT-tier items belong here. The manage-tier review items stay in
+ * `adminNav` (also REVIEW & QA); `hiddenIfPermission` dedupes users who also hold the manage
+ * grant (they see the richer manage-tier review item instead of the submit item).
+ *
+ * Ordered by target section (TEAM → CONTENT → REVIEW & QA → TOOLS) so the mobile More sheet
+ * (which prints a section header whenever `navSection` changes) keeps each group contiguous.
  */
 const sharedPermissionNavItems: NavItem[] = [
+  // ── TEAM ──
   {
     href: ROUTES.admin.accounts,
     label: "Accounts",
@@ -656,26 +666,8 @@ const sharedPermissionNavItems: NavItem[] = [
     hiddenIfAnyPermission: [PERMISSIONS.VA_TASKS_MANAGE, PERMISSIONS.TASK_PROGRESS_VIEW],
     excludeFromMobileMainTabs: true,
   },
-  {
-    href: ROUTES.spotChecks,
-    label: "Spot Checks",
-    iconKey: "ListTodo",
-    navSection: "SUPERVISION",
-    requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
-    // Users who can manage spot checks see the MANAGER REVIEW item instead.
-    hiddenIfPermission: PERMISSIONS.SPOTCHECK_MANAGE,
-    excludeFromMobileMainTabs: true,
-  },
-  {
-    href: ROUTES.dailyReview,
-    label: "Daily Review",
-    iconKey: "CalendarCheck",
-    navSection: "SUPERVISION",
-    requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
-    // Users who can manage daily reviews see the MANAGER REVIEW item instead.
-    hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
-    excludeFromMobileMainTabs: true,
-  },
+
+  // ── CONTENT ──
   {
     href: ROUTES.winners,
     label: "Research",
@@ -689,7 +681,7 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.creativeScripts,
     label: "Scripts to Write",
     iconKey: "FileText",
-    navSection: "CREATIVE",
+    navSection: "CONTENT",
     requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
     // Users who can manage creative scripts see the admin Research review flow instead.
     hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
@@ -699,11 +691,47 @@ const sharedPermissionNavItems: NavItem[] = [
     href: ROUTES.myScripts,
     label: "My Scripts",
     iconKey: "FileText",
-    navSection: "CREATIVE",
+    navSection: "CONTENT",
     requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
     hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
     excludeFromMobileMainTabs: true,
   },
+
+  // ── REVIEW & QA ──
+  {
+    href: ROUTES.spotChecks,
+    label: "Spot Checks",
+    iconKey: "ListTodo",
+    navSection: "REVIEW & QA",
+    requiresPermission: PERMISSIONS.SPOTCHECK_SUBMIT,
+    // Users who can manage spot checks see the manage-tier review item instead.
+    hiddenIfPermission: PERMISSIONS.SPOTCHECK_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.dailyReview,
+    label: "Daily Review",
+    iconKey: "CalendarCheck",
+    navSection: "REVIEW & QA",
+    requiresPermission: PERMISSIONS.DAILY_REVIEW_SUBMIT,
+    // Users who can manage daily reviews see the manage-tier review item instead.
+    hiddenIfPermission: PERMISSIONS.DAILY_REVIEW_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  // VA mistakes submission ("Mistakes" → /va/mistakes). Gated by MISTAKES_VIEW so any role granted
+  // it surfaces the link. Users who can MANAGE mistakes (admin/manager) see the admin
+  // `/admin/mistakes` review item instead, so this VA submit link is hidden for them.
+  {
+    href: ROUTES.va.mistakes,
+    label: "Mistakes",
+    iconKey: "AlertTriangle",
+    navSection: "REVIEW & QA",
+    requiresPermission: PERMISSIONS.MISTAKES_VIEW,
+    hiddenIfPermission: PERMISSIONS.MISTAKES_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+
+  // ── TOOLS ──
   {
     href: ROUTES.admin.pdfMaker,
     label: "PDF Maker",
@@ -734,18 +762,6 @@ const sharedPermissionNavItems: NavItem[] = [
     iconKey: "UserCheck",
     navSection: "TOOLS",
     requiresPermission: PERMISSIONS.MY_PROFILES_VIEW,
-    excludeFromMobileMainTabs: true,
-  },
-  // VA mistakes submission ("Mistakes" → /va/mistakes). Gated by MISTAKES_VIEW so any role granted
-  // it surfaces the link. Users who can MANAGE mistakes (admin/manager) see the admin
-  // `/admin/mistakes` review item instead, so this VA submit link is hidden for them.
-  {
-    href: ROUTES.va.mistakes,
-    label: "Mistakes",
-    iconKey: "AlertTriangle",
-    navSection: "PERFORMANCE",
-    requiresPermission: PERMISSIONS.MISTAKES_VIEW,
-    hiddenIfPermission: PERMISSIONS.MISTAKES_MANAGE,
     excludeFromMobileMainTabs: true,
   },
 ];
