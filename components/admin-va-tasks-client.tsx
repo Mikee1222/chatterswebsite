@@ -1433,41 +1433,17 @@ export function AdminVaTasksClient({
                       <span className="text-sm text-white/60">Assign to all VAs</span>
                     </>
                   ) : (
-                    <span className="text-sm text-white/50">Select one VA below</span>
+                    <span className="text-sm text-white/50">Select one member below</span>
                   )}
                 </div>
                 {!assignAll ? (
-                  <div className="flex flex-wrap gap-2">
-                    {vaUsers.map((va) => {
-                      const name = (va.full_name || va.email).trim() || va.id;
-                      const initial = name.charAt(0).toUpperCase();
-                      const on = assignedTo.includes(va.id);
-                      return (
-                        <button
-                          key={va.id}
-                          type="button"
-                          onClick={() => toggleAssignee(va.id)}
-                          className={cn(
-                            "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-all",
-                            on
-                              ? "border-pink-500/30 bg-pink-500/20 text-pink-400 shadow-lg shadow-pink-500/10"
-                              : "border-white/10 bg-white/5 text-white/50 hover:bg-white/8",
-                          )}
-                        >
-                          <div
-                            className={cn(
-                              "flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold",
-                              on ? "bg-pink-500/30 text-pink-400" : "bg-white/10 text-white/40",
-                            )}
-                          >
-                            {initial}
-                          </div>
-                          {name}
-                          {on ? <Check className="h-3 w-3" /> : null}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <StaffAssigneePicker
+                    users={staffUsers}
+                    roleLabels={roleLabels}
+                    selectedIds={assignedTo}
+                    onChange={setAssignedTo}
+                    singleSelect={createMode === "template" && !editingId}
+                  />
                 ) : null}
 
                 <div className="mt-4">
