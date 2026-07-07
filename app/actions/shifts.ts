@@ -1,6 +1,7 @@
 "use server";
 
 import { getSessionFromCookies } from "@/lib/auth";
+import type { AuthUser } from "@/lib/auth-config";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -100,12 +101,20 @@ export async function endChattingShift() {
 
 const TASK_SHIFT_TYPE_ALLOWED = new Set(["mistakes", "vault_cleaning", "other"]);
 
+async function canManagePersonalVaTaskShift(user: AuthUser): Promise<boolean> {
+  return (
+    (await hasPermission(user, PERMISSIONS.VA_TASKS_VIEW)) ||
+    (await hasPermission(user, PERMISSIONS.SHIFTS_MANAGE))
+  );
+}
+
 /** Start a task shift (virtual assistant). shiftType and taskLabel (if type=other) required. */
 export async function startTaskShift(formData: FormData) {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
-  if (getEffectiveStaffRole(user) !== "virtual_assistant" && !(await hasPermission(user, PERMISSIONS.SHIFTS_MANAGE)))
-    return { error: "Only virtual assistants can start task shifts" };
+  if (!(await canManagePersonalVaTaskShift(user))) {
+    return { error: "You do not have permission to start task shifts" };
+  }
 
   let shiftType = (formData.get("shift_type") as string)?.trim();
   let taskLabel = (formData.get("task_label") as string)?.trim();
@@ -183,6 +192,9 @@ export async function startTaskShift(formData: FormData) {
 export async function endTaskShift() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
+  if (!(await canManagePersonalVaTaskShift(user))) {
+    return { error: "You do not have permission to end task shifts" };
+  }
 
   const active = await getActiveShifts("virtual_assistant");
   const myActive = active.find((s) => s.chatter_id === user.airtableUserId);
@@ -230,8 +242,9 @@ function getWeekStart(date: Date): string {
 export async function startVaTaskShiftAction() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
-  if (getEffectiveStaffRole(user) !== "virtual_assistant" && !(await hasPermission(user, PERMISSIONS.SHIFTS_MANAGE)))
-    return { error: "Only virtual assistants can start VA task shifts" };
+  if (!(await canManagePersonalVaTaskShift(user))) {
+    return { error: "You do not have permission to start VA task shifts" };
+  }
 
   const vaId = user.airtableUserId ?? user.id;
   const existing = await getActiveVaTaskShift(vaId);
@@ -270,6 +283,9 @@ export async function startVaTaskShiftAction() {
 export async function endVaTaskShiftAction() {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
+  if (!(await canManagePersonalVaTaskShift(user))) {
+    return { error: "You do not have permission to end VA task shifts" };
+  }
 
   const vaId = user.airtableUserId ?? user.id;
   const myActive = await getActiveVaTaskShift(vaId);

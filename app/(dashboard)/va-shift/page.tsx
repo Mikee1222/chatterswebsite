@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
@@ -17,7 +16,7 @@ const MAX_BREAK_MINUTES = 45;
 
 export default async function VaShiftPage() {
   const user = await getSessionFromCookies();
-  if (!user || getEffectiveStaffRole(user) !== "virtual_assistant") redirect(ROUTES.dashboard);
+  if (!user) redirect(ROUTES.dashboard);
   if (!(await hasPermission(user, PERMISSIONS.MISTAKES_VIEW))) redirect(ROUTES.dashboard);
 
   const vaId = user.airtableUserId ?? user.id;
