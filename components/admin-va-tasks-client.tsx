@@ -13,8 +13,7 @@ import type { TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
-import { groupRecurringTasks } from "@/lib/recurring-utils";
-import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
+import { filterTasksByAthensYmd, getVaTasksViewTodayYmd, groupVaTasksForDateView } from "@/lib/va-task-date-filter";
 import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
@@ -25,7 +24,6 @@ import {
   AdminVaTasksViewToggle,
 } from "@/components/admin-va-tasks-progress-overview";
 import { EMPTY_TASK_PHASES } from "@/components/va-task-card";
-import { flattenDateViewTasks } from "@/lib/va-tasks-progress";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -218,7 +216,6 @@ function SectionLabel({ icon, label }: { icon: string; label: string }) {
 const ADMIN_MODAL_INPUT =
   "w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#151315] px-4 py-3 text-sm text-[#B8B4B8] placeholder:text-[#B8B4B8]/30 outline-none transition focus:border-[#FF1493]/45 focus:ring-1 focus:ring-[#FF1493]/15";
 
-const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
 const TASK_LIST_INITIAL_CAP = 40;
 
 function Divider() {
@@ -658,19 +655,16 @@ export function AdminVaTasksClient({
     });
   }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority]);
 
-  const { regularTasks, recurringGroups } = React.useMemo(
-    () => groupRecurringTasks(filteredTasks, DATE_VIEW_GROUP_OPTS),
+  const listViewGrouped = React.useMemo(
+    () => groupVaTasksForDateView(filteredTasks),
     [filteredTasks],
   );
 
-  const dateGrouped = React.useMemo(
-    () => groupRecurringTasks(dateFilteredTasks, DATE_VIEW_GROUP_OPTS),
-    [dateFilteredTasks],
-  );
+  const { regularTasks, recurringGroups, flattenedTasks: progressViewTasks } = listViewGrouped;
 
-  const progressViewTasks = React.useMemo(
-    () => flattenDateViewTasks(dateGrouped.regularTasks, dateGrouped.recurringGroups),
-    [dateGrouped],
+  const dateGrouped = React.useMemo(
+    () => groupVaTasksForDateView(dateFilteredTasks),
+    [dateFilteredTasks],
   );
 
   const loadProgressPhases = React.useCallback(async () => {
@@ -1310,6 +1304,7 @@ export function AdminVaTasksClient({
         <AdminVaTasksProgressOverview
           tasks={progressViewTasks}
           vaUsers={vaUsers}
+          staffUsers={staffUsers}
           nameById={nameById}
           taskPhases={taskPhases}
           phasesLoading={progressPhasesLoading}

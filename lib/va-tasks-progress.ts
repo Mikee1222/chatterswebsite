@@ -102,9 +102,13 @@ export function hasOverdueInTask(task: VaTaskRecord, phases: TaskPhase[]): boole
   return phases.some(phaseIsOverdue);
 }
 
-export function resolveTaskAssigneeIds(task: VaTaskRecord, allVaIds: string[]): string[] {
+export function resolveTaskAssigneeIds(
+  task: VaTaskRecord,
+  allVaIds: string[],
+  allStaffIds: string[],
+): string[] {
   if (task.assigned_to_ids.length === 0) return [...allVaIds];
-  const allowed = new Set(allVaIds);
+  const allowed = new Set(allStaffIds);
   return task.assigned_to_ids.filter((id) => allowed.has(id));
 }
 
@@ -112,26 +116,24 @@ export function buildVaProgressSummaries(
   tasksWithPhases: VaTaskWithPhases[],
   vaUsers: Array<{ id: string; full_name: string; email: string }>,
   nameById: Record<string, string>,
+  staffUsers: Array<{ id: string; full_name: string; email: string }>,
 ): VaProgressSummary[] {
   const allVaIds = vaUsers.map((u) => u.id);
-  const byVa = new Map<string, VaTaskWithPhases[]>();
-
-  for (const va of vaUsers) {
-    byVa.set(va.id, []);
-  }
+  const allStaffIds = staffUsers.map((u) => u.id);
+  const byAssignee = new Map<string, VaTaskWithPhases[]>();
 
   for (const entry of tasksWithPhases) {
-    const assignees = resolveTaskAssigneeIds(entry.task, allVaIds);
-    for (const vaId of assignees) {
-      const list = byVa.get(vaId);
-      if (list) list.push(entry);
+    const assignees = resolveTaskAssigneeIds(entry.task, allVaIds, allStaffIds);
+    for (const assigneeId of assignees) {
+      const list = byAssignee.get(assigneeId) ?? [];
+      list.push(entry);
+      byAssignee.set(assigneeId, list);
     }
   }
 
   const summaries: VaProgressSummary[] = [];
 
-  for (const va of vaUsers) {
-    const tasks = byVa.get(va.id) ?? [];
+  for (const [assigneeId, tasks] of byAssignee) {
     if (tasks.length === 0) continue;
 
     let totalItems = 0;
@@ -151,9 +153,10 @@ export function buildVaProgressSummaries(
       notes.push(...collectVaNotes(task, phases));
     }
 
+    const staffUser = staffUsers.find((u) => u.id === assigneeId);
     summaries.push({
-      vaId: va.id,
-      vaName: (nameById[va.id] || va.full_name || va.email || va.id).trim(),
+      vaId: assigneeId,
+      vaName: (nameById[assigneeId] || staffUser?.full_name || staffUser?.email || assigneeId).trim(),
       tasks,
       totalItems,
       completedItems,

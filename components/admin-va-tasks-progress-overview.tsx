@@ -302,6 +302,7 @@ function AgencySummaryHeader({ stats }: { stats: ReturnType<typeof buildAgencyPr
 type Props = {
   tasks: VaTaskRecord[];
   vaUsers: Array<{ id: string; full_name: string; email: string }>;
+  staffUsers: Array<{ id: string; full_name: string; email: string }>;
   nameById: Record<string, string>;
   taskPhases: Record<string, TaskPhase[]>;
   phasesLoading: boolean;
@@ -312,6 +313,7 @@ type Props = {
 export function AdminVaTasksProgressOverview({
   tasks,
   vaUsers,
+  staffUsers,
   nameById,
   taskPhases,
   phasesLoading,
@@ -324,8 +326,8 @@ export function AdminVaTasksProgressOverview({
   );
 
   const summaries = React.useMemo(
-    () => buildVaProgressSummaries(tasksWithPhases, vaUsers, nameById),
-    [tasksWithPhases, vaUsers, nameById],
+    () => buildVaProgressSummaries(tasksWithPhases, vaUsers, nameById, staffUsers),
+    [tasksWithPhases, vaUsers, nameById, staffUsers],
   );
 
   const agencyStats = React.useMemo(() => buildAgencyProgressStats(summaries), [summaries]);
