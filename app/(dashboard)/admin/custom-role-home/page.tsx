@@ -6,6 +6,7 @@ import {
   BookOpen,
   Building,
   Calendar,
+  CalendarCheck,
   CheckSquare,
   Clock,
   CreditCard,
@@ -165,11 +166,18 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
     description: PERMISSION_DESCRIPTIONS["feedback:view"],
   },
   {
-    permission: "weekly-program:view",
+    permission: "chatter_program:view",
     title: "Weekly program",
     href: ROUTES.admin.weeklyProgram,
     icon: Calendar,
-    description: PERMISSION_DESCRIPTIONS["weekly-program:view"],
+    description: PERMISSION_DESCRIPTIONS["chatter_program:view"],
+  },
+  {
+    permission: "va_program:view",
+    title: "VA weekly program",
+    href: ROUTES.admin.weeklyProgramVa,
+    icon: CalendarCheck,
+    description: PERMISSION_DESCRIPTIONS["va_program:view"],
   },
 ];
 

@@ -28,9 +28,9 @@ export type CreateProgramVaResult = { success: true; id: string; week_start: str
 export type UpdateProgramVaResult = { success: true } | { success: false; error: string };
 export type DeleteProgramVaResult = { success: true } | { success: false; error: string };
 
-async function requireWeeklyProgramManage() {
+async function requireVaProgramManage() {
   const user = await getSessionFromCookies();
-  if (!user || !(await hasPermission(user, PERMISSIONS.WEEKLY_PROGRAM_MANAGE))) return null;
+  if (!user || !(await hasPermission(user, PERMISSIONS.VA_PROGRAM_MANAGE))) return null;
   return user;
 }
 
@@ -46,7 +46,7 @@ export async function createProgramVaAction(fields: {
   custom_start_time?: string;
   custom_end_time?: string;
 }): Promise<CreateProgramVaResult> {
-  if (!(await requireWeeklyProgramManage())) {
+  if (!(await requireVaProgramManage())) {
     return { success: false, error: "Unauthorized" };
   }
   try {
@@ -128,7 +128,7 @@ export async function updateProgramVaAction(
     custom_end_time?: string;
   }
 ): Promise<UpdateProgramVaResult> {
-  if (!(await requireWeeklyProgramManage())) {
+  if (!(await requireVaProgramManage())) {
     return { success: false, error: "Unauthorized" };
   }
   try {
@@ -203,7 +203,7 @@ export async function updateProgramVaAction(
 }
 
 export async function deleteProgramVaAction(recordId: string): Promise<DeleteProgramVaResult> {
-  if (!(await requireWeeklyProgramManage())) {
+  if (!(await requireVaProgramManage())) {
     return { success: false, error: "Unauthorized" };
   }
   try {

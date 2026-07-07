@@ -124,6 +124,7 @@ type Props = {
   suggestionsByKey?: Record<string, { type: string; text: string }[]>;
   availabilityRequests: WeeklyAvailabilityRequest[];
   periodDatesByModelId: Record<string, string[]>;
+  canManage?: boolean;
 };
 
 function lastWithLabel(
@@ -155,6 +156,7 @@ export function AdminWeeklyProgramVaClient({
   suggestionsByKey,
   availabilityRequests,
   periodDatesByModelId,
+  canManage = false,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -612,6 +614,7 @@ export function AdminWeeklyProgramVaClient({
                         }`}>{r.status}</span>
                       </div>
                       {r.entry_type === "availability" ? (
+                        canManage ? (
                         <button
                           type="button"
                           onClick={() => useRequestInSchedule(r)}
@@ -619,6 +622,9 @@ export function AdminWeeklyProgramVaClient({
                         >
                           Use in schedule
                         </button>
+                        ) : (
+                          <p className="mt-1 text-xs text-white/45 italic">Available</p>
+                        )
                       ) : (
                         <p className="mt-1 text-xs text-white/45 italic">Unavailable</p>
                       )}
@@ -665,9 +671,11 @@ export function AdminWeeklyProgramVaClient({
             options={SHIFT_FILTER_OPTIONS}
             className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0"
           />
+          {canManage ? (
           <ButtonPrimary type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="w-full sm:w-auto">
             Create shift
           </ButtonPrimary>
+          ) : null}
         </div>
       </div>
 
@@ -788,7 +796,7 @@ export function AdminWeeklyProgramVaClient({
                     <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
                     <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
                   </div>
-                  {entries.length > 0 ? (
+                  {canManage && entries.length > 0 ? (
                     <button
                       type="button"
                       onClick={() => {
@@ -806,7 +814,7 @@ export function AdminWeeklyProgramVaClient({
                     </button>
                   ) : null}
                 </div>
-                {duplicateOpenDay === day && entries.length > 0 ? (
+                {canManage && duplicateOpenDay === day && entries.length > 0 ? (
                   <div className="flex flex-col gap-3 border-b border-white/10 bg-black/30 px-4 py-3">
                     <div>
                       <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Week</span>
@@ -888,6 +896,7 @@ export function AdminWeeklyProgramVaClient({
                       );
                     })
                   )}
+                  {canManage ? (
                   <button
                     type="button"
                     onClick={() => openCreateForDay(day)}
@@ -895,6 +904,7 @@ export function AdminWeeklyProgramVaClient({
                   >
                     + Add slot
                   </button>
+                  ) : null}
                 </div>
               </div>
             );
@@ -919,7 +929,7 @@ export function AdminWeeklyProgramVaClient({
                         <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
                         <p className="mt-1 text-sm text-white/50">{dateLabel}</p>
                       </div>
-                      {entries.length > 0 ? (
+                      {canManage && entries.length > 0 ? (
                         <button
                           type="button"
                           onClick={() => {
@@ -937,7 +947,7 @@ export function AdminWeeklyProgramVaClient({
                         </button>
                       ) : null}
                     </div>
-                    {duplicateOpenDay === day && entries.length > 0 ? (
+                    {canManage && duplicateOpenDay === day && entries.length > 0 ? (
                       <div className="mt-3 flex flex-col gap-3 border-t border-white/10 pt-3">
                         <div>
                           <span className="text-[10px] font-medium uppercase tracking-wider text-white/45">Week</span>
@@ -986,9 +996,11 @@ export function AdminWeeklyProgramVaClient({
                     {entries.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
                         <p className="text-sm text-white/45">No shifts</p>
+                        {canManage ? (
                         <button type="button" onClick={() => openCreateForDay(day)} className="mt-3 rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors">
                           + Add slot
                         </button>
+                        ) : null}
                       </div>
                     ) : (
                       <>
@@ -1040,6 +1052,7 @@ export function AdminWeeklyProgramVaClient({
                                     )}
                                   </div>
                                 </div>
+                                {canManage ? (
                                 <div className="mt-3 flex items-center gap-2">
                                   <button type="button" onClick={() => setEditingEntry(e)} className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
                                     Edit
@@ -1048,10 +1061,12 @@ export function AdminWeeklyProgramVaClient({
                                     {deletingId === e.id ? "…" : "Delete"}
                                   </button>
                                 </div>
+                                ) : null}
                               </div>
                             </div>
                           );
                         })}
+                        {canManage ? (
                         <button
                           type="button"
                           onClick={() => openCreateForDay(day)}
@@ -1059,6 +1074,7 @@ export function AdminWeeklyProgramVaClient({
                         >
                           + Add slot
                         </button>
+                        ) : null}
                       </>
                     )}
                   </div>
@@ -1126,6 +1142,7 @@ export function AdminWeeklyProgramVaClient({
                         }`}>{r.status}</span>
                       </div>
                       {r.entry_type === "availability" ? (
+                        canManage ? (
                         <button
                           type="button"
                           onClick={() => useRequestInSchedule(r)}
@@ -1133,6 +1150,9 @@ export function AdminWeeklyProgramVaClient({
                         >
                           Use in schedule
                         </button>
+                        ) : (
+                          <p className="mt-1 text-[10px] text-white/45 italic">Available</p>
+                        )
                       ) : (
                         <p className="mt-1 text-[10px] text-white/45 italic">Unavailable</p>
                       )}
@@ -1146,7 +1166,7 @@ export function AdminWeeklyProgramVaClient({
       </aside>
 
       <AnimatePresence>
-      {(createOpen || editingEntry || prefillFromAvailability) && (
+      {canManage && (createOpen || editingEntry || prefillFromAvailability) && (
         <motion.div
           key="va-weekly-shift-sheet"
           className="fixed inset-0 z-50 flex overflow-hidden"
@@ -1236,6 +1256,7 @@ export function AdminWeeklyProgramVaClient({
                             }`}>{r.status}</span>
                           </div>
                           {r.entry_type === "availability" ? (
+                            canManage ? (
                             <button
                               type="button"
                               onClick={() => useRequestInSchedule(r)}
@@ -1243,6 +1264,9 @@ export function AdminWeeklyProgramVaClient({
                             >
                               Use in schedule
                             </button>
+                            ) : (
+                              <p className="mt-1.5 text-xs text-white/45 italic">Available</p>
+                            )
                           ) : (
                             <p className="mt-1.5 text-xs text-white/45 italic">Unavailable this day</p>
                           )}
@@ -1257,6 +1281,8 @@ export function AdminWeeklyProgramVaClient({
         </motion.div>
       )}
       </AnimatePresence>
+    {canManage ? (
+    <>
     <ConfirmDialog
       open={deleteProgramConfirmId != null}
       onClose={() => deletingId == null && setDeleteProgramConfirmId(null)}
@@ -1288,6 +1314,8 @@ export function AdminWeeklyProgramVaClient({
       confirmVariant="warning"
       loading={duplicateBusy}
     />
+    </>
+    ) : null}
     </div>
     </>
   );

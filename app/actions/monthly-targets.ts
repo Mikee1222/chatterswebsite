@@ -17,7 +17,7 @@ export async function upsertMonthlyTargetAction(
   options: { notes?: string; is_active?: boolean } = {}
 ): Promise<UpsertMonthlyTargetResult> {
   const user = await getSessionFromCookies();
-  if (!user || !(await hasPermission(user, PERMISSIONS.WEEKLY_PROGRAM_MANAGE))) {
+  if (!user || !(await hasPermission(user, PERMISSIONS.CHATTER_PROGRAM_MANAGE))) {
     return { success: false, error: "Unauthorized" };
   }
   if (!teamMemberRecordId?.trim() || !monthKey?.trim()) {

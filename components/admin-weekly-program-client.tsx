@@ -558,6 +558,7 @@ type Props = {
   suggestionsByKey?: Record<string, { type: string; text: string }[]>;
   availabilityRequests: WeeklyAvailabilityRequest[];
   periodDatesByModelId: Record<string, string[]>;
+  canManage?: boolean;
 };
 
 function lastWithLabel(
@@ -589,6 +590,7 @@ export function AdminWeeklyProgramClient({
   suggestionsByKey,
   availabilityRequests,
   periodDatesByModelId,
+  canManage = false,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -1271,6 +1273,7 @@ export function AdminWeeklyProgramClient({
                         }`}>{r.status}</span>
                       </div>
                       {r.entry_type === "availability" ? (
+                        canManage ? (
                         <button
                           type="button"
                           onClick={() => useRequestInSchedule(r)}
@@ -1278,6 +1281,9 @@ export function AdminWeeklyProgramClient({
                         >
                           Use in schedule
                         </button>
+                        ) : (
+                          <p className="mt-1 text-xs text-white/45 italic">Available</p>
+                        )
                       ) : (
                         <p className="mt-1 text-xs text-white/45 italic">Unavailable</p>
                       )}
@@ -1324,13 +1330,15 @@ export function AdminWeeklyProgramClient({
             options={SHIFT_FILTER_OPTIONS}
             className="w-full min-h-[44px] sm:min-w-[120px] sm:min-h-0"
           />
+          {canManage ? (
           <ButtonPrimary type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="w-full sm:w-auto">
             Create shift
           </ButtonPrimary>
+          ) : null}
         </div>
       </div>
 
-      {chattersWithSlotsThisWeek.length > 0 ? (
+      {canManage && chattersWithSlotsThisWeek.length > 0 ? (
         <div className="glass-card space-y-3 p-5">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wider text-white/60">Duplicate chatter week</h2>
@@ -1463,7 +1471,7 @@ export function AdminWeeklyProgramClient({
                     <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
                     <p className="mt-0.5 text-sm text-white/50">{dateLabel}</p>
                   </div>
-                  {entries.length > 0 ? (
+                  {canManage && entries.length > 0 ? (
                     <button
                       type="button"
                       disabled={duplicateOpenDay === day && duplicateUi === "working"}
@@ -1516,6 +1524,7 @@ export function AdminWeeklyProgramClient({
                             )}
                           </div>
                           {e.chatter_name && <p className="mt-0.5 text-xs text-white/50">{e.chatter_name}</p>}
+                          {canManage ? (
                           <div className="mt-3 flex flex-wrap gap-2">
                             <button
                               type="button"
@@ -1527,6 +1536,7 @@ export function AdminWeeklyProgramClient({
                               Duplicate
                             </button>
                           </div>
+                          ) : null}
                         </div>
                       );
                     })
@@ -1555,7 +1565,7 @@ export function AdminWeeklyProgramClient({
                         <p className="text-base font-semibold uppercase tracking-wider text-white/90">{day}</p>
                         <p className="mt-1 text-sm text-white/50">{dateLabel}</p>
                       </div>
-                      {entries.length > 0 ? (
+                      {canManage && entries.length > 0 ? (
                         <button
                           type="button"
                           disabled={duplicateOpenDay === day && duplicateUi === "working"}
@@ -1578,9 +1588,11 @@ export function AdminWeeklyProgramClient({
                     {entries.length === 0 ? (
                       <div className="flex flex-col items-center justify-center py-10 text-center">
                         <p className="text-sm text-white/45">No shifts</p>
+                        {canManage ? (
                         <button type="button" onClick={() => { setCreateOpen(true); setError(null); setSuccess(null); }} className="mt-3 rounded-xl border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 px-4 py-2 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors">
                           Add shift
                         </button>
+                        ) : null}
                       </div>
                     ) : (
                       entries.map((e) => {
@@ -1627,6 +1639,7 @@ export function AdminWeeklyProgramClient({
                                   )}
                                 </div>
                               </div>
+                              {canManage ? (
                               <div className="mt-3 flex flex-wrap items-center gap-2">
                                 <button type="button" onClick={() => setEditingEntry(e)} className="rounded-lg border border-white/20 px-2.5 py-1.5 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
                                   Edit
@@ -1644,6 +1657,7 @@ export function AdminWeeklyProgramClient({
                                   Duplicate
                                 </button>
                               </div>
+                              ) : null}
                             </div>
                           </div>
                         );
@@ -1714,6 +1728,7 @@ export function AdminWeeklyProgramClient({
                         }`}>{r.status}</span>
                       </div>
                       {r.entry_type === "availability" ? (
+                        canManage ? (
                         <button
                           type="button"
                           onClick={() => useRequestInSchedule(r)}
@@ -1721,6 +1736,9 @@ export function AdminWeeklyProgramClient({
                         >
                           Use in schedule
                         </button>
+                        ) : (
+                          <p className="mt-1 text-[10px] text-white/45 italic">Available</p>
+                        )
                       ) : (
                         <p className="mt-1 text-[10px] text-white/45 italic">Unavailable</p>
                       )}
@@ -1734,7 +1752,7 @@ export function AdminWeeklyProgramClient({
       </aside>
 
       <AnimatePresence>
-      {(createOpen || editingEntry || prefillFromAvailability) && (
+      {canManage && (createOpen || editingEntry || prefillFromAvailability) && (
         <motion.div
           key="weekly-shift-sheet"
           className="fixed inset-0 z-50 flex overflow-hidden"
@@ -1824,6 +1842,7 @@ export function AdminWeeklyProgramClient({
                             }`}>{r.status}</span>
                           </div>
                           {r.entry_type === "availability" ? (
+                            canManage ? (
                             <button
                               type="button"
                               onClick={() => useRequestInSchedule(r)}
@@ -1831,6 +1850,9 @@ export function AdminWeeklyProgramClient({
                             >
                               Use in schedule
                             </button>
+                            ) : (
+                              <p className="mt-1.5 text-xs text-white/45 italic">Available</p>
+                            )
                           ) : (
                             <p className="mt-1.5 text-xs text-white/45 italic">Unavailable this day</p>
                           )}
@@ -1847,7 +1869,7 @@ export function AdminWeeklyProgramClient({
       </AnimatePresence>
 
       <AnimatePresence>
-        {duplicateOpenDay ? (
+        {canManage && duplicateOpenDay ? (
           <motion.div
             key="duplicate-week-popover"
             className="fixed inset-0 z-[60] flex items-end justify-center md:items-center md:p-4"
@@ -1966,6 +1988,7 @@ export function AdminWeeklyProgramClient({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    {canManage ? (
     <ConfirmDialog
       open={deleteProgramConfirmId != null}
       onClose={() => deletingId == null && setDeleteProgramConfirmId(null)}
@@ -1979,8 +2002,9 @@ export function AdminWeeklyProgramClient({
       confirmVariant="danger"
       loading={deletingId != null}
     />
+    ) : null}
 
-      {duplicateWeekModal ? (
+      {canManage && duplicateWeekModal ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60" role="dialog" aria-modal="true" aria-labelledby="dup-week-title">
           <div className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#0f0f1a] p-6 shadow-2xl">
             <h3 id="dup-week-title" className="text-lg font-bold text-white">
@@ -2045,7 +2069,7 @@ export function AdminWeeklyProgramClient({
         </div>
       ) : null}
 
-      {duplicateSlotModal ? (
+      {canManage && duplicateSlotModal ? (
         <div
           className="fixed inset-0 z-[61] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
           role="dialog"

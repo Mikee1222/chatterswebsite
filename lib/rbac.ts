@@ -3,7 +3,7 @@ import type { AuthUser } from "@/lib/auth-config";
 import { isCustomNavRole } from "@/lib/nav-config";
 import { ROUTES } from "@/lib/routes";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { DEFAULT_ROLE_PERMISSIONS, PERMISSIONS, type Permission } from "@/lib/permissions";
 import { getRolePermissions } from "@/services/roles";
 import type { UserRole } from "@/types";
 
@@ -58,6 +58,20 @@ type CacheEntry = {
 
 const rolePermissionsCache = new Map<string, CacheEntry>();
 
+/** Map retired weekly-program grants onto split chatter/VA program permissions. */
+function expandLegacyProgramPermissions(perms: Set<Permission>): Set<Permission> {
+  const expanded = new Set(perms);
+  if (perms.has(PERMISSIONS.WEEKLY_PROGRAM_VIEW)) {
+    expanded.add(PERMISSIONS.CHATTER_PROGRAM_VIEW);
+    expanded.add(PERMISSIONS.VA_PROGRAM_VIEW);
+  }
+  if (perms.has(PERMISSIONS.WEEKLY_PROGRAM_MANAGE)) {
+    expanded.add(PERMISSIONS.CHATTER_PROGRAM_MANAGE);
+    expanded.add(PERMISSIONS.VA_PROGRAM_MANAGE);
+  }
+  return expanded;
+}
+
 function resolveRoleForPermissions(user: AuthUser): string {
   const staff = getEffectiveStaffRole(user);
   if (staff) return staff;
@@ -83,7 +97,7 @@ async function loadPermissionsForRole(role: string): Promise<Set<Permission>> {
     perms = DEFAULT_ROLE_PERMISSIONS[key as UserRole] ?? [];
   }
 
-  const set = new Set(perms);
+  const set = expandLegacyProgramPermissions(new Set(perms));
   rolePermissionsCache.set(key, { permissions: set, expiresAt: now + CACHE_TTL_MS });
   return set;
 }

@@ -92,6 +92,11 @@ export const PERMISSIONS = {
   WEEKLY_PROGRAM_VIEW: "weekly-program:view",
   WEEKLY_PROGRAM_MANAGE: "weekly-program:manage",
 
+  CHATTER_PROGRAM_VIEW: "chatter_program:view",
+  CHATTER_PROGRAM_MANAGE: "chatter_program:manage",
+  VA_PROGRAM_VIEW: "va_program:view",
+  VA_PROGRAM_MANAGE: "va_program:manage",
+
   PAYMENTS_VIEW: "payments:view",
   PAYMENTS_SUBMIT: "payments:submit",
   PAYMENTS_MANAGE: "payments:manage",
@@ -175,6 +180,8 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   notifications: "Notifications",
   "custom-requests": "Custom requests",
   "weekly-program": "Weekly program",
+  chatter_program: "Chatter program",
+  va_program: "VA program",
   payments: "Payments",
   settings: "Settings",
   roles: "Roles & permissions",
@@ -296,6 +303,11 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "weekly-program:view": "Προβολή εβδομαδιαίου προγράμματος βαρδιών",
   "weekly-program:manage": "Διαχείριση εβδομαδιαίου προγράμματος βαρδιών",
 
+  "chatter_program:view": "Προβολή εβδομαδιαίου προγράμματος chatters",
+  "chatter_program:manage": "Δημιουργία και επεξεργασία προγράμματος chatters",
+  "va_program:view": "Προβολή εβδομαδιαίου προγράμματος VA",
+  "va_program:manage": "Δημιουργία και επεξεργασία προγράμματος VA",
+
   "payments:view": "Προβολή πληρωμών και ιστορικού",
   "payments:submit": "Υποβολή πληρωμών και στοιχείων πελατών",
   "payments:manage": "Διαχείριση και επιβεβαίωση πληρωμών",
@@ -389,7 +401,7 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_SIGN_OFF,
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SETTINGS_VIEW,
-  PERMISSIONS.WEEKLY_PROGRAM_VIEW,
+  PERMISSIONS.VA_PROGRAM_VIEW,
   // NOTE: winner_videos:submit is intentionally NOT a VA default. Like spotcheck:submit
   // and daily_review:submit, it is an optional per-role permission that admins grant via
   // the Roles UI. Because resolveRolePermissions() unions code defaults into stored perms

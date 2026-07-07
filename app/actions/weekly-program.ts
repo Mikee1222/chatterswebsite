@@ -28,19 +28,19 @@ import { notifyActiveChattersWeeklyProgramPublished } from "@/services/weekly-pr
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
-async function requireWeeklyProgramManage() {
+async function requireChatterProgramManage() {
   const user = await getSessionFromCookies();
-  if (!user || !(await hasPermission(user, PERMISSIONS.WEEKLY_PROGRAM_MANAGE))) return null;
+  if (!user || !(await hasPermission(user, PERMISSIONS.CHATTER_PROGRAM_MANAGE))) return null;
   return user;
 }
 
-async function requireWeeklyProgramRead() {
+async function requireChatterProgramRead() {
   const user = await getSessionFromCookies();
   if (
     !user ||
     !(await hasAnyPermission(user, [
-      PERMISSIONS.WEEKLY_PROGRAM_VIEW,
-      PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+      PERMISSIONS.CHATTER_PROGRAM_VIEW,
+      PERMISSIONS.CHATTER_PROGRAM_MANAGE,
       PERMISSIONS.SHIFTS_VIEW,
     ]))
   ) {
@@ -53,7 +53,7 @@ export async function getLastAssignmentsForChatterAction(
   chatterId: string,
   modelIds: string[]
 ): Promise<Record<string, LastAssignmentInfo>> {
-  if (!(await requireWeeklyProgramRead())) return {};
+  if (!(await requireChatterProgramRead())) return {};
   if (!chatterId || modelIds.length === 0) return {};
   const pairs = modelIds.filter(Boolean).map((modelId) => ({ chatterId, modelId }));
   return getLastAssignmentBatch(pairs);
@@ -75,7 +75,7 @@ export async function createProgramAction(fields: {
   custom_start_time?: string;
   custom_end_time?: string;
 }): Promise<CreateProgramResult> {
-  if (!(await requireWeeklyProgramManage())) {
+  if (!(await requireChatterProgramManage())) {
     return { success: false, error: "Unauthorized" };
   }
   try {
@@ -157,7 +157,7 @@ export async function updateProgramAction(
     custom_end_time?: string;
   }
 ): Promise<UpdateProgramResult> {
-  if (!(await requireWeeklyProgramManage())) {
+  if (!(await requireChatterProgramManage())) {
     return { success: false, error: "Unauthorized" };
   }
   try {
@@ -248,7 +248,7 @@ export async function updateProgramAction(
 }
 
 export async function deleteProgramAction(recordId: string): Promise<DeleteProgramResult> {
-  if (!(await requireWeeklyProgramManage())) {
+  if (!(await requireChatterProgramManage())) {
     return { success: false, error: "Unauthorized" };
   }
   try {

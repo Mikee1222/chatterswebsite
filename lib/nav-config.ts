@@ -294,14 +294,14 @@ const adminNav: NavItem[] = [
     label: "Weekly program",
     iconKey: "Calendar",
     navSection: "TEAM",
-    requiresPermission: PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+    requiresPermission: PERMISSIONS.CHATTER_PROGRAM_VIEW,
   },
   {
     href: ROUTES.admin.weeklyProgramVa,
     label: "VA weekly program",
     iconKey: "CalendarCheck",
     navSection: "TEAM",
-    requiresPermission: PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+    requiresPermission: PERMISSIONS.VA_PROGRAM_VIEW,
   },
   {
     href: ROUTES.admin.vaTasks,

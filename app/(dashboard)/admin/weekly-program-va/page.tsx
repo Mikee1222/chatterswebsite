@@ -1,5 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
-import { requireAdminRoute } from "@/lib/rbac";
+import { hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
@@ -24,7 +24,8 @@ export default async function AdminWeeklyProgramVaPage({
 }: {
   searchParams: { week_start?: string };
 }) {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.WEEKLY_PROGRAM_MANAGE);
+  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.VA_PROGRAM_VIEW);
+  const canManage = await hasPermission(user, PERMISSIONS.VA_PROGRAM_MANAGE);
 
   const rawWeek = searchParams.week_start?.trim();
   const weekStart = normalizeWeekStart(rawWeek || getThisWeekMonday());
@@ -90,6 +91,7 @@ export default async function AdminWeeklyProgramVaPage({
       suggestionsByKey={{}}
       availabilityRequests={Array.isArray(availabilityRequests) ? availabilityRequests : []}
       periodDatesByModelId={periodDatesByModelId}
+      canManage={canManage}
     />
   );
 }
