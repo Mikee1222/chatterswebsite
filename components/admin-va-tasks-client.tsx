@@ -20,7 +20,12 @@ import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 import { AdminVaTasksFilters } from "@/components/admin-va-tasks-filters";
 import { AdminVaTaskCard } from "@/components/admin-va-task-card";
+import {
+  AdminVaTasksProgressOverview,
+  AdminVaTasksViewToggle,
+} from "@/components/admin-va-tasks-progress-overview";
 import { EMPTY_TASK_PHASES } from "@/components/va-task-card";
+import { flattenDateViewTasks } from "@/lib/va-tasks-progress";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -514,6 +519,9 @@ export function AdminVaTasksClient({
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
   const [showAllTasks, setShowAllTasks] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<"list" | "progress">("list");
+  const [progressPhasesLoading, setProgressPhasesLoading] = React.useState(false);
+  const [progressPhasesError, setProgressPhasesError] = React.useState<string | null>(null);
 
   const dateFilteredTasks = React.useMemo(
     () => filterTasksByAthensYmd(localTasks, selectedYmd),
@@ -647,6 +655,49 @@ export function AdminVaTasksClient({
     () => groupRecurringTasks(dateFilteredTasks, DATE_VIEW_GROUP_OPTS),
     [dateFilteredTasks],
   );
+
+  const progressViewTasks = React.useMemo(
+    () => flattenDateViewTasks(dateGrouped.regularTasks, dateGrouped.recurringGroups),
+    [dateGrouped],
+  );
+
+  const loadProgressPhases = React.useCallback(async () => {
+    const missing = progressViewTasks.map((t) => t.id).filter((id) => !taskPhasesRef.current[id]);
+    if (missing.length === 0) {
+      setProgressPhasesLoading(false);
+      setProgressPhasesError(null);
+      return;
+    }
+    setProgressPhasesLoading(true);
+    setProgressPhasesError(null);
+    try {
+      const results = await Promise.all(
+        missing.map(async (taskId) => {
+          const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, {
+            credentials: "include",
+          });
+          if (!res.ok) throw new Error("fetch failed");
+          const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+          return { taskId, phases: data.phases ?? [] };
+        }),
+      );
+      setTaskPhases((prev) => {
+        const next = { ...prev };
+        for (const { taskId, phases } of results) next[taskId] = phases;
+        return next;
+      });
+    } catch {
+      setProgressPhasesError("Could not load phase data for progress overview.");
+    } finally {
+      setProgressPhasesLoading(false);
+    }
+  }, [progressViewTasks]);
+
+  React.useEffect(() => {
+    if (viewMode === "progress" && canManage) {
+      void loadProgressPhases();
+    }
+  }, [viewMode, canManage, loadProgressPhases, selectedYmd]);
 
   React.useEffect(() => {
     setShowAllTasks(false);
@@ -1188,6 +1239,14 @@ export function AdminVaTasksClient({
         ) : null}
       </div>
 
+      {canManage ? (
+        <div className="flex flex-wrap items-center justify-end">
+          <AdminVaTasksViewToggle viewMode={viewMode} onChange={setViewMode} />
+        </div>
+      ) : null}
+
+      {viewMode === "list" ? (
+        <>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         {[
           { label: "Total", value: taskStats.total, color: "text-white" },
@@ -1217,13 +1276,27 @@ export function AdminVaTasksClient({
           className="w-full"
         />
       </div>
+        </>
+      ) : null}
 
-      {localTasks.length > 0 && dateFilteredTasks.length === 0 ? (
+      {viewMode === "progress" && canManage ? (
+        <AdminVaTasksProgressOverview
+          tasks={progressViewTasks}
+          vaUsers={vaUsers}
+          nameById={nameById}
+          taskPhases={taskPhases}
+          phasesLoading={progressPhasesLoading}
+          phasesError={progressPhasesError}
+          onLoadPhases={() => void loadProgressPhases()}
+        />
+      ) : null}
+
+      {viewMode === "list" && localTasks.length > 0 && dateFilteredTasks.length === 0 ? (
         <div className={cn(VA_CARD, "flex flex-col items-center justify-center px-6 py-12 text-center")}>
           <p className="text-base font-semibold text-white/90">No tasks for this date</p>
           <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">Try another day or jump back to today.</p>
         </div>
-      ) : regularTasks.length === 0 && recurringGroups.length === 0 ? (
+      ) : viewMode === "list" && regularTasks.length === 0 && recurringGroups.length === 0 ? (
         <div className={cn(VA_CARD, "flex flex-col items-center justify-center px-6 py-16 text-center")}>
           <svg className="mb-5 h-14 w-14 text-[#D4AF8C]/35" viewBox="0 0 64 64" fill="none" aria-hidden>
             <rect x="12" y="10" width="40" height="46" rx="5" stroke="currentColor" strokeWidth="1.5" />
@@ -1234,7 +1307,7 @@ export function AdminVaTasksClient({
             {canManage ? "Adjust search or filters, or create a new task." : "Adjust search or filters to find tasks."}
           </p>
         </div>
-      ) : (
+      ) : viewMode === "list" ? (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {visibleRegularTasks.map((task) => renderTaskCard(task))}
           {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
@@ -1327,7 +1400,7 @@ export function AdminVaTasksClient({
           ))}
 
         </div>
-      )}
+      ) : null}
 
       {canManage && modalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm md:items-center">
