@@ -19,6 +19,8 @@ import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 import { AdminVaTasksFilters } from "@/components/admin-va-tasks-filters";
+import { AdminVaTaskCard } from "@/components/admin-va-task-card";
+import { EMPTY_TASK_PHASES } from "@/components/va-task-card";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -55,6 +57,74 @@ const REMINDER_CHIPS = [15, 30, 60, 120, 1440] as const;
 
 type VaUserOption = { id: string; full_name: string; email: string };
 
+type StaffUserOption = VaUserOption & { role: string };
+
+const STAFF_ROLE_GROUP_ORDER = [
+  "admin",
+  "manager",
+  "chatter",
+  "virtual_assistant",
+  "model",
+  "client",
+] as const;
+
+const DEFAULT_ROLE_LABELS: Record<string, string> = {
+  admin: "Admin",
+  manager: "Manager",
+  chatter: "Chatters",
+  virtual_assistant: "VAs",
+  model: "Model",
+  client: "Client",
+};
+
+function staffDisplayName(u: { full_name?: string; email?: string; id: string }): string {
+  return (u.full_name || u.email || u.id).trim();
+}
+
+function roleGroupLabel(role: string, roleLabels: Record<string, string>): string {
+  return roleLabels[role] ?? DEFAULT_ROLE_LABELS[role] ?? role.replace(/_/g, " ");
+}
+
+function groupStaffByRole(
+  users: StaffUserOption[],
+  roleLabels: Record<string, string>,
+  query: string,
+): Array<{ role: string; label: string; users: StaffUserOption[] }> {
+  const q = query.trim().toLowerCase();
+  const filtered = q
+    ? users.filter((u) => {
+        const name = staffDisplayName(u).toLowerCase();
+        const email = (u.email ?? "").toLowerCase();
+        return name.includes(q) || email.includes(q);
+      })
+    : users;
+
+  const byRole = new Map<string, StaffUserOption[]>();
+  for (const u of filtered) {
+    const role = (u.role || "other").trim() || "other";
+    const list = byRole.get(role) ?? [];
+    list.push(u);
+    byRole.set(role, list);
+  }
+
+  for (const list of byRole.values()) {
+    list.sort((a, b) => staffDisplayName(a).localeCompare(staffDisplayName(b)));
+  }
+
+  const known = STAFF_ROLE_GROUP_ORDER.filter((role) => byRole.has(role));
+  const custom = [...byRole.keys()]
+    .filter((role) => !STAFF_ROLE_GROUP_ORDER.includes(role as (typeof STAFF_ROLE_GROUP_ORDER)[number]))
+    .sort((a, b) => roleGroupLabel(a, roleLabels).localeCompare(roleGroupLabel(b, roleLabels)));
+
+  return [...known, ...custom]
+    .map((role) => ({
+      role,
+      label: roleGroupLabel(role, roleLabels),
+      users: byRole.get(role) ?? [],
+    }))
+    .filter((g) => g.users.length > 0);
+}
+
 type EditPhasesSnapshot = { phaseIds: string[]; itemsByPhaseId: Record<string, string[]> };
 
 interface DraftPhaseItem {
@@ -78,6 +148,8 @@ interface DraftPhase {
 type Props = {
   tasks: VaTaskRecord[];
   vaUsers: VaUserOption[];
+  staffUsers: StaffUserOption[];
+  roleLabels: Record<string, string>;
   modelss: ModelRecord[];
   canManage?: boolean;
 };
@@ -136,14 +208,6 @@ function SectionLabel({ icon, label }: { icon: string; label: string }) {
   );
 }
 
-function priorityBorderClass(priority: VaTaskPriority) {
-  const k = (priority || "normal").toLowerCase();
-  if (k === "urgent") return "border-l-red-500";
-  if (k === "high") return "border-l-orange-500";
-  if (k === "low") return "border-l-gray-500";
-  return "border-l-blue-500";
-}
-
 const ADMIN_MODAL_INPUT =
   "w-full rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#151315] px-4 py-3 text-sm text-[#B8B4B8] placeholder:text-[#B8B4B8]/30 outline-none transition focus:border-[#FF1493]/45 focus:ring-1 focus:ring-[#FF1493]/15";
 
@@ -187,33 +251,6 @@ function phaseToDraft(p: TaskPhase): DraftPhase {
       step_type: i.step_type ?? DEFAULT_TASK_STEP_TYPE,
     })),
   };
-}
-
-function formatPhaseActualTime(iso: string | null | undefined): string {
-  if (!iso?.trim()) return "";
-  const d = new Date(iso.trim());
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleString("en-GB", {
-    timeZone: "Europe/Athens",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function PriorityBadge({ priority }: { priority: VaTaskPriority }) {
-  const k = (priority || "normal").toLowerCase();
-  const variant =
-    k === "urgent"
-      ? "border-red-500/40 bg-red-500/12 text-red-300"
-      : k === "high"
-        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C]"
-        : "border-white/12 bg-white/[0.05] text-[#B8B4B8]/70";
-  return (
-    <span className={cn(VA_STATUS_BADGE, variant)}>{priority}</span>
-  );
 }
 
 function ModelMultiSelect({
@@ -308,22 +345,141 @@ function ModelMultiSelect({
   );
 }
 
-function StatusBadge({ status }: { status: VaTaskStatus }) {
-  const k = (status || "").toLowerCase();
-  const variant =
-    k === "pending"
-      ? "border-white/14 bg-white/[0.05] text-[#B8B4B8]/70"
-      : k === "done"
-        ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/12 text-[#D4AF8C]"
-        : k === "skipped"
-          ? "border-red-500/35 bg-red-500/12 text-red-300"
-          : "border-[#FF1493]/35 bg-[#FF1493]/12 text-[#FF1493]";
+function StaffAssigneePicker({
+  users,
+  roleLabels,
+  selectedIds,
+  onChange,
+  singleSelect = false,
+}: {
+  users: StaffUserOption[];
+  roleLabels: Record<string, string>;
+  selectedIds: string[];
+  onChange: (ids: string[]) => void;
+  singleSelect?: boolean;
+}) {
+  const [query, setQuery] = React.useState("");
+
+  const grouped = React.useMemo(
+    () => groupStaffByRole(users, roleLabels, query),
+    [users, roleLabels, query],
+  );
+
+  const selectedUsers = React.useMemo(
+    () => users.filter((u) => selectedIds.includes(u.id)),
+    [users, selectedIds],
+  );
+
+  function toggleUser(id: string) {
+    if (singleSelect) {
+      onChange(selectedIds.includes(id) ? [] : [id]);
+      return;
+    }
+    const set = new Set(selectedIds);
+    if (set.has(id)) set.delete(id);
+    else set.add(id);
+    onChange([...set]);
+  }
+
   return (
-    <span className={cn(VA_STATUS_BADGE, variant)}>{status.replace(/_/g, " ")}</span>
+    <div className="space-y-3">
+      {selectedUsers.length > 0 ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedUsers.map((u) => {
+            const name = staffDisplayName(u);
+            return (
+              <span
+                key={u.id}
+                className="inline-flex items-center gap-1.5 rounded-full border border-pink-500/30 bg-pink-500/15 py-1 pl-1 pr-2 text-xs text-pink-200"
+              >
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-pink-500/25 text-[10px] font-semibold text-pink-300">
+                  {name.charAt(0).toUpperCase()}
+                </span>
+                <span className="max-w-[140px] truncate">{name}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove ${name}`}
+                  onClick={() => onChange(selectedIds.filter((id) => id !== u.id))}
+                  className="rounded-full p-0.5 text-pink-300/60 hover:bg-pink-500/20 hover:text-pink-100"
+                >
+                  <X className="h-3 w-3" aria-hidden />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      ) : null}
+      <div className="relative">
+        <Search
+          className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#B8B4B8]/35"
+          aria-hidden
+        />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search members..."
+          className={cn(
+            VA_FILTER_INPUT,
+            "w-full pl-9 shadow-[inset_0_2px_6px_rgba(0,0,0,0.35)] focus:shadow-[inset_0_2px_6px_rgba(0,0,0,0.35),0_0_16px_-4px_rgba(255,20,147,0.25)]",
+          )}
+        />
+      </div>
+      <div className="max-h-52 overflow-y-auto rounded-xl border border-[rgba(255,255,255,0.08)] bg-[#0D0B0D]/60 p-2">
+        {grouped.length === 0 ? (
+          <p className="px-2 py-3 text-xs text-[#B8B4B8]/45">No members match your search.</p>
+        ) : (
+          grouped.map((group) => (
+            <div key={group.role} className="mb-2 last:mb-0">
+              <div className="sticky top-0 z-[1] flex items-center gap-2 bg-[#0D0B0D]/95 px-2 py-1.5 backdrop-blur-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/75">
+                  {group.label}
+                </p>
+                <div className={cn(VA_CHAMPAGNE_DIVIDER, "flex-1")} />
+              </div>
+              <div className="space-y-0.5">
+                {group.users.map((u) => {
+                  const name = staffDisplayName(u);
+                  const checked = selectedIds.includes(u.id);
+                  return (
+                    <label
+                      key={u.id}
+                      className={cn(
+                        "flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-2 text-sm transition hover:bg-white/5",
+                        checked && "bg-pink-500/10",
+                      )}
+                    >
+                      <input
+                        type={singleSelect ? "radio" : "checkbox"}
+                        name={singleSelect ? "staff-assignee" : undefined}
+                        checked={checked}
+                        onChange={() => toggleUser(u.id)}
+                        className="h-4 w-4 border-white/25 text-pink-500 focus:ring-pink-500/30"
+                      />
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-pink-500/15 text-[10px] font-semibold text-pink-300">
+                        {name.charAt(0).toUpperCase()}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate text-white/80">{name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
   );
 }
 
-export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false }: Props) {
+export function AdminVaTasksClient({
+  tasks,
+  vaUsers,
+  staffUsers,
+  roleLabels,
+  modelss,
+  canManage = false,
+}: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const [localTasks, setLocalTasks] = React.useState(tasks);
@@ -331,9 +487,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
   const [reminding, setReminding] = React.useState<string | null>(null);
   const [remindSuccess, setRemindSuccess] = React.useState<string | null>(null);
-  const [expandedTaskId, setExpandedTaskId] = React.useState<string | null>(null);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
-  const [loadingPhases, setLoadingPhases] = React.useState<string | null>(null);
   const taskPhasesRef = React.useRef(taskPhases);
   taskPhasesRef.current = taskPhases;
 
@@ -341,11 +495,11 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
 
   const nameById = React.useMemo(() => {
     const m: Record<string, string> = {};
-    for (const u of vaUsers) {
-      m[u.id] = (u.full_name || u.email || u.id).trim();
+    for (const u of staffUsers) {
+      m[u.id] = staffDisplayName(u);
     }
     return m;
-  }, [vaUsers]);
+  }, [staffUsers]);
 
   const vaOptionsForFilter = React.useMemo(
     () => [{ value: "", label: "All VAs" }, ...vaUsers.map((u) => ({ value: u.id, label: (u.full_name || u.email).trim() || u.id }))],
@@ -433,7 +587,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     setModalOpen(true);
   };
 
-  const openEdit = async (t: VaTaskRecord) => {
+  const openEdit = React.useCallback(async (t: VaTaskRecord) => {
     setEditingId(t.id);
     setTitle(t.title);
     setDescription(t.description);
@@ -465,7 +619,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     } catch {
       editPhasesSnapshotRef.current = { phaseIds: [], itemsByPhaseId: {} };
     }
-  };
+  }, []);
 
   const filteredTasks = React.useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
@@ -538,10 +692,6 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
   function handleCloseModal() {
     setModalOpen(false);
     resetTaskModal();
-  }
-
-  function toggleAssignee(vaId: string) {
-    setAssignedTo((prev) => (prev.includes(vaId) ? prev.filter((id) => id !== vaId) : [...prev, vaId]));
   }
 
   function toggleRecurrenceDay(day: VaRecurrenceDay) {
@@ -715,7 +865,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
         return;
       }
       if (assignAll || assignedTo.length !== 1) {
-        setError("Select exactly one VA for template tasks");
+        setError("Select exactly one member for template tasks");
         return;
       }
       if (assignedModels.length === 0) {
@@ -829,7 +979,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     }
   }, [taskPendingDelete, addToast, router]);
 
-  async function handleRemind(task: VaTaskRecord) {
+  const handleRemind = React.useCallback(async (task: VaTaskRecord) => {
     setReminding(task.id);
     setRemindSuccess(null);
     try {
@@ -857,22 +1007,21 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     } finally {
       setReminding(null);
     }
-  }
+  }, [addToast]);
 
   const loadPhases = React.useCallback(async (taskId: string) => {
     if (taskPhasesRef.current[taskId]) return;
-    setLoadingPhases(taskId);
-    try {
-      const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
-      const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-      setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
-    } finally {
-      setLoadingPhases(null);
-    }
+    const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
+    const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
+    setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
   }, []);
 
-  async function handleAddPhase(taskId: string, taskTitle: string) {
-    const phases = taskPhases[taskId] ?? [];
+  const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
+    setTaskPendingDelete(task);
+  }, []);
+
+  const handleAddPhase = React.useCallback(async (taskId: string, taskTitle: string) => {
+    const phases = taskPhasesRef.current[taskId] ?? [];
     const res = await fetch("/api/admin/task-phases", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -888,14 +1037,10 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
     if (data.phase) {
       setTaskPhases((prev) => ({ ...prev, [taskId]: [...(prev[taskId] ?? []), data.phase!] }));
     }
-  }
+  }, []);
 
-  function normalizePhasePatch(updates: Partial<TaskPhase>): Partial<TaskPhase> {
-    return { ...updates };
-  }
-
-  async function handleUpdatePhase(phaseId: string, taskId: string, updates: Partial<TaskPhase>) {
-    const payload = normalizePhasePatch(updates);
+  const handleUpdatePhase = React.useCallback(async (phaseId: string, taskId: string, updates: Partial<TaskPhase>) => {
+    const payload = { ...updates };
     await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -906,16 +1051,16 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
       ...prev,
       [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, ...payload } : p)),
     }));
-  }
+  }, []);
 
-  async function handleDeletePhase(phaseId: string, taskId: string) {
+  const handleDeletePhase = React.useCallback(async (phaseId: string, taskId: string) => {
     if (!confirm("Delete this phase?")) return;
     await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, { method: "DELETE", credentials: "include" });
     setTaskPhases((prev) => ({ ...prev, [taskId]: (prev[taskId] ?? []).filter((p) => p.id !== phaseId) }));
-  }
+  }, []);
 
-  async function handleAddPhaseItem(phaseId: string, taskId: string) {
-    const phase = (taskPhases[taskId] ?? []).find((p) => p.id === phaseId);
+  const handleAddPhaseItem = React.useCallback(async (phaseId: string, taskId: string) => {
+    const phase = (taskPhasesRef.current[taskId] ?? []).find((p) => p.id === phaseId);
     const itemCount = phase?.items?.length ?? 0;
     const res = await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}/items`, {
       method: "POST",
@@ -938,9 +1083,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
         ),
       }));
     }
-  }
+  }, []);
 
-  async function handleUpdatePhaseItem(itemId: string, phaseId: string, taskId: string, updates: Partial<PhaseItem>) {
+  const handleUpdatePhaseItem = React.useCallback(async (itemId: string, phaseId: string, taskId: string, updates: Partial<PhaseItem>) => {
     await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -958,9 +1103,9 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
           : p,
       ),
     }));
-  }
+  }, []);
 
-  async function handleDeletePhaseItem(itemId: string, phaseId: string, taskId: string) {
+  const handleDeletePhaseItem = React.useCallback(async (itemId: string, phaseId: string, taskId: string) => {
     await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, { method: "DELETE", credentials: "include" });
     setTaskPhases((prev) => ({
       ...prev,
@@ -968,16 +1113,16 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
         p.id === phaseId ? { ...p, items: (p.items ?? []).filter((i) => i.id !== itemId) } : p,
       ),
     }));
-  }
+  }, []);
 
-  function updatePhaseTitleLocal(phaseId: string, taskId: string, title: string) {
+  const updatePhaseTitleLocal = React.useCallback((phaseId: string, taskId: string, title: string) => {
     setTaskPhases((prev) => ({
       ...prev,
       [taskId]: (prev[taskId] ?? []).map((p) => (p.id === phaseId ? { ...p, title } : p)),
     }));
-  }
+  }, []);
 
-  function updatePhaseItemTitleLocal(itemId: string, phaseId: string, taskId: string, title: string) {
+  const updatePhaseItemTitleLocal = React.useCallback((itemId: string, phaseId: string, taskId: string, title: string) => {
     setTaskPhases((prev) => ({
       ...prev,
       [taskId]: (prev[taskId] ?? []).map((p) =>
@@ -986,313 +1131,39 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
           : p,
       ),
     }));
-  }
+  }, []);
 
-  const assignedLabel = (t: VaTaskRecord) => {
+  const assignedLabel = React.useCallback((t: VaTaskRecord) => {
     if (t.assigned_to_ids.length === 0) return "All VAs";
     return t.assigned_to_ids.map((id) => nameById[id] ?? id).join(", ");
-  };
+  }, [nameById]);
 
   const reminderChipActive = (min: number) => reminderMinutes === min;
 
-  function renderAdminTaskCard(task: VaTaskRecord) {
-    const modelNames = task.assigned_model_names ?? [];
-    return (
-                <div
-                  className={cn(
-                    VA_CARD,
-                    "group relative overflow-hidden border-l-[5px] p-5",
-                    priorityBorderClass(task.priority),
-                    task.status === "done" && "opacity-70",
-                  )}
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                          <StatusBadge status={task.status} />
-                          <PriorityBadge priority={task.priority} />
-                          {task.is_recurring ? (
-                            <span className="rounded-full border border-purple-500/25 bg-purple-500/15 px-2 py-0.5 text-xs text-purple-300">
-                              Recurring
-                            </span>
-                          ) : null}
-                        </div>
-                        <h3
-                          className={cn(
-                            "text-lg font-semibold leading-snug text-white",
-                            task.status === "done" && "text-[#B8B4B8]/45 line-through"
-                          )}
-                        >
-                          {task.title}
-                        </h3>
-                      </div>
-                      <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-                        {canManage ? (
-                          <>
-                            {task.status !== "done" && task.status !== "skipped" ? (
-                              <button
-                                type="button"
-                                onClick={() => void handleRemind(task)}
-                                disabled={reminding === task.id}
-                                className="inline-flex items-center gap-1 rounded-lg border border-amber-500/35 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-amber-300 transition hover:bg-amber-500/10 disabled:opacity-40"
-                              >
-                                <Bell className="h-3 w-3" aria-hidden />
-                                {reminding === task.id ? "Sending…" : remindSuccess === task.id ? "Sent!" : "Remind"}
-                              </button>
-                            ) : null}
-                            <button
-                              type="button"
-                              onClick={() => openEdit(task)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
-                            >
-                              <Pencil className="h-3 w-3" aria-hidden />
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              disabled={confirmingTaskDelete && taskPendingDelete?.id === task.id}
-                              onClick={() => setTaskPendingDelete(task)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
-                            >
-                              <Trash2 className="h-3 w-3" aria-hidden />
-                              Delete
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="mt-4 flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/50">
-                        <Users className="h-3 w-3 shrink-0" aria-hidden />
-                        {assignedLabel(task)}
-                      </span>
-                      {modelNames.map((name) => (
-                        <span key={name} className={VA_MODEL_TAG}>
-                          {name}
-                        </span>
-                      ))}
-                      {task.due_date ? (
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs",
-                            isPastDue(task.due_date) && task.status !== "done"
-                              ? "border-red-500/30 text-red-400"
-                              : "text-white/45",
-                          )}
-                        >
-                          <Clock className="h-3 w-3 shrink-0" aria-hidden />
-                          {formatDateEuropean(task.due_date)}
-                          {isPastDue(task.due_date) && task.status !== "done" ? " · Overdue" : ""}
-                        </span>
-                      ) : null}
-                      {task.reminder_minutes_before != null ? (
-                        <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs text-white/40">
-                          {formatReminderLabel(task.reminder_minutes_before)}
-                        </span>
-                      ) : null}
-                    </div>
-
-                    <div className="mt-5 border-t border-[#1f1f1f] pt-4">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          if (expandedTaskId === task.id) {
-                            setExpandedTaskId(null);
-                            return;
-                          }
-                          setExpandedTaskId(task.id);
-                          await loadPhases(task.id);
-                        }}
-                        className="group/ph flex items-center gap-2 text-sm text-white/45 transition-colors hover:text-white/75"
-                      >
-                        <span className="text-xs">{expandedTaskId === task.id ? "▼" : "▶"}</span>
-                        <span className="font-medium">Phases</span>
-                        {taskPhases[task.id]?.length ? (
-                          <span className="rounded-full border border-[#1f1f1f] bg-[#141414] px-2 py-0.5 text-[11px] font-semibold tabular-nums text-white/50">
-                            {taskPhases[task.id].length}
-                          </span>
-                        ) : null}
-                        {loadingPhases === task.id ? <span className="animate-pulse text-xs text-white/30">Loading…</span> : null}
-                      </button>
-
-                      {expandedTaskId === task.id ? (
-                        <div className="mt-5">
-                          <TaskPhaseRibbon
-                            phases={taskPhases[task.id] ?? []}
-                            renderPhaseExtra={
-                              canManage
-                                ? (phase) => (
-                              <>
-                                {(phase.actual_start_time || phase.actual_end_time) ? (
-                                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#B8B4B8]/40">
-                                    {phase.actual_start_time ? (
-                                      <span>Started {formatPhaseActualTime(phase.actual_start_time)}</span>
-                                    ) : null}
-                                    {phase.actual_end_time ? (
-                                      <span>Ended {formatPhaseActualTime(phase.actual_end_time)}</span>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                  <select
-                                    value={phase.region ?? "Global"}
-                                    onChange={(e) =>
-                                      void handleUpdatePhase(phase.id, task.id, {
-                                        region: e.target.value as TaskPhase["region"],
-                                      })
-                                    }
-                                    className="cursor-pointer rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#151315] px-3 py-1.5 text-xs text-[#B8B4B8] focus:outline-none focus:border-[#FF1493]/40"
-                                  >
-                                    <option value="Greek">🇬🇷 Greek</option>
-                                    <option value="USA">🇺🇸 USA</option>
-                                    <option value="Global">Global</option>
-                                  </select>
-                                  <input
-                                    value={phase.title}
-                                    onChange={(e) => updatePhaseTitleLocal(phase.id, task.id, e.target.value)}
-                                    onBlur={() => void handleUpdatePhase(phase.id, task.id, { title: phase.title })}
-                                    placeholder="Phase title"
-                                    className="min-w-0 flex-1 rounded-lg border border-[rgba(255,255,255,0.08)] bg-transparent px-2 py-1.5 text-sm text-white placeholder:text-[#B8B4B8]/25 focus:outline-none focus:border-[#D4AF8C]/35"
-                                  />
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleDeletePhase(phase.id, task.id)}
-                                    className="rounded-lg p-1.5 text-[#B8B4B8]/20 transition hover:bg-red-500/10 hover:text-red-400"
-                                    aria-label="Delete phase"
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => void handleAddPhaseItem(phase.id, task.id)}
-                                  className="mt-2 flex items-center gap-1.5 text-xs text-[#B8B4B8]/35 transition hover:text-[#D4AF8C]"
-                                >
-                                  <Plus className="h-3.5 w-3.5" />
-                                  Add checklist item
-                                </button>
-                              </>
-                                )
-                                : (phase) =>
-                                    phase.actual_start_time || phase.actual_end_time ? (
-                                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-[#B8B4B8]/40">
-                                        {phase.actual_start_time ? (
-                                          <span>Started {formatPhaseActualTime(phase.actual_start_time)}</span>
-                                        ) : null}
-                                        {phase.actual_end_time ? (
-                                          <span>Ended {formatPhaseActualTime(phase.actual_end_time)}</span>
-                                        ) : null}
-                                      </div>
-                                    ) : null
-                            }
-                            renderItem={
-                              canManage
-                                ? (item, phase, idx) => (
-                              <div className="group flex items-start gap-3">
-                                <div
-                                  className={cn(
-                                    "mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px] border-2",
-                                    item.status === "completed"
-                                      ? "border-[#D4AF8C] bg-[#D4AF8C]/15"
-                                      : "border-[#D4AF8C]/35 bg-transparent",
-                                  )}
-                                >
-                                  {item.status === "completed" ? (
-                                    <Check className="h-3 w-3 text-[#D4AF8C]" aria-hidden />
-                                  ) : null}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <select
-                                      value={item.step_type ?? DEFAULT_TASK_STEP_TYPE}
-                                      onChange={(e) =>
-                                        void handleUpdatePhaseItem(item.id, phase.id, task.id, {
-                                          step_type: e.target.value as TaskStepType,
-                                        })
-                                      }
-                                      className="w-[7.5rem] shrink-0 cursor-pointer rounded-lg border border-[rgba(255,255,255,0.08)] bg-[#151315] px-2 py-1 text-[10px] text-[#B8B4B8] focus:border-[#FF1493]/40 focus:outline-none"
-                                      aria-label="Step type"
-                                    >
-                                      {TASK_STEP_TYPES.map((t) => (
-                                        <option key={t} value={t}>
-                                          {t}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <input
-                                      value={item.title}
-                                      onChange={(e) =>
-                                        updatePhaseItemTitleLocal(item.id, phase.id, task.id, e.target.value)
-                                      }
-                                      onBlur={() =>
-                                        void handleUpdatePhaseItem(item.id, phase.id, task.id, { title: item.title })
-                                      }
-                                      placeholder={`Item ${idx + 1}…`}
-                                      className={cn(
-                                        "min-w-0 flex-1 bg-transparent text-sm focus:outline-none",
-                                        item.status === "completed" ? "text-[#B8B4B8]/30 line-through" : "text-[#B8B4B8]",
-                                      )}
-                                    />
-                                  </div>
-                                  {item.requires_screenshot && item.status !== "completed" ? (
-                                    <p className="mt-0.5 flex items-center gap-1 text-xs text-[#D4AF8C]/55">
-                                      <Camera className="h-3.5 w-3.5" aria-hidden /> Requires proof
-                                    </p>
-                                  ) : null}
-                                </div>
-                                <div className="flex shrink-0 items-center gap-2 self-center opacity-0 transition group-hover:opacity-100">
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      void handleUpdatePhaseItem(item.id, phase.id, task.id, {
-                                        requires_screenshot: !item.requires_screenshot,
-                                      })
-                                    }
-                                    className={cn(
-                                      "relative h-4 w-8 rounded-full transition-all",
-                                      item.requires_screenshot ? "bg-[#D4AF8C]" : "bg-white/15",
-                                    )}
-                                    aria-label="Toggle screenshot required"
-                                  >
-                                    <span
-                                      className={cn(
-                                        "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                                        item.requires_screenshot ? "left-4" : "left-0.5",
-                                      )}
-                                    />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => void handleDeletePhaseItem(item.id, phase.id, task.id)}
-                                    className="rounded p-1 text-[#B8B4B8]/15 hover:bg-red-500/10 hover:text-red-400"
-                                    aria-label="Remove item"
-                                  >
-                                    <X className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              </div>
-                                )
-                                : undefined
-                            }
-                          />
-                          {canManage ? (
-                          <button
-                            type="button"
-                            onClick={() => void handleAddPhase(task.id, task.title)}
-                            className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-[#D4AF8C]/20 px-5 py-3 text-xs text-[#B8B4B8]/35 transition hover:border-[#FF1493]/35 hover:text-[#FF1493]/70"
-                          >
-                            <Plus className="h-4 w-4" />
-                            Add phase
-                          </button>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-    );
-  }
+  const renderTaskCard = (task: VaTaskRecord) => (
+    <AdminVaTaskCard
+      key={task.id}
+      task={task}
+      assignedLabel={assignedLabel(task)}
+      canManage={canManage}
+      phases={taskPhases[task.id] ?? EMPTY_TASK_PHASES}
+      isReminding={reminding === task.id}
+      remindSuccess={remindSuccess === task.id}
+      isConfirmingDelete={confirmingTaskDelete && taskPendingDelete?.id === task.id}
+      onRemind={handleRemind}
+      onEdit={openEdit}
+      onDelete={handleDeleteRequest}
+      onLoadPhases={loadPhases}
+      onAddPhase={handleAddPhase}
+      onUpdatePhase={handleUpdatePhase}
+      onDeletePhase={handleDeletePhase}
+      onAddPhaseItem={handleAddPhaseItem}
+      onUpdatePhaseItem={handleUpdatePhaseItem}
+      onDeletePhaseItem={handleDeletePhaseItem}
+      onUpdatePhaseTitleLocal={updatePhaseTitleLocal}
+      onUpdatePhaseItemTitleLocal={updatePhaseItemTitleLocal}
+    />
+  );
 
   return (
     <div className="space-y-8">
@@ -1365,9 +1236,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          {visibleRegularTasks.map((task) => (
-            <React.Fragment key={task.id}>{renderAdminTaskCard(task)}</React.Fragment>
-          ))}
+          {visibleRegularTasks.map((task) => renderTaskCard(task))}
           {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
             <button
               type="button"
@@ -1380,7 +1249,7 @@ export function AdminVaTasksClient({ tasks, vaUsers, modelss, canManage = false 
           {recurringGroups.map((group) => (
             <div key={group.title} className="mb-3 md:col-span-2">
               {group.currentTask ? (
-                <React.Fragment key={group.currentTask.id}>{renderAdminTaskCard(group.currentTask)}</React.Fragment>
+                renderTaskCard(group.currentTask)
               ) : (
                 <div className="mb-1 rounded-2xl border border-white/8 bg-white/[0.02] px-5 py-4">
                   <div className="flex items-center gap-3">

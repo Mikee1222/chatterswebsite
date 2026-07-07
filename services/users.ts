@@ -143,6 +143,16 @@ export async function listAllUsers(): Promise<UserRecord[]> {
   return records.map((r) => mapRecord(r));
 }
 
+/** Active, login-enabled users — for assignment pickers and staff lists. */
+export async function listActiveUsers(): Promise<UserRecord[]> {
+  const users = await listAllUsers();
+  return users.filter((u) => {
+    if ((u.status ?? "").trim().toLowerCase() === "inactive") return false;
+    if (u.can_login === false) return false;
+    return true;
+  });
+}
+
 /**
  * Active, login-enabled users whose role grants `permission`. Resolves each distinct role's
  * permission set once (stored role perms, falling back to code defaults). Used to build

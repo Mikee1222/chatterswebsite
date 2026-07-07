@@ -26,6 +26,9 @@ import {
 import { TaskPhaseRibbon, type PhaseRibbonItem, type PhaseRibbonPhase } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
 
+/** Stable empty array so React.memo is not busted by `?? []` on every parent render. */
+export const EMPTY_TASK_PHASES: TaskPhase[] = [];
+
 function isPastDue(isoLike: string | null | undefined): boolean {
   if (!isoLike?.trim()) return false;
   const t = new Date(isoLike.trim()).getTime();
@@ -88,7 +91,7 @@ export type VaTaskCardProps = {
   onShift: boolean;
   isCompleting: boolean;
   phases: TaskPhase[];
-  modelAccounts: Record<string, SocialAccount[]>;
+  getModelAccounts: (modelId: string) => SocialAccount[];
   onLoadPhases: (task: VaTaskRecord) => void | Promise<void>;
   onMarkComplete: (task: VaTaskRecord, e?: React.MouseEvent) => void;
   onOpenTask: (task: VaTaskRecord) => void;
@@ -112,7 +115,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onShift,
   isCompleting,
   phases,
-  modelAccounts,
+  getModelAccounts,
   onLoadPhases,
   onMarkComplete,
   onOpenTask,
@@ -134,7 +137,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
 
   const renderPhaseExtra = React.useCallback(
     (phase: PhaseRibbonPhase) => {
-      const accs = phase.assigned_model_id ? (modelAccounts[phase.assigned_model_id] ?? []) : [];
+      const accs = phase.assigned_model_id ? getModelAccounts(phase.assigned_model_id) : [];
       const startedMins = minutesSince(phase.start_time ?? phase.actual_start_time);
       if (accs.length === 0 && !(phase.status === "in_progress" && startedMins != null)) return null;
       return (
@@ -205,7 +208,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         </div>
       );
     },
-    [modelAccounts, onShadowbanReport],
+    [getModelAccounts, onShadowbanReport],
   );
 
   const renderItem = React.useCallback(
@@ -375,4 +378,16 @@ export const VaTaskCard = React.memo(function VaTaskCard({
       ) : null}
     </article>
   );
-});
+}, (prev, next) =>
+  prev.task === next.task &&
+  prev.userName === next.userName &&
+  prev.onShift === next.onShift &&
+  prev.isCompleting === next.isCompleting &&
+  prev.phases === next.phases &&
+  prev.getModelAccounts === next.getModelAccounts &&
+  prev.onLoadPhases === next.onLoadPhases &&
+  prev.onMarkComplete === next.onMarkComplete &&
+  prev.onOpenTask === next.onOpenTask &&
+  prev.onStartCompleteItem === next.onStartCompleteItem &&
+  prev.onShadowbanReport === next.onShadowbanReport,
+);

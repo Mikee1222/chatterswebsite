@@ -20,7 +20,7 @@ import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-da
 import { VA_CARD, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
-import { VaTaskCard } from "@/components/va-task-card";
+import { VaTaskCard, EMPTY_TASK_PHASES } from "@/components/va-task-card";
 import { VaTasksSearchBar } from "@/components/va-tasks-search-bar";
 
 type Props = { tasks: VaTaskRecord[]; userName?: string };
@@ -221,6 +221,12 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   const handleShiftChange = React.useCallback((next: boolean) => setOnShift(next), []);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
+  const modelAccountsRef = React.useRef(modelAccounts);
+  modelAccountsRef.current = modelAccounts;
+  const getModelAccounts = React.useCallback(
+    (modelId: string) => modelAccountsRef.current[modelId] ?? [],
+    [],
+  );
   const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
   const [proofFile, setProofFile] = React.useState<File | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
@@ -534,8 +540,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                   userName={userName}
                   onShift={onShift}
                   isCompleting={completing === task.id}
-                  phases={taskPhases[task.id] ?? []}
-                  modelAccounts={modelAccounts}
+                  phases={taskPhases[task.id] ?? EMPTY_TASK_PHASES}
+                  getModelAccounts={getModelAccounts}
                   onLoadPhases={loadPhasesAndAccounts}
                   onMarkComplete={handleMarkComplete}
                   onOpenTask={handleOpenTask}
@@ -561,8 +567,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                       userName={userName}
                       onShift={onShift}
                       isCompleting={completing === group.currentTask.id}
-                      phases={taskPhases[group.currentTask.id] ?? []}
-                      modelAccounts={modelAccounts}
+                      phases={taskPhases[group.currentTask.id] ?? EMPTY_TASK_PHASES}
+                      getModelAccounts={getModelAccounts}
                       onLoadPhases={loadPhasesAndAccounts}
                       onMarkComplete={handleMarkComplete}
                       onOpenTask={handleOpenTask}
