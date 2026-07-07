@@ -674,8 +674,8 @@ export function AdminVaTasksClient({
   );
 
   const loadProgressPhases = React.useCallback(async () => {
-    const missing = progressViewTasks.map((t) => t.id).filter((id) => !taskPhasesRef.current[id]);
-    if (missing.length === 0) {
+    const taskIds = progressViewTasks.map((t) => t.id);
+    if (taskIds.length === 0) {
       setProgressPhasesLoading(false);
       setProgressPhasesError(null);
       return;
@@ -684,9 +684,10 @@ export function AdminVaTasksClient({
     setProgressPhasesError(null);
     try {
       const results = await Promise.all(
-        missing.map(async (taskId) => {
+        taskIds.map(async (taskId) => {
           const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, {
             credentials: "include",
+            cache: "no-store",
           });
           if (!res.ok) throw new Error("fetch failed");
           const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
@@ -710,6 +711,15 @@ export function AdminVaTasksClient({
       void loadProgressPhases();
     }
   }, [viewMode, canViewProgress, loadProgressPhases, selectedYmd]);
+
+  React.useEffect(() => {
+    if (viewMode !== "progress" || !canViewProgress) return;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") void loadProgressPhases();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [viewMode, canViewProgress, loadProgressPhases]);
 
   React.useEffect(() => {
     setShowAllTasks(false);

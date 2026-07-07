@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
@@ -79,6 +80,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
       entity_id: taskId,
     });
   }
+
+  revalidatePath(ROUTES.admin.vaTasks);
 
   return NextResponse.json({ success: true, phaseCompleted, allPhasesCompleted });
 }
