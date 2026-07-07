@@ -2,6 +2,7 @@
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { joinPhoneFileLinks, parsePhoneFileLinks } from "@/lib/marketing-helpers";
 import { deriveShadowbanReportType, type ShadowbanReportType } from "@/lib/shadowban-helpers";
 import { listAllUsers } from "@/services/users";
 
@@ -162,24 +163,6 @@ type PhoneFields = {
   [FIELD_PHONE_CREATED_AT]?: string;
   [FIELD_FILE_LINKS]?: string;
 };
-
-export function parsePhoneFileLinks(raw: unknown): string[] {
-  if (typeof raw !== "string" || !raw.trim()) return [];
-  return raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 5);
-}
-
-export function joinPhoneFileLinks(links: string[] | undefined): string {
-  if (!links?.length) return "";
-  return links
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 5)
-    .join("\n");
-}
 
 type ShadowbanReportFields = {
   report_id?: string;
