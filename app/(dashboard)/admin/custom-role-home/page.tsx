@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
   AlertTriangle,
+  ArrowRight,
   Bell,
   BookOpen,
   Building,
@@ -29,6 +30,7 @@ import { PERMISSION_DESCRIPTIONS, PERMISSIONS, type Permission } from "@/lib/per
 import { shouldUsePersonalVaTasksNav, qualifiesForAdminVaTasksNav } from "@/lib/nav-config";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
+import { HomeQuickInfo } from "@/components/home-quick-info";
 
 type ShortcutCard = {
   permission: Permission;
@@ -189,10 +191,12 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
 ];
 
 const cardClass = cn(
-  "group relative flex flex-col gap-3 overflow-hidden rounded-2xl border border-white/10 p-5 transition-colors",
+  "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/10",
   "bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-pink-950/25",
   "shadow-[0_8px_32px_-12px_rgba(0,0,0,0.65),inset_0_1px_0_rgba(255,255,255,0.06)]",
-  "hover:border-pink-500/30 hover:bg-white/[0.03]"
+  "transition-[transform,box-shadow,border-color] duration-200 motion-reduce:transition-none",
+  "hover:-translate-y-0.5 hover:border-pink-500/30",
+  "hover:shadow-[0_18px_50px_-14px_rgba(0,0,0,0.7),0_0_36px_-8px_rgba(255,20,147,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]"
 );
 
 export default async function CustomRoleHomePage() {
@@ -231,44 +235,91 @@ export default async function CustomRoleHomePage() {
     return card.href;
   };
 
+  const cardCount = visibleCards.length;
+  // Few cards render as substantial, centered cards so the page never looks sparse;
+  // larger counts fall back to the responsive grid.
+  const few = cardCount > 0 && cardCount <= 3;
+
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-xs uppercase tracking-[0.35em] text-pink-300/80">Dashboard</p>
-        <h1 className="mt-2 text-4xl font-semibold text-white">
+      <div
+        className="relative overflow-hidden rounded-2xl border border-pink-500/15 bg-gradient-to-br from-pink-500/[0.08] via-black/45 to-fuchsia-950/25 px-6 py-6 backdrop-blur-xl md:px-8 md:py-7"
+        style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 0 36px -10px hsl(330 80% 55% / 0.12)" }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.35em] text-pink-200/60">Dashboard</p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">
           Welcome back, {user.fullName?.trim() || "there"}
         </h1>
-        <p className="mt-2 text-gray-400">Here&apos;s what you have access to</p>
+        <p className="mt-1.5 text-[15px] text-white/65">Here&apos;s what you have access to</p>
+        <div className="mt-5">
+          <HomeQuickInfo />
+        </div>
       </div>
 
-      {visibleCards.length === 0 ? (
-        <p className="rounded-2xl border border-white/10 bg-white/5 px-5 py-8 text-center text-sm text-white/70">
-          No sections available. Contact your administrator.
-        </p>
+      {cardCount === 0 ? (
+        <div className="mx-auto max-w-lg rounded-2xl border border-white/10 bg-gradient-to-br from-zinc-900/95 via-zinc-900/80 to-pink-950/20 px-6 py-10 text-center shadow-[0_8px_32px_-12px_rgba(0,0,0,0.65)]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-pink-500/25 bg-pink-500/10 text-pink-300/90">
+            <Shield className="h-6 w-6" aria-hidden />
+          </div>
+          <p className="mt-4 text-base font-medium text-white">You&apos;re all set up</p>
+          <p className="mt-1.5 text-sm text-white/60">
+            No dashboard sections are assigned to your role yet. Need access to something? Reach out to your admin.
+          </p>
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div
+          className={cn(
+            "gap-5",
+            few
+              ? "flex flex-wrap justify-center"
+              : "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3"
+          )}
+        >
           {visibleCards.map((card) => {
             const Icon = card.icon;
             return (
               <Link
                 key={`${card.permission}-${card.href}`}
                 href={resolveShortcutHref(card)}
-                className={cardClass}
+                className={cn(
+                  cardClass,
+                  few ? "w-full p-6 sm:w-[340px]" : "p-5"
+                )}
               >
-                <div className="flex items-start gap-4">
-                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-pink-300/90 transition-colors group-hover:border-pink-500/30 group-hover:bg-pink-500/10">
-                    <Icon className="h-5 w-5" aria-hidden />
+                <div className={cn("flex items-start", few ? "gap-5" : "gap-4")}>
+                  <div
+                    className={cn(
+                      "flex shrink-0 items-center justify-center rounded-xl border border-pink-500/20 bg-gradient-to-br from-pink-500/15 to-[#D4AF8C]/10 text-pink-200 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_-6px_rgba(255,20,147,0.5)] transition-colors group-hover:border-pink-500/40 group-hover:from-pink-500/25 group-hover:to-[#D4AF8C]/15",
+                      few ? "h-14 w-14" : "h-11 w-11"
+                    )}
+                  >
+                    <Icon className={few ? "h-6 w-6" : "h-5 w-5"} aria-hidden />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="font-medium text-white">{card.title}</p>
-                    <p className="mt-1 text-sm text-white/60">{card.description}</p>
+                    <p className={cn("font-semibold text-white", few && "text-lg")}>{card.title}</p>
+                    <p className={cn("mt-1 text-white/60", few ? "text-sm leading-relaxed" : "text-sm")}>
+                      {card.description}
+                    </p>
                   </div>
+                </div>
+                <div className="mt-auto flex items-center gap-1.5 pt-4 text-sm font-medium text-pink-300/80 transition-colors group-hover:text-pink-200">
+                  <span>Open {card.title}</span>
+                  <ArrowRight
+                    className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1 motion-reduce:transition-none"
+                    aria-hidden
+                  />
                 </div>
               </Link>
             );
           })}
         </div>
       )}
+
+      {cardCount > 0 && few ? (
+        <p className="text-center text-sm text-white/45">
+          Need access to something else? Contact your admin.
+        </p>
+      ) : null}
     </div>
   );
 }
