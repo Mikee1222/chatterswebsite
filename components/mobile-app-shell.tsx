@@ -52,6 +52,7 @@ import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import {
   buildNavItemsForUser,
   getMobileMainTabDisplays,
+  groupNavItemsBySection,
   isCustomNavRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
@@ -291,7 +292,16 @@ export function MobileAppShell({
   }, [role, hiddenForRole, modelUiLanguage, userPermissions]);
 
   const mainHrefSet = React.useMemo(() => new Set(mainTabRows.map((r) => r.item.href)), [mainTabRows]);
-  const moreItems = allItems.filter((item) => !mainHrefSet.has(item.href));
+  // Order the More sheet by the shared canonical section order (NAV_SECTION_ORDER) so section
+  // headers stay contiguous and consistent for every role — including custom roles and the
+  // permission-gated shared items that get appended after a role's base list.
+  const moreItems = React.useMemo(
+    () =>
+      groupNavItemsBySection(allItems.filter((item) => !mainHrefSet.has(item.href))).flatMap(
+        (g) => g.items
+      ),
+    [allItems, mainHrefSet]
+  );
 
   const navHrefs = React.useMemo(() => allItems.map((i) => i.href), [allItems]);
   const navActive = React.useCallback((href: string) => navHrefIsActive(pathname, href, navHrefs), [pathname, navHrefs]);

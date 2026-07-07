@@ -54,6 +54,7 @@ import type { ModelLang } from "@/lib/model-i18n";
 import type { Permission } from "@/lib/permissions";
 import {
   buildNavItemsForUser,
+  groupNavItemsBySection,
   isCustomNavRole,
   navHrefIsActive,
   resolveHiddenNavItemsForSession,
@@ -109,19 +110,6 @@ const BETA_BADGE_CLASS =
 
 const COMING_SOON_BADGE_CLASS =
   "ml-1.5 inline-flex shrink-0 items-center rounded-md bg-white/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white/55 ring-1 ring-white/15";
-
-const ADMIN_SECTION_ORDER = [
-  "OVERVIEW",
-  "TEAM",
-  "CREATORS",
-  "CONTENT",
-  "MARKETING",
-  "REVIEW & QA",
-  "FINANCE",
-  "REWARDS",
-  "TOOLS",
-  "SETTINGS",
-] as const;
 
 const PINNED_SECTION_KEY = "Pinned";
 const COLLAPSED_SECTIONS_KEY = "sidebar_collapsed_sections";
@@ -186,26 +174,6 @@ function getInitials(user: SessionUser): string {
 function resolveRoleColor(color: string | undefined, role: string): SopColor {
   const key = (color?.trim() || SYSTEM_ROLE_COLORS[role.toLowerCase()] || "gray") as SopColor;
   return key in SOP_COLOR_STYLES ? key : "gray";
-}
-
-function groupAdminItems(items: NavItem[]): { section: string; items: NavItem[] }[] {
-  const map = new Map<string, NavItem[]>();
-  for (const item of items) {
-    const section = item.navSection ?? "OTHER";
-    const list = map.get(section) ?? [];
-    list.push(item);
-    map.set(section, list);
-  }
-  const ordered: { section: string; items: NavItem[] }[] = [];
-  for (const section of ADMIN_SECTION_ORDER) {
-    const sectionItems = map.get(section);
-    if (sectionItems?.length) ordered.push({ section, items: sectionItems });
-    map.delete(section);
-  }
-  for (const [section, sectionItems] of map) {
-    if (sectionItems.length) ordered.push({ section, items: sectionItems });
-  }
-  return ordered;
 }
 
 export type SidebarQuickStats = {
@@ -321,10 +289,9 @@ export function Sidebar({
     [pinnedHrefs, itemByHref]
   );
 
-  const adminSections = React.useMemo(
-    () => (isAdminAreaUser ? groupAdminItems(items) : []),
-    [isAdminAreaUser, items]
-  );
+  // Every role's nav groups into the same canonical labeled sections (NAV_SECTION_ORDER),
+  // not just the admin area — custom roles included, well-organized by construction.
+  const navSections = React.useMemo(() => groupNavItemsBySection(items), [items]);
 
   const searchResults = React.useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -658,13 +625,9 @@ export function Sidebar({
                 renderSection(PINNED_SECTION_KEY, pinnedItems)
               ) : null}
 
-              {isAdminAreaUser
-                ? adminSections.map(({ section, items: sectionItems }) =>
-                    renderSection(section, sectionItems)
-                  )
-                : (
-                  <div className="space-y-0.5">{items.map((item) => renderNavItem(item))}</div>
-                )}
+              {navSections.map(({ section, items: sectionItems }) =>
+                renderSection(section, sectionItems)
+              )}
             </>
           )}
         </nav>

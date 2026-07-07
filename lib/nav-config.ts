@@ -186,6 +186,66 @@ export type NavItem = {
   isShiftButton?: boolean;
 };
 
+/**
+ * Canonical category ORDER shared by EVERY role's nav (system + custom).
+ *
+ * Each nav item declares its `navSection` once at its definition site; the sidebar and
+ * mobile More sheet both group permission-matched items by that label and render the
+ * groups in THIS order, skipping empty categories. This is what makes any role's nav —
+ * including a brand-new custom role with an arbitrary permission mix — well-organized by
+ * construction rather than a flat/jumbled list.
+ *
+ * Admin's original relative ordering (OVERVIEW → TEAM → CREATORS → CONTENT → MARKETING →
+ * REVIEW & QA → FINANCE → REWARDS → TOOLS → SETTINGS) is preserved; role-specific sections
+ * (TASKS, WORK, REQUESTS, INFO) are interleaved at sensible positions. Sections a given role
+ * never populates are simply skipped.
+ */
+export const NAV_SECTION_ORDER = [
+  "OVERVIEW",
+  "TEAM",
+  "TASKS",
+  "WORK",
+  "CREATORS",
+  "CONTENT",
+  "MARKETING",
+  "REQUESTS",
+  "REVIEW & QA",
+  "FINANCE",
+  "INFO",
+  "REWARDS",
+  "TOOLS",
+  "SETTINGS",
+] as const;
+
+/** Fallback bucket for any item missing a `navSection` (should not happen — every item defines one). */
+export const NAV_SECTION_FALLBACK = "OTHER";
+
+/**
+ * Group nav items by their predefined `navSection`, ordered by {@link NAV_SECTION_ORDER}.
+ * Within a section, items keep their source order. Empty sections are skipped; any unknown
+ * section (or items with no `navSection`) is appended after the canonical ones so nothing is lost.
+ * Shared by the desktop sidebar and the mobile More sheet so all viewports group identically.
+ */
+export function groupNavItemsBySection(items: NavItem[]): { section: string; items: NavItem[] }[] {
+  const map = new Map<string, NavItem[]>();
+  for (const item of items) {
+    const section = item.navSection ?? NAV_SECTION_FALLBACK;
+    const list = map.get(section) ?? [];
+    list.push(item);
+    map.set(section, list);
+  }
+  const ordered: { section: string; items: NavItem[] }[] = [];
+  for (const section of NAV_SECTION_ORDER) {
+    const sectionItems = map.get(section);
+    if (sectionItems?.length) ordered.push({ section, items: sectionItems });
+    map.delete(section);
+  }
+  for (const [section, sectionItems] of map) {
+    if (sectionItems.length) ordered.push({ section, items: sectionItems });
+  }
+  return ordered;
+}
+
 export type NavRole = "chatter" | "virtual_assistant" | "admin" | "manager" | "model";
 
 const SYSTEM_NAV_ROLES = new Set<string>([
@@ -217,51 +277,84 @@ export function navStorageProfileForRole(role: NavRoleKey): NavStorageProfile {
   return "chatter";
 }
 
-/** Core destinations — settings stays in More menu on mobile (not bottom tabs). */
+/**
+ * Core destinations — settings stays in More menu on mobile (not bottom tabs).
+ * Grouped by `navSection` (see NAV_SECTION_ORDER): OVERVIEW (home/schedule/shift),
+ * WORK (whales/rebills/mistakes), FINANCE, INFO (informations/SOPs), REWARDS, SETTINGS.
+ */
 const chatterNav: NavItem[] = [
-  { href: ROUTES.chatter.home, label: "Home", iconKey: "Home" },
-  { href: ROUTES.chatter.weeklyProgram, label: "Weekly program", iconKey: "Calendar" },
+  // ── OVERVIEW ──
+  { href: ROUTES.chatter.home, label: "Home", iconKey: "Home", navSection: "OVERVIEW" },
+  { href: ROUTES.chatter.weeklyProgram, label: "Weekly program", iconKey: "Calendar", navSection: "OVERVIEW" },
   {
     href: ROUTES.chatter.shift,
     label: "Shift",
     iconKey: "PlayCircle",
     isShiftButton: true,
+    navSection: "OVERVIEW",
   },
-  { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true },
-  { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true },
+
+  // ── WORK ──
+  { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true, navSection: "WORK" },
+  { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true, navSection: "WORK" },
+  { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true, navSection: "WORK", requiresPermission: PERMISSIONS.MISTAKES_VIEW },
+
+  // ── FINANCE ──
+  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true, navSection: "FINANCE" },
+
+  // ── INFO ──
   {
     href: ROUTES.chatter.informations,
     label: "Informations",
     iconKey: "Info",
     excludeFromMobileMainTabs: true,
+    navSection: "INFO",
     requiresPermission: PERMISSIONS.INFORMATIONS_VIEW,
   },
-  { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
-  { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true },
-  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
-  { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true },
-  { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true, requiresPermission: PERMISSIONS.MISTAKES_VIEW },
-  { href: ROUTES.settings, label: "Settings", iconKey: "Settings", excludeFromMobileMainTabs: true },
+  { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true, navSection: "INFO" },
+
+  // ── REWARDS ──
+  { href: ROUTES.chatter.rewards, label: "Rewards", iconKey: "Trophy", excludeFromMobileMainTabs: true, navSection: "REWARDS" },
+  { href: ROUTES.chatter.challenges, label: "Challenges", iconKey: "Target", excludeFromMobileMainTabs: true, navSection: "REWARDS" },
+
+  // ── SETTINGS ──
+  { href: ROUTES.settings, label: "Settings", iconKey: "Settings", excludeFromMobileMainTabs: true, navSection: "SETTINGS" },
 ];
 
+/**
+ * VA nav grouped by `navSection`: OVERVIEW (home/schedules/availability), TASKS (VA tasks,
+ * whales, content, customs), MARKETING, INFO (SOPs), FINANCE, SETTINGS. TOOLS items
+ * (Blur tool, My Profiles, Transcript Videos) arrive via `sharedPermissionNavItems`.
+ */
 const vaNav: NavItem[] = [
-  { href: ROUTES.va.home, label: "Home", iconKey: "Home" },
-  { href: ROUTES.va.schedule, label: "My schedule", iconKey: "Calendar" },
-  { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo" },
-  // C1: marketing VAs manage their social accounts here. Shown to all VAs by default;
-  // admins hide it for the `chatting` va_type via the hidden_nav config (getHiddenNavForVaType).
-  { href: ROUTES.va.marketingAccounts, label: "Marketing", iconKey: "Radio" },
-  { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays" },
-  { href: ROUTES.va.whales, label: "Whales", iconKey: "Users" },
-  { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText" },
-  { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package" },
+  // ── OVERVIEW ──
+  { href: ROUTES.va.home, label: "Home", iconKey: "Home", navSection: "OVERVIEW" },
+  { href: ROUTES.va.schedule, label: "My schedule", iconKey: "Calendar", navSection: "OVERVIEW" },
+  { href: ROUTES.va.scheduleOverview, label: "Schedule overview", iconKey: "CalendarDays", navSection: "OVERVIEW" },
+  { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck", navSection: "OVERVIEW" },
+
+  // ── TASKS ──
+  { href: ROUTES.va.tasks, label: "VA tasks", iconKey: "ListTodo", navSection: "TASKS" },
+  { href: ROUTES.va.whales, label: "Whales", iconKey: "Users", navSection: "TASKS" },
+  { href: ROUTES.va.contentAssignments, label: "Content assignments", iconKey: "FileText", navSection: "TASKS" },
+  { href: ROUTES.va.customRequests, label: "Custom requests", iconKey: "Package", navSection: "TASKS" },
   // NOTE: "Mistakes" (MISTAKES_VIEW) moved to `sharedPermissionNavItems` so the VA mistakes
   // feature is gated by a permission and can be toggled per role in Roles & Permissions.
-  { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
+
+  // ── MARKETING ──
+  // C1: marketing VAs manage their social accounts here. Shown to all VAs by default;
+  // admins hide it for the `chatting` va_type via the hidden_nav config (getHiddenNavForVaType).
+  { href: ROUTES.va.marketingAccounts, label: "Marketing", iconKey: "Radio", navSection: "MARKETING" },
+
+  // ── INFO ──
   // NOTE: "Blur tool" (BLUR_TOOL_ACCESS) moved to `sharedPermissionNavItems`.
-  { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
-  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
-  { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
+  { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true, navSection: "INFO" },
+
+  // ── FINANCE ──
+  { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true, navSection: "FINANCE" },
+
+  // ── SETTINGS ──
+  { href: ROUTES.settings, label: "Settings", iconKey: "Settings", navSection: "SETTINGS" },
 ];
 
 const adminNav: NavItem[] = [
@@ -600,21 +693,32 @@ const adminNav: NavItem[] = [
   },
 ];
 
-/** Model: home, earnings (placeholder), calendar, availability (/schedule), settings; customs / lives on + menu. */
+/**
+ * Model nav grouped by `navSection`: OVERVIEW (home/earnings/calendar/availability),
+ * CONTENT (VA content), REQUESTS (custom requests), SETTINGS. Customs / lives also on + menu.
+ */
 const modelNav: NavItem[] = [
-  { href: ROUTES.model.home, label: "Home", iconKey: "Home" },
+  // ── OVERVIEW ──
+  { href: ROUTES.model.home, label: "Home", iconKey: "Home", navSection: "OVERVIEW" },
   {
     href: ROUTES.model.myEarnings,
     label: "My earnings",
     iconKey: "LineChart",
     disabled: true,
     badge: "Coming soon",
+    navSection: "OVERVIEW",
   },
-  { href: ROUTES.model.contentCalendar, label: "Calendar", iconKey: "CalendarDays" },
-  { href: ROUTES.model.contentAssignments, label: "VA content", iconKey: "FileText" },
-  { href: ROUTES.model.schedule, label: "Availability", iconKey: "CalendarClock" },
-  { href: ROUTES.model.customs, label: "Custom requests", iconKey: "Package" },
-  { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
+  { href: ROUTES.model.contentCalendar, label: "Calendar", iconKey: "CalendarDays", navSection: "OVERVIEW" },
+  { href: ROUTES.model.schedule, label: "Availability", iconKey: "CalendarClock", navSection: "OVERVIEW" },
+
+  // ── CONTENT ──
+  { href: ROUTES.model.contentAssignments, label: "VA content", iconKey: "FileText", navSection: "CONTENT" },
+
+  // ── REQUESTS ──
+  { href: ROUTES.model.customs, label: "Custom requests", iconKey: "Package", navSection: "REQUESTS" },
+
+  // ── SETTINGS ──
+  { href: ROUTES.settings, label: "Settings", iconKey: "Settings", navSection: "SETTINGS" },
 ];
 
 /**
@@ -822,7 +926,7 @@ export function getBaseNavItemsForRole(role: NavRoleKey): NavItem[] {
       ...getCustomRoleSharedAdminNavItems(),
     ]);
   }
-  return appendSharedNavItems([{ href: ROUTES.dashboard, label: "Dashboard", iconKey: "LayoutDashboard" }]);
+  return appendSharedNavItems([{ href: ROUTES.dashboard, label: "Dashboard", iconKey: "LayoutDashboard", navSection: "OVERVIEW" }]);
 }
 
 /**
