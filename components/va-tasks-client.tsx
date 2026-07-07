@@ -12,7 +12,6 @@ import {
   ImageIcon,
   ListChecks,
   Camera,
-  Play,
   Smartphone,
   StickyNote,
   X,
@@ -32,7 +31,11 @@ import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { SocialAccount } from "@/services/marketing";
 import { cn } from "@/lib/utils";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
-import { VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
+import { getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { filterTasksByAthensYmd } from "@/lib/va-task-date-filter";
+import { VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
+import { ShiftButton } from "@/components/shift-button";
+import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
 import { ChampagneCheckbox } from "@/components/va-tasks-champagne-checkbox";
 
@@ -128,6 +131,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [completing, setCompleting] = React.useState<string | null>(null);
+
+  const todayYmd = getTodayYmdAthens();
+  const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
+  const isViewingToday = selectedYmd === todayYmd;
 
   const [search, setSearch] = React.useState("");
   const [filterStatus, setFilterStatus] = React.useState("");
@@ -238,23 +245,28 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     return () => document.removeEventListener("paste", onPaste);
   }, [completingItem]);
 
+  const dateFilteredTasks = React.useMemo(
+    () => filterTasksByAthensYmd(tasks, selectedYmd),
+    [tasks, selectedYmd],
+  );
+
   const taskStats = React.useMemo(() => {
     let pending = 0;
     let inProgress = 0;
     let done = 0;
     let overdue = 0;
-    for (const t of tasks) {
+    for (const t of dateFilteredTasks) {
       if (t.status === "pending") pending++;
       else if (t.status === "in_progress") inProgress++;
       else if (t.status === "done") done++;
       if (isPastDue(t.due_date) && t.status !== "done" && t.status !== "skipped") overdue++;
     }
-    return { pending, inProgress, done, overdue };
-  }, [tasks]);
+    return { pending, inProgress, done, overdue, total: dateFilteredTasks.length };
+  }, [dateFilteredTasks]);
 
   const filteredTasks = React.useMemo(() => {
     const q = search.trim().toLowerCase();
-    let list = [...tasks];
+    let list = [...dateFilteredTasks];
     if (q) {
       list = list.filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(q));
     }
@@ -270,7 +282,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
       if (!da && db) return 1;
       return createdMs(b) - createdMs(a);
     });
-  }, [tasks, search, filterStatus, filterPriority]);
+  }, [dateFilteredTasks, search, filterStatus, filterPriority]);
 
   const { regularTasks, recurringGroups } = React.useMemo(
     () => groupRecurringTasks(filteredTasks),
@@ -667,8 +679,8 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
   return (
     <div className="min-h-screen">
-      {/* ── Shift bar ── */}
-      {onShift ? (
+      {/* ── Shift bar (today only — reflects live shift state) ── */}
+      {isViewingToday && onShift ? (
         <div className={cn("border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]", VA_CARD_GLOW)}>
           <div className="mx-auto max-w-5xl space-y-3 px-4 py-3.5 md:px-6">
             {shiftErr ? (
@@ -687,18 +699,11 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                   {shiftDuration}
                 </span>
               </div>
-              <button
-                type="button"
-                onClick={() => void handleEndShift()}
-                disabled={shiftBusy}
-                className="rounded-lg border border-red-500/40 bg-transparent px-5 py-2 text-sm font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-40"
-              >
-                {shiftBusy ? "Ending…" : "End shift"}
-              </button>
+              <ShiftButton variant="end" loading={shiftBusy} onClick={() => void handleEndShift()} />
             </div>
           </div>
         </div>
-      ) : (
+      ) : isViewingToday ? (
         <div className={cn("mb-8 w-full border-b border-[rgba(255,255,255,0.06)] bg-gradient-to-br from-[#0D0B0D] via-[#151315] to-[#0A0A0A]", VA_CARD_GLOW)}>
           <div className="mx-auto max-w-5xl space-y-3 px-4 py-6 md:px-6">
             {shiftErr ? (
@@ -717,19 +722,17 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 </h2>
                 <p className="mt-1 text-sm text-[#B8B4B8]/65">Clock in to unlock your task checklist</p>
               </div>
-              <button
-                type="button"
+              <ShiftButton
+                variant="start"
+                size="lg"
+                loading={shiftBusy}
+                disabled={shiftLoading}
                 onClick={() => void handleStartShift()}
-                disabled={shiftBusy || shiftLoading}
-                className={cn(VA_BTN_PRIMARY, "flex items-center gap-2 px-8 py-3.5 text-base disabled:opacity-40")}
-              >
-                <Play className="h-5 w-5 fill-white" />
-                {shiftBusy ? "Starting…" : "Start shift"}
-              </button>
+              />
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 md:px-6">
         {/* ── Page header ── */}
@@ -737,10 +740,11 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
           <h1 className="text-[32px] font-semibold tracking-tight text-white">
             My tasks
           </h1>
+          <TaskDateNavigator value={selectedYmd} onChange={setSelectedYmd} className="mt-4" />
           <div className="mt-4 flex flex-wrap gap-2">
             {(
               [
-                { key: "", label: "All", count: tasks.length },
+                { key: "", label: "All", count: taskStats.total },
                 { key: "pending", label: "Pending", count: taskStats.pending },
                 { key: "in_progress", label: "In progress", count: taskStats.inProgress },
                 { key: "done", label: "Done", count: taskStats.done },
@@ -822,6 +826,15 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
               <p className="mt-2 max-w-sm text-sm text-[#B8B4B8]/55">
                 No assignments yet — enjoy the quiet moment, or check back soon.
               </p>
+            </div>
+          ) : dateFilteredTasks.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 text-center">
+              <svg className="mb-5 h-14 w-14 text-[#D4AF8C]/30" viewBox="0 0 64 64" fill="none" aria-hidden>
+                <rect x="14" y="12" width="36" height="44" rx="4" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M22 24h20M22 32h14M22 40h18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              <p className="text-base font-semibold text-[#B8B4B8]/80">No tasks for this date</p>
+              <p className="mt-1 text-sm text-[#B8B4B8]/45">Try another day or jump back to today.</p>
             </div>
           ) : regularTasks.length === 0 && recurringGroups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 text-center">
