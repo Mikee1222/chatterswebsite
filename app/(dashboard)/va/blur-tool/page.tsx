@@ -1,15 +1,16 @@
 import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { VABlurToolClient } from "@/components/va-blur-tool-client";
 
-const BLUR_TOOL_ROLES = new Set(["virtual_assistant", "admin", "manager"]);
-
 export default async function VaBlurToolPage() {
   const session = await getSessionFromCookies();
-  if (!session || !BLUR_TOOL_ROLES.has(session.role)) {
+  if (!session) redirect(ROUTES.login);
+  if (!(await hasPermission(session, PERMISSIONS.BLUR_TOOL_ACCESS))) {
     redirect(ROUTES.dashboard);
   }
   if (getEffectiveStaffRole(session) === "virtual_assistant") {

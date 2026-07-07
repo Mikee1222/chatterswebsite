@@ -258,7 +258,7 @@ const vaNav: NavItem[] = [
   // NOTE: "Mistakes" (MISTAKES_VIEW) moved to `sharedPermissionNavItems` so the VA mistakes
   // feature is gated by a permission and can be toggled per role in Roles & Permissions.
   { href: ROUTES.va.weeklyAvailability, label: "My weekly availability", iconKey: "CalendarCheck" },
-  { href: ROUTES.va.blurTool, label: "Blur tool", iconKey: "ImageOff" },
+  // NOTE: "Blur tool" (BLUR_TOOL_ACCESS) moved to `sharedPermissionNavItems`.
   { href: ROUTES.sops, label: "SOPs / Training", iconKey: "BookOpen", excludeFromMobileMainTabs: true },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true },
   { href: ROUTES.settings, label: "Settings", iconKey: "Settings" },
@@ -583,12 +583,7 @@ const adminNav: NavItem[] = [
     navSection: "SETTINGS",
     requiresPermission: PERMISSIONS.FEEDBACK_VIEW,
   },
-  {
-    href: ROUTES.va.blurTool,
-    label: "Blur tool",
-    iconKey: "ImageOff",
-    navSection: "SETTINGS",
-  },
+  // NOTE: "Blur tool" (BLUR_TOOL_ACCESS) moved to `sharedPermissionNavItems`.
   {
     href: ROUTES.settings,
     label: "Settings",
@@ -719,6 +714,14 @@ const sharedPermissionNavItems: NavItem[] = [
     iconKey: "FileText",
     navSection: "TOOLS",
     requiresPermission: PERMISSIONS.VIDEO_TRANSCRIBE_ACCESS,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.va.blurTool,
+    label: "Blur tool",
+    iconKey: "ImageOff",
+    navSection: "TOOLS",
+    requiresPermission: PERMISSIONS.BLUR_TOOL_ACCESS,
     excludeFromMobileMainTabs: true,
   },
   // VA mistakes submission ("Mistakes" → /va/mistakes). Gated by MISTAKES_VIEW so any role granted
