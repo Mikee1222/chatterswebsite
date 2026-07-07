@@ -219,6 +219,11 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   weekly_availability_friday_reminder: ["chatter", "virtual_assistant"],
   role_changed: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
   account_update: ["admin", "manager", "chatter", "virtual_assistant", "model", "client"],
+  tip_approved: ["chatter"],
+  tip_rejected: ["chatter"],
+  rebill_verified: ["chatter"],
+  rebill_rejected: ["chatter"],
+  model_schedule_created: ["model", "chatter", "virtual_assistant"],
 };
 
 /** Build per-role scope for personal (non-_admin) events. Admin/manager use _admin variants instead. */
@@ -680,6 +685,26 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Αποστέλλεται όταν ο admin εγκρίνει ή απορρίπτει πρόστιμο/μπόνους",
       "Ενημερώνει τον admin για απόφαση επί προστίμου/μπόνους"
     ),
+    eventEntry(
+      "tip_approved",
+      "Tip approved",
+      "Αποστέλλεται στον chatter όταν το tip του εγκρίνεται"
+    ),
+    eventEntry(
+      "tip_rejected",
+      "Tip rejected",
+      "Αποστέλλεται στον chatter όταν το tip του απορρίπτεται"
+    ),
+    eventEntry(
+      "rebill_verified",
+      "Rebill verified",
+      "Αποστέλλεται στον chatter όταν το rebill του επιβεβαιώνεται"
+    ),
+    eventEntry(
+      "rebill_rejected",
+      "Rebill rejected",
+      "Αποστέλλεται στον chatter όταν το rebill του απορρίπτεται"
+    ),
   ],
   reward: [
     ...pairedEvents(
@@ -1000,6 +1025,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "weekly_availability_friday_reminder",
       "Friday availability reminder",
       "Υπενθύμιση Παρασκευής για υποβολή διαθεσιμότητας"
+    ),
+    eventEntry(
+      "model_schedule_created",
+      "Schedule item created",
+      "Αποστέλλεται στο model (και τον assigned chatter/VA) όταν δημιουργείται νέο στοιχείο στο πρόγραμμά τους"
     ),
     ...pairedEvents(
       "availability_submitted",

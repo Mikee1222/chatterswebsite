@@ -115,6 +115,11 @@ export const NOTIFICATION_EVENT = {
   SCHEDULE_PUBLISHED: "schedule_published" as const,
   LOGIN_NEW_DEVICE: "login_new_device" as const,
   PASSWORD_CHANGED: "password_changed" as const,
+  TIP_APPROVED: "tip_approved" as const,
+  TIP_REJECTED: "tip_rejected" as const,
+  REBILL_VERIFIED: "rebill_verified" as const,
+  REBILL_REJECTED: "rebill_rejected" as const,
+  MODEL_SCHEDULE_CREATED: "model_schedule_created" as const,
   // Admin monitoring variants (paired with personal events above)
   SHIFT_STARTED_ADMIN: "shift_started_admin" as const,
   SHIFT_ENDED_ADMIN: "shift_ended_admin" as const,
@@ -277,6 +282,11 @@ export const DEFAULT_PRIORITY_BY_EVENT: Partial<Record<NotificationEventType, No
   creative_script_resubmitted: "normal",
   spot_check_logged: "normal",
   spot_check_status_changed: "normal",
+  tip_approved: "normal",
+  tip_rejected: "normal",
+  rebill_verified: "normal",
+  rebill_rejected: "normal",
+  model_schedule_created: "normal",
 };
 
 /** Entity types for notifications (entity_type in payload). */
@@ -298,6 +308,9 @@ export const NOTIFICATION_ENTITY = {
   WINNER_VIDEO: "winner_video",
   CREATIVE_SCRIPT: "creative_script",
   SPOT_CHECK: "spot_check",
+  TIP: "tip",
+  REBILL: "rebill",
+  MODEL_SCHEDULE: "model_schedule",
 } as const;
 
 /** Priorities. */

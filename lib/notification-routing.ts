@@ -448,6 +448,26 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
     rule: "assigned_party_only",
     description: "User notified when their password is changed.",
   },
+  tip_approved: {
+    rule: "assigned_chatter_only",
+    description: "The chatter who logged the tip when it is approved/verified.",
+  },
+  tip_rejected: {
+    rule: "assigned_chatter_only",
+    description: "The chatter who logged the tip when it is rejected.",
+  },
+  rebill_verified: {
+    rule: "assigned_chatter_only",
+    description: "The chatter who logged the rebill when it is verified.",
+  },
+  rebill_rejected: {
+    rule: "assigned_chatter_only",
+    description: "The chatter who logged the rebill when it is rejected.",
+  },
+  model_schedule_created: {
+    rule: "assigned_party_only",
+    description: "The model (and assigned chatter/VA) when a schedule/calendar item is created for them.",
+  },
 
   // ---- Admin monitoring variants (_admin suffix) ----
   shift_started_admin: { rule: "admin_only", description: "Admin/manager monitoring notification." },
@@ -646,4 +666,9 @@ export const ASSIGNED_USER_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "schedule_published",
   "login_new_device",
   "password_changed",
+  "tip_approved",
+  "tip_rejected",
+  "rebill_verified",
+  "rebill_rejected",
+  "model_schedule_created",
 ];

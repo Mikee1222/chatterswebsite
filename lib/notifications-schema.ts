@@ -97,6 +97,11 @@ export const NOTIFICATION_EVENT_TYPES = [
   // Marketing spot checks (P2 coverage).
   "spot_check_logged",
   "spot_check_status_changed",
+  "tip_approved",
+  "tip_rejected",
+  "rebill_verified",
+  "rebill_rejected",
+  "model_schedule_created",
   ...NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT.map((base) => `${base}_admin`),
 ] as const;
 
@@ -228,6 +233,11 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   creative_script_resubmitted: "creative_script_resubmitted",
   spot_check_logged: "spot_check_logged",
   spot_check_status_changed: "spot_check_status_changed",
+  tip_approved: "tip_approved",
+  tip_rejected: "tip_rejected",
+  rebill_verified: "rebill_verified",
+  rebill_rejected: "rebill_rejected",
+  model_schedule_created: "model_schedule_created",
 };
 
 export const EVENT_TYPE_TO_AIRTABLE: Record<string, NotificationEventTypeAirtable> = {

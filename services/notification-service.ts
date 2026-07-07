@@ -170,6 +170,11 @@ const BASE_EVENT_TO_CATEGORY = {
   schedule_published: "system",
   login_new_device: "system",
   password_changed: "system",
+  tip_approved: "system",
+  tip_rejected: "system",
+  rebill_verified: "system",
+  rebill_rejected: "system",
+  model_schedule_created: "system",
 };
 
 const EVENT_TO_CATEGORY: Record<NotificationEventType, NotificationCategory> = {
@@ -300,6 +305,11 @@ const EVENT_TO_PREF_KEY: Partial<Record<NotificationEventType, NotificationPrefe
   schedule_published: "schedule_alerts",
   login_new_device: "system_alerts",
   password_changed: "system_alerts",
+  tip_approved: "fine_bonus_alerts",
+  tip_rejected: "fine_bonus_alerts",
+  rebill_verified: "fine_bonus_alerts",
+  rebill_rejected: "fine_bonus_alerts",
+  model_schedule_created: "schedule_alerts",
 };
 
 for (const base of NOTIFICATION_EVENTS_WITH_ADMIN_VARIANT) {

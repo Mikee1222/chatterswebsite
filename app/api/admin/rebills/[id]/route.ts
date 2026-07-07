@@ -9,7 +9,7 @@ import { awardPoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
 import { updateChallengeProgress } from "@/services/challenges";
 import { notify } from "@/services/notification-service";
-import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 type RebillFields = {
   status?: string;
@@ -62,29 +62,40 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   const record = await updateRecord<Record<string, unknown>>("rebills", id, fields);
 
   let pointsAwarded = 0;
+  const chatterId = String(existing.fields?.chatter_id ?? "").trim();
   const transitioningToVerified = status === "verified" && prevStatus !== "verified";
-  if (transitioningToVerified) {
-    const chatterId = String(existing.fields?.chatter_id ?? "").trim();
-    if (chatterId) {
-      const config = await getPointsConfig();
-      const pointsPerRebill = Math.max(0, Math.floor(config.REBILL_VERIFIED));
-      if (pointsPerRebill > 0) {
-        await awardPoints(chatterId, pointsPerRebill, "Rebill verified", "rebill", id);
-        pointsAwarded = pointsPerRebill;
-      }
-      await updateChallengeProgress(chatterId, "rebills_verified", 1);
-      const pointsSuffix = pointsPerRebill > 0 ? ` +${pointsPerRebill} pts earned.` : "";
-      await notify({
-        user_id: chatterId,
-        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-        priority: NOTIFICATION_PRIORITY.NORMAL,
-        title: "✅ Rebill Verified",
-        body: `🎯 Your rebill was approved!${pointsSuffix}`,
-        entity_type: "rebill",
-        entity_id: id,
-        _triggerSource: "adminRebillVerified",
-      }).catch(() => {});
+  const transitioningToRejected = status === "rejected" && prevStatus !== "rejected";
+  if (transitioningToVerified && chatterId) {
+    const config = await getPointsConfig();
+    const pointsPerRebill = Math.max(0, Math.floor(config.REBILL_VERIFIED));
+    if (pointsPerRebill > 0) {
+      await awardPoints(chatterId, pointsPerRebill, "Rebill verified", "rebill", id);
+      pointsAwarded = pointsPerRebill;
     }
+    await updateChallengeProgress(chatterId, "rebills_verified", 1);
+    const pointsSuffix = pointsPerRebill > 0 ? ` +${pointsPerRebill} pts earned.` : "";
+    await notify({
+      user_id: chatterId,
+      event_type: NOTIFICATION_EVENT.REBILL_VERIFIED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "✅ Rebill Verified",
+      body: `🎯 Your rebill was approved!${pointsSuffix}`,
+      entity_type: NOTIFICATION_ENTITY.REBILL,
+      entity_id: id,
+      _triggerSource: "adminRebillVerified",
+    }).catch(() => {});
+  } else if (transitioningToRejected && chatterId) {
+    const note = (admin_notes ?? "").trim();
+    await notify({
+      user_id: chatterId,
+      event_type: NOTIFICATION_EVENT.REBILL_REJECTED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "❌ Rebill Rejected",
+      body: note.length > 0 ? note : "Your rebill was rejected.",
+      entity_type: NOTIFICATION_ENTITY.REBILL,
+      entity_id: id,
+      _triggerSource: "adminRebillRejected",
+    }).catch(() => {});
   }
 
   revalidatePath(ROUTES.admin.rebillsTips);

@@ -226,10 +226,41 @@ export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyn
       if (modelName) payload.model_name = modelName;
       if (vaChatterId) payload.chatter = [vaChatterId];
       if (creator) payload.created_by = [creator];
-      await createRecord<Fields>(TABLE, payload as Fields);
+      const rec = await createRecord<Fields>(TABLE, payload as Fields);
+      await notifyModelScheduleCreated(modelId, mapRecord(rec as AirtableRecord<Fields>), creator ?? null);
     } catch (err) {
       devLog("[va_tasks] model_schedule sync failed", { modelId, taskId: input.taskId, err });
     }
+  }
+}
+
+async function notifyModelScheduleCreated(
+  modelRecordId: string,
+  item: ModelScheduleItem,
+  actorUserId: string | null
+): Promise<void> {
+  try {
+    const { getActiveModelUserAirtableIdByLinkedModelRecordId } = await import("@/services/users");
+    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(modelRecordId);
+    if (!modelUserId) return;
+    const { notify } = await import("@/services/notification-service");
+    const { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } = await import(
+      "@/lib/notification-types"
+    );
+    const title = item.title?.trim() || "New schedule item";
+    await notify({
+      user_id: modelUserId,
+      event_type: NOTIFICATION_EVENT.MODEL_SCHEDULE_CREATED,
+      priority: NOTIFICATION_PRIORITY.NORMAL,
+      title: "📅 New schedule item",
+      body: `"${title}" was added to your schedule${item.date ? ` for ${item.date}` : ""}.`,
+      entity_type: NOTIFICATION_ENTITY.MODEL_SCHEDULE,
+      entity_id: item.id,
+      actor_user_id: actorUserId ?? undefined,
+      _triggerSource: "model_schedule_created_va_task",
+    });
+  } catch (err) {
+    devLog("[model_schedule_created] notify failed", { modelRecordId, itemId: item.id, err });
   }
 }
 

@@ -73,6 +73,11 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
       return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
+    case "model_schedule":
+      if (isAdmin) return ROUTES.admin.modelSchedules;
+      if (isModel) return ROUTES.model.schedule;
+      if (isVa) return ROUTES.va.schedule;
+      return ROUTES.dashboard;
     case "challenge":
       if (isAdmin) return ROUTES.admin.challenges;
       return ROUTES.chatter.challenges;
@@ -156,6 +161,13 @@ export function getEntityUrl(n: AppNotification, role?: UserRole | null): string
       return isAdmin ? ROUTES.admin.winnerVideos : ROUTES.myScripts;
     case "spot_check":
       return isAdmin ? ROUTES.admin.spotChecks : ROUTES.spotChecks;
+    case "tip":
+      return isAdmin ? ROUTES.admin.rebillsTips : ROUTES.chatter.myRebills;
+    case "model_schedule":
+      if (isAdmin) return ROUTES.admin.modelSchedules;
+      if (isModel) return ROUTES.model.schedule;
+      if (isVa) return ROUTES.va.schedule;
+      return ROUTES.dashboard;
     case "billing_cycle":
       return isClient ? ROUTES.client.paymentHistory : ROUTES.admin.billing;
     case "payment_submission":
@@ -272,6 +284,13 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "expense_approved":
     case "expense_rejected":
       return "Expense";
+    case "tip_approved":
+    case "tip_rejected":
+    case "rebill_verified":
+    case "rebill_rejected":
+      return "Rebill";
+    case "model_schedule_created":
+      return "Model";
     case "fine_issued":
     case "fine_issued_admin":
     case "bonus_awarded":

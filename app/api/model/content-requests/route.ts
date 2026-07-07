@@ -5,8 +5,6 @@ import {
   createModelContentRequest,
   listModelContentRequestsForModel,
 } from "@/services/model-content-requests";
-import { notifyAdmins } from "@/services/notification-service";
-import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 
 const createSchema = z.object({
   type: z.enum(["script", "mass", "photo_set", "video", "other"]),
@@ -43,17 +41,8 @@ export async function POST(req: Request) {
     title: parsed.data.title,
     description: parsed.data.description,
   });
-  const modelName = (ctx.modelRecord.model_name ?? "").trim() || "Model";
-  await notifyAdmins({
-    event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-    priority: NOTIFICATION_PRIORITY.NORMAL,
-    title: "📝 New Content Request",
-    body: `📝 ${modelName} submitted a ${row.type} request.`,
-    entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
-    entity_id: row.id,
-    actor_user_id: ctx.userRecordId,
-    actor_name: modelName,
-  }).catch(() => {});
+
+  // Admins are notified inside createModelContentRequest via model_content_request_created.
 
   return NextResponse.json({ success: true, record: row });
 }

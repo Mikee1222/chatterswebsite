@@ -1142,6 +1142,13 @@ export type NotificationEventType =
   | "schedule_published"
   | "login_new_device"
   | "password_changed"
+  // Rebills / tips
+  | "tip_approved"
+  | "tip_rejected"
+  | "rebill_verified"
+  | "rebill_rejected"
+  // Model schedule
+  | "model_schedule_created"
   // SOP Academy
   | "sop_academy_reminder"
   | "sop_academy_training_complete"

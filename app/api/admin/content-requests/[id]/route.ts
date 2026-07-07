@@ -5,9 +5,6 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { updateModelContentRequest } from "@/services/model-content-requests";
-import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
-import { notify } from "@/services/notification-service";
-import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { ModelContentRequest } from "@/types";
 
 const bodySchema = z
@@ -44,38 +41,7 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const updated = await updateModelContentRequest(id, updatePayload);
 
-  const st = parsed.data.status;
-  if (parsed.data.model_id && (st === "approved" || st === "rejected")) {
-    const modelUserId = await getActiveModelUserAirtableIdByLinkedModelRecordId(parsed.data.model_id);
-    if (modelUserId) {
-      if (st === "approved") {
-        await notify({
-          user_id: modelUserId,
-          event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-          priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: "✅ Content Request Approved",
-          body: (parsed.data.admin_notes ?? updated.admin_notes ?? "").trim() || "Your request is now approved.",
-          entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
-          entity_id: updated.id,
-          actor_user_id: session.airtableUserId ?? session.id,
-          actor_name: session.fullName ?? "Admin",
-        }).catch(() => {});
-      } else {
-        const note = (parsed.data.admin_notes ?? updated.admin_notes ?? "").trim();
-        await notify({
-          user_id: modelUserId,
-          event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
-          priority: NOTIFICATION_PRIORITY.NORMAL,
-          title: "❌ Content Request Declined",
-          body: note.length > 0 ? note : "No reason provided.",
-          entity_type: NOTIFICATION_ENTITY.CUSTOM_REQUEST,
-          entity_id: updated.id,
-          actor_user_id: session.airtableUserId ?? session.id,
-          actor_name: session.fullName ?? "Admin",
-        }).catch(() => {});
-      }
-    }
-  }
+  // The filing model is notified inside updateModelContentRequest via model_content_request_reviewed.
 
   revalidatePath(ROUTES.admin.modelContentRequests);
   revalidatePath(ROUTES.model.home);
