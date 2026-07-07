@@ -724,6 +724,14 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresPermission: PERMISSIONS.BLUR_TOOL_ACCESS,
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.myProfiles,
+    label: "My Profiles",
+    iconKey: "UserCheck",
+    navSection: "TOOLS",
+    requiresPermission: PERMISSIONS.MY_PROFILES_VIEW,
+    excludeFromMobileMainTabs: true,
+  },
   // VA mistakes submission ("Mistakes" → /va/mistakes). Gated by MISTAKES_VIEW so any role granted
   // it surfaces the link. Users who can MANAGE mistakes (admin/manager) see the admin
   // `/admin/mistakes` review item instead, so this VA submit link is hidden for them.

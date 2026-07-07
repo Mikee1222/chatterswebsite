@@ -126,6 +126,8 @@ export const PERMISSIONS = {
   VIDEO_TRANSCRIBE_ACCESS: "video_transcribe:access",
 
   BLUR_TOOL_ACCESS: "blur_tool:access",
+
+  MY_PROFILES_VIEW: "my_profiles:view",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -196,6 +198,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   "link-pages": "Link pages",
   video_transcribe: "Transcript videos",
   blur_tool: "Blur tool",
+  my_profiles: "My profiles",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -342,6 +345,8 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "video_transcribe:access": "Μεταγραφή βίντεο σε κείμενο (upload + transcript)",
 
   "blur_tool:access": "Πρόσβαση στο εργαλείο θολώματος εικόνων (blur tool)",
+
+  "my_profiles:view": "Προβολή ανατεθειμένων μοντέλων, λογαριασμών και τηλεφώνων VA",
 };
 
 export type PermissionGroup = {
@@ -413,6 +418,7 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SETTINGS_VIEW,
   PERMISSIONS.VA_PROGRAM_VIEW,
   PERMISSIONS.BLUR_TOOL_ACCESS,
+  PERMISSIONS.MY_PROFILES_VIEW,
   // NOTE: winner_videos:submit, video_transcribe:access, and similar opt-in tool permissions
   // are intentionally NOT VA defaults. Because resolveRolePermissions() unions code defaults
   // into stored perms (defaults act as a mandatory floor), any permission listed here can

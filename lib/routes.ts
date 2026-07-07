@@ -189,6 +189,8 @@ export const ROUTES = {
   myScripts: "/my-scripts",
   /** Standalone video transcription tool (permission-gated). */
   transcriptVideos: "/transcript-videos",
+  /** VA assigned models, social accounts, and phones. */
+  myProfiles: "/my-profiles",
   /** Fines & bonuses (chatter + VA shared). */
   finesBonuses: "/fines-bonuses",
   /** SOP Library member view (chatter + VA shared). */

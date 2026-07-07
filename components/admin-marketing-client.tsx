@@ -261,6 +261,128 @@ function MaskedDisplay({
   );
 }
 
+const MAX_PHONE_FILE_LINKS = 5;
+
+function FileLinksEditor({
+  links,
+  onChange,
+}: {
+  links: string[];
+  onChange: (links: string[]) => void;
+}) {
+  const rows = links.length > 0 ? links : [""];
+
+  function updateAt(index: number, value: string) {
+    const next = [...rows];
+    next[index] = value;
+    onChange(next);
+  }
+
+  function removeAt(index: number) {
+    const next = rows.filter((_, i) => i !== index);
+    onChange(next.length > 0 ? next : [""]);
+  }
+
+  function addLink() {
+    if (rows.length >= MAX_PHONE_FILE_LINKS) return;
+    onChange([...rows, ""]);
+  }
+
+  return (
+    <div className="space-y-2">
+      {rows.map((link, index) => (
+        <div key={index} className="flex items-center gap-2">
+          <input
+            type="url"
+            value={link}
+            onChange={(e) => updateAt(index, e.target.value)}
+            placeholder={`https://… (link ${index + 1})`}
+            className={cn(ADMIN_FILTER_INPUT, "min-w-0 flex-1 rounded-xl")}
+          />
+          {rows.length > 1 ? (
+            <button
+              type="button"
+              onClick={() => removeAt(index)}
+              className="rounded-lg border border-white/10 p-2 text-white/40 hover:bg-white/5 hover:text-white"
+              aria-label={`Remove link ${index + 1}`}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          ) : null}
+        </div>
+      ))}
+      {rows.length < MAX_PHONE_FILE_LINKS ? (
+        <button
+          type="button"
+          onClick={addLink}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-white/15 px-3 py-2 text-xs text-white/50 transition hover:border-pink-500/35 hover:text-white"
+        >
+          <Plus className="h-3.5 w-3.5" aria-hidden />
+          Add link
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function FileLinkChips({ links }: { links: string[] }) {
+  if (!links.length) return <span className="text-sm text-[#B8B4B8]/45">—</span>;
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {links.map((href, index) => {
+        let host = href;
+        try {
+          host = new URL(href).hostname.replace(/^www\./, "");
+        } catch {
+          /* keep raw */
+        }
+        return <FileLinkChip key={`${href}-${index}`} href={href} index={index} host={host} />;
+      })}
+    </div>
+  );
+}
+
+function FileLinkChip({ href, index, host }: { href: string; index: number; host: string }) {
+  const [copied, setCopied] = React.useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(href);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1">
+      <a
+        href={href}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#D4AF8C]/25 bg-[#D4AF8C]/8 px-2.5 py-1.5 text-xs font-medium text-[#D4AF8C] transition hover:border-[#D4AF8C]/40 hover:bg-[#D4AF8C]/12"
+        title={href}
+      >
+        <Link2 className="h-3 w-3 shrink-0" aria-hidden />
+        <span>Link {index + 1}</span>
+        <span className="truncate text-[#D4AF8C]/55">· {host}</span>
+        <ExternalLink className="h-3 w-3 shrink-0 opacity-60" aria-hidden />
+      </a>
+      <button
+        type="button"
+        onClick={() => void handleCopy()}
+        className="rounded-lg border border-white/10 p-1.5 text-white/40 hover:bg-white/5 hover:text-white"
+        aria-label={copied ? "Copied" : `Copy link ${index + 1}`}
+        title={copied ? "Copied" : "Copy"}
+      >
+        {copied ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  );
+}
+
 function SearchablePicker({
   value,
   onChange,
@@ -520,14 +642,26 @@ export function AdminMarketingClient({
 
   function openNewPhone() {
     setEditingPhoneId(null);
-    setPhoneDraft({ active: true, device_name: "", icloud_email: "", icloud_password: "", recovery_email: "", recovery_phone: "", notes: "" });
+    setPhoneDraft({
+      active: true,
+      device_name: "",
+      icloud_email: "",
+      icloud_password: "",
+      recovery_email: "",
+      recovery_phone: "",
+      notes: "",
+      file_links: [""],
+    });
     setPhonePhotoFiles([]);
     setPhoneModalOpen(true);
   }
 
   function openEditPhone(phone: Phone) {
     setEditingPhoneId(phone.id);
-    setPhoneDraft({ ...phone });
+    setPhoneDraft({
+      ...phone,
+      file_links: phone.file_links.length > 0 ? [...phone.file_links] : [""],
+    });
     setPhonePhotoFiles([]);
     setPhoneModalOpen(true);
   }
@@ -567,6 +701,7 @@ export function AdminMarketingClient({
       recovery_phone: (phoneDraft.recovery_phone ?? "").trim(),
       assigned_va_id: phoneDraft.assigned_va_id ?? "",
       notes: (phoneDraft.notes ?? "").trim(),
+      file_links: (phoneDraft.file_links ?? []).map((l) => l.trim()).filter(Boolean),
       active: phoneDraft.active !== false,
     };
     setBusy(editingPhoneId ? `phone-${editingPhoneId}` : "phone-add");
@@ -1915,6 +2050,12 @@ export function AdminMarketingClient({
                         <dt className="text-[10px] uppercase tracking-widest text-white/35">Assigned VA</dt>
                         <dd className="mt-1 text-sm text-white/80">{phoneDetail.assigned_va_name || "—"}</dd>
                       </div>
+                      <div className="sm:col-span-2">
+                        <dt className="mb-2 text-[10px] uppercase tracking-widest text-white/35">File links</dt>
+                        <dd>
+                          <FileLinkChips links={phoneDetail.file_links} />
+                        </dd>
+                      </div>
                       {phoneDetail.notes ? (
                         <div className="sm:col-span-2">
                           <dt className="text-[10px] uppercase tracking-widest text-white/35">Notes</dt>
@@ -2079,6 +2220,12 @@ export function AdminMarketingClient({
                         <p className="mb-0.5 text-[10px] uppercase tracking-widest text-white/30">iCloud</p>
                         <MaskedDisplay value={phone.icloud_email} mode="email" />
                       </div>
+                      {phone.file_links.length > 0 ? (
+                        <div className="mb-3">
+                          <p className="mb-1.5 text-[10px] uppercase tracking-widest text-white/30">File links</p>
+                          <FileLinkChips links={phone.file_links} />
+                        </div>
+                      ) : null}
                       <div className="flex items-center justify-between text-xs text-[#B8B4B8]/45">
                         <span className="inline-flex items-center gap-1">
                           <Link2 className="h-3 w-3" aria-hidden />
@@ -2903,6 +3050,13 @@ export function AdminMarketingClient({
                   className={cn(selectClass, "resize-none")}
                 />
               </label>
+              <div className="sm:col-span-2">
+                <p className="mb-2 text-xs text-white/50">File links (2–5 URLs)</p>
+                <FileLinksEditor
+                  links={phoneDraft.file_links ?? [""]}
+                  onChange={(file_links) => setPhoneDraft((d) => ({ ...d, file_links }))}
+                />
+              </div>
               <div className="sm:col-span-2">
                 <p className="mb-2 text-xs uppercase tracking-widest text-white/40">Phone photos</p>
                 <button

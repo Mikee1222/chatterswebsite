@@ -30,6 +30,9 @@ export async function POST(req: Request) {
   if (!device_name) {
     return NextResponse.json({ error: "Device name is required" }, { status: 400 });
   }
+  const file_links = Array.isArray(b.file_links)
+    ? b.file_links.filter((x): x is string => typeof x === "string")
+    : undefined;
   const phone = await createPhone({
     device_name,
     icloud_email: typeof b.icloud_email === "string" ? b.icloud_email.trim() : "",
@@ -38,6 +41,7 @@ export async function POST(req: Request) {
     recovery_phone: typeof b.recovery_phone === "string" ? b.recovery_phone.trim() : "",
     assigned_va_id: typeof b.assigned_va_id === "string" ? b.assigned_va_id : "",
     notes: typeof b.notes === "string" ? b.notes.trim() : "",
+    file_links,
     active: b.active !== false,
   });
   return NextResponse.json({ phone });

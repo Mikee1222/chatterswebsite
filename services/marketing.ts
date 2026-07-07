@@ -21,6 +21,7 @@ const FIELD_PHONE_PHOTOS = "Phone Photos";
 const FIELD_PHONE_NOTES = "Notes";
 const FIELD_PHONE_ACTIVE = "Active";
 const FIELD_PHONE_CREATED_AT = "Created At";
+const FIELD_FILE_LINKS = "File Links";
 const FIELD_ACCOUNT_PASSWORD = "Account Password";
 const FIELD_LINKED_PHONE = "Linked Phone";
 
@@ -67,6 +68,7 @@ export interface Phone {
   assigned_va_name: string;
   phone_photos: PhonePhoto[];
   notes: string;
+  file_links: string[];
   active: boolean;
   created_at: string;
   linked_account_count: number;
@@ -158,7 +160,26 @@ type PhoneFields = {
   [FIELD_PHONE_NOTES]?: string;
   [FIELD_PHONE_ACTIVE]?: boolean;
   [FIELD_PHONE_CREATED_AT]?: string;
+  [FIELD_FILE_LINKS]?: string;
 };
+
+export function parsePhoneFileLinks(raw: unknown): string[] {
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+export function joinPhoneFileLinks(links: string[] | undefined): string {
+  if (!links?.length) return "";
+  return links
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .slice(0, 5)
+    .join("\n");
+}
 
 type ShadowbanReportFields = {
   report_id?: string;
@@ -299,6 +320,7 @@ function mapPhone(
     assigned_va_name: assignedVaId ? (vaNameById[assignedVaId] ?? "") : "",
     phone_photos: normalizePhonePhotos(f[FIELD_PHONE_PHOTOS]),
     notes: (f[FIELD_PHONE_NOTES] as string) ?? "",
+    file_links: parsePhoneFileLinks(f[FIELD_FILE_LINKS]),
     active: f[FIELD_PHONE_ACTIVE] !== false,
     created_at: (f[FIELD_PHONE_CREATED_AT] as string) ?? "",
     linked_account_count: linkedCount,
@@ -440,6 +462,22 @@ export async function getPhones(): Promise<Phone[]> {
   return phoneRecords.map((rec) => mapPhone(rec, vaNameById, counts[rec.id] ?? 0));
 }
 
+export async function getPhonesByVA(vaId: string): Promise<Phone[]> {
+  const vid = airtableFormulaString(vaId);
+  const [phoneRecords, accounts, vaNameById] = await Promise.all([
+    listAllRecords<PhoneFields>(TABLE_PHONES, {
+      filterByFormula: `FIND("${vid}", ARRAYJOIN({${FIELD_ASSIGNED_VA}}))`,
+      sort: [{ field: FIELD_PHONE_CREATED_AT, direction: "desc" }],
+    }),
+    getAllAccounts(),
+    buildVaNameById(),
+  ]);
+  const counts = countAccountsByPhoneId(accounts);
+  return phoneRecords
+    .map((rec) => mapPhone(rec, vaNameById, counts[rec.id] ?? 0))
+    .filter((phone) => phone.assigned_va_id === vaId);
+}
+
 export async function getPhoneDetail(phoneId: string): Promise<PhoneDetail | null> {
   const [rec, accounts, vaNameById] = await Promise.all([
     getRecord<PhoneFields>(TABLE_PHONES, phoneId).catch(() => null),
@@ -464,6 +502,9 @@ export async function createPhone(data: Partial<Phone>): Promise<Phone> {
     [FIELD_PHONE_ACTIVE]: data.active !== false,
     [FIELD_PHONE_CREATED_AT]: now,
   };
+  if (data.file_links !== undefined) {
+    fields[FIELD_FILE_LINKS] = joinPhoneFileLinks(data.file_links);
+  }
   if (data.assigned_va_id) {
     fields[FIELD_ASSIGNED_VA] = [data.assigned_va_id];
   }
@@ -480,6 +521,7 @@ export async function updatePhone(id: string, data: Partial<Phone>): Promise<voi
   if (data.recovery_email !== undefined) patch[FIELD_RECOVERY_EMAIL] = data.recovery_email;
   if (data.recovery_phone !== undefined) patch[FIELD_RECOVERY_PHONE] = data.recovery_phone;
   if (data.notes !== undefined) patch[FIELD_PHONE_NOTES] = data.notes;
+  if (data.file_links !== undefined) patch[FIELD_FILE_LINKS] = joinPhoneFileLinks(data.file_links);
   if (data.active !== undefined) patch[FIELD_PHONE_ACTIVE] = data.active;
   if (data.assigned_va_id !== undefined) {
     patch[FIELD_ASSIGNED_VA] = data.assigned_va_id ? [data.assigned_va_id] : [];

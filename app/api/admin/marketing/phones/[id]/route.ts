@@ -37,6 +37,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   if (typeof b.recovery_phone === "string") patch.recovery_phone = b.recovery_phone.trim();
   if (typeof b.assigned_va_id === "string") patch.assigned_va_id = b.assigned_va_id;
   if (typeof b.notes === "string") patch.notes = b.notes.trim();
+  if (Array.isArray(b.file_links)) {
+    patch.file_links = b.file_links.filter((x): x is string => typeof x === "string");
+  }
   if (typeof b.active === "boolean") patch.active = b.active;
   await updatePhone(id, patch);
   const phone = await getPhoneDetail(id);
