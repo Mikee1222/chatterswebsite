@@ -280,7 +280,7 @@ export function MobileAppShell({
   }, [baseNavItems, role, modelUiLanguage]);
 
   const mainTabRows = React.useMemo(() => {
-    const displays = getMobileMainTabDisplays(role, hiddenForRole);
+    const displays = getMobileMainTabDisplays(role, hiddenForRole, userPermissions);
     if (role !== "model" || !modelUiLanguage) return displays.map((d) => ({ ...d }));
     const t = getModelT(modelUiLanguage);
     return displays.map(({ item, shortLabel, mobileCaption }) => {
@@ -288,7 +288,7 @@ export function MobileAppShell({
       const label = key ? t(key) : item.label;
       return { item: { ...item, label }, shortLabel, mobileCaption };
     });
-  }, [role, hiddenForRole, modelUiLanguage]);
+  }, [role, hiddenForRole, modelUiLanguage, userPermissions]);
 
   const mainHrefSet = React.useMemo(() => new Set(mainTabRows.map((r) => r.item.href)), [mainTabRows]);
   const moreItems = allItems.filter((item) => !mainHrefSet.has(item.href));

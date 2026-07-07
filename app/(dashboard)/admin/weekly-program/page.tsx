@@ -1,5 +1,5 @@
 import { getSessionFromCookies } from "@/lib/auth";
-import { hasPermission, requireAdminRoute } from "@/lib/rbac";
+import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
@@ -24,7 +24,8 @@ export default async function AdminWeeklyProgramPage({
 }: {
   searchParams: { week_start?: string };
 }) {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.CHATTER_PROGRAM_VIEW);
+  const user = await getSessionFromCookies();
+  if (!user || !(await hasPermission(user, PERMISSIONS.CHATTER_PROGRAM_VIEW))) redirect(ROUTES.dashboard);
   const canManage = await hasPermission(user, PERMISSIONS.CHATTER_PROGRAM_MANAGE);
 
   const rawWeek = searchParams.week_start?.trim();

@@ -393,6 +393,7 @@ const MANAGER_EXCLUDED: Permission[] = [
 const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.SHIFTS_START,
   PERMISSIONS.SHIFTS_VIEW,
+  // Baseline for Informations nav (/informations) — core chatter reference data, not toggleable off.
   PERMISSIONS.INFORMATIONS_VIEW,
   PERMISSIONS.WHALES_VIEW,
   PERMISSIONS.WHALES_MANAGE,
@@ -412,6 +413,7 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.VA_TASKS_VIEW,
   // VA mistakes submission + mistake shift feature (Mistakes nav item, /va/mistakes, /va-shift).
   PERMISSIONS.MISTAKES_VIEW,
+  // Baseline for VA informations access — core reference data, not toggleable off.
   PERMISSIONS.INFORMATIONS_VIEW,
   PERMISSIONS.MARKETING_VIEW,
   PERMISSIONS.MARKETING_SHADOWBAN_REPORT,
@@ -422,6 +424,7 @@ const VA_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_SIGN_OFF,
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SETTINGS_VIEW,
+  // Baseline for VA weekly program admin view (/admin/weekly-program-va) — all VAs need schedule visibility.
   PERMISSIONS.VA_PROGRAM_VIEW,
   // NOTE: blur_tool:access, my_profiles:view, winner_videos:submit, video_transcribe:access,
   // and similar opt-in tool permissions

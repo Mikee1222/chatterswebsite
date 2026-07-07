@@ -72,7 +72,7 @@ function expandLegacyProgramPermissions(perms: Set<Permission>): Set<Permission>
   return expanded;
 }
 
-/** Roles that could manage VA tasks before task_progress:view shipped inherit progress overview read access. */
+/** Roles with va-tasks:manage always inherit task_progress:view (Progress Overview read access). */
 function expandTaskProgressPermissions(perms: Set<Permission>): Set<Permission> {
   const expanded = expandLegacyProgramPermissions(perms);
   if (perms.has(PERMISSIONS.VA_TASKS_MANAGE)) {

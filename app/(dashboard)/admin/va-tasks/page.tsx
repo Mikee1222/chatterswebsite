@@ -14,7 +14,6 @@ export default async function AdminVaTasksPage() {
   const user = await requireAdminRoute(await getSessionFromCookies());
   const perms = await getUserPermissions(user);
   const canAccessPage = await hasAnyPermission(user, [
-    PERMISSIONS.VA_TASKS_VIEW,
     PERMISSIONS.VA_TASKS_MANAGE,
     PERMISSIONS.TASK_PROGRESS_VIEW,
   ]);

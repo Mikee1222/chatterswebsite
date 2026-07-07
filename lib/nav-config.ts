@@ -294,20 +294,6 @@ const adminNav: NavItem[] = [
   // so any role granted the permission — not just admin — surfaces the link, matching the
   // page's bare hasPermission guard.
   {
-    href: ROUTES.admin.weeklyProgram,
-    label: "Weekly program",
-    iconKey: "Calendar",
-    navSection: "TEAM",
-    requiresPermission: PERMISSIONS.CHATTER_PROGRAM_VIEW,
-  },
-  {
-    href: ROUTES.admin.weeklyProgramVa,
-    label: "VA weekly program",
-    iconKey: "CalendarCheck",
-    navSection: "TEAM",
-    requiresPermission: PERMISSIONS.VA_PROGRAM_VIEW,
-  },
-  {
     href: ROUTES.admin.vaTasks,
     label: "VA tasks",
     iconKey: "ListTodo",
@@ -647,6 +633,20 @@ const sharedPermissionNavItems: NavItem[] = [
     requiresPermission: PERMISSIONS.ACCOUNTS_VIEW,
   },
   {
+    href: ROUTES.admin.weeklyProgram,
+    label: "Weekly program",
+    iconKey: "Calendar",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.CHATTER_PROGRAM_VIEW,
+  },
+  {
+    href: ROUTES.admin.weeklyProgramVa,
+    label: "VA weekly program",
+    iconKey: "CalendarCheck",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.VA_PROGRAM_VIEW,
+  },
+  {
     href: ROUTES.va.tasks,
     label: "VA tasks",
     iconKey: "ListTodo",
@@ -691,6 +691,8 @@ const sharedPermissionNavItems: NavItem[] = [
     iconKey: "FileText",
     navSection: "CREATIVE",
     requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
+    // Users who can manage creative scripts see the admin Research review flow instead.
+    hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {
@@ -699,6 +701,7 @@ const sharedPermissionNavItems: NavItem[] = [
     iconKey: "FileText",
     navSection: "CREATIVE",
     requiresPermission: PERMISSIONS.CREATIVE_SCRIPTS_SUBMIT,
+    hiddenIfPermission: PERMISSIONS.CREATIVE_SCRIPTS_MANAGE,
     excludeFromMobileMainTabs: true,
   },
   {
@@ -746,6 +749,23 @@ const sharedPermissionNavItems: NavItem[] = [
     excludeFromMobileMainTabs: true,
   },
 ];
+
+type SharedAdminPathEntry = { path: string; permission: Permission };
+
+/**
+ * `/admin/*` paths from `sharedPermissionNavItems` — single source for middleware/layout
+ * drift-safeguard (`permissionForSharedAdminPath` in va-schedule-overview-access.ts).
+ */
+export function getPermissionGatedSharedAdminPaths(): ReadonlyArray<SharedAdminPathEntry> {
+  const paths: SharedAdminPathEntry[] = [];
+  for (const item of sharedPermissionNavItems) {
+    if (!item.href.startsWith("/admin/")) continue;
+    if (item.requiresPermission) {
+      paths.push({ path: item.href, permission: item.requiresPermission });
+    }
+  }
+  return paths;
+}
 
 /** Append shared permission-gated items to a role's base list, skipping any already present. */
 function appendSharedNavItems(base: NavItem[]): NavItem[] {
@@ -916,8 +936,14 @@ export function getMainTabLabels(role: NavRoleKey): [string, string, string, str
  * After applying hidden-nav filter, up to 4 main-tab entries for the mobile bottom bar.
  * Prefers canonical main tabs when visible; fills remaining slots from nav order.
  */
-export function getMobileMainTabs(role: NavRoleKey, hiddenItems?: string[]): NavItem[] {
-  const visible = getNavItemsForRole(role, hiddenItems);
+export function getMobileMainTabs(
+  role: NavRoleKey,
+  hiddenItems?: string[],
+  granted?: ReadonlySet<Permission> | readonly Permission[]
+): NavItem[] {
+  const visible = granted
+    ? buildNavItemsForUser(role, granted, hiddenItems)
+    : getNavItemsForRole(role, hiddenItems);
   const visibleSet = new Set(visible.map((i) => i.href));
   const canonical = [...getMainTabHrefs(role)];
   const picked: NavItem[] = [];
@@ -938,10 +964,11 @@ const CHATTER_MOBILE_TAB_CAPTIONS: [string, string, string, string] = ["Home", "
 
 export function getMobileMainTabDisplays(
   role: NavRoleKey,
-  hiddenItems?: string[]
+  hiddenItems?: string[],
+  granted?: ReadonlySet<Permission> | readonly Permission[]
 ): { item: NavItem; shortLabel: string; mobileCaption?: string }[] {
   const r = (typeof role === "string" ? role.toLowerCase() : "") as NavRole;
-  const tabs = getMobileMainTabs(role, hiddenItems);
+  const tabs = getMobileMainTabs(role, hiddenItems, granted);
   const canonicalHrefs = [...getMainTabHrefs(role)];
   const canonicalLabels = [...getMainTabLabels(role)];
   return tabs.map((item) => {
