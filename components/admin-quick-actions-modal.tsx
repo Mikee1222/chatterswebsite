@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
 import {
   Activity,
+  AlertTriangle,
   Calendar,
   Clock,
   Coins,
@@ -13,6 +14,7 @@ import {
   FileText,
   Fish,
   Headphones,
+  ListTodo,
   Package,
   Plus,
   Settings,
@@ -23,6 +25,7 @@ import {
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
+import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 import {
@@ -30,6 +33,8 @@ import {
   FineBonusQuickActionNavRow,
   FineBonusQuickActionSheetRow,
 } from "@/components/admin-fine-bonus-modal";
+import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
+import type { SocialAccount } from "@/services/marketing";
 
 const SHEET_SPRING = { type: "spring" as const, damping: 25, stiffness: 300 };
 const SWIPE_CLOSE_PX = 100;
@@ -38,43 +43,118 @@ type AdminQuickActionItem = {
   href: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
-  /** Hidden for managers (matches nav `adminOnly`). */
-  adminOnly?: boolean;
+  /**
+   * Permission that unlocks this action. Omit for universal actions.
+   * The list is permission-driven (not role-hardcoded) so ANY role — system or
+   * custom — sees exactly the actions its permissions grant.
+   */
+  permission?: Permission;
 };
 
-function buildAdminQuickActions(role: SessionUser["role"]): AdminQuickActionItem[] {
+/**
+ * Permission-driven quick actions. Each action declares the permission it needs;
+ * the FAB shows whichever ones the current user's permissions unlock. Mappings are
+ * chosen so system roles keep their existing visibility:
+ *   - admin holds every permission → sees all actions (unchanged).
+ *   - manager holds all-but-excluded → the earnings action stays admin-only via
+ *     `earnings:config` (a manager-excluded permission), matching the old `adminOnly`.
+ */
+function buildAdminQuickActions(
+  role: SessionUser["role"],
+  userPermissions: Permission[],
+): AdminQuickActionItem[] {
   const isManager = role === "manager";
+  const can = (p: Permission) => userPermissions.includes(p);
 
   const items: AdminQuickActionItem[] = [
     {
       href: isManager ? ROUTES.admin.models : ROUTES.accountsModelssNew,
       label: "Add new model",
       Icon: UserPlus,
+      permission: PERMISSIONS.ACCOUNTS_CREATE,
     },
     {
       href: isManager ? ROUTES.admin.accounts : `${ROUTES.accountsNew}?role=chatter`,
       label: "Add new chatter",
       Icon: Users,
+      permission: PERMISSIONS.ACCOUNTS_CREATE,
     },
     {
       href: isManager ? ROUTES.admin.accounts : `${ROUTES.accountsNew}?role=virtual_assistant`,
       label: "Add new VA",
       Icon: Headphones,
+      permission: PERMISSIONS.ACCOUNTS_CREATE,
     },
-    { href: ROUTES.admin.weeklyProgram, label: "Create weekly program", Icon: Calendar },
-    { href: ROUTES.admin.earnings, label: "View earnings", Icon: DollarSign, adminOnly: true },
-    { href: ROUTES.admin.shiftActivity, label: "Shift activity", Icon: Activity },
-    { href: ROUTES.admin.customs, label: "Customs", Icon: Package },
-    { href: ROUTES.hours, label: "Hours", Icon: Clock },
-    { href: ROUTES.activityLogs, label: "Activity logs", Icon: FileText },
-    { href: ROUTES.admin.spinResults, label: "Spin results", Icon: Dices },
-    { href: ROUTES.admin.finesBonuses, label: "Fines & bonuses", Icon: Coins },
-    { href: ROUTES.admin.whales, label: "Whales", Icon: Fish },
-    { href: ROUTES.settings, label: "System settings", Icon: Settings },
+    {
+      href: ROUTES.admin.weeklyProgram,
+      label: "Create weekly program",
+      Icon: Calendar,
+      permission: PERMISSIONS.WEEKLY_PROGRAM_MANAGE,
+    },
+    // Admin-only earnings shortcut: `earnings:config` is excluded from managers, so this
+    // reproduces the previous `adminOnly` flag purely through permissions.
+    {
+      href: ROUTES.admin.earnings,
+      label: "View earnings",
+      Icon: DollarSign,
+      permission: PERMISSIONS.EARNINGS_CONFIG,
+    },
+    {
+      href: ROUTES.admin.shiftActivity,
+      label: "Shift activity",
+      Icon: Activity,
+      permission: PERMISSIONS.SHIFTS_ACTIVE_VIEW,
+    },
+    {
+      href: ROUTES.admin.customs,
+      label: "Customs",
+      Icon: Package,
+      permission: PERMISSIONS.CUSTOM_REQUESTS_VIEW,
+    },
+    { href: ROUTES.hours, label: "Hours", Icon: Clock, permission: PERMISSIONS.SHIFTS_VIEW },
+    {
+      href: ROUTES.activityLogs,
+      label: "Activity logs",
+      Icon: FileText,
+      permission: PERMISSIONS.ACTIVITY_LOGS_VIEW,
+    },
+    {
+      href: ROUTES.admin.spinResults,
+      label: "Spin results",
+      Icon: Dices,
+      permission: PERMISSIONS.SPIN_WHEEL_MANAGE,
+    },
+    {
+      href: ROUTES.admin.finesBonuses,
+      label: "Fines & bonuses",
+      Icon: Coins,
+      permission: PERMISSIONS.FINES_MANAGE,
+    },
+    { href: ROUTES.admin.whales, label: "Whales", Icon: Fish, permission: PERMISSIONS.WHALES_VIEW },
+    // Cross-cutting permission-gated action: any role that can manage VA tasks gets a shortcut.
+    {
+      href: ROUTES.admin.vaTasks,
+      label: "Quick task create",
+      Icon: ListTodo,
+      permission: PERMISSIONS.VA_TASKS_MANAGE,
+    },
+    {
+      href: ROUTES.settings,
+      label: "System settings",
+      Icon: Settings,
+      permission: PERMISSIONS.SETTINGS_MANAGE,
+    },
   ];
 
-  if (isManager) return items.filter((i) => !i.adminOnly);
-  return items;
+  return items.filter((i) => !i.permission || can(i.permission));
+}
+
+/** Marketing permission that unlocks the "Report shadowban" quick action. */
+function canReportShadowban(userPermissions: Permission[]): boolean {
+  return (
+    userPermissions.includes(PERMISSIONS.MARKETING_SHADOWBAN_REPORT) ||
+    userPermissions.includes(PERMISSIONS.MARKETING_MANAGE)
+  );
 }
 
 const FAB_BTN_CLASS = cn(
@@ -91,12 +171,14 @@ export type AdminQuickActionsModalProps = {
   actions: AdminQuickActionItem[];
   /** Opens the add fine/bonus modal (admin FAB). */
   onOpenFineBonus?: () => void;
+  /** Opens the shadowban report flow (only when the user holds a marketing permission). */
+  onReportShadowban?: () => void;
 };
 
 /**
  * Admin / manager quick actions — same bottom sheet behavior as chatter `QuickActionsModal`.
  */
-export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus }: AdminQuickActionsModalProps) {
+export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus, onReportShadowban }: AdminQuickActionsModalProps) {
   const dragControls = useDragControls();
 
   React.useEffect(() => {
@@ -202,6 +284,23 @@ export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus
                 {onOpenFineBonus ? (
                   <FineBonusQuickActionSheetRow onClose={onClose} onOpen={onOpenFineBonus} />
                 ) : null}
+                {onReportShadowban ? (
+                  <li>
+                    <button
+                      type="button"
+                      onClick={onReportShadowban}
+                      className="flex w-full min-h-[52px] items-center gap-3 rounded-xl px-4 py-3 text-left transition-colors active:bg-white/10"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                        <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium text-white">Report shadowban</p>
+                        <p className="text-xs text-white/40">Report an account issue</p>
+                      </div>
+                    </button>
+                  </li>
+                ) : null}
                 <FeedbackQuickActionSheetRow onClose={onClose} />
               </ul>
             </motion.div>
@@ -214,19 +313,55 @@ export function AdminQuickActionsModal({ open, onClose, actions, onOpenFineBonus
 
 type AdminFloatingQuickActionsButtonProps = {
   user: SessionUser;
+  /** Effective permissions of the current user — drives which quick actions appear. */
+  userPermissions?: Permission[];
 };
 
 /**
- * Admin / manager FAB: mobile bottom sheet (`AdminQuickActionsModal`), desktop dropdown above the + button.
+ * Admin-area FAB (admin / manager / custom roles): mobile bottom sheet
+ * (`AdminQuickActionsModal`), desktop dropdown above the + button.
+ *
+ * The visible quick actions are permission-driven, so custom roles get a working FAB
+ * with whatever their permissions unlock (plus the universal "Report bug" action).
  */
-export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActionsButtonProps) {
+export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: AdminFloatingQuickActionsButtonProps) {
   const [open, setOpen] = React.useState(false);
   const [fineBonusOpen, setFineBonusOpen] = React.useState(false);
+  const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
+  const [shadowbanAccounts, setShadowbanAccounts] = React.useState<SocialAccount[]>([]);
   const fabHiddenByOverlay = useMobileFabHidden();
 
-  const actions = React.useMemo(() => buildAdminQuickActions(user.role), [user.role]);
+  const actions = React.useMemo(
+    () => buildAdminQuickActions(user.role, userPermissions),
+    [user.role, userPermissions]
+  );
+  const showShadowban = React.useMemo(() => canReportShadowban(userPermissions), [userPermissions]);
+  const canManageFines = userPermissions.includes(PERMISSIONS.FINES_MANAGE);
 
-  if ((user.role !== "admin" && user.role !== "manager") || fabHiddenByOverlay) return null;
+  const openShadowbanReport = React.useCallback(() => {
+    setOpen(false);
+    setShadowbanOpen(true);
+  }, []);
+
+  React.useEffect(() => {
+    if (!shadowbanOpen) return;
+    let cancelled = false;
+    fetch("/api/va/marketing/accounts", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : { accounts: [] }))
+      .then((d: { accounts?: SocialAccount[] }) => {
+        if (!cancelled) setShadowbanAccounts(d.accounts ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setShadowbanAccounts([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [shadowbanOpen]);
+
+  // The button always renders for any authenticated user in the admin-area path
+  // (the universal "Report bug" action alone justifies it) — never role-gated.
+  if (fabHiddenByOverlay) return null;
 
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",
@@ -240,12 +375,20 @@ export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActi
   return (
     <>
       <AdminFineBonusModal open={fineBonusOpen} onClose={() => setFineBonusOpen(false)} />
+      {showShadowban ? (
+        <VAShadowbanReportModal
+          open={shadowbanOpen}
+          onClose={() => setShadowbanOpen(false)}
+          vaAccounts={shadowbanAccounts}
+        />
+      ) : null}
       <div className="md:hidden">
         <AdminQuickActionsModal
           open={open}
           onClose={() => setOpen(false)}
           actions={actions}
-          onOpenFineBonus={() => setFineBonusOpen(true)}
+          onOpenFineBonus={canManageFines ? () => setFineBonusOpen(true) : undefined}
+          onReportShadowban={showShadowban ? openShadowbanReport : undefined}
         />
 
         <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
@@ -296,7 +439,26 @@ export function AdminFloatingQuickActionsButton({ user }: AdminFloatingQuickActi
                   </Link>
                 </li>
               ))}
-              <FineBonusQuickActionNavRow onClose={() => setOpen(false)} onOpen={() => setFineBonusOpen(true)} />
+              {canManageFines ? (
+                <FineBonusQuickActionNavRow onClose={() => setOpen(false)} onOpen={() => setFineBonusOpen(true)} />
+              ) : null}
+              {showShadowban ? (
+                <li>
+                  <button
+                    type="button"
+                    onClick={openShadowbanReport}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                      <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">Report shadowban</p>
+                      <p className="text-xs text-white/40">Report an account issue</p>
+                    </div>
+                  </button>
+                </li>
+              ) : null}
               <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
             </ul>
           </nav>

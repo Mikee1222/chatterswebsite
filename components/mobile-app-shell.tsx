@@ -371,7 +371,7 @@ export function MobileAppShell({
         {role === "chatter" ? (
           <FloatingActionButton user={user} />
         ) : user.role === "admin" || user.role === "manager" || isCustomNavRole(user.role) ? (
-          <AdminFloatingQuickActionsButton user={user} />
+          <AdminFloatingQuickActionsButton user={user} userPermissions={userPermissions} />
         ) : user.role === "model" ? null : role === "virtual_assistant" ? (
           <VaFloatingActionButton
             user={user}
