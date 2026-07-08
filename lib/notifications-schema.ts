@@ -188,6 +188,7 @@ const EVENT_TYPE_TO_AIRTABLE_BASE: Record<string, NotificationEventTypeAirtable>
   role_changed: "system_alert",
   account_deleted: "system_alert",
   daily_summary: "system_alert",
+  va_statistics_weekly_summary: "system_alert",
   task_started: "task_shift_started",
   task_finished: "task_shift_ended",
   task_shift_started: "task_shift_started",

@@ -5,11 +5,13 @@
  *   model live 30‑min reminders, plus custom requests with no update in 48h+ → admin).
  * - Daily at 00:00 UTC → GET /api/cron/daily-summary (yesterday in fixed Athens UTC+3 calendar).
  * - Daily at 21:00 UTC → GET /api/cron/update-streaks (≈ midnight fixed Athens UTC+3 wall clock).
+ * - Mondays at 06:00 UTC → GET /api/cron/va-statistics-weekly (~09:00 Athens+3).
  * Set APP_URL, CRON_SECRET, and UPDATE_STREAKS_CRON_URL (defaults to APP_URL + /api/cron/update-streaks); main app must use the same CRON_SECRET.
  *
  * Greece calendar uses fixed UTC+3 (same convention as lib/airtable-datetime.ts).
  * `0 0 * * *` at 00:00 UTC = 03:00 on that Athens-style clock — daily summary runs then.
  * `0 21 * * *` at 21:00 UTC = 00:00 on that Athens-style clock — streak updates run then.
+ * `0 6 * * 1` at 06:00 UTC Monday = 09:00 Athens+3 — VA statistics weekly digest.
  * Friday 09:00 / 21:00 checks run inside the app (Etc/GMT-3 wall clock + Athens weekday helpers).
  */
 
@@ -63,6 +65,19 @@ export default {
             if (data?.ok !== true) console.warn("[cron-late-shifts] update-streaks returned:", data);
           })
           .catch((err) => console.error("[cron-late-shifts] update-streaks fetch failed", err))
+      );
+      return;
+    }
+
+    if (cron === "0 6 * * 1") {
+      const url = normalizeUrl(`${base}/api/cron/va-statistics-weekly`);
+      ctx.waitUntil(
+        fetch(url, { method: "GET", headers })
+          .then((r) => r.json())
+          .then((data) => {
+            if (data?.ok !== true) console.warn("[cron-late-shifts] va-statistics-weekly returned:", data);
+          })
+          .catch((err) => console.error("[cron-late-shifts] va-statistics-weekly fetch failed", err))
       );
       return;
     }

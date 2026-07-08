@@ -117,6 +117,7 @@ export const ROUTES = {
     pdfMaker: "/admin/pdf-maker",
     vaTasks: "/admin/va-tasks",
     taskTemplates: "/admin/task-templates",
+    vaStatistics: "/admin/va-statistics",
     winnerVideos: "/admin/winner-videos",
     rewardsConfig: "/admin/rewards-config",
     rewards: "/admin/rewards",

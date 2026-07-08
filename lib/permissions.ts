@@ -55,6 +55,7 @@ export const PERMISSIONS = {
   VA_TASKS_ASSIGN: "va-tasks:assign",
   TASK_PROGRESS_VIEW: "task_progress:view",
   TASK_TEMPLATES_MANAGE: "task_templates:manage",
+  VA_STATISTICS_VIEW: "va_statistics:view",
 
   SOPS_VIEW: "sops:view",
   SOPS_MANAGE: "sops:manage",
@@ -177,6 +178,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   "va-tasks": "VA tasks",
   task_progress: "Task progress",
   task_templates: "Task templates",
+  va_statistics: "VA statistics",
   sops: "SOPs / training",
   pdf_maker: "PDF Maker",
   spotcheck: "Spot checks",
@@ -277,6 +279,7 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "va-tasks:assign": "Ανάθεση εργασιών σε εικονικούς βοηθούς",
   "task_progress:view": "Προβολή συνολικής προόδου εργασιών VA (Progress Overview)",
   "task_templates:manage": "Δημιουργία και διαχείριση προτύπων εργασιών VA",
+  "va_statistics:view": "Προβολή ιστορικών στατιστικών απόδοσης VA (εργασίες / βάρδιες)",
 
   "sops:view": "Προβολή οδηγιών και εκπαιδευτικού υλικού",
   "sops:manage": "Δημιουργία και επεξεργασία οδηγιών SOP",

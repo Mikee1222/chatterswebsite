@@ -1109,6 +1109,7 @@ export type NotificationEventType =
   | "role_changed"
   | "account_deleted"
   | "daily_summary"
+  | "va_statistics_weekly_summary"
   // Rewards
   | "points_awarded"
   | "level_up"

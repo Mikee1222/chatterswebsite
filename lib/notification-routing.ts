@@ -286,6 +286,10 @@ export const NOTIFICATION_ROUTING: Record<NotificationEventType, RoutingEntry> =
   },
   account_deleted: { rule: "admin_only", description: "Admins only." },
   daily_summary: { rule: "admin_only", description: "Cron daily ops summary for admins." },
+  va_statistics_weekly_summary: {
+    rule: "admin_only",
+    description: "Weekly VA statistics digest for users with va_statistics:view.",
+  },
 
   // ---- Rewards ----
   points_awarded: {
@@ -607,6 +611,7 @@ export const ADMIN_ONLY_EVENT_TYPES: NotificationEventType[] = [
   "user_created",
   "account_deleted",
   "daily_summary",
+  "va_statistics_weekly_summary",
   "system_alert",
   "payment_submitted",
   "billing_payment_submitted",

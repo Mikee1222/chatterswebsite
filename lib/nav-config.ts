@@ -770,6 +770,13 @@ const sharedPermissionNavItems: NavItem[] = [
     hiddenIfAnyPermission: [PERMISSIONS.VA_TASKS_MANAGE, PERMISSIONS.TASK_PROGRESS_VIEW],
     excludeFromMobileMainTabs: true,
   },
+  {
+    href: ROUTES.admin.vaStatistics,
+    label: "VA Statistics",
+    iconKey: "LineChart",
+    navSection: "TEAM",
+    requiresPermission: PERMISSIONS.VA_STATISTICS_VIEW,
+  },
 
   // ── CONTENT ──
   {

@@ -105,9 +105,12 @@ export function getPushTargetPath(entityType: string, role?: UserRole | null): s
 }
 
 export function getEntityUrl(n: AppNotification, role?: UserRole | null): string | null {
-  const { entity_type, entity_id } = n;
+  const { entity_type, entity_id, event_type } = n;
   if (!entity_id) return null;
   const isAdmin = role === "admin" || role === "manager";
+  // Prefer event-specific deep links for system digests
+  if (isAdmin && event_type === "va_statistics_weekly_summary") return ROUTES.admin.vaStatistics;
+  if (isAdmin && event_type === "daily_summary") return ROUTES.admin.home;
   const isModel = role === "model";
   const isVa = role === "virtual_assistant";
   const isClient = role === "client";
@@ -315,6 +318,7 @@ export function getEventTag(eventType: AppNotification["event_type"]): string {
     case "account_deleted":
     case "account_update":
     case "daily_summary":
+    case "va_statistics_weekly_summary":
       return "System";
     default:
       return "Alert";

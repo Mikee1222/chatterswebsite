@@ -230,6 +230,8 @@ export const EVENT_TARGET_ROLES: Partial<Record<string, readonly UserRole[]>> = 
   expense_submitted: ["admin", "manager"],
   time_off_requested: ["admin", "manager"],
   period_logged: ["model", "virtual_assistant", "admin", "manager"],
+  daily_summary: ["admin", "manager"],
+  va_statistics_weekly_summary: ["admin", "manager"],
 };
 
 /** Build per-role scope for personal (non-_admin) events. Admin/manager use _admin variants instead. */
@@ -1092,6 +1094,11 @@ export const NOTIFICATION_CATEGORY_EVENTS: Record<
       "Αποστέλλεται όταν αλλάζουν στοιχεία λογαριασμού"
     ),
     eventEntry("daily_summary", "Daily operations summary", "Ημερήσια σύνοψη λειτουργιών"),
+    eventEntry(
+      "va_statistics_weekly_summary",
+      "Weekly VA statistics summary",
+      "Εβδομαδιαία σύνοψη απόδοσης VA για managers",
+    ),
     eventEntry(
       "login_new_device",
       "New login from unrecognized device",
