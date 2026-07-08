@@ -42,11 +42,14 @@ export function formulaVaTaskDueInAthensRange(startYmd: string, endYmd: string):
 }
 
 /**
- * Task visible to a VA: unassigned (all VAs) or `assigned_to` contains the user record id.
- * Uses ARRAYJOIN + FIND — same pattern as force-delete-cascade / va-content-assignments.
+ * Task visible to a VA: unassigned (all VAs) or `assigned_to` contains the user.
+ *
+ * IMPORTANT: `lookupKey` must be the **users table primary field** (`user_id`, e.g.
+ * `user_1772905978251_vz1u16hc`), NOT the Airtable record id (`rec…`). `ARRAYJOIN` on
+ * `assigned_to` returns linked primary-field values, not record ids — see getVaTasksForUser.
  */
-export function formulaVaTaskVisibleToUser(userId: string): string {
-  const id = userId.trim();
+export function formulaVaTaskVisibleToUser(lookupKey: string): string {
+  const id = lookupKey.trim();
   if (!id) return "FALSE()";
   return `OR(${formulaLinkedIsEmpty("assigned_to")}, ${formulaLinkedContains("assigned_to", id)})`;
 }

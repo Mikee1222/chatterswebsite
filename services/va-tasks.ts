@@ -190,10 +190,42 @@ function mapRecord(rec: AirtableRecord<Fields>): VaTaskRecord {
   };
 }
 
+function taskVisibleToVa(task: VaTaskRecord, vaUserRecordId: string): boolean {
+  if (task.assigned_to_ids.length === 0) return true;
+  return task.assigned_to_ids.includes(vaUserRecordId);
+}
+
+/**
+ * Resolve the users-table primary field for Airtable linked-field formulas.
+ * `assigned_to` links to users; ARRAYJOIN returns `user_id`, not `rec…` ids.
+ */
+async function resolveVaTaskUserLookupKey(userRecordId: string): Promise<string | null> {
+  const recordId = userRecordId.trim();
+  if (!recordId) return null;
+  try {
+    const { getUserByAirtableId } = await import("@/services/users");
+    const user = await getUserByAirtableId(recordId);
+    const userId = user?.user_id?.trim();
+    return userId || null;
+  } catch {
+    return null;
+  }
+}
+
 /** Tasks assigned to this VA (including “all VAs” when assigned_to is empty). */
-export async function getVaTasksForUser(userId: string): Promise<VaTaskRecord[]> {
+export async function getVaTasksForUser(userRecordId: string): Promise<VaTaskRecord[]> {
+  const recordId = userRecordId.trim();
+  if (!recordId) return [];
+
+  const lookupKey = await resolveVaTaskUserLookupKey(recordId);
+  if (!lookupKey) {
+    devLog(`${VA_TASKS_LOG} getVaTasksForUser fallback scan — no user_id for`, recordId);
+    const all = await listAllRecords<Fields>(TABLE, { _caller: "va-tasks.getVaTasksForUser.fallback" });
+    return all.map(mapRecord).filter((t) => taskVisibleToVa(t, recordId));
+  }
+
   const records = await listAllRecords<Fields>(TABLE, {
-    filterByFormula: formulaVaTaskVisibleToUser(userId),
+    filterByFormula: formulaVaTaskVisibleToUser(lookupKey),
     _caller: "va-tasks.getVaTasksForUser",
   });
   return records.map(mapRecord);
