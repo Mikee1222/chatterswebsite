@@ -2,6 +2,7 @@
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { isVirtualVaTaskId } from "@/lib/recurrence";
+import { formulaTaskIdIn } from "@/lib/va-tasks-airtable-formula";
 import {
   projectPhasesForVirtualOccurrence,
   resolveVirtualPhaseSourceId,
@@ -219,26 +220,98 @@ async function resolvePhaseAssignees(
   return { assigned_va_id, assigned_va_name, assigned_model_id, assigned_model_name };
 }
 
-export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
-  if (isVirtualVaTaskId(taskId)) return [];
-  const tid = airtableFormulaString(taskId);
+function groupPhasesFromRecords(
+  phaseRecords: AirtableRecord<PhaseFields>[],
+  itemRecords: AirtableRecord<ItemFields>[],
+): Record<string, TaskPhase[]> {
+  const items = itemRecords.map(mapItem);
+  const byTaskId: Record<string, TaskPhase[]> = {};
+
+  for (const rec of phaseRecords) {
+    const taskId = (rec.fields.task_id as string)?.trim() ?? "";
+    if (!taskId) continue;
+    const stablePhaseId = (rec.fields.phase_id as string) ?? rec.id;
+    const phaseItems = items.filter((i) => i.phase_id === stablePhaseId || i.phase_id === rec.id);
+    const phase = mapPhase(rec, phaseItems);
+    if (!byTaskId[taskId]) byTaskId[taskId] = [];
+    byTaskId[taskId].push(phase);
+  }
+
+  return byTaskId;
+}
+
+async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Record<string, TaskPhase[]>> {
+  const formula = formulaTaskIdIn(taskIds);
+  if (!formula) return {};
+
   const [phaseRecords, itemRecords] = await Promise.all([
     listAllRecords<PhaseFields>(TABLE_PHASES, {
-      filterByFormula: `{task_id} = "${tid}"`,
+      filterByFormula: formula,
       sort: [{ field: "phase_number", direction: "asc" }],
     }),
     listAllRecords<ItemFields>(TABLE_ITEMS, {
-      filterByFormula: `{task_id} = "${tid}"`,
+      filterByFormula: formula,
       sort: [{ field: "sort_order", direction: "asc" }],
     }),
   ]);
 
-  const items = itemRecords.map(mapItem);
-  return phaseRecords.map((rec) => {
-    const stablePhaseId = (rec.fields.phase_id as string) ?? rec.id;
-    const phaseItems = items.filter((i) => i.phase_id === stablePhaseId || i.phase_id === rec.id);
-    return mapPhase(rec, phaseItems);
-  });
+  return groupPhasesFromRecords(phaseRecords, itemRecords);
+}
+
+export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
+  if (isVirtualVaTaskId(taskId)) return [];
+  const grouped = await fetchPhasesGroupedByTaskId([taskId]);
+  return grouped[taskId] ?? [];
+}
+
+export type TaskPhaseDisplaySpec = {
+  taskId: string;
+  sourceTaskId?: string | null;
+};
+
+/**
+ * Batch display fetch: one Airtable OR query for all real/source task ids, then per-request projection.
+ */
+export async function getPhasesForTasksDisplay(
+  specs: TaskPhaseDisplaySpec[],
+): Promise<Record<string, TaskPhase[]>> {
+  const result: Record<string, TaskPhase[]> = {};
+  const airtableIds = new Set<string>();
+  const realTaskIds: string[] = [];
+  const virtualSpecs: Array<{ taskId: string; sourceId: string }> = [];
+
+  for (const spec of specs) {
+    const id = spec.taskId.trim();
+    if (!id) continue;
+    if (!isVirtualVaTaskId(id)) {
+      realTaskIds.push(id);
+      airtableIds.add(id);
+      continue;
+    }
+    const sourceId = resolveVirtualPhaseSourceId(id, spec.sourceTaskId);
+    if (sourceId) {
+      virtualSpecs.push({ taskId: id, sourceId });
+      airtableIds.add(sourceId);
+    } else {
+      result[id] = [];
+    }
+  }
+
+  const grouped = airtableIds.size > 0 ? await fetchPhasesGroupedByTaskId([...airtableIds]) : {};
+
+  for (const id of realTaskIds) {
+    result[id] = grouped[id] ?? [];
+  }
+  for (const { taskId, sourceId } of virtualSpecs) {
+    result[taskId] = projectPhasesForVirtualOccurrence(grouped[sourceId] ?? [], taskId);
+  }
+
+  for (const spec of specs) {
+    const id = spec.taskId.trim();
+    if (id && !(id in result)) result[id] = [];
+  }
+
+  return result;
 }
 
 /**

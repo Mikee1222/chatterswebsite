@@ -512,24 +512,25 @@ export function AdminVaTasksClient({
     setProgressPhasesLoading(true);
     setProgressPhasesError(null);
     try {
-      const results = await Promise.all(
-        tasks.map(async (task) => {
-          const params = new URLSearchParams({ task_id: task.id });
-          if (task.virtual_source_task_id?.trim()) {
-            params.set("source_task_id", task.virtual_source_task_id.trim());
-          }
-          const res = await fetch(`/api/admin/task-phases?${params}`, {
-            credentials: "include",
-            cache: "no-store",
-          });
-          if (!res.ok) throw new Error("fetch failed");
-          const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-          return { taskId: task.id, phases: data.phases ?? [] };
-        }),
-      );
+      const params = new URLSearchParams({
+        task_ids: tasks.map((task) => task.id).join(","),
+      });
+      const sourceTaskIds = tasks.map((task) => task.virtual_source_task_id?.trim() ?? "");
+      if (sourceTaskIds.some((id) => id.length > 0)) {
+        params.set("source_task_ids", sourceTaskIds.join(","));
+      }
+      const res = await fetch(`/api/admin/task-phases?${params}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!res.ok) throw new Error("fetch failed");
+      const data = (await res.json().catch(() => ({}))) as {
+        phases_by_task?: Record<string, TaskPhase[]>;
+      };
+      const phasesByTask = data.phases_by_task ?? {};
       setTaskPhases((prev) => {
         const next = { ...prev };
-        for (const { taskId, phases } of results) next[taskId] = phases;
+        for (const task of tasks) next[task.id] = phasesByTask[task.id] ?? [];
         return next;
       });
     } catch {

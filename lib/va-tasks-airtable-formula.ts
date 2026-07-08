@@ -97,3 +97,16 @@ export function buildGetAllVaTasksFormula(options?: VaTasksFetchRangeOptions): s
 /** Admin List / Progress initial SSR fetch window (days before/after Athens today). */
 export const VA_TASKS_ADMIN_FETCH_PAST_DAYS = 365;
 export const VA_TASKS_ADMIN_FETCH_FUTURE_DAYS = 365;
+
+/**
+ * `task_id` text field matches any of the given ids — single OR formula for batch phase fetches.
+ */
+export function formulaTaskIdIn(taskIds: string[]): string | undefined {
+  const ids = [...new Set(taskIds.map((id) => id.trim()).filter(Boolean))];
+  if (ids.length === 0) return undefined;
+  if (ids.length === 1) {
+    return `{task_id} = "${escapeAirtableString(ids[0]!)}"`;
+  }
+  const parts = ids.map((id) => `{task_id} = "${escapeAirtableString(id)}"`);
+  return `OR(${parts.join(", ")})`;
+}

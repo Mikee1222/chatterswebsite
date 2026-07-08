@@ -3,7 +3,12 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasAnyPermission, hasPermission } from "@/lib/rbac";
 import { isVirtualVaTaskId } from "@/lib/recurrence";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createPhase, getPhasesForTaskDisplay } from "@/services/task-phases";
+import {
+  createPhase,
+  getPhasesForTaskDisplay,
+  getPhasesForTasksDisplay,
+  type TaskPhaseDisplaySpec,
+} from "@/services/task-phases";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -18,8 +23,24 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);
+  const batchTaskIds = searchParams
+    .get("task_ids")
+    ?.split(",")
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  if (batchTaskIds?.length) {
+    const sourceTaskIds = searchParams.get("source_task_ids")?.split(",") ?? [];
+    const specs: TaskPhaseDisplaySpec[] = batchTaskIds.map((taskId, index) => ({
+      taskId,
+      sourceTaskId: sourceTaskIds[index]?.trim() || null,
+    }));
+    const phasesByTask = await getPhasesForTasksDisplay(specs);
+    return NextResponse.json({ phases_by_task: phasesByTask });
+  }
+
   const taskId = searchParams.get("task_id")?.trim();
-  if (!taskId) return NextResponse.json({ error: "task_id required" }, { status: 400 });
+  if (!taskId) return NextResponse.json({ error: "task_id or task_ids required" }, { status: 400 });
   const explicitSource = searchParams.get("source_task_id")?.trim() || null;
   const phases = await getPhasesForTaskDisplay(
     taskId,
