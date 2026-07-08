@@ -1,18 +1,15 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import {
+  filterValidAuthRoleSlugs,
+  findInvalidAuthRoleSlugs,
+  getKnownAuthRoleIds,
+} from "@/lib/sop-auth-roles";
 import { hasPermission } from "@/lib/rbac";
 import { createSopRole, getAllSopRolesAdmin } from "@/services/sops";
 
 const colorSchema = z.enum(["blue", "pink", "green", "orange", "purple", "gray"]);
-const authRoleSchema = z.enum([
-  "admin",
-  "manager",
-  "chatter",
-  "virtual_assistant",
-  "model",
-  "client",
-]);
 
 const postSchema = z.object({
   name: z.string().trim().min(1).max(200),
@@ -20,7 +17,7 @@ const postSchema = z.object({
   description: z.string().max(8000).optional().default(""),
   icon: z.string().max(32).optional().default(""),
   color: colorSchema.optional().default("gray"),
-  auth_roles: z.array(authRoleSchema).optional().default([]),
+  auth_roles: z.array(z.string().trim().min(1)).optional().default([]),
   assigned_user_ids: z.array(z.string().trim().min(1)).optional().default([]),
   academy_mode: z.boolean().optional().default(false),
   department_id: z.string().trim().optional().default(""),
@@ -57,6 +54,16 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.flatten().fieldErrors }, { status: 400 });
   }
 
+  const knownAuthRoles = await getKnownAuthRoleIds();
+  const invalidAuthRoles = findInvalidAuthRoleSlugs(parsed.data.auth_roles, knownAuthRoles);
+  if (invalidAuthRoles.length > 0) {
+    return NextResponse.json(
+      { error: { auth_roles: [`Unknown role(s): ${invalidAuthRoles.join(", ")}`] } },
+      { status: 400 }
+    );
+  }
+  const auth_roles = filterValidAuthRoleSlugs(parsed.data.auth_roles, knownAuthRoles);
+
   try {
     const existing = await getAllSopRolesAdmin();
     const maxSort = existing.reduce((m, r) => Math.max(m, r.sort_order), 0);
@@ -67,7 +74,7 @@ export async function POST(req: Request) {
       description: parsed.data.description,
       icon: parsed.data.icon,
       color: parsed.data.color,
-      auth_roles: parsed.data.auth_roles,
+      auth_roles,
       assigned_user_ids: parsed.data.assigned_user_ids,
       academy_mode: parsed.data.academy_mode,
       department_id: parsed.data.department_id,

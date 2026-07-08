@@ -138,7 +138,8 @@ export default async function VaHomePage() {
     getVaTasksForUser(vaId).catch(() => []),
     getAcademyResumeForMember(vaId, {
       airtableUserId: user.airtableUserId,
-      staffRole: "virtual_assistant",
+      memberRole: user.role,
+      secondaryRole: "virtual_assistant",
     }).catch(() => null),
   ]);
 

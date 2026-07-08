@@ -11,7 +11,6 @@ import {
 } from "@/services/sops";
 import { SopViewerClient } from "@/components/sop-viewer-client";
 import { getCertificationBadgesForMember } from "@/lib/sop-academy";
-import type { SopAuthRole } from "@/types";
 
 export default async function SopsPage() {
   const user = await getSessionFromCookies();
@@ -25,20 +24,19 @@ export default async function SopsPage() {
     await assertVaTypeCanAccessNavHref(user, ROUTES.sops);
   }
 
-  const staffAuthRole = staffRole as SopAuthRole;
-
   const [allRoles, departments] = await Promise.all([
     getAllSopRoles().catch(() => []),
     getAllSopDepartments().catch(() => []),
   ]);
 
+  const memberMatch = {
+    airtableUserId: user.airtableUserId,
+    memberRole: user.role,
+    secondaryRole: staffRole,
+  };
+
   const matchedRoles = allRoles
-    .filter((role) =>
-      sopRoleMatchesMember(role, {
-        airtableUserId: user.airtableUserId,
-        staffRole: staffAuthRole,
-      })
-    )
+    .filter((role) => sopRoleMatchesMember(role, memberMatch))
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 
   const userId = user.airtableUserId ?? user.id;
@@ -50,10 +48,7 @@ export default async function SopsPage() {
         functions: await getFunctionsByRole(role.id).catch(() => []),
       }))
     ),
-    getCertificationBadgesForMember(userId, {
-      airtableUserId: user.airtableUserId,
-      staffRole: staffAuthRole,
-    }).catch(() => []),
+    getCertificationBadgesForMember(userId, memberMatch).catch(() => []),
   ]);
 
   return (

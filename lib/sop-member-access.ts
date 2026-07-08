@@ -1,7 +1,7 @@
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSopRoleById, sopRoleMatchesMember } from "@/services/sops";
 import type { AuthUser } from "@/lib/auth-config";
-import type { SopAuthRole, SopRole } from "@/types";
+import type { SopRole } from "@/types";
 
 const MEMBER_STAFF_ROLES = new Set(["chatter", "virtual_assistant"]);
 
@@ -18,11 +18,12 @@ export async function getMemberAccessibleSopRole(
   const role = await getSopRoleById(roleRecordId);
   if (!role || !role.is_active) return null;
 
-  const staffRole = getEffectiveStaffRole(session) as SopAuthRole | null;
+  const staffRole = getEffectiveStaffRole(session);
   if (
     !sopRoleMatchesMember(role, {
       airtableUserId: session.airtableUserId,
-      staffRole,
+      memberRole: session.role,
+      secondaryRole: staffRole && staffRole !== session.role ? staffRole : session.secondary_role,
     })
   ) {
     return null;

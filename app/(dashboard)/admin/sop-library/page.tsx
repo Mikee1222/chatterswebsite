@@ -4,15 +4,23 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getAllSopDepartmentsAdmin, getAllSopRolesAdmin } from "@/services/sops";
+import { getRoles } from "@/services/roles";
 import { AdminSopLibraryClient } from "@/components/admin-sop-library-client";
 
 export default async function AdminSopLibraryPage() {
   const session = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SOPS_MANAGE);
 
-  const [departments, roles] = await Promise.all([
+  const [departments, roles, rbacRoles] = await Promise.all([
     getAllSopDepartmentsAdmin().catch(() => []),
     getAllSopRolesAdmin().catch(() => []),
+    getRoles().catch(() => []),
   ]);
 
-  return <AdminSopLibraryClient initialDepartments={departments} initialRoles={roles} />;
+  return (
+    <AdminSopLibraryClient
+      initialDepartments={departments}
+      initialRoles={roles}
+      rbacRoles={rbacRoles}
+    />
+  );
 }

@@ -440,14 +440,6 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   sop_roles: {
     color: new Set(["blue", "pink", "green", "orange", "purple", "gray"]),
-    auth_roles: new Set([
-      "admin",
-      "manager",
-      "chatter",
-      "virtual_assistant",
-      "model",
-      "client",
-    ]),
   },
   sop_functions: {
     cadence_type: new Set(["daily", "weekly", "monthly"]),

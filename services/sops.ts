@@ -1,3 +1,5 @@
+import { syncSopAuthRoleOptionsSafe } from "@/lib/airtable-role-field-sync";
+import { normalizeAuthRoleSlugs } from "@/lib/sop-auth-roles";
 import {
   listRecords,
   listAllRecords,
@@ -66,14 +68,14 @@ const SOP_COLORS: readonly SopColor[] = [
   "gray",
 ];
 
-const SOP_AUTH_ROLES: readonly SopAuthRole[] = [
-  "admin",
-  "manager",
-  "chatter",
-  "virtual_assistant",
-  "model",
-  "client",
-];
+function authRoleMatches(stored: string, candidate: string): boolean {
+  return stored.trim().toLowerCase() === candidate.trim().toLowerCase();
+}
+
+function coerceAuthRoles(v: unknown): SopAuthRole[] {
+  if (!Array.isArray(v)) return [];
+  return normalizeAuthRoleSlugs(v.filter((x): x is string => typeof x === "string"));
+}
 
 const CADENCE_TYPES: readonly CadenceType[] = ["daily", "weekly", "monthly"];
 
@@ -150,13 +152,6 @@ function coerceSortOrder(v: unknown): number {
 function coerceSopColor(v: unknown): SopColor {
   const s = String(v ?? "").trim() as SopColor;
   return SOP_COLORS.includes(s) ? s : "gray";
-}
-
-function coerceAuthRoles(v: unknown): SopAuthRole[] {
-  if (!Array.isArray(v)) return [];
-  return v.filter((x): x is SopAuthRole =>
-    typeof x === "string" && (SOP_AUTH_ROLES as readonly string[]).includes(x)
-  );
 }
 
 function coerceCadenceType(v: unknown): CadenceType {
@@ -338,14 +333,13 @@ export function getSopRoleMemberUserIds(role: SopRole, users: UserRecord[]): str
   for (const u of users) {
     if ((u.status ?? "").toLowerCase() === "inactive") continue;
     if (ids.has(u.id)) continue;
-    const primary = u.role as SopAuthRole;
-    if (role.auth_roles.includes(primary)) {
+    const primary = String(u.role ?? "").trim();
+    if (primary && role.auth_roles.some((ar) => authRoleMatches(ar, primary))) {
       ids.add(u.id);
       continue;
     }
-    if (u.secondary_role === "virtual_assistant" && role.auth_roles.includes("virtual_assistant")) {
-      ids.add(u.id);
-    } else if (u.secondary_role === "chatter" && role.auth_roles.includes("chatter")) {
+    const secondary = String(u.secondary_role ?? "").trim();
+    if (secondary && role.auth_roles.some((ar) => authRoleMatches(ar, secondary))) {
       ids.add(u.id);
     }
   }
@@ -355,11 +349,18 @@ export function getSopRoleMemberUserIds(role: SopRole, users: UserRecord[]): str
 /** Whether an active SOP role applies to the signed-in member (assigned user or auth role). */
 export function sopRoleMatchesMember(
   role: SopRole,
-  opts: { airtableUserId: string | null; staffRole: SopAuthRole | null }
+  opts: {
+    airtableUserId: string | null;
+    memberRole: string | null;
+    secondaryRole?: string | null;
+  }
 ): boolean {
   const userId = opts.airtableUserId?.trim();
   if (userId && role.assigned_user_ids.includes(userId)) return true;
-  if (opts.staffRole && role.auth_roles.includes(opts.staffRole)) return true;
+  const primary = opts.memberRole?.trim();
+  if (primary && role.auth_roles.some((ar) => authRoleMatches(ar, primary))) return true;
+  const secondary = opts.secondaryRole?.trim();
+  if (secondary && role.auth_roles.some((ar) => authRoleMatches(ar, secondary))) return true;
   return false;
 }
 
@@ -407,6 +408,10 @@ export async function getSopRoleBySlug(slug: string): Promise<SopRole | null> {
 export async function createSopRole(
   data: Omit<SopRole, "id" | "role_id" | "created_at">
 ): Promise<SopRole> {
+  const auth_roles = normalizeAuthRoleSlugs(data.auth_roles);
+  if (auth_roles.length > 0) {
+    await syncSopAuthRoleOptionsSafe(auth_roles);
+  }
   const fields: Record<string, unknown> = {
     role_id: genStableId("sop_role"),
     name: data.name,
@@ -414,7 +419,7 @@ export async function createSopRole(
     description: data.description,
     icon: data.icon,
     color: data.color,
-    auth_roles: data.auth_roles,
+    auth_roles,
     academy_mode: data.academy_mode,
     sort_order: data.sort_order,
     is_active: data.is_active,
@@ -439,7 +444,13 @@ export async function updateSopRole(
   if (data.description !== undefined) fields.description = data.description;
   if (data.icon !== undefined) fields.icon = data.icon;
   if (data.color !== undefined) fields.color = data.color;
-  if (data.auth_roles !== undefined) fields.auth_roles = data.auth_roles;
+  if (data.auth_roles !== undefined) {
+    const auth_roles = normalizeAuthRoleSlugs(data.auth_roles);
+    if (auth_roles.length > 0) {
+      await syncSopAuthRoleOptionsSafe(auth_roles);
+    }
+    fields.auth_roles = auth_roles;
+  }
   if (data.academy_mode !== undefined) fields.academy_mode = data.academy_mode;
   if (data.sort_order !== undefined) fields.sort_order = data.sort_order;
   if (data.is_active !== undefined) fields.is_active = data.is_active;

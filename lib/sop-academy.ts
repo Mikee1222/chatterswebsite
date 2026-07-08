@@ -7,18 +7,23 @@ import {
 } from "@/services/sops";
 import type {
   SopAcademyResume,
-  SopAuthRole,
   SopCertificationBadge,
   SopFunction,
   SopRole,
 } from "@/types";
+
+type SopMemberMatchOpts = {
+  airtableUserId: string | null;
+  memberRole: string;
+  secondaryRole?: string | null;
+};
 
 function sortFunctions(items: SopFunction[]): SopFunction[] {
   return [...items].sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
 }
 
 export async function getMatchedAcademyRoles(
-  opts: { airtableUserId: string | null; staffRole: SopAuthRole }
+  opts: SopMemberMatchOpts
 ): Promise<SopRole[]> {
   const allRoles = await getAllSopRoles().catch(() => []);
   return allRoles
@@ -27,7 +32,8 @@ export async function getMatchedAcademyRoles(
         role.academy_mode &&
         sopRoleMatchesMember(role, {
           airtableUserId: opts.airtableUserId,
-          staffRole: opts.staffRole,
+          memberRole: opts.memberRole,
+          secondaryRole: opts.secondaryRole,
         })
     )
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name));
@@ -36,7 +42,7 @@ export async function getMatchedAcademyRoles(
 /** First incomplete academy role for resume banner (lowest sort_order). */
 export async function getAcademyResumeForMember(
   userRecordId: string,
-  opts: { airtableUserId: string | null; staffRole: SopAuthRole }
+  opts: SopMemberMatchOpts
 ): Promise<SopAcademyResume | null> {
   const userId = userRecordId.trim();
   if (!userId) return null;
@@ -77,7 +83,7 @@ function isRoleCertified(signoffAt: string | null): boolean {
 /** Certification badges derived from progress + signoffs (no extra table). */
 export async function getCertificationBadgesForMember(
   userRecordId: string,
-  opts: { airtableUserId: string | null; staffRole: SopAuthRole }
+  opts: SopMemberMatchOpts
 ): Promise<SopCertificationBadge[]> {
   const userId = userRecordId.trim();
   if (!userId) return [];

@@ -136,14 +136,8 @@ export type VaRecurrenceDay =
 /** SOP Library — `sop_departments.color` / `sop_roles.color` single-select options. */
 export type SopColor = "blue" | "pink" | "green" | "orange" | "purple" | "gray";
 
-/** SOP Library — `sop_roles.auth_roles` multi-select options. */
-export type SopAuthRole =
-  | "admin"
-  | "manager"
-  | "chatter"
-  | "virtual_assistant"
-  | "model"
-  | "client";
+/** SOP Library — RBAC role slug in `sop_roles.auth_roles` (system or custom). */
+export type SopAuthRole = string;
 
 /** SOP Library — `sop_functions.cadence_type` single-select options. */
 export type CadenceType = "daily" | "weekly" | "monthly";

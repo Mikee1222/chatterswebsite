@@ -84,6 +84,7 @@ import type {
   SopQuizQuestion,
   SopQuizCorrectOption,
   SopFeedbackSummary,
+  RoleRecord,
 } from "@/types";
 
 function localToast(
@@ -112,23 +113,14 @@ const SOP_COLORS: SopColor[] = ["blue", "pink", "green", "orange", "purple", "gr
 
 const SOP_MODAL_CLASS = "sop-modal-panel md:rounded-2xl";
 
-const AUTH_ROLES: SopAuthRole[] = [
-  "admin",
-  "manager",
-  "chatter",
-  "virtual_assistant",
-  "model",
-  "client",
-];
-
-const AUTH_ROLE_LABELS: Record<SopAuthRole, string> = {
-  admin: "Admin",
-  manager: "Manager",
-  chatter: "Chatter",
-  virtual_assistant: "Virtual assistant",
-  model: "Model",
-  client: "Client",
-};
+function sortRbacRolesForAccess(roles: RoleRecord[]): RoleRecord[] {
+  return [...roles].sort((a, b) => {
+    if (a.is_system_role !== b.is_system_role) {
+      return a.is_system_role ? -1 : 1;
+    }
+    return a.label.localeCompare(b.label);
+  });
+}
 
 type PickUser = { id: string; name: string; role: string };
 
@@ -661,9 +653,10 @@ function emptyQuizDraft() {
 type Props = {
   initialDepartments: SopDepartment[];
   initialRoles: SopRole[];
+  rbacRoles: RoleRecord[];
 };
 
-export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Props) {
+export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRoles }: Props) {
   const { addToast } = useToast();
   const [mainTab, setMainTab] = React.useState<"overview" | "library">("overview");
   const [departments, setDepartments] = React.useState(() => sortDepartments(initialDepartments));
@@ -671,6 +664,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   const [deptOpen, setDeptOpen] = React.useState(true);
   const [selectedRole, setSelectedRole] = React.useState<SopRole | null>(null);
   const [functions, setFunctions] = React.useState<SopFunction[]>([]);
+  const [collapsedFnGroups, setCollapsedFnGroups] = React.useState<Set<string>>(() => new Set());
   const [loadingFunctions, setLoadingFunctions] = React.useState(false);
   const [roleDetailTab, setRoleDetailTab] = React.useState<"functions" | "progress">("functions");
   const [progressRows, setProgressRows] = React.useState<SopProgressUserSummary[]>([]);
@@ -726,7 +720,7 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
   >(null);
   const [deleteImpactLoading, setDeleteImpactLoading] = React.useState(false);
   const [deleteLoading, setDeleteLoading] = React.useState(false);
-  const [collapsedFnGroups, setCollapsedFnGroups] = React.useState<Set<string>>(new Set());
+  const accessRoles = React.useMemo(() => sortRbacRolesForAccess(rbacRoles), [rbacRoles]);
 
   React.useEffect(() => {
     setDepartments(sortDepartments(initialDepartments));
@@ -2545,20 +2539,26 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles }: Prop
                   <div>
                     <SopFormLabel className="mb-3">Auth roles (who can see)</SopFormLabel>
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {AUTH_ROLES.map((ar) => (
+                      {accessRoles.map((rbacRole) => (
                         <Checkbox
-                          key={ar}
+                          key={rbacRole.role_id}
                           className="min-h-[44px] rounded-xl border border-white/8 bg-white/[0.02] px-3 py-2.5"
-                          checked={roleForm.auth_roles.includes(ar)}
+                          checked={roleForm.auth_roles.some(
+                            (ar) => ar.toLowerCase() === rbacRole.role_id.toLowerCase()
+                          )}
                           onChange={(e) => {
                             setRoleForm((f) => ({
                               ...f,
                               auth_roles: e.target.checked
-                                ? [...f.auth_roles, ar]
-                                : f.auth_roles.filter((x) => x !== ar),
+                                ? [...f.auth_roles.filter(
+                                    (x) => x.toLowerCase() !== rbacRole.role_id.toLowerCase()
+                                  ), rbacRole.role_id]
+                                : f.auth_roles.filter(
+                                    (x) => x.toLowerCase() !== rbacRole.role_id.toLowerCase()
+                                  ),
                             }));
                           }}
-                          label={AUTH_ROLE_LABELS[ar]}
+                          label={rbacRole.label}
                         />
                       ))}
                     </div>

@@ -80,7 +80,8 @@ export default async function ChatterHomePage() {
     getMonthlyTargetByTeamMemberAndMonth(chatterId, currentMonthKey).catch(() => null),
     getAcademyResumeForMember(chatterId, {
       airtableUserId: user.airtableUserId,
-      staffRole: "chatter",
+      memberRole: user.role,
+      secondaryRole: "chatter",
     }).catch(() => null),
   ]);
 

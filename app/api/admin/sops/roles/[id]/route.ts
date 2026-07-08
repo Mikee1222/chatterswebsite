@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import {
+  filterValidAuthRoleSlugs,
+  findInvalidAuthRoleSlugs,
+  getKnownAuthRoleIds,
+} from "@/lib/sop-auth-roles";
 import { hasPermission } from "@/lib/rbac";
 import { deleteSopRole, getRoleDeleteImpact, updateSopRole } from "@/services/sops";
 
@@ -10,11 +15,7 @@ const patchSchema = z.object({
   description: z.string().max(8000).optional(),
   icon: z.string().max(32).optional(),
   color: z.enum(["blue", "pink", "green", "orange", "purple", "gray"]).optional(),
-  auth_roles: z
-    .array(
-      z.enum(["admin", "manager", "chatter", "virtual_assistant", "model", "client"])
-    )
-    .optional(),
+  auth_roles: z.array(z.string().trim().min(1)).optional(),
   assigned_user_ids: z.array(z.string().trim().min(1)).optional(),
   academy_mode: z.boolean().optional(),
   department_id: z.string().trim().optional(),
@@ -44,8 +45,21 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "No changes" }, { status: 400 });
   }
 
+  const patchData = { ...parsed.data };
+  if (parsed.data.auth_roles !== undefined) {
+    const knownAuthRoles = await getKnownAuthRoleIds();
+    const invalidAuthRoles = findInvalidAuthRoleSlugs(parsed.data.auth_roles, knownAuthRoles);
+    if (invalidAuthRoles.length > 0) {
+      return NextResponse.json(
+        { error: { auth_roles: [`Unknown role(s): ${invalidAuthRoles.join(", ")}`] } },
+        { status: 400 }
+      );
+    }
+    patchData.auth_roles = filterValidAuthRoleSlugs(parsed.data.auth_roles, knownAuthRoles);
+  }
+
   try {
-    const updated = await updateSopRole(id, parsed.data);
+    const updated = await updateSopRole(id, patchData);
     return NextResponse.json({ success: true, role: updated });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
