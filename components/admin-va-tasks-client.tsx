@@ -125,6 +125,11 @@ function fromDatetimeLocal(s: string): string | undefined {
   return new Date(t).toISOString();
 }
 
+/** Default due date/time for new tasks — local "now", so List view (Athens day filter) shows them today. */
+function defaultDueDatetimeLocal(): string {
+  return toDatetimeLocalValue(new Date().toISOString());
+}
+
 function isPastDue(isoLike: string | null | undefined): boolean {
   if (!isoLike?.trim()) return false;
   const t = new Date(isoLike.trim()).getTime();
@@ -410,6 +415,8 @@ export function AdminVaTasksClient({
 
   const openCreate = () => {
     resetTaskModal();
+    // New tasks must land on today's List view — blank due_date is filtered out by Athens date nav.
+    setDueLocal(defaultDueDatetimeLocal());
     void loadTemplateOptions();
     setModalOpen(true);
   };
@@ -754,7 +761,12 @@ export function AdminVaTasksClient({
     setSaving(true);
     setError(null);
     const assigned = assignAll ? [] : assignedTo;
-    const dueIso = dueLocal ? fromDatetimeLocal(dueLocal) : undefined;
+    // Create without an explicit due date used to omit the field entirely; List date filter then
+    // never matched. Default to "now" on create (edit may still clear/leave blank intentionally).
+    let dueIso = dueLocal ? fromDatetimeLocal(dueLocal) : undefined;
+    if (!editingId && !dueIso) {
+      dueIso = fromDatetimeLocal(defaultDueDatetimeLocal());
+    }
     const interval = isRecurring ? recurrenceIntervalNum : null;
 
     if (usingTemplate) {
@@ -1445,11 +1457,15 @@ export function AdminVaTasksClient({
                 <SectionLabel icon="" label="Schedule" />
                 <div className="space-y-3">
                   <div>
-                    <label className="mb-1.5 block text-xs font-medium text-white/40">Due date &amp; time</label>
+                    <label className="mb-1.5 block text-xs font-medium text-white/40">
+                      Due date &amp; time
+                      {!editingId ? <span className="text-white/25"> (defaults to now)</span> : null}
+                    </label>
                     <input
                       type="datetime-local"
                       value={dueLocal}
                       onChange={(e) => setDueLocal(e.target.value)}
+                      required={!editingId}
                       className={cn(ADMIN_MODAL_INPUT, "[color-scheme:dark]")}
                     />
                   </div>
