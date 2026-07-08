@@ -95,137 +95,126 @@ async function createTableIfMissing(
   return created.id;
 }
 
+/** Full multi-platform work cycle (IG + FB + Snapchat). Phase 2 duplicates this list. */
+const DAILY_MARKETING_WORK_CYCLE_ITEMS = [
+  {
+    title: "Mobile Data",
+    description: "Σιγουρέψου ότι έχεις ανοιχτά Mobile Data",
+    step_type: "IP Check",
+    requires_screenshot: false,
+  },
+  {
+    title: "IG Scroll Time",
+    description: "Πόση ώρα scrollάρισες — στόχος τουλάχιστον 15 λεπτά",
+    step_type: "Warm-up",
+    requires_screenshot: false,
+  },
+  {
+    title: "Post IG reel & IG story",
+    description: "",
+    step_type: "Posting",
+    requires_screenshot: false,
+  },
+  {
+    title: "Post daily story",
+    description: "Ολοκληρώθηκε το IG για αυτό το Phase",
+    step_type: "Posting",
+    requires_screenshot: false,
+  },
+  {
+    title: "Snapchat Public story post",
+    description: "",
+    step_type: "Posting",
+    requires_screenshot: false,
+  },
+  {
+    title: "1 story",
+    description: "Εναλλάξ μια μέρα τοπίο, την άλλη μέρα screenshot από IG/Telegram",
+    step_type: "Posting",
+    requires_screenshot: false,
+  },
+  {
+    title: "Spotlight post (Snapchat)",
+    description: "",
+    step_type: "Posting",
+    requires_screenshot: false,
+  },
+  {
+    title: "Post reel & daily story (FB)",
+    description: "",
+    step_type: "Posting",
+    requires_screenshot: false,
+  },
+  {
+    title: "10 Follows IG",
+    description: "Potential Sub Profiles",
+    step_type: "Engagement",
+    requires_screenshot: false,
+  },
+  {
+    title: "25 follows IG",
+    description: "5 σε Creators για niche-down του account μας και 20 σε potential subs",
+    step_type: "Engagement",
+    requires_screenshot: false,
+  },
+  {
+    title: "Add + accept 30 Friends Snapchat",
+    description: "Accept και add 30 friends — χωρίς spam",
+    step_type: "Engagement",
+    requires_screenshot: false,
+  },
+  {
+    title: "FB Friends",
+    description: "Add 20 friends (potential subs) + accept requests",
+    step_type: "Engagement",
+    requires_screenshot: false,
+  },
+  {
+    title: "FB Friends 2nd round",
+    description: "Add 20 ακόμα friends (potential subs)",
+    step_type: "Engagement",
+    requires_screenshot: false,
+  },
+  {
+    title: "IG Engagement comments",
+    description: "Στο scroll time βρες 2 videos για engagement comments",
+    step_type: "Engagement",
+    requires_screenshot: true,
+  },
+  {
+    title: "Reply σε δικά μας comments",
+    description: "Τουλάχιστον 3-5 replies — στόχος να ανέβει το engagement",
+    step_type: "Engagement",
+    requires_screenshot: true,
+  },
+  {
+    title: "Reply σε comments των βίντεο μας",
+    description: "Στόχος να ανέβει το engagement",
+    step_type: "Engagement",
+    requires_screenshot: false,
+  },
+] as const;
+
+function dailyMarketingCyclePhase(phaseNumber: 1 | 2) {
+  return {
+    title: `Phase ${phaseNumber}`,
+    description:
+      phaseNumber === 1
+        ? "Work cycle 1 — full multi-platform checklist (Instagram + Facebook + Snapchat)."
+        : "Work cycle 2 — same checklist as Phase 1 (fresh IP check + full round).",
+    items: DAILY_MARKETING_WORK_CYCLE_ITEMS.map((item, i) => ({
+      ...item,
+      sort_order: i,
+    })),
+  };
+}
+
 const DAILY_MARKETING_SEED = {
   name: "Daily Marketing Routine",
   description:
-    "Standard daily marketing workflow for Greek VAs: IP check, warm-up, posting, engagement, and end-of-day notes.",
+    "Standard daily marketing workflow for Greek VAs: two full multi-platform work cycles (IG + FB + Snapchat).",
   category: "marketing" as const,
-  phases: [
-    {
-      title: "Phase 1",
-      description: "",
-      items: [
-        {
-          title: "Mobile Data",
-          description: "Σιγουρέψου ότι έχεις ανοιχτά Mobile Data",
-          step_type: "IP Check",
-          requires_screenshot: false,
-          sort_order: 0,
-        },
-        {
-          title: "IG Scroll Time",
-          description: "Πόση ώρα scrollάρισες — στόχος τουλάχιστον 15 λεπτά",
-          step_type: "Warm-up",
-          requires_screenshot: false,
-          sort_order: 1,
-        },
-        {
-          title: "IG Engagement comments",
-          description: "Στο scroll time βρες 2 videos για engagement comments",
-          step_type: "Engagement",
-          requires_screenshot: true,
-          sort_order: 2,
-        },
-        {
-          title: "10 Follows IG",
-          description: "Potential Sub Profiles",
-          step_type: "Engagement",
-          requires_screenshot: false,
-          sort_order: 3,
-        },
-        {
-          title: "Post IG reel & IG story",
-          description: "",
-          step_type: "Posting",
-          requires_screenshot: false,
-          sort_order: 4,
-        },
-        {
-          title: "Reply σε δικά μας comments",
-          description: "Τουλάχιστον 3-5 replies — στόχος να ανέβει το engagement",
-          step_type: "Engagement",
-          requires_screenshot: true,
-          sort_order: 5,
-        },
-        {
-          title: "25 follows IG",
-          description: "5 σε Creators για niche-down του account μας και 20 σε potential subs",
-          step_type: "Engagement",
-          requires_screenshot: false,
-          sort_order: 6,
-        },
-        {
-          title: "Post daily story",
-          description: "Ολοκληρώθηκε το IG για αυτό το Phase",
-          step_type: "Posting",
-          requires_screenshot: false,
-          sort_order: 7,
-        },
-      ],
-    },
-    {
-      title: "Phase 2",
-      description: "",
-      items: [
-        {
-          title: "Snapchat Public story post",
-          description: "",
-          step_type: "Posting",
-          requires_screenshot: false,
-          sort_order: 0,
-        },
-        {
-          title: "1 story",
-          description: "Εναλλάξ μια μέρα τοπίο, την άλλη μέρα screenshot από IG/Telegram",
-          step_type: "Posting",
-          requires_screenshot: false,
-          sort_order: 1,
-        },
-        {
-          title: "Spotlight post (Snapchat)",
-          description: "",
-          step_type: "Posting",
-          requires_screenshot: false,
-          sort_order: 2,
-        },
-        {
-          title: "Add + accept 30 Friends Snapchat",
-          description: "Accept και add 30 friends — χωρίς spam",
-          step_type: "Engagement",
-          requires_screenshot: false,
-          sort_order: 3,
-        },
-        {
-          title: "FB Friends",
-          description: "Add 20 friends (potential subs) + accept requests",
-          step_type: "Engagement",
-          requires_screenshot: false,
-          sort_order: 4,
-        },
-        {
-          title: "Post reel & daily story (FB)",
-          description: "",
-          step_type: "Posting",
-          requires_screenshot: false,
-          sort_order: 5,
-        },
-        {
-          title: "Reply σε comments των βίντεο μας",
-          description: "Στόχος να ανέβει το engagement",
-          step_type: "Engagement",
-          requires_screenshot: false,
-          sort_order: 6,
-        },
-        {
-          title: "FB Friends 2nd round",
-          description: "Add 20 ακόμα friends (potential subs)",
-          step_type: "Engagement",
-          requires_screenshot: false,
-          sort_order: 7,
-        },
-      ],
-    },
-  ],
+  phases: [dailyMarketingCyclePhase(1), dailyMarketingCyclePhase(2)],
 };
 
 async function seedDailyMarketing(
