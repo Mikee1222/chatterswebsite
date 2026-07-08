@@ -694,7 +694,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                 </button>
               ) : null}
               {recurringGroups.map((group) => (
-                <div key={group.title}>
+                <div key={group.seriesKey}>
                   {group.currentTask ? (
                     <VaTaskCard
                       key={group.currentTask.id}
@@ -726,17 +726,17 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
                       onClick={() => {
                         setExpandedVaRecurringHistory((prev) => {
                           const next = new Set(prev);
-                          if (next.has(group.title)) next.delete(group.title);
-                          else next.add(group.title);
+                          if (next.has(group.seriesKey)) next.delete(group.seriesKey);
+                          else next.add(group.seriesKey);
                           return next;
                         });
                       }}
                       className="ml-2 mt-1 text-xs text-white/25 hover:text-white/50"
                     >
-                      {expandedVaRecurringHistory.has(group.title) ? "Hide" : "Show"} history ({group.totalCompleted})
+                      {expandedVaRecurringHistory.has(group.seriesKey) ? "Hide" : "Show"} history ({group.totalCompleted})
                     </button>
                   ) : null}
-                  {expandedVaRecurringHistory.has(group.title) ? (
+                  {expandedVaRecurringHistory.has(group.seriesKey) ? (
                     <div className="ml-3 mt-2 space-y-1 border-l border-purple-500/20 pl-3">
                       {group.history.map((histTask) => (
                         <div key={histTask.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 opacity-50">

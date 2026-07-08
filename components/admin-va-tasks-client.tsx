@@ -578,11 +578,11 @@ export function AdminVaTasksClient({
 
   const [expandedRecurringHistory, setExpandedRecurringHistory] = React.useState(() => new Set<string>());
 
-  function toggleRecurringHistory(title: string) {
+  function toggleRecurringHistory(seriesKey: string) {
     setExpandedRecurringHistory((prev) => {
       const next = new Set(prev);
-      if (next.has(title)) next.delete(title);
-      else next.add(title);
+      if (next.has(seriesKey)) next.delete(seriesKey);
+      else next.add(seriesKey);
       return next;
     });
   }
@@ -1215,7 +1215,7 @@ export function AdminVaTasksClient({
             </button>
           ) : null}
           {recurringGroups.map((group) => (
-            <div key={group.title} className="mb-3 md:col-span-2">
+            <div key={group.seriesKey} className="mb-3 md:col-span-2">
               {group.currentTask ? (
                 renderTaskCard(group.currentTask)
               ) : (
@@ -1233,13 +1233,13 @@ export function AdminVaTasksClient({
               {group.history.length > 0 ? (
                 <button
                   type="button"
-                  onClick={() => toggleRecurringHistory(group.title)}
+                  onClick={() => toggleRecurringHistory(group.seriesKey)}
                   className="flex w-full items-center gap-2 px-4 py-2 text-xs text-white/30 transition-colors hover:text-white/60"
                 >
                   <div
                     className={cn(
                       "transition-transform",
-                      expandedRecurringHistory.has(group.title) ? "rotate-90" : "",
+                      expandedRecurringHistory.has(group.seriesKey) ? "rotate-90" : "",
                     )}
                   >
                     ▶
@@ -1248,7 +1248,7 @@ export function AdminVaTasksClient({
                   <div className="ml-2 h-px flex-1 bg-white/8" />
                 </button>
               ) : null}
-              {expandedRecurringHistory.has(group.title) ? (
+              {expandedRecurringHistory.has(group.seriesKey) ? (
                 <div className="mb-3 ml-4 mt-1 space-y-2 border-l border-white/10 pl-4">
                   {group.history.map((histTask) => (
                     <div
