@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasAnyPermission, hasPermission } from "@/lib/rbac";
+import { isVirtualVaTaskId } from "@/lib/recurrence";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createPhase, getPhasesByTask } from "@/services/task-phases";
+import { createPhase, getPhasesForTaskDisplay } from "@/services/task-phases";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
@@ -17,9 +18,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { searchParams } = new URL(req.url);
-  const taskId = searchParams.get("task_id");
+  const taskId = searchParams.get("task_id")?.trim();
   if (!taskId) return NextResponse.json({ error: "task_id required" }, { status: 400 });
-  const phases = await getPhasesByTask(taskId);
+  const explicitSource = searchParams.get("source_task_id")?.trim() || null;
+  const phases = await getPhasesForTaskDisplay(
+    taskId,
+    explicitSource ?? (isVirtualVaTaskId(taskId) ? null : undefined),
+  );
   return NextResponse.json({ phases });
 }
 

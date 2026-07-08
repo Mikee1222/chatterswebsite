@@ -1,6 +1,11 @@
 "use server";
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isVirtualVaTaskId } from "@/lib/recurrence";
+import {
+  projectPhasesForVirtualOccurrence,
+  resolveVirtualPhaseSourceId,
+} from "@/lib/va-virtual-phases";
 import { getUserByAirtableId } from "@/services/users";
 import { coerceTaskStepType, DEFAULT_TASK_STEP_TYPE, type TaskStepType } from "@/lib/task-step-types";
 import { getVaTaskById } from "@/services/va-tasks";
@@ -215,6 +220,7 @@ async function resolvePhaseAssignees(
 }
 
 export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
+  if (isVirtualVaTaskId(taskId)) return [];
   const tid = airtableFormulaString(taskId);
   const [phaseRecords, itemRecords] = await Promise.all([
     listAllRecords<PhaseFields>(TABLE_PHASES, {
@@ -233,6 +239,25 @@ export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
     const phaseItems = items.filter((i) => i.phase_id === stablePhaseId || i.phase_id === rec.id);
     return mapPhase(rec, phaseItems);
   });
+}
+
+/**
+ * Phases for UI display. Virtual `virt_*` task ids project the source recurring
+ * row’s phase+item structure as pending preview (same shape clonePhasesToTask uses),
+ * without writing to Airtable.
+ */
+export async function getPhasesForTaskDisplay(
+  taskId: string,
+  explicitSourceTaskId?: string | null,
+): Promise<TaskPhase[]> {
+  const id = taskId.trim();
+  if (!id) return [];
+  if (!isVirtualVaTaskId(id)) return getPhasesByTask(id);
+
+  const sourceId = resolveVirtualPhaseSourceId(id, explicitSourceTaskId);
+  if (!sourceId) return [];
+  const sourcePhases = await getPhasesByTask(sourceId);
+  return projectPhasesForVirtualOccurrence(sourcePhases, id);
 }
 
 export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> {

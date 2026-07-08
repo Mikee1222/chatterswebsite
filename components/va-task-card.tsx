@@ -233,13 +233,21 @@ export const VaTaskCard = React.memo(function VaTaskCard({
 
   const renderItem = React.useCallback(
     (item: PhaseRibbonItem, phase: PhaseRibbonPhase) => {
-      const itemDisabled = !onShift || item.status === "completed" || phase.status === "overdue";
+      const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
+      const itemDisabled =
+        isVirtual || !onShift || item.status === "completed" || phase.status === "overdue";
       return (
         <div className="flex items-start gap-3">
           <ChampagneCheckbox
             checked={item.status === "completed"}
             disabled={itemDisabled}
-            title={!onShift ? "Start your shift to complete items" : undefined}
+            title={
+              isVirtual
+                ? "Preview only — unlocks when this day’s real task exists"
+                : !onShift
+                  ? "Start your shift to complete items"
+                  : undefined
+            }
             onClick={() => {
               if (itemDisabled) return;
               const fullItem = phases.flatMap((p) => p.items ?? []).find((i) => i.id === item.id);
@@ -289,7 +297,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         </div>
       );
     },
-    [onShift, onCompleteItem, phases, task.id],
+    [onShift, onCompleteItem, phases, task.id, task.is_virtual_occurrence],
   );
 
   return (

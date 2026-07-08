@@ -355,12 +355,12 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   }, []);
 
   const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
-    if (task.is_virtual_occurrence || task.id.startsWith("virt_")) {
-      setTaskPhases((prev) => ({ ...prev, [task.id]: [] }));
-      return;
-    }
     if (taskPhasesRef.current[task.id]) return;
-    const res = await fetch(`/api/va/task-phases?task_id=${encodeURIComponent(task.id)}`, { credentials: "include" });
+    const params = new URLSearchParams({ task_id: task.id });
+    if (task.virtual_source_task_id?.trim()) {
+      params.set("source_task_id", task.virtual_source_task_id.trim());
+    }
+    const res = await fetch(`/api/va/task-phases?${params}`, { credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
     const phases: TaskPhase[] = data.phases ?? [];
     setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
@@ -477,11 +477,12 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
   const handleOpenTask = React.useCallback((t: VaTaskRecord) => {
     if (t.is_virtual_occurrence) {
+      // Card expand + projected checklist is the preview; status modal stays blocked.
       addToast(
         winnerVideoLocalToast(
           `vat-virt-open-${Date.now()}`,
           "Upcoming day",
-          "Projected occurrence — checklist unlocks when this day’s real task exists.",
+          "Preview only — checklist items unlock when this day’s real task is spawned.",
           "normal",
         ),
       );

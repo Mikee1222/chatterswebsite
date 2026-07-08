@@ -500,8 +500,8 @@ export function AdminVaTasksClient({
   );
 
   const loadProgressPhases = React.useCallback(async () => {
-    const taskIds = progressViewTasks.map((t) => t.id);
-    if (taskIds.length === 0) {
+    const tasks = progressViewTasks;
+    if (tasks.length === 0) {
       setProgressPhasesLoading(false);
       setProgressPhasesError(null);
       return;
@@ -510,14 +510,18 @@ export function AdminVaTasksClient({
     setProgressPhasesError(null);
     try {
       const results = await Promise.all(
-        taskIds.map(async (taskId) => {
-          const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, {
+        tasks.map(async (task) => {
+          const params = new URLSearchParams({ task_id: task.id });
+          if (task.virtual_source_task_id?.trim()) {
+            params.set("source_task_id", task.virtual_source_task_id.trim());
+          }
+          const res = await fetch(`/api/admin/task-phases?${params}`, {
             credentials: "include",
             cache: "no-store",
           });
           if (!res.ok) throw new Error("fetch failed");
           const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
-          return { taskId, phases: data.phases ?? [] };
+          return { taskId: task.id, phases: data.phases ?? [] };
         }),
       );
       setTaskPhases((prev) => {
@@ -926,13 +930,11 @@ export function AdminVaTasksClient({
     }
   }, [addToast]);
 
-  const loadPhases = React.useCallback(async (taskId: string) => {
-    if (taskId.startsWith("virt_")) {
-      setTaskPhases((prev) => ({ ...prev, [taskId]: [] }));
-      return;
-    }
+  const loadPhases = React.useCallback(async (taskId: string, sourceTaskId?: string | null) => {
     if (taskPhasesRef.current[taskId]) return;
-    const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
+    const params = new URLSearchParams({ task_id: taskId });
+    if (sourceTaskId?.trim()) params.set("source_task_id", sourceTaskId.trim());
+    const res = await fetch(`/api/admin/task-phases?${params}`, { credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
     setTaskPhases((prev) => ({ ...prev, [taskId]: data.phases ?? [] }));
   }, []);
@@ -953,6 +955,7 @@ export function AdminVaTasksClient({
   }, [addToast]);
 
   const handleAddPhase = React.useCallback(async (taskId: string, taskTitle: string) => {
+    if (taskId.startsWith("virt_")) return;
     const phases = taskPhasesRef.current[taskId] ?? [];
     const res = await fetch("/api/admin/task-phases", {
       method: "POST",
@@ -972,6 +975,7 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleUpdatePhase = React.useCallback(async (phaseId: string, taskId: string, updates: Partial<TaskPhase>) => {
+    if (taskId.startsWith("virt_") || phaseId.startsWith("virt_")) return;
     const payload = { ...updates };
     await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, {
       method: "PATCH",
@@ -986,12 +990,14 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleDeletePhase = React.useCallback(async (phaseId: string, taskId: string) => {
+    if (taskId.startsWith("virt_") || phaseId.startsWith("virt_")) return;
     if (!confirm("Delete this phase?")) return;
     await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}`, { method: "DELETE", credentials: "include" });
     setTaskPhases((prev) => ({ ...prev, [taskId]: (prev[taskId] ?? []).filter((p) => p.id !== phaseId) }));
   }, []);
 
   const handleAddPhaseItem = React.useCallback(async (phaseId: string, taskId: string) => {
+    if (taskId.startsWith("virt_") || phaseId.startsWith("virt_")) return;
     const phase = (taskPhasesRef.current[taskId] ?? []).find((p) => p.id === phaseId);
     const itemCount = phase?.items?.length ?? 0;
     const res = await fetch(`/api/admin/task-phases/${encodeURIComponent(phaseId)}/items`, {
@@ -1018,6 +1024,7 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleUpdatePhaseItem = React.useCallback(async (itemId: string, phaseId: string, taskId: string, updates: Partial<PhaseItem>) => {
+    if (taskId.startsWith("virt_") || phaseId.startsWith("virt_") || itemId.startsWith("virt_")) return;
     await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -1038,6 +1045,7 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleDeletePhaseItem = React.useCallback(async (itemId: string, phaseId: string, taskId: string) => {
+    if (taskId.startsWith("virt_") || phaseId.startsWith("virt_") || itemId.startsWith("virt_")) return;
     await fetch(`/api/admin/task-phases/items/${encodeURIComponent(itemId)}`, { method: "DELETE", credentials: "include" });
     setTaskPhases((prev) => ({
       ...prev,

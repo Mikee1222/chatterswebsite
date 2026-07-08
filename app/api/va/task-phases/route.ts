@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
+import { isVirtualVaTaskId } from "@/lib/recurrence";
 import { ROUTES } from "@/lib/routes";
+import { resolveVirtualPhaseSourceId } from "@/lib/va-virtual-phases";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getVaTaskById } from "@/services/va-tasks";
-import { getPhasesByTask } from "@/services/task-phases";
+import { getPhasesForTaskDisplay } from "@/services/task-phases";
 
 function vaCanReadTask(
   session: { id: string; airtableUserId: string | null },
@@ -25,12 +27,18 @@ export async function GET(req: Request) {
   const taskId = searchParams.get("task_id")?.trim();
   if (!taskId) return NextResponse.json({ error: "task_id required" }, { status: 400 });
 
-  const task = await getVaTaskById(taskId);
+  const explicitSource = searchParams.get("source_task_id")?.trim() || null;
+  const lookupId = isVirtualVaTaskId(taskId)
+    ? resolveVirtualPhaseSourceId(taskId, explicitSource)
+    : taskId;
+  if (!lookupId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const task = await getVaTaskById(lookupId);
   if (!task) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!vaCanReadTask(session, task)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const phases = await getPhasesByTask(taskId);
+  const phases = await getPhasesForTaskDisplay(taskId, explicitSource ?? lookupId);
   return NextResponse.json({ phases });
 }

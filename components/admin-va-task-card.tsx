@@ -86,7 +86,7 @@ export type AdminVaTaskCardProps = {
   onRemind: (task: VaTaskRecord) => void;
   onEdit: (task: VaTaskRecord) => void;
   onDelete: (task: VaTaskRecord) => void;
-  onLoadPhases: (taskId: string) => Promise<void>;
+  onLoadPhases: (taskId: string, sourceTaskId?: string | null) => Promise<void>;
   onAddPhase: (taskId: string, taskTitle: string) => void;
   onUpdatePhase: (phaseId: string, taskId: string, updates: Partial<TaskPhase>) => void;
   onDeletePhase: (phaseId: string, taskId: string) => void;
@@ -121,6 +121,9 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   const [expanded, setExpanded] = React.useState(false);
   const [loadingPhases, setLoadingPhases] = React.useState(false);
   const modelNames = task.assigned_model_names ?? [];
+  const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
+  /** Virtual occurrences show projected checklist structure but stay read-only. */
+  const canEditPhases = canManage && !isVirtual;
 
   const togglePhases = React.useCallback(async () => {
     if (expanded) {
@@ -130,15 +133,15 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
     setExpanded(true);
     setLoadingPhases(true);
     try {
-      await onLoadPhases(task.id);
+      await onLoadPhases(task.id, task.virtual_source_task_id);
     } finally {
       setLoadingPhases(false);
     }
-  }, [expanded, onLoadPhases, task.id]);
+  }, [expanded, onLoadPhases, task.id, task.virtual_source_task_id]);
 
   const renderPhaseExtra = React.useCallback(
     (phase: PhaseRibbonPhase) => {
-      if (canManage) {
+      if (canEditPhases) {
         return (
           <>
             {phase.start_time || phase.end_time ? (
@@ -207,7 +210,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
       return null;
     },
     [
-      canManage,
+      canEditPhases,
       onAddPhaseItem,
       onDeletePhase,
       onUpdatePhase,
@@ -218,7 +221,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
 
   const renderItem = React.useCallback(
     (item: PhaseRibbonItem, phase: PhaseRibbonPhase, idx: number) => {
-      if (!canManage) return null;
+      if (!canEditPhases) return null;
       return (
         <div className="group flex items-start gap-3">
           <div
@@ -299,7 +302,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
         </div>
       );
     },
-    [canManage, onDeletePhaseItem, onUpdatePhaseItem, onUpdatePhaseItemTitleLocal, task.id],
+    [canEditPhases, onDeletePhaseItem, onUpdatePhaseItem, onUpdatePhaseItemTitleLocal, task.id],
   );
 
   return (
@@ -424,9 +427,14 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
               <TaskPhaseRibbon
                 phases={phases}
                 renderPhaseExtra={renderPhaseExtra}
-                renderItem={canManage ? renderItem : undefined}
+                renderItem={canEditPhases ? renderItem : undefined}
               />
-              {canManage ? (
+              {isVirtual ? (
+                <p className="mt-3 text-center text-xs text-sky-300/70">
+                  Preview of the recurring checklist — edits apply on a real occurrence.
+                </p>
+              ) : null}
+              {canEditPhases ? (
                 <button
                   type="button"
                   onClick={() => void onAddPhase(task.id, task.title)}
