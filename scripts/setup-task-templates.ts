@@ -95,7 +95,11 @@ async function createTableIfMissing(
   return created.id;
 }
 
-/** Full multi-platform work cycle (IG + FB + Snapchat). Phase 2 duplicates this list. */
+/**
+ * Full multi-platform work cycle (IG + FB + Snapchat). Phase 2 duplicates this list.
+ * Reply items share the same intent — keep one clearer reply checklist item.
+ * No Παρατηρήσεις (notes live on the task, not the phase checklist).
+ */
 const DAILY_MARKETING_WORK_CYCLE_ITEMS = [
   {
     title: "Mobile Data",
@@ -128,12 +132,6 @@ const DAILY_MARKETING_WORK_CYCLE_ITEMS = [
     requires_screenshot: false,
   },
   {
-    title: "1 story",
-    description: "Εναλλάξ μια μέρα τοπίο, την άλλη μέρα screenshot από IG/Telegram",
-    step_type: "Posting",
-    requires_screenshot: false,
-  },
-  {
     title: "Spotlight post (Snapchat)",
     description: "",
     step_type: "Posting",
@@ -143,12 +141,6 @@ const DAILY_MARKETING_WORK_CYCLE_ITEMS = [
     title: "Post reel & daily story (FB)",
     description: "",
     step_type: "Posting",
-    requires_screenshot: false,
-  },
-  {
-    title: "10 Follows IG",
-    description: "Potential Sub Profiles",
-    step_type: "Engagement",
     requires_screenshot: false,
   },
   {
@@ -170,12 +162,6 @@ const DAILY_MARKETING_WORK_CYCLE_ITEMS = [
     requires_screenshot: false,
   },
   {
-    title: "FB Friends 2nd round",
-    description: "Add 20 ακόμα friends (potential subs)",
-    step_type: "Engagement",
-    requires_screenshot: false,
-  },
-  {
     title: "IG Engagement comments",
     description: "Στο scroll time βρες 2 videos για engagement comments",
     step_type: "Engagement",
@@ -186,12 +172,6 @@ const DAILY_MARKETING_WORK_CYCLE_ITEMS = [
     description: "Τουλάχιστον 3-5 replies — στόχος να ανέβει το engagement",
     step_type: "Engagement",
     requires_screenshot: true,
-  },
-  {
-    title: "Reply σε comments των βίντεο μας",
-    description: "Στόχος να ανέβει το engagement",
-    step_type: "Engagement",
-    requires_screenshot: false,
   },
 ] as const;
 
