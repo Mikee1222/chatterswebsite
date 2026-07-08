@@ -7,7 +7,7 @@ import { getVaReviewHistory } from "@/services/marketing-reviews";
 export async function GET(_req: Request, ctx: { params: Promise<{ vaId: string }> }) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.MARKETING_VIEW))) {
+  if (!(await hasPermission(session, PERMISSIONS.MARKETING_MANAGE))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { vaId } = await ctx.params;

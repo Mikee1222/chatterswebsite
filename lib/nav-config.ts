@@ -323,8 +323,8 @@ const chatterNav: NavItem[] = [
 
 /**
  * VA nav grouped by `navSection`: OVERVIEW (home/schedules/availability), TASKS (VA tasks,
- * whales, content, customs), MARKETING, INFO (SOPs), FINANCE, SETTINGS. TOOLS items
- * (Blur tool, My Profiles, Transcript Videos) arrive via `sharedPermissionNavItems`.
+ * whales, content, customs), INFO (SOPs), FINANCE, SETTINGS. MARKETING and TOOLS items
+ * (Marketing, Blur tool, My Profiles, Transcript Videos) arrive via `sharedPermissionNavItems`.
  */
 const vaNav: NavItem[] = [
   // ── OVERVIEW ──
@@ -342,9 +342,9 @@ const vaNav: NavItem[] = [
   // feature is gated by a permission and can be toggled per role in Roles & Permissions.
 
   // ── MARKETING ──
-  // C1: marketing VAs manage their social accounts here. Shown to all VAs by default;
-  // admins hide it for the `chatting` va_type via the hidden_nav config (getHiddenNavForVaType).
-  { href: ROUTES.va.marketingAccounts, label: "Marketing", iconKey: "Radio", navSection: "MARKETING" },
+  // NOTE: "Marketing" (MARKETING_VIEW) moved to `sharedPermissionNavItems` so the VA-facing
+  // marketing page is gated by permission and can be toggled per role in Roles & Permissions.
+  // Admins still hide it for the `chatting` va_type via hidden_nav (getHiddenNavForVaType).
 
   // ── INFO ──
   // NOTE: "Blur tool" (BLUR_TOOL_ACCESS) moved to `sharedPermissionNavItems`.
@@ -507,7 +507,7 @@ const adminNav: NavItem[] = [
     label: "Marketing",
     iconKey: "TrendingUp",
     navSection: "MARKETING",
-    requiresPermission: PERMISSIONS.MARKETING_VIEW,
+    requiresPermission: PERMISSIONS.MARKETING_MANAGE,
   },
   {
     href: ROUTES.admin.informations,
@@ -734,7 +734,7 @@ const modelNav: NavItem[] = [
  * `adminNav` (also REVIEW & QA); `hiddenIfPermission` dedupes users who also hold the manage
  * grant (they see the richer manage-tier review item instead of the submit item).
  *
- * Ordered by target section (TEAM → CONTENT → REVIEW & QA → TOOLS) so the mobile More sheet
+ * Ordered by target section (TEAM → CONTENT → REVIEW & QA → MARKETING → TOOLS) so the mobile More sheet
  * (which prints a section header whenever `navSection` changes) keeps each group contiguous.
  */
 const sharedPermissionNavItems: NavItem[] = [
@@ -832,6 +832,20 @@ const sharedPermissionNavItems: NavItem[] = [
     navSection: "REVIEW & QA",
     requiresPermission: PERMISSIONS.MISTAKES_VIEW,
     hiddenIfPermission: PERMISSIONS.MISTAKES_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+
+  // ── MARKETING ──
+  // VA-facing Marketing (/va/marketing). Gated by MARKETING_VIEW so any role granted it
+  // surfaces the link. Users who can MANAGE marketing (admin/manager) see the admin
+  // `/admin/marketing` item instead, so this VA link is hidden for them.
+  {
+    href: ROUTES.va.marketingAccounts,
+    label: "Marketing",
+    iconKey: "Radio",
+    navSection: "MARKETING",
+    requiresPermission: PERMISSIONS.MARKETING_VIEW,
+    hiddenIfPermission: PERMISSIONS.MARKETING_MANAGE,
     excludeFromMobileMainTabs: true,
   },
 

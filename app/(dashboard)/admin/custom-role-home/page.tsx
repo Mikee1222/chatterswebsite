@@ -84,9 +84,16 @@ const SHORTCUT_CARDS: ShortcutCard[] = [
     description: PERMISSION_DESCRIPTIONS["models:view"],
   },
   {
-    permission: "marketing:view",
+    permission: "marketing:manage",
     title: "Marketing",
     href: ROUTES.admin.marketing,
+    icon: Megaphone,
+    description: PERMISSION_DESCRIPTIONS["marketing:manage"],
+  },
+  {
+    permission: "marketing:view",
+    title: "Marketing",
+    href: ROUTES.va.marketingAccounts,
     icon: Megaphone,
     description: PERMISSION_DESCRIPTIONS["marketing:view"],
   },
@@ -213,6 +220,13 @@ export default async function CustomRoleHomePage() {
     if (
       card.permission === PERMISSIONS.VA_TASKS_VIEW &&
       qualifiesForAdminVaTasksNav(permissionSet)
+    ) {
+      return false;
+    }
+    // Prefer admin Marketing when manage is granted; hide the VA-facing view card.
+    if (
+      card.permission === PERMISSIONS.MARKETING_VIEW &&
+      permissionSet.has(PERMISSIONS.MARKETING_MANAGE)
     ) {
       return false;
     }
