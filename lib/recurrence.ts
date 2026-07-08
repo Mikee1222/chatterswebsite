@@ -1,5 +1,6 @@
 import { parseISO } from "date-fns";
-import type { VaRecurrenceDay } from "@/types";
+import { athensYmdStartUtcMs, ymdInAthens } from "@/lib/airtable-datetime";
+import type { VaRecurrenceDay, VaTaskRecord } from "@/types";
 
 /** Map Airtable weekday names to JS `Date#getUTCDay()` (0 = Sunday … 6 = Saturday). */
 const RECURRENCE_DAY_TO_UTCDAY: Record<VaRecurrenceDay, number> = {
@@ -182,4 +183,92 @@ export function shouldSpawnRecurring(task: {
 export function vaTaskSeriesKey(task: { title: string; assigned_to_ids: string[] }): string {
   const ids = [...task.assigned_to_ids].map((x) => x.trim()).filter(Boolean).sort();
   return `${task.title.trim()}\0${ids.join(",")}`;
+}
+
+export function isVirtualVaTaskId(id: string | null | undefined): boolean {
+  return Boolean(id?.startsWith("virt_"));
+}
+
+/** Preserve wall-clock offset from the source due instant onto a target Athens day. */
+export function projectDueOntoAthensYmd(sourceDueIso: string, targetYmd: string): string {
+  const sourceYmd = ymdInAthens(sourceDueIso);
+  const sourceStart = sourceYmd ? athensYmdStartUtcMs(sourceYmd) : Number.NaN;
+  const targetStart = athensYmdStartUtcMs(targetYmd);
+  const sourceMs = new Date(sourceDueIso).getTime();
+  if (!Number.isFinite(sourceStart) || !Number.isFinite(targetStart) || !Number.isFinite(sourceMs)) {
+    return `${targetYmd}T12:00:00.000Z`;
+  }
+  return new Date(targetStart + (sourceMs - sourceStart)).toISOString();
+}
+
+/**
+ * Walk forward from the series anchor with {@link getNextOccurrence} until matching `targetYmd`.
+ * Returns the due ISO for that day, or null if the series does not cover it
+ * (including when `recurrence_end_date` is null = indefinite).
+ */
+export function occurrenceDueForAthensYmd(
+  task: Pick<
+    VaTaskRecord,
+    "due_date" | "recurrence_type" | "recurrence_interval" | "recurrence_days" | "recurrence_end_date"
+  >,
+  ymd: string,
+  maxSteps = 800,
+): string | null {
+  if (!task.due_date?.trim() || !task.recurrence_type?.trim()) return null;
+  const target = ymd.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) return null;
+
+  let current = task.due_date.trim();
+  for (let i = 0; i < maxSteps; i++) {
+    const curYmd = ymdInAthens(current);
+    if (curYmd === target) return current;
+    if (curYmd && curYmd > target) return null;
+    if (task.recurrence_end_date?.trim()) {
+      const end = task.recurrence_end_date.trim().slice(0, 10);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(end) && curYmd && curYmd > end) return null;
+    }
+    const next = getNextOccurrence(
+      current,
+      task.recurrence_type,
+      task.recurrence_interval ?? 1,
+      task.recurrence_days ?? [],
+      task.recurrence_end_date,
+    );
+    if (!next) return null;
+    current = next;
+  }
+  return null;
+}
+
+export function recurringSeriesCoversAthensYmd(
+  task: Pick<
+    VaTaskRecord,
+    "is_recurring" | "due_date" | "recurrence_type" | "recurrence_interval" | "recurrence_days" | "recurrence_end_date"
+  >,
+  ymd: string,
+): boolean {
+  if (!task.is_recurring) return false;
+  return occurrenceDueForAthensYmd(task, ymd) != null;
+}
+
+/**
+ * Build a display-only pending occurrence for `ymd` from a recurring template/source task.
+ * Returns null if the series does not cover that day.
+ */
+export function materializeVirtualOccurrence(source: VaTaskRecord, ymd: string): VaTaskRecord | null {
+  if (source.is_virtual_occurrence) return null;
+  const dueExact = occurrenceDueForAthensYmd(source, ymd);
+  if (!dueExact) return null;
+  return {
+    ...source,
+    id: `virt_${source.id}_${ymd.trim().slice(0, 10)}`,
+    due_date: dueExact,
+    status: "pending",
+    completed_at: null,
+    completed_notes: "",
+    overdue_notified_at: null,
+    created_at: null,
+    is_virtual_occurrence: true,
+    virtual_source_task_id: source.id,
+  };
 }

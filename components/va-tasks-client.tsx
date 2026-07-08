@@ -355,6 +355,10 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   }, []);
 
   const loadPhasesAndAccounts = React.useCallback(async (task: VaTaskRecord) => {
+    if (task.is_virtual_occurrence || task.id.startsWith("virt_")) {
+      setTaskPhases((prev) => ({ ...prev, [task.id]: [] }));
+      return;
+    }
     if (taskPhasesRef.current[task.id]) return;
     const res = await fetch(`/api/va/task-phases?task_id=${encodeURIComponent(task.id)}`, { credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
@@ -375,6 +379,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
   const submitPhaseItemCompletion = React.useCallback(
     async (item: PhaseItem, taskId: string, screenshots: File[] = []) => {
+      if (taskId.startsWith("virt_")) return null;
       if (inflightItemIdsRef.current.has(item.id)) return null;
       inflightItemIdsRef.current.add(item.id);
 
@@ -441,6 +446,17 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
   const handleMarkComplete = React.useCallback(async (task: VaTaskRecord, e?: React.MouseEvent) => {
     e?.stopPropagation();
+    if (task.is_virtual_occurrence) {
+      addToast(
+        winnerVideoLocalToast(
+          `vat-virt-done-${Date.now()}`,
+          "Upcoming day",
+          "This day is preview-only until the real occurrence is spawned (usually when the prior day is completed).",
+          "normal",
+        ),
+      );
+      return;
+    }
     setCompleting(task.id);
     try {
       const res = await updateVaTaskStatusAction({
@@ -457,17 +473,29 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
     } finally {
       setCompleting(null);
     }
-  }, [router]);
+  }, [addToast, router]);
 
   const handleOpenTask = React.useCallback((t: VaTaskRecord) => {
+    if (t.is_virtual_occurrence) {
+      addToast(
+        winnerVideoLocalToast(
+          `vat-virt-open-${Date.now()}`,
+          "Upcoming day",
+          "Projected occurrence — checklist unlocks when this day’s real task exists.",
+          "normal",
+        ),
+      );
+      return;
+    }
     setSelected(t);
     setNotes(t.completed_notes ?? "");
     setStatusPick(t.status === "in_progress" ? "in_progress" : "done");
     setErr(null);
-  }, []);
+  }, [addToast]);
 
   const handleCompleteItemClick = React.useCallback(
     (item: PhaseItem, taskId: string) => {
+      if (taskId.startsWith("virt_")) return;
       if (item.requires_screenshot) {
         setCompletingItem({ item, taskId });
         setProofFiles([]);

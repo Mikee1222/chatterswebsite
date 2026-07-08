@@ -322,6 +322,11 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                   Recurring
                 </span>
               ) : null}
+              {task.is_virtual_occurrence ? (
+                <span className="rounded-full border border-sky-500/25 bg-sky-500/15 px-2 py-0.5 text-xs text-sky-300">
+                  Upcoming day
+                </span>
+              ) : null}
             </div>
             <h3
               className={cn(

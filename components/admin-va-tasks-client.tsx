@@ -367,6 +367,7 @@ export function AdminVaTasksClient({
   const [recurrenceInterval, setRecurrenceInterval] = React.useState(1);
   const [recurrenceDays, setRecurrenceDays] = React.useState<VaRecurrenceDay[]>([]);
   const [recurrenceEnd, setRecurrenceEnd] = React.useState("");
+  const [hasRecurrenceEnd, setHasRecurrenceEnd] = React.useState(false);
   const [reminderMinutes, setReminderMinutes] = React.useState<number | null>(null);
   const [draftPhases, setDraftPhases] = React.useState<DraftPhase[]>([]);
   const editPhasesSnapshotRef = React.useRef<EditPhasesSnapshot | null>(null);
@@ -392,6 +393,7 @@ export function AdminVaTasksClient({
     setRecurrenceInterval(1);
     setRecurrenceDays([]);
     setRecurrenceEnd("");
+    setHasRecurrenceEnd(false);
     setReminderMinutes(null);
     setDraftPhases([]);
     editPhasesSnapshotRef.current = null;
@@ -422,6 +424,17 @@ export function AdminVaTasksClient({
   };
 
   const openEdit = React.useCallback(async (t: VaTaskRecord) => {
+    if (t.is_virtual_occurrence) {
+      addToast(
+        localToast(
+          `vat-edit-virt-${Date.now()}`,
+          "Projected day",
+          "Edit the recurring series from a real (spawned) occurrence — this date is preview-only until that day is created.",
+          "normal",
+        ),
+      );
+      return;
+    }
     setEditingId(t.id);
     setTitle(t.title);
     setDescription(t.description);
@@ -435,7 +448,9 @@ export function AdminVaTasksClient({
     setRecurrenceType(t.recurrence_type);
     setRecurrenceDays([...t.recurrence_days]);
     setRecurrenceInterval(t.recurrence_interval != null && Number.isFinite(t.recurrence_interval) ? t.recurrence_interval : 1);
-    setRecurrenceEnd(t.recurrence_end_date ? toLocalYmd(t.recurrence_end_date) : "");
+    const endYmd = t.recurrence_end_date ? toLocalYmd(t.recurrence_end_date) : "";
+    setRecurrenceEnd(endYmd);
+    setHasRecurrenceEnd(Boolean(endYmd));
     setReminderMinutes(t.reminder_minutes_before != null && Number.isFinite(t.reminder_minutes_before) ? t.reminder_minutes_before : null);
     setDraftPhases([]);
     editPhasesSnapshotRef.current = null;
@@ -453,7 +468,7 @@ export function AdminVaTasksClient({
     } catch {
       editPhasesSnapshotRef.current = { phaseIds: [], itemsByPhaseId: {} };
     }
-  }, []);
+  }, [addToast]);
 
   const filteredTasks = React.useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
@@ -787,7 +802,8 @@ export function AdminVaTasksClient({
             recurrence_type: isRecurring ? recurrenceType || null : null,
             recurrence_days: isRecurring ? recurrenceDays : [],
             recurrence_interval: isRecurring ? interval : null,
-            recurrence_end_date: isRecurring && recurrenceEnd.trim() ? recurrenceEnd.trim() : null,
+            recurrence_end_date:
+              isRecurring && hasRecurrenceEnd && recurrenceEnd.trim() ? recurrenceEnd.trim() : null,
           }),
         });
         const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -816,7 +832,8 @@ export function AdminVaTasksClient({
       recurrence_type: isRecurring ? recurrenceType || null : null,
       recurrence_days: isRecurring ? recurrenceDays : [],
       recurrence_interval: isRecurring && interval != null ? interval : null,
-      recurrence_end_date: isRecurring && recurrenceEnd.trim() ? recurrenceEnd.trim() : null,
+      recurrence_end_date:
+        isRecurring && hasRecurrenceEnd && recurrenceEnd.trim() ? recurrenceEnd.trim() : null,
       reminder_minutes_before: reminderMinutes != null && Number.isFinite(reminderMinutes) ? reminderMinutes : null,
     };
 
@@ -869,6 +886,17 @@ export function AdminVaTasksClient({
   }, [taskPendingDelete, addToast, router]);
 
   const handleRemind = React.useCallback(async (task: VaTaskRecord) => {
+    if (task.is_virtual_occurrence) {
+      addToast(
+        localToast(
+          `vat-rm-virt-${Date.now()}`,
+          "Not yet created",
+          "This day is a projected occurrence. Reminders unlock when the real task is spawned for that day.",
+          "normal",
+        ),
+      );
+      return;
+    }
     setReminding(task.id);
     setRemindSuccess(null);
     try {
@@ -899,6 +927,10 @@ export function AdminVaTasksClient({
   }, [addToast]);
 
   const loadPhases = React.useCallback(async (taskId: string) => {
+    if (taskId.startsWith("virt_")) {
+      setTaskPhases((prev) => ({ ...prev, [taskId]: [] }));
+      return;
+    }
     if (taskPhasesRef.current[taskId]) return;
     const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(taskId)}`, { credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
@@ -906,8 +938,19 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
+    if (task.is_virtual_occurrence) {
+      addToast(
+        localToast(
+          `vat-del-virt-${Date.now()}`,
+          "Projected day",
+          "There is no Airtable row for this date yet. Delete or edit a real occurrence of the series instead.",
+          "normal",
+        ),
+      );
+      return;
+    }
     setTaskPendingDelete(task);
-  }, []);
+  }, [addToast]);
 
   const handleAddPhase = React.useCallback(async (taskId: string, taskTitle: string) => {
     const phases = taskPhasesRef.current[taskId] ?? [];
@@ -1548,13 +1591,49 @@ export function AdminVaTasksClient({
                         </div>
                       ) : null}
                       <div>
-                        <label className="mb-1.5 block text-xs text-white/40">End date (optional)</label>
-                        <input
-                          type="date"
-                          value={recurrenceEnd}
-                          onChange={(e) => setRecurrenceEnd(e.target.value)}
-                          className={cn(ADMIN_MODAL_INPUT, "[color-scheme:dark]")}
-                        />
+                        <label className="mb-2 block text-xs text-white/40">End date</label>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setHasRecurrenceEnd(false);
+                              setRecurrenceEnd("");
+                            }}
+                            className={cn(
+                              "rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                              !hasRecurrenceEnd
+                                ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#D4AF8C]"
+                                : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10",
+                            )}
+                          >
+                            No end date
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setHasRecurrenceEnd(true)}
+                            className={cn(
+                              "rounded-xl border px-3 py-2 text-xs font-medium transition-all",
+                              hasRecurrenceEnd
+                                ? "border-[#D4AF8C]/40 bg-[#D4AF8C]/15 text-[#D4AF8C]"
+                                : "border-white/10 bg-white/5 text-white/40 hover:bg-white/10",
+                            )}
+                          >
+                            Set an end date
+                          </button>
+                        </div>
+                        {hasRecurrenceEnd ? (
+                          <input
+                            type="date"
+                            value={recurrenceEnd}
+                            onChange={(e) => setRecurrenceEnd(e.target.value)}
+                            required={hasRecurrenceEnd}
+                            className={cn(ADMIN_MODAL_INPUT, "[color-scheme:dark]")}
+                          />
+                        ) : (
+                          <p className="text-xs text-white/30">
+                            Repeats indefinitely until you edit or deactivate the series.
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

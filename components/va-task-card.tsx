@@ -108,6 +108,7 @@ function allPhasesCompleted(phases: TaskPhase[]): boolean {
 }
 
 function showDoneButton(task: VaTaskRecord, phases: TaskPhase[]): boolean {
+  if (task.is_virtual_occurrence) return false;
   if (task.status === "done" || task.status === "skipped") return false;
   return task.status === "in_progress" || allPhasesCompleted(phases);
 }
@@ -312,6 +313,11 @@ export const VaTaskCard = React.memo(function VaTaskCard({
             {task.is_recurring ? (
               <span className={cn(VA_STATUS_BADGE, "border-[#D4AF8C]/30 bg-[#D4AF8C]/8 text-[#D4AF8C]/80")}>
                 Recurring
+              </span>
+            ) : null}
+            {task.is_virtual_occurrence ? (
+              <span className={cn(VA_STATUS_BADGE, "border-sky-500/30 bg-sky-500/10 text-sky-300")}>
+                Upcoming day
               </span>
             ) : null}
           </div>

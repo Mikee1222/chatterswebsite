@@ -394,6 +394,13 @@ export type VaTaskRecord = {
   completed_notes: string;
   overdue_notified_at: string | null;
   created_at: string | null;
+  /**
+   * Client-only projected occurrence for date navigation (no Airtable row yet).
+   * Real rows are still spawned on completion / cron; this is for display only.
+   */
+  is_virtual_occurrence?: boolean;
+  /** Template/source Airtable id when `is_virtual_occurrence` is true. */
+  virtual_source_task_id?: string;
 };
 
 export interface Whale {
