@@ -18,7 +18,7 @@ import {
   type VaTaskUpdateInput,
 } from "@/services/va-tasks";
 import { getActiveVaTaskShift } from "@/services/shifts";
-import { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
+import { getNextOccurrence, isVirtualVaTaskId, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import type { VaTaskRecord, VaTaskStatus } from "@/types";
 import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
 import { getUserPermissions, hasPermission } from "@/lib/rbac";
@@ -216,6 +216,13 @@ export async function updateVaTaskStatusAction(input: {
 export async function deleteVaTaskAction(id: string): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
   if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) return { success: false, error: "Unauthorized." };
+  if (isVirtualVaTaskId(id)) {
+    return {
+      success: false,
+      error:
+        "Cannot delete a projected recurring day — it has no Airtable record yet. Delete a real occurrence of the series instead.",
+    };
+  }
   try {
     await deleteVaTask(id);
     revalidatePath(ROUTES.admin.vaTasks);

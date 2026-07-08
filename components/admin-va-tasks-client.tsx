@@ -940,7 +940,7 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
-    if (task.is_virtual_occurrence) {
+    if (task.is_virtual_occurrence || task.id.startsWith("virt_")) {
       addToast(
         localToast(
           `vat-del-virt-${Date.now()}`,

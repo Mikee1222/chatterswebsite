@@ -341,7 +341,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
             </h3>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {canManage ? (
+            {canManage && !isVirtual ? (
               <>
                 {task.status !== "done" && task.status !== "skipped" ? (
                   <button

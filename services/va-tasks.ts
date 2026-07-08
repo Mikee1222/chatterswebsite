@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { linkedRecordIds, snapshotText } from "@/lib/airtable-linked";
+import { isVirtualVaTaskId } from "@/lib/recurrence";
 import type {
   VaTaskRecord,
   VaTaskStatus,
@@ -340,6 +341,11 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
 }
 
 export async function deleteVaTask(id: string): Promise<void> {
+  if (isVirtualVaTaskId(id)) {
+    throw new Error(
+      "Cannot delete a projected recurring day — it has no Airtable record yet. Delete a real occurrence of the series instead.",
+    );
+  }
   await deleteRecord(TABLE, id);
 }
 
