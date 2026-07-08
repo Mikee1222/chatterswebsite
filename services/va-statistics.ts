@@ -344,7 +344,12 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
   const vaIds = new Set(vaUsers.map((u) => u.id));
 
   const [allTasks, punctuality] = await Promise.all([
-    getAllVaTasks(),
+    getAllVaTasks({
+      athensStartYmd: startYmd,
+      athensEndYmd: endYmd,
+      includeBucketDates: true,
+      includeRecurring: false,
+    }),
     loadPunctualityFromNotifications(startYmd, endYmd),
   ]);
 

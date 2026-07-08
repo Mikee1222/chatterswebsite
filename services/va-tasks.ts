@@ -9,6 +9,11 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { linkedRecordIds, snapshotText } from "@/lib/airtable-linked";
+import {
+  buildGetAllVaTasksFormula,
+  formulaVaTaskVisibleToUser,
+  type VaTasksFetchRangeOptions,
+} from "@/lib/va-tasks-airtable-formula";
 import { isVirtualVaTaskId } from "@/lib/recurrence";
 import type {
   VaTaskRecord,
@@ -185,19 +190,27 @@ function mapRecord(rec: AirtableRecord<Fields>): VaTaskRecord {
   };
 }
 
-function taskVisibleToVa(task: VaTaskRecord, vaUserId: string): boolean {
-  if (task.assigned_to_ids.length === 0) return true;
-  return task.assigned_to_ids.includes(vaUserId);
-}
-
 /** Tasks assigned to this VA (including “all VAs” when assigned_to is empty). */
 export async function getVaTasksForUser(userId: string): Promise<VaTaskRecord[]> {
-  const all = await listAllRecords<Fields>(TABLE, {});
-  return all.map(mapRecord).filter((t) => taskVisibleToVa(t, userId));
+  const records = await listAllRecords<Fields>(TABLE, {
+    filterByFormula: formulaVaTaskVisibleToUser(userId),
+    _caller: "va-tasks.getVaTasksForUser",
+  });
+  return records.map(mapRecord);
 }
 
-export async function getAllVaTasks(): Promise<VaTaskRecord[]> {
-  const records = await listAllRecords<Fields>(TABLE, {});
+export type GetAllVaTasksOptions = VaTasksFetchRangeOptions;
+
+/**
+ * Admin / reporting fetch. Pass an Athens date window to avoid scanning the full table.
+ * Cron jobs and scripts that need every row call with no options (no formula filter).
+ */
+export async function getAllVaTasks(options?: GetAllVaTasksOptions): Promise<VaTaskRecord[]> {
+  const filterByFormula = buildGetAllVaTasksFormula(options);
+  const records = await listAllRecords<Fields>(TABLE, {
+    ...(filterByFormula ? { filterByFormula } : {}),
+    _caller: options ? "va-tasks.getAllVaTasks.scoped" : "va-tasks.getAllVaTasks",
+  });
   return records.map(mapRecord);
 }
 

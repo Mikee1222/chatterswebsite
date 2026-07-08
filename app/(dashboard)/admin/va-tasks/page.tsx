@@ -4,6 +4,12 @@ import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
 import { getUserPermissions, hasAnyPermission, hasPermission, requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
+import { addDaysAthensYmd } from "@/lib/airtable-datetime";
+import {
+  VA_TASKS_ADMIN_FETCH_FUTURE_DAYS,
+  VA_TASKS_ADMIN_FETCH_PAST_DAYS,
+} from "@/lib/va-tasks-airtable-formula";
+import { getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import { getAllVaTasks } from "@/services/va-tasks";
 import { listActiveModelsForAssignment } from "@/services/modelss";
 import { listActiveUsers } from "@/services/users";
@@ -23,8 +29,12 @@ export default async function AdminVaTasksPage() {
   const canViewList = await hasPermission(user, PERMISSIONS.VA_TASKS_VIEW);
   const canViewProgress = await hasPermission(user, PERMISSIONS.TASK_PROGRESS_VIEW);
 
+  const adminTodayYmd = getVaTasksViewTodayYmd();
   const [tasks, activeUsers, modelss, roles] = await Promise.all([
-    getAllVaTasks(),
+    getAllVaTasks({
+      athensStartYmd: addDaysAthensYmd(adminTodayYmd, -VA_TASKS_ADMIN_FETCH_PAST_DAYS),
+      athensEndYmd: addDaysAthensYmd(adminTodayYmd, VA_TASKS_ADMIN_FETCH_FUTURE_DAYS),
+    }),
     listActiveUsers(),
     listActiveModelsForAssignment().catch(() => []),
     getRoles().catch(() => []),
