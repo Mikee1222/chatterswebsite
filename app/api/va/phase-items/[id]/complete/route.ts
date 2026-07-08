@@ -84,6 +84,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   }
 
   revalidatePath(ROUTES.admin.vaTasks);
+  revalidatePath(ROUTES.va.tasks);
+  revalidatePath(ROUTES.va.home);
 
   return NextResponse.json({ success: true, phaseCompleted, allPhasesCompleted });
 }

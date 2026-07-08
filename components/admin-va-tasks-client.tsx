@@ -340,6 +340,9 @@ export function AdminVaTasksClient({
   const [viewMode, setViewMode] = React.useState<"list" | "progress">(defaultViewMode);
   const [progressPhasesLoading, setProgressPhasesLoading] = React.useState(false);
   const [progressPhasesError, setProgressPhasesError] = React.useState<string | null>(null);
+  const [isTabVisible, setIsTabVisible] = React.useState(() =>
+    typeof document === "undefined" ? true : document.visibilityState === "visible"
+  );
 
   React.useEffect(() => {
     if (!canShowList && canViewProgress) {
@@ -543,13 +546,24 @@ export function AdminVaTasksClient({
   }, [viewMode, canViewProgress, loadProgressPhases, selectedYmd]);
 
   React.useEffect(() => {
-    if (viewMode !== "progress" || !canViewProgress) return;
-    const onVisible = () => {
-      if (document.visibilityState === "visible") void loadProgressPhases();
+    const onVisibilityChange = () => {
+      const visible = document.visibilityState === "visible";
+      setIsTabVisible(visible);
+      if (visible && viewMode === "progress" && canViewProgress) {
+        void loadProgressPhases();
+      }
     };
-    document.addEventListener("visibilitychange", onVisible);
-    return () => document.removeEventListener("visibilitychange", onVisible);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", onVisibilityChange);
   }, [viewMode, canViewProgress, loadProgressPhases]);
+
+  React.useEffect(() => {
+    if (viewMode !== "progress" || !canViewProgress || !isTabVisible) return;
+    const id = window.setInterval(() => {
+      void loadProgressPhases();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, [viewMode, canViewProgress, isTabVisible, loadProgressPhases]);
 
   React.useEffect(() => {
     setShowAllTasks(false);

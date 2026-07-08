@@ -433,12 +433,12 @@ function countAccountsByPhoneId(accounts: SocialAccount[]): Record<string, numbe
 }
 
 // Phones
-export async function getPhones(): Promise<Phone[]> {
+export async function getPhones(preloadedAccounts?: SocialAccount[]): Promise<Phone[]> {
   const [phoneRecords, accounts, vaNameById] = await Promise.all([
     listAllRecords<PhoneFields>(TABLE_PHONES, {
       sort: [{ field: FIELD_PHONE_CREATED_AT, direction: "desc" }],
     }),
-    getAllAccounts(),
+    preloadedAccounts ? Promise.resolve(preloadedAccounts) : getAllAccounts(),
     buildVaNameById(),
   ]);
   const counts = countAccountsByPhoneId(accounts);

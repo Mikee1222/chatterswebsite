@@ -9,6 +9,7 @@ import type { AdminShiftQueueRow, Shift } from "@/types";
 import { LiveTimer } from "@/components/live-timer";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { adminForceEndShift } from "@/app/actions/shift";
+import { useRealtime } from "@/contexts/realtime-context";
 
 export type LiveShiftWithModels = Shift & { modelNames: string[] };
 
@@ -240,6 +241,7 @@ export function AdminLiveShiftsClient({
   telegramByUserId = {},
 }: Props) {
   const router = useRouter();
+  const realtime = useRealtime();
   const [refreshing, setRefreshing] = React.useState(false);
   const [forceEndFor, setForceEndFor] = React.useState<LiveShiftWithModels | null>(null);
   const forceEndReasonRef = React.useRef("");
@@ -249,6 +251,19 @@ export function AdminLiveShiftsClient({
     router.refresh();
     setTimeout(() => setRefreshing(false), 1000);
   }, [router]);
+
+  React.useEffect(() => {
+    if (!realtime?.subscribe) return;
+    return realtime.subscribe((event) => {
+      if (
+        event.type === "shift_started" ||
+        event.type === "shift_ended" ||
+        event.type === "model_status_changed"
+      ) {
+        router.refresh();
+      }
+    });
+  }, [realtime, router]);
 
   const chatterShifts = shiftsWithModels.filter((s) => s.staff_role === "chatter");
   const vaShifts = shiftsWithModels.filter((s) => s.staff_role === "virtual_assistant");

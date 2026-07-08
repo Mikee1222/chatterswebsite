@@ -452,6 +452,23 @@ export async function getActiveShiftModels(shiftRecordId: string) {
   return all.filter((sm) => !sm.left_at);
 }
 
+/** Batch active shift-model rows by shift id (avoids N+1 per-shift lookups). */
+export async function getActiveShiftModelsForShiftIds(
+  shiftIds: string[]
+): Promise<Record<string, ShiftModel[]>> {
+  const normalized = Array.from(new Set(shiftIds.map((id) => id.trim()).filter(Boolean)));
+  if (normalized.length === 0) return {};
+  const all = await listShiftModelsForShifts(normalized);
+  const byShiftId: Record<string, ShiftModel[]> = {};
+  for (const shiftId of normalized) byShiftId[shiftId] = [];
+  for (const sm of all) {
+    if (sm.left_at || !sm.shift_id) continue;
+    if (!byShiftId[sm.shift_id]) byShiftId[sm.shift_id] = [];
+    byShiftId[sm.shift_id].push(sm);
+  }
+  return byShiftId;
+}
+
 export type ShiftModelWriteFields = Partial<{
   shift: string[];
   model: string[];

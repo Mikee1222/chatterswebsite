@@ -18,8 +18,6 @@ import { devLog } from "@/lib/dev-log";
 
 const MAX_BREAK_MINUTES = 45;
 
-const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
 type SlimModelFields = {
   model_name?: string;
   model_id?: string;
@@ -120,18 +118,16 @@ export default async function ShiftPage() {
   let occupiedModels: OccupiedModelDetail[] = [];
 
   try {
-    activeShift = await getActiveShiftByChatter(chatterId);
-    await sleep(500);
-
-    modelss = await getCachedShiftPageModelss();
-    await sleep(500);
-
-    const programsResult = await getProgramsForWeek(weekStart);
-    await sleep(500);
+    const [activeShiftResult, modelssResult, programsResult] = await Promise.all([
+      getActiveShiftByChatter(chatterId),
+      getCachedShiftPageModelss(),
+      getProgramsForWeek(weekStart),
+    ]);
+    activeShift = activeShiftResult;
+    modelss = modelssResult;
 
     if (activeShift) {
       shiftModels = await getActiveShiftModels(activeShift.id);
-      await sleep(500);
     }
 
     const shiftModelIdSet = new Set(shiftModels.map((sm) => sm.model_id).filter(Boolean));

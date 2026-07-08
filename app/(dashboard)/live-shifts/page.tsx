@@ -3,9 +3,10 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getLiveShifts } from "@/services/shifts";
-import { getActiveShiftModels } from "@/services/shifts";
+import { getActiveShiftModelsForShiftIds } from "@/services/shifts";
 import { LiveShiftsPageLists } from "@/components/live-shifts-page-lists";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
+import type { ShiftModel } from "@/types";
 
 export default async function LiveShiftsPage() {
   const user = await getSessionFromCookies();
@@ -15,12 +16,13 @@ export default async function LiveShiftsPage() {
 
   const shifts = await getLiveShifts().catch(() => []);
 
-  const withModelNames = await Promise.all(
-    shifts.map(async (s) => {
-      const models = await getActiveShiftModels(s.id).catch(() => []);
-      return { ...s, modelNames: models.map((m) => m.model_name).filter(Boolean) };
-    })
+  const activeModelsByShiftId = await getActiveShiftModelsForShiftIds(shifts.map((s) => s.id)).catch(
+    () => ({} as Record<string, ShiftModel[]>)
   );
+  const withModelNames = shifts.map((s) => ({
+    ...s,
+    modelNames: (activeModelsByShiftId[s.id] ?? []).map((m) => m.model_name).filter(Boolean),
+  }));
 
   return (
     <RouterRefreshInterval intervalMs={60_000}>

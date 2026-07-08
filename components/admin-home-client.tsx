@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -18,7 +19,6 @@ import {
   UserRound,
   Users,
 } from "lucide-react";
-import { ResponsiveContainer, LineChart, Line, Tooltip } from "recharts";
 import { Checkbox, Select, ButtonSecondary, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormInput } from "@/components/ui/form-input";
@@ -69,6 +69,10 @@ const MONTH_OPTIONS = (() => {
 })();
 
 const PINK = "#ec4899";
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
 
 function formatMonth(ym: string): string {
   const [y, m] = ym.split("-");

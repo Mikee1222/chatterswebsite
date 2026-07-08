@@ -138,6 +138,14 @@ export function AdminWinnerVideosClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
 
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      void reload();
+    }, 60_000);
+    return () => window.clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
+
   async function patchVideo(id: string, body: Record<string, unknown>) {
     setPendingId(id);
     try {

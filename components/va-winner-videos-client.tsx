@@ -105,6 +105,13 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
     }
   }
 
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      void reload();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!referenceModelId || !selectedModelName.trim()) {

@@ -1,7 +1,10 @@
 "use client";
 
+import * as React from "react";
 import { motion } from "framer-motion";
+import { useRouter } from "next/navigation";
 import { formatDateTimeEuropean } from "@/lib/format";
+import { useRealtime } from "@/contexts/realtime-context";
 
 type Row = {
   id: string;
@@ -19,6 +22,22 @@ type Props = {
 
 /** Staggered list items for live-shifts server page. */
 export function LiveShiftsPageLists({ chatterRows, vaRows }: Props) {
+  const router = useRouter();
+  const realtime = useRealtime();
+
+  React.useEffect(() => {
+    if (!realtime?.subscribe) return;
+    return realtime.subscribe((event) => {
+      if (
+        event.type === "shift_started" ||
+        event.type === "shift_ended" ||
+        event.type === "model_status_changed"
+      ) {
+        router.refresh();
+      }
+    });
+  }, [realtime, router]);
+
   return (
     <>
       <div className="glass-card overflow-hidden">

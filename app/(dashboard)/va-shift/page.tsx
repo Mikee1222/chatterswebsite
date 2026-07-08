@@ -4,7 +4,7 @@ import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getActiveShiftByStaff, getActiveShiftModels } from "@/services/shifts";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getWeekStartYmdInAthens, getTodayWeekdayAthens, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { formatTimeFromISO } from "@/lib/format";
@@ -23,7 +23,7 @@ export default async function VaShiftPage() {
   const vaName = user.fullName ?? user.email ?? "VA";
 
   let activeShift: Awaited<ReturnType<typeof getActiveShiftByStaff>> = null;
-  let modelss: Awaited<ReturnType<typeof listAllModelss>> = [];
+  let modelss: Awaited<ReturnType<typeof getCachedModelss>> = [];
   let shiftModels: Awaited<ReturnType<typeof getActiveShiftModels>> = [];
   let loadError = false;
   const todayYmd = getTodayYmdAthens();
@@ -39,7 +39,7 @@ export default async function VaShiftPage() {
   try {
     const [activeShiftResult, modelssResult, programsResult] = await Promise.all([
       getActiveShiftByStaff(vaId, "virtual_assistant"),
-      listAllModelss(),
+      getCachedModelss(),
       getProgramsForWeekVa(weekStart),
     ]);
     activeShift = activeShiftResult;

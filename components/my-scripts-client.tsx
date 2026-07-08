@@ -83,6 +83,13 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
     }
   }
 
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      void reload();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   async function copyScript(video: WinnerVideoRecord) {
     const ok = await copyTextToClipboard(formatCreativeScriptCopy(video));
     addToast(

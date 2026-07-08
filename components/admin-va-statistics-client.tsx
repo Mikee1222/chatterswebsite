@@ -1,17 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { ChevronDown, ChevronRight, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VA_CARD, VA_TASKS } from "@/lib/va-tasks-tokens";
@@ -29,6 +19,15 @@ const PRESETS: { id: VaStatisticsPreset; label: string }[] = [
   { id: "last_month", label: "Last Month" },
   { id: "custom", label: "Custom" },
 ];
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
 
 type SortMetric = "completion_rate" | "hours" | "tasks_done" | "on_time_rate";
 

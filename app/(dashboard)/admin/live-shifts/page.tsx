@@ -3,11 +3,13 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { getLiveShifts, getActiveShiftModels } from "@/services/shifts";
+import { getLiveShifts, getActiveShiftModelsForShiftIds } from "@/services/shifts";
 import { listAllShiftQueueWaiting } from "@/services/shift-queue";
 import { listAllUsers } from "@/services/users";
 import { AdminLiveShiftsClient } from "@/components/admin-live-shifts-client";
 import type { AdminShiftQueueRow } from "@/types";
+import { RouterRefreshInterval } from "@/components/router-refresh-interval";
+import type { ShiftModel } from "@/types";
 
 export default async function AdminLiveShiftsPage() {
   const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.SHIFTS_ACTIVE_VIEW);
@@ -19,12 +21,13 @@ export default async function AdminLiveShiftsPage() {
       .filter((u) => u.telegram_username)
       .map((u) => [u.id, u.telegram_username!.replace(/^@/, "")])
   );
-  const withModelNames = await Promise.all(
-    shifts.map(async (s) => {
-      const models = await getActiveShiftModels(s.id).catch(() => []);
-      return { ...s, modelNames: models.map((m) => m.model_name).filter(Boolean) };
-    })
+  const activeModelsByShiftId = await getActiveShiftModelsForShiftIds(shifts.map((s) => s.id)).catch(
+    () => ({} as Record<string, ShiftModel[]>)
   );
+  const withModelNames = shifts.map((s) => ({
+    ...s,
+    modelNames: (activeModelsByShiftId[s.id] ?? []).map((m) => m.model_name).filter(Boolean),
+  }));
 
   const queueRows = await listAllShiftQueueWaiting().catch(() => []);
   const shiftQueue: AdminShiftQueueRow[] = queueRows.map((e) => ({
@@ -37,10 +40,12 @@ export default async function AdminLiveShiftsPage() {
   }));
 
   return (
-    <AdminLiveShiftsClient
-      shiftsWithModels={withModelNames}
-      shiftQueue={shiftQueue}
-      telegramByUserId={telegramByUserId}
-    />
+    <RouterRefreshInterval intervalMs={60_000}>
+      <AdminLiveShiftsClient
+        shiftsWithModels={withModelNames}
+        shiftQueue={shiftQueue}
+        telegramByUserId={telegramByUserId}
+      />
+    </RouterRefreshInterval>
   );
 }

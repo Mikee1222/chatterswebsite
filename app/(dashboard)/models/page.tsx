@@ -2,10 +2,11 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { ModelsDirectoryTable } from "@/components/models-directory-table";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
-import { getActiveShifts, getActiveShiftModels } from "@/services/shifts";
+import { getActiveShifts, getActiveShiftModelsForShiftIds } from "@/services/shifts";
+import type { ShiftModel } from "@/types";
 
 export default async function ModelsPage() {
   const user = await getSessionFromCookies();
@@ -14,19 +15,20 @@ export default async function ModelsPage() {
   if (!staffVa && user.role !== "admin" && user.role !== "manager") redirect(ROUTES.dashboard);
 
   const [modelss, vaShifts] = await Promise.all([
-    listAllModelss(),
+    getCachedModelss(),
     getActiveShifts("virtual_assistant").catch(() => []),
   ]);
 
+  const activeModelsByShiftId = await getActiveShiftModelsForShiftIds(vaShifts.map((s) => s.id)).catch(
+    () => ({} as Record<string, ShiftModel[]>)
+  );
   const modelIdToVaNames: Record<string, string[]> = {};
   for (const shift of vaShifts) {
-    const shiftModels = await getActiveShiftModels(shift.id).catch(() => []);
-    for (const sm of shiftModels) {
-      if (!sm.left_at && sm.model_id) {
-        const name = sm.chatter_name?.trim() || "VA";
-        if (!modelIdToVaNames[sm.model_id]) modelIdToVaNames[sm.model_id] = [];
-        if (!modelIdToVaNames[sm.model_id].includes(name)) modelIdToVaNames[sm.model_id].push(name);
-      }
+    for (const sm of activeModelsByShiftId[shift.id] ?? []) {
+      if (!sm.model_id) continue;
+      const name = sm.chatter_name?.trim() || "VA";
+      if (!modelIdToVaNames[sm.model_id]) modelIdToVaNames[sm.model_id] = [];
+      if (!modelIdToVaNames[sm.model_id].includes(name)) modelIdToVaNames[sm.model_id].push(name);
     }
   }
 

@@ -12,16 +12,16 @@ import { AdminMarketingClient } from "@/components/admin-marketing-client";
 export default async function AdminMarketingPage() {
   await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MARKETING_MANAGE);
 
-  const [platforms, accounts, funnels, phones, models, allUsers, initialReports, roles] = await Promise.all([
+  const [platforms, accounts, funnels, models, allUsers, initialReports, roles] = await Promise.all([
     getAllPlatforms().catch(() => []),
     getAllAccounts().catch(() => []),
     getAllFunnels().catch(() => []),
-    getPhones().catch(() => []),
     listAllModelss().catch(() => []),
     listActiveUsers().catch(() => []),
     getAllShadowbanReports().catch(() => []),
     getRoles().catch(() => []),
   ]);
+  const phones = await getPhones(accounts).catch(() => []);
 
   const vaUsers = filterVaUsers(allUsers);
   const staffUsers = toStaffUserOptions(allUsers);

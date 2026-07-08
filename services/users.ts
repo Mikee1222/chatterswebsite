@@ -15,6 +15,7 @@ import type { UserRecord, UserRole, VaType, CompensationType, UserContractAttach
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 import { getRolePermissions } from "@/services/roles";
+import { unstable_cache } from "next/cache";
 
 const TABLE = "users";
 
@@ -146,8 +147,14 @@ export async function listAllUsers(): Promise<UserRecord[]> {
 
 /** Active, login-enabled users — for assignment pickers and staff lists. */
 export async function listActiveUsers(): Promise<UserRecord[]> {
-  return filterActiveUsersForAssignment(await listAllUsers());
+  return getCachedActiveUsers();
 }
+
+const getCachedActiveUsers = unstable_cache(
+  async (): Promise<UserRecord[]> => filterActiveUsersForAssignment(await listAllUsers()),
+  ["users-active-v1"],
+  { revalidate: 60 }
+);
 
 /**
  * Active, login-enabled users whose role grants `permission`. Resolves each distinct role's

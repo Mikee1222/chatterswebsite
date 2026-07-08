@@ -60,6 +60,13 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
     }
   }
 
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      void reload();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   async function patchScript(id: string, body: Record<string, unknown>) {
     setPendingId(id);
     try {

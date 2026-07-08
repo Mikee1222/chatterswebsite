@@ -3,16 +3,7 @@
 import * as React from "react";
 import { DayPicker, DateRange } from "react-day-picker";
 import "react-day-picker/dist/style.css";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { CalendarRange, ChevronDown, TrendingUp, X } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
 import { formatDateYmd } from "@/lib/format-date";
@@ -24,6 +15,14 @@ const ACCENT = "hsl(330,80%,55%)";
 const ACCENT_SOFT = "hsl(330,80%,55% / 0.35)";
 const CHART_GROSS = "#ec4899";
 const CHART_NET = "#a78bfa";
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
+const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
 
 type EarningsMetric = "gross" | "net";
 

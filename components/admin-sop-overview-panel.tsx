@@ -2,19 +2,7 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { AlertTriangle, GraduationCap, Users } from "lucide-react";
 import { Spinner } from "@/components/ui/spinner";
 import { SopEmptyState } from "@/components/sop/sop-empty-state";
@@ -46,6 +34,17 @@ const chartTooltipLabelStyle: React.CSSProperties = {
 const chartTooltipItemStyle: React.CSSProperties = {
   color: "rgba(255,255,255,0.92)",
 };
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const Cell = dynamic(() => import("recharts").then((m) => m.Cell), { ssr: false });
+const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
+const Pie = dynamic(() => import("recharts").then((m) => m.Pie), { ssr: false });
+const PieChart = dynamic(() => import("recharts").then((m) => m.PieChart), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
 
 function formatRelativeDays(days: number): string {
   if (days <= 0) return "today";

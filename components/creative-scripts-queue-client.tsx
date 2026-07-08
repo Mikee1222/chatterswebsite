@@ -82,6 +82,13 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
     }
   }
 
+  React.useEffect(() => {
+    const id = window.setInterval(() => {
+      void reload();
+    }, 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   function openForm(video: WinnerVideoRecord) {
     if (activeId === video.id) {
       setActiveId(null);

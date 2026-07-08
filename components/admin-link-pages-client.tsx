@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import dynamic from "next/dynamic";
 import {
   AlertTriangle,
   Archive,
@@ -31,23 +32,6 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
-import {
-  ResponsiveContainer,
-  AreaChart,
-  Area,
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  CartesianGrid,
-  XAxis,
-  YAxis,
-  Tooltip,
-  Legend,
-  RadialBarChart,
-  RadialBar,
-  PolarAngleAxis,
-} from "recharts";
 import { useToast } from "@/contexts/toast-context";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
@@ -99,6 +83,21 @@ const THEME_TEXT_COLOR: Record<LinkPageRecord["theme"], string> = {
 };
 const PURPLE = "#8b5cf6";
 const PIE_COLORS = ["#ec4899", "#8b5cf6", "#38bdf8", "#34d399", "#fbbf24", "#f97316"];
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
+const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
+const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
+const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
+const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
+const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
+const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
+const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
+const RadialBarChart = dynamic(() => import("recharts").then((m) => m.RadialBarChart), { ssr: false });
+const RadialBar = dynamic(() => import("recharts").then((m) => m.RadialBar), { ssr: false });
+const PolarAngleAxis = dynamic(() => import("recharts").then((m) => m.PolarAngleAxis), { ssr: false });
 
 function localToast(title: string, body: string, priority: "normal" | "high"): AppNotification {
   const id = `toast-${Date.now()}`;
