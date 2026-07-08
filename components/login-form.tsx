@@ -99,13 +99,16 @@ function LoginFormBody({
   isSubmitting: boolean;
 }) {
   const { pending } = useFormStatus();
-  const busy = isSubmitting || pending;
+  // Button may show loading immediately via isSubmitting, but inputs must stay
+  // enabled until `pending` — flushSync+disabled strips them from FormData.
+  const buttonBusy = isSubmitting || pending;
+  const fieldsLocked = pending;
 
   return (
     <motion.div
       className="space-y-4"
       animate={
-        busy
+        buttonBusy
           ? { opacity: 0.96, scale: 0.998 }
           : { opacity: 1, scale: 1 }
       }
@@ -117,7 +120,7 @@ function LoginFormBody({
         </div>
       ) : null}
 
-      <fieldset disabled={busy} className="m-0 min-w-0 space-y-4 border-0 p-0">
+      <fieldset disabled={fieldsLocked} className="m-0 min-w-0 space-y-4 border-0 p-0">
         <FormField label="Email" icon={<Mail />} htmlFor="email" required>
           <FormInput
             id="email"
@@ -126,7 +129,7 @@ function LoginFormBody({
             autoComplete="email"
             required
             placeholder="you@example.com"
-            disabled={busy}
+            disabled={fieldsLocked}
           />
         </FormField>
         <FormField label="Password" icon={<Lock />} htmlFor="password" required>
@@ -137,7 +140,7 @@ function LoginFormBody({
             omitLabel
             placeholder="••••••••"
             className="pr-12"
-            disabled={busy}
+            disabled={fieldsLocked}
           />
         </FormField>
         <div className="space-y-2 max-md:rounded-none max-md:border-0 max-md:bg-transparent max-md:p-0 max-md:shadow-none md:rounded-xl md:border md:border-white/10 md:bg-[#1a1a1a] md:px-4 md:py-3 md:shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]">
@@ -147,7 +150,7 @@ function LoginFormBody({
             value="on"
             label="Remember me for 30 days"
             className="items-center gap-3"
-            disabled={busy}
+            disabled={fieldsLocked}
           />
           <p className="text-xs leading-relaxed text-white/45 max-md:pl-0 max-md:pt-0.5 md:pl-8">
             If unchecked, you stay signed in until you close the browser or after 24 hours of use. Checked keeps you
@@ -180,6 +183,7 @@ export function LoginForm({ error }: LoginFormProps) {
       onSubmit={() => {
         // Paint loading UI before the server action starts. Relying only on
         // useFormStatus left a blank/focus-ring moment (AnimatePresence wait + lag).
+        // Do NOT disable named inputs here — flushSync + disabled strips FormData.
         flushSync(() => setIsSubmitting(true));
       }}
     >
