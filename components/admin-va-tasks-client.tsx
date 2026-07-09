@@ -13,7 +13,12 @@ import type { TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
-import { filterTasksByAthensYmd, getVaTasksViewTodayYmd, groupVaTasksForDateView } from "@/lib/va-task-date-filter";
+import {
+  expandTasksForAthensYmd,
+  filterTasksByAthensYmd,
+  getVaTasksViewTodayYmd,
+  groupVaTasksForDateView,
+} from "@/lib/va-task-date-filter";
 import { VA_CARD, VA_FILTER_INPUT, VA_MODEL_TAG, VA_STATUS_BADGE, VA_BTN_PRIMARY, VA_BTN_SECONDARY, VA_CHAMPAGNE_DIVIDER } from "@/lib/va-tasks-tokens";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
 import { TaskPhaseRibbon } from "@/components/task-phase-ribbon";
@@ -306,6 +311,20 @@ export function AdminVaTasksClient({
   const canShowList = canManage || canViewList;
   const defaultViewMode = canShowList ? "list" : "progress";
   const [localTasks, setLocalTasks] = React.useState(tasks);
+  const logLocalTasksRecurring = React.useCallback((label: string, taskList: VaTaskRecord[]) => {
+    const recurring = taskList.filter((t) => t.is_recurring);
+    console.log(`LIVE_DEBUG: ${label}`, {
+      localTasksLength: taskList.length,
+      recurringCount: recurring.length,
+      recurringIdsTitles: recurring.map((t) => ({ id: t.id, title: t.title })),
+    });
+  }, []);
+  React.useEffect(() => {
+    logLocalTasksRecurring("initial props", tasks);
+  }, [tasks, logLocalTasksRecurring]);
+  React.useEffect(() => {
+    logLocalTasksRecurring("localTasks state update", localTasks);
+  }, [localTasks, logLocalTasksRecurring]);
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
   const [reminding, setReminding] = React.useState<string | null>(null);
@@ -335,7 +354,28 @@ export function AdminVaTasksClient({
   const [filterStatus, setFilterStatus] = React.useState("");
   const [filterPriority, setFilterPriority] = React.useState("");
   const todayYmd = getVaTasksViewTodayYmd();
-  const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
+  const [selectedYmd, setSelectedYmdState] = React.useState(todayYmd);
+  const setSelectedYmd = React.useCallback(
+    (ymd: string) => {
+      console.log("LIVE_DEBUG: date navigator change", { selectedYmd: ymd, todayYmd });
+      setSelectedYmdState(ymd);
+      if (ymd > todayYmd) {
+        const expanded = expandTasksForAthensYmd(localTasks, ymd);
+        const realCount = expanded.filter((t) => !t.is_virtual_occurrence).length;
+        const virtualCount = expanded.filter((t) => t.is_virtual_occurrence).length;
+        console.log("LIVE_DEBUG: expandTasksForAthensYmd future date", {
+          selectedYmd: ymd,
+          realCount,
+          virtualCount,
+          totalExpanded: expanded.length,
+          virtualIdsTitles: expanded
+            .filter((t) => t.is_virtual_occurrence)
+            .map((t) => ({ id: t.id, title: t.title })),
+        });
+      }
+    },
+    [todayYmd, localTasks],
+  );
   const [showAllTasks, setShowAllTasks] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"list" | "progress">(defaultViewMode);
   const [progressPhasesLoading, setProgressPhasesLoading] = React.useState(false);
@@ -350,10 +390,27 @@ export function AdminVaTasksClient({
     }
   }, [canShowList, canViewProgress]);
 
-  const dateFilteredTasks = React.useMemo(
-    () => filterTasksByAthensYmd(localTasks, selectedYmd),
-    [localTasks, selectedYmd],
-  );
+  const dateFilteredTasks = React.useMemo(() => {
+    console.log("LIVE_DEBUG: active filters at computation", {
+      selectedYmd,
+      filterVa: filterVa || "(all)",
+      filterStatus: filterStatus || "(all)",
+      filterPriority: filterPriority || "(all)",
+      search: deferredSearch.trim() || "(none)",
+    });
+    const result = filterTasksByAthensYmd(localTasks, selectedYmd);
+    if (selectedYmd > todayYmd) {
+      const realCount = result.filter((t) => !t.is_virtual_occurrence).length;
+      const virtualCount = result.filter((t) => t.is_virtual_occurrence).length;
+      console.log("LIVE_DEBUG: dateFilteredTasks future date", {
+        selectedYmd,
+        realCount,
+        virtualCount,
+        total: result.length,
+      });
+    }
+    return result;
+  }, [localTasks, selectedYmd, filterVa, filterStatus, filterPriority, deferredSearch, todayYmd]);
 
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
