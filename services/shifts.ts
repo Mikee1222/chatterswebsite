@@ -361,15 +361,34 @@ export async function getActiveShiftByChatter(chatterRecordId: string) {
   return getActiveShiftByStaff(chatterRecordId, "chatter");
 }
 
+/**
+ * Normalize session / API user id to the Airtable `users` record id linked on `shifts.chatter`.
+ * Accepts `rec…` ids or stable `user_…` primary-field values.
+ */
+export async function resolveShiftChatterRecordId(userIdOrRecordId: string): Promise<string | null> {
+  const trimmed = userIdOrRecordId.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("rec")) return trimmed;
+  try {
+    const { getUserByUserId, getUserByAirtableId } = await import("@/services/users");
+    const byUserId = await getUserByUserId(trimmed);
+    if (byUserId?.id) return byUserId.id;
+    const byRec = await getUserByAirtableId(trimmed);
+    return byRec?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
 /** Active VA tasks shift for this user (`shift_type` = task). */
 export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift | null> {
-  const trimmed = userRecordId.trim();
-  if (!trimmed) return null;
+  const chatterRecordId = await resolveShiftChatterRecordId(userRecordId);
+  if (!chatterRecordId) return null;
   const shifts = await getActiveShifts("virtual_assistant");
   return (
     shifts.find(
       (s) =>
-        s.chatter_id === trimmed &&
+        s.chatter_id === chatterRecordId &&
         (s.shift_type === "task" || s.shift_type === "va_tasks"),
     ) ?? null
   );

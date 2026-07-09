@@ -7,6 +7,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { getVaTasksForUser } from "@/services/va-tasks";
+import { getActiveVaTaskShift } from "@/services/shifts";
 import { VaTasksClient } from "@/components/va-tasks-client";
 
 export default async function VaTasksPage() {
@@ -26,8 +27,15 @@ export default async function VaTasksPage() {
   }
 
   const vaId = user.airtableUserId ?? user.id;
-  const tasks = await getVaTasksForUser(vaId).catch(() => []);
+  const [tasks, activeShift] = await Promise.all([
+    getVaTasksForUser(vaId).catch(() => []),
+    getActiveVaTaskShift(vaId).catch(() => null),
+  ]);
   const userName = (user.fullName || user.email || "").trim();
 
-  return <VaTasksClient tasks={tasks} userName={userName} />;
+  const initialActiveShift = activeShift
+    ? { id: activeShift.id, start_time: activeShift.start_time ?? "", status: activeShift.status }
+    : null;
+
+  return <VaTasksClient tasks={tasks} userName={userName} initialActiveShift={initialActiveShift} />;
 }

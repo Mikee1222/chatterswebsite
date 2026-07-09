@@ -233,6 +233,17 @@ export async function getUserByAirtableId(recordId: string): Promise<UserRecord 
   }
 }
 
+/** Lookup by stable `user_id` primary field (e.g. `user_1772905978251_vz1u16hc`). */
+export async function getUserByUserId(userId: string): Promise<UserRecord | null> {
+  const trimmed = userId.trim();
+  if (!trimmed) return null;
+  const { records } = await listRecords<Fields>(TABLE, {
+    filterByFormula: `{user_id} = "${trimmed.replace(/"/g, '""')}"`,
+    pageSize: 1,
+  });
+  return records[0] ? mapRecord(records[0]) : null;
+}
+
 function genUserId(): string {
   return `user_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }

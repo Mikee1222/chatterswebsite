@@ -6,6 +6,7 @@ import { hasPermission } from "@/lib/rbac";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
+import { getActiveVaTaskShift } from "@/services/shifts";
 import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
 
@@ -15,6 +16,15 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!(await hasPermission(session, "va-tasks:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const blocked = await vaTypeAccessApiGuardForNavHref(session, ROUTES.va.tasks);
   if (blocked) return blocked;
+
+  const vaId = session.airtableUserId ?? session.id;
+  const activeShift = await getActiveVaTaskShift(vaId);
+  if (!activeShift) {
+    return NextResponse.json(
+      { error: "Start your task shift before completing checklist items." },
+      { status: 403 },
+    );
+  }
 
   const { id: paramId } = await ctx.params;
   const itemRowId = await resolvePhaseItemRowId(paramId);
@@ -40,7 +50,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     }
   }
 
-  const vaId = session.airtableUserId ?? session.id;
   const vaName = session.fullName?.trim() || session.email || "VA";
 
   const { phaseCompleted, allPhasesCompleted, itemTitle, taskId, phaseAirtableId } = await completePhaseItem(

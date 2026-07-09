@@ -31,7 +31,11 @@ import {
   isEngagementScreenshotItem,
 } from "@/lib/va-task-screenshots";
 
-type Props = { tasks: VaTaskRecord[]; userName?: string };
+type Props = {
+  tasks: VaTaskRecord[];
+  userName?: string;
+  initialActiveShift?: ActiveShift | null;
+};
 
 const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
 const TASK_LIST_INITIAL_CAP = 40;
@@ -66,33 +70,42 @@ type ActiveShift = { id: string; start_time: string; status: string };
 function VaShiftBar({
   isViewingToday,
   onShiftChange,
+  initialActiveShift = null,
 }: {
   isViewingToday: boolean;
   onShiftChange: (onShift: boolean) => void;
+  initialActiveShift?: ActiveShift | null;
 }) {
-  const [activeShift, setActiveShift] = React.useState<ActiveShift | null>(null);
+  const [activeShift, setActiveShift] = React.useState<ActiveShift | null>(initialActiveShift);
   const [shiftLoading, setShiftLoading] = React.useState(true);
   const [shiftBusy, setShiftBusy] = React.useState(false);
   const [shiftErr, setShiftErr] = React.useState<string | null>(null);
   const [shiftDuration, setShiftDuration] = React.useState("0s");
+  const fetchSeqRef = React.useRef(0);
+
+  const setShiftState = React.useCallback(
+    (shift: ActiveShift | null) => {
+      setActiveShift(shift);
+      onShiftChange(!!shift);
+    },
+    [onShiftChange],
+  );
 
   const fetchActiveShift = React.useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
     try {
       const res = await fetch("/api/va/task-shift/active", { credentials: "include" });
       const data = (await res.json().catch(() => ({}))) as { shift?: ActiveShift | null };
-      if (res.ok) setActiveShift(data.shift ?? null);
+      if (seq !== fetchSeqRef.current) return;
+      if (res.ok) setShiftState(data.shift ?? null);
     } finally {
-      setShiftLoading(false);
+      if (seq === fetchSeqRef.current) setShiftLoading(false);
     }
-  }, []);
+  }, [setShiftState]);
 
   React.useEffect(() => {
     void fetchActiveShift();
   }, [fetchActiveShift]);
-
-  React.useEffect(() => {
-    onShiftChange(!!activeShift);
-  }, [activeShift, onShiftChange]);
 
   React.useEffect(() => {
     if (!activeShift?.start_time) {
@@ -140,7 +153,7 @@ function VaShiftBar({
       }
       await res.json().catch(() => ({}));
       setShiftErr(null);
-      setActiveShift(null);
+      setShiftState(null);
     } finally {
       setShiftBusy(false);
     }
@@ -205,7 +218,7 @@ function VaShiftBar({
   );
 }
 
-export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
+export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiveShift = null }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const tasks = initialTasks;
@@ -226,7 +239,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
   const [filterPriority, setFilterPriority] = React.useState("");
   const [showAllTasks, setShowAllTasks] = React.useState(false);
 
-  const [onShift, setOnShift] = React.useState(false);
+  const [onShift, setOnShift] = React.useState(!!initialActiveShift);
   const handleShiftChange = React.useCallback((next: boolean) => setOnShift(next), []);
   const [taskPhases, setTaskPhases] = React.useState<Record<string, TaskPhase[]>>({});
   const [modelAccounts, setModelAccounts] = React.useState<Record<string, SocialAccount[]>>({});
@@ -568,7 +581,11 @@ export function VaTasksClient({ tasks: initialTasks, userName = "" }: Props) {
 
   return (
     <div className="min-h-screen">
-      <VaShiftBar isViewingToday={isViewingToday} onShiftChange={handleShiftChange} />
+      <VaShiftBar
+        isViewingToday={isViewingToday}
+        onShiftChange={handleShiftChange}
+        initialActiveShift={initialActiveShift}
+      />
 
       <div className="mx-auto max-w-5xl space-y-6 px-4 pb-10 md:px-6">
         {/* ── Page header ── */}

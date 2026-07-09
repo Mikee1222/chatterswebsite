@@ -5,7 +5,13 @@ import type { AuthUser } from "@/lib/auth-config";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { createShift, updateShift, getActiveShifts, getActiveVaTaskShift } from "@/services/shifts";
+import {
+  createShift,
+  updateShift,
+  getActiveShifts,
+  getActiveVaTaskShift,
+  resolveShiftChatterRecordId,
+} from "@/services/shifts";
 import { createActivityLog } from "@/services/activity-logs";
 import { notify } from "@/services/notification-service";
 
@@ -247,6 +253,7 @@ export async function startVaTaskShiftAction() {
   }
 
   const vaId = user.airtableUserId ?? user.id;
+  const chatterRecordId = await resolveShiftChatterRecordId(vaId);
   const existing = await getActiveVaTaskShift(vaId);
   if (existing) return { error: "You already have an active VA tasks shift" };
 
@@ -254,7 +261,7 @@ export async function startVaTaskShiftAction() {
   const date = now.toISOString().split("T")[0];
   const weekStart = getWeekStart(now);
   const shift = await createShift({
-    chatter: user.airtableUserId ? [user.airtableUserId] : [],
+    chatter: chatterRecordId ? [chatterRecordId] : [],
     chatter_name: user.fullName ?? user.email ?? "",
     week_start: weekStart,
     date,
