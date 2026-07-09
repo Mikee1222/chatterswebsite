@@ -5,7 +5,11 @@ import {
   shouldSpawnRecurring,
   vaTaskSeriesKey,
 } from "@/lib/recurrence";
-import { getVaTasksViewTodayYmd, taskMatchesAthensYmd } from "@/lib/va-task-date-filter";
+import {
+  getVaTasksViewTodayYmd,
+  recurringRealRowExistsForAthensYmd,
+  taskMatchesAthensYmd,
+} from "@/lib/va-task-date-filter";
 import {
   createVaTask,
   getAllVaTasks,
@@ -19,20 +23,7 @@ export type SpawnRecurringResult = {
   skipped: number;
 };
 
-/** True when a real (non-virtual) recurring row already exists for this series on an Athens day. */
-export function recurringRealRowExistsForAthensYmd(
-  tasks: VaTaskRecord[],
-  seriesKey: string,
-  ymd: string,
-): boolean {
-  return tasks.some(
-    (t) =>
-      !t.is_virtual_occurrence &&
-      t.is_recurring &&
-      vaTaskSeriesKey(t) === seriesKey &&
-      taskMatchesAthensYmd(t, ymd),
-  );
-}
+export { recurringRealRowExistsForAthensYmd } from "@/lib/va-task-date-filter";
 
 /** Date-bucket de-dupe for a target due instant (Athens calendar day). */
 export function recurringRealRowExistsForDueIso(

@@ -1,5 +1,5 @@
 import { ymdInAthens } from "@/lib/airtable-datetime";
-import { materializeVirtualOccurrence, vaTaskSeriesKey } from "@/lib/recurrence";
+import { materializeVirtualOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
 import { groupRecurringTasks, type RecurringSeriesGroup } from "@/lib/recurring-utils";
 import { flattenDateViewTasks } from "@/lib/va-tasks-progress";
 import type { VaTaskRecord } from "@/types";
@@ -18,6 +18,21 @@ export function taskMatchesAthensYmd(task: VaTaskRecord, ymd: string): boolean {
   return Boolean(taskYmd && taskYmd === ymd);
 }
 
+/** True when a real (non-virtual) recurring row exists for this series on an Athens day. */
+export function recurringRealRowExistsForAthensYmd(
+  tasks: VaTaskRecord[],
+  seriesKey: string,
+  ymd: string,
+): boolean {
+  return tasks.some(
+    (t) =>
+      !t.is_virtual_occurrence &&
+      t.is_recurring &&
+      vaTaskSeriesKey(t) === seriesKey &&
+      taskMatchesAthensYmd(t, ymd),
+  );
+}
+
 /**
  * Expand recurring series so every Athens calendar day in range has a visible instance.
  *
@@ -30,15 +45,14 @@ export function expandTasksForAthensYmd(tasks: VaTaskRecord[], ymd: string): VaT
   if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) return tasks;
 
   const realOnDay = tasks.filter((t) => taskMatchesAthensYmd(t, target));
-  const coveredSeries = new Set(
-    realOnDay.filter((t) => t.is_recurring).map((t) => vaTaskSeriesKey(t)),
-  );
 
-  // Prefer the earliest-due recurring row per series as the recurrence "anchor".
+  // Prefer the earliest-due active recurring row per series as the recurrence "anchor".
+  // Skip stale rows whose recurrence has ended — they must not win over today's spawned row.
   const anchors = new Map<string, VaTaskRecord>();
   for (const task of tasks) {
     if (!task.is_recurring || task.is_virtual_occurrence) continue;
     if (!task.due_date?.trim() || !task.recurrence_type?.trim()) continue;
+    if (!shouldSpawnRecurring(task)) continue;
     const key = vaTaskSeriesKey(task);
     const prev = anchors.get(key);
     if (!prev) {
@@ -52,7 +66,7 @@ export function expandTasksForAthensYmd(tasks: VaTaskRecord[], ymd: string): VaT
 
   const virtual: VaTaskRecord[] = [];
   for (const [key, anchor] of anchors) {
-    if (coveredSeries.has(key)) continue;
+    if (recurringRealRowExistsForAthensYmd(tasks, key, target)) continue;
     const projected = materializeVirtualOccurrence(anchor, target);
     if (projected) virtual.push(projected);
   }
