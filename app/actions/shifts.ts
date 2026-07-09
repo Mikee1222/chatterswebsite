@@ -1,10 +1,12 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import type { AuthUser } from "@/lib/auth-config";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
+import { ROUTES } from "@/lib/routes";
 import {
   createShift,
   updateShift,
@@ -282,6 +284,22 @@ export async function startVaTaskShiftAction() {
     entity_id: shift.id,
     summary: `${user.fullName ?? user.email} started a VA tasks shift`,
   });
+
+  try {
+    const { spawnTodayRecurringOccurrencesForVa } = await import("@/services/va-task-recurring-spawn");
+    const spawnResult = await spawnTodayRecurringOccurrencesForVa(vaId);
+    if (spawnResult.spawned > 0) {
+      console.log(
+        `[task-shift/start] spawned ${spawnResult.spawned} today's recurring occurrence(s) for ${vaId}`,
+      );
+      revalidatePath(ROUTES.va.tasks);
+      revalidatePath(ROUTES.va.home);
+      revalidatePath(ROUTES.va.schedule);
+      revalidatePath(ROUTES.admin.vaTasks);
+    }
+  } catch (spawnErr) {
+    console.error("[task-shift/start] spawn today recurring failed", spawnErr);
+  }
 
   return { success: true, shiftId: shift.id };
 }

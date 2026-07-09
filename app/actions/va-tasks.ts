@@ -13,12 +13,12 @@ import {
   updateVaTask,
   deleteVaTask,
   getVaTaskById,
-  getAllVaTasks,
   type VaTaskCreateInput,
   type VaTaskUpdateInput,
 } from "@/services/va-tasks";
 import { getActiveVaTaskShift } from "@/services/shifts";
-import { getNextOccurrence, isVirtualVaTaskId, shouldSpawnRecurring, vaTaskSeriesKey } from "@/lib/recurrence";
+import { isVirtualVaTaskId, shouldSpawnRecurring } from "@/lib/recurrence";
+import { spawnNextRecurringOccurrenceAfterComplete } from "@/services/va-task-recurring-spawn";
 import type { VaTaskRecord, VaTaskStatus } from "@/types";
 import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
 import { getUserPermissions, hasPermission } from "@/lib/rbac";
@@ -138,55 +138,11 @@ export async function updateVaTaskStatusAction(input: {
   try {
     await updateVaTask(input.taskId, patch);
 
-    if (input.status === "done" && shouldSpawnRecurring(task) && task.due_date && task.recurrence_type) {
-      const nextDue = getNextOccurrence(
-        task.due_date,
-        task.recurrence_type,
-        task.recurrence_interval ?? 1,
-        task.recurrence_days ?? [],
-        task.recurrence_end_date
-      );
-      if (nextDue) {
-        try {
-          const allTasks = await getAllVaTasks();
-          const series = vaTaskSeriesKey(task);
-          const alreadyExists = allTasks.some(
-            (t) =>
-              t.id !== task.id &&
-              vaTaskSeriesKey(t) === series &&
-              t.is_recurring &&
-              (t.status === "pending" || t.status === "in_progress")
-          );
-
-          if (!alreadyExists) {
-            const spawned = await createVaTask({
-              title: task.title,
-              description: task.description,
-              assigned_to_ids: [...task.assigned_to_ids],
-              assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
-              assigned_model_ids: [...(task.assigned_model_ids ?? [])],
-              assigned_model_names: [...(task.assigned_model_names ?? [])],
-              status: "pending",
-              priority: task.priority,
-              due_date: nextDue,
-              is_recurring: true,
-              recurrence_type: task.recurrence_type,
-              recurrence_days: [...task.recurrence_days],
-              recurrence_interval: task.recurrence_interval ?? undefined,
-              recurrence_end_date: task.recurrence_end_date,
-              reminder_minutes_before: task.reminder_minutes_before,
-            });
-            const { clonePhasesToTask } = await import("@/services/task-phases");
-            await clonePhasesToTask(task.id, spawned).catch((cloneErr) =>
-              console.error("[va-tasks] clone phases for next occurrence failed", cloneErr),
-            );
-            console.log(`[va-tasks] spawned next occurrence for "${task.title}" → ${nextDue}`);
-          } else {
-            console.log(`[va-tasks] skipping spawn — pending recurring task already exists for "${task.title}"`);
-          }
-        } catch (spawnErr) {
-          console.error("[va-tasks] spawn next occurrence failed", spawnErr);
-        }
+    if (input.status === "done" && shouldSpawnRecurring(task)) {
+      try {
+        await spawnNextRecurringOccurrenceAfterComplete(task);
+      } catch (spawnErr) {
+        console.error("[va-tasks] spawn next occurrence failed", spawnErr);
       }
     }
 

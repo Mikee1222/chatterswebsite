@@ -342,14 +342,21 @@ export type VaRecurringSpawnCronResult = {
   spawned: number;
 };
 
+export type VaTodayRecurringSpawnCronResult = {
+  ok: true;
+  spawned: number;
+  skipped: number;
+};
+
 /**
  * Backfill: recurring tasks marked done whose next occurrence row is missing (e.g. spawn failed on completion).
- * De-dupes by series key (title + assignees) and next due within ±1h of an existing task.
+ * De-dupes by series key + Athens calendar day of the target due date.
  */
 export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronResult> {
   try {
-    const { getAllVaTasks, createVaTask } = await import("@/services/va-tasks");
-    const { getNextOccurrence, shouldSpawnRecurring, vaTaskSeriesKey } = await import("@/lib/recurrence");
+    const { getAllVaTasks } = await import("@/services/va-tasks");
+    const { getNextOccurrence, shouldSpawnRecurring } = await import("@/lib/recurrence");
+    const { spawnNextRecurringOccurrenceAfterComplete } = await import("@/services/va-task-recurring-spawn");
 
     let allTasks = await getAllVaTasks();
     const today = new Date();
@@ -375,57 +382,36 @@ export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronR
       );
       if (!nextDue) continue;
 
-      const series = vaTaskSeriesKey(task);
-      const nextMs = new Date(nextDue).getTime();
-      if (!Number.isFinite(nextMs)) continue;
-
-      const alreadyExists = allTasks.some((t2) => {
-        if (vaTaskSeriesKey(t2) !== series) return false;
-        if (!t2.due_date?.trim()) return false;
-        const d = new Date(t2.due_date.trim()).getTime();
-        if (!Number.isFinite(d)) return false;
-        return Math.abs(d - nextMs) < 60 * 60 * 1000;
-      });
-      if (alreadyExists) continue;
-
-      const seriesHasOpen = allTasks.some(
-        (t2) =>
-          vaTaskSeriesKey(t2) === series &&
-          t2.is_recurring &&
-          (t2.status === "pending" || t2.status === "in_progress")
-      );
-      if (seriesHasOpen) continue;
-
-      const spawnedTask = await createVaTask({
-        title: task.title,
-        description: task.description,
-        assigned_to_ids: [...task.assigned_to_ids],
-        assigned_by_ids: task.assigned_by_ids?.length ? [...task.assigned_by_ids] : undefined,
-        assigned_model_ids: [...(task.assigned_model_ids ?? [])],
-        assigned_model_names: [...(task.assigned_model_names ?? [])],
-        status: "pending",
-        priority: task.priority,
-        due_date: nextDue,
-        is_recurring: true,
-        recurrence_type: task.recurrence_type,
-        recurrence_days: [...task.recurrence_days],
-        recurrence_interval: task.recurrence_interval ?? undefined,
-        recurrence_end_date: task.recurrence_end_date,
-        reminder_minutes_before: task.reminder_minutes_before,
-      });
-      const { clonePhasesToTask } = await import("@/services/task-phases");
-      await clonePhasesToTask(task.id, spawnedTask).catch((cloneErr) =>
-        console.error("[cron] clone phases for recurring task failed", cloneErr),
-      );
-      spawned += 1;
-      console.log(`[cron] spawned recurring task "${task.title}" → ${nextDue}`);
-      allTasks = await getAllVaTasks();
+      const result = await spawnNextRecurringOccurrenceAfterComplete(task, allTasks);
+      if (result) {
+        spawned += 1;
+        console.log(`[cron] spawned recurring task "${task.title}" → ${nextDue}`);
+        allTasks = await getAllVaTasks();
+      }
     }
 
     return { ok: true, scanned: doneRecurring.length, spawned };
   } catch (e) {
     console.error("[runVaRecurringTaskSpawner]", e);
     return { ok: true, scanned: 0, spawned: 0 };
+  }
+}
+
+/**
+ * Day-boundary safety net: spawn today's real occurrence for every active recurring series,
+ * regardless of whether prior days were completed.
+ */
+export async function runVaTodayRecurringOccurrenceSpawner(): Promise<VaTodayRecurringSpawnCronResult> {
+  try {
+    const { spawnTodayRecurringOccurrencesAll } = await import("@/services/va-task-recurring-spawn");
+    const result = await spawnTodayRecurringOccurrencesAll();
+    if (result.spawned > 0) {
+      console.log(`[cron] spawned ${result.spawned} today's recurring occurrence(s)`);
+    }
+    return { ok: true, ...result };
+  } catch (e) {
+    console.error("[runVaTodayRecurringOccurrenceSpawner]", e);
+    return { ok: true, spawned: 0, skipped: 0 };
   }
 }
 
