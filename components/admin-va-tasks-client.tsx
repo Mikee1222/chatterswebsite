@@ -532,7 +532,7 @@ export function AdminVaTasksClient({
 
   const filteredTasks = React.useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    return dateFilteredTasks.filter((t) => {
+    const result = dateFilteredTasks.filter((t) => {
       if (q) {
         const blob = `${t.title} ${t.description}`.toLowerCase();
         if (!blob.includes(q)) return false;
@@ -545,12 +545,42 @@ export function AdminVaTasksClient({
       }
       return true;
     });
-  }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority]);
+    if (selectedYmd > todayYmd) {
+      console.log("LIVE_DEBUG: filteredTasks after list filters", {
+        selectedYmd,
+        inputLength: dateFilteredTasks.length,
+        outputLength: result.length,
+        droppedCount: dateFilteredTasks.length - result.length,
+        idsTitles: result.map((t) => ({
+          id: t.id,
+          title: t.title,
+          is_virtual: t.is_virtual_occurrence,
+          is_recurring: t.is_recurring,
+        })),
+      });
+    }
+    return result;
+  }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority, selectedYmd, todayYmd]);
 
-  const listViewGrouped = React.useMemo(
-    () => groupVaTasksForDateView(filteredTasks),
-    [filteredTasks],
-  );
+  const listViewGrouped = React.useMemo(() => {
+    const grouped = groupVaTasksForDateView(filteredTasks);
+    if (selectedYmd > todayYmd) {
+      console.log("LIVE_DEBUG: listViewGrouped after groupVaTasksForDateView", {
+        selectedYmd,
+        inputLength: filteredTasks.length,
+        regularTasksLength: grouped.regularTasks.length,
+        recurringGroupsLength: grouped.recurringGroups.length,
+        flattenedLength: grouped.flattenedTasks.length,
+        regularIdsTitles: grouped.regularTasks.map((t) => ({ id: t.id, title: t.title })),
+        recurringCurrentIdsTitles: grouped.recurringGroups
+          .map((g) => g.currentTask)
+          .filter(Boolean)
+          .map((t) => ({ id: t!.id, title: t!.title, is_virtual: t!.is_virtual_occurrence })),
+        recurringGroupsWithoutCurrent: grouped.recurringGroups.filter((g) => !g.currentTask).length,
+      });
+    }
+    return grouped;
+  }, [filteredTasks, selectedYmd, todayYmd]);
 
   const { regularTasks, recurringGroups, flattenedTasks: progressViewTasks } = listViewGrouped;
 
@@ -1176,6 +1206,41 @@ export function AdminVaTasksClient({
       onUpdatePhaseItemTitleLocal={updatePhaseItemTitleLocal}
     />
   );
+
+  if (viewMode === "list" && canShowList) {
+    const recurringRenderTasks = recurringGroups
+      .map((g) => g.currentTask)
+      .filter((t): t is VaTaskRecord => Boolean(t));
+    const totalRenderCount = visibleRegularTasks.length + recurringRenderTasks.length;
+    const emptyNoTasksForDate = localTasks.length > 0 && dateFilteredTasks.length === 0;
+    const emptyNoMatch = regularTasks.length === 0 && recurringGroups.length === 0;
+    console.log("LIVE_DEBUG: pre-render list view (final .map() inputs)", {
+      selectedYmd,
+      viewMode,
+      dateFilteredTasksLength: dateFilteredTasks.length,
+      filteredTasksLength: filteredTasks.length,
+      regularTasksLength: regularTasks.length,
+      recurringGroupsLength: recurringGroups.length,
+      visibleRegularTasksLength: visibleRegularTasks.length,
+      recurringRenderTasksLength: recurringRenderTasks.length,
+      totalRenderCount,
+      emptyStateBranch: emptyNoTasksForDate
+        ? "no_tasks_for_date"
+        : emptyNoMatch
+          ? "no_tasks_match"
+          : totalRenderCount === 0
+            ? "list_grid_empty_despite_nonempty_groups"
+            : "render_task_cards",
+      emptyNoTasksForDate,
+      emptyNoMatch,
+      visibleRegularIdsTitles: visibleRegularTasks.map((t) => ({ id: t.id, title: t.title })),
+      recurringRenderIdsTitles: recurringRenderTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        is_virtual: t.is_virtual_occurrence,
+      })),
+    });
+  }
 
   return (
     <div className="space-y-8">
