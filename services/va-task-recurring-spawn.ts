@@ -69,6 +69,43 @@ function taskVisibleToVa(task: VaTaskRecord, vaId: string): boolean {
   return task.assigned_to_ids.includes(vaId);
 }
 
+function findExistingRowForDueIso(
+  tasks: VaTaskRecord[],
+  seriesKey: string,
+  dueIso: string,
+): VaTaskRecord | undefined {
+  return tasks.find(
+    (t) =>
+      !t.is_virtual_occurrence &&
+      t.is_recurring &&
+      vaTaskSeriesKey(t) === seriesKey &&
+      taskMatchesAthensYmd(t, ymdInAthens(dueIso) ?? ""),
+  );
+}
+
+/** Prefer a series row that already has phases (for clonePhasesToTask source). */
+async function pickPhaseCloneSourceId(
+  allTasks: VaTaskRecord[],
+  seriesKey: string,
+  fallbackId: string,
+): Promise<string> {
+  const { getPhasesByTask } = await import("@/services/task-phases");
+  const inSeries = allTasks.filter(
+    (t) => !t.is_virtual_occurrence && t.is_recurring && vaTaskSeriesKey(t) === seriesKey,
+  );
+  let bestId = fallbackId;
+  let bestCount = -1;
+  for (const t of inSeries) {
+    const phases = await getPhasesByTask(t.id);
+    const itemCount = phases.reduce((n, p) => n + p.items.length, 0);
+    if (itemCount > bestCount) {
+      bestCount = itemCount;
+      bestId = t.id;
+    }
+  }
+  return bestId;
+}
+
 function buildSpawnInput(anchor: VaTaskRecord, dueIso: string): VaTaskCreateInput {
   return {
     title: anchor.title,
@@ -90,7 +127,8 @@ function buildSpawnInput(anchor: VaTaskRecord, dueIso: string): VaTaskCreateInpu
 }
 
 /**
- * Create a real recurring occurrence when none exists for the target Athens due day.
+ * Create a real recurring occurrence when none exists for the target Athens due day,
+ * or backfill phases when a shell row exists without checklist items.
  * Mutates `allTasks` with the new row when spawned (for in-memory de-dupe in loops).
  */
 export async function spawnRecurringOccurrenceIfMissing(
@@ -100,11 +138,23 @@ export async function spawnRecurringOccurrenceIfMissing(
 ): Promise<VaTaskRecord | null> {
   if (!shouldSpawnRecurring(anchor)) return null;
   const series = vaTaskSeriesKey(anchor);
-  if (recurringRealRowExistsForDueIso(allTasks, series, dueIso)) return null;
+  const { clonePhasesToTask, getPhasesByTask } = await import("@/services/task-phases");
+
+  const existing = findExistingRowForDueIso(allTasks, series, dueIso);
+  if (existing) {
+    const phases = await getPhasesByTask(existing.id);
+    if (phases.length > 0) return null;
+    const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+    await clonePhasesToTask(sourceId, existing).catch((err) =>
+      console.error("[va-task-recurring-spawn] backfill phases failed", err),
+    );
+    console.log(`[va-task-recurring-spawn] backfilled phases for "${anchor.title}" → ${dueIso}`);
+    return existing;
+  }
 
   const spawned = await createVaTask(buildSpawnInput(anchor, dueIso));
-  const { clonePhasesToTask } = await import("@/services/task-phases");
-  await clonePhasesToTask(anchor.id, spawned).catch((err) =>
+  const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+  await clonePhasesToTask(sourceId, spawned).catch((err) =>
     console.error("[va-task-recurring-spawn] clone phases failed", err),
   );
   allTasks.push(spawned);
@@ -132,11 +182,6 @@ export async function spawnTodayRecurringOccurrencesForVa(vaId: string): Promise
       skipped += 1;
       continue;
     }
-    if (recurringRealRowExistsForAthensYmd(tasks, series, todayYmd)) {
-      skipped += 1;
-      continue;
-    }
-
     const result = await spawnRecurringOccurrenceIfMissing(anchor, dueIso, tasks);
     if (result) spawned += 1;
     else skipped += 1;
@@ -160,11 +205,6 @@ export async function spawnTodayRecurringOccurrencesAll(): Promise<SpawnRecurrin
       skipped += 1;
       continue;
     }
-    if (recurringRealRowExistsForAthensYmd(allTasks, series, todayYmd)) {
-      skipped += 1;
-      continue;
-    }
-
     const result = await spawnRecurringOccurrenceIfMissing(anchor, dueIso, allTasks);
     if (result) {
       spawned += 1;
