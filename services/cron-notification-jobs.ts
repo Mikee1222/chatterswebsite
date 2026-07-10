@@ -349,24 +349,24 @@ export type VaTodayRecurringSpawnCronResult = {
 };
 
 /**
- * Backfill: recurring tasks marked done whose next occurrence row is missing (e.g. spawn failed on completion).
- * De-dupes by series key + Athens calendar day of the target due date.
+ * Backfill: recurring tasks marked done whose **today** occurrence row is missing
+ * (e.g. spawn failed on completion). Never creates future real rows.
  */
 export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronResult> {
   try {
     const { getAllVaTasks } = await import("@/services/va-tasks");
     const { getNextOccurrence, shouldSpawnRecurring } = await import("@/lib/recurrence");
+    const { getVaTasksViewTodayYmd } = await import("@/lib/va-task-date-filter");
+    const { ymdInAthens } = await import("@/lib/airtable-datetime");
     const { spawnNextRecurringOccurrenceAfterComplete } = await import("@/services/va-task-recurring-spawn");
 
     let allTasks = await getAllVaTasks();
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    const todayYmd = getVaTasksViewTodayYmd();
 
     const doneRecurring = allTasks.filter((t) => {
       if (!t.is_recurring || t.status !== "done" || !t.due_date?.trim()) return false;
-      const due = new Date(t.due_date.trim());
-      if (!Number.isFinite(due.getTime())) return false;
-      return due.getTime() < today.getTime();
+      const dueYmd = ymdInAthens(t.due_date.trim());
+      return Boolean(dueYmd && dueYmd < todayYmd);
     });
 
     let spawned = 0;
@@ -381,6 +381,8 @@ export async function runVaRecurringTaskSpawner(): Promise<VaRecurringSpawnCronR
         task.recurrence_end_date
       );
       if (!nextDue) continue;
+      const nextYmd = ymdInAthens(nextDue);
+      if (!nextYmd || nextYmd !== todayYmd) continue;
 
       const result = await spawnNextRecurringOccurrenceAfterComplete(task, allTasks);
       if (result) {

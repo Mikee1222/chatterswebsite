@@ -10,6 +10,13 @@ import {
   recurringRealRowExistsForAthensYmd,
   taskMatchesAthensYmd,
 } from "@/lib/va-task-date-filter";
+
+/** In-process mutex: concurrent shift-start + cron spawns share one create per series+day. */
+const spawnLocks = new Map<string, Promise<VaTaskRecord | null>>();
+
+function spawnLockKey(seriesKey: string, ymd: string): string {
+  return `${seriesKey}\0${ymd}`;
+}
 import {
   createVaTask,
   getAllVaTasks,
@@ -121,6 +128,9 @@ function buildSpawnInput(anchor: VaTaskRecord, dueIso: string): VaTaskCreateInpu
  * Create a real recurring occurrence when none exists for the target Athens due day,
  * or backfill phases when a shell row exists without checklist items.
  * Mutates `allTasks` with the new row when spawned (for in-memory de-dupe in loops).
+ *
+ * Proactive spawns are strictly limited to **today (Athens)** — future days stay virtual
+ * until their calendar day (shift-start / day-boundary cron).
  */
 export async function spawnRecurringOccurrenceIfMissing(
   anchor: VaTaskRecord,
@@ -128,10 +138,46 @@ export async function spawnRecurringOccurrenceIfMissing(
   allTasks: VaTaskRecord[],
 ): Promise<VaTaskRecord | null> {
   if (!shouldSpawnRecurring(anchor)) return null;
+
+  const targetYmd = ymdInAthens(dueIso);
+  if (!targetYmd) return null;
+
+  const todayYmd = getVaTasksViewTodayYmd();
+  if (targetYmd !== todayYmd) {
+    return null;
+  }
+
   const series = vaTaskSeriesKey(anchor);
+  const lockKey = spawnLockKey(series, targetYmd);
+  const inFlight = spawnLocks.get(lockKey);
+  if (inFlight) return inFlight;
+
+  const work = spawnRecurringOccurrenceIfMissingLocked(anchor, dueIso, targetYmd, series, allTasks);
+  spawnLocks.set(lockKey, work);
+  try {
+    return await work;
+  } finally {
+    if (spawnLocks.get(lockKey) === work) spawnLocks.delete(lockKey);
+  }
+}
+
+async function spawnRecurringOccurrenceIfMissingLocked(
+  anchor: VaTaskRecord,
+  dueIso: string,
+  targetYmd: string,
+  series: string,
+  allTasks: VaTaskRecord[],
+): Promise<VaTaskRecord | null> {
   const { clonePhasesToTask, getPhasesByTask } = await import("@/services/task-phases");
 
-  const existing = findExistingRowForDueIso(allTasks, series, dueIso);
+  const resolveExisting = async (): Promise<VaTaskRecord | undefined> => {
+    const fromMemory = findExistingRowForDueIso(allTasks, series, dueIso);
+    if (fromMemory) return fromMemory;
+    const fresh = await getAllVaTasks();
+    return findExistingRowForDueIso(fresh, series, dueIso);
+  };
+
+  const existing = await resolveExisting();
   if (existing) {
     const phases = await getPhasesByTask(existing.id);
     if (phases.length > 0) return null;
@@ -141,6 +187,17 @@ export async function spawnRecurringOccurrenceIfMissing(
     );
     console.log(`[va-task-recurring-spawn] backfilled phases for "${anchor.title}" → ${dueIso}`);
     return existing;
+  }
+
+  // Re-check Airtable immediately before insert (closes concurrent spawn race).
+  const freshBeforeInsert = await getAllVaTasks();
+  if (recurringRealRowExistsForAthensYmd(freshBeforeInsert, series, targetYmd)) {
+    const raced = findExistingRowForDueIso(freshBeforeInsert, series, dueIso);
+    if (raced) {
+      allTasks.push(raced);
+      return raced;
+    }
+    return null;
   }
 
   const spawned = await createVaTask(buildSpawnInput(anchor, dueIso));
@@ -209,8 +266,9 @@ export async function spawnTodayRecurringOccurrencesAll(): Promise<SpawnRecurrin
 }
 
 /**
- * Backfill next occurrence after completion (or cron). Uses Athens-day de-dupe only —
- * allows multiple open rows on different days (e.g. overdue + today).
+ * Backfill today's occurrence after completion when the completed row was overdue
+ * and the next calendar occurrence is **today (Athens)**. Never creates future real rows —
+ * those stay virtual until shift-start / day-boundary cron on their due day.
  */
 export async function spawnNextRecurringOccurrenceAfterComplete(
   completedTask: VaTaskRecord,
@@ -228,6 +286,12 @@ export async function spawnNextRecurringOccurrenceAfterComplete(
     completedTask.recurrence_end_date,
   );
   if (!nextDue) return null;
+
+  const todayYmd = getVaTasksViewTodayYmd();
+  const nextYmd = ymdInAthens(nextDue);
+  if (!nextYmd || nextYmd !== todayYmd) {
+    return null;
+  }
 
   const tasks = allTasks ?? (await getAllVaTasks());
   return spawnRecurringOccurrenceIfMissing(completedTask, nextDue, tasks);

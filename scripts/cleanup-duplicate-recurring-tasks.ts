@@ -1,23 +1,26 @@
 #!/usr/bin/env npx tsx
 /**
- * One-time cleanup: duplicate pending/in_progress recurring `va_tasks` rows that share
- * the same series (title + assignees) AND the same Athens due calendar day.
- *
- * Keeps the row with the most completed checklist items (phase progress); ties break
- * on earliest created_at. Marks others as skipped.
+ * Cleanup recurring `va_tasks` over-spawn:
+ * 1. Duplicate pending/in_progress rows (same series + Athens due day) → mark skipped (keep best progress)
+ * 2. Premature future real rows (due after today Athens) → delete so virtual previews return
  *
  * Usage (from repo root, requires Airtable env like other scripts):
  *   npx tsx scripts/cleanup-duplicate-recurring-tasks.ts
  *   npx tsx scripts/cleanup-duplicate-recurring-tasks.ts --dry-run
+ *   npx tsx scripts/cleanup-duplicate-recurring-tasks.ts --skip-future   # dupes only
+ *   npx tsx scripts/cleanup-duplicate-recurring-tasks.ts --skip-dupes    # future only
  */
 
 import "dotenv/config";
 import { ymdInAthens } from "../lib/airtable-datetime";
-import { vaTaskSeriesKey } from "../lib/recurrence";
-import { getAllVaTasks, updateVaTask } from "../services/va-tasks";
+import { getVaTasksViewTodayYmd } from "../lib/va-task-date-filter";
+import { shouldSpawnRecurring, vaTaskSeriesKey } from "../lib/recurrence";
+import { deleteVaTask, getAllVaTasks, updateVaTask } from "../services/va-tasks";
 import { getPhasesByTask } from "../services/task-phases";
 
 const dryRun = process.argv.includes("--dry-run");
+const skipFuture = process.argv.includes("--skip-future");
+const skipDupes = process.argv.includes("--skip-dupes");
 
 async function countCompletedChecklistItems(taskId: string): Promise<number> {
   const phases = await getPhasesByTask(taskId);
@@ -35,14 +38,14 @@ function groupKey(task: { title: string; assigned_to_ids: string[]; due_date: st
   return `${vaTaskSeriesKey(task)}\0${ymd}`;
 }
 
-async function cleanup() {
+async function cleanupDupes() {
   const all = await getAllVaTasks();
   const pendingRecurring = all.filter(
     (t) => t.is_recurring && (t.status === "pending" || t.status === "in_progress"),
   );
 
+  console.log(`\n=== Duplicate same-day cleanup ===`);
   console.log(`Found ${pendingRecurring.length} pending/in_progress recurring tasks`);
-  if (dryRun) console.log("(dry-run — no writes)");
 
   const groups = new Map<string, typeof pendingRecurring>();
   for (const t of pendingRecurring) {
@@ -74,7 +77,7 @@ async function cleanup() {
     const dueYmd = key.split("\0").slice(-1)[0] ?? "?";
     const keepScore = scored[0]!.completedItems;
     console.log(
-      `"${titlePreview}" due ${dueYmd}: keeping ${keep.id} (${keepScore} items done), marking ${dups.length} duplicate(s)`,
+      `"${titlePreview}" due ${dueYmd}: keeping ${keep.id} (${keepScore} items done), removing ${dups.length} duplicate(s)`,
     );
 
     for (const dup of dups) {
@@ -91,7 +94,54 @@ async function cleanup() {
     }
   }
 
-  console.log(`Done. ${dryRun ? "Would mark" : "Marked"} ${marked} duplicate task(s) as skipped.`);
+  console.log(`Dupes: ${dryRun ? "Would mark" : "Marked"} ${marked} duplicate task(s) as skipped.`);
+  return { marked, duplicateGroups };
+}
+
+async function cleanupFutureRows() {
+  const todayYmd = getVaTasksViewTodayYmd();
+  const all = await getAllVaTasks();
+
+  const premature = all.filter((t) => {
+    if (!t.is_recurring || t.is_virtual_occurrence) return false;
+    if (!shouldSpawnRecurring(t)) return false;
+    const ymd = t.due_date ? ymdInAthens(t.due_date) : null;
+    return Boolean(ymd && ymd > todayYmd);
+  });
+
+  console.log(`\n=== Premature future real rows (after ${todayYmd}) ===`);
+  console.log(`Found ${premature.length} row(s) to delete`);
+
+  let deleted = 0;
+  for (const t of premature) {
+    const ymd = ymdInAthens(t.due_date);
+    console.log(`  delete ${t.id} | "${t.title}" | due ${t.due_date} (${ymd}) | status=${t.status}`);
+    if (dryRun) {
+      deleted += 1;
+      continue;
+    }
+    await deleteVaTask(t.id);
+    deleted += 1;
+  }
+
+  console.log(`Future: ${dryRun ? "Would delete" : "Deleted"} ${deleted} premature row(s).`);
+  return { deleted, ids: premature.map((t) => t.id) };
+}
+
+async function cleanup() {
+  console.log(`Recurring cleanup${dryRun ? " (dry-run)" : ""}`);
+  console.log(`Athens today: ${getVaTasksViewTodayYmd()}`);
+
+  const results: Record<string, unknown> = {};
+
+  if (!skipDupes) {
+    results.dupes = await cleanupDupes();
+  }
+  if (!skipFuture) {
+    results.future = await cleanupFutureRows();
+  }
+
+  console.log("\nDone.", JSON.stringify(results, null, 2));
 }
 
 cleanup().catch((e) => {
