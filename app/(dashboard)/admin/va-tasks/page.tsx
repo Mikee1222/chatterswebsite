@@ -32,7 +32,6 @@ export default async function AdminVaTasksPage() {
   const adminTodayYmd = getVaTasksViewTodayYmd();
   const athensStartYmd = addDaysAthensYmd(adminTodayYmd, -VA_TASKS_ADMIN_FETCH_PAST_DAYS);
   const athensEndYmd = addDaysAthensYmd(adminTodayYmd, VA_TASKS_ADMIN_FETCH_FUTURE_DAYS);
-  console.log("LIVE_DEBUG: getAllVaTasks date range", { athensStartYmd, athensEndYmd, adminTodayYmd });
   const [tasks, activeUsers, modelss, roles] = await Promise.all([
     getAllVaTasks({
       athensStartYmd,
@@ -42,20 +41,6 @@ export default async function AdminVaTasksPage() {
     listActiveModelsForAssignment().catch(() => []),
     getRoles().catch(() => []),
   ]);
-  const recurringTasks = tasks.filter((t) => t.is_recurring);
-  const recurringTaskSummaries = recurringTasks.map((t) => ({ id: t.id, title: t.title }));
-  const testTaskMatches = recurringTasks.filter(
-    (t) => t.title.includes("AUDIT-VIRT") || t.title.toLowerCase().includes("audit"),
-  );
-  console.log("LIVE_DEBUG: getAllVaTasks result", {
-    totalCount: tasks.length,
-    hasRecurring: recurringTasks.length > 0,
-    recurringCount: recurringTasks.length,
-    recurringIdsTitles: recurringTaskSummaries,
-    testTaskMatches: testTaskMatches.length > 0
-      ? testTaskMatches.map((t) => ({ id: t.id, title: t.title }))
-      : "none matching AUDIT-VIRT/audit prefix",
-  });
   const vaUsers = activeUsers
     .filter((u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant")
     .map((u) => ({

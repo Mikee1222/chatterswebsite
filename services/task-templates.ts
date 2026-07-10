@@ -304,7 +304,10 @@ export async function deleteTaskTemplate(id: string): Promise<void> {
 }
 
 export type ApplyTemplateInput = {
-  assignedVaId: string;
+  /** @deprecated Prefer `assignedVaIds` — kept for older clients. */
+  assignedVaId?: string;
+  /** One or more staff record ids linked on the created task. */
+  assignedVaIds?: string[];
   assignedModelIds: string[];
   dueDate?: string | null;
   region?: TaskPhase["region"];
@@ -330,9 +333,16 @@ export async function applyTemplateToTask(
   const template = await getTaskTemplateDetail(templateId);
   if (!template || !template.is_active) throw new Error("Template not found or inactive");
 
-  const vaId = input.assignedVaId.trim();
+  const vaIds = [
+    ...new Set(
+      (input.assignedVaIds?.length ? input.assignedVaIds : input.assignedVaId ? [input.assignedVaId] : [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  ];
+  const vaId = vaIds[0] ?? "";
   const modelIds = [...new Set((input.assignedModelIds ?? []).map((id) => id.trim()).filter(Boolean))];
-  if (!vaId) throw new Error("VA is required");
+  if (vaIds.length === 0) throw new Error("At least one assignee is required");
   if (modelIds.length === 0) throw new Error("At least one model is required");
 
   const [vaUser, modelss] = await Promise.all([
@@ -350,7 +360,7 @@ export async function applyTemplateToTask(
   const task = await createVaTask({
     title: template.name,
     description: template.description,
-    assigned_to_ids: [vaId],
+    assigned_to_ids: vaIds,
     assigned_by_ids: input.assignedById ? [input.assignedById] : [],
     assigned_model_ids: modelIds,
     assigned_model_names: modelNames,

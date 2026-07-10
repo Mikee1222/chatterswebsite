@@ -14,7 +14,6 @@ import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import {
-  expandTasksForAthensYmd,
   filterTasksByAthensYmd,
   getVaTasksViewTodayYmd,
   groupVaTasksForDateView,
@@ -311,20 +310,6 @@ export function AdminVaTasksClient({
   const canShowList = canManage || canViewList;
   const defaultViewMode = canShowList ? "list" : "progress";
   const [localTasks, setLocalTasks] = React.useState(tasks);
-  const logLocalTasksRecurring = React.useCallback((label: string, taskList: VaTaskRecord[]) => {
-    const recurring = taskList.filter((t) => t.is_recurring);
-    console.log(`LIVE_DEBUG: ${label}`, {
-      localTasksLength: taskList.length,
-      recurringCount: recurring.length,
-      recurringIdsTitles: recurring.map((t) => ({ id: t.id, title: t.title })),
-    });
-  }, []);
-  React.useEffect(() => {
-    logLocalTasksRecurring("initial props", tasks);
-  }, [tasks, logLocalTasksRecurring]);
-  React.useEffect(() => {
-    logLocalTasksRecurring("localTasks state update", localTasks);
-  }, [localTasks, logLocalTasksRecurring]);
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
   const [reminding, setReminding] = React.useState<string | null>(null);
@@ -355,27 +340,9 @@ export function AdminVaTasksClient({
   const [filterPriority, setFilterPriority] = React.useState("");
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmdState] = React.useState(todayYmd);
-  const setSelectedYmd = React.useCallback(
-    (ymd: string) => {
-      console.log("LIVE_DEBUG: date navigator change", { selectedYmd: ymd, todayYmd });
-      setSelectedYmdState(ymd);
-      if (ymd > todayYmd) {
-        const expanded = expandTasksForAthensYmd(localTasks, ymd);
-        const realCount = expanded.filter((t) => !t.is_virtual_occurrence).length;
-        const virtualCount = expanded.filter((t) => t.is_virtual_occurrence).length;
-        console.log("LIVE_DEBUG: expandTasksForAthensYmd future date", {
-          selectedYmd: ymd,
-          realCount,
-          virtualCount,
-          totalExpanded: expanded.length,
-          virtualIdsTitles: expanded
-            .filter((t) => t.is_virtual_occurrence)
-            .map((t) => ({ id: t.id, title: t.title })),
-        });
-      }
-    },
-    [todayYmd, localTasks],
-  );
+  const setSelectedYmd = React.useCallback((ymd: string) => {
+    setSelectedYmdState(ymd);
+  }, []);
   const [showAllTasks, setShowAllTasks] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<"list" | "progress">(defaultViewMode);
   const [progressPhasesLoading, setProgressPhasesLoading] = React.useState(false);
@@ -390,27 +357,10 @@ export function AdminVaTasksClient({
     }
   }, [canShowList, canViewProgress]);
 
-  const dateFilteredTasks = React.useMemo(() => {
-    console.log("LIVE_DEBUG: active filters at computation", {
-      selectedYmd,
-      filterVa: filterVa || "(all)",
-      filterStatus: filterStatus || "(all)",
-      filterPriority: filterPriority || "(all)",
-      search: deferredSearch.trim() || "(none)",
-    });
-    const result = filterTasksByAthensYmd(localTasks, selectedYmd);
-    if (selectedYmd > todayYmd) {
-      const realCount = result.filter((t) => !t.is_virtual_occurrence).length;
-      const virtualCount = result.filter((t) => t.is_virtual_occurrence).length;
-      console.log("LIVE_DEBUG: dateFilteredTasks future date", {
-        selectedYmd,
-        realCount,
-        virtualCount,
-        total: result.length,
-      });
-    }
-    return result;
-  }, [localTasks, selectedYmd, filterVa, filterStatus, filterPriority, deferredSearch, todayYmd]);
+  const dateFilteredTasks = React.useMemo(
+    () => filterTasksByAthensYmd(localTasks, selectedYmd),
+    [localTasks, selectedYmd],
+  );
 
   const [modalOpen, setModalOpen] = React.useState(false);
   const [editingId, setEditingId] = React.useState<string | null>(null);
@@ -532,7 +482,7 @@ export function AdminVaTasksClient({
 
   const filteredTasks = React.useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    const result = dateFilteredTasks.filter((t) => {
+    return dateFilteredTasks.filter((t) => {
       if (q) {
         const blob = `${t.title} ${t.description}`.toLowerCase();
         if (!blob.includes(q)) return false;
@@ -545,42 +495,12 @@ export function AdminVaTasksClient({
       }
       return true;
     });
-    if (selectedYmd > todayYmd) {
-      console.log("LIVE_DEBUG: filteredTasks after list filters", {
-        selectedYmd,
-        inputLength: dateFilteredTasks.length,
-        outputLength: result.length,
-        droppedCount: dateFilteredTasks.length - result.length,
-        idsTitles: result.map((t) => ({
-          id: t.id,
-          title: t.title,
-          is_virtual: t.is_virtual_occurrence,
-          is_recurring: t.is_recurring,
-        })),
-      });
-    }
-    return result;
-  }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority, selectedYmd, todayYmd]);
+  }, [dateFilteredTasks, deferredSearch, filterVa, filterStatus, filterPriority]);
 
-  const listViewGrouped = React.useMemo(() => {
-    const grouped = groupVaTasksForDateView(filteredTasks);
-    if (selectedYmd > todayYmd) {
-      console.log("LIVE_DEBUG: listViewGrouped after groupVaTasksForDateView", {
-        selectedYmd,
-        inputLength: filteredTasks.length,
-        regularTasksLength: grouped.regularTasks.length,
-        recurringGroupsLength: grouped.recurringGroups.length,
-        flattenedLength: grouped.flattenedTasks.length,
-        regularIdsTitles: grouped.regularTasks.map((t) => ({ id: t.id, title: t.title })),
-        recurringCurrentIdsTitles: grouped.recurringGroups
-          .map((g) => g.currentTask)
-          .filter(Boolean)
-          .map((t) => ({ id: t!.id, title: t!.title, is_virtual: t!.is_virtual_occurrence })),
-        recurringGroupsWithoutCurrent: grouped.recurringGroups.filter((g) => !g.currentTask).length,
-      });
-    }
-    return grouped;
-  }, [filteredTasks, selectedYmd, todayYmd]);
+  const listViewGrouped = React.useMemo(
+    () => groupVaTasksForDateView(filteredTasks),
+    [filteredTasks],
+  );
 
   const { regularTasks, recurringGroups, flattenedTasks: progressViewTasks } = listViewGrouped;
 
@@ -869,14 +789,19 @@ export function AdminVaTasksClient({
         setError("Select a template");
         return;
       }
-      if (assignAll || assignedTo.length !== 1) {
-        setError("Select exactly one member for template tasks");
+      if (assignAll || assignedTo.length < 1) {
+        setError("Select at least one member for template tasks");
         return;
       }
       if (assignedModels.length === 0) {
         setError("Select at least one model for template tasks");
         return;
       }
+    }
+
+    if (isRecurring && !recurrenceType) {
+      setError("Select a recurrence frequency when repeat is enabled");
+      return;
     }
 
     setSaving(true);
@@ -897,7 +822,7 @@ export function AdminVaTasksClient({
           headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({
-            assignedVaId: assignedTo[0],
+            assignedVaIds: assignedTo,
             assignedModelIds: assignedModels,
             dueDate: dueIso ?? null,
             region: templateRegion,
@@ -1207,39 +1132,14 @@ export function AdminVaTasksClient({
     />
   );
 
-  if (viewMode === "list" && canShowList) {
-    const recurringRenderTasks = recurringGroups
-      .map((g) => g.currentTask)
-      .filter((t): t is VaTaskRecord => Boolean(t));
-    const totalRenderCount = visibleRegularTasks.length + recurringRenderTasks.length;
-    const emptyNoTasksForDate = localTasks.length > 0 && dateFilteredTasks.length === 0;
-    const emptyNoMatch = regularTasks.length === 0 && recurringGroups.length === 0;
-    console.log("LIVE_DEBUG: pre-render list view (final .map() inputs)", {
-      selectedYmd,
-      viewMode,
-      dateFilteredTasksLength: dateFilteredTasks.length,
-      filteredTasksLength: filteredTasks.length,
-      regularTasksLength: regularTasks.length,
-      recurringGroupsLength: recurringGroups.length,
-      visibleRegularTasksLength: visibleRegularTasks.length,
-      recurringRenderTasksLength: recurringRenderTasks.length,
-      totalRenderCount,
-      emptyStateBranch: emptyNoTasksForDate
-        ? "no_tasks_for_date"
-        : emptyNoMatch
-          ? "no_tasks_match"
-          : totalRenderCount === 0
-            ? "list_grid_empty_despite_nonempty_groups"
-            : "render_task_cards",
-      emptyNoTasksForDate,
-      emptyNoMatch,
-      visibleRegularIdsTitles: visibleRegularTasks.map((t) => ({ id: t.id, title: t.title })),
-      recurringRenderIdsTitles: recurringRenderTasks.map((t) => ({
-        id: t.id,
-        title: t.title,
-        is_virtual: t.is_virtual_occurrence,
-      })),
-    });
+  function handleTemplateSelection(templateId: string) {
+    setSelectedTemplateId(templateId);
+    const tpl = templateOptions.find((t) => t.id === templateId);
+    if (tpl?.name === "Daily Marketing Routine") {
+      setIsRecurring(true);
+      setRecurrenceType("daily");
+      setRecurrenceInterval(1);
+    }
   }
 
   return (
@@ -1495,7 +1395,7 @@ export function AdminVaTasksClient({
                         <label className="mb-1.5 block text-xs font-medium text-white/40">Template</label>
                         <select
                           value={selectedTemplateId}
-                          onChange={(e) => setSelectedTemplateId(e.target.value)}
+                          onChange={(e) => handleTemplateSelection(e.target.value)}
                           className={ADMIN_MODAL_INPUT}
                         >
                           <option value="">Select template…</option>
@@ -1538,7 +1438,7 @@ export function AdminVaTasksClient({
                       <span className="text-sm text-white/60">Assign to all VAs</span>
                     </>
                   ) : (
-                    <span className="text-sm text-white/50">Select one member below</span>
+                    <span className="text-sm text-white/50">Select one or more members below</span>
                   )}
                 </div>
                 {!assignAll ? (
@@ -1547,7 +1447,6 @@ export function AdminVaTasksClient({
                     roleLabels={roleLabels}
                     selectedIds={assignedTo}
                     onChange={setAssignedTo}
-                    singleSelect={createMode === "template" && !editingId}
                   />
                 ) : null}
 

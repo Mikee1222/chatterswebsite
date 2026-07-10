@@ -23,6 +23,7 @@ export async function POST(req: Request, ctx: Ctx) {
   }
   const data = body as {
     assignedVaId?: string;
+    assignedVaIds?: string[];
     assignedModelIds?: string[];
     assignedModelId?: string;
     dueDate?: string | null;
@@ -35,8 +36,15 @@ export async function POST(req: Request, ctx: Ctx) {
     recurrence_interval?: number | null;
     recurrence_end_date?: string | null;
   };
-  if (!data.assignedVaId?.trim()) {
-    return NextResponse.json({ error: "assignedVaId is required" }, { status: 400 });
+  const assignedVaIds = [
+    ...new Set(
+      (Array.isArray(data.assignedVaIds) ? data.assignedVaIds : data.assignedVaId ? [data.assignedVaId] : [])
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
+  ];
+  if (assignedVaIds.length === 0) {
+    return NextResponse.json({ error: "At least one assignee is required" }, { status: 400 });
   }
   const assignedModelIds = [
     ...new Set(
@@ -51,7 +59,7 @@ export async function POST(req: Request, ctx: Ctx) {
   const actorId = getNotificationUserId(session) ?? session.airtableUserId ?? session.id;
   try {
     const result = await applyTemplateToTask(id, {
-      assignedVaId: data.assignedVaId,
+      assignedVaIds,
       assignedModelIds,
       dueDate: data.dueDate,
       region: data.region,
