@@ -33,7 +33,12 @@ async function countCompletedChecklistItems(taskId: string): Promise<number> {
   return completed;
 }
 
-function groupKey(task: { title: string; assigned_to_ids: string[]; due_date: string | null }): string {
+function groupKey(task: {
+  title: string;
+  assigned_to_ids: string[];
+  assigned_model_ids?: string[];
+  due_date: string | null;
+}): string {
   const ymd = task.due_date ? ymdInAthens(task.due_date) : "";
   return `${vaTaskSeriesKey(task)}\0${ymd}`;
 }

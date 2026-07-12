@@ -179,10 +179,19 @@ export function shouldSpawnRecurring(task: {
   return true;
 }
 
-/** Same title + assignees (order-insensitive) for de-duping spawned series. */
-export function vaTaskSeriesKey(task: { title: string; assigned_to_ids: string[] }): string {
-  const ids = [...task.assigned_to_ids].map((x) => x.trim()).filter(Boolean).sort();
-  return `${task.title.trim()}\0${ids.join(",")}`;
+/**
+ * Stable key for a recurring series: title + assignees + linked models (order-insensitive).
+ * Models are included so one VA with separate per-model recurring rows (e.g. Daily Marketing
+ * Routine for Lina vs Silia) stay distinct for projection, spawn, and cleanup de-dupe.
+ */
+export function vaTaskSeriesKey(task: {
+  title: string;
+  assigned_to_ids: string[];
+  assigned_model_ids?: string[];
+}): string {
+  const assignees = [...task.assigned_to_ids].map((x) => x.trim()).filter(Boolean).sort();
+  const models = [...(task.assigned_model_ids ?? [])].map((x) => x.trim()).filter(Boolean).sort();
+  return `${task.title.trim()}\0${assignees.join(",")}\0${models.join(",")}`;
 }
 
 export function isVirtualVaTaskId(id: string | null | undefined): boolean {

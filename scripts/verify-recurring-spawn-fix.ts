@@ -89,7 +89,10 @@ async function main() {
       ymdInAthens(t.due_date) === today &&
       (t.status === "pending" || t.status === "in_progress"),
   );
-  console.log(`✓ 1 real DMR today for VA: ${dmrTodayReal.length === 1 ? "PASS" : "FAIL (" + dmrTodayReal.length + ")"}`);
+  // Giannis has separate recurring rows per model (Lina + Silia) — expect 2 real rows today.
+  console.log(
+    `✓ 2 real DMR today for VA (multi-model): ${dmrTodayReal.length === 2 ? "PASS" : "FAIL (" + dmrTodayReal.length + ")"}`,
+  );
   console.log(`✓ 0 real rows tomorrow: ${realTomorrow === 0 ? "PASS" : "FAIL (" + realTomorrow + ")"}`);
   console.log(`✓ spawnNext did not create tomorrow: ${spawnNextResult === null ? "PASS" : "FAIL"}`);
 }
