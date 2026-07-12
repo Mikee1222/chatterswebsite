@@ -45,6 +45,8 @@ export async function createProgramVaAction(fields: {
   modelIdToName?: Record<string, string>;
   custom_start_time?: string;
   custom_end_time?: string;
+  /** When true, skip publish notification (caller sends one notify after batch writes). */
+  skipPublishNotify?: boolean;
 }): Promise<CreateProgramVaResult> {
   if (!(await requireVaProgramManage())) {
     return { success: false, error: "Unauthorized" };
@@ -105,7 +107,9 @@ export async function createProgramVaAction(fields: {
     const created = await createWeeklyProgramVa(createFields);
     revalidatePath(ROUTES.admin.weeklyProgramVa);
     revalidatePath(ROUTES.va.weeklyProgram);
-    await notifyActiveVAsWeeklyProgramVaPublished(weekMonday);
+    if (!fields.skipPublishNotify) {
+      void notifyActiveVAsWeeklyProgramVaPublished(weekMonday).catch(() => {});
+    }
     return { success: true, id: created.id, week_start: weekMonday };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -194,12 +198,18 @@ export async function updateProgramVaAction(
     });
     revalidatePath(ROUTES.admin.weeklyProgramVa);
     revalidatePath(ROUTES.va.weeklyProgram);
-    await notifyActiveVAsWeeklyProgramVaPublished(weekStart);
+    void notifyActiveVAsWeeklyProgramVaPublished(weekStart).catch(() => {});
     return { success: true };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
   }
+}
+
+/** Fire-and-forget publish notification after batch writes (e.g. duplicate day). */
+export async function notifyVaWeeklyProgramPublishedAction(weekStart: string): Promise<void> {
+  if (!(await requireVaProgramManage())) return;
+  void notifyActiveVAsWeeklyProgramVaPublished(weekStart).catch(() => {});
 }
 
 export async function deleteProgramVaAction(recordId: string): Promise<DeleteProgramVaResult> {

@@ -10,6 +10,7 @@ import {
   createProgramAction,
   updateProgramAction,
   deleteProgramAction,
+  notifyChatterWeeklyProgramPublishedAction,
 } from "@/app/actions/weekly-program";
 import { formatTimeEuropean, formatDateEuropean, formatDateTimeEuropean, formatTimeFromISO, isoToEuropeanDisplay, parseEuropeanDateInput } from "@/lib/format";
 import { GlassModal, Checkbox, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
@@ -961,11 +962,6 @@ export function AdminWeeklyProgramClient({
     setDuplicateUi("working");
 
     try {
-      for (const t of targetEntries) {
-        const del = await deleteProgramAction(t.id);
-        if (!del.success) throw new Error(del.error);
-      }
-
       const results = await Promise.all(
         sourceEntries.map((e) =>
           createProgramAction({
@@ -977,6 +973,7 @@ export function AdminWeeklyProgramClient({
             week_start: targetWeekMon,
             notes: e.notes || "",
             modelIdToName,
+            skipPublishNotify: true,
             ...(e.shift_type === "Custom" && {
               custom_start_time: isoTimeToHHmm(e.start_time),
               custom_end_time: isoTimeToHHmm(e.end_time),
@@ -987,6 +984,13 @@ export function AdminWeeklyProgramClient({
       for (const r of results) {
         if (!r.success) throw new Error(r.error);
       }
+
+      for (const t of targetEntries) {
+        const del = await deleteProgramAction(t.id);
+        if (!del.success) throw new Error(del.error);
+      }
+
+      void notifyChatterWeeklyProgramPublishedAction(targetWeekMon);
 
       const count = sourceEntries.length;
       const targetLabel = formatWeekLabel(targetWeekMon);
@@ -1133,6 +1137,7 @@ export function AdminWeeklyProgramClient({
             week_start: targetNorm,
             notes: slot.notes || "",
             modelIdToName,
+            skipPublishNotify: true,
             ...(slot.shift_type === "Custom" && {
               custom_start_time: isoTimeToHHmm(slot.start_time),
               custom_end_time: isoTimeToHHmm(slot.end_time),
@@ -1140,6 +1145,7 @@ export function AdminWeeklyProgramClient({
           });
           if (!res.success) throw new Error(res.error);
         }
+        void notifyChatterWeeklyProgramPublishedAction(targetNorm);
         setDuplicateSlotModal(null);
         setDupSlotUi("idle");
         setSuccess(`Created ${dayCount} slot${dayCount !== 1 ? "s" : ""} in week of ${formatWeekLabel(targetNorm)}.`);
@@ -1199,6 +1205,7 @@ export function AdminWeeklyProgramClient({
             week_start: targetNorm,
             notes: e.notes || "",
             modelIdToName,
+            skipPublishNotify: true,
             ...(e.shift_type === "Custom" && {
               custom_start_time: isoTimeToHHmm(e.start_time),
               custom_end_time: isoTimeToHHmm(e.end_time),
@@ -1206,6 +1213,7 @@ export function AdminWeeklyProgramClient({
           });
           if (!res.success) throw new Error(res.error);
         }
+        void notifyChatterWeeklyProgramPublishedAction(targetNorm);
         setDuplicateWeekModal(null);
         setDuplicateWeekUi("idle");
         setSuccess(`Copied full week for ${chatterName} to week of ${formatWeekLabel(targetNorm)}.`);

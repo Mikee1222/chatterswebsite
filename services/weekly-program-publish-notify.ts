@@ -28,7 +28,13 @@ async function notifySchedulePublishedForRole(
     if (!u.id) continue;
     const entityId = `${entityPrefix}:${weekMonday}:${u.id}`;
     const dup = await findExistingNotification(u.id, "system", entityId, AIRTABLE_EVENT_SCHEDULE).catch(
-      () => true
+      (err) => {
+        console.warn(
+          "[weekly-program-publish-notify] findExistingNotification failed, proceeding with notify",
+          { userId: u.id, entityId, err }
+        );
+        return false;
+      }
     );
     if (dup) continue;
     await notifyByRoleConfig(NOTIFICATION_EVENT.SCHEDULE_PUBLISHED, {

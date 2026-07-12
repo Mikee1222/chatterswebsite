@@ -10,6 +10,7 @@ import {
   createProgramVaAction,
   updateProgramVaAction,
   deleteProgramVaAction,
+  notifyVaWeeklyProgramPublishedAction,
 } from "@/app/actions/weekly-program-va";
 import { formatTimeEuropean, formatDateEuropean, formatDateTimeEuropean, formatTimeFromISO, isoToEuropeanDisplay, parseEuropeanDateInput } from "@/lib/format";
 import { GlassModal, Checkbox, ButtonPrimary, ButtonSecondary } from "@/components/ui/form";
@@ -102,6 +103,8 @@ const AVAIL_SHIFT_TYPE_OPTIONS: CustomSelectOption[] = [
 ];
 
 type Chatter = { id: string; full_name: string };
+
+type ShiftSaveResult = { ok: true } | { ok: false; error: string };
 
 type WeeklyProgramVaPrefill = Pick<WeeklyAvailabilityRequest, "day" | "week_start"> & Partial<WeeklyAvailabilityRequest>;
 
@@ -322,30 +325,36 @@ export function AdminWeeklyProgramVaClient({
     notes: string;
     custom_start_time?: string;
     custom_end_time?: string;
-  }) => {
+  }): Promise<ShiftSaveResult> => {
     setError(null);
-    const res = await createProgramVaAction({
-      chatter: [fields.chatter_id],
-      chatter_name: fields.chatter_name,
-      models: fields.model_ids,
-      day: fields.day,
-      shift_type: fields.shift_type,
-      week_start: fields.week_start,
-      notes: fields.notes || "",
-      modelIdToName,
-      ...(fields.shift_type === "Custom" && {
-        custom_start_time: fields.custom_start_time,
-        custom_end_time: fields.custom_end_time,
-      }),
-    });
-    if (!res.success) {
-      setError(res.error);
-      return;
+    try {
+      const res = await createProgramVaAction({
+        chatter: [fields.chatter_id],
+        chatter_name: fields.chatter_name,
+        models: fields.model_ids,
+        day: fields.day,
+        shift_type: fields.shift_type,
+        week_start: fields.week_start,
+        notes: fields.notes || "",
+        modelIdToName,
+        ...(fields.shift_type === "Custom" && {
+          custom_start_time: fields.custom_start_time,
+          custom_end_time: fields.custom_end_time,
+        }),
+      });
+      if (!res.success) {
+        setError(res.error);
+        return { ok: false, error: res.error };
+      }
+      setSuccess("Scheduled shift created.");
+      setCreateOpen(false);
+      window.location.href = adminWeeklyProgramVaUrl(res.week_start);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not create shift.";
+      setError(message);
+      return { ok: false, error: message };
     }
-    setSuccess("Scheduled shift created.");
-    setCreateOpen(false);
-    // Use the week_start returned by the action (normalized Monday) so URL and fetch stay in sync.
-    window.location.href = adminWeeklyProgramVaUrl(res.week_start);
   };
 
   const handleUpdate = async (
@@ -361,29 +370,35 @@ export function AdminWeeklyProgramVaClient({
       custom_start_time?: string;
       custom_end_time?: string;
     }
-  ) => {
+  ): Promise<ShiftSaveResult> => {
     setError(null);
-    const res = await updateProgramVaAction(recordId, {
-      chatter: [fields.chatter_id],
-      chatter_name: fields.chatter_name,
-      models: fields.model_ids,
-      day: fields.day,
-      shift_type: fields.shift_type,
-      week_start: fields.week_start,
-      notes: fields.notes || "",
-      modelIdToName,
-      ...(fields.shift_type === "Custom" && {
-        custom_start_time: fields.custom_start_time,
-        custom_end_time: fields.custom_end_time,
-      }),
-    });
-    if (!res.success) {
-      setError(res.error);
-      return;
+    try {
+      const res = await updateProgramVaAction(recordId, {
+        chatter: [fields.chatter_id],
+        chatter_name: fields.chatter_name,
+        models: fields.model_ids,
+        day: fields.day,
+        shift_type: fields.shift_type,
+        week_start: fields.week_start,
+        notes: fields.notes || "",
+        modelIdToName,
+        ...(fields.shift_type === "Custom" && {
+          custom_start_time: fields.custom_start_time,
+          custom_end_time: fields.custom_end_time,
+        }),
+      });
+      if (!res.success) {
+        setError(res.error);
+        return { ok: false, error: res.error };
+      }
+      setSuccess("Shift updated.");
+      router.refresh();
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update shift.";
+      setError(message);
+      return { ok: false, error: message };
     }
-    setSuccess("Shift updated.");
-    setEditingEntry(null);
-    router.refresh();
   };
 
   const runProgramDelete = async (recordId: string) => {
@@ -421,15 +436,6 @@ export function AdminWeeklyProgramVaClient({
     setError(null);
     setSuccess(null);
     try {
-      for (const t of targetEntries) {
-        const del = await deleteProgramVaAction(t.id);
-        if (!del.success) {
-          setError(del.error);
-          setDuplicateBusy(false);
-          router.refresh();
-          return;
-        }
-      }
       for (const e of sourceEntries) {
         const res = await createProgramVaAction({
           chatter: [e.chatter_id],
@@ -440,6 +446,7 @@ export function AdminWeeklyProgramVaClient({
           week_start: targetWeekMon,
           notes: e.notes || "",
           modelIdToName,
+          skipPublishNotify: true,
           ...(e.shift_type === "Custom" && {
             custom_start_time: isoTimeToHHmm(e.start_time),
             custom_end_time: isoTimeToHHmm(e.end_time),
@@ -447,11 +454,19 @@ export function AdminWeeklyProgramVaClient({
         });
         if (!res.success) {
           setError(res.error);
-          setDuplicateBusy(false);
           router.refresh();
           return;
         }
       }
+      for (const t of targetEntries) {
+        const del = await deleteProgramVaAction(t.id);
+        if (!del.success) {
+          setError(del.error);
+          router.refresh();
+          return;
+        }
+      }
+      void notifyVaWeeklyProgramPublishedAction(targetWeekMon);
       setSuccess(
         `Copied ${sourceEntries.length} shift(s) from ${sourceDay} to ${targetDay} (week of ${formatWeekLabel(targetWeekMon)}).`
       );
@@ -1341,7 +1356,7 @@ type ModalProps = {
     notes: string;
     custom_start_time?: string;
     custom_end_time?: string;
-  }) => Promise<void>;
+  }) => Promise<ShiftSaveResult>;
   onUpdate?: (fields: {
     chatter_id: string;
     chatter_name: string;
@@ -1352,7 +1367,7 @@ type ModalProps = {
     notes: string;
     custom_start_time?: string;
     custom_end_time?: string;
-  }) => Promise<void>;
+  }) => Promise<ShiftSaveResult>;
   /** When true, render as a panel (no overlay/centering) for split layout with helper. */
   asPanel?: boolean;
 };
@@ -1386,6 +1401,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const [modelSearch, setModelSearch] = React.useState("");
   const [availabilityFilter, setAvailabilityFilter] = React.useState<"all" | "free" | "taken">("all");
   const [customTimeError, setCustomTimeError] = React.useState<string | null>(null);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [modalLastAssignments, setModalLastAssignments] = React.useState<Record<string, { date: string; dateTime: string; relative: string }>>({});
   const [showTooManyModelsConfirm, setShowTooManyModelsConfirm] = React.useState(false);
 
@@ -1571,16 +1587,18 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   }, [formTimeWindow, programs, modelss, entry?.id, day, weekStartVal]);
 
   React.useEffect(() => {
+    const existingAssignment = isEdit && entry?.model_ids?.length ? new Set(entry.model_ids) : null;
     const next = new Set(selectedModelIds);
     let changed = false;
     next.forEach((id) => {
+      if (existingAssignment?.has(id)) return;
       if (modelAvailability[id]?.taken) {
         next.delete(id);
         changed = true;
       }
     });
     if (changed) setSelectedModelIds(next);
-  }, [modelAvailability]);
+  }, [modelAvailability, isEdit, entry?.id, entry?.model_ids]);
 
   const filteredModels = React.useMemo(() => {
     const q = modelSearch.trim().toLowerCase();
@@ -1604,6 +1622,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
   const performSave = React.useCallback(async () => {
     if (!chatterId || selectedModelIds.size === 0) return;
     setSaving(true);
+    setSaveError(null);
     const startNorm = shiftType === "Custom" ? normalizeHHmm(customStartTime.trim()) : null;
     const endNorm = shiftType === "Custom" ? normalizeHHmm(customEndTime.trim()) : null;
     const fields = {
@@ -1621,14 +1640,25 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
           custom_end_time: endNorm,
         }),
     };
-    if (onUpdate) await onUpdate(fields);
-    else await onCreate(fields);
-    setSaving(false);
-  }, [chatterId, chatterName, selectedModelIds, day, shiftType, weekStartVal, notes, customStartTime, customEndTime, onUpdate, onCreate]);
+    try {
+      const result = onUpdate ? await onUpdate(fields) : await onCreate(fields);
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      onClose();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save shift.";
+      setSaveError(message);
+    } finally {
+      setSaving(false);
+    }
+  }, [chatterId, chatterName, selectedModelIds, day, shiftType, weekStartVal, notes, customStartTime, customEndTime, onUpdate, onCreate, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCustomTimeError(null);
+    setSaveError(null);
     if (!chatterId) return;
     if (selectedModelIds.size === 0) {
       setCustomTimeError("Select at least one model for this shift.");
@@ -1830,6 +1860,9 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
         </div>
         {customTimeError && (
           <p className="text-sm text-rose-300/95">{customTimeError}</p>
+        )}
+        {saveError && (
+          <p className="text-sm text-rose-300/95">{saveError}</p>
         )}
         <FormField label="Week start" icon={<Calendar />} htmlFor="wp-va-modal-week-start" required>
           <FormInput

@@ -74,6 +74,8 @@ export async function createProgramAction(fields: {
   modelIdToName?: Record<string, string>;
   custom_start_time?: string;
   custom_end_time?: string;
+  /** When true, skip publish notification (caller sends one notify after batch writes). */
+  skipPublishNotify?: boolean;
 }): Promise<CreateProgramResult> {
   if (!(await requireChatterProgramManage())) {
     return { success: false, error: "Unauthorized" };
@@ -134,7 +136,9 @@ export async function createProgramAction(fields: {
     const created = await createWeeklyProgram(createFields);
     revalidatePath(ROUTES.admin.weeklyProgram);
     revalidatePath(ROUTES.chatter.weeklyProgram);
-    await notifyActiveChattersWeeklyProgramPublished(weekMonday);
+    if (!fields.skipPublishNotify) {
+      void notifyActiveChattersWeeklyProgramPublished(weekMonday).catch(() => {});
+    }
     return { success: true, id: created.id, week_start: weekMonday };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -246,6 +250,12 @@ export async function updateProgramAction(
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
   }
+}
+
+/** Fire-and-forget publish notification after batch writes (e.g. duplicate day). */
+export async function notifyChatterWeeklyProgramPublishedAction(weekStart: string): Promise<void> {
+  if (!(await requireChatterProgramManage())) return;
+  void notifyActiveChattersWeeklyProgramPublished(weekStart).catch(() => {});
 }
 
 export async function deleteProgramAction(recordId: string): Promise<DeleteProgramResult> {
