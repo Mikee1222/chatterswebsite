@@ -40,6 +40,7 @@ import { WeeklyProgramCustomTimeInput } from "@/components/weekly-program-custom
 import { ModelPeriodNamesRow } from "@/components/model-period-names-row";
 import { AdminRowAvatar, CoverageSlotChip, ShiftTypeBadge } from "@/components/admin-list-primitives";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
 
 /** Format ISO start/end to time range string (HH:mm–HH:mm). Uses UTC for schedule times. */
 function formatTimeRange(startIso: string, endIso: string): string {
@@ -615,6 +616,12 @@ export function AdminWeeklyProgramClient({
   const [copyTargetWeek, setCopyTargetWeek] = React.useState(() => normalizeWeekStart(currentWeekStart));
   /** idle: ready · working: Airtable copy in flight · done / failed: brief feedback before reset */
   const [duplicateUi, setDuplicateUi] = React.useState<"idle" | "working" | "done" | "failed">("idle");
+  const [duplicateError, setDuplicateError] = React.useState<string | null>(null);
+  const [duplicateReplacePrompt, setDuplicateReplacePrompt] = React.useState<{
+    sourceDay: WeeklyProgramDay;
+    targetDay: WeeklyProgramDay;
+    replaceCount: number;
+  } | null>(null);
   const [duplicateWeekModal, setDuplicateWeekModal] = React.useState<{
     chatterId: string;
     chatterName: string;
@@ -644,6 +651,11 @@ export function AdminWeeklyProgramClient({
 
   React.useEffect(() => setPrograms(initialPrograms), [initialPrograms]);
 
+  const activeModelss = React.useMemo(
+    () => filterActiveModelsForAssignment(modelss),
+    [modelss]
+  );
+
   const modelIdToDisplayName = React.useMemo(
     () => Object.fromEntries(modelss.map((m) => [m.id, m.model_name ?? m.id])),
     [modelss]
@@ -661,12 +673,12 @@ export function AdminWeeklyProgramClient({
   );
 
   const filtered = React.useMemo(() => {
-    let list = programs;
+    let list = programsThisWeek;
     if (filterChatter) list = list.filter((p) => p.chatter_id === filterChatter);
     if (filterModel) list = list.filter((p) => p.model_ids.includes(filterModel));
     if (filterShiftType) list = list.filter((p) => p.shift_type === filterShiftType);
     return list;
-  }, [programs, filterChatter, filterModel, filterShiftType]);
+  }, [programsThisWeek, filterChatter, filterModel, filterShiftType]);
 
   const byDay = React.useMemo(() => {
     return DAYS.map((day) => ({
@@ -746,9 +758,9 @@ export function AdminWeeklyProgramClient({
   const modelFilterSelectOptions = React.useMemo(
     () => [
       { value: "", label: "All models" },
-      ...modelss.map((m) => ({ value: m.id, label: m.model_name })),
+      ...activeModelss.map((m) => ({ value: m.id, label: m.model_name })),
     ],
-    [modelss]
+    [activeModelss]
   );
   const dayFilterSelectOptions = React.useMemo(
     () => [{ value: "", label: "All days" }, ...DAYS.map((d) => ({ value: d, label: d }))],
@@ -789,13 +801,13 @@ export function AdminWeeklyProgramClient({
   }, [modelss]);
 
   const resolvedCoverageBoard = React.useMemo(
-    () => buildClientCoverageBoard(programsThisWeek, modelss, effectiveWeekStart),
-    [programsThisWeek, modelss, effectiveWeekStart]
+    () => buildClientCoverageBoard(programsThisWeek, activeModelss, effectiveWeekStart),
+    [programsThisWeek, activeModelss, effectiveWeekStart]
   );
 
   const { summary: resolvedConflictSummary, conflictRecordIds: resolvedConflictRecordIds } = React.useMemo(
-    () => recomputeClientConflicts(programsThisWeek, modelss, modelIdToName),
-    [programsThisWeek, modelss, modelIdToName]
+    () => recomputeClientConflicts(programsThisWeek, activeModelss, modelIdToName),
+    [programsThisWeek, activeModelss, modelIdToName]
   );
 
   const handleCreate = async (fields: {
@@ -893,6 +905,8 @@ export function AdminWeeklyProgramClient({
   const openDuplicateModal = (sourceDay: WeeklyProgramDay) => {
     clearDuplicateResetTimer();
     setDuplicateUi("idle");
+    setDuplicateError(null);
+    setDuplicateReplacePrompt(null);
     setDuplicateOpenDay(sourceDay);
     setDuplicateTargetDay(DAYS.find((d) => d !== sourceDay) ?? "Tuesday");
     setCopyTargetWeek(effectiveWeekStart);
@@ -903,82 +917,123 @@ export function AdminWeeklyProgramClient({
     clearDuplicateResetTimer();
     setDuplicateOpenDay(null);
     setDuplicateUi("idle");
+    setDuplicateError(null);
+    setDuplicateReplacePrompt(null);
   }, [clearDuplicateResetTimer]);
 
-  const handleDuplicateCopy = (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
+  const runDuplicateDayCopy = async (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
     const sourceWeekMon = effectiveWeekStart;
     const targetWeekMon = normalizeWeekStart(copyTargetWeek);
-    const sourceEntries = programs.filter(
-      (p) => p.day === sourceDay && normalizeWeekStart(p.week_start) === sourceWeekMon
+    const sourceEntries = programsThisWeek.filter(
+      (p) => p.day === sourceDay && !p.id.startsWith("dup-pending-")
+    );
+    const targetEntries = programs.filter(
+      (p) =>
+        p.day === targetDay &&
+        normalizeWeekStart(p.week_start) === targetWeekMon &&
+        !p.id.startsWith("dup-pending-")
     );
     if (sourceEntries.length === 0) {
-      setError("No shifts to copy on that day.");
+      setDuplicateError("No shifts to copy on that day.");
       return;
     }
-    if (targetDay === sourceDay) return;
+    if (targetDay === sourceDay && targetWeekMon === sourceWeekMon) return;
 
     setError(null);
     setSuccess(null);
+    setDuplicateError(null);
     setDuplicateUi("working");
 
-    const base = Date.now();
-    const pendingIds: string[] = sourceEntries.map((_, i) => `dup-pending-${base}-${i}`);
-
-    const optimisticRows: WeeklyProgramRecord[] = sourceEntries.map((e, i) => ({
-      ...e,
-      id: pendingIds[i]!,
-      day: targetDay,
-      week_start: targetWeekMon,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    }));
-    setPrograms((prev) => [...prev, ...optimisticRows]);
-
-    void (async () => {
-      try {
-        const results = await Promise.all(
-          sourceEntries.map((e) =>
-            createProgramAction({
-              chatter: [e.chatter_id],
-              chatter_name: e.chatter_name,
-              models: e.model_ids,
-              day: targetDay,
-              shift_type: e.shift_type,
-              week_start: targetWeekMon,
-              notes: e.notes || "",
-              modelIdToName,
-              ...(e.shift_type === "Custom" && {
-                custom_start_time: isoTimeToHHmm(e.start_time),
-                custom_end_time: isoTimeToHHmm(e.end_time),
-              }),
-            })
-          )
-        );
-        for (const r of results) {
-          if (!r.success) throw new Error(r.error);
-        }
-        setDuplicateUi("done");
-        router.refresh();
-        clearDuplicateResetTimer();
-        duplicateResetTimerRef.current = setTimeout(() => {
-          duplicateResetTimerRef.current = null;
-          setDuplicateOpenDay(null);
-          setDuplicateUi("idle");
-        }, 900);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        setPrograms((prev) => prev.filter((p) => !pendingIds.includes(p.id)));
-        setError(msg);
-        setDuplicateUi("failed");
-        router.refresh();
-        clearDuplicateResetTimer();
-        duplicateResetTimerRef.current = setTimeout(() => {
-          duplicateResetTimerRef.current = null;
-          setDuplicateOpenDay(null);
-          setDuplicateUi("idle");
-        }, 1600);
+    try {
+      for (const t of targetEntries) {
+        const del = await deleteProgramAction(t.id);
+        if (!del.success) throw new Error(del.error);
       }
-    })();
+
+      const results = await Promise.all(
+        sourceEntries.map((e) =>
+          createProgramAction({
+            chatter: [e.chatter_id],
+            chatter_name: e.chatter_name,
+            models: e.model_ids,
+            day: targetDay,
+            shift_type: e.shift_type,
+            week_start: targetWeekMon,
+            notes: e.notes || "",
+            modelIdToName,
+            ...(e.shift_type === "Custom" && {
+              custom_start_time: isoTimeToHHmm(e.start_time),
+              custom_end_time: isoTimeToHHmm(e.end_time),
+            }),
+          })
+        )
+      );
+      for (const r of results) {
+        if (!r.success) throw new Error(r.error);
+      }
+
+      const count = sourceEntries.length;
+      const targetLabel = formatWeekLabel(targetWeekMon);
+      setDuplicateUi("done");
+      setDuplicateReplacePrompt(null);
+
+      if (targetWeekMon !== effectiveWeekStart) {
+        setSuccess(`Copied ${count} shift(s) to ${targetDay} (week of ${targetLabel}).`);
+        setDuplicateOpenDay(null);
+        setDuplicateUi("idle");
+        router.push(adminWeeklyProgramUrl(targetWeekMon));
+        return;
+      }
+
+      setSuccess(`Copied ${count} shift(s) from ${sourceDay} to ${targetDay}.`);
+      router.refresh();
+      clearDuplicateResetTimer();
+      duplicateResetTimerRef.current = setTimeout(() => {
+        duplicateResetTimerRef.current = null;
+        setDuplicateOpenDay(null);
+        setDuplicateUi("idle");
+      }, 900);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDuplicateError(msg);
+      setError(msg);
+      setDuplicateUi("failed");
+      router.refresh();
+      clearDuplicateResetTimer();
+      duplicateResetTimerRef.current = setTimeout(() => {
+        duplicateResetTimerRef.current = null;
+        setDuplicateOpenDay(null);
+        setDuplicateUi("idle");
+      }, 1600);
+    }
+  };
+
+  const handleDuplicateCopy = (sourceDay: WeeklyProgramDay, targetDay: WeeklyProgramDay) => {
+    const targetWeekMon = normalizeWeekStart(copyTargetWeek);
+    const sourceEntries = programsThisWeek.filter(
+      (p) => p.day === sourceDay && !p.id.startsWith("dup-pending-")
+    );
+    if (sourceEntries.length === 0) {
+      setDuplicateError("No shifts to copy on that day.");
+      return;
+    }
+    if (targetDay === sourceDay && targetWeekMon === effectiveWeekStart) return;
+
+    const targetEntries = programs.filter(
+      (p) =>
+        p.day === targetDay &&
+        normalizeWeekStart(p.week_start) === targetWeekMon &&
+        !p.id.startsWith("dup-pending-")
+    );
+    if (targetEntries.length > 0) {
+      setDuplicateReplacePrompt({
+        sourceDay,
+        targetDay,
+        replaceCount: targetEntries.length,
+      });
+      return;
+    }
+    void runDuplicateDayCopy(sourceDay, targetDay);
   };
 
   const closeDuplicateWeekModal = React.useCallback(() => {
@@ -1072,7 +1127,11 @@ export function AdminWeeklyProgramClient({
         setDuplicateSlotModal(null);
         setDupSlotUi("idle");
         setSuccess(`Created ${dayCount} slot${dayCount !== 1 ? "s" : ""} in week of ${formatWeekLabel(targetNorm)}.`);
-        router.refresh();
+        if (targetNorm !== effectiveWeekStart) {
+          router.push(adminWeeklyProgramUrl(targetNorm));
+        } else {
+          router.refresh();
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
@@ -1134,7 +1193,11 @@ export function AdminWeeklyProgramClient({
         setDuplicateWeekModal(null);
         setDuplicateWeekUi("idle");
         setSuccess(`Copied full week for ${chatterName} to week of ${formatWeekLabel(targetNorm)}.`);
-        router.refresh();
+        if (targetNorm !== effectiveWeekStart) {
+          router.push(adminWeeklyProgramUrl(targetNorm));
+        } else {
+          router.refresh();
+        }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         setError(msg);
@@ -1775,7 +1838,8 @@ export function AdminWeeklyProgramClient({
                 <ShiftEntryModal
                   asPanel
                   chatters={chatters}
-                  modelss={modelss}
+                  modelss={activeModelss}
+                  modelIdToDisplayName={modelIdToDisplayName}
                   weekStart={effectiveWeekStart}
                   entry={editingEntry}
                   prefillFromAvailability={prefillFromAvailability}
@@ -1950,9 +2014,14 @@ export function AdminWeeklyProgramClient({
                 </div>
               </div>
               {duplicateTargetExistingCount > 0 ? (
-                <p className="mt-3 text-xs font-medium text-amber-300/90">This will add to existing shifts.</p>
+                <p className="mt-3 text-xs font-medium text-amber-300/90">
+                  Target day already has {duplicateTargetExistingCount} shift{duplicateTargetExistingCount !== 1 ? "s" : ""}. Copy will replace them.
+                </p>
               ) : null}
-              {duplicateUi === "failed" ? <p className="mt-3 text-sm font-medium text-red-400">Failed</p> : null}
+              {duplicateError ? <p className="mt-3 text-sm font-medium text-red-400">{duplicateError}</p> : null}
+              {duplicateUi === "failed" && !duplicateError ? (
+                <p className="mt-3 text-sm font-medium text-red-400">Failed</p>
+              ) : null}
               <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <ButtonSecondary
                   type="button"
@@ -1988,6 +2057,26 @@ export function AdminWeeklyProgramClient({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    {canManage ? (
+    <ConfirmDialog
+      open={duplicateReplacePrompt != null}
+      onClose={() => duplicateUi !== "working" && setDuplicateReplacePrompt(null)}
+      onConfirm={() => {
+        const p = duplicateReplacePrompt;
+        if (!p) return;
+        return runDuplicateDayCopy(p.sourceDay, p.targetDay);
+      }}
+      title="Replace existing shifts?"
+      description={
+        duplicateReplacePrompt
+          ? `${duplicateReplacePrompt.targetDay} (week of ${formatWeekLabel(normalizeWeekStart(copyTargetWeek))}) already has ${duplicateReplacePrompt.replaceCount} shift(s). Replace them with copies from ${duplicateReplacePrompt.sourceDay}? Existing shifts on that day will be removed.`
+          : ""
+      }
+      confirmLabel="Replace and copy"
+      confirmVariant="warning"
+      loading={duplicateUi === "working"}
+    />
+    ) : null}
     {canManage ? (
     <ConfirmDialog
       open={deleteProgramConfirmId != null}
@@ -2188,6 +2277,7 @@ export function AdminWeeklyProgramClient({
 type ModalProps = {
   chatters: Chatter[];
   modelss: ModelRecord[];
+  modelIdToDisplayName?: Record<string, string>;
   weekStart: string;
   entry: WeeklyProgramRecord | null;
   prefillFromAvailability: WeeklyAvailabilityRequest | null;
@@ -2221,9 +2311,13 @@ type ModalProps = {
   asPanel?: boolean;
 };
 
-function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvailability, coverageBoard, lastAssignmentMap, programs, onClose, onCreate, onUpdate, asPanel }: ModalProps) {
+function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, entry, prefillFromAvailability, coverageBoard, lastAssignmentMap, programs, onClose, onCreate, onUpdate, asPanel }: ModalProps) {
   const isEdit = !!entry;
   const prefill = prefillFromAvailability ?? null;
+  const resolveModelName = React.useCallback(
+    (id: string) => modelIdToDisplayName?.[id] ?? modelss.find((m) => m.id === id)?.model_name ?? "this model",
+    [modelIdToDisplayName, modelss]
+  );
   const [chatterId, setChatterId] = React.useState(() =>
     entry?.chatter_id ?? prefill?.chatter_id ?? ""
   );
@@ -2327,7 +2421,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     selectedModelIds.forEach((mid) => {
       const key = `${chatterId}:${mid}`;
       const info = assignmentsInModal?.[key];
-      const name = modelss.find((m) => m.id === mid)?.model_name ?? "this model";
+      const name = resolveModelName(mid);
       if (info) out.push({ type: "recently_handled", text: `You last had ${name} ${info.relative}` });
     });
     const chatterHasShiftThatDay = programs.some((p) => p.chatter_id === chatterId && p.day === day);
@@ -2362,10 +2456,22 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     const timeRange = formatTimeRange(startIso, endIso);
     const hours = durationHours(startIso, endIso);
     const modelNames = Array.from(selectedModelIds)
-      .map((id) => modelss.find((m) => m.id === id)?.model_name)
-      .filter((n): n is string => Boolean(n));
+      .map((id) => resolveModelName(id))
+      .filter((n): n is string => Boolean(n && n !== "this model"));
     return { dateLabel, day, chatterName, modelNames, shiftType, timeRange, durationHours: hours };
-  }, [weekStartVal, day, shiftType, customStartTime, customEndTime, chatterName, selectedModelIds, modelss]);
+  }, [weekStartVal, day, shiftType, customStartTime, customEndTime, chatterName, selectedModelIds, resolveModelName]);
+
+  const assignmentModelList = React.useMemo(() => {
+    const active = modelss;
+    if (!entry?.model_ids?.length) return active;
+    const extras: ModelRecord[] = [];
+    for (const id of entry.model_ids) {
+      if (!active.some((m) => m.id === id) && modelIdToDisplayName?.[id]) {
+        extras.push({ id, model_name: modelIdToDisplayName[id], status: "inactive" } as ModelRecord);
+      }
+    }
+    return extras.length ? [...extras, ...active] : active;
+  }, [modelss, entry?.model_ids, modelIdToDisplayName]);
 
   const formTimeWindow = React.useMemo((): { startIso: string; endIso: string } | null => {
     const dayIdx = DAYS.indexOf(day);
@@ -2391,7 +2497,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     const otherPrograms = programs.filter((p) => p.id !== entry?.id);
     const newDayIdx = DAYS.indexOf(day);
 
-    for (const m of modelss) {
+    for (const m of assignmentModelList) {
       result[m.id] = { taken: false };
       if (!window) continue;
       for (const p of otherPrograms) {
@@ -2430,7 +2536,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       });
     }
     return result;
-  }, [formTimeWindow, programs, modelss, entry?.id, day, weekStartVal]);
+  }, [formTimeWindow, programs, assignmentModelList, entry?.id, day, weekStartVal]);
 
   React.useEffect(() => {
     const next = new Set(selectedModelIds);
@@ -2446,12 +2552,12 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
 
   const filteredModels = React.useMemo(() => {
     const q = modelSearch.trim().toLowerCase();
-    let list = modelss;
+    let list = assignmentModelList;
     if (q) list = list.filter((m) => m.model_name.toLowerCase().includes(q));
     if (availabilityFilter === "free") list = list.filter((m) => !modelAvailability[m.id]?.taken);
     else if (availabilityFilter === "taken") list = list.filter((m) => modelAvailability[m.id]?.taken);
     return list;
-  }, [modelss, modelSearch, availabilityFilter, modelAvailability]);
+  }, [assignmentModelList, modelSearch, availabilityFilter, modelAvailability]);
 
   const toggleModel = (id: string) => {
     if (modelAvailability[id]?.taken) return;
