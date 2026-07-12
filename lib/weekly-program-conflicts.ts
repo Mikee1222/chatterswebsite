@@ -62,21 +62,23 @@ export function getWeeklyProgramConflicts(
   const dateYmd = (p: WeeklyProgramRecord) =>
     weekStart ? addDays(weekStart, dayIndex(p.day)) : "";
 
-  // Model time overlap: same day, same model, overlapping start_time/end_time (any shift type; supports custom + overnight)
+  // Model time overlap: same model, overlapping ISO windows anywhere in the week (overnight-safe; matches server save checks)
   for (let i = 0; i < programs.length; i++) {
     const p = programs[i];
     if (!p.start_time || !p.end_time) continue;
     for (let j = i + 1; j < programs.length; j++) {
       const q = programs[j];
-      if (p.day !== q.day || !q.start_time || !q.end_time) continue;
+      if (!q.start_time || !q.end_time) continue;
       const modelSetP = new Set(p.model_ids.filter(Boolean));
       for (const mid of q.model_ids.filter(Boolean)) {
         if (!modelSetP.has(mid)) continue;
         if (!rangesOverlap(p.start_time, p.end_time, q.start_time, q.end_time)) continue;
         const name = modelIdToName[mid] ?? mid;
+        const dayLabel =
+          p.day === q.day ? p.day : `${p.day} / ${q.day}`;
         conflicts.push({
           type: "model_time_overlap",
-          message: `Model "${name}" has overlapping times on ${p.day}: ${p.chatter_name ?? "—"} (${p.shift_type}) and ${q.chatter_name ?? "—"} (${q.shift_type}). Same model cannot be assigned to two chatters in overlapping time windows.`,
+          message: `Model "${name}" has overlapping times (${dayLabel}): ${p.chatter_name ?? "—"} (${p.shift_type}) and ${q.chatter_name ?? "—"} (${q.shift_type}). Same model cannot be assigned to two overlapping shifts this week.`,
           recordIds: [p.id, q.id],
           day: p.day,
           shiftType: p.shift_type,
@@ -149,6 +151,21 @@ export function getWeeklyProgramConflicts(
   };
 
   return { conflicts, summary };
+}
+
+/** Flat list of program record ids referenced by conflict rows (deduped, stable order). */
+export function collectConflictRecordIds(conflicts: Conflict[]): string[] {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+  for (const c of conflicts) {
+    for (const id of c.recordIds) {
+      if (id && !seen.has(id)) {
+        seen.add(id);
+        ids.push(id);
+      }
+    }
+  }
+  return ids;
 }
 
 export type CoverageCell = {

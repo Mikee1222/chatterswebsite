@@ -5,7 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Calendar, CalendarDays, Copy, Layers, Loader2, Moon, Search, StickyNote, Sun, UserRound } from "lucide-react";
+import { Calendar, CalendarDays, Copy, Layers, Loader2, Moon, Pencil, Search, StickyNote, Sun, Trash2, UserRound } from "lucide-react";
 import {
   createProgramAction,
   updateProgramAction,
@@ -32,7 +32,7 @@ import {
   normalizeHHmm,
   normalizeTime,
 } from "@/lib/weekly-program";
-import { getWeeklyProgramConflicts, rangesOverlap } from "@/lib/weekly-program-conflicts";
+import { getWeeklyProgramConflicts, collectConflictRecordIds, rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { Conflict, ConflictSummary, CoverageBoard, CoverageCell } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
@@ -513,52 +513,12 @@ function recomputeClientConflicts(
   programsWeek: WeeklyProgramRecord[],
   modelss: ModelRecord[],
   modelIdToName: Record<string, string>
-): { summary: ConflictSummary; conflictRecordIds: string[] } {
+): { conflicts: Conflict[]; summary: ConflictSummary; conflictRecordIds: string[] } {
   const modelIds = modelss.map((m) => m.id);
-  const { conflicts: raw } = getWeeklyProgramConflicts(programsWeek, modelIds, modelIdToName, {
+  const { conflicts, summary } = getWeeklyProgramConflicts(programsWeek, modelIds, modelIdToName, {
     tooManyModelsThreshold: TOO_MANY_MODELS_THRESHOLD,
   });
-  const byId = Object.fromEntries(programsWeek.map((p) => [p.id, p]));
-
-  const clientCustom = computeClientCustomOverlaps(programsWeek, modelIdToName);
-
-  const filtered = raw.filter((c) => {
-    if (c.type === "chatter_overlap" || c.type === "custom_overlap") return false;
-    if (c.type === "model_time_overlap") {
-      const a = c.recordIds[0];
-      const b = c.recordIds[1];
-      const p = a ? byId[a] : undefined;
-      const q = b ? byId[b] : undefined;
-      if (!p || !q || !p.start_time || !p.end_time || !q.start_time || !q.end_time) return false;
-      return intervalsStrictOverlap(p.start_time, p.end_time, q.start_time, q.end_time);
-    }
-    return true;
-  });
-
-  const merged = [...filtered, ...clientCustom];
-
-  const customOverlaps = merged.filter((x) => x.type === "custom_overlap").length;
-  const uncoveredCount = merged.filter((x) => x.type === "uncovered_model").length;
-
-  const summary: ConflictSummary = {
-    modelConflicts: 0,
-    chatterOverlaps: 0,
-    customOverlaps,
-    uncoveredCount,
-    tooManyModelsCount: 0,
-    total: customOverlaps + uncoveredCount,
-  };
-  const conflictRecordIds: string[] = [];
-  const seen = new Set<string>();
-  for (const c of merged) {
-    for (const id of c.recordIds) {
-      if (id && !seen.has(id)) {
-        seen.add(id);
-        conflictRecordIds.push(id);
-      }
-    }
-  }
-  return { summary, conflictRecordIds };
+  return { conflicts, summary, conflictRecordIds: collectConflictRecordIds(conflicts) };
 }
 
 type Props = {
@@ -789,6 +749,23 @@ export function AdminWeeklyProgramClient({
     setError(null);
   };
 
+  const openCreateForDay = (day: WeeklyProgramDay) => {
+    setEditingEntry(null);
+    setPrefillFromAvailability({
+      id: `prefill-${day}`,
+      day,
+      week_start: effectiveWeekStart,
+      chatter_id: "",
+      chatter_name: "",
+      shift_type: "Morning",
+      entry_type: "availability",
+      status: "submitted",
+    } as WeeklyAvailabilityRequest);
+    setCreateOpen(true);
+    setError(null);
+    setSuccess(null);
+  };
+
   React.useEffect(() => {
     if (process.env.NODE_ENV !== "production") {
       devLog("[admin weekly-program client] render", {
@@ -820,7 +797,7 @@ export function AdminWeeklyProgramClient({
     [programsThisWeek, activeModelss, effectiveWeekStart]
   );
 
-  const { summary: resolvedConflictSummary, conflictRecordIds: resolvedConflictRecordIds } = React.useMemo(
+  const { conflicts: resolvedConflicts, summary: resolvedConflictSummary, conflictRecordIds: resolvedConflictRecordIds } = React.useMemo(
     () => recomputeClientConflicts(programsThisWeek, activeModelss, modelIdToName),
     [programsThisWeek, activeModelss, modelIdToName]
   );
@@ -1274,22 +1251,29 @@ export function AdminWeeklyProgramClient({
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400" aria-hidden>
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </span>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-semibold text-amber-200">Conflict summary</p>
               <p className="mt-0.5 text-sm text-white/80">
-                {resolvedConflictSummary.customOverlaps > 0 && (
-                  <span>
-                    {resolvedConflictSummary.customOverlaps} overlapping custom shift
-                    {resolvedConflictSummary.customOverlaps !== 1 ? "s" : ""}
-                  </span>
-                )}
-                {resolvedConflictSummary.customOverlaps > 0 && resolvedConflictSummary.uncoveredCount > 0 && "· "}
-                {resolvedConflictSummary.uncoveredCount > 0 && (
-                  <span>
-                    {resolvedConflictSummary.uncoveredCount} uncovered model{resolvedConflictSummary.uncoveredCount !== 1 ? "s" : ""}
-                  </span>
-                )}
+                {resolvedConflictSummary.modelConflicts > 0 && <span>{resolvedConflictSummary.modelConflicts} model conflict{resolvedConflictSummary.modelConflicts !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.modelConflicts > 0 && (resolvedConflictSummary.chatterOverlaps > 0 || resolvedConflictSummary.customOverlaps > 0 || resolvedConflictSummary.uncoveredCount > 0 || resolvedConflictSummary.tooManyModelsCount > 0) && " · "}
+                {resolvedConflictSummary.chatterOverlaps > 0 && <span>{resolvedConflictSummary.chatterOverlaps} chatter overlap{resolvedConflictSummary.chatterOverlaps !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.chatterOverlaps > 0 && (resolvedConflictSummary.customOverlaps > 0 || resolvedConflictSummary.uncoveredCount > 0 || resolvedConflictSummary.tooManyModelsCount > 0) && " · "}
+                {resolvedConflictSummary.customOverlaps > 0 && <span>{resolvedConflictSummary.customOverlaps} overlapping custom shift{resolvedConflictSummary.customOverlaps !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.customOverlaps > 0 && (resolvedConflictSummary.uncoveredCount > 0 || resolvedConflictSummary.tooManyModelsCount > 0) && " · "}
+                {resolvedConflictSummary.uncoveredCount > 0 && <span>{resolvedConflictSummary.uncoveredCount} uncovered model{resolvedConflictSummary.uncoveredCount !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.uncoveredCount > 0 && resolvedConflictSummary.tooManyModelsCount > 0 && " · "}
+                {resolvedConflictSummary.tooManyModelsCount > 0 && <span>{resolvedConflictSummary.tooManyModelsCount} too many models</span>}
               </p>
+              {resolvedConflicts.length > 0 ? (
+                <ul className="mt-3 max-h-48 space-y-1.5 overflow-y-auto">
+                  {resolvedConflicts.slice(0, 12).map((c, i) => (
+                    <li key={`${c.type}-${i}`} className="text-sm text-white/75">{c.message}</li>
+                  ))}
+                  {resolvedConflicts.length > 12 ? (
+                    <li className="text-xs text-white/45">+ {resolvedConflicts.length - 12} more</li>
+                  ) : null}
+                </ul>
+              ) : null}
             </div>
           </div>
         </div>
@@ -1581,17 +1565,26 @@ export function AdminWeeklyProgramClient({
                     <p className="py-4 text-center text-sm text-white/45">No shifts</p>
                   ) : (
                     entries.map((e) => {
+                      const hasConflict = resolvedConflictRecordIds.includes(e.id);
                       const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
                       return (
                         <div
                           key={e.id}
                           className={cn(
-                            "rounded-xl border border-white/10 bg-white/[0.06] p-4 pl-3.5",
-                            shiftCardAccentClass(e.shift_type)
+                            "rounded-xl border p-4 pl-3.5",
+                            shiftCardAccentClass(e.shift_type),
+                            hasConflict
+                              ? "border-amber-500/40 bg-amber-500/5 ring-1 ring-amber-500/30"
+                              : "border-white/10 bg-white/[0.06]"
                           )}
                         >
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex items-start justify-between gap-2">
                             <ShiftTypeBadge shiftType={e.shift_type} />
+                            {hasConflict ? (
+                              <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="Conflict">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                              </span>
+                            ) : null}
                           </div>
                           <div className="mt-2 flex flex-wrap items-center gap-2">
                             <p className="text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
@@ -1613,11 +1606,19 @@ export function AdminWeeklyProgramClient({
                           {e.chatter_name && <p className="mt-0.5 text-xs text-white/50">{e.chatter_name}</p>}
                           {canManage ? (
                           <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setEditingEntry(e)} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
+                              <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              Edit
+                            </button>
+                            <button type="button" onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-medium text-red-300/80 hover:bg-red-500/10 disabled:opacity-50 transition-colors">
+                              <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              {deletingId === e.id ? "…" : "Delete"}
+                            </button>
                             <button
                               type="button"
                               disabled={e.id.startsWith("dup-pending-")}
                               onClick={() => openDuplicateSlotModal(e)}
-                              className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60 transition-all hover:bg-white/10 hover:text-white/85 disabled:opacity-40"
+                              className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-xs font-medium text-white/60 transition-all hover:bg-white/10 hover:text-white/85 disabled:opacity-40"
                             >
                               <Copy className="h-3.5 w-3.5 shrink-0" aria-hidden />
                               Duplicate
@@ -1628,6 +1629,15 @@ export function AdminWeeklyProgramClient({
                       );
                     })
                   )}
+                  {canManage ? (
+                  <button
+                    type="button"
+                    onClick={() => openCreateForDay(day)}
+                    className="w-full rounded-xl border border-dashed border-[hsl(330,80%,55%)]/45 bg-[hsl(330,80%,55%)]/10 px-4 py-3 text-sm font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors"
+                  >
+                    + Add slot
+                  </button>
+                  ) : null}
                 </div>
               </div>
             );
@@ -2364,9 +2374,10 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
 
   React.useEffect(() => {
     if (prefillFromAvailability) {
-      setChatterId(prefillFromAvailability.chatter_id);
-      setDay(prefillFromAvailability.day);
-      setShiftType(prefillFromAvailability.shift_type);
+      if (prefillFromAvailability.chatter_id) setChatterId(prefillFromAvailability.chatter_id);
+      if (prefillFromAvailability.day) setDay(prefillFromAvailability.day);
+      if (prefillFromAvailability.week_start) setWeekStartVal(normalizeWeekStart(prefillFromAvailability.week_start));
+      if (prefillFromAvailability.shift_type) setShiftType(prefillFromAvailability.shift_type);
       if (prefillFromAvailability.shift_type === "Custom") {
         const st = prefillFromAvailability.custom_start_time;
         const et = prefillFromAvailability.custom_end_time;
@@ -2391,13 +2402,14 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
     (isEdit ? (lastAssignmentMap ?? {}) : (modalLastAssignments ?? {}));
   const chatterName = chatters.find((c) => c.id === chatterId)?.full_name ?? "";
 
-  const chatterFormSelectOptions = React.useMemo(
-    () => [
-      { value: "", label: "Select chatter" },
-      ...chatters.map((c) => ({ value: c.id, label: c.full_name })),
-    ],
-    [chatters]
-  );
+  const chatterFormSelectOptions = React.useMemo(() => {
+    const base = chatters;
+    const list =
+      entry?.chatter_id && !base.some((c) => c.id === entry.chatter_id)
+        ? [{ id: entry.chatter_id, full_name: entry.chatter_name ?? entry.chatter_id }, ...base]
+        : base;
+    return [{ value: "", label: "Select chatter" }, ...list.map((c) => ({ value: c.id, label: c.full_name }))];
+  }, [chatters, entry?.chatter_id, entry?.chatter_name]);
   const dayFormSelectOptions = React.useMemo(() => DAYS.map((d) => ({ value: d, label: d })), []);
   const shiftTypeFormSelectOptions = React.useMemo(
     () => [

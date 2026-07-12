@@ -5,7 +5,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { Calendar, CalendarDays, Headphones, Layers, Loader2, Moon, Search, StickyNote, Sun } from "lucide-react";
+import { Calendar, CalendarDays, Headphones, Layers, Loader2, Moon, Pencil, Search, StickyNote, Sun, Trash2 } from "lucide-react";
 import {
   createProgramVaAction,
   updateProgramVaAction,
@@ -31,8 +31,9 @@ import {
   normalizeHHmm,
   normalizeTime,
 } from "@/lib/weekly-program";
-import { rangesOverlap } from "@/lib/weekly-program-conflicts";
-import type { ConflictSummary, CoverageBoard } from "@/lib/weekly-program-conflicts";
+import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
+import { getWeeklyProgramConflicts, collectConflictRecordIds, getModelCoverageBoard, rangesOverlap } from "@/lib/weekly-program-conflicts";
+import type { Conflict, ConflictSummary, CoverageBoard } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 import type { ModelRecord } from "@/types";
 import type { WeeklyAvailabilityRequest } from "@/types";
@@ -151,10 +152,10 @@ export function AdminWeeklyProgramVaClient({
   chatters,
   modelss,
   currentWeekStart,
-  conflicts,
-  conflictSummary,
-  conflictRecordIds,
-  coverageBoard,
+  conflicts: _conflictsFromServer,
+  conflictSummary: _conflictSummaryFromServer,
+  conflictRecordIds: _conflictRecordIdsFromServer,
+  coverageBoard: _coverageBoardFromServer,
   lastAssignmentMap,
   suggestionsByKey,
   availabilityRequests,
@@ -191,6 +192,11 @@ export function AdminWeeklyProgramVaClient({
 
   React.useEffect(() => setPrograms(initialPrograms), [initialPrograms]);
 
+  const activeModelss = React.useMemo(
+    () => filterActiveModelsForAssignment(modelss),
+    [modelss]
+  );
+
   const modelIdToDisplayName = React.useMemo(
     () => Object.fromEntries(modelss.map((m) => [m.id, m.model_name ?? m.id])),
     [modelss]
@@ -202,13 +208,18 @@ export function AdminWeeklyProgramVaClient({
     if (duplicateOpenDay) setCopyTargetWeek(effectiveWeekStart);
   }, [duplicateOpenDay, effectiveWeekStart]);
 
+  const programsThisWeek = React.useMemo(
+    () => programs.filter((p) => normalizeWeekStart(p.week_start) === effectiveWeekStart),
+    [programs, effectiveWeekStart]
+  );
+
   const filtered = React.useMemo(() => {
-    let list = programs;
+    let list = programsThisWeek;
     if (filterChatter) list = list.filter((p) => p.chatter_id === filterChatter);
     if (filterModel) list = list.filter((p) => p.model_ids.includes(filterModel));
     if (filterShiftType) list = list.filter((p) => p.shift_type === filterShiftType);
     return list;
-  }, [programs, filterChatter, filterModel, filterShiftType]);
+  }, [programsThisWeek, filterChatter, filterModel, filterShiftType]);
 
   const byDay = React.useMemo(() => {
     return DAYS.map((day) => ({
@@ -265,9 +276,9 @@ export function AdminWeeklyProgramVaClient({
   const modelFilterSelectOptions = React.useMemo(
     () => [
       { value: "", label: "All models" },
-      ...modelss.map((m) => ({ value: m.id, label: m.model_name })),
+      ...activeModelss.map((m) => ({ value: m.id, label: m.model_name })),
     ],
-    [modelss]
+    [activeModelss]
   );
   const dayFilterSelectOptions = React.useMemo(
     () => [{ value: "", label: "All days" }, ...DAYS.map((d) => ({ value: d, label: d }))],
@@ -311,9 +322,19 @@ export function AdminWeeklyProgramVaClient({
 
   const modelIdToName = React.useMemo(() => {
     const map: Record<string, string> = {};
-    modelss.forEach((m) => { map[m.id] = m.model_name; });
+    modelss.forEach((m) => { map[m.id] = m.model_name ?? m.id; });
     return map;
   }, [modelss]);
+
+  const { conflicts: resolvedConflicts, summary: resolvedConflictSummary, conflictRecordIds: resolvedConflictRecordIds } = React.useMemo(() => {
+    const { conflicts, summary } = getWeeklyProgramConflicts(programsThisWeek, activeModelss.map((m) => m.id), modelIdToName);
+    return { conflicts, summary, conflictRecordIds: collectConflictRecordIds(conflicts) };
+  }, [programsThisWeek, activeModelss, modelIdToName]);
+
+  const resolvedCoverageBoard = React.useMemo(
+    () => getModelCoverageBoard(programsThisWeek, activeModelss, effectiveWeekStart),
+    [programsThisWeek, activeModelss, effectiveWeekStart]
+  );
 
   const handleCreate = async (fields: {
     chatter_id: string;
@@ -540,25 +561,35 @@ export function AdminWeeklyProgramVaClient({
         </div>
       )}
 
-      {conflictSummary.total > 0 && (
+      {resolvedConflictSummary.total > 0 && (
         <div className="glass-card border-amber-500/30 bg-amber-500/5 p-5">
           <div className="flex flex-wrap items-center gap-3">
             <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-500/20 text-amber-400" aria-hidden>
               <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
             </span>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="font-semibold text-amber-200">Conflict summary</p>
               <p className="mt-0.5 text-sm text-white/80">
-                {conflictSummary.modelConflicts > 0 && <span>{conflictSummary.modelConflicts} model conflict{conflictSummary.modelConflicts !== 1 ? "s" : ""}</span>}
-                {conflictSummary.modelConflicts > 0 && (conflictSummary.chatterOverlaps > 0 || conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && "· "}
-                {conflictSummary.chatterOverlaps > 0 && <span>{conflictSummary.chatterOverlaps} VA overlap{conflictSummary.chatterOverlaps !== 1 ? "s" : ""}</span>}
-                {conflictSummary.chatterOverlaps > 0 && (conflictSummary.customOverlaps > 0 || conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && "· "}
-                {conflictSummary.customOverlaps > 0 && <span>{conflictSummary.customOverlaps} overlapping custom shift{conflictSummary.customOverlaps !== 1 ? "s" : ""}</span>}
-                {conflictSummary.customOverlaps > 0 && (conflictSummary.uncoveredCount > 0 || conflictSummary.tooManyModelsCount > 0) && "· "}
-                {conflictSummary.uncoveredCount > 0 && <span>{conflictSummary.uncoveredCount} uncovered model{conflictSummary.uncoveredCount !== 1 ? "s" : ""}</span>}
-                {conflictSummary.uncoveredCount > 0 && conflictSummary.tooManyModelsCount > 0 && "· "}
-                {conflictSummary.tooManyModelsCount > 0 && <span>{conflictSummary.tooManyModelsCount} too many models</span>}
+                {resolvedConflictSummary.modelConflicts > 0 && <span>{resolvedConflictSummary.modelConflicts} model conflict{resolvedConflictSummary.modelConflicts !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.modelConflicts > 0 && (resolvedConflictSummary.chatterOverlaps > 0 || resolvedConflictSummary.customOverlaps > 0 || resolvedConflictSummary.uncoveredCount > 0 || resolvedConflictSummary.tooManyModelsCount > 0) && " · "}
+                {resolvedConflictSummary.chatterOverlaps > 0 && <span>{resolvedConflictSummary.chatterOverlaps} VA overlap{resolvedConflictSummary.chatterOverlaps !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.chatterOverlaps > 0 && (resolvedConflictSummary.customOverlaps > 0 || resolvedConflictSummary.uncoveredCount > 0 || resolvedConflictSummary.tooManyModelsCount > 0) && " · "}
+                {resolvedConflictSummary.customOverlaps > 0 && <span>{resolvedConflictSummary.customOverlaps} overlapping custom shift{resolvedConflictSummary.customOverlaps !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.customOverlaps > 0 && (resolvedConflictSummary.uncoveredCount > 0 || resolvedConflictSummary.tooManyModelsCount > 0) && " · "}
+                {resolvedConflictSummary.uncoveredCount > 0 && <span>{resolvedConflictSummary.uncoveredCount} uncovered model{resolvedConflictSummary.uncoveredCount !== 1 ? "s" : ""}</span>}
+                {resolvedConflictSummary.uncoveredCount > 0 && resolvedConflictSummary.tooManyModelsCount > 0 && " · "}
+                {resolvedConflictSummary.tooManyModelsCount > 0 && <span>{resolvedConflictSummary.tooManyModelsCount} too many models</span>}
               </p>
+              {resolvedConflicts.length > 0 ? (
+                <ul className="mt-3 max-h-48 space-y-1.5 overflow-y-auto">
+                  {resolvedConflicts.slice(0, 12).map((c, i) => (
+                    <li key={`${c.type}-${i}`} className="text-sm text-white/75">{c.message}</li>
+                  ))}
+                  {resolvedConflicts.length > 12 ? (
+                    <li className="text-xs text-white/45">+ {resolvedConflicts.length - 12} more</li>
+                  ) : null}
+                </ul>
+              ) : null}
             </div>
           </div>
         </div>
@@ -710,7 +741,7 @@ export function AdminWeeklyProgramVaClient({
                     <th className="sticky left-0 z-[1] bg-[#0c0c0c] px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-white/50 shadow-[1px_0_0_rgba(255,255,255,0.06)]">
                       Model
                     </th>
-                    {coverageBoard.days.map((d) => (
+                    {resolvedCoverageBoard.days.map((d) => (
                       <th key={d} className="min-w-[100px] px-2 py-2.5 text-center text-xs font-medium uppercase tracking-wider text-white/50">
                         {d.slice(0, 3)}
                       </th>
@@ -718,15 +749,15 @@ export function AdminWeeklyProgramVaClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.05]">
-                  {coverageBoard.morning.map((row, idx) => (
+                  {resolvedCoverageBoard.morning.map((row, idx) => (
                     <tr
-                      key={coverageBoard.modelNames[idx]}
+                      key={resolvedCoverageBoard.modelNames[idx]}
                       className="transition-[background-color] duration-150 ease-out hover:bg-amber-500/[0.04]"
                     >
                       <td className="sticky left-0 z-[1] bg-[#0a0a0a]/95 px-3 py-2.5 font-medium text-white/90 shadow-[1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-sm">
                         <span className="flex items-center gap-2.5">
-                          <AdminRowAvatar name={coverageBoard.modelNames[idx] ?? "?"} size="sm" />
-                          <span className="truncate">{coverageBoard.modelNames[idx]}</span>
+                          <AdminRowAvatar name={resolvedCoverageBoard.modelNames[idx] ?? "?"} size="sm" />
+                          <span className="truncate">{resolvedCoverageBoard.modelNames[idx]}</span>
                         </span>
                       </td>
                       {row.map((cell) => (
@@ -757,7 +788,7 @@ export function AdminWeeklyProgramVaClient({
                     <th className="sticky left-0 z-[1] bg-[#0c0c0c] px-3 py-2.5 text-left text-xs font-medium uppercase tracking-wider text-white/50 shadow-[1px_0_0_rgba(255,255,255,0.06)]">
                       Model
                     </th>
-                    {coverageBoard.days.map((d) => (
+                    {resolvedCoverageBoard.days.map((d) => (
                       <th key={d} className="min-w-[100px] px-2 py-2.5 text-center text-xs font-medium uppercase tracking-wider text-white/50">
                         {d.slice(0, 3)}
                       </th>
@@ -765,15 +796,15 @@ export function AdminWeeklyProgramVaClient({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.05]">
-                  {coverageBoard.night.map((row, idx) => (
+                  {resolvedCoverageBoard.night.map((row, idx) => (
                     <tr
-                      key={coverageBoard.modelNames[idx]}
+                      key={resolvedCoverageBoard.modelNames[idx]}
                       className="transition-[background-color] duration-150 ease-out hover:bg-indigo-500/[0.05]"
                     >
                       <td className="sticky left-0 z-[1] bg-[#0a0a0a]/95 px-3 py-2.5 font-medium text-white/90 shadow-[1px_0_0_rgba(255,255,255,0.06)] backdrop-blur-sm">
                         <span className="flex items-center gap-2.5">
-                          <AdminRowAvatar name={coverageBoard.modelNames[idx] ?? "?"} size="sm" />
-                          <span className="truncate">{coverageBoard.modelNames[idx]}</span>
+                          <AdminRowAvatar name={resolvedCoverageBoard.modelNames[idx] ?? "?"} size="sm" />
+                          <span className="truncate">{resolvedCoverageBoard.modelNames[idx]}</span>
                         </span>
                       </td>
                       {row.map((cell) => (
@@ -882,16 +913,27 @@ export function AdminWeeklyProgramVaClient({
                     <p className="py-4 text-center text-sm text-white/45">No shifts</p>
                   ) : (
                     entries.map((e) => {
+                      const hasConflict = resolvedConflictRecordIds.includes(e.id);
                       const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
                       return (
                         <div
                           key={e.id}
                           className={cn(
-                            "rounded-xl border border-white/10 bg-white/[0.06] p-4 pl-3.5",
-                            shiftCardAccentClass(e.shift_type)
+                            "rounded-xl border p-4 pl-3.5",
+                            shiftCardAccentClass(e.shift_type),
+                            hasConflict
+                              ? "border-amber-500/40 bg-amber-500/5 ring-1 ring-amber-500/30"
+                              : "border-white/10 bg-white/[0.06]"
                           )}
                         >
-                          <ShiftTypeBadge shiftType={e.shift_type} />
+                          <div className="flex items-start justify-between gap-2">
+                            <ShiftTypeBadge shiftType={e.shift_type} />
+                            {hasConflict ? (
+                              <span className="rounded-full bg-amber-500/25 p-1.5 text-amber-400" title="Conflict">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                              </span>
+                            ) : null}
+                          </div>
                           <p className="mt-2 text-sm font-semibold text-[hsl(330,90%,75%)]">{timeRange}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-white/70">
                             <span className="text-white/50">Models:</span>
@@ -907,6 +949,18 @@ export function AdminWeeklyProgramVaClient({
                             )}
                           </div>
                           {e.chatter_name && <p className="mt-0.5 text-xs text-white/50">{e.chatter_name}</p>}
+                          {canManage ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <button type="button" onClick={() => setEditingEntry(e)} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-white/20 px-3 py-2 text-xs font-medium text-white/70 hover:bg-white/10 transition-colors">
+                              <Pencil className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              Edit
+                            </button>
+                            <button type="button" onClick={() => handleDelete(e.id)} disabled={deletingId === e.id} className="inline-flex min-h-[44px] items-center gap-1.5 rounded-xl border border-red-500/30 px-3 py-2 text-xs font-medium text-red-300/80 hover:bg-red-500/10 disabled:opacity-50 transition-colors">
+                              <Trash2 className="h-3.5 w-3.5 shrink-0" aria-hidden />
+                              {deletingId === e.id ? "…" : "Delete"}
+                            </button>
+                          </div>
+                          ) : null}
                         </div>
                       );
                     })
@@ -1020,7 +1074,7 @@ export function AdminWeeklyProgramVaClient({
                     ) : (
                       <>
                         {entries.map((e) => {
-                          const hasConflict = conflictRecordIds.includes(e.id);
+                          const hasConflict = resolvedConflictRecordIds.includes(e.id);
                           const modelCount = e.model_ids?.filter(Boolean).length ?? 0;
                           const hasTooManyModels = modelCount > 10;
                           const timeRange = e.start_time && e.end_time ? formatTimeRange(e.start_time, e.end_time) : "—";
@@ -1204,11 +1258,12 @@ export function AdminWeeklyProgramVaClient({
                 <ShiftEntryModal
                   asPanel
                   chatters={chatters}
-                  modelss={modelss}
+                  modelss={activeModelss}
+                  modelIdToDisplayName={modelIdToDisplayName}
                   weekStart={effectiveWeekStart}
                   entry={editingEntry}
                   prefillFromAvailability={prefillFromAvailability}
-                  coverageBoard={coverageBoard}
+                  coverageBoard={resolvedCoverageBoard}
                   lastAssignmentMap={lastAssignmentMap}
                   programs={programs}
                   onClose={() => { setCreateOpen(false); setEditingEntry(null); setPrefillFromAvailability(null); setError(null); }}
@@ -1339,6 +1394,7 @@ export function AdminWeeklyProgramVaClient({
 type ModalProps = {
   chatters: Chatter[];
   modelss: ModelRecord[];
+  modelIdToDisplayName?: Record<string, string>;
   weekStart: string;
   entry: WeeklyProgramRecord | null;
   prefillFromAvailability: WeeklyProgramVaPrefill | null;
@@ -1372,9 +1428,13 @@ type ModalProps = {
   asPanel?: boolean;
 };
 
-function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvailability, coverageBoard, lastAssignmentMap, programs, onClose, onCreate, onUpdate, asPanel }: ModalProps) {
+function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, entry, prefillFromAvailability, coverageBoard, lastAssignmentMap, programs, onClose, onCreate, onUpdate, asPanel }: ModalProps) {
   const isEdit = !!entry;
   const prefill = prefillFromAvailability ?? null;
+  const resolveModelName = React.useCallback(
+    (id: string) => modelIdToDisplayName?.[id] ?? modelss.find((m) => m.id === id)?.model_name ?? "this model",
+    [modelIdToDisplayName, modelss]
+  );
   const [chatterId, setChatterId] = React.useState(() =>
     entry?.chatter_id ?? prefill?.chatter_id ?? ""
   );
@@ -1446,13 +1506,14 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     (isEdit ? (lastAssignmentMap ?? {}) : (modalLastAssignments ?? {}));
   const chatterName = chatters.find((c) => c.id === chatterId)?.full_name ?? "";
 
-  const vaFormSelectOptions = React.useMemo(
-    () => [
-      { value: "", label: "Select VA" },
-      ...chatters.map((c) => ({ value: c.id, label: c.full_name })),
-    ],
-    [chatters]
-  );
+  const vaFormSelectOptions = React.useMemo(() => {
+    const base = chatters;
+    const list =
+      entry?.chatter_id && !base.some((c) => c.id === entry.chatter_id)
+        ? [{ id: entry.chatter_id, full_name: entry.chatter_name ?? entry.chatter_id }, ...base]
+        : base;
+    return [{ value: "", label: "Select VA" }, ...list.map((c) => ({ value: c.id, label: c.full_name }))];
+  }, [chatters, entry?.chatter_id, entry?.chatter_name]);
   const dayFormSelectOptions = React.useMemo(() => DAYS.map((d) => ({ value: d, label: d })), []);
   const shiftTypeFormSelectOptions = React.useMemo(
     () => [
@@ -1481,7 +1542,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     selectedModelIds.forEach((mid) => {
       const key = `${chatterId}:${mid}`;
       const info = assignmentsInModal?.[key];
-      const name = modelss.find((m) => m.id === mid)?.model_name ?? "this model";
+      const name = resolveModelName(mid);
       if (info) out.push({ type: "recently_handled", text: `You last had ${name} ${info.relative}` });
     });
     const chatterHasShiftThatDay = programs.some((p) => p.chatter_id === chatterId && p.day === day);
@@ -1516,10 +1577,22 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     const timeRange = formatTimeRange(startIso, endIso);
     const hours = durationHours(startIso, endIso);
     const modelNames = Array.from(selectedModelIds)
-      .map((id) => modelss.find((m) => m.id === id)?.model_name)
-      .filter((n): n is string => Boolean(n));
+      .map((id) => resolveModelName(id))
+      .filter((n): n is string => Boolean(n && n !== "this model"));
     return { dateLabel, day, chatterName, modelNames, shiftType, timeRange, durationHours: hours };
-  }, [weekStartVal, day, shiftType, customStartTime, customEndTime, chatterName, selectedModelIds, modelss]);
+  }, [weekStartVal, day, shiftType, customStartTime, customEndTime, chatterName, selectedModelIds, resolveModelName]);
+
+  const assignmentModelList = React.useMemo(() => {
+    const active = modelss;
+    if (!entry?.model_ids?.length) return active;
+    const extras: ModelRecord[] = [];
+    for (const id of entry.model_ids) {
+      if (!active.some((m) => m.id === id) && modelIdToDisplayName?.[id]) {
+        extras.push({ id, model_name: modelIdToDisplayName[id], status: "inactive" } as ModelRecord);
+      }
+    }
+    return extras.length ? [...extras, ...active] : active;
+  }, [modelss, entry?.model_ids, modelIdToDisplayName]);
 
   const formTimeWindow = React.useMemo((): { startIso: string; endIso: string } | null => {
     const dayIdx = DAYS.indexOf(day);
@@ -1545,7 +1618,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
     const otherPrograms = programs.filter((p) => p.id !== entry?.id);
     const newDayIdx = DAYS.indexOf(day);
 
-    for (const m of modelss) {
+    for (const m of assignmentModelList) {
       result[m.id] = { taken: false };
       if (!window) continue;
       for (const p of otherPrograms) {
@@ -1584,7 +1657,7 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
       });
     }
     return result;
-  }, [formTimeWindow, programs, modelss, entry?.id, day, weekStartVal]);
+  }, [formTimeWindow, programs, assignmentModelList, entry?.id, day, weekStartVal]);
 
   React.useEffect(() => {
     const existingAssignment = isEdit && entry?.model_ids?.length ? new Set(entry.model_ids) : null;
@@ -1602,12 +1675,12 @@ function ShiftEntryModal({ chatters, modelss, weekStart, entry, prefillFromAvail
 
   const filteredModels = React.useMemo(() => {
     const q = modelSearch.trim().toLowerCase();
-    let list = modelss;
+    let list = assignmentModelList;
     if (q) list = list.filter((m) => m.model_name.toLowerCase().includes(q));
     if (availabilityFilter === "free") list = list.filter((m) => !modelAvailability[m.id]?.taken);
     else if (availabilityFilter === "taken") list = list.filter((m) => modelAvailability[m.id]?.taken);
     return list;
-  }, [modelss, modelSearch, availabilityFilter, modelAvailability]);
+  }, [assignmentModelList, modelSearch, availabilityFilter, modelAvailability]);
 
   const toggleModel = (id: string) => {
     if (modelAvailability[id]?.taken) return;

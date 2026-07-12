@@ -10,7 +10,7 @@ import { getProgramsForWeek } from "@/services/weekly-program";
 import { getRequestsForWeek } from "@/services/weekly-availability-requests";
 import { listAllUsers } from "@/services/users";
 import { getCachedModelss } from "@/lib/modelss-cache";
-import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
+import { filterActiveModelsForAssignment, filterActiveUsersForAssignment } from "@/lib/assignment-filters";
 import { getLastAssignmentBatch } from "@/services/shifts";
 import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-program-conflicts";
 import { AdminWeeklyProgramClient } from "@/components/admin-weekly-program-client";
@@ -51,7 +51,9 @@ export default async function AdminWeeklyProgramPage({
     });
   }
 
-  const chatters = users.filter((u) => u.role === "chatter");
+  const chatters = filterActiveUsersForAssignment(users)
+    .filter((u) => u.role === "chatter")
+    .map((u) => ({ id: u.id, full_name: u.full_name ?? u.email ?? "—" }));
   const activeModelss = filterActiveModelsForAssignment(modelss as ModelRecord[]);
 
   const modelIdToName: Record<string, string> = {};
@@ -82,7 +84,7 @@ export default async function AdminWeeklyProgramPage({
   return (
     <AdminWeeklyProgramClient
       programs={programs as WeeklyProgramRecord[]}
-      chatters={chatters.map((u) => ({ id: u.id, full_name: u.full_name }))}
+      chatters={chatters}
       modelss={modelss as ModelRecord[]}
       currentWeekStart={weekStart}
       conflicts={conflicts}

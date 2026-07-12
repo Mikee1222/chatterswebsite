@@ -14,6 +14,7 @@
  */
 
 import { formatDateOnlyEuropean } from "@/lib/format";
+import { getMondayOfWeekFromYmdAthens, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
 
 const DATE_ONLY_ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -256,12 +257,11 @@ export function getMondayOfWeek(ymd: string): string {
 }
 
 /**
- * Returns the Monday (YYYY-MM-DD) of the current week in UTC.
- * Use for "this week" so server and client share the same convention.
+ * Returns the Monday (YYYY-MM-DD) of the current week on the Athens business calendar.
+ * Use for "this week" so admins in Greece see the correct week boundary near midnight UTC.
  */
 export function getThisWeekMonday(): string {
-  const today = new Date().toISOString().slice(0, 10);
-  return getMondayOfWeek(today);
+  return getMondayOfWeekFromYmdAthens(getTodayYmdAthens());
 }
 
 /** Alias for getMondayOfWeek. Use for clarity when you need "start of week = Monday". */
@@ -313,8 +313,13 @@ const SCHEDULING_TIMEZONE = "Europe/Paris";
 
 /**
  * Convert an Airtable week_start value to our canonical Monday-based YYYY-MM-DD.
- * Airtable may store dates as UTC ISO (e.g. 2026-03-01T22:00:00.000Z = 2026-03-02 00:00 Europe).
- * We interpret in Europe so the intended Monday is preserved.
+ *
+ * Schema note (both tables use field name `week_start`, types differ):
+ * - `weekly_program` (chatter): **dateTime** — UTC ISO midnight for Monday in Athens
+ *   (e.g. 2026-03-01T22:00:00.000Z → Monday 2026-03-02 Europe/Athens).
+ * - `weekly_program_va`: **date** — calendar date or YYYY-MM-DD text for that Monday.
+ *
+ * Accepts plain YYYY-MM-DD, ISO datetime strings, and Europe-shifted midnight instants.
  */
 export function airtableWeekStartToMonday(raw: string | null | undefined): string {
   if (raw == null || typeof raw !== "string") return getThisWeekMonday();

@@ -10,6 +10,7 @@ import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getRequestsForWeekVa } from "@/services/weekly-availability-requests-va";
 import { listAllUsers } from "@/services/users";
 import { getCachedModelss } from "@/lib/modelss-cache";
+import { filterActiveModelsForAssignment, filterActiveUsersForAssignment } from "@/lib/assignment-filters";
 import { getLastAssignmentBatch } from "@/services/shifts";
 import { getWeeklyProgramConflicts, getModelCoverageBoard } from "@/lib/weekly-program-conflicts";
 import { AdminWeeklyProgramVaClient } from "@/components/admin-weekly-program-va-client";
@@ -51,7 +52,10 @@ export default async function AdminWeeklyProgramVaPage({
     });
   }
 
-  const vas = users.filter((u) => u.role === "virtual_assistant").map((u) => ({ id: u.id, full_name: u.full_name ?? u.email ?? "—" }));
+  const vas = filterActiveUsersForAssignment(users)
+    .filter((u) => u.role === "virtual_assistant")
+    .map((u) => ({ id: u.id, full_name: u.full_name ?? u.email ?? "—" }));
+  const activeModelss = filterActiveModelsForAssignment(modelss as ModelRecord[]);
 
   const modelIdToName: Record<string, string> = {};
   modelss.forEach((m) => {
@@ -59,12 +63,12 @@ export default async function AdminWeeklyProgramVaPage({
   });
   const { conflicts, summary } = getWeeklyProgramConflicts(
     programs as WeeklyProgramRecord[],
-    modelss.map((m) => m.id),
+    activeModelss.map((m) => m.id),
     modelIdToName
   );
   const conflictRecordIds = new Set<string>();
   for (const c of conflicts) for (const id of c.recordIds) conflictRecordIds.add(id);
-  const coverageBoard = getModelCoverageBoard(programs as WeeklyProgramRecord[], modelss, weekStart);
+  const coverageBoard = getModelCoverageBoard(programs as WeeklyProgramRecord[], activeModelss, weekStart);
 
   const assignmentPairs = (programs as WeeklyProgramRecord[]).flatMap((p) =>
     (p.model_ids ?? []).filter(Boolean).map((modelId) => ({ chatterId: p.chatter_id, modelId }))
@@ -73,7 +77,7 @@ export default async function AdminWeeklyProgramVaPage({
   const lastAssignmentMap = await getLastAssignmentBatch(uniquePairs).catch(() => ({}));
 
   const weekEnd = addDays(weekStart, 6);
-  const periodModelIds = modelss.map((m) => m.id);
+  const periodModelIds = activeModelss.map((m) => m.id);
   const periodDatesByModelId = await getPeriodDatesByModelForWeek(periodModelIds, weekStart, weekEnd).catch(
     () => ({}) as Record<string, string[]>
   );
