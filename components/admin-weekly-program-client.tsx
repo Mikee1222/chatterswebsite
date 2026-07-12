@@ -115,6 +115,20 @@ const AVAIL_SHIFT_TYPE_OPTIONS: CustomSelectOption[] = [
 
 type Chatter = { id: string; full_name: string };
 
+type ShiftSaveResult = { ok: true } | { ok: false; error: string };
+
+type ShiftEntryFields = {
+  chatter_id: string;
+  chatter_name: string;
+  model_ids: string[];
+  day: WeeklyProgramDay;
+  shift_type: WeeklyProgramShiftType;
+  week_start: string;
+  notes: string;
+  custom_start_time?: string;
+  custom_end_time?: string;
+};
+
 function getModelNames(modelIds: string[], modelss: ModelRecord[]): string[] {
   return modelIds
     .map((id) => modelss.find((m) => m.id === id)?.model_name)
@@ -810,78 +824,80 @@ export function AdminWeeklyProgramClient({
     [programsThisWeek, activeModelss, modelIdToName]
   );
 
-  const handleCreate = async (fields: {
-    chatter_id: string;
-    chatter_name: string;
-    model_ids: string[];
-    day: WeeklyProgramDay;
-    shift_type: WeeklyProgramShiftType;
-    week_start: string;
-    notes: string;
-    custom_start_time?: string;
-    custom_end_time?: string;
-  }) => {
+  const modelNamesForIds = React.useCallback(
+    (modelIds: string[]) => {
+      const map: Record<string, string> = {};
+      for (const id of modelIds) {
+        if (!id) continue;
+        map[id] = modelIdToName[id] ?? id;
+      }
+      return map;
+    },
+    [modelIdToName]
+  );
+
+  const handleCreate = async (fields: ShiftEntryFields): Promise<ShiftSaveResult> => {
     setError(null);
-    const res = await createProgramAction({
-      chatter: [fields.chatter_id],
-      chatter_name: fields.chatter_name,
-      models: fields.model_ids,
-      day: fields.day,
-      shift_type: fields.shift_type,
-      week_start: fields.week_start,
-      notes: fields.notes || "",
-      modelIdToName,
-      ...(fields.shift_type === "Custom" && {
-        custom_start_time: fields.custom_start_time,
-        custom_end_time: fields.custom_end_time,
-      }),
-    });
-    if (!res.success) {
-      setError(res.error);
-      return;
+    try {
+      const res = await createProgramAction({
+        chatter: [fields.chatter_id],
+        chatter_name: fields.chatter_name,
+        models: fields.model_ids,
+        day: fields.day,
+        shift_type: fields.shift_type,
+        week_start: fields.week_start,
+        notes: fields.notes || "",
+        modelIdToName: modelNamesForIds(fields.model_ids),
+        ...(fields.shift_type === "Custom" && {
+          custom_start_time: fields.custom_start_time,
+          custom_end_time: fields.custom_end_time,
+        }),
+      });
+      if (!res.success) {
+        setError(res.error);
+        return { ok: false, error: res.error };
+      }
+      setSuccess("Scheduled shift created.");
+      setCreateOpen(false);
+      // Use the week_start returned by the action (normalized Monday) so URL and fetch stay in sync.
+      window.location.href = adminWeeklyProgramUrl(res.week_start);
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not create shift.";
+      setError(message);
+      return { ok: false, error: message };
     }
-    setSuccess("Scheduled shift created.");
-    setCreateOpen(false);
-    // Use the week_start returned by the action (normalized Monday) so URL and fetch stay in sync.
-    window.location.href = adminWeeklyProgramUrl(res.week_start);
   };
 
-  const handleUpdate = async (
-    recordId: string,
-    fields: {
-      chatter_id: string;
-      chatter_name: string;
-      model_ids: string[];
-      day: WeeklyProgramDay;
-      shift_type: WeeklyProgramShiftType;
-      week_start: string;
-      notes: string;
-      custom_start_time?: string;
-      custom_end_time?: string;
-    }
-  ) => {
+  const handleUpdate = async (recordId: string, fields: ShiftEntryFields): Promise<ShiftSaveResult> => {
     setError(null);
-    const res = await updateProgramAction(recordId, {
-      chatter: [fields.chatter_id],
-      chatter_name: fields.chatter_name,
-      models: fields.model_ids,
-      day: fields.day,
-      shift_type: fields.shift_type,
-      week_start: fields.week_start,
-      notes: fields.notes || "",
-      modelIdToName,
-      ...(fields.shift_type === "Custom" && {
-        custom_start_time: fields.custom_start_time,
-        custom_end_time: fields.custom_end_time,
-      }),
-    });
-    if (!res.success) {
-      setError(res.error);
-      return;
+    try {
+      const res = await updateProgramAction(recordId, {
+        chatter: [fields.chatter_id],
+        chatter_name: fields.chatter_name,
+        models: fields.model_ids,
+        day: fields.day,
+        shift_type: fields.shift_type,
+        week_start: fields.week_start,
+        notes: fields.notes || "",
+        modelIdToName: modelNamesForIds(fields.model_ids),
+        ...(fields.shift_type === "Custom" && {
+          custom_start_time: fields.custom_start_time,
+          custom_end_time: fields.custom_end_time,
+        }),
+      });
+      if (!res.success) {
+        setError(res.error);
+        return { ok: false, error: res.error };
+      }
+      setSuccess("Shift updated.");
+      router.refresh();
+      return { ok: true };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not update shift.";
+      setError(message);
+      return { ok: false, error: message };
     }
-    setSuccess("Shift updated.");
-    setEditingEntry(null);
-    router.refresh();
   };
 
   const runProgramDelete = async (recordId: string) => {
@@ -2285,28 +2301,8 @@ type ModalProps = {
   lastAssignmentMap: Record<string, { date: string; dateTime: string; relative: string }>;
   programs: WeeklyProgramRecord[];
   onClose: () => void;
-  onCreate: (fields: {
-    chatter_id: string;
-    chatter_name: string;
-    model_ids: string[];
-    day: WeeklyProgramDay;
-    shift_type: WeeklyProgramShiftType;
-    week_start: string;
-    notes: string;
-    custom_start_time?: string;
-    custom_end_time?: string;
-  }) => Promise<void>;
-  onUpdate?: (fields: {
-    chatter_id: string;
-    chatter_name: string;
-    model_ids: string[];
-    day: WeeklyProgramDay;
-    shift_type: WeeklyProgramShiftType;
-    week_start: string;
-    notes: string;
-    custom_start_time?: string;
-    custom_end_time?: string;
-  }) => Promise<void>;
+  onCreate: (fields: ShiftEntryFields) => Promise<ShiftSaveResult>;
+  onUpdate?: (fields: ShiftEntryFields) => Promise<ShiftSaveResult>;
   /** When true, render as a panel (no overlay/centering) for split layout with helper. */
   asPanel?: boolean;
 };
@@ -2341,6 +2337,7 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
   });
   const [notes, setNotes] = React.useState(entry?.notes ?? "");
   const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
   const [modelSearch, setModelSearch] = React.useState("");
   const [availabilityFilter, setAvailabilityFilter] = React.useState<"all" | "free" | "taken">("all");
   const [customTimeError, setCustomTimeError] = React.useState<string | null>(null);
@@ -2539,16 +2536,18 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
   }, [formTimeWindow, programs, assignmentModelList, entry?.id, day, weekStartVal]);
 
   React.useEffect(() => {
+    const existingAssignment = isEdit && entry?.model_ids?.length ? new Set(entry.model_ids) : null;
     const next = new Set(selectedModelIds);
     let changed = false;
     next.forEach((id) => {
+      if (existingAssignment?.has(id)) return;
       if (modelAvailability[id]?.taken) {
         next.delete(id);
         changed = true;
       }
     });
     if (changed) setSelectedModelIds(next);
-  }, [modelAvailability]);
+  }, [modelAvailability, isEdit, entry?.id, entry?.model_ids]);
 
   const filteredModels = React.useMemo(() => {
     const q = modelSearch.trim().toLowerCase();
@@ -2572,9 +2571,10 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
   const performSave = React.useCallback(async () => {
     if (!chatterId || selectedModelIds.size === 0) return;
     setSaving(true);
+    setSaveError(null);
     const startNorm = shiftType === "Custom" ? normalizeHHmm(customStartTime.trim()) : null;
     const endNorm = shiftType === "Custom" ? normalizeHHmm(customEndTime.trim()) : null;
-    const fields = {
+    const fields: ShiftEntryFields = {
       chatter_id: chatterId,
       chatter_name: chatterName,
       model_ids: Array.from(selectedModelIds),
@@ -2589,14 +2589,25 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
           custom_end_time: endNorm,
         }),
     };
-    if (onUpdate) await onUpdate(fields);
-    else await onCreate(fields);
-    setSaving(false);
-  }, [chatterId, chatterName, selectedModelIds, day, shiftType, weekStartVal, notes, customStartTime, customEndTime, onUpdate, onCreate]);
+    try {
+      const result = onUpdate ? await onUpdate(fields) : await onCreate(fields);
+      if (!result.ok) {
+        setSaveError(result.error);
+        return;
+      }
+      onClose();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Could not save shift.";
+      setSaveError(message);
+    } finally {
+      setSaving(false);
+    }
+  }, [chatterId, chatterName, selectedModelIds, day, shiftType, weekStartVal, notes, customStartTime, customEndTime, onUpdate, onCreate, onClose]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCustomTimeError(null);
+    setSaveError(null);
     if (!chatterId) return;
     if (selectedModelIds.size === 0) {
       setCustomTimeError("Select at least one model for this shift.");
@@ -2724,6 +2735,9 @@ function ShiftEntryModal({ chatters, modelss, modelIdToDisplayName, weekStart, e
         </div>
         {customTimeError && (
           <p className="text-sm text-rose-300/95">{customTimeError}</p>
+        )}
+        {saveError && (
+          <p className="text-sm text-rose-300/95">{saveError}</p>
         )}
         <FormField label="Week start" icon={<Calendar />} htmlFor="wp-modal-week-start" required>
           <FormInput
