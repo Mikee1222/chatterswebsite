@@ -68,23 +68,34 @@ export function ModelHomeClient({
   const fetchSeqRef = React.useRef(0);
   /** Live id we just started — prevents a stale active fetch from clearing optimistic UI. */
   const pendingLiveIdRef = React.useRef<string | null>(null);
+  /** SSR-seeded live — first client fetch must not clear until server confirms absent. */
+  const ssrActiveLiveRef = React.useRef<ModelHomeActiveLive | null>(activeLiveProp ?? null);
 
   const setLiveState = React.useCallback((live: ModelHomeActiveLive | null) => {
     setActiveLive(live);
     if (!live) pendingLiveIdRef.current = null;
   }, []);
 
-  const fetchActiveLive = React.useCallback(async () => {
+  const fetchActiveLive = React.useCallback(async (options?: { confirmAbsent?: boolean }) => {
     const seq = ++fetchSeqRef.current;
     try {
-      const res = await fetch("/api/model/live/active", { credentials: "include" });
+      const res = await fetch("/api/model/live/active", {
+        credentials: "include",
+        cache: "no-store",
+      });
       const data = (await res.json().catch(() => ({}))) as { live?: ModelHomeActiveLive | null };
       if (seq !== fetchSeqRef.current) return;
       if (!res.ok) return;
       const live = data.live ?? null;
       if (live) {
         pendingLiveIdRef.current = null;
+        ssrActiveLiveRef.current = null;
         setLiveState(live);
+        return;
+      }
+      const skipClearForSsrSeed = !options?.confirmAbsent && ssrActiveLiveRef.current != null;
+      if (skipClearForSsrSeed) {
+        ssrActiveLiveRef.current = null;
         return;
       }
       if (!pendingLiveIdRef.current) {
@@ -94,6 +105,14 @@ export function ModelHomeClient({
       /* keep current UI on transient fetch errors */
     }
   }, [setLiveState]);
+
+  React.useEffect(() => {
+    if (pendingLiveIdRef.current) return;
+    if (activeLiveProp) {
+      setActiveLive(activeLiveProp);
+      ssrActiveLiveRef.current = activeLiveProp;
+    }
+  }, [activeLiveProp]);
 
   React.useEffect(() => {
     void fetchActiveLive();
@@ -193,9 +212,10 @@ export function ModelHomeClient({
         return;
       }
       pendingLiveIdRef.current = null;
+      ssrActiveLiveRef.current = null;
       setLiveState(null);
       setActionError(null);
-      await fetchActiveLive();
+      await fetchActiveLive({ confirmAbsent: true });
       router.refresh();
     } finally {
       setIsEnding(false);

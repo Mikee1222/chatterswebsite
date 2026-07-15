@@ -41,6 +41,7 @@ type Fields = {
   updated_at?: string;
   password_hash?: string;
   linked_model?: string | string[];
+  linked_model_id?: string | string[];
   language_preference?: string;
   telegram_username?: string;
   last_login_user_agent?: string;
@@ -105,7 +106,7 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
     updated_at: f.updated_at ?? "",
   };
   if (includePasswordHash && f.password_hash) out.password_hash = f.password_hash;
-  const linkedModelId = firstLinkedId(f.linked_model);
+  const linkedModelId = firstLinkedId(f.linked_model) ?? firstLinkedId(f.linked_model_id);
   if (linkedModelId) out.linked_model_id = linkedModelId;
   if (typeof f.language_preference === "string" && f.language_preference.trim()) {
     out.language_preference = f.language_preference.trim();

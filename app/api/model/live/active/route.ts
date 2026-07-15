@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireModelApiContext } from "@/lib/model-api-auth";
 import { getActiveLiveStreamForModel } from "@/services/model-live-streams";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const ctx = await requireModelApiContext();
   if (!ctx.ok) return ctx.response;
