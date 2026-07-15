@@ -1,12 +1,11 @@
 import {
   listAllRecords,
-  listRecords,
   getRecord,
   createRecord,
   updateRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
-import { firstLinkedId, formulaLinkedContains } from "@/lib/airtable-linked";
+import { firstLinkedId } from "@/lib/airtable-linked";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import type { ModelLiveStreamRecord } from "@/types";
 
@@ -90,13 +89,16 @@ export function isActiveLiveStreamRecord(r: Pick<ModelLiveStreamRecord, "status"
 
 export async function getActiveLiveStreamForModel(modelId: string): Promise<ModelLiveStreamRecord | null> {
   if (!modelId) return null;
-  const formula = `AND(${formulaLinkedContains("model", modelId)}, OR({status} = "in_progress", {status} = "live"), {actual_end} = "")`;
-  const { records } = await listRecords<Fields>(TABLE, {
+  // `model` links to modelss; ARRAYJOIN in formulas yields model_id slug, not rec… ids.
+  // Match listModelLiveStreams: filter active rows in formula, then match linked record id in JS.
+  // actual_end is dateTime; empty cells match {actual_end}="" but not BLANK() in this base — enforce in JS.
+  const formula = `OR({status} = "in_progress", {status} = "live")`;
+  const records = await listAllRecords<Fields>(TABLE, {
     filterByFormula: formula,
-    pageSize: 1,
     _caller: "getActiveLiveStreamForModel",
   });
-  return records.length > 0 ? mapRecord(records[0] as AirtableRecord<Fields>) : null;
+  const match = records.map(mapRecord).find((r) => r.model_id === modelId && isActiveLiveStreamRecord(r));
+  return match ?? null;
 }
 
 export async function createModelLiveStream(input: {
@@ -125,7 +127,17 @@ export async function createModelLiveStream(input: {
     details_en: input.details_en ?? undefined,
     details_es: input.details_es ?? undefined,
   });
-  return mapRecord(rec as AirtableRecord<Fields>);
+  const row = mapRecord(rec as AirtableRecord<Fields>);
+  if (isActiveLiveStreamRecord(row)) {
+    const verify = await getActiveLiveStreamForModel(input.model_id).catch(() => null);
+    if (!verify) {
+      console.warn(
+        "[model-live-streams] createModelLiveStream succeeded but getActiveLiveStreamForModel returned null",
+        { model_id: input.model_id, live_id: row.id, status: row.status }
+      );
+    }
+  }
+  return row;
 }
 
 export async function updateModelLiveStream(
