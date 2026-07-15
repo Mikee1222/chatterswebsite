@@ -65,19 +65,48 @@ export function ModelHomeClient({
   const [isEnding, setIsEnding] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [elapsedSec, setElapsedSec] = React.useState(0);
+  const fetchSeqRef = React.useRef(0);
+  /** Live id we just started — prevents a stale active fetch from clearing optimistic UI. */
+  const pendingLiveIdRef = React.useRef<string | null>(null);
+
+  const setLiveState = React.useCallback((live: ModelHomeActiveLive | null) => {
+    setActiveLive(live);
+    if (!live) pendingLiveIdRef.current = null;
+  }, []);
+
+  const fetchActiveLive = React.useCallback(async () => {
+    const seq = ++fetchSeqRef.current;
+    try {
+      const res = await fetch("/api/model/live/active", { credentials: "include" });
+      const data = (await res.json().catch(() => ({}))) as { live?: ModelHomeActiveLive | null };
+      if (seq !== fetchSeqRef.current) return;
+      if (!res.ok) return;
+      const live = data.live ?? null;
+      if (live) {
+        pendingLiveIdRef.current = null;
+        setLiveState(live);
+        return;
+      }
+      if (!pendingLiveIdRef.current) {
+        setLiveState(null);
+      }
+    } catch {
+      /* keep current UI on transient fetch errors */
+    }
+  }, [setLiveState]);
 
   React.useEffect(() => {
-    setActiveLive(activeLiveProp);
-  }, [activeLiveProp]);
+    void fetchActiveLive();
+  }, [fetchActiveLive]);
 
   React.useEffect(() => {
     if (!realtime?.subscribe) return;
     return realtime.subscribe((event) => {
       if (event.type === "model_live_started" || event.type === "model_live_ended") {
-        router.refresh();
+        void fetchActiveLive();
       }
     });
-  }, [realtime, router]);
+  }, [realtime, fetchActiveLive]);
 
   const startedMs = React.useMemo(() => {
     if (!activeLive?.started_at) return null;
@@ -118,6 +147,7 @@ export function ModelHomeClient({
       if (!res.ok) {
         if (res.status === 409) {
           setActionError("A live stream is already active. Please end it first.");
+          await fetchActiveLive();
         } else if (res.status === 403) {
           setActionError("You don't have permission to start a live stream.");
         } else {
@@ -126,17 +156,20 @@ export function ModelHomeClient({
         return;
       }
       if (data.live_id) {
-        setActiveLive({
+        pendingLiveIdRef.current = data.live_id;
+        setLiveState({
           id: data.live_id,
           platform: data.platform ?? platform,
           started_at: data.started_at ?? new Date().toISOString(),
         });
       }
+      setActionError(null);
+      await fetchActiveLive();
       router.refresh();
     } finally {
       setIsStarting(false);
     }
-  }, [platform, router, t]);
+  }, [fetchActiveLive, platform, router, setLiveState, t]);
 
   const handleEndLive = React.useCallback(async () => {
     setActionError(null);
@@ -159,12 +192,15 @@ export function ModelHomeClient({
         setActionError(data.error ?? t("home.couldNotEndLive"));
         return;
       }
-      setActiveLive(null);
+      pendingLiveIdRef.current = null;
+      setLiveState(null);
+      setActionError(null);
+      await fetchActiveLive();
       router.refresh();
     } finally {
       setIsEnding(false);
     }
-  }, [activeLive?.id, router, t]);
+  }, [activeLive?.id, fetchActiveLive, router, setLiveState, t]);
 
   const comingSoonCards = [
     { key: "today" as const, title: t("home.todayEarnings"), Icon: DollarSign },
