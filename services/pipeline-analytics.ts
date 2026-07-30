@@ -5,7 +5,7 @@ type ItemFields = { stage?: string; status?: string };
 type BunchFields = { creator_name?: string; week?: string; status?: string; created_at?: string; approved_at?: string };
 
 export type StageStat = { stage: string; avgSeconds: number; completed: number; current: number };
-export type PersonStat = { name: string; completed: number };
+export type PersonStat = { name: string; completed: number; totalSeconds: number; avgSeconds: number };
 export type BunchStat = { creator_name: string; week: string; status: string; durationSeconds: number | null; };
 
 export type PipelineAnalytics = {
@@ -27,13 +27,18 @@ export async function getPipelineAnalytics(): Promise<PipelineAnalytics> {
   // per-stage avg completion time + completed count (from "completed" events)
   const durBucket: Record<string, number[]> = {};
   const personCount: Record<string, number> = {};
+  const personTime: Record<string, number> = {};
   for (const e of events) {
     const f = e.fields;
     if (f.action === "completed") {
       const st = f.stage ?? "";
-      (durBucket[st] ??= []).push(Number(f.duration_seconds ?? 0));
+      const dur = Number(f.duration_seconds ?? 0);
+      (durBucket[st] ??= []).push(dur);
       const who = (f.actor_name ?? "").trim();
-      if (who) personCount[who] = (personCount[who] ?? 0) + 1;
+      if (who) {
+        personCount[who] = (personCount[who] ?? 0) + 1;
+        personTime[who] = (personTime[who] ?? 0) + dur;
+      }
     }
   }
 
@@ -58,8 +63,11 @@ export async function getPipelineAnalytics(): Promise<PipelineAnalytics> {
   });
 
   const people: PersonStat[] = Object.entries(personCount)
-    .map(([name, completed]) => ({ name, completed }))
-    .sort((a, b) => b.completed - a.completed);
+    .map(([name, completed]) => {
+      const total = personTime[name] ?? 0;
+      return { name, completed, totalSeconds: total, avgSeconds: completed ? Math.round(total / completed) : 0 };
+    })
+    .sort((a, b) => b.totalSeconds - a.totalSeconds);
 
   const bunchStats: BunchStat[] = bunches
     .map((b) => {

@@ -62,6 +62,7 @@ export async function createBunchAction(input: {
   target_research: number;
   target_winner: number;
   deadline?: string;
+  film_type?: "self_record" | "filmer";
 }): Promise<Result> {
   const user = await requireQa();
   if ("error" in user) return { success: false, error: user.error };

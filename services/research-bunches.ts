@@ -34,6 +34,7 @@ type BunchFields = {
   deadline?: string;
   assigned_at?: string;
   created_by_name?: string;
+  film_type?: string;
 };
 
 type IdeaFields = {
@@ -62,6 +63,7 @@ export type ResearchBunch = {
   deadline: string;
   assigned_at: string;
   created_by_name: string;
+  film_type: string;
 };
 
 export type ResearchIdea = {
@@ -95,6 +97,7 @@ function mapBunch(rec: AirtableRecord<BunchFields>): ResearchBunch {
     deadline: f.deadline ?? "",
     assigned_at: f.assigned_at ?? "",
     created_by_name: f.created_by_name ?? "",
+    film_type: f.film_type ?? "",
   };
 }
 
@@ -152,6 +155,7 @@ export async function createManagerBunch(input: {
   target_research: number;
   target_winner: number;
   deadline?: string;
+  film_type?: "self_record" | "filmer";
   created_by_name: string;
 }): Promise<{ bunch: ResearchBunch; researcher: { user_id: string; user_name: string } | null }> {
   const researcher = await resolveStageOwner(input.creator_model_id, "researcher");
@@ -167,6 +171,7 @@ export async function createManagerBunch(input: {
     target_research: input.target_research,
     target_winner: input.target_winner,
     ...(input.deadline ? { deadline: input.deadline } : {}),
+    film_type: input.film_type ?? "self_record",
     assigned_at: now,
     created_by_name: input.created_by_name,
     created_at: now,
@@ -247,6 +252,7 @@ export async function approveBunch(
       week: bunch.week,
       source: "research",
       research_idea_id: idea.id,
+      ...(bunch.film_type ? { film_type: bunch.film_type as "self_record" | "filmer" } : {}),
       stage: "creative",
       actor_user_id: qa.user_id,
       actor_name: qa.name,

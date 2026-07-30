@@ -204,6 +204,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   },
   research_bunches: {
     status: new Set(["draft", "collecting", "awaiting_qa", "changes_requested", "approved"]),
+    film_type: new Set(["self_record", "filmer"]),
   },
   research_ideas: {
     platform: new Set(["IG", "TT", "both"]),
