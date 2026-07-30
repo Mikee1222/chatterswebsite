@@ -14,11 +14,13 @@ type WinnerFields = {
   views_at_submission?: number;
   status?: string;
   submitted_at?: string;
+  video_link?: string;
 };
 
 export type WinnerLibraryEntry = {
   id: string;
   reference: string;
+  video_link: string;
   tier: "winner" | "super_winner";
   views: number | null;
   elements: string;
@@ -30,10 +32,14 @@ function defaultCount(tier: string): number {
   return tier === "super_winner" ? 10 : 3;
 }
 
-/** Winners available for recreation (Manos' library). Excludes rejected. */
+/**
+ * Winners submitted for the pipeline (Manos' library). ONLY entries actually tagged as a
+ * winner (winner_tier set) — excludes old/unrelated winner_videos rows. Shows the reference
+ * video link so the creative can see exactly which video to recreate.
+ */
 export async function listWinnerLibrary(): Promise<WinnerLibraryEntry[]> {
   const recs = await listAllRecords<WinnerFields>("winner_videos", {
-    filterByFormula: `NOT({status} = "rejected")`,
+    filterByFormula: `AND(NOT({status} = "rejected"), NOT({winner_tier} = ""))`,
   });
   return recs
     .map((r) => {
@@ -43,6 +49,7 @@ export async function listWinnerLibrary(): Promise<WinnerLibraryEntry[]> {
       return {
         id: r.id,
         reference: (f.reference_model_name || f.reference_model_id || "winner").toString(),
+        video_link: (f.video_link ?? "").toString(),
         tier,
         views: typeof f.views_at_submission === "number" ? f.views_at_submission : null,
         elements: (f.pipeline_elements ?? "").toString(),
@@ -66,6 +73,38 @@ export async function updateWinnerLibraryEntry(
 }
 
 /**
+ * Evi submits a winner from her daily form: creates a winner_videos row tagged with tier +
+ * elements + reference video, assigned to a creator → appears in the Winner Library for Manos.
+ */
+export async function submitPipelineWinner(input: {
+  video_link: string;
+  creator_model_id: string;
+  creator_name: string;
+  elements: string;
+  tier: "winner" | "super_winner";
+  submitted_by_id: string;
+  submitted_by_name: string;
+}): Promise<string> {
+  const { createWinnerVideo } = await import("@/services/winner-videos");
+  const v = await createWinnerVideo({
+    reference_model_name: input.creator_name || "winner",
+    reference_model_id: input.creator_model_id,
+    content_type: "UGC",
+    video_link: input.video_link,
+    note: input.elements,
+    submitted_by_id: input.submitted_by_id,
+    submitted_by_name: input.submitted_by_name,
+  });
+  await updateRecord<WinnerFields & { assigned_creator_id?: string; assigned_creator_name?: string }>("winner_videos", v.id, {
+    winner_tier: input.tier,
+    pipeline_elements: input.elements,
+    assigned_creator_id: input.creator_model_id,
+    assigned_creator_name: input.creator_name,
+  });
+  return v.id;
+}
+
+/**
  * Spawn `count` recreate content_items (Creative stage) from a winner into the current week's bunch.
  * count defaults to the winner's recreate_count / tier default. Unused winners stay in the library.
  */
@@ -82,6 +121,7 @@ export async function spawnRecreatesFromWinner(
   const creatorId = String(f.assigned_creator_id ?? f.reference_model_id ?? "").trim();
   const creatorName = String(f.assigned_creator_name ?? f.reference_model_name ?? "").trim();
   const elements = (f.pipeline_elements ?? "").toString().trim();
+  const videoLink = (f.video_link ?? "").toString().trim();
   const week = getThisWeekMonday();
 
   const existing = (f.content_item_ids ?? "").split(",").filter(Boolean);
@@ -94,6 +134,7 @@ export async function spawnRecreatesFromWinner(
       week,
       source: "winner_recreate",
       winner_video_id: winnerId,
+      ...(videoLink ? { reference_link: videoLink } : {}),
       stage: "creative",
       actor_user_id: actor.user_id,
       actor_name: actor.user_name,

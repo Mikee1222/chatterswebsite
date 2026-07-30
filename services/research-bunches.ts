@@ -7,11 +7,13 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { spawnContentItem } from "@/services/content-items";
+import { resolveStageOwner } from "@/services/creator-assignments";
+import { getThisWeekMonday } from "@/lib/weekly-program";
 
 const BUNCHES = "research_bunches";
 const IDEAS = "research_ideas";
 
-export type BunchStatus = "draft" | "awaiting_qa" | "changes_requested" | "approved";
+export type BunchStatus = "draft" | "collecting" | "awaiting_qa" | "changes_requested" | "approved";
 export type IdeaPlatform = "IG" | "TT" | "both";
 
 type BunchFields = {
@@ -27,6 +29,11 @@ type BunchFields = {
   submitted_at?: string;
   approved_at?: string;
   created_at?: string;
+  target_research?: number;
+  target_winner?: number;
+  deadline?: string;
+  assigned_at?: string;
+  created_by_name?: string;
 };
 
 type IdeaFields = {
@@ -50,6 +57,11 @@ export type ResearchBunch = {
   week: string;
   status: BunchStatus;
   qa_by_name: string;
+  target_research: number;
+  target_winner: number;
+  deadline: string;
+  assigned_at: string;
+  created_by_name: string;
 };
 
 export type ResearchIdea = {
@@ -78,6 +90,11 @@ function mapBunch(rec: AirtableRecord<BunchFields>): ResearchBunch {
     week: f.week ?? "",
     status: (f.status as BunchStatus) ?? "draft",
     qa_by_name: f.qa_by_name ?? "",
+    target_research: Number(f.target_research ?? 0),
+    target_winner: Number(f.target_winner ?? 0),
+    deadline: f.deadline ?? "",
+    assigned_at: f.assigned_at ?? "",
+    created_by_name: f.created_by_name ?? "",
   };
 }
 
@@ -124,21 +141,37 @@ export async function listIdeasForBunch(bunchRecId: string): Promise<ResearchIde
   return records.map(mapIdea);
 }
 
-export async function createBunch(input: {
+/**
+ * Manos starts a bunch for a creator: sets how many research + winner videos he wants and a
+ * deadline. The bunch is auto-assigned to that creator's researcher (status "collecting") who
+ * then fills the ideas. Returns the resolved researcher so the caller can notify them.
+ */
+export async function createManagerBunch(input: {
   creator_model_id: string;
   creator_name: string;
-  researcher_user_id: string;
-  researcher_name: string;
-  week: string;
-}): Promise<ResearchBunch> {
+  target_research: number;
+  target_winner: number;
+  deadline?: string;
+  created_by_name: string;
+}): Promise<{ bunch: ResearchBunch; researcher: { user_id: string; user_name: string } | null }> {
+  const researcher = await resolveStageOwner(input.creator_model_id, "researcher");
   const now = new Date().toISOString();
   const rec = await createRecord<BunchFields>(BUNCHES, {
     bunch_id: `rb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-    ...input,
-    status: "draft",
+    creator_model_id: input.creator_model_id,
+    creator_name: input.creator_name,
+    researcher_user_id: researcher?.user_id ?? "",
+    researcher_name: researcher?.user_name ?? "",
+    week: getThisWeekMonday(),
+    status: "collecting",
+    target_research: input.target_research,
+    target_winner: input.target_winner,
+    ...(input.deadline ? { deadline: input.deadline } : {}),
+    assigned_at: now,
+    created_by_name: input.created_by_name,
     created_at: now,
   });
-  return mapBunch(rec);
+  return { bunch: mapBunch(rec), researcher };
 }
 
 export async function addIdea(input: {

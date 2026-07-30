@@ -9,6 +9,7 @@ import { saveWinnerElementsAction, generateWinnerRecreatesAction } from "@/app/a
 type Entry = {
   id: string;
   reference: string;
+  video_link: string;
   tier: "winner" | "super_winner";
   views: number | null;
   elements: string;
@@ -80,8 +81,15 @@ function WinnerCard({
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="mb-2 flex items-center justify-between gap-3">
-        <p className="font-medium text-white">{entry.reference}</p>
-        <span className="text-xs text-white/45">
+        <div className="min-w-0">
+          <p className="truncate font-medium text-white">{entry.reference}</p>
+          {entry.video_link && (
+            <a href={entry.video_link} target="_blank" rel="noreferrer" className="text-xs text-pink-300 underline decoration-pink-300/40 hover:decoration-pink-300">
+              ▶ Δες το video
+            </a>
+          )}
+        </div>
+        <span className="shrink-0 text-xs text-white/45">
           {entry.views != null ? `${(entry.views / 1000).toFixed(0)}K views · ` : ""}
           {entry.spawned > 0 ? `${entry.spawned} spawned` : "στη βιβλιοθήκη"}
         </span>

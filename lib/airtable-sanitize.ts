@@ -203,7 +203,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     action: new Set(["spawned", "entered", "completed", "qa_approved", "qa_rejected", "reassigned", "blocked"]),
   },
   research_bunches: {
-    status: new Set(["draft", "awaiting_qa", "changes_requested", "approved"]),
+    status: new Set(["draft", "collecting", "awaiting_qa", "changes_requested", "approved"]),
   },
   research_ideas: {
     platform: new Set(["IG", "TT", "both"]),
