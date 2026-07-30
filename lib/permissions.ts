@@ -131,6 +131,11 @@ export const PERMISSIONS = {
   MY_PROFILES_VIEW: "my_profiles:view",
 
   ACTIVITY_LOGS_VIEW: "activity_logs:view",
+
+  // Content pipeline (idea → script → film → edit → post → analytics)
+  CONTENT_PIPELINE_VIEW: "content_pipeline:view",
+  CONTENT_PIPELINE_QA: "content_pipeline:qa",
+  CONTENT_PIPELINE_MANAGE: "content_pipeline:manage",
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -149,6 +154,7 @@ const ACTION_LABELS: Record<string, string> = {
   "reasons-manage": "Manage reasons",
   "sign-off": "Sign off",
   quiz: "Take quiz",
+  qa: "QA",
   assign: "Assign",
   approve: "Approve",
   submit: "Submit",
@@ -204,6 +210,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   blur_tool: "Blur tool",
   my_profiles: "My profiles",
   activity_logs: "Activity logs",
+  content_pipeline: "Content pipeline",
 };
 
 function humanizePermissionSegment(segment: string): string {
@@ -355,6 +362,10 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
   "my_profiles:view": "Προβολή ανατεθειμένων μοντέλων, λογαριασμών και τηλεφώνων VA",
 
   "activity_logs:view": "Προβολή αρχείου καταγραφής δραστηριότητας συστήματος",
+
+  "content_pipeline:view": "Προβολή και εκτέλεση του δικού σου σταδίου στο content pipeline",
+  "content_pipeline:qa": "Έλεγχος ποιότητας (approve/reject) στα σημεία QA του pipeline",
+  "content_pipeline:manage": "Πλήρης διαχείριση pipeline: board, στατιστικά, SLA, αναθέσεις creators",
 };
 
 export type PermissionGroup = {
