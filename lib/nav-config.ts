@@ -780,6 +780,46 @@ const sharedPermissionNavItems: NavItem[] = [
 
   // ── CONTENT ──
   {
+    href: ROUTES.pipeline,
+    label: "Content Pipeline",
+    iconKey: "ListTodo",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.CONTENT_PIPELINE_VIEW,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.admin.pipelineAssignments,
+    label: "Pipeline Assignments",
+    iconKey: "UserCheck",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.CONTENT_PIPELINE_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.admin.pipelineQa,
+    label: "Pipeline QA",
+    iconKey: "ListTodo",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.CONTENT_PIPELINE_QA,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.admin.winnerLibrary,
+    label: "Winner Library",
+    iconKey: "Trophy",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
+    href: ROUTES.admin.pipelineAnalytics,
+    label: "Pipeline KPIs",
+    iconKey: "LineChart",
+    navSection: "CONTENT",
+    requiresPermission: PERMISSIONS.CONTENT_PIPELINE_MANAGE,
+    excludeFromMobileMainTabs: true,
+  },
+  {
     href: ROUTES.winners,
     label: "Research",
     iconKey: "Trophy",
