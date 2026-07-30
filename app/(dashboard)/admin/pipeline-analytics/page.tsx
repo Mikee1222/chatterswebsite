@@ -68,9 +68,9 @@ export default async function PipelineAnalyticsPage() {
         ) : (
           <ul className="space-y-1.5">
             {a.people.map((p) => (
-              <li key={p.name} className="flex justify-between text-sm">
+              <li key={p.name} className="flex justify-between gap-3 text-sm">
                 <span className="text-white/80">{p.name}</span>
-                <span className="text-white/50">{p.completed} steps</span>
+                <span className="text-white/50">{p.completed} steps · μέσος {humanDuration(p.avgSeconds)}</span>
               </li>
             ))}
           </ul>

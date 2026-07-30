@@ -195,6 +195,7 @@ export async function spawnContentItem(input: {
   research_idea_id?: string;
   winner_video_id?: string;
   reference_link?: string;
+  film_type?: "self_record" | "filmer";
   stage?: ContentStage;
   actor_user_id: string;
   actor_name: string;
@@ -214,6 +215,7 @@ export async function spawnContentItem(input: {
     ...(input.research_idea_id ? { research_idea_id: input.research_idea_id } : {}),
     ...(input.winner_video_id ? { winner_video_id: input.winner_video_id } : {}),
     ...(input.reference_link ? { reference_link: input.reference_link } : {}),
+    ...(input.film_type ? { film_type: input.film_type } : {}),
     stage,
     status: owner ? "in_progress" : "blocked_unassigned",
     assignee_user_id: owner?.user_id ?? "",

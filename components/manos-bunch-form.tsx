@@ -16,6 +16,7 @@ export function ManosBunchForm({ creators }: { creators: Creator[] }) {
   const [research, setResearch] = React.useState(3);
   const [winner, setWinner] = React.useState(0);
   const [deadline, setDeadline] = React.useState("");
+  const [filmType, setFilmType] = React.useState<"self_record" | "filmer">("self_record");
 
   async function submit() {
     const c = creators.find((x) => x.model_id === creator);
@@ -27,6 +28,7 @@ export function ManosBunchForm({ creators }: { creators: Creator[] }) {
       target_research: research,
       target_winner: winner,
       deadline: deadline || undefined,
+      film_type: filmType,
     });
     setPending(false);
     if (!res.success) return toast.error(res.error ?? "Απέτυχε");
@@ -36,7 +38,16 @@ export function ManosBunchForm({ creators }: { creators: Creator[] }) {
 
   return (
     <div className="mb-5 rounded-2xl border border-white/10 bg-white/5 p-4">
-      <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-white/50">Νέο bunch</h3>
+      <div className="mb-3 flex items-center gap-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-white/50">Νέο bunch</h3>
+        <div className="inline-flex overflow-hidden rounded-xl border border-white/10">
+          {(["self_record", "filmer"] as const).map((ft) => (
+            <button key={ft} type="button" onClick={() => setFilmType(ft)} className={`px-3 py-1 text-xs transition ${filmType === ft ? "bg-pink-500/20 text-pink-200" : "bg-white/5 text-white/50 hover:bg-white/10"}`}>
+              {ft === "self_record" ? "Self record" : "Filmer"}
+            </button>
+          ))}
+        </div>
+      </div>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <div className="col-span-2 md:col-span-1">
           <label className="mb-1 block text-xs text-white/50">Creator</label>

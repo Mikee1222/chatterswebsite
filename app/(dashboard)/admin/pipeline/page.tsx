@@ -57,7 +57,7 @@ async function KpisTab({ card }: { card: string }) {
       </div>
       <div className={card}>
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-white/50">Παραγωγικότητα ανά άτομο</h2>
-        {a.people.length === 0 ? <p className="text-sm text-white/40">—</p> : <ul className="space-y-1.5">{a.people.map((p) => (<li key={p.name} className="flex justify-between text-sm"><span className="text-white/80">{p.name}</span><span className="text-white/50">{p.completed} steps</span></li>))}</ul>}
+        {a.people.length === 0 ? <p className="text-sm text-white/40">—</p> : <ul className="space-y-1.5">{a.people.map((p) => (<li key={p.name} className="flex justify-between gap-3 text-sm"><span className="text-white/80">{p.name}</span><span className="text-white/50">{p.completed} steps · μέσος {humanDuration(p.avgSeconds)} · σύνολο {humanDuration(p.totalSeconds)}</span></li>))}</ul>}
       </div>
     </div>
   );
