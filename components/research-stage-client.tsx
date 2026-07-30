@@ -3,9 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Plus, Trash2, Send, CheckCircle2, RotateCcw, AlertTriangle } from "lucide-react";
+import { Plus, Trash2, Send, CheckCircle2, RotateCcw, AlertTriangle, Clock } from "lucide-react";
 import {
-  createResearchBunch,
   addResearchIdea,
   removeResearchIdea,
   submitResearchBunch,
@@ -29,6 +28,8 @@ type Bunch = {
   researcher_name: string;
   week: string;
   status: string;
+  target_research?: number;
+  deadline?: string;
 };
 type BunchWithIdeas = { bunch: Bunch; ideas: Idea[] };
 
@@ -42,12 +43,14 @@ type Props = {
 
 const STATUS_STYLE: Record<string, string> = {
   draft: "bg-white/10 text-white/70",
+  collecting: "bg-pink-400/15 text-pink-200",
   awaiting_qa: "bg-sky-400/15 text-sky-200",
   changes_requested: "bg-amber-400/15 text-amber-200",
   approved: "bg-emerald-400/15 text-emerald-200",
 };
 const STATUS_LABEL: Record<string, string> = {
   draft: "Πρόχειρο",
+  collecting: "Συμπλήρωσε",
   awaiting_qa: "Σε QA",
   changes_requested: "Θέλει αλλαγές",
   approved: "Εγκρίθηκε",
@@ -67,7 +70,6 @@ const inputCls =
 export function ResearchStageClient({ canQa, assignedCreators, myBunches, qaBunches, week }: Props) {
   const router = useRouter();
   const [pending, setPending] = React.useState(false);
-  const [newCreator, setNewCreator] = React.useState(assignedCreators[0]?.model_id ?? "");
 
   async function run(fn: () => Promise<{ success: boolean; error?: string; message?: string }>) {
     setPending(true);
@@ -152,45 +154,14 @@ export function ResearchStageClient({ canQa, assignedCreators, myBunches, qaBunc
         </section>
       )}
 
-      {/* ---- My research (researcher) ---- */}
+      {/* ---- My research (researcher) — fills bunches Manos started ---- */}
       <section className="space-y-3">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/50">Τα research bunches μου</h2>
-
-        {assignedCreators.length === 0 ? (
-          <div className="inline-flex items-center gap-2 rounded-xl border border-amber-400/25 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
-            <AlertTriangle className="h-3.5 w-3.5" />
-            Δεν σου έχει ανατεθεί κανένας creator ως researcher ακόμα.
-          </div>
-        ) : (
-          <div className="flex items-end gap-2 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <div className="flex-1">
-              <label className="mb-1 block text-xs text-white/50">Νέο bunch για creator</label>
-              <select value={newCreator} onChange={(e) => setNewCreator(e.target.value)} className={inputCls}>
-                {assignedCreators.map((c) => (
-                  <option key={c.model_id} value={c.model_id} className="bg-[#1a1a1a]">
-                    {c.model_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <button
-              disabled={pending || !newCreator}
-              onClick={() => {
-                const c = assignedCreators.find((x) => x.model_id === newCreator);
-                if (!c) return;
-                run(() => createResearchBunch({ creator_model_id: c.model_id, creator_name: c.model_name, week }));
-              }}
-              className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-pink-500 to-fuchsia-500 px-3 text-sm font-medium text-white transition hover:opacity-90 disabled:opacity-40"
-            >
-              <Plus className="h-4 w-4" /> Νέο
-            </button>
-          </div>
+        {myBunches.length === 0 && (
+          <p className="rounded-2xl border border-white/10 bg-white/5 px-4 py-6 text-sm text-white/45">
+            Δεν σου έχει ανατεθεί bunch ακόμα. Ο Μάνος ξεκινάει τα bunches — μόλις σου ανατεθεί, θα το συμπληρώσεις εδώ.
+          </p>
         )}
-
-        {myBunches.length === 0 && assignedCreators.length > 0 && (
-          <p className="text-sm text-white/45">Δεν έχεις bunches ακόμα — φτιάξε ένα.</p>
-        )}
-
         {myBunches.map(({ bunch, ideas }) => (
           <ResearcherBunchCard key={bunch.id} bunch={bunch} ideas={ideas} pending={pending} run={run} />
         ))}
@@ -213,12 +184,20 @@ function ResearcherBunchCard({
   const [text, setText] = React.useState("");
   const [platform, setPlatform] = React.useState<"IG" | "TT" | "both">("IG");
   const [link, setLink] = React.useState("");
-  const editable = bunch.status === "draft" || bunch.status === "changes_requested";
+  const editable = bunch.status === "collecting" || bunch.status === "changes_requested";
+  const target = bunch.target_research ?? 0;
+  const remaining = Math.max(0, target - ideas.length);
 
   return (
     <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="font-medium text-white">{bunch.creator_name}</p>
+        <div>
+          <p className="font-medium text-white">{bunch.creator_name}</p>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-white/45">
+            {target > 0 && <span>{ideas.length}/{target} ιδέες{remaining > 0 ? ` · λείπουν ${remaining}` : " ✓"}</span>}
+            {bunch.deadline && <span className="inline-flex items-center gap-1 text-amber-200/80"><Clock className="h-3 w-3" /> {bunch.deadline.slice(0, 10)}</span>}
+          </p>
+        </div>
         <StatusBadge status={bunch.status} />
       </div>
 

@@ -54,7 +54,10 @@ type Fields = {
   assignee_user_id?: string;
   assignee_name?: string;
   film_type?: string;
+  reference_link?: string;
   stage_entered_at?: string;
+  assigned_at?: string;
+  deadline?: string;
   priority?: string;
   created_at?: string;
   updated_at?: string;
@@ -72,7 +75,10 @@ export type ContentItem = {
   assignee_user_id: string;
   assignee_name: string;
   film_type: string;
+  reference_link: string;
   stage_entered_at: string;
+  assigned_at: string;
+  deadline: string;
 };
 
 function mapItem(rec: AirtableRecord<Fields>): ContentItem {
@@ -89,7 +95,10 @@ function mapItem(rec: AirtableRecord<Fields>): ContentItem {
     assignee_user_id: f.assignee_user_id ?? "",
     assignee_name: f.assignee_name ?? "",
     film_type: f.film_type ?? "",
+    reference_link: f.reference_link ?? "",
     stage_entered_at: f.stage_entered_at ?? "",
+    assigned_at: f.assigned_at ?? "",
+    deadline: f.deadline ?? "",
   };
 }
 
@@ -185,6 +194,7 @@ export async function spawnContentItem(input: {
   source: "research" | "winner_recreate";
   research_idea_id?: string;
   winner_video_id?: string;
+  reference_link?: string;
   stage?: ContentStage;
   actor_user_id: string;
   actor_name: string;
@@ -203,11 +213,13 @@ export async function spawnContentItem(input: {
     source: input.source,
     ...(input.research_idea_id ? { research_idea_id: input.research_idea_id } : {}),
     ...(input.winner_video_id ? { winner_video_id: input.winner_video_id } : {}),
+    ...(input.reference_link ? { reference_link: input.reference_link } : {}),
     stage,
     status: owner ? "in_progress" : "blocked_unassigned",
     assignee_user_id: owner?.user_id ?? "",
     assignee_name: owner?.user_name ?? "",
     stage_entered_at: now,
+    assigned_at: now,
     priority: "normal",
     created_at: now,
     updated_at: now,
@@ -363,6 +375,7 @@ async function advanceStage(item: ContentItem, actor: { user_id: string; user_na
     assignee_user_id: owner?.user_id ?? "",
     assignee_name: owner?.user_name ?? "",
     stage_entered_at: nowIso(),
+    assigned_at: nowIso(),
     updated_at: nowIso(),
   });
   await logContentEvent({

@@ -6,9 +6,7 @@ import { hasPermission, hasAnyPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import type { AuthUser } from "@/lib/auth-config";
-import { spawnRecreatesFromWinner, updateWinnerLibraryEntry } from "@/services/winner-recreates";
-import { createWinnerVideo } from "@/services/winner-videos";
-import { getItemById } from "@/services/content-items";
+import { spawnRecreatesFromWinner, updateWinnerLibraryEntry, submitPipelineWinner } from "@/services/winner-recreates";
 
 type Result = { success: boolean; error?: string; message?: string };
 function actor(u: AuthUser) {
@@ -54,25 +52,27 @@ export async function saveWinnerElementsAction(
   }
 }
 
-/** Marketing exec flags a posted item that passed 100K → creates a winner submission. */
-export async function submitItemAsWinner(itemId: string): Promise<Result> {
+/** Evi submits a winner/super-winner from her daily form → appears in the Winner Library. */
+export async function submitWinnerFromDailyAction(input: {
+  video_link: string;
+  creator_model_id: string;
+  creator_name: string;
+  elements: string;
+  tier: "winner" | "super_winner";
+}): Promise<Result> {
   const user = await getSessionFromCookies();
   if (!user) return { success: false, error: "Unauthorized." };
-  if (!(await hasPermission(user, PERMISSIONS.CONTENT_PIPELINE_VIEW))) return { success: false, error: "Forbidden." };
-  const item = await getItemById(itemId);
-  if (!item) return { success: false, error: "Item not found." };
+  const ok =
+    (await hasPermission(user, PERMISSIONS.DAILY_REVIEW_SUBMIT)) ||
+    (await hasPermission(user, PERMISSIONS.CONTENT_PIPELINE_QA));
+  if (!ok) return { success: false, error: "Forbidden." };
+  if (!input.video_link.trim()) return { success: false, error: "Χρειάζεται link του video." };
   try {
     const a = actor(user);
-    await createWinnerVideo({
-      reference_model_id: item.creator_model_id,
-      reference_model_name: item.creator_name || item.title,
-      content_type: "UGC",
-      note: `Auto από posted item: ${item.title} (>100K)`,
-      submitted_by_id: a.user_id,
-      submitted_by_name: a.user_name,
-    });
-    revalidatePath(ROUTES.pipeline);
-    return { success: true, message: "Submitted ως winner 🏆" };
+    await submitPipelineWinner({ ...input, submitted_by_id: a.user_id, submitted_by_name: a.user_name });
+    revalidatePath(ROUTES.dailyReview);
+    revalidatePath(ROUTES.admin.pipeline);
+    return { success: true, message: `Submitted ${input.tier === "super_winner" ? "super-winner" : "winner"} 🏆` };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Failed." };
   }

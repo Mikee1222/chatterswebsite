@@ -3,14 +3,13 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, RotateCcw, AlertTriangle, Send, Trophy } from "lucide-react";
+import { CheckCircle2, RotateCcw, AlertTriangle, Send, Play, Clock } from "lucide-react";
 import {
   submitStageAction,
   qaApproveItemAction,
   qaRejectItemAction,
   setFilmTypeAction,
 } from "@/app/actions/content-pipeline";
-import { submitItemAsWinner } from "@/app/actions/winner-pipeline";
 
 type Item = {
   id: string;
@@ -19,6 +18,8 @@ type Item = {
   stage: string;
   status: string;
   film_type: string;
+  reference_link?: string;
+  deadline?: string;
 };
 
 type Props = {
@@ -112,22 +113,20 @@ export function ContentQueueClient({ myItems, qaItems, blockedItems, canManage }
           <div key={it.id} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
             <div className="min-w-0">
               <p className="truncate font-medium text-white">{it.title}</p>
-              <p className="text-xs text-white/45">
-                {it.creator_name} · {stageLabel(it.stage)}
-                {it.status === "rejected" && <span className="ml-2 rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-200">επιστράφηκε</span>}
+              <p className="flex flex-wrap items-center gap-x-2 text-xs text-white/45">
+                <span>{it.creator_name} · {stageLabel(it.stage)}</span>
+                {it.reference_link && (
+                  <a href={it.reference_link} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-pink-300 underline decoration-pink-300/40">
+                    <Play className="h-3 w-3" /> reference
+                  </a>
+                )}
+                {it.deadline && (
+                  <span className="inline-flex items-center gap-1 text-amber-200/80"><Clock className="h-3 w-3" /> {it.deadline.slice(0, 10)}</span>
+                )}
+                {it.status === "rejected" && <span className="rounded-full bg-amber-400/15 px-2 py-0.5 text-[11px] text-amber-200">επιστράφηκε</span>}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {it.stage === "post" && (
-                <button
-                  disabled={pending}
-                  onClick={() => run(() => submitItemAsWinner(it.id))}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 text-sm text-amber-200 transition hover:bg-amber-400/20 disabled:opacity-50"
-                  title="Πέρασε 100K → submit ως winner"
-                >
-                  <Trophy className="h-3.5 w-3.5" /> &gt;100K
-                </button>
-              )}
               {it.stage === "filming" && canManage && (
                 <div className="inline-flex overflow-hidden rounded-xl border border-white/10">
                   {(["self_record", "filmer"] as const).map((ft) => (

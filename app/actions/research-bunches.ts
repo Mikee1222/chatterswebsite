@@ -7,7 +7,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import type { AuthUser } from "@/lib/auth-config";
 import {
-  createBunch,
+  createManagerBunch,
   addIdea,
   deleteIdea,
   submitBunch,
@@ -40,25 +40,39 @@ async function requireQa(): Promise<AuthUser | { error: string }> {
 
 function revalidate() {
   revalidatePath(ROUTES.pipeline);
+  revalidatePath(ROUTES.admin.pipeline);
 }
 
-// ---- Researcher actions ----
+async function notifyUser(userId: string, title: string, body: string, actorId: string) {
+  if (!userId) return;
+  try {
+    const [{ notify }, { NOTIFICATION_EVENT }] = await Promise.all([
+      import("@/services/notification-service"),
+      import("@/lib/notification-types"),
+    ]);
+    await notify({ user_id: userId, event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED, title, body, entity_type: "research_bunch", entity_id: "bunch", actor_user_id: actorId || undefined, priority: "normal" });
+  } catch { /* best-effort */ }
+}
 
-export async function createResearchBunch(input: {
+// ---- Manos: starts a bunch (creator + N research + M winner + deadline) ----
+
+export async function createBunchAction(input: {
   creator_model_id: string;
   creator_name: string;
-  week: string;
+  target_research: number;
+  target_winner: number;
+  deadline?: string;
 }): Promise<Result> {
-  const user = await requireView();
+  const user = await requireQa();
   if ("error" in user) return { success: false, error: user.error };
   try {
-    await createBunch({
-      ...input,
-      researcher_user_id: actorId(user),
-      researcher_name: user.fullName ?? user.email,
-    });
+    const { researcher } = await createManagerBunch({ ...input, created_by_name: user.fullName ?? user.email });
+    if (researcher) {
+      const dl = input.deadline ? ` · deadline ${input.deadline.slice(0, 10)}` : "";
+      await notifyUser(researcher.user_id, "🔬 Νέο research bunch", `${input.creator_name}: ${input.target_research} ιδέες${dl}`, actorId(user));
+    }
     revalidate();
-    return { success: true };
+    return { success: true, message: researcher ? `Ανατέθηκε στον ${researcher.user_name}` : "Δημιουργήθηκε (⚠️ χωρίς researcher)" };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Failed." };
   }

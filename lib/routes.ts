@@ -136,6 +136,8 @@ export const ROUTES = {
     pipelineAssignments: "/admin/pipeline-assignments",
     /** Content pipeline KPIs / analytics (content_pipeline:manage). */
     pipelineAnalytics: "/admin/pipeline-analytics",
+    /** Content pipeline admin hub — tabbed: KPIs · QA · Assignments · Winners (content_pipeline:qa). */
+    pipeline: "/admin/pipeline",
     /** Content pipeline QA cockpit — everything waiting for QA + progress (content_pipeline:qa). */
     pipelineQa: "/admin/pipeline-qa",
     /** Winner library — Manos tags/annotates winners + pulls N recreates into bunches. */
