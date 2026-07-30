@@ -3,9 +3,9 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { CheckCircle2, RotateCcw } from "lucide-react";
+import { CheckCircle2, RotateCcw, RefreshCw } from "lucide-react";
 import { qaSetIdeaChecked, qaApproveBunch, qaRequestChanges } from "@/app/actions/research-bunches";
-import { qaApproveItemAction, qaRejectItemAction, setFilmTypeAction } from "@/app/actions/content-pipeline";
+import { qaApproveItemAction, qaRejectItemAction, setFilmTypeAction, retryBlockedItemAction } from "@/app/actions/content-pipeline";
 
 export type QaBunch = {
   id: string;
@@ -134,14 +134,22 @@ export function PipelineQaClient({ bunches, items }: { bunches: QaBunch[]; items
                     {it.status === "blocked_unassigned" && <span className="ml-1 text-amber-300">blocked</span>}
                   </p>
                 </div>
-                {/* Manos picks self/filmer per band (early) */}
-                <div className="inline-flex shrink-0 overflow-hidden rounded-xl border border-white/10">
-                  {(["self_record", "filmer"] as const).map((ft) => (
-                    <button key={ft} disabled={pending} onClick={() => run(() => setFilmTypeAction(it.id, ft))}
-                      className={`px-2.5 py-1 text-xs transition ${it.film_type === ft ? "bg-pink-500/20 text-pink-200" : "bg-white/5 text-white/45 hover:bg-white/10"}`}>
-                      {ft === "self_record" ? "Self" : "Filmer"}
+                <div className="flex shrink-0 items-center gap-2">
+                  {it.status === "blocked_unassigned" && (
+                    <button disabled={pending} onClick={() => run(() => retryBlockedItemAction(it.id))}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-amber-400/30 bg-amber-400/10 px-2.5 py-1 text-xs text-amber-200 hover:bg-amber-400/20 disabled:opacity-50">
+                      <RefreshCw className="h-3.5 w-3.5" /> Retry
                     </button>
-                  ))}
+                  )}
+                  {/* Manos picks self/filmer per band (early) */}
+                  <div className="inline-flex overflow-hidden rounded-xl border border-white/10">
+                    {(["self_record", "filmer"] as const).map((ft) => (
+                      <button key={ft} disabled={pending} onClick={() => run(() => setFilmTypeAction(it.id, ft))}
+                        className={`px-2.5 py-1 text-xs transition ${it.film_type === ft ? "bg-pink-500/20 text-pink-200" : "bg-white/5 text-white/45 hover:bg-white/10"}`}>
+                        {ft === "self_record" ? "Self" : "Filmer"}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
