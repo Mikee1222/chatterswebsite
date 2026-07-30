@@ -95,10 +95,12 @@ export async function submitPipelineWinner(input: {
     submitted_by_id: input.submitted_by_id,
     submitted_by_name: input.submitted_by_name,
   });
-  await updateRecord<WinnerFields & { assigned_creator_id?: string; assigned_creator_name?: string }>("winner_videos", v.id, {
+  // NOTE: winner_videos has no `assigned_creator_id` column — the creator id lives in
+  // `reference_model_id` (set by createWinnerVideo) and spawnRecreatesFromWinner falls back to it.
+  // Writing a non-existent field 422s the whole PATCH, so only touch real columns.
+  await updateRecord<WinnerFields & { assigned_creator_name?: string }>("winner_videos", v.id, {
     winner_tier: input.tier,
     pipeline_elements: input.elements,
-    assigned_creator_id: input.creator_model_id,
     assigned_creator_name: input.creator_name,
   });
   return v.id;

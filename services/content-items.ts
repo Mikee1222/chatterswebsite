@@ -182,6 +182,32 @@ async function notifyQaHolders(itemId: string, title: string, stage: string, act
   }
 }
 
+/** Best-effort push to managers that an item has no owner and is stuck. Never throws. */
+async function notifyBlocked(itemId: string, title: string, stage: string, role: string | null): Promise<void> {
+  try {
+    const [{ notify }, { NOTIFICATION_EVENT }, { listUsersWithPermission }, { PERMISSIONS }] = await Promise.all([
+      import("@/services/notification-service"),
+      import("@/lib/notification-types"),
+      import("@/services/users"),
+      import("@/lib/permissions"),
+    ]);
+    const holders = await listUsersWithPermission(PERMISSIONS.CONTENT_PIPELINE_MANAGE);
+    for (const h of holders) {
+      await notify({
+        user_id: h.id,
+        event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED,
+        title: `⚠️ Blocked — ${STAGE_NAME[stage] ?? stage}`,
+        body: `${title} — δεν υπάρχει ${role ?? "owner"} για τον creator. Ανάθεσε & κάνε retry.`,
+        entity_type: "content_item",
+        entity_id: itemId,
+        priority: "high",
+      });
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 /**
  * Create a content item entering a stage. Resolves the stage owner via creator assignments;
  * if nobody is assigned, the item is created as `blocked_unassigned` (holds until assigned).
@@ -196,6 +222,7 @@ export async function spawnContentItem(input: {
   winner_video_id?: string;
   reference_link?: string;
   film_type?: "self_record" | "filmer";
+  deadline?: string;
   stage?: ContentStage;
   actor_user_id: string;
   actor_name: string;
@@ -216,6 +243,7 @@ export async function spawnContentItem(input: {
     ...(input.winner_video_id ? { winner_video_id: input.winner_video_id } : {}),
     ...(input.reference_link ? { reference_link: input.reference_link } : {}),
     ...(input.film_type ? { film_type: input.film_type } : {}),
+    ...(input.deadline ? { deadline: input.deadline } : {}),
     stage,
     status: owner ? "in_progress" : "blocked_unassigned",
     assignee_user_id: owner?.user_id ?? "",
@@ -244,6 +272,7 @@ export async function spawnContentItem(input: {
       actor_name: input.actor_name,
       note: `no ${role} assigned for creator`,
     });
+    await notifyBlocked(rec.id, input.title, stage, role);
   }
   if (owner) await notifyOwner(owner.user_id, rec.id, input.title, stage, input.actor_user_id);
   return mapItem(rec);
@@ -349,19 +378,26 @@ export async function listBlockedItems(): Promise<ContentItem[]> {
 }
 
 /** Move an item from its current stage into the next (auto-route owner + timing). */
-async function advanceStage(item: ContentItem, actor: { user_id: string; user_name: string }): Promise<void> {
+async function advanceStage(
+  item: ContentItem,
+  actor: { user_id: string; user_name: string },
+  opts?: { logCompleted?: boolean }
+): Promise<void> {
   const flow = STAGE_FLOW[item.stage as ContentStage];
   const next = flow?.next;
   const duration = secondsSince(item.stage_entered_at);
 
-  await logContentEvent({
-    item_id: item.id,
-    stage: item.stage,
-    action: "completed",
-    actor_user_id: actor.user_id,
-    actor_name: actor.user_name,
-    duration_seconds: duration,
-  });
+  // QA-gated stages already logged `completed` (by the owner) at submitStage time — don't double-count.
+  if (opts?.logCompleted !== false) {
+    await logContentEvent({
+      item_id: item.id,
+      stage: item.stage,
+      action: "completed",
+      actor_user_id: actor.user_id,
+      actor_name: actor.user_name,
+      duration_seconds: duration,
+    });
+  }
 
   if (!next) {
     await updateRecord<Fields>(TABLE, item.id, { stage: "done", status: "done", updated_at: nowIso() });
@@ -389,6 +425,7 @@ async function advanceStage(item: ContentItem, actor: { user_id: string; user_na
     ...(owner ? {} : { note: `no owner for ${next}` }),
   });
   if (owner) await notifyOwner(owner.user_id, item.id, item.title, next, actor.user_id);
+  else await notifyBlocked(item.id, item.title, next, isTerminal ? null : STAGE_ROLE[next as Exclude<ContentStage, "analytics" | "done">] ?? null);
 }
 
 /** Owner presses ✓: stages with a QA gate → awaiting_qa; otherwise auto-advance. */
@@ -425,7 +462,8 @@ export async function qaApproveItem(itemId: string, actor: { user_id: string; us
     actor_user_id: actor.user_id,
     actor_name: actor.user_name,
   });
-  await advanceStage(item, actor);
+  // submitStage already logged `completed` for this (QA-gated) stage → don't double-count.
+  await advanceStage(item, actor, { logCompleted: false });
 }
 
 export async function qaRejectItem(
@@ -445,6 +483,56 @@ export async function qaRejectItem(
     actor_name: actor.user_name,
     ...(note ? { note } : {}),
   });
+  // Ping the owner that their work bounced (with the reason), so it doesn't sit unseen in their queue.
+  if (item.assignee_user_id) {
+    try {
+      const [{ notify }, { NOTIFICATION_EVENT }] = await Promise.all([
+        import("@/services/notification-service"),
+        import("@/lib/notification-types"),
+      ]);
+      await notify({
+        user_id: item.assignee_user_id,
+        event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED,
+        title: `↩️ Απορρίφθηκε QA — ${STAGE_NAME[item.stage] ?? item.stage}`,
+        body: note ? `${item.title} — ${note}` : `${item.title} — χρειάζεται διόρθωση.`,
+        entity_type: "content_item",
+        entity_id: item.id,
+        actor_user_id: actor.user_id || undefined,
+        priority: "high",
+      });
+    } catch {
+      /* best-effort */
+    }
+  }
+}
+
+/** Re-resolve the owner for a blocked item's current stage (after a manager fixes the assignment). */
+export async function retryStageOwner(
+  itemId: string,
+  actor: { user_id: string; user_name: string }
+): Promise<{ resolved: boolean; owner_name?: string }> {
+  const item = await getItemById(itemId);
+  if (!item) throw new Error("Item not found.");
+  if (item.status !== "blocked_unassigned") throw new Error("Δεν είναι blocked.");
+  const owner = await ownerForStage(item, item.stage as ContentStage);
+  if (!owner) return { resolved: false };
+  await updateRecord<Fields>(TABLE, item.id, {
+    status: "in_progress",
+    assignee_user_id: owner.user_id,
+    assignee_name: owner.user_name,
+    assigned_at: nowIso(),
+    updated_at: nowIso(),
+  });
+  await logContentEvent({
+    item_id: item.id,
+    stage: item.stage,
+    action: "entered",
+    actor_user_id: owner.user_id,
+    actor_name: owner.user_name,
+    note: "retry: owner re-resolved",
+  });
+  await notifyOwner(owner.user_id, item.id, item.title, item.stage, actor.user_id);
+  return { resolved: true, owner_name: owner.user_name };
 }
 
 /** Manager sets self-record vs filmer for a filming item → reassigns owner accordingly. */

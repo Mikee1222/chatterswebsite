@@ -552,6 +552,9 @@ const TABLE_NON_WRITABLE_NORMALIZED: Record<string, Set<string>> = {
 
 /** Tables where a normally global-stripped field is a normal writable column. */
 const TABLE_WRITABLE_FIELD_EXCEPTIONS: Record<string, Set<string>> = {
+  /** Pipeline: created_at feeds the "time to approval" KPI; these columns are real editable dateTimes. */
+  research_bunches: new Set(["created_at"]),
+  content_items: new Set(["created_at", "updated_at"]),
   challenges: new Set(["created_by"]),
   points_transactions: new Set(["created_at"]),
   spin_wheel_spins: new Set(["created_at"]),

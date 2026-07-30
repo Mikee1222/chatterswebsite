@@ -13,6 +13,7 @@ import {
   setFilmType,
   getItemById,
   qaRoleForStage,
+  retryStageOwner,
 } from "@/services/content-items";
 
 type Result = { success: boolean; error?: string; message?: string };
@@ -81,6 +82,25 @@ export async function qaRejectItemAction(itemId: string, note?: string): Promise
     await qaRejectItem(itemId, actor(user), note);
     revalidate();
     return { success: true, message: "Επιστράφηκε με feedback" };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Failed." };
+  }
+}
+
+/** Manager retries owner resolution on a blocked item after fixing the assignment. */
+export async function retryBlockedItemAction(itemId: string): Promise<Result> {
+  const user = await getSessionFromCookies();
+  if (!user) return { success: false, error: "Unauthorized." };
+  const ok =
+    (await hasPermission(user, PERMISSIONS.CONTENT_PIPELINE_MANAGE)) ||
+    (await hasPermission(user, PERMISSIONS.CONTENT_PIPELINE_QA));
+  if (!ok) return { success: false, error: "Forbidden." };
+  try {
+    const res = await retryStageOwner(itemId, actor(user));
+    revalidate();
+    return res.resolved
+      ? { success: true, message: `Ανατέθηκε → ${res.owner_name}` }
+      : { success: false, error: "Ακόμα κανείς assigned για αυτό το στάδιο." };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Failed." };
   }

@@ -43,14 +43,28 @@ function revalidate() {
   revalidatePath(ROUTES.admin.pipeline);
 }
 
-async function notifyUser(userId: string, title: string, body: string, actorId: string) {
+async function notifyUser(userId: string, title: string, body: string, actorId: string, entityId: string) {
   if (!userId) return;
   try {
     const [{ notify }, { NOTIFICATION_EVENT }] = await Promise.all([
       import("@/services/notification-service"),
       import("@/lib/notification-types"),
     ]);
-    await notify({ user_id: userId, event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED, title, body, entity_type: "research_bunch", entity_id: "bunch", actor_user_id: actorId || undefined, priority: "normal" });
+    await notify({ user_id: userId, event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED, title, body, entity_type: "research_bunch", entity_id: entityId, actor_user_id: actorId || undefined, priority: "normal" });
+  } catch { /* best-effort */ }
+}
+
+async function notifyBunchQaHolders(bunchId: string, title: string, body: string, actorId: string) {
+  try {
+    const [{ notify }, { NOTIFICATION_EVENT }, { listUsersWithPermission }] = await Promise.all([
+      import("@/services/notification-service"),
+      import("@/lib/notification-types"),
+      import("@/services/users"),
+    ]);
+    const holders = await listUsersWithPermission(PERMISSIONS.CONTENT_PIPELINE_QA);
+    for (const h of holders) {
+      await notify({ user_id: h.id, event_type: NOTIFICATION_EVENT.VA_TASK_ASSIGNED, title, body, entity_type: "research_bunch", entity_id: bunchId, actor_user_id: actorId || undefined, priority: "normal" });
+    }
   } catch { /* best-effort */ }
 }
 
@@ -67,10 +81,10 @@ export async function createBunchAction(input: {
   const user = await requireQa();
   if ("error" in user) return { success: false, error: user.error };
   try {
-    const { researcher } = await createManagerBunch({ ...input, created_by_name: user.fullName ?? user.email });
+    const { bunch, researcher } = await createManagerBunch({ ...input, created_by_name: user.fullName ?? user.email });
     if (researcher) {
       const dl = input.deadline ? ` · deadline ${input.deadline.slice(0, 10)}` : "";
-      await notifyUser(researcher.user_id, "🔬 Νέο research bunch", `${input.creator_name}: ${input.target_research} ιδέες${dl}`, actorId(user));
+      await notifyUser(researcher.user_id, "🔬 Νέο research bunch", `${input.creator_name}: ${input.target_research} ιδέες${dl}`, actorId(user), bunch.id);
     }
     revalidate();
     return { success: true, message: researcher ? `Ανατέθηκε στον ${researcher.user_name}` : "Δημιουργήθηκε (⚠️ χωρίς researcher)" };
@@ -121,6 +135,8 @@ export async function submitResearchBunch(bunchId: string): Promise<Result> {
   if (!(await ownsBunch(user, bunchId))) return { success: false, error: "Δεν είναι δικό σου bunch." };
   try {
     await submitBunch(bunchId);
+    const bunch = await getBunchById(bunchId);
+    await notifyBunchQaHolders(bunchId, "✅ Research για QA", `${bunch?.creator_name ?? ""}: ${bunch?.target_research ?? ""} ιδέες έτοιμες`, actorId(user));
     revalidate();
     return { success: true, message: "Στάλθηκε για QA." };
   } catch (e) {
@@ -147,6 +163,10 @@ export async function qaRequestChanges(bunchId: string, note?: string): Promise<
   if ("error" in user) return { success: false, error: user.error };
   try {
     await requestChanges(bunchId, { user_id: actorId(user), name: user.fullName ?? user.email }, note);
+    const bunch = await getBunchById(bunchId);
+    if (bunch?.researcher_user_id) {
+      await notifyUser(bunch.researcher_user_id, "↩️ Αλλαγές στο research", note ? `${bunch.creator_name}: ${note}` : `${bunch.creator_name}: χρειάζονται αλλαγές`, actorId(user), bunchId);
+    }
     revalidate();
     return { success: true, message: "Ζητήθηκαν αλλαγές." };
   } catch (e) {

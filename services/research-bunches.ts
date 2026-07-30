@@ -35,6 +35,7 @@ type BunchFields = {
   assigned_at?: string;
   created_by_name?: string;
   film_type?: string;
+  qa_note?: string;
 };
 
 type IdeaFields = {
@@ -64,6 +65,7 @@ export type ResearchBunch = {
   assigned_at: string;
   created_by_name: string;
   film_type: string;
+  qa_note: string;
 };
 
 export type ResearchIdea = {
@@ -98,6 +100,7 @@ function mapBunch(rec: AirtableRecord<BunchFields>): ResearchBunch {
     assigned_at: f.assigned_at ?? "",
     created_by_name: f.created_by_name ?? "",
     film_type: f.film_type ?? "",
+    qa_note: f.qa_note ?? "",
   };
 }
 
@@ -221,10 +224,8 @@ export async function requestChanges(
     status: "changes_requested",
     qa_by_user_id: qa.user_id,
     qa_by_name: qa.name,
+    ...(note ? { qa_note: note } : {}),
   });
-  if (note) {
-    // Store the QA note on the first idea lacking one, or ignore — kept lightweight.
-  }
 }
 
 /**
@@ -253,6 +254,7 @@ export async function approveBunch(
       source: "research",
       research_idea_id: idea.id,
       ...(bunch.film_type ? { film_type: bunch.film_type as "self_record" | "filmer" } : {}),
+      ...(bunch.deadline ? { deadline: bunch.deadline } : {}),
       stage: "creative",
       actor_user_id: qa.user_id,
       actor_name: qa.name,
