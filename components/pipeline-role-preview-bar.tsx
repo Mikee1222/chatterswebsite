@@ -4,14 +4,15 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Eye } from "lucide-react";
 
+// Labels describe the ACTIVITY/stage, not the role name (creators who self-film see "Filming").
 const ROLES: { slug: string; label: string }[] = [
-  { slug: "researcher", label: "Researcher" },
-  { slug: "creative", label: "Creative" },
-  { slug: "filmer", label: "Filmer" },
-  { slug: "editor", label: "Editor" },
-  { slug: "icloud-manager", label: "iCloud Mgr" },
-  { slug: "marketing-executive", label: "Marketing" },
-  { slug: "head-of-marketing", label: "QA (Manos)" },
+  { slug: "researcher", label: "Research" },
+  { slug: "creative", label: "Scripting" },
+  { slug: "filmer", label: "Filming" },
+  { slug: "editor", label: "Editing" },
+  { slug: "icloud-manager", label: "iCloud" },
+  { slug: "marketing-executive", label: "Posting" },
+  { slug: "head-of-marketing", label: "QA" },
 ];
 
 /** Admin-only: preview how the pipeline page looks for each role. */
