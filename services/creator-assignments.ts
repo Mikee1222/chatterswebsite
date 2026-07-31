@@ -27,6 +27,34 @@ export const CENTRAL_ROLES = [
 export type CreatorAssignedRole = (typeof CREATOR_ASSIGNED_ROLES)[number];
 export type PipelineRole = CreatorAssignedRole | (typeof CENTRAL_ROLES)[number];
 
+// --- Central-pipeline access (double-cap without a role change) ---------------
+// A user configured as `pipeline_central_<role>` (e.g. Evi = iCloud manager) holds a
+// central pipeline role WITHOUT changing users.role. These helpers let RBAC grant such a
+// user `content_pipeline:view` so they can see/act on their stage, while keeping their
+// primary role (and its VA features) intact. Cached ~60s to stay off the hot nav path.
+let centralPipelineCache: { ids: Set<string>; expiresAt: number } | null = null;
+const CENTRAL_PIPELINE_CACHE_TTL_MS = 60_000;
+
+/** User record ids configured as a central pipeline owner (icloud-manager/head-of-marketing/supervisor). */
+export async function getCentralPipelineUserIds(): Promise<Set<string>> {
+  const now = Date.now();
+  if (centralPipelineCache && centralPipelineCache.expiresAt > now) return centralPipelineCache.ids;
+  const { getSystemSetting } = await import("@/services/system-settings");
+  const ids = new Set<string>();
+  for (const role of CENTRAL_ROLES) {
+    const v = (await getSystemSetting(`pipeline_central_${role}`).catch(() => null))?.trim();
+    if (v) ids.add(v);
+  }
+  centralPipelineCache = { ids, expiresAt: now + CENTRAL_PIPELINE_CACHE_TTL_MS };
+  return ids;
+}
+
+/** True if the user holds a central pipeline role via system_settings config. */
+export async function isCentralPipelineUser(userId: string): Promise<boolean> {
+  if (!userId) return false;
+  return (await getCentralPipelineUserIds()).has(userId);
+}
+
 export function isCreatorAssignedRole(role: string): role is CreatorAssignedRole {
   return (CREATOR_ASSIGNED_ROLES as readonly string[]).includes(role);
 }
