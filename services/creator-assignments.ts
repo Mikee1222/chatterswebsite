@@ -55,6 +55,29 @@ export async function isCentralPipelineUser(userId: string): Promise<boolean> {
   return (await getCentralPipelineUserIds()).has(userId);
 }
 
+/** Drop the central-pipeline cache (call after changing a pipeline_central_* setting). */
+export function clearCentralPipelineCache(): void {
+  centralPipelineCache = null;
+}
+
+/** Current central owners as { role: userId } (only roles that are set). */
+export async function getCentralPipelineOwners(): Promise<Record<string, string>> {
+  const { getSystemSetting } = await import("@/services/system-settings");
+  const out: Record<string, string> = {};
+  for (const role of CENTRAL_ROLES) {
+    const v = (await getSystemSetting(`pipeline_central_${role}`).catch(() => null))?.trim();
+    if (v) out[role] = v;
+  }
+  return out;
+}
+
+/** Set (or clear, with empty userId) the single central owner for a central pipeline role. */
+export async function setCentralPipelineOwner(role: (typeof CENTRAL_ROLES)[number], userId: string): Promise<void> {
+  const { setSystemSetting } = await import("@/services/system-settings");
+  await setSystemSetting(`pipeline_central_${role}`, userId.trim(), `Central pipeline owner for ${role}`);
+  clearCentralPipelineCache();
+}
+
 export function isCreatorAssignedRole(role: string): role is CreatorAssignedRole {
   return (CREATOR_ASSIGNED_ROLES as readonly string[]).includes(role);
 }
