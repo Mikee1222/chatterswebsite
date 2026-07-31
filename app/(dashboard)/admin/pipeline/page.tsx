@@ -5,7 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listActiveUsers } from "@/services/users";
-import { listActiveAssignments, CREATOR_ASSIGNED_ROLES } from "@/services/creator-assignments";
+import { listActiveAssignments, CREATOR_ASSIGNED_ROLES, CENTRAL_ROLES, getCentralPipelineOwners } from "@/services/creator-assignments";
 import { listBunchesAwaitingQa, listIdeasForBunch, type ResearchBunch } from "@/services/research-bunches";
 import { listActiveContentItems } from "@/services/content-items";
 import { listWinnerLibrary } from "@/services/winner-recreates";
@@ -84,19 +84,32 @@ async function QaTab() {
 }
 
 async function AssignmentsTab() {
-  const [creatorRecords, users, assignments] = await Promise.all([
+  const [creatorRecords, users, assignments, centralOwners] = await Promise.all([
     listActiveGunzoTeamModelss().catch(() => []),
     listActiveUsers().catch(() => []),
     listActiveAssignments().catch(() => []),
+    getCentralPipelineOwners().catch(() => ({} as Record<string, string>)),
   ]);
   const creators = creatorRecords.filter((c) => c.model_id && c.model_name).map((c) => ({ model_id: c.model_id, model_name: c.model_name })).sort((a, b) => a.model_name.localeCompare(b.model_name));
   const usersByRole: Record<string, { user_id: string; full_name: string }[]> = {};
   for (const role of CREATOR_ASSIGNED_ROLES) {
     usersByRole[role] = users.filter((u) => (u.role ?? "").trim().toLowerCase() === role && u.id).map((u) => ({ user_id: u.id, full_name: u.full_name || u.user_id })).sort((a, b) => a.full_name.localeCompare(b.full_name));
   }
+  // Central roles can be held by ANY active staff (regardless of primary role) — e.g. Evi = VA + iCloud.
+  const allUsers = users.filter((u) => u.id).map((u) => ({ user_id: u.id, full_name: u.full_name || u.user_id })).sort((a, b) => a.full_name.localeCompare(b.full_name));
   const current: Record<string, string> = {};
   for (const a of assignments) if (a.user_id) current[`${a.role}__${a.creator_model_id}`] = a.user_id;
-  return <PipelineAssignmentsClient creators={creators} roles={[...CREATOR_ASSIGNED_ROLES]} usersByRole={usersByRole} initialAssignments={current} />;
+  return (
+    <PipelineAssignmentsClient
+      creators={creators}
+      roles={[...CREATOR_ASSIGNED_ROLES]}
+      usersByRole={usersByRole}
+      initialAssignments={current}
+      centralRoles={[...CENTRAL_ROLES]}
+      allUsers={allUsers}
+      initialCentral={centralOwners}
+    />
+  );
 }
 
 async function WinnersTab() {

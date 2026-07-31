@@ -5,7 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { listActiveGunzoTeamModelss } from "@/services/modelss";
 import { listActiveUsers } from "@/services/users";
-import { listActiveAssignments, CREATOR_ASSIGNED_ROLES } from "@/services/creator-assignments";
+import { listActiveAssignments, CREATOR_ASSIGNED_ROLES, CENTRAL_ROLES, getCentralPipelineOwners } from "@/services/creator-assignments";
 import {
   PipelineAssignmentsClient,
   type AssignmentCreator,
@@ -23,10 +23,11 @@ export default async function PipelineAssignmentsPage() {
     redirect(ROUTES.dashboard);
   }
 
-  const [creatorRecords, users, assignments] = await Promise.all([
+  const [creatorRecords, users, assignments, centralOwners] = await Promise.all([
     listActiveGunzoTeamModelss().catch(() => []),
     listActiveUsers().catch(() => []),
     listActiveAssignments().catch(() => []),
+    getCentralPipelineOwners().catch(() => ({} as Record<string, string>)),
   ]);
 
   const creators: AssignmentCreator[] = creatorRecords
@@ -43,6 +44,11 @@ export default async function PipelineAssignmentsPage() {
       .sort((a, b) => a.full_name.localeCompare(b.full_name));
   }
 
+  const allUsers: AssignmentUser[] = users
+    .filter((u) => u.id)
+    .map((u) => ({ user_id: u.id, full_name: u.full_name || u.user_id }))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
   // Map current assignment: `${role}__${creator_model_id}` → user_id
   const current: Record<string, string> = {};
   for (const a of assignments) {
@@ -56,6 +62,9 @@ export default async function PipelineAssignmentsPage() {
         roles={[...CREATOR_ASSIGNED_ROLES]}
         usersByRole={usersByRole}
         initialAssignments={current}
+        centralRoles={[...CENTRAL_ROLES]}
+        allUsers={allUsers}
+        initialCentral={centralOwners}
       />
     </div>
   );
