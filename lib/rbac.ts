@@ -111,6 +111,18 @@ async function loadPermissionsForRole(role: string): Promise<Set<Permission>> {
   return set;
 }
 
+/**
+ * Double-cap grant: a user configured as a central pipeline owner (e.g. Evi = iCloud manager
+ * via system_settings) gets `content_pipeline:view` WITHOUT changing their primary role — so
+ * they keep their VA role/features. Only fires when checking that one permission for a user
+ * whose role doesn't already grant it (rare → off the hot path).
+ */
+async function grantsCentralPipelineView(user: AuthUser, permission: Permission): Promise<boolean> {
+  if (permission !== PERMISSIONS.CONTENT_PIPELINE_VIEW) return false;
+  const { isCentralPipelineUser } = await import("@/services/creator-assignments");
+  return isCentralPipelineUser(user.airtableUserId ?? user.id);
+}
+
 export async function hasPermission(
   user: AuthUser | null | undefined,
   permission: Permission
@@ -118,7 +130,8 @@ export async function hasPermission(
   if (!user) return false;
   const role = resolveRoleForPermissions(user);
   const perms = await loadPermissionsForRole(role);
-  return perms.has(permission);
+  if (perms.has(permission)) return true;
+  return grantsCentralPipelineView(user, permission);
 }
 
 export async function hasAnyPermission(
@@ -172,5 +185,9 @@ export const invalidateRolePermissionsCache = clearRbacCache;
 export async function getUserPermissions(user: AuthUser): Promise<Permission[]> {
   const role = resolveRoleForPermissions(user);
   const set = await loadPermissionsForRole(role);
+  // Central pipeline users (double-cap) get content_pipeline:view for nav/guards without a role change.
+  if (!set.has(PERMISSIONS.CONTENT_PIPELINE_VIEW) && (await grantsCentralPipelineView(user, PERMISSIONS.CONTENT_PIPELINE_VIEW))) {
+    return [...set, PERMISSIONS.CONTENT_PIPELINE_VIEW];
+  }
   return [...set];
 }
