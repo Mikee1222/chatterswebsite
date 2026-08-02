@@ -1,5 +1,6 @@
 "use server";
 
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { listRecords, createRecord, updateRecord } from "@/lib/airtable-server";
 import { escapeAirtableString } from "@/lib/airtable-linked";
 
@@ -13,6 +14,9 @@ type Fields = {
 
 /** Return `setting_value` for the first record with this key, or null. */
 export async function getSystemSetting(key: string): Promise<string | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./system-settings-supabase")).getSystemSetting(key);
+  }
   const escaped = escapeAirtableString(key);
   const { records } = await listRecords<Fields>(TABLE, {
     filterByFormula: `{setting_key} = "${escaped}"`,
@@ -27,6 +31,9 @@ export async function getSystemSetting(key: string): Promise<string | null> {
 
 /** Create or update the row for this key. */
 export async function setSystemSetting(key: string, value: string, description?: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./system-settings-supabase")).setSystemSetting(key, value, description);
+  }
   const escaped = escapeAirtableString(key);
   const { records } = await listRecords<Fields>(TABLE, {
     filterByFormula: `{setting_key} = "${escaped}"`,

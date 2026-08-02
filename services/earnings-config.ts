@@ -1,3 +1,4 @@
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { createRecord, listRecords, updateRecord } from "@/lib/airtable-server";
 
 export const EARNINGS_CONFIG_TABLE = "earnings_config";
@@ -13,6 +14,9 @@ export type EarningsConfigRow = {
  * Table may not exist yet — returns {}.
  */
 export async function listEarningsAgencyCutConfig(): Promise<Record<string, number>> {
+  if (isSupabaseBackend()) {
+    return (await import("./earnings-config-supabase")).listEarningsAgencyCutConfig();
+  }
   const out: Record<string, number> = {};
   let offset: string | undefined;
   try {
@@ -38,6 +42,9 @@ export async function listEarningsAgencyCutConfig(): Promise<Record<string, numb
 
 /** model_id → Airtable record id (for updates). */
 export async function listEarningsConfigRecordsByModelId(): Promise<Record<string, string>> {
+  if (isSupabaseBackend()) {
+    return (await import("./earnings-config-supabase")).listEarningsConfigRecordsByModelId();
+  }
   const out: Record<string, string> = {};
   let offset: string | undefined;
   try {
@@ -63,6 +70,12 @@ export async function upsertManyEarningsConfigRows(
   rows: { model_id: string; agency_cut_percent: number }[],
   existingByModelId?: Record<string, string>
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./earnings-config-supabase")).upsertManyEarningsConfigRows(
+      rows,
+      existingByModelId
+    );
+  }
   const byModel = existingByModelId ?? (await listEarningsConfigRecordsByModelId());
   for (const r of rows) {
     const modelId = String(r.model_id ?? "").trim();

@@ -1,81 +1,64 @@
-# Remaining work after Phase 1 (STOP point)
+# Remaining work after Phase 2/3 progress
 
-Phase 1 delivered schema SQL + enumeration only. **Do not start a half rewrite of `services/` in the same session.**
+## Done this session
 
-## Scope reality check
+### Phase 2 — Data migration
+- ✅ Reusable migrator: `scripts/lib/supabase-migrate.ts` + `scripts/migrate-airtable-to-supabase.ts`
+- ✅ Two-pass migration (scalars → uuid[] link remap) + join tables
+- ✅ `_airtable_id_map` populated (~40k rows)
+- ✅ Most Airtable tables migrated with count match (see session report)
+- ✅ Schema tweaks on project `wagfkuxkrgsencartqtx`:
+  - widened `users.role` check for custom RBAC slugs
+  - dropped rigid `notifications.event_type` check (app-layer validation)
 
-| Item | Size |
+### Phase 3 — Dual-backend (started)
+- ✅ `DATA_BACKEND` env (`airtable` | `supabase`, **default `airtable`**)
+- ✅ `lib/data-backend.ts`, `lib/supabase-data.ts`
+- ✅ Dual-backend services: `system-settings`, `roles`, `earnings-config`, `staff-task-types`
+- ⚠ **Do not set `DATA_BACKEND=supabase` in Vercel production** until cutover
+
+## Skipped / blocked tables
+
+| Postgres table | Reason |
 |---|---|
-| Airtable tables (audit) | 64 |
-| Extra tables used in code | ~33 |
-| Postgres tables in migration | 97 + 7 join + `_airtable_id_map` |
-| `services/*.ts` | 84 files / ~27k LOC |
-| Files importing Airtable | ~140 |
-| Setup/audit scripts | ~100 under `scripts/` |
-| Estimated full cutover | **Multi-week** (data migration + dual-run + rewrite + QA) |
+| `creators` | Removed from Airtable |
+| `chatter_complaints` | Removed from Airtable |
+| `whale_tracker` | Removed from Airtable |
+| `fines_and_bonuses_legacy` | Removed from Airtable (`fines_and_bonuses` app table migrated) |
+| `marketing_funnels` | Removed; Airtable now has `model_funnel_links` (needs schema add) |
 
-No Supabase project is linked specifically for Gunzo OS (MCP shows unrelated projects: Kartex, Karagkounis). Create a dedicated project before applying migrations.
+Renamed and migrated: `marketing_phones` ← Airtable `phones`.
 
-## Phase 2 — Data migration scripts
+## New Airtable tables not in Phase 1 schema
 
-1. Add `@supabase/supabase-js` dependency.
-2. `lib/supabase-server.ts` — service-role client from env.
-3. `scripts/migrate-airtable-to-supabase.ts`:
-   - Paginate each table via existing `lib/airtable-server.ts`
-   - Insert rows with new UUIDs; write `_airtable_id_map` + `airtable_id`
-   - Remap link fields: Airtable `rec…` arrays → UUID arrays via map
-   - Populate join tables from link arrays
-4. `scripts/migrate-attachments-to-storage.ts` — download Airtable attachment URLs → Storage; rewrite URL arrays.
-5. Verify row counts Airtable vs Supabase per table.
-6. **Do not invent production data** if credentials missing — document runbook only.
+These exist in Airtable but have **no** Postgres table yet — next session should enumerate + migrate:
 
-### PoC status (single table)
+- `chatter_mistakes`, `mistake_reasons`
+- `content_items`, `content_item_events`, `creator_assignments`
+- `marketing_daily_reviews`, `marketing_exec_audits`, `marketing_spot_checks`
+- `model_funnel_links`
+- `research_bunches`, `research_ideas`
+- `task_templates`, `task_template_phases`, `task_template_items`
 
-- ✅ Connectivity: `scripts/supabase-connectivity-check.ts` (service role; Node uses `scripts/_polyfill-websocket.ts`)
-- ✅ First table migrated: **`system_settings`** via `scripts/migrate-system-settings-to-supabase.ts`
-  - Why: smallest app-critical lookup (3 fields, no links/attachments)
-  - Airtable READ-ONLY; Supabase upsert + `_airtable_id_map`
-- ⏸ Stopped — confirm before migrating additional tables. Do not start Phase 3.
+## Attachments
 
-## Phase 3 — Rewrite data access layer
+Attachment columns currently store **Airtable CDN URLs** (scalars pass with `--skip-attachments`).  
+Run with attachments enabled when ready:
 
-Replace Airtable in every `services/*.ts` (~84 modules), priority order suggested:
-
-1. `users`, `roles`, `system_settings` (auth/RBAC path)
-2. `shifts`, `shift_models`, `modelss` (hot path)
-3. `va_tasks`, `task-phases`, `va-content-assignments` (formula → SQL)
-4. `notifications`, `notification-preferences`, `push-subscriptions`
-5. Billing / client portal cluster
-6. Marketing, SOPs, link pages, rewards, remaining
-
-Keep function signatures / return shapes stable (`id` may remain Airtable-shaped during dual-run via `airtable_id` alias — decide explicitly).
-
-## Phase 4 — Dependent code
-
-- Attachment URL consumers, public link pages
-- Notification `event_type` constraint already drafted — keep in sync with `lib/notifications-schema.ts`
-- Remove Airtable SDK / `lib/airtable-*.ts` only after green dual-run
-- Update docs under `docs/Gunzo OS Docs/`
-
-## Phase 5 — Verification
-
-- Full `npx tsc --noEmit`
-- Staging smoke: login, shift start/end, VA tasks, notifications, billing submit, link page
-- Row-count + spot FK integrity checks
-
-## Recommended session plan
-
-| Session | Goal |
-|---|---|
-| ✅ This one | Phase 1 schema + docs + env example |
-| Next | Dedicated Supabase project + apply migrations + Phase 2 scripts (no service rewrite) |
-| Following | Phase 3 in vertical slices with dual-read feature flag |
-| Final | Cutover, remove Airtable, Phase 5 |
-
-## Feature-flag idea (Phase 3)
-
-```ts
-process.env.DATA_BACKEND === "supabase" | "airtable"
+```bash
+npx tsx scripts/migrate-airtable-to-supabase.ts --tables billing_cycles,payment_submissions,feedback --pass attachments
 ```
 
-Default `airtable` until a slice is proven. Enables incremental PRs instead of a big-bang rewrite.
+## Next session priority
+
+1. Schema for new Airtable-only tables above + migrate
+2. Continue dual-backend: `users` → `modelss` → `shifts` / `shift_models`
+3. Attachment Storage rewrite for critical buckets
+4. Staging smoke with `DATA_BACKEND=supabase` (never production until green)
+5. Full `npx tsc --noEmit` + row-count verify before any cutover
+
+## Feature flag
+
+```ts
+process.env.DATA_BACKEND === "supabase" | "airtable"  // default airtable
+```

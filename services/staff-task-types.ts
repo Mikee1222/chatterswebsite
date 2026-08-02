@@ -1,5 +1,6 @@
 "use server";
 
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
 import type { StaffTaskType } from "@/types";
 
@@ -32,6 +33,9 @@ function mapRecord(rec: AirtableRecord<Fields>): StaffTaskType {
 }
 
 export async function listStaffTaskTypes(role?: "chatter" | "virtual_assistant" | "all") {
+  if (isSupabaseBackend()) {
+    return (await import("./staff-task-types-supabase")).listStaffTaskTypes(role);
+  }
   const records = await listAllRecords<Fields>(TABLE, {});
   let list = records.map(mapRecord).filter((t) => t.is_active);
   if (role && role !== "all") {

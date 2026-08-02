@@ -1,19 +1,5 @@
 "use server";
 
-import { isSupabaseBackend } from "@/lib/data-backend";
-import {
-  syncRoleOptionToAirtable as syncRoleOptionToAirtableImpl,
-  type SyncRoleOptionResult,
-} from "@/lib/airtable-role-field-sync";
-import {
-  listRecords,
-  listAllRecords,
-  getRecord,
-  createRecord,
-  updateRecord,
-  deleteRecord,
-  type AirtableRecord,
-} from "@/lib/airtable-server";
 import {
   getFallbackNotificationDefaults,
   normalizeNotificationDefaults,
@@ -22,28 +8,38 @@ import {
 } from "@/lib/notification-role-defaults";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
 import { clearRoleNotificationCache } from "@/lib/role-notification-cache";
+import {
+  publicId,
+  sbDeleteByPublicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbSelectEq,
+  sbUpdateByPublicId,
+  type SbRow,
+} from "@/lib/supabase-data";
 import { listAllUsers } from "@/services/users";
 import type { RoleRecord, UserRole } from "@/types";
 
 const TABLE = "roles";
+
+type Row = SbRow & {
+  role_id?: string | null;
+  label?: string | null;
+  description?: string | null;
+  permissions?: string | null;
+  notification_defaults?: string | null;
+  is_system_role?: boolean | null;
+  color?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 
 async function invalidateRbacCache(roleName?: string): Promise<void> {
   const { clearRbacCache } = await import("@/lib/rbac");
   clearRbacCache(roleName);
   clearRoleNotificationCache(roleName);
 }
-
-type Fields = {
-  role_id?: string;
-  label?: string;
-  description?: string;
-  permissions?: string;
-  notification_defaults?: string;
-  is_system_role?: boolean;
-  color?: string;
-  created_at?: string;
-  updated_at?: string;
-};
 
 function parsePermissionsJson(raw: unknown): Permission[] {
   if (typeof raw !== "string" || !raw.trim()) return [];
@@ -56,27 +52,25 @@ function parsePermissionsJson(raw: unknown): Permission[] {
   }
 }
 
-function mapRecord(rec: AirtableRecord<Fields>): RoleRecord {
-  const f = rec.fields;
-  const roleId = f.role_id ?? "";
-  const parsedDefaults = parseNotificationDefaultsJson(f.notification_defaults);
+function mapRow(row: Row): RoleRecord {
+  const roleId = row.role_id ?? "";
+  const parsedDefaults = parseNotificationDefaultsJson(row.notification_defaults);
   return {
-    id: rec.id,
+    id: publicId(row),
     role_id: roleId,
-    label: f.label ?? "",
-    description: f.description ?? "",
-    permissions: parsePermissionsJson(f.permissions),
+    label: row.label ?? "",
+    description: row.description ?? "",
+    permissions: parsePermissionsJson(row.permissions),
     notification_defaults: parsedDefaults
       ? normalizeNotificationDefaults(parsedDefaults)
       : getFallbackNotificationDefaults(roleId),
-    is_system_role: f.is_system_role ?? false,
-    color: f.color ?? "",
-    created_at: f.created_at ?? "",
-    updated_at: f.updated_at ?? "",
+    is_system_role: row.is_system_role ?? false,
+    color: row.color ?? "",
+    created_at: row.created_at ?? "",
+    updated_at: row.updated_at ?? "",
   };
 }
 
-/** System roles in Airtable may lag behind code defaults when new permissions ship. */
 function resolveRolePermissions(roleId: string, stored: Permission[]): Permission[] {
   const defaults = DEFAULT_ROLE_PERMISSIONS[roleId as UserRole];
   if (!defaults) return stored;
@@ -87,57 +81,37 @@ function resolveRolePermissions(roleId: string, stored: Permission[]): Permissio
 }
 
 export async function getRolePermissions(roleName: string): Promise<Permission[]> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).getRolePermissions(roleName);
-  }
   const key = roleName.trim().toLowerCase();
   if (!key) return [];
-
   try {
-    const { records } = await listRecords<Fields>(TABLE, {
-      filterByFormula: `{role_id} = "${key.replace(/"/g, '""')}"`,
-      pageSize: 1,
-    });
-    const row = records[0];
-    if (!row) {
-      return resolveRolePermissions(key, []);
-    }
-    const perms = parsePermissionsJson(row.fields.permissions);
-    return resolveRolePermissions(key, perms);
+    const rows = await sbSelectEq<Row>(TABLE, "role_id", key, "*", 1);
+    const row = rows[0];
+    if (!row) return resolveRolePermissions(key, []);
+    return resolveRolePermissions(key, parsePermissionsJson(row.permissions));
   } catch {
     return resolveRolePermissions(key, []);
   }
 }
 
 export async function getRoles(): Promise<RoleRecord[]> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).getRoles();
-  }
   try {
-    const records = await listAllRecords<Fields>(TABLE, {});
-    return records.map(mapRecord).sort((a, b) => a.label.localeCompare(b.label));
+    const rows = await sbSelectAll<Row>(TABLE);
+    return rows.map(mapRow).sort((a, b) => a.label.localeCompare(b.label));
   } catch {
     return [];
   }
 }
 
 export async function getRoleById(recordId: string): Promise<RoleRecord | null> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).getRoleById(recordId);
-  }
   try {
-    const rec = await getRecord<Fields>(TABLE, recordId);
-    return mapRecord(rec);
+    const row = await sbSelectByPublicId<Row>(TABLE, recordId);
+    return row ? mapRow(row) : null;
   } catch {
     return null;
   }
 }
 
-/** Active users per `users.role` slug (lowercase). */
 export async function getRoleUserCounts(): Promise<Record<string, number>> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).getRoleUserCounts();
-  }
   try {
     const users = await listAllUsers();
     const counts: Record<string, number> = {};
@@ -152,28 +126,16 @@ export async function getRoleUserCounts(): Promise<Record<string, number>> {
   }
 }
 
-export type { SyncRoleOptionResult };
-
-/** Ensure a role slug exists on Airtable users.role single-select (Meta API). Does not throw. */
-export async function syncRoleOptionToAirtable(roleId: string): Promise<SyncRoleOptionResult> {
-  return syncRoleOptionToAirtableImpl(roleId);
-}
-
-export async function getNotificationDefaultsForRole(roleName: string): Promise<NotificationRoleDefaults> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).getNotificationDefaultsForRole(roleName);
-  }
+export async function getNotificationDefaultsForRole(
+  roleName: string
+): Promise<NotificationRoleDefaults> {
   const key = roleName.trim().toLowerCase();
   if (!key) return getFallbackNotificationDefaults("");
-
   try {
-    const { records } = await listRecords<Fields>(TABLE, {
-      filterByFormula: `{role_id} = "${key.replace(/"/g, '""')}"`,
-      pageSize: 1,
-    });
-    const row = records[0];
+    const rows = await sbSelectEq<Row>(TABLE, "role_id", key, "*", 1);
+    const row = rows[0];
     if (!row) return getFallbackNotificationDefaults(key);
-    const parsed = parseNotificationDefaultsJson(row.fields.notification_defaults);
+    const parsed = parseNotificationDefaultsJson(row.notification_defaults);
     if (parsed) return parsed;
     return getFallbackNotificationDefaults(key);
   } catch {
@@ -195,15 +157,12 @@ export async function upsertRole(
   input: UpsertRoleInput,
   existingRecordId?: string
 ): Promise<RoleRecord> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).upsertRole(input, existingRecordId);
-  }
   const now = new Date().toISOString();
   const roleId = input.role_id.trim().toLowerCase();
   const notificationDefaults = normalizeNotificationDefaults(
     input.notification_defaults ?? getFallbackNotificationDefaults(roleId)
   );
-  const fields: Fields = {
+  const fields: Record<string, unknown> = {
     role_id: roleId,
     label: input.label.trim(),
     description: input.description?.trim() ?? "",
@@ -215,33 +174,25 @@ export async function upsertRole(
   };
 
   if (existingRecordId) {
-    const rec = await updateRecord<Fields>(TABLE, existingRecordId, fields);
-    const mapped = mapRecord(rec);
+    const row = await sbUpdateByPublicId<Row>(TABLE, existingRecordId, fields);
+    const mapped = mapRow(row);
     await invalidateRbacCache(mapped.role_id);
     return mapped;
   }
 
   fields.created_at = now;
-  const rec = await createRecord<Fields>(TABLE, fields);
-  const mapped = mapRecord(rec);
-  await syncRoleOptionToAirtable(mapped.role_id);
+  const row = await sbInsert<Row>(TABLE, fields);
+  const mapped = mapRow(row);
   await invalidateRbacCache(mapped.role_id);
   return mapped;
 }
 
 export async function deleteRole(recordId: string): Promise<void> {
-  if (isSupabaseBackend()) {
-    return (await import("./roles-supabase")).deleteRole(recordId);
-  }
-  const rec = await listRecords<Fields>(TABLE, {
-    filterByFormula: `RECORD_ID() = "${recordId.replace(/"/g, '""')}"`,
-    pageSize: 1,
-  });
-  const row = rec.records[0];
-  if (row?.fields.is_system_role) {
+  const row = await sbSelectByPublicId<Row>(TABLE, recordId);
+  if (row?.is_system_role) {
     throw new Error("System roles cannot be deleted.");
   }
-  const roleId = row?.fields.role_id?.trim().toLowerCase();
-  await deleteRecord(TABLE, recordId);
+  const roleId = row?.role_id?.trim().toLowerCase();
+  await sbDeleteByPublicId(TABLE, recordId);
   if (roleId) await invalidateRbacCache(roleId);
 }
