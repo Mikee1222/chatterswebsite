@@ -1,0 +1,20 @@
+# Supabase local/CLI config for Gunzo OS (chatter-dashboard).
+# Create a dedicated Supabase project for this app, then:
+#   supabase link --project-ref <ref>
+#   supabase db push
+#
+# Do NOT reuse unrelated projects (Kartex / Karagkounis) without explicit confirmation.
+
+project_id = "gunzo-os"
+
+[api]
+enabled = true
+port = 54321
+
+[db]
+port = 54322
+major_version = 17
+
+[studio]
+enabled = true
+port = 54323
