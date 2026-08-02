@@ -2,6 +2,9 @@
  * Supabase server client (service role).
  * Phase 1 stub — used by Phase 2+ migration scripts and eventual service rewrites.
  * Never import from client components.
+ *
+ * Node < 22 scripts: import `scripts/_polyfill-websocket` before this module
+ * so Realtime can construct (REST still works; realtime is unused in migration scripts).
  */
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";

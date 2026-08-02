@@ -29,6 +29,14 @@ No Supabase project is linked specifically for Gunzo OS (MCP shows unrelated pro
 5. Verify row counts Airtable vs Supabase per table.
 6. **Do not invent production data** if credentials missing — document runbook only.
 
+### PoC status (single table)
+
+- ✅ Connectivity: `scripts/supabase-connectivity-check.ts` (service role; Node uses `scripts/_polyfill-websocket.ts`)
+- ✅ First table migrated: **`system_settings`** via `scripts/migrate-system-settings-to-supabase.ts`
+  - Why: smallest app-critical lookup (3 fields, no links/attachments)
+  - Airtable READ-ONLY; Supabase upsert + `_airtable_id_map`
+- ⏸ Stopped — confirm before migrating additional tables. Do not start Phase 3.
+
 ## Phase 3 — Rewrite data access layer
 
 Replace Airtable in every `services/*.ts` (~84 modules), priority order suggested:
