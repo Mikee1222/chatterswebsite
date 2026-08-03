@@ -1,9 +1,9 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { ROUTES } from "@/lib/routes";
-import { listAllRecords, listRecords } from "@/lib/airtable-server";
-import { escapeAirtableString } from "@/lib/airtable-linked";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
+import { listAllRebills } from "@/services/rebills";
+import { getRecentPointsTransactions } from "@/services/points-engine";
 import { MyRebillsClient } from "@/components/my-rebills-client";
 
 export const dynamic = "force-dynamic";
@@ -14,49 +14,39 @@ export default async function MyRebillsPage() {
 
   const chatterId = user.airtableUserId ?? user.id;
 
-  const allRebills = await listAllRecords("rebills", {
-    sort: [{ field: "created_at", direction: "desc" }],
-    _caller: "my-rebills",
-  });
+  const allRebills = await listAllRebills().catch(() => []);
 
   const myRebills = allRebills
-    .filter((r) => {
-      const f = r.fields as Record<string, unknown>;
-      return String(f.chatter_id ?? "") === chatterId && String(f.sub_type ?? "paid") === "paid";
-    })
+    .filter((r) => r.chatter_id === chatterId && (r.sub_type || "paid") === "paid")
     .map((r) => {
-      const f = r.fields as Record<string, unknown>;
-      const statusRaw = String(f.status ?? "pending");
+      const statusRaw = r.status || "pending";
       const status =
         statusRaw === "verified" || statusRaw === "rejected" || statusRaw === "pending"
           ? statusRaw
           : "pending";
       return {
         id: r.id,
-        rebill_id: String(f.rebill_id ?? ""),
-        model_name: String(f.model_name ?? "—"),
-        model_id: String(f.model_id ?? ""),
-        sub_username: String(f.sub_username ?? ""),
+        rebill_id: r.rebill_id,
+        model_name: r.model_name || "—",
+        model_id: r.model_id,
+        sub_username: r.sub_username,
         sub_type: "paid" as const,
-        screenshot: Array.isArray(f.screenshot)
-          ? (f.screenshot as Array<{ url?: string; filename?: string }>)
-          : [],
+        screenshot: r.screenshot.map((url) => ({ url })),
         status: status as "pending" | "verified" | "rejected",
-        admin_notes: String(f.admin_notes ?? ""),
-        created_at: String(f.created_at ?? ""),
+        admin_notes: r.admin_notes || "",
+        created_at: r.created_at ?? "",
       };
-    });
+    })
+    .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 
-  const allApproved = allRebills.filter((r) => {
-    const f = r.fields as Record<string, unknown>;
-    return String(f.status ?? "") === "verified" && String(f.sub_type ?? "paid") === "paid";
-  });
+  const allApproved = allRebills.filter(
+    (r) => r.status === "verified" && (r.sub_type || "paid") === "paid"
+  );
 
   const standingsMap = new Map<string, { chatter_name: string; count: number; chatter_id: string }>();
   for (const r of allApproved) {
-    const f = r.fields as Record<string, unknown>;
-    const cid = String(f.chatter_id ?? "");
-    const cname = String(f.chatter_name ?? "Unknown");
+    const cid = r.chatter_id;
+    const cname = r.chatter_name || "Unknown";
     if (!cid) continue;
     const existing = standingsMap.get(cid) ?? { chatter_name: cname, count: 0, chatter_id: cid };
     existing.count++;
@@ -68,18 +58,11 @@ export default async function MyRebillsPage() {
 
   const rebillPointsById: Record<string, number> = {};
   try {
-    const { records: rebillTxs } = await listRecords<{
-      points?: number;
-      reference_id?: string;
-      category?: string;
-    }>("points_transactions", {
-      filterByFormula: `AND({user_id} = "${escapeAirtableString(chatterId)}", {category} = "rebill")`,
-      pageSize: 100,
-      _caller: "my-rebills.rebillPoints",
-    });
+    const rebillTxs = await getRecentPointsTransactions(chatterId, 100);
     for (const tx of rebillTxs) {
-      const ref = String(tx.fields?.reference_id ?? "").trim();
-      const pts = Number(tx.fields?.points ?? 0);
+      if (tx.category !== "rebill") continue;
+      const ref = tx.reference_id.trim();
+      const pts = Number(tx.points);
       if (ref && Number.isFinite(pts) && pts > 0) {
         rebillPointsById[ref] = pts;
       }

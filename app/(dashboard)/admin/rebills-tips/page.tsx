@@ -1,100 +1,80 @@
-import { redirect } from "next/navigation";
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { ROUTES } from "@/lib/routes";
-import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import { listAllRebills } from "@/services/rebills";
+import { listAllTips } from "@/services/tips";
 import {
   AdminRebillsTipsClient,
   type AdminRebillRow,
   type AdminTipRow,
 } from "@/components/admin-rebills-tips-client";
 
-type RebillFields = {
-  rebill_id?: string;
-  chatter_id?: string;
-  chatter_name?: string;
-  model_id?: string;
-  model_name?: string;
-  sub_username?: string;
-  sub_type?: string;
-  screenshot?: Array<{ id?: string; url?: string; filename?: string }>;
-  status?: string;
-  admin_notes?: string;
-  created_at?: string;
-};
-
-type TipFields = {
-  tip_id?: string;
-  chatter_id?: string;
-  chatter_name?: string;
-  model_id?: string;
-  model_name?: string;
-  sub_username?: string;
-  amount_usd?: number;
-  screenshot?: Array<{ id?: string; url?: string; filename?: string }>;
-  status?: string;
-  admin_notes?: string;
-  created_at?: string;
-};
-
-function mapRebill(rec: AirtableRecord<RebillFields>): AdminRebillRow {
-  const f = rec.fields ?? {};
+function mapRebill(r: Awaited<ReturnType<typeof listAllRebills>>[number]): AdminRebillRow {
+  const subTypeRaw = (r.sub_type || "paid").trim();
+  const sub_type =
+    subTypeRaw === "free" || subTypeRaw === "free_trial" || subTypeRaw === "paid"
+      ? subTypeRaw
+      : "paid";
+  const statusRaw = (r.status || "pending").trim();
+  const status =
+    statusRaw === "verified" || statusRaw === "rejected" || statusRaw === "pending"
+      ? statusRaw
+      : "pending";
   return {
-    id: rec.id,
-    rebill_id: String(f.rebill_id ?? "").trim(),
-    chatter_id: String(f.chatter_id ?? "").trim(),
-    chatter_name: String(f.chatter_name ?? "").trim() || "—",
-    model_id: String(f.model_id ?? "").trim(),
-    model_name: String(f.model_name ?? "").trim() || "—",
-    sub_username: String(f.sub_username ?? "").trim(),
-    sub_type: (String(f.sub_type ?? "").trim() || "paid") as AdminRebillRow["sub_type"],
-    screenshot: Array.isArray(f.screenshot)
-      ? f.screenshot.map((s) => ({ id: s?.id, url: s?.url, filename: s?.filename }))
-      : [],
-    status: (String(f.status ?? "").trim() || "pending") as AdminRebillRow["status"],
-    admin_notes: String(f.admin_notes ?? "").trim(),
-    created_at: String(f.created_at ?? "").trim(),
+    id: r.id,
+    rebill_id: r.rebill_id.trim(),
+    chatter_id: r.chatter_id.trim(),
+    chatter_name: r.chatter_name.trim() || "—",
+    model_id: r.model_id.trim(),
+    model_name: r.model_name.trim() || "—",
+    sub_username: r.sub_username.trim(),
+    sub_type,
+    screenshot: r.screenshot.map((url) => ({ url })),
+    status,
+    admin_notes: (r.admin_notes || "").trim(),
+    created_at: r.created_at?.trim() ?? "",
   };
 }
 
-function mapTip(rec: AirtableRecord<TipFields>): AdminTipRow {
-  const f = rec.fields ?? {};
-  const amt = f.amount_usd;
-  const amount_usd =
-    typeof amt === "number" && Number.isFinite(amt) ? amt : Number.parseFloat(String(amt ?? "")) || 0;
+function mapTip(r: Awaited<ReturnType<typeof listAllTips>>[number]): AdminTipRow {
+  const statusRaw = (r.status || "pending").trim();
+  const status =
+    statusRaw === "verified" || statusRaw === "rejected" || statusRaw === "pending"
+      ? statusRaw
+      : "pending";
   return {
-    id: rec.id,
-    tip_id: String(f.tip_id ?? "").trim(),
-    chatter_id: String(f.chatter_id ?? "").trim(),
-    chatter_name: String(f.chatter_name ?? "").trim() || "—",
-    model_id: String(f.model_id ?? "").trim(),
-    model_name: String(f.model_name ?? "").trim() || "—",
-    sub_username: String(f.sub_username ?? "").trim(),
-    amount_usd,
-    screenshot: Array.isArray(f.screenshot)
-      ? f.screenshot.map((s) => ({ id: s?.id, url: s?.url, filename: s?.filename }))
-      : [],
-    status: (String(f.status ?? "").trim() || "pending") as AdminTipRow["status"],
-    admin_notes: String(f.admin_notes ?? "").trim(),
-    created_at: String(f.created_at ?? "").trim(),
+    id: r.id,
+    tip_id: r.tip_id.trim(),
+    chatter_id: r.chatter_id.trim(),
+    chatter_name: r.chatter_name.trim() || "—",
+    model_id: r.model_id.trim(),
+    model_name: r.model_name.trim() || "—",
+    sub_username: r.sub_username.trim(),
+    amount_usd: Number.isFinite(r.amount_usd) ? r.amount_usd : 0,
+    screenshot: r.screenshot.map((url) => ({ url })),
+    status,
+    admin_notes: (r.admin_notes || "").trim(),
+    created_at: r.created_at?.trim() ?? "",
   };
+}
+
+function byCreatedDesc(a: { created_at: string }, b: { created_at: string }) {
+  return (b.created_at || "").localeCompare(a.created_at || "");
 }
 
 export default async function AdminRebillsTipsPage() {
-  const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.BILLING_VIEW);
-
-  const sort = [{ field: "created_at", direction: "desc" as const }];
+  await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.BILLING_VIEW);
 
   const [rebillRecs, tipRecs] = await Promise.all([
-    listAllRecords<RebillFields>("rebills", { sort, _caller: "admin.rebills-tips.page" }).catch(() => []),
-    listAllRecords<TipFields>("tips", { sort, _caller: "admin.rebills-tips.page" }).catch(() => []),
+    listAllRebills().catch(() => []),
+    listAllTips().catch(() => []),
   ]);
 
   const initialRebills = rebillRecs
-    .map((r) => mapRebill(r as AirtableRecord<RebillFields>))
-    .filter((r) => r.sub_type === "paid");
-  const initialTips = tipRecs.map((r) => mapTip(r as AirtableRecord<TipFields>));
+    .map(mapRebill)
+    .filter((r) => r.sub_type === "paid")
+    .sort(byCreatedDesc);
+  const initialTips = tipRecs.map(mapTip).sort(byCreatedDesc);
 
   return (
     <div className="mx-auto max-w-[1400px] px-4 py-6 md:px-6">

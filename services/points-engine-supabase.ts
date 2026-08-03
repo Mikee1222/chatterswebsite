@@ -419,6 +419,7 @@ export async function getRecentPointsTransactions(
       points: Number.isFinite(Number(r.points)) ? Number(r.points) : 0,
       reason: String(r.reason ?? "").trim() || "—",
       category: String(r.category ?? "").trim(),
+      reference_id: String(r.reference_id ?? "").trim(),
       created_at: String(r.created_at ?? "").trim(),
     }))
     .sort((a, b) => b.created_at.localeCompare(a.created_at))

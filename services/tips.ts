@@ -18,6 +18,7 @@ export type TipRecord = {
   amount_usd: number;
   status: string;
   screenshot: string[];
+  admin_notes: string;
   created_at: string | null;
 };
 
@@ -81,6 +82,7 @@ export async function listAllTips(): Promise<TipRecord[]> {
         amount?: number | null;
         status?: string | null;
         screenshot?: string[] | null;
+        admin_notes?: string | null;
         created_at?: string | null;
       }
     >(TABLE);
@@ -95,6 +97,7 @@ export async function listAllTips(): Promise<TipRecord[]> {
       amount_usd: Number(r.amount_usd ?? r.amount ?? 0),
       status: r.status ?? "pending",
       screenshot: r.screenshot ?? [],
+      admin_notes: r.admin_notes ?? "",
       created_at: r.created_at ?? null,
     }));
   }
@@ -114,6 +117,7 @@ export async function listAllTips(): Promise<TipRecord[]> {
           .map((a) => (typeof a === "string" ? a : String(a?.url ?? "")))
           .filter(Boolean)
       : [],
+    admin_notes: String(r.fields.admin_notes ?? ""),
     created_at: typeof r.fields.created_at === "string" ? r.fields.created_at : null,
   }));
 }
@@ -143,6 +147,7 @@ export async function getTipById(id: string): Promise<TipRecord | null> {
         amount?: number | null;
         status?: string | null;
         screenshot?: string[] | null;
+        admin_notes?: string | null;
         created_at?: string | null;
       }
     >(TABLE, id);
@@ -158,6 +163,7 @@ export async function getTipById(id: string): Promise<TipRecord | null> {
       amount_usd: Number(r.amount_usd ?? r.amount ?? 0),
       status: r.status ?? "pending",
       screenshot: r.screenshot ?? [],
+      admin_notes: r.admin_notes ?? "",
       created_at: r.created_at ?? null,
     };
   }
@@ -174,6 +180,7 @@ export async function getTipById(id: string): Promise<TipRecord | null> {
       amount_usd: Number(rec.fields.amount_usd ?? 0),
       status: String(rec.fields.status ?? "pending"),
       screenshot: [],
+      admin_notes: String(rec.fields.admin_notes ?? ""),
       created_at: typeof rec.fields.created_at === "string" ? rec.fields.created_at : null,
     };
   } catch {

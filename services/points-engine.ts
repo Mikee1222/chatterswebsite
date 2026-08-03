@@ -660,6 +660,7 @@ export type PointsTransactionActivity = {
   points: number;
   reason: string;
   category: string;
+  reference_id: string;
   created_at: string;
 };
 
@@ -685,6 +686,7 @@ export async function getRecentPointsTransactions(
       points: Number.isFinite(Number(f.points)) ? Number(f.points) : 0,
       reason: String(f.reason ?? "").trim() || "—",
       category: String(f.category ?? "").trim(),
+      reference_id: String(f.reference_id ?? "").trim(),
       created_at: String(f.created_at ?? "").trim(),
     };
   });
