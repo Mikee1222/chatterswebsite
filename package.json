@@ -52,7 +52,10 @@
     "cron:deploy": "wrangler deploy --config workers/cron-late-shifts/wrangler.jsonc",
     "icon:apple": "node scripts/export-apple-touch-icon.mjs",
     "deploy": "npm run pages:build && opennextjs-cloudflare deploy",
-    "preview": "npm run pages:build && opennextjs-cloudflare preview"
+    "preview": "npm run pages:build && opennextjs-cloudflare preview",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --project=smoke",
+    "test:e2e:report": "playwright show-report playwright-report"
   },
   "dependencies": {
     "@block65/webcrypto-web-push": "^1.0.2",
@@ -73,7 +76,6 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.0",
     "date-fns": "^4.1.0",
-    "dotenv": "^16.3.1",
     "framer-motion": "^11.18.2",
     "jose": "^6.2.0",
     "lucide-react": "^0.294.0",
@@ -95,12 +97,14 @@
   },
   "devDependencies": {
     "@opennextjs/cloudflare": "^1.17.1",
+    "@playwright/test": "^1.62.1",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^20.10.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/ws": "^8.18.1",
     "autoprefixer": "^10.4.16",
+    "dotenv": "^17.4.2",
     "drizzle-kit": "^0.20.0",
     "eslint-config-next": "14.2.21",
     "husky": "^9.1.7",

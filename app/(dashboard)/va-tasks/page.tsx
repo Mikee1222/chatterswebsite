@@ -18,11 +18,15 @@ export default async function VaTasksPage() {
   if (!perms.includes(PERMISSIONS.VA_TASKS_VIEW)) {
     redirect(ROUTES.dashboard);
   }
-  if (qualifiesForAdminVaTasksNav(perms)) {
+  // VAs always use the personal board — even when the role row also grants manage/progress
+  // (common for "Managers Virtual Assistant"). Sending them to /admin/va-tasks loops through
+  // requireAdminRoute → /dashboard.
+  const staffRole = getEffectiveStaffRole(user);
+  if (qualifiesForAdminVaTasksNav(perms) && staffRole !== "virtual_assistant") {
     redirect(ROUTES.admin.vaTasks);
   }
 
-  if (getEffectiveStaffRole(user) === "virtual_assistant") {
+  if (staffRole === "virtual_assistant") {
     await assertVaTypeCanAccessNavHref(user, ROUTES.va.tasks);
   }
 
