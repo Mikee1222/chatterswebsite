@@ -517,6 +517,7 @@ export type UpdateLinkPageInput = Partial<
     | "cookie_notice_text"
     | "bio_color"
     | "name_color"
+    | "ab_variant_id"
   >
 >;
 
@@ -545,6 +546,7 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
   if (input.cookie_notice_text !== undefined) patch.cookie_notice_text = input.cookie_notice_text;
   if (input.bio_color !== undefined) patch.bio_color = input.bio_color.trim();
   if (input.name_color !== undefined) patch.name_color = input.name_color.trim();
+  if (input.ab_variant_id !== undefined) patch.ab_variant_id = input.ab_variant_id;
 
   const rec = await updateRecord<PageFields>(LINK_PAGES_TABLE, recordId, bumpUpdatedAt(patch));
   invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
@@ -700,6 +702,16 @@ export async function upsertBlock(
   const page = await getLinkPageByPageId(pageId);
   if (page) invalidateLinkPagePublicCache(page);
   return mapBlock(rec);
+}
+
+export async function getBlockById(recordId: string): Promise<LinkPageBlockRecord | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getBlockById(recordId);
+  try {
+    const rec = await getRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, recordId);
+    return mapBlock(rec);
+  } catch {
+    return null;
+  }
 }
 
 export async function deleteBlock(recordId: string): Promise<void> {

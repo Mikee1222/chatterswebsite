@@ -75,13 +75,19 @@ function mapMistake(row: MistakeRow): MistakeRecord {
   const rawShot = row.screenshot;
   let screenshot: MistakeAttachment[] = [];
   if (Array.isArray(rawShot)) {
-    screenshot = rawShot
-      .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
-      .map((x) => ({
-        url: String((x as { url?: string }).url ?? ""),
-        filename: (x as { filename?: string }).filename,
-      }))
-      .filter((x) => x.url.length > 0);
+    if (rawShot.every((x) => typeof x === "string")) {
+      screenshot = (rawShot as string[])
+        .filter((url) => url.length > 0)
+        .map((url) => ({ url }));
+    } else {
+      screenshot = rawShot
+        .filter((x): x is Record<string, unknown> => x != null && typeof x === "object")
+        .map((x) => ({
+          url: String((x as { url?: string }).url ?? ""),
+          filename: (x as { filename?: string }).filename,
+        }))
+        .filter((x) => x.url.length > 0);
+    }
   }
   const rc = row.reason_category;
   const reason_category: MistakeReasonCategory =
@@ -290,4 +296,32 @@ export async function updateMistakeReasonRow(
 
 export async function softDeleteMistakeReason(recordId: string): Promise<MistakeReasonRecord> {
   return updateMistakeReasonRow(recordId, { active: false });
+}
+
+export async function uploadMistakeScreenshot(
+  recordId: string,
+  file: { name: string; type: string; bytes: Uint8Array }
+): Promise<void> {
+  const row = await sbSelectByPublicId<MistakeRow>(TABLE_MISTAKES, recordId);
+  if (!row) throw new Error("Mistake not found");
+  const { uploadToPrivateStorage } = await import("@/lib/supabase-signed-url");
+  const existing = Array.isArray(row.screenshot)
+    ? (row.screenshot as unknown[])
+        .map((x) =>
+          typeof x === "string" ? x : String((x as { url?: string })?.url ?? "")
+        )
+        .filter(Boolean)
+    : [];
+  const safeName = (file.name || "screenshot.png").replace(/[^a-zA-Z0-9._-]/g, "_");
+  const token = await uploadToPrivateStorage({
+    bucket: "attachments",
+    objectPath: `chatter_mistakes/${row.airtable_id || row.id}/screenshot/${Date.now()}_${safeName}`,
+    bytes: file.bytes,
+    contentType: file.type || "image/png",
+  });
+  existing.push(token);
+  await sbUpdateByPublicId(TABLE_MISTAKES, recordId, {
+    screenshot: existing,
+    updated_at: new Date().toISOString(),
+  });
 }

@@ -144,34 +144,22 @@ export async function login(formData: FormData) {
     // Airtable not configured or error; fall back to demo
   }
 
-  // 1b. Try clients table (B2B client portal users)
+  // 1b. Try clients table (B2B client portal users) — dual-backed
   try {
-    const { listRecords } = await import("@/lib/airtable-server");
-    const normalized = submittedEmail.trim().toLowerCase();
-    const { records } = await listRecords<{
-      email?: string;
-      password?: string;
-      status?: string;
-      company_name?: string;
-      display_name?: string;
-    }>("clients", {
-      filterByFormula: `{email} = "${normalized.replace(/"/g, '""')}"`,
-      pageSize: 1,
-    });
-    const clientRecord = records[0];
-    if (clientRecord?.fields?.email && clientRecord.fields.password) {
-      const isActive = clientRecord.fields.status === "active";
+    const { getClientByEmailForAuth } = await import("@/services/client-portal");
+    const clientRecord = await getClientByEmailForAuth(submittedEmail);
+    if (clientRecord) {
+      const isActive = clientRecord.status === "active";
       if (isActive) {
-        const cleanHash = String(clientRecord.fields.password).replace(/\s+/g, "").trim();
-        const valid = await verifyPassword(submittedPassword, cleanHash);
+        const valid = await verifyPassword(submittedPassword, clientRecord.passwordHash);
         if (valid) {
           const token = await setSession(
             {
               id: clientRecord.id,
-              email: String(clientRecord.fields.email),
+              email: clientRecord.email,
               role: "client",
               airtableUserId: clientRecord.id,
-              fullName: String(clientRecord.fields.display_name ?? clientRecord.fields.company_name ?? ""),
+              fullName: clientRecord.display_name || clientRecord.company_name || "",
             },
             jwtMaxAgeSec
           );

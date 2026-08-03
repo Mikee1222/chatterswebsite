@@ -228,6 +228,28 @@ export async function getClientById(clientId: string): Promise<ClientRecord> {
   return mapClient(rec);
 }
 
+/** Login-only: includes password hash. Never expose to client UI. */
+export type ClientAuthRecord = ClientRecord & { passwordHash: string };
+
+export async function getClientByEmailForAuth(email: string): Promise<ClientAuthRecord | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-portal-supabase")).getClientByEmailForAuth(email);
+  }
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const { records } = await listRecords<Record<string, unknown>>(TABLES.clients, {
+    filterByFormula: `{email} = "${normalized.replace(/"/g, '""')}"`,
+    pageSize: 1,
+  });
+  const clientRecord = records[0];
+  if (!clientRecord?.fields?.email || !clientRecord.fields.password) return null;
+  const passwordHash = String(clientRecord.fields.password).replace(/\s+/g, "").trim();
+  if (!passwordHash) return null;
+  return { ...mapClient(clientRecord), passwordHash };
+}
+
+
+
 export async function getAdminClientById(clientId: string): Promise<AdminClientRecord> {
   if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getAdminClientById(clientId);
   const rec = await getRecord<Record<string, unknown>>(TABLES.clients, clientId);
@@ -521,6 +543,33 @@ export async function getClientInvoicesEnriched(clientId: string): Promise<Enric
             due_date: cycle.due_date,
           }
         : null,
+    };
+  });
+}
+
+export async function listAllClientModelAssignments(): Promise<ClientModelRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-portal-supabase")).listAllClientModelAssignments();
+  }
+  const [assignments, models] = await Promise.all([
+    listAllRecords<Record<string, unknown>>(TABLES.client_models, {
+      _caller: "listAllClientModelAssignments:assignments",
+    }),
+    listAllRecords<Record<string, unknown>>(TABLES.billing_models, {
+      _caller: "listAllClientModelAssignments:models",
+    }),
+  ]);
+  const modelNameById = Object.fromEntries(
+    models.map((r) => [r.id, String(r.fields.model_name ?? "")])
+  );
+  return assignments.map((r) => {
+    const client = Array.isArray(r.fields.client) ? (r.fields.client as string[]) : [];
+    const model = Array.isArray(r.fields.model) ? (r.fields.model as string[]) : [];
+    return {
+      id: r.id,
+      client,
+      model,
+      model_name: modelNameById[model[0] ?? ""] || undefined,
     };
   });
 }

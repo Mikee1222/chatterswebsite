@@ -10,79 +10,23 @@ import { getWeekStartYmdInAthens, getTodayWeekdayAthens, getTodayYmdAthens } fro
 import { formatTimeFromISO } from "@/lib/format";
 import { ShiftClient } from "@/components/shift-client";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
-import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
-import { firstLinkedId } from "@/lib/airtable-linked";
 import { getTodayYmd } from "@/lib/weekly-program";
+import { listAllModelss } from "@/services/modelss";
+import { listAllModelPeriods } from "@/services/model-periods";
 import type { ModelRecord, OccupiedModelDetail } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
 const MAX_BREAK_MINUTES = 45;
 
-type SlimModelFields = {
-  model_name?: string;
-  model_id?: string;
-  current_status?: string;
-  current_chatter?: unknown;
-  current_chatter_name?: unknown;
-  current_shift_id?: unknown;
-};
-
-function mapSlimModelToModelRecord(rec: AirtableRecord<SlimModelFields>): ModelRecord {
-  const f = rec.fields;
-  return {
-    id: rec.id,
-    model_id: typeof f.model_id === "string" && f.model_id ? f.model_id : rec.id,
-    model_name: f.model_name ?? "",
-    platform: "other",
-    status: "",
-    current_status: f.current_status === "occupied" ? "occupied" : "free",
-    current_chatter_id: firstLinkedId(f.current_chatter) ?? "",
-    current_chatter_name: typeof f.current_chatter_name === "string" ? f.current_chatter_name.trim() : "",
-    current_shift_id:
-      typeof f.current_shift_id === "string" && f.current_shift_id
-        ? f.current_shift_id
-        : firstLinkedId(f.current_shift_id) ?? "",
-    entered_at: null,
-    last_chatter_id: "",
-    last_chatter_name: "",
-    last_exit_at: null,
-    priority: "",
-    notes: "",
-    created_at: "",
-    updated_at: "",
-    avg_cycle_length: null,
-    avg_period_length: null,
-    period_notes: "",
-    team: "gunzo_team",
-  };
-}
-
-/** One slim modelss query; cached 60s to cut Airtable volume on shift refreshes. */
+/** Dual-backed modelss list; cached 60s to cut backend volume on shift refreshes. */
 const getCachedShiftPageModelss = unstable_cache(
   async (): Promise<ModelRecord[]> => {
-    const records = await listAllRecords<SlimModelFields>("modelss", {
-      fields: [
-        "model_name",
-        "current_status",
-        "current_chatter",
-        "current_chatter_name",
-        "model_id",
-        "current_shift_id",
-      ],
-    });
-    return records
-      .map(mapSlimModelToModelRecord)
-      .filter((m) => m.model_name?.trim() && m.model_id?.trim());
+    const records = await listAllModelss();
+    return records.filter((m) => m.model_name?.trim() && m.model_id?.trim());
   },
-  ["shift-page-modelss-slim-v2"],
+  ["shift-page-modelss-dual-v1"],
   { revalidate: 60 }
 );
-
-type PeriodFields = {
-  model_id?: unknown;
-  start_date?: string;
-  end_date?: string;
-};
 
 export default async function ShiftPage() {
   const user = await getSessionFromCookies();
@@ -133,16 +77,14 @@ export default async function ShiftPage() {
     const shiftModelIdSet = new Set(shiftModels.map((sm) => sm.model_id).filter(Boolean));
     if (shiftModelIdSet.size > 0) {
       const todayPeriodYmd = getTodayYmd();
-      const periodFormula = `AND({start_date} <= "${todayPeriodYmd}", {end_date} >= "${todayPeriodYmd}")`;
-      const periodRows = await listAllRecords<PeriodFields>("model_periods", {
-        filterByFormula: periodFormula,
-        fields: ["model_id", "start_date", "end_date"],
-        _caller: "shiftPage.periodsForToday",
-      });
+      const periodRows = await listAllModelPeriods();
       const inPeriod = new Set<string>();
-      for (const rec of periodRows) {
-        const mid = firstLinkedId(rec.fields.model_id);
-        if (mid && shiftModelIdSet.has(mid)) inPeriod.add(mid);
+      for (const p of periodRows) {
+        if (!p.start_date || !p.end_date) continue;
+        if (p.start_date <= todayPeriodYmd && p.end_date >= todayPeriodYmd) {
+          const mid = (p.model_id ?? "").trim();
+          if (mid && shiftModelIdSet.has(mid)) inPeriod.add(mid);
+        }
       }
       modelIdsInActivePeriodToday = Array.from(inPeriod);
     } else {

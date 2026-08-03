@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { listAllRecords } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getCycleAmountDue } from "@/lib/client-portal-utils";
@@ -11,6 +10,7 @@ import {
 import {
   getAdminClientById,
   getClientBillingCycles,
+  getClientModels,
   updateAdminClient,
 } from "@/services/client-portal";
 import type { BillingCycleRevenueStatus } from "@/types/client-portal";
@@ -22,14 +22,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
 
   const { id } = await ctx.params;
 
-  const [client, clientModelsRecords, billingCyclesRaw] = await Promise.all([
+  const [client, clientModels, billingCyclesRaw] = await Promise.all([
     getAdminClientById(id),
-    listAllRecords<Record<string, unknown>>("client_models", {
-      _caller: "admin/clients/[id]:GET:client_models",
-    }).then(records => records.filter(r => {
-      const clients = Array.isArray(r.fields.client) ? r.fields.client : [];
-      return clients.includes(id);
-    })),
+    getClientModels(id),
     getClientBillingCycles(id),
   ]);
 
@@ -67,27 +62,11 @@ export async function GET(_req: Request, ctx: { params: Promise<{ id: string }> 
     return { ...cycle, correct_amount_due };
   });
 
-  const modelIds = clientModelsRecords.flatMap((r) =>
-    Array.isArray(r.fields.model) ? r.fields.model as string[] : []
-  );
-
-  // Fetch all modelss in one call instead of N individual calls
-  const allModelss = modelIds.length > 0
-    ? await listAllRecords<Record<string, unknown>>("modelss", {
-        _caller: "admin/clients/[id]:GET:modelss",
-      })
-    : [];
-
-  const modelNameMap = Object.fromEntries(
-    allModelss.map(r => [r.id, String(r.fields.model_name ?? "Unnamed")])
-  );
-
-  const models = clientModelsRecords.map((r) => ({
+  const models = clientModels.map((r) => ({
     id: r.id,
-    client: Array.isArray(r.fields.client) ? r.fields.client : [],
-    model: Array.isArray(r.fields.model) ? r.fields.model : [],
-    model_name:
-      modelNameMap[Array.isArray(r.fields.model) ? r.fields.model[0] : ""] ?? "Unnamed",
+    client: r.client,
+    model: r.model,
+    model_name: r.model_name || "Unnamed",
   }));
 
   return NextResponse.json({ client, models, billingCycles: cyclesWithStatus });

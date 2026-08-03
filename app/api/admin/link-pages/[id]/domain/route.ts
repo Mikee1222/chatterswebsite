@@ -10,24 +10,16 @@ import {
   normalizeDomain,
   removeDomainFromVercel,
 } from "@/lib/vercel-domains";
-import { getLinkPageById, updateLinkPage } from "@/services/link-pages";
-import { listRecords } from "@/lib/airtable-server";
-import { LINK_PAGES_TABLE } from "@/lib/link-pages-schema";
+import { getLinkPageById, listLinkPages, updateLinkPage } from "@/services/link-pages";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-function escapeFormulaString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
 async function assertDomainAvailable(domain: string, pageId: string): Promise<void> {
   const normalized = normalizeDomain(domain);
-  const { records } = await listRecords<{ custom_domain?: string }>(LINK_PAGES_TABLE, {
-    filterByFormula: `LOWER({custom_domain})="${escapeFormulaString(normalized)}"`,
-    pageSize: 5,
-    _caller: "link-page-domain-check",
-  });
-  const conflict = records.find((r) => r.id !== pageId);
+  const pages = await listLinkPages();
+  const conflict = pages.find(
+    (p) => p.id !== pageId && normalizeDomain(p.custom_domain || "") === normalized
+  );
   if (conflict) {
     throw new Error("This domain is already assigned to another link page");
   }

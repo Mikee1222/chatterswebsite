@@ -4,13 +4,13 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
-import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
   createMistakeRow,
   getActiveMistakeReasonByReasonId,
   getMistakesByVA,
+  uploadMistakeScreenshot,
 } from "@/services/chatter-mistakes";
 
 export async function GET() {
@@ -112,11 +112,9 @@ export async function POST(req: Request) {
 
     if (fileBytes && fileBytes.data.byteLength > 0) {
       try {
-        await uploadAirtableAttachment({
-          recordId: recordId,
-          fieldName: "screenshot",
-          filename: fileBytes.name,
-          contentType: fileBytes.type,
+        await uploadMistakeScreenshot(recordId, {
+          name: fileBytes.name,
+          type: fileBytes.type,
           bytes: fileBytes.data,
         });
       } catch (e) {

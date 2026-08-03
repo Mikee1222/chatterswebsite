@@ -3,10 +3,9 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { getRecord } from "@/lib/airtable-server";
-import { LINK_PAGE_BLOCKS_TABLE } from "@/lib/link-pages-schema";
 import {
   deleteBlock,
+  getBlockById,
   getLinkPageByPageId,
   upsertBlock,
   type UpsertBlockInput,
@@ -42,12 +41,10 @@ export async function DELETE(_req: Request, ctx: Ctx) {
   const { blockId } = await ctx.params;
   try {
     let slug: string | undefined;
-    try {
-      const rec = await getRecord<{ page_id?: string }>(LINK_PAGE_BLOCKS_TABLE, blockId);
-      const page = await getLinkPageByPageId(rec.fields.page_id ?? "");
+    const existing = await getBlockById(blockId).catch(() => null);
+    if (existing?.page_id) {
+      const page = await getLinkPageByPageId(existing.page_id);
       slug = page?.slug;
-    } catch {
-      // block may not exist
     }
     await deleteBlock(blockId);
     if (slug) revalidatePath(`/l/${slug}`);

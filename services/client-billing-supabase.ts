@@ -341,6 +341,20 @@ export async function listAllBillingModels(): Promise<ModelRecord[]> {
     .sort((a, b) => a.model_name.localeCompare(b.model_name));
 }
 
+export async function listAllClientModelAssignments(): Promise<
+  Array<{ client: string[]; model: string[] }>
+> {
+  const assignments = await sbSelectAll<ClientModelRow>(TABLES.client_models);
+  const [clientAtByUuid, modelAtByUuid] = await Promise.all([
+    resolveUuidMap(TABLES.clients, assignments.map((r) => r.client)),
+    resolveUuidMap(TABLES.modelss, assignments.map((r) => r.model)),
+  ]);
+  return assignments.map((row) => ({
+    client: mapLinked(row.client, clientAtByUuid),
+    model: mapLinked(row.model, modelAtByUuid),
+  }));
+}
+
 export async function getClientModelsForBilling(clientId: string): Promise<ClientModelRecord[]> {
   const [assignments, models] = await Promise.all([
     sbSelectAll<ClientModelRow>(TABLES.client_models),

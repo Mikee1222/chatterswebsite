@@ -142,6 +142,9 @@ export async function uploadVideoTranscriptFile(
   id: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>,
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./video-transcripts-supabase")).uploadVideoTranscriptFile(id, files);
+  }
   for (const file of files) {
     await uploadAirtableAttachment({
       recordId: id,

@@ -1,8 +1,5 @@
 /**
  * Supabase backend for services/video-transcripts.ts
- *
- * NOTE: File upload (uploadVideoTranscriptFile) still writes to Airtable attachments —
- * media is intentionally out of scope for the dual-backend switch.
  */
 import {
   publicId,
@@ -14,6 +11,7 @@ import {
   type SbRow,
 } from "@/lib/supabase-data";
 import { coerceVideoTranscriptStatus } from "@/lib/video-transcripts-helpers";
+import { urlsToAttachments, uploadToPrivateStorage } from "@/lib/supabase-signed-url";
 import type {
   CreateVideoTranscriptInput,
   UpdateVideoTranscriptResultInput,
@@ -26,7 +24,7 @@ const TABLE = "video_transcripts";
 
 type Row = SbRow & {
   label?: string | null;
-  video_file?: unknown;
+  video_file?: string[] | null;
   uploaded_by_name?: string | null;
   uploaded_by_id?: string | null;
   status?: string | null;
@@ -36,7 +34,10 @@ type Row = SbRow & {
   created_at?: string | null;
 };
 
-function mapAttachments(raw: unknown): VideoTranscriptAttachment[] {
+async function mapAttachments(raw: unknown): Promise<VideoTranscriptAttachment[]> {
+  if (Array.isArray(raw) && raw.every((x) => typeof x === "string")) {
+    return urlsToAttachments(raw as string[]);
+  }
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((a): a is { url?: string; filename?: string } => a != null && typeof a === "object")
@@ -51,11 +52,11 @@ function coerceDuration(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function mapRow(row: Row): VideoTranscriptRecord {
+async function mapRow(row: Row): Promise<VideoTranscriptRecord> {
   return {
     id: publicId(row),
     label: String(row.label ?? ""),
-    video_file: mapAttachments(row.video_file),
+    video_file: await mapAttachments(row.video_file),
     uploaded_by_name: String(row.uploaded_by_name ?? ""),
     uploaded_by_id: String(row.uploaded_by_id ?? ""),
     status: coerceVideoTranscriptStatus(row.status),
@@ -70,7 +71,7 @@ export async function getVideoTranscripts(
   filters: VideoTranscriptFilters = {}
 ): Promise<VideoTranscriptRecord[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  let mapped = rows.map(mapRow);
+  let mapped = await Promise.all(rows.map(mapRow));
   if (filters.uploaded_by_id?.trim()) {
     mapped = mapped.filter((r) => r.uploaded_by_id === filters.uploaded_by_id?.trim());
   }
@@ -104,6 +105,31 @@ export async function createVideoTranscriptRecord(
   return mapRow(row);
 }
 
+export async function uploadVideoTranscriptFile(
+  id: string,
+  files: Array<{ name: string; type: string; bytes: Uint8Array }>
+): Promise<void> {
+  const row = await sbSelectByPublicId<Row>(TABLE, id);
+  if (!row) throw new Error("Video transcript not found");
+  const existing = [...(row.video_file ?? [])];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    if (!file.bytes.byteLength) continue;
+    const safeName = (file.name || "video").replace(/[^a-zA-Z0-9._-]/g, "_");
+    const token = await uploadToPrivateStorage({
+      bucket: "attachments",
+      objectPath: `video_transcripts/${row.airtable_id || row.id}/video_file/${Date.now()}_${i}_${safeName}`,
+      bytes: file.bytes,
+      contentType: file.type || "application/octet-stream",
+    });
+    existing.push(token);
+  }
+  await sbUpdateByPublicId(TABLE, id, {
+    video_file: existing,
+    updated_at: new Date().toISOString(),
+  });
+}
+
 export async function updateVideoTranscriptResult(
   id: string,
   data: UpdateVideoTranscriptResultInput
@@ -117,8 +143,8 @@ export async function updateVideoTranscriptResult(
   if (data.duration_seconds !== undefined) {
     patch.duration_seconds = data.duration_seconds ?? null;
   }
-  const row = await sbUpdateByPublicId<Row>(TABLE, id, patch);
-  return mapRow(row);
+  const updated = await sbUpdateByPublicId<Row>(TABLE, id, patch);
+  return mapRow(updated);
 }
 
 export async function deleteVideoTranscript(id: string): Promise<void> {

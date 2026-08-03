@@ -393,15 +393,54 @@ export async function completeVAContentAssignmentForModel(
 }
 
 export async function uploadVAContentAssignmentAttachments(
-  _assignmentRecordId: string,
+  assignmentRecordId: string,
   files: ParsedAssignmentFile[]
 ): Promise<{ uploaded: number; error?: string }> {
   const countErr = validateAssignmentFileCount(files.length);
   if (countErr) return { uploaded: 0, error: countErr };
   const sizeErr = validateAssignmentFileSizes(files);
   if (sizeErr) return { uploaded: 0, error: sizeErr };
-  // Attachments still handled via Airtable. Supabase migration for file uploads is out of scope.
-  return { uploaded: 0, error: "Attachment upload not implemented for Supabase backend" };
+
+  const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
+  if (!row) return { uploaded: 0, error: "Assignment not found" };
+
+  const { uploadToPrivateStorage } = await import("@/lib/supabase-signed-url");
+  const existing = [...(row.file_attachment ?? [])];
+  let uploaded = 0;
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    try {
+      const safeName = (file.name || "file").replace(/[^a-zA-Z0-9._-]/g, "_");
+      const token = await uploadToPrivateStorage({
+        bucket: "attachments",
+        objectPath: `va_content_assignments/${row.airtable_id || row.id}/file_attachment/${Date.now()}_${i}_${safeName}`,
+        bytes: file.data,
+        contentType: file.type || "application/octet-stream",
+      });
+      existing.push(token);
+      uploaded += 1;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      if (uploaded > 0) {
+        await sbUpdateByPublicId(TABLE, assignmentRecordId, {
+          file_attachment: existing,
+          updated_at: new Date().toISOString(),
+        });
+      }
+      return {
+        uploaded,
+        error:
+          uploaded > 0
+            ? `Uploaded ${uploaded} of ${files.length} files, then failed on "${file.name}": ${msg}`
+            : `File upload failed for "${file.name}": ${msg}`,
+      };
+    }
+  }
+  await sbUpdateByPublicId(TABLE, assignmentRecordId, {
+    file_attachment: existing,
+    updated_at: new Date().toISOString(),
+  });
+  return { uploaded };
 }
 
 export async function createVaContentAssignmentAdmin(

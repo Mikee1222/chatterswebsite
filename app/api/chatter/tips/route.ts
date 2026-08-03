@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { createRecord } from "@/lib/airtable-server";
+import { createTip } from "@/services/tips";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
   const reporterName = session.fullName?.trim() || session.email;
 
-  await createRecord("tips", {
+  await createTip({
     tip_id: tipId,
     chatter_id: session.airtableUserId ?? session.id,
     chatter_name: reporterName,

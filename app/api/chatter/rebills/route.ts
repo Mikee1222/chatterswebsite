@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { createRecord } from "@/lib/airtable-server";
+import { createRebill } from "@/services/rebills";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
 
   const reporterName = session.fullName?.trim() || session.email;
 
-  await createRecord("rebills", {
+  await createRebill({
     rebill_id: rebillId,
     chatter_id: session.airtableUserId ?? session.id,
     chatter_name: reporterName,

@@ -792,6 +792,12 @@ export async function uploadVAContentAssignmentAttachments(
   assignmentRecordId: string,
   files: ParsedAssignmentFile[]
 ): Promise<{ uploaded: number; error?: string }> {
+  if (isSupabaseBackend()) {
+    return (await import("./va-content-assignments-supabase")).uploadVAContentAssignmentAttachments(
+      assignmentRecordId,
+      files
+    );
+  }
   const countErr = validateAssignmentFileCount(files.length);
   if (countErr) return { uploaded: 0, error: countErr };
   const sizeErr = validateAssignmentFileSizes(files);

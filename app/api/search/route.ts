@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { listRecords, type AirtableRecord } from "@/lib/airtable-server";
-import { escapeAirtableString } from "@/lib/airtable-linked";
-import { getUserByAirtableId } from "@/services/users";
+import { getUserByAirtableId, listAllUsers } from "@/services/users";
+import { listAllModelss } from "@/services/modelss";
+import { listAllWhales } from "@/services/whales";
+import { listAllCustomRequests } from "@/services/custom-requests";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 
 const MAX = 5;
@@ -17,9 +18,8 @@ type SearchResponse = {
   users: SearchHit[];
 };
 
-function lowerFindFormula(fieldName: string, qLower: string): string {
-  const lit = escapeAirtableString(qLower);
-  return `FIND(LOWER("${lit}"), LOWER({${fieldName}} & "")) > 0`;
+function includesQ(haystack: string | undefined | null, qLower: string): boolean {
+  return (haystack ?? "").toLowerCase().includes(qLower);
 }
 
 export async function GET(req: Request) {
@@ -51,98 +51,80 @@ export async function GET(req: Request) {
     }
   }
 
-  const modelFields = ["model_name", "model_id"];
-  const whaleFields = ["username", "whale_id"];
-  const customFields = ["request_title", "fan_username", "created_at"];
-  const userFields = ["full_name", "email"];
-
   try {
     const modelsPromise = (async (): Promise<SearchHit[]> => {
-      let formula = lowerFindFormula("model_name", qLower);
-      if (session.role === "model") {
-        if (!modelLinkedRecordId) return [];
-        formula = `AND(RECORD_ID() = "${escapeAirtableString(modelLinkedRecordId)}", ${formula})`;
-      }
-      const { records } = await listRecords<{ model_name?: string; model_id?: string }>("modelss", {
-        filterByFormula: formula,
-        pageSize: MAX,
-        fields: modelFields,
-      });
-      return records.map((r) => ({
-        id: r.id,
-        label: (r.fields.model_name ?? "").trim() || "Model",
-        sublabel: (r.fields.model_id ?? "").trim() || undefined,
-      }));
+      if (session.role === "model" && !modelLinkedRecordId) return [];
+      const all = await listAllModelss();
+      return all
+        .filter((m) => {
+          if (session.role === "model" && modelLinkedRecordId && m.id !== modelLinkedRecordId) {
+            return false;
+          }
+          return includesQ(m.model_name, qLower);
+        })
+        .slice(0, MAX)
+        .map((m) => ({
+          id: m.id,
+          label: (m.model_name ?? "").trim() || "Model",
+          sublabel: (m.model_id ?? "").trim() || undefined,
+        }));
     })();
 
     const whalesPromise = (async (): Promise<SearchHit[]> => {
       if (session.role === "model" || staffMode === "virtual_assistant") {
         return [];
       }
-      let formula = lowerFindFormula("username", qLower);
-      if (staffMode === "chatter" && chatterRecordId) {
-        const escC = escapeAirtableString(chatterRecordId);
-        formula = `AND(${formula}, FIND("${escC}", ARRAYJOIN({assigned_chatter}) & "") > 0)`;
-      }
-      const { records } = await listRecords<{ username?: string; whale_id?: string }>("whales", {
-        filterByFormula: formula,
-        pageSize: MAX,
-        fields: whaleFields,
-      });
-      return records.map((r) => ({
-        id: r.id,
-        label: (r.fields.username ?? "").trim() || "Whale",
-        sublabel: (r.fields.whale_id ?? "").trim() || undefined,
-      }));
+      const all = await listAllWhales();
+      return all
+        .filter((w) => {
+          if (staffMode === "chatter" && chatterRecordId && w.assigned_chatter_id !== chatterRecordId) {
+            return false;
+          }
+          return includesQ(w.username, qLower);
+        })
+        .slice(0, MAX)
+        .map((w) => ({
+          id: w.id,
+          label: (w.username ?? "").trim() || "Whale",
+          sublabel: (w.whale_id ?? "").trim() || undefined,
+        }));
     })();
 
     const customsPromise = (async (): Promise<SearchHit[]> => {
-      const titlePart = lowerFindFormula("request_title", qLower);
-      const fanPart = lowerFindFormula("fan_username", qLower);
-      let formula = `OR(${titlePart}, ${fanPart})`;
-      if (staffMode === "chatter" && chatterRecordId) {
-        const escC = escapeAirtableString(chatterRecordId);
-        formula = `AND(${formula}, FIND("${escC}", ARRAYJOIN({requested_by_chatter}) & "") > 0)`;
-      } else if (session.role === "model" && modelLinkedRecordId) {
-        const escM = escapeAirtableString(modelLinkedRecordId);
-        formula = `AND(${formula}, FIND("${escM}", ARRAYJOIN({assigned_model}) & "") > 0)`;
-      }
-      const { records } = await listRecords<{ request_title?: string; fan_username?: string }>(
-        "custom_requests",
-        {
-          filterByFormula: formula,
-          pageSize: MAX,
-          sort: [{ field: "created_at", direction: "desc" }],
-          fields: customFields,
-        }
-      );
-      return records.map((r) => {
-        const f = r.fields;
-        const title = (f.request_title ?? "").trim();
-        const fan = (f.fan_username ?? "").trim();
-        return {
-          id: r.id,
-          label: title || fan || "Custom request",
-          sublabel: title && fan ? fan : undefined,
-        };
-      });
+      const all = await listAllCustomRequests();
+      return all
+        .filter((c) => {
+          if (staffMode === "chatter" && chatterRecordId) {
+            if (c.requested_by_chatter_id !== chatterRecordId) return false;
+          } else if (session.role === "model" && modelLinkedRecordId) {
+            if (c.assigned_model_id !== modelLinkedRecordId) return false;
+          }
+          return includesQ(c.request_title, qLower) || includesQ(c.fan_username, qLower);
+        })
+        .sort((a, b) => String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")))
+        .slice(0, MAX)
+        .map((c) => {
+          const title = (c.request_title ?? "").trim();
+          const fan = (c.fan_username ?? "").trim();
+          return {
+            id: c.id,
+            label: title || fan || "Custom request",
+            sublabel: title && fan ? fan : undefined,
+          };
+        });
     })();
 
     const usersPromise = (async (): Promise<SearchHit[]> => {
       if (!canSearchUsers) return [];
-      const namePart = lowerFindFormula("full_name", qLower);
-      const emailPart = lowerFindFormula("email", qLower);
-      const formula = `OR(${namePart}, ${emailPart})`;
-      const { records } = await listRecords<{ full_name?: string; email?: string }>("users", {
-        filterByFormula: formula,
-        pageSize: MAX,
-        fields: userFields,
-      });
-      return records.map((r: AirtableRecord<{ full_name?: string; email?: string }>) => ({
-        id: r.id,
-        label: (r.fields.full_name ?? "").trim() || (r.fields.email ?? "").trim() || "User",
-        sublabel: (r.fields.email ?? "").trim() || undefined,
-      }));
+      const all = await listAllUsers();
+      return all
+        .filter((u) => includesQ(u.full_name, qLower) || includesQ(u.email, qLower))
+        .slice(0, MAX)
+        .map((u) => ({
+          id: u.id,
+          label: (u.full_name ?? "").trim() || (u.email ?? "").trim() || "User",
+          sublabel: (u.email ?? "").trim() || undefined,
+        }));
     })();
 
     const [modelsB, whalesB, customsB, usersB] = await Promise.all([

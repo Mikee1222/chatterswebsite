@@ -341,6 +341,28 @@ async function resolveClientLinkedIds(clientId: string): Promise<string[]> {
   return Array.from(new Set([row.id, ...(row.airtable_id ? [row.airtable_id] : []), trimmed]));
 }
 
+
+/** Login-only: includes password hash. Never expose to client UI. */
+export type ClientAuthRecord = ClientRecord & { passwordHash: string };
+
+export async function getClientByEmailForAuth(email: string): Promise<ClientAuthRecord | null> {
+  const normalized = email.trim().toLowerCase();
+  if (!normalized) return null;
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from(CLIENTS)
+    .select("*")
+    .eq("email", normalized)
+    .limit(1)
+    .maybeSingle();
+  if (error) throw new Error(`getClientByEmailForAuth: ${error.message}`);
+  if (!data) return null;
+  const row = data as unknown as ClientRow;
+  const passwordHash = String(row.password ?? "").replace(/\s+/g, "").trim();
+  if (!passwordHash) return null;
+  return { ...mapClient(row), passwordHash };
+}
+
 export async function getClientById(clientId: string): Promise<ClientRecord> {
   const row = await sbSelectByPublicId<ClientRow>(CLIENTS, clientId);
   if (!row) throw new Error("Client not found");
@@ -594,6 +616,38 @@ export async function getClientInvoicesEnriched(clientId: string): Promise<Enric
             due_date: cycle.due_date,
           }
         : null,
+    };
+  });
+}
+
+export async function listAllClientModelAssignments(): Promise<ClientModelRecord[]> {
+  const [assignments, models] = await Promise.all([
+    sbSelectAll<ClientModelRow>(CLIENT_MODELS),
+    sbSelectAll<ModelRow>(BILLING_MODELS),
+  ]);
+  const allClientUuids = [...new Set(assignments.flatMap((a) => a.client ?? []))];
+  const allModelUuids = [...new Set(assignments.flatMap((a) => a.model ?? []))];
+  const [clientPublic, modelPublic] = await Promise.all([
+    sbAirtableIdsForUuids(CLIENTS, allClientUuids),
+    sbAirtableIdsForUuids(BILLING_MODELS, allModelUuids),
+  ]);
+  const clientMap = new Map(allClientUuids.map((u, i) => [u, clientPublic[i] ?? u]));
+  const modelMap = new Map(allModelUuids.map((u, i) => [u, modelPublic[i] ?? u]));
+  const modelNameByUuid = new Map(models.map((m) => [m.id, m.model_name ?? ""]));
+  for (const m of models) {
+    if (m.airtable_id) modelNameByUuid.set(m.airtable_id, m.model_name ?? "");
+  }
+  return assignments.map((rec) => {
+    const modelUuids = rec.model ?? [];
+    const clientUuids = rec.client ?? [];
+    const modelIds = modelUuids.map((u) => modelMap.get(u) ?? u);
+    const clientIds = clientUuids.map((u) => clientMap.get(u) ?? u);
+    const mid = modelUuids[0] ?? "";
+    return {
+      id: publicId(rec),
+      client: clientIds,
+      model: modelIds,
+      model_name: mid ? modelNameByUuid.get(mid) : undefined,
     };
   });
 }

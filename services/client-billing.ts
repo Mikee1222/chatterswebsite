@@ -196,6 +196,21 @@ export async function listAllBillingModels(): Promise<ModelRecord[]> {
     .sort((a, b) => a.model_name.localeCompare(b.model_name));
 }
 
+export async function listAllClientModelAssignments(): Promise<
+  Array<{ client: string[]; model: string[] }>
+> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).listAllClientModelAssignments();
+  }
+  const records = await listAllRecords<Record<string, unknown>>(TABLES.client_models, {
+    _caller: "listAllClientModelAssignments",
+  });
+  return records.map((rec) => ({
+    client: linkedRecordIds(rec.fields.client),
+    model: linkedRecordIds(rec.fields.model),
+  }));
+}
+
 export async function getClientModelsForBilling(clientId: string): Promise<ClientModelRecord[]> {
   if (isSupabaseBackend()) {
     return (await import("./client-billing-supabase")).getClientModelsForBilling(clientId);

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-import { getRecord } from "@/lib/airtable-server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getPendingPaymentSubmissionsForClient } from "@/services/client-portal";
+import { getPaymentMethodById } from "@/services/payment-methods";
 import type { PaymentSubmissionRecord } from "@/types/client-portal";
 
 type EnrichedSubmission = PaymentSubmissionRecord & {
@@ -21,12 +21,13 @@ async function enrichSubmissionsWithPaymentMethods(
   await Promise.all(
     methodIds.map(async (methodId) => {
       try {
-        const rec = await getRecord<Record<string, unknown>>("payment_methods", methodId);
-        const fields = rec.fields;
-        methodMap.set(methodId, {
-          label: String(fields.label ?? fields.type ?? "Unknown"),
-          type: String(fields.type ?? ""),
-        });
+        const method = await getPaymentMethodById(methodId);
+        if (method) {
+          methodMap.set(methodId, {
+            label: method.label || method.type || "Unknown",
+            type: method.type || "",
+          });
+        }
       } catch {
         // Payment method record may have been removed.
       }

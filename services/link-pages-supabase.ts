@@ -365,6 +365,7 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
   if (input.cookie_notice_text !== undefined) patch.cookie_notice_text = input.cookie_notice_text;
   if (input.bio_color !== undefined) patch.bio_color = input.bio_color.trim();
   if (input.name_color !== undefined) patch.name_color = input.name_color.trim();
+  if (input.ab_variant_id !== undefined) patch.ab_variant_id = input.ab_variant_id;
   const row = await sbUpdateByPublicId<PageRow>(PAGES_TABLE, recordId, patch);
   return mapPage(row);
 }
@@ -505,4 +506,9 @@ export async function duplicateLinkPage(recordId: string): Promise<LinkPageRecor
     });
   }
   return copy;
+}
+
+export async function getBlockById(recordId: string): Promise<LinkPageBlockRecord | null> {
+  const row = await sbSelectByPublicId<BlockRow>(BLOCKS_TABLE, recordId);
+  return row ? mapBlock(row) : null;
 }

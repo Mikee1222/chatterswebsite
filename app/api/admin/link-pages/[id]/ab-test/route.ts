@@ -3,9 +3,8 @@ import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { updateRecord, invalidateListRecordsReadCacheForTable } from "@/lib/airtable-server";
-import { LINK_PAGES_TABLE } from "@/lib/link-pages-schema";
-import { getLinkPageById, getLinkPageByPageId } from "@/services/link-pages";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { getLinkPageById, getLinkPageByPageId, updateLinkPage } from "@/services/link-pages";
 import {
   createAbVariantPage,
   getAbTestResults,
@@ -51,11 +50,12 @@ export async function POST(request: Request, ctx: Ctx) {
   try {
     if (body.action === "create_variant") {
       const variant = await createAbVariantPage(id);
-      await updateRecord(LINK_PAGES_TABLE, id, {
-        ab_variant_id: variant.page_id,
-        updated_at: new Date().toISOString(),
-      });
-      invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
+      await updateLinkPage(id, { ab_variant_id: variant.page_id });
+      if (!isSupabaseBackend()) {
+        const { invalidateListRecordsReadCacheForTable } = await import("@/lib/airtable-server");
+        const { LINK_PAGES_TABLE } = await import("@/lib/link-pages-schema");
+        invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
+      }
       return NextResponse.json({ variant }, { status: 201 });
     }
 

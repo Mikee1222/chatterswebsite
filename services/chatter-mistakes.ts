@@ -315,6 +315,23 @@ export async function createMistakeRow(input: CreateMistakeInput): Promise<{ id:
   return { id: created.id, mistake_id };
 }
 
+export async function uploadMistakeScreenshot(
+  recordId: string,
+  file: { name: string; type: string; bytes: Uint8Array }
+): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./chatter-mistakes-supabase")).uploadMistakeScreenshot(recordId, file);
+  }
+  const { uploadAirtableAttachment } = await import("@/lib/airtable-upload-attachment");
+  await uploadAirtableAttachment({
+    recordId,
+    fieldName: "screenshot",
+    filename: file.name,
+    contentType: file.type,
+    bytes: file.bytes,
+  });
+}
+
 export async function updateMistakeRow(recordId: string, fields: Record<string, unknown>): Promise<MistakeRecord> {
   if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).updateMistakeRow(recordId, fields);
   const now = new Date().toISOString();
