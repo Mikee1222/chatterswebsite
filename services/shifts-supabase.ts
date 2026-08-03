@@ -7,9 +7,11 @@ import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { devLog } from "@/lib/dev-log";
 import {
   publicId,
+  requireSbUuidsOrEmpty,
   sbAirtableIdsForUuids,
   sbDeleteByPublicId,
   sbInsert,
+  sbInsertMany,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -470,13 +472,13 @@ export type ShiftModelWriteFields = Partial<{
 async function shiftModelWriteToPg(fields: ShiftModelWriteFields): Promise<Record<string, unknown>> {
   const patch: Record<string, unknown> = { ...fields };
   if (fields.shift !== undefined) {
-    patch.shift = await sbUuidsForAirtableIds("shifts", fields.shift);
+    patch.shift = await requireSbUuidsOrEmpty("shifts", fields.shift, "shift");
   }
   if (fields.model !== undefined) {
-    patch.model = await sbUuidsForAirtableIds("modelss", fields.model);
+    patch.model = await requireSbUuidsOrEmpty("modelss", fields.model, "model");
   }
   if (fields.chatter !== undefined) {
-    patch.chatter = await sbUuidsForAirtableIds("users", fields.chatter);
+    patch.chatter = await requireSbUuidsOrEmpty("users", fields.chatter, "chatter");
   }
   return patch;
 }
@@ -492,8 +494,37 @@ export async function batchCreateShiftModels(
   rows: ShiftModelWriteFields[]
 ): Promise<{ id: string }[]> {
   if (rows.length === 0) return [];
-  const created = await Promise.all(rows.map((fields) => createShiftModel(fields)));
-  return created.map((r) => ({ id: r.id }));
+  const allShiftIds = [...new Set(rows.flatMap((r) => r.shift ?? []).filter(Boolean))];
+  const allModelIds = [...new Set(rows.flatMap((r) => r.model ?? []).filter(Boolean))];
+  const allChatterIds = [...new Set(rows.flatMap((r) => r.chatter ?? []).filter(Boolean))];
+  const [shiftUuids, modelUuids, chatterUuids] = await Promise.all([
+    requireSbUuidsOrEmpty("shifts", allShiftIds, "shift"),
+    requireSbUuidsOrEmpty("modelss", allModelIds, "model"),
+    requireSbUuidsOrEmpty("users", allChatterIds, "chatter"),
+  ]);
+  const shiftMap = new Map(allShiftIds.map((id, i) => [id, shiftUuids[i]!]));
+  const modelMap = new Map(allModelIds.map((id, i) => [id, modelUuids[i]!]));
+  const chatterMap = new Map(allChatterIds.map((id, i) => [id, chatterUuids[i]!]));
+  const now = new Date().toISOString();
+
+  function mapLinks(ids: string[] | undefined, map: Map<string, string>): string[] | undefined {
+    if (ids === undefined) return undefined;
+    return ids.map((id) => map.get(id)).filter((u): u is string => Boolean(u));
+  }
+
+  const pgRows = rows.map((fields) => {
+    const row: Record<string, unknown> = { created_at: now };
+    for (const [k, v] of Object.entries(fields)) {
+      if (k === "shift") row.shift = mapLinks(fields.shift, shiftMap);
+      else if (k === "model") row.model = mapLinks(fields.model, modelMap);
+      else if (k === "chatter") row.chatter = mapLinks(fields.chatter, chatterMap);
+      else row[k] = v;
+    }
+    return row;
+  });
+
+  const created = await sbInsertMany<ShiftModelRow>(SHIFT_MODELS_TABLE, pgRows);
+  return created.map((r) => ({ id: publicId(r) }));
 }
 
 export async function updateShiftModel(recordId: string, fields: Partial<ShiftModelWriteFields>) {
@@ -506,7 +537,38 @@ export async function batchUpdateShiftModels(
   updates: { id: string; fields: Partial<ShiftModelWriteFields> }[]
 ): Promise<void> {
   if (updates.length === 0) return;
-  await Promise.all(updates.map((u) => updateShiftModel(u.id, u.fields)));
+  const allShiftIds = [
+    ...new Set(updates.flatMap((u) => u.fields.shift ?? []).filter(Boolean)),
+  ];
+  const allModelIds = [
+    ...new Set(updates.flatMap((u) => u.fields.model ?? []).filter(Boolean)),
+  ];
+  const allChatterIds = [
+    ...new Set(updates.flatMap((u) => u.fields.chatter ?? []).filter(Boolean)),
+  ];
+  const [shiftUuids, modelUuids, chatterUuids] = await Promise.all([
+    requireSbUuidsOrEmpty("shifts", allShiftIds, "shift"),
+    requireSbUuidsOrEmpty("modelss", allModelIds, "model"),
+    requireSbUuidsOrEmpty("users", allChatterIds, "chatter"),
+  ]);
+  const shiftMap = new Map(allShiftIds.map((id, i) => [id, shiftUuids[i]!]));
+  const modelMap = new Map(allModelIds.map((id, i) => [id, modelUuids[i]!]));
+  const chatterMap = new Map(allChatterIds.map((id, i) => [id, chatterUuids[i]!]));
+
+  function mapLinks(ids: string[] | undefined, map: Map<string, string>): string[] | undefined {
+    if (ids === undefined) return undefined;
+    return ids.map((id) => map.get(id)).filter((u): u is string => Boolean(u));
+  }
+
+  await Promise.all(
+    updates.map(async (u) => {
+      const patch: Record<string, unknown> = { ...u.fields };
+      if (u.fields.shift !== undefined) patch.shift = mapLinks(u.fields.shift, shiftMap);
+      if (u.fields.model !== undefined) patch.model = mapLinks(u.fields.model, modelMap);
+      if (u.fields.chatter !== undefined) patch.chatter = mapLinks(u.fields.chatter, chatterMap);
+      await sbUpdateByPublicId<ShiftModelRow>(SHIFT_MODELS_TABLE, u.id, patch);
+    })
+  );
 }
 
 export async function deleteShiftModel(recordId: string): Promise<void> {

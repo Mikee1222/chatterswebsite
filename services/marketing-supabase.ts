@@ -6,10 +6,11 @@
 import { joinPhoneFileLinks, parsePhoneFileLinks } from "@/lib/marketing-helpers";
 import { deriveShadowbanReportType } from "@/lib/shadowban-helpers";
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbSelectEq,
@@ -220,35 +221,90 @@ function mapPlatform(row: PlatformRow): MarketingPlatform {
   };
 }
 
+async function mapAccounts(
+  rows: AccountRow[],
+  phoneNameById?: Record<string, string>
+): Promise<SocialAccount[]> {
+  if (!rows.length) return [];
+  const phoneAt = await sbResolveUuidToAirtableMap(
+    T_PHONES,
+    rows.map((r) => r.linked_phone)
+  );
+  return Promise.all(
+    rows.map(async (row) => {
+      const at = row.account_type === "secondary" ? "secondary" : "main";
+      const reg = row.region === "USA" || row.region === "Greek" ? row.region : "Global";
+      const linkedPhoneId = firstMappedLinkedId(row.linked_phone, phoneAt);
+      const screenshots = await urlsToAttachments(row.shadowban_screenshot);
+      return {
+        id: publicId(row),
+        account_id: row.account_id ?? publicId(row),
+        model_id: row.model_id ?? "",
+        model_name: row.model_name ?? "",
+        platform: row.platform ?? "",
+        account_link: row.account_link ?? "",
+        username: row.username ?? "",
+        account_type: at,
+        region: reg,
+        assigned_va_id: row.assigned_va_id ?? "",
+        assigned_va_name: row.assigned_va_name ?? "",
+        notes: row.notes ?? "",
+        active: row.active !== false,
+        last_updated: row.last_updated ?? "",
+        created_at: row.created_at ?? "",
+        account_status: asAccountStatus(row.account_status),
+        shadowban_reported_at: row.shadowban_reported_at ?? null,
+        shadowban_reported_by: row.shadowban_reported_by ?? "",
+        shadowban_screenshot: screenshots.map((a) => ({ url: a.url })),
+        password: row.account_password ?? "",
+        linked_phone_id: linkedPhoneId,
+        linked_phone_name: linkedPhoneId ? (phoneNameById?.[linkedPhoneId] ?? "") : "",
+      } satisfies SocialAccount;
+    })
+  );
+}
+
 async function mapAccount(row: AccountRow, phoneNameById?: Record<string, string>): Promise<SocialAccount> {
-  const at = row.account_type === "secondary" ? "secondary" : "main";
-  const reg = row.region === "USA" || row.region === "Greek" ? row.region : "Global";
-  const linkedPhoneId = (await sbFirstLinkedAirtableId(T_PHONES, row.linked_phone)) ?? "";
-  const screenshots = await urlsToAttachments(row.shadowban_screenshot);
-  return {
-    id: publicId(row),
-    account_id: row.account_id ?? publicId(row),
-    model_id: row.model_id ?? "",
-    model_name: row.model_name ?? "",
-    platform: row.platform ?? "",
-    account_link: row.account_link ?? "",
-    username: row.username ?? "",
-    account_type: at,
-    region: reg,
-    assigned_va_id: row.assigned_va_id ?? "",
-    assigned_va_name: row.assigned_va_name ?? "",
-    notes: row.notes ?? "",
-    active: row.active !== false,
-    last_updated: row.last_updated ?? "",
-    created_at: row.created_at ?? "",
-    account_status: asAccountStatus(row.account_status),
-    shadowban_reported_at: row.shadowban_reported_at ?? null,
-    shadowban_reported_by: row.shadowban_reported_by ?? "",
-    shadowban_screenshot: screenshots.map((a) => ({ url: a.url })),
-    password: row.account_password ?? "",
-    linked_phone_id: linkedPhoneId,
-    linked_phone_name: linkedPhoneId ? (phoneNameById?.[linkedPhoneId] ?? "") : "",
-  };
+  const [mapped] = await mapAccounts([row], phoneNameById);
+  return mapped!;
+}
+
+async function mapPhones(
+  rows: PhoneRow[],
+  vaNameById: Record<string, string>,
+  counts: Record<string, number>
+): Promise<Phone[]> {
+  if (!rows.length) return [];
+  const vaAt = await sbResolveUuidToAirtableMap(
+    "users",
+    rows.map((r) => r.assigned_va)
+  );
+  return Promise.all(
+    rows.map(async (row) => {
+      const assignedVaId = firstMappedLinkedId(row.assigned_va, vaAt);
+      const photosRaw = await urlsToAttachments(row.phone_photos);
+      const phone_photos: PhonePhoto[] = photosRaw.map((p) => ({
+        url: p.url,
+        ...(p.filename ? { filename: p.filename } : {}),
+      }));
+      return {
+        id: publicId(row),
+        device_name: row.device_name ?? "",
+        icloud_email: row.icloud_email ?? "",
+        icloud_password: row.icloud_password ?? "",
+        recovery_email: row.recovery_email ?? "",
+        recovery_phone: row.recovery_phone ?? "",
+        assigned_va_id: assignedVaId,
+        assigned_va_name: assignedVaId ? (vaNameById[assignedVaId] ?? "") : "",
+        phone_photos,
+        notes: row.notes ?? "",
+        file_links: parsePhoneFileLinks(row.file_links),
+        active: row.active !== false,
+        created_at: row.created_at ?? "",
+        linked_account_count: counts[publicId(row)] ?? 0,
+      } satisfies Phone;
+    })
+  );
 }
 
 async function mapPhone(
@@ -256,28 +312,8 @@ async function mapPhone(
   vaNameById: Record<string, string>,
   linkedCount: number
 ): Promise<Phone> {
-  const assignedVaId = (await sbFirstLinkedAirtableId("users", row.assigned_va)) ?? "";
-  const photosRaw = await urlsToAttachments(row.phone_photos);
-  const phone_photos: PhonePhoto[] = photosRaw.map((p) => ({
-    url: p.url,
-    ...(p.filename ? { filename: p.filename } : {}),
-  }));
-  return {
-    id: publicId(row),
-    device_name: row.device_name ?? "",
-    icloud_email: row.icloud_email ?? "",
-    icloud_password: row.icloud_password ?? "",
-    recovery_email: row.recovery_email ?? "",
-    recovery_phone: row.recovery_phone ?? "",
-    assigned_va_id: assignedVaId,
-    assigned_va_name: assignedVaId ? (vaNameById[assignedVaId] ?? "") : "",
-    phone_photos,
-    notes: row.notes ?? "",
-    file_links: parsePhoneFileLinks(row.file_links),
-    active: row.active !== false,
-    created_at: row.created_at ?? "",
-    linked_account_count: linkedCount,
-  };
+  const [mapped] = await mapPhones([row], vaNameById, { [publicId(row)]: linkedCount });
+  return mapped!;
 }
 
 async function mapShadowbanReport(row: ShadowbanRow): Promise<ShadowbanReport> {
@@ -393,7 +429,7 @@ export async function getAllAccounts(): Promise<SocialAccount[]> {
     sbSelectAll<AccountRow>(T_ACCOUNTS),
     buildPhoneNameById(),
   ]);
-  const mapped = await Promise.all(rows.map((r) => mapAccount(r, phoneNameById)));
+  const mapped = await mapAccounts(rows, phoneNameById);
   return mapped.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 }
 
@@ -411,8 +447,9 @@ export async function getAccountsByModel(modelId: string): Promise<SocialAccount
   if (!mid) return [];
   const rows = await sbSelectEq<AccountRow>(T_ACCOUNTS, "model_id", mid);
   const phoneNameById = await buildPhoneNameById();
-  const mapped = await Promise.all(
-    rows.filter((r) => r.active !== false).map((r) => mapAccount(r, phoneNameById))
+  const mapped = await mapAccounts(
+    rows.filter((r) => r.active !== false),
+    phoneNameById
   );
   return mapped.sort((a, b) => (a.created_at || "").localeCompare(b.created_at || ""));
 }
@@ -499,9 +536,7 @@ export async function getPhones(preloadedAccounts?: SocialAccount[]): Promise<Ph
     buildVaNameById(),
   ]);
   const counts = countAccountsByPhoneId(accounts);
-  const mapped = await Promise.all(
-    phoneRows.map((row) => mapPhone(row, vaNameById, counts[publicId(row)] ?? 0))
-  );
+  const mapped = await mapPhones(phoneRows, vaNameById, counts);
   return mapped.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 }
 

@@ -1,7 +1,13 @@
 /**
  * Supabase backend for services/model-tasks.ts
  */
-import { publicId, sbFirstLinkedAirtableId, sbSelectAll, type SbRow } from "@/lib/supabase-data";
+import {
+  firstMappedLinkedId,
+  publicId,
+  sbResolveUuidToAirtableMap,
+  sbSelectAll,
+  type SbRow,
+} from "@/lib/supabase-data";
 import type { ModelTaskRecord, ModelTaskStatus } from "@/types";
 
 const TABLE = "model_tasks";
@@ -30,12 +36,17 @@ function toDateOnlyYmd(raw: string | null | undefined): string | null {
   return d.toISOString().slice(0, 10);
 }
 
-async function mapRow(row: Row): Promise<ModelTaskRecord> {
+function mapRowSync(
+  row: Row,
+  modelAt: Map<string, string>,
+  scheduleAt: Map<string, string>
+): ModelTaskRecord {
   const typeRaw = row.task_type ?? row.type ?? "";
   const statusRaw = row.task_status ?? row.status;
+  const scheduleLinked = row.linked_schedule_item ?? row.schedule_item;
   return {
     id: publicId(row),
-    model_id: (await sbFirstLinkedAirtableId("modelss", row.model)) || String(row.model_id ?? ""),
+    model_id: firstMappedLinkedId(row.model, modelAt) || String(row.model_id ?? ""),
     title: row.title ?? "",
     type: typeof typeRaw === "string" ? typeRaw : "",
     required: Boolean(row.is_required ?? row.required),
@@ -43,8 +54,7 @@ async function mapRow(row: Row): Promise<ModelTaskRecord> {
     description: row.description ?? "",
     description_en: row.description_en ?? null,
     description_es: row.description_es ?? null,
-    linked_schedule_item_id:
-      (await sbFirstLinkedAirtableId("model_schedule", row.linked_schedule_item ?? row.schedule_item)) ?? null,
+    linked_schedule_item_id: firstMappedLinkedId(scheduleLinked, scheduleAt) || null,
     completion_notes: row.completion_notes ?? null,
     due_date: row.date ? toDateOnlyYmd(row.date) : null,
     created_at: row.created_at ?? "",
@@ -52,10 +62,22 @@ async function mapRow(row: Row): Promise<ModelTaskRecord> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<ModelTaskRecord[]> {
+  if (!rows.length) return [];
+  const [modelAt, scheduleAt] = await Promise.all([
+    sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.model)),
+    sbResolveUuidToAirtableMap(
+      "model_schedule",
+      rows.map((r) => r.linked_schedule_item ?? r.schedule_item)
+    ),
+  ]);
+  return rows.map((r) => mapRowSync(r, modelAt, scheduleAt));
+}
+
 export async function listModelTasks(modelId: string): Promise<ModelTaskRecord[]> {
   if (!modelId) return [];
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped.filter((r) => r.model_id === modelId)
     .sort((a,b) => b.created_at.localeCompare(a.created_at));
 }

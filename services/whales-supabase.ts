@@ -3,10 +3,11 @@
  */
 
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbSelectEq,
@@ -55,20 +56,19 @@ type Row = SbRow & {
   added_by?: string[] | null;
 };
 
-async function mapRow(row: Row): Promise<Whale> {
-  const [assigned_chatter_id, assigned_model_id, created_by] = await Promise.all([
-    sbFirstLinkedAirtableId("users", row.assigned_chatter),
-    sbFirstLinkedAirtableId("modelss", row.assigned_model),
-    sbFirstLinkedAirtableId("users", row.added_by),
-  ]);
+function mapRowSync(
+  row: Row,
+  userAt: Map<string, string>,
+  modelAt: Map<string, string>
+): Whale {
   return {
     id: publicId(row),
     whale_id: row.whale_id ?? "",
     username: row.username ?? "",
     platform: (row.platform as Whale["platform"]) ?? "other",
-    assigned_chatter_id: assigned_chatter_id ?? "",
+    assigned_chatter_id: firstMappedLinkedId(row.assigned_chatter, userAt),
     assigned_chatter_name: row.assigned_chatter_name ?? "",
-    assigned_model_id: assigned_model_id ?? "",
+    assigned_model_id: firstMappedLinkedId(row.assigned_model, modelAt),
     assigned_model_name: row.assigned_model_name ?? "",
     relationship_status: (row.relationship_status as Whale["relationship_status"]) ?? "",
     hours_active: Array.isArray(row.hours_active) ? row.hours_active : [],
@@ -93,8 +93,25 @@ async function mapRow(row: Row): Promise<Whale> {
     created_at: row.created_at ?? "",
     updated_at: row.updated_at ?? "",
     last_updated_by: row.last_updated_by ?? "",
-    created_by: created_by ?? "",
+    created_by: firstMappedLinkedId(row.added_by, userAt),
   };
+}
+
+async function mapRows(rows: Row[]): Promise<Whale[]> {
+  if (!rows.length) return [];
+  const [userAt, modelAt] = await Promise.all([
+    sbResolveUuidToAirtableMap("users", [
+      ...rows.map((r) => r.assigned_chatter),
+      ...rows.map((r) => r.added_by),
+    ]),
+    sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.assigned_model)),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAt, modelAt));
+}
+
+async function mapRow(row: Row): Promise<Whale> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 function matchesFilters(w: Whale, filters: WhalesListFilters): boolean {
@@ -173,7 +190,7 @@ export async function listWhales(_params: { filterByFormula?: string; pageSize?:
 
 export async function listAllWhales(_filterByFormula?: string): Promise<Whale[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  return Promise.all(rows.map(mapRow));
+  return mapRows(rows);
 }
 
 export async function countWhalesWithoutChatter(): Promise<number> {

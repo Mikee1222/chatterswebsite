@@ -5,10 +5,12 @@
  * for the sub-tables that only client-portal touches.
  */
 import {
+  mapLinkedIds,
   publicId,
   sbAirtableIdsForUuids,
   sbDeleteByPublicId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -261,12 +263,12 @@ function mapMethod(row: MethodRow): PaymentMethodRecord {
   };
 }
 
-async function mapSubmission(row: SubmissionRow): Promise<PaymentSubmissionRecord> {
-  const [billing_cycle, client, selected_payment_method] = await Promise.all([
-    sbAirtableIdsForUuids(CYCLES, row.billing_cycle),
-    sbAirtableIdsForUuids(CLIENTS, row.client),
-    sbAirtableIdsForUuids(METHODS, row.selected_payment_method),
-  ]);
+function mapSubmissionSync(
+  row: SubmissionRow,
+  cycleAt: Map<string, string>,
+  clientAt: Map<string, string>,
+  methodAt: Map<string, string>
+): PaymentSubmissionRecord {
   const proofAttachment = Array.isArray(row.proof_attachment)
     ? row.proof_attachment
         .filter((a) => typeof a.url === "string")
@@ -274,9 +276,9 @@ async function mapSubmission(row: SubmissionRow): Promise<PaymentSubmissionRecor
     : undefined;
   return {
     id: publicId(row),
-    billing_cycle,
-    client,
-    selected_payment_method,
+    billing_cycle: mapLinkedIds(row.billing_cycle, cycleAt),
+    client: mapLinkedIds(row.client, clientAt),
+    selected_payment_method: mapLinkedIds(row.selected_payment_method, methodAt),
     submitted_amount: typeof row.submitted_amount === "number" ? row.submitted_amount : 0,
     submitted_currency: row.submitted_currency ?? "",
     submitted_datetime: row.submitted_datetime ?? "",
@@ -287,6 +289,21 @@ async function mapSubmission(row: SubmissionRow): Promise<PaymentSubmissionRecor
     status: (row.status as PaymentSubmissionRecord["status"]) ?? "pending_review",
     admin_note: typeof row.admin_note === "string" ? row.admin_note : undefined,
   };
+}
+
+async function mapSubmissions(rows: SubmissionRow[]): Promise<PaymentSubmissionRecord[]> {
+  if (!rows.length) return [];
+  const [cycleAt, clientAt, methodAt] = await Promise.all([
+    sbResolveUuidToAirtableMap(CYCLES, rows.map((r) => r.billing_cycle)),
+    sbResolveUuidToAirtableMap(CLIENTS, rows.map((r) => r.client)),
+    sbResolveUuidToAirtableMap(METHODS, rows.map((r) => r.selected_payment_method)),
+  ]);
+  return rows.map((r) => mapSubmissionSync(r, cycleAt, clientAt, methodAt));
+}
+
+async function mapSubmission(row: SubmissionRow): Promise<PaymentSubmissionRecord> {
+  const [mapped] = await mapSubmissions([row]);
+  return mapped!;
 }
 
 function mapInvoice(row: InvoiceRow): InvoiceRecord {
@@ -511,7 +528,7 @@ export async function getPendingPaymentSubmissionsForClient(
 ): Promise<PaymentSubmissionRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
   const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
-  const mapped = await Promise.all(rows.map(mapSubmission));
+  const mapped = await mapSubmissions(rows);
   return mapped
     .filter((s) => s.client.some((c) => linked.includes(c)) && s.status === "pending_review")
     .sort((a, b) => (a.submitted_datetime < b.submitted_datetime ? 1 : -1));
@@ -695,7 +712,7 @@ export async function getPaymentSubmissionsForClient(
 ): Promise<PaymentSubmissionRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
   const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
-  const mapped = await Promise.all(rows.map(mapSubmission));
+  const mapped = await mapSubmissions(rows);
   return mapped
     .filter((sub) => sub.client.some((c) => linked.includes(c)))
     .sort((a, b) => (a.submitted_datetime < b.submitted_datetime ? 1 : -1));

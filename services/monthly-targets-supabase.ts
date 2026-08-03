@@ -2,9 +2,10 @@
  * Supabase backend for services/monthly-targets.ts
  */
 import {
+  firstMappedLinkedId,
   publicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
@@ -29,12 +30,12 @@ type Row = SbRow & {
   updated_at?: string | null;
 };
 
-async function mapRow(row: Row): Promise<MonthlyTarget> {
+function mapRowSync(row: Row, userAt: Map<string, string>): MonthlyTarget {
   return {
     id: publicId(row),
     target_id: row.target_id ?? "",
     month_key: row.month_key ?? "",
-    team_member_id: (await sbFirstLinkedAirtableId("users", row.team_member)) ?? "",
+    team_member_id: firstMappedLinkedId(row.team_member, userAt),
     team_member_name: String(row.team_member_name ?? ""),
     role: row.role ?? "chatter",
     target_amount_usd: Number(row.target_amount_usd ?? 0),
@@ -45,12 +46,23 @@ async function mapRow(row: Row): Promise<MonthlyTarget> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<MonthlyTarget[]> {
+  if (!rows.length) return [];
+  const userAt = await sbResolveUuidToAirtableMap("users", rows.map((r) => r.team_member));
+  return rows.map((r) => mapRowSync(r, userAt));
+}
+
+async function mapRow(row: Row): Promise<MonthlyTarget> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function listMonthlyTargets(
   _params: ListParams & { filterByFormula?: string } = {}
 ): Promise<MonthlyTarget[]> {
   void _params;
   const rows = await sbSelectAll<Row>(TABLE);
-  return Promise.all(rows.map(mapRow));
+  return mapRows(rows);
 }
 
 export async function getMonthlyTargetByTeamMemberAndMonth(

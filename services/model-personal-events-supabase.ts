@@ -2,7 +2,9 @@
  * Supabase backend for services/model-personal-events.ts
  */
 import {
-  publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
+  sbResolveUuidToAirtableMap,
+  firstMappedLinkedId,
+  publicId, sbDeleteByPublicId, sbInsert,
   sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelPersonalEvent, ModelPersonalEventType } from "@/types";
@@ -22,11 +24,11 @@ function asEventType(raw: unknown): ModelPersonalEventType {
   return EVENT_TYPES.includes(v as ModelPersonalEventType) ? (v as ModelPersonalEventType) : "custom";
 }
 
-async function mapRow(row: Row): Promise<ModelPersonalEvent> {
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelPersonalEvent {
   return {
     id: publicId(row),
     event_id: String(row.event_id ?? "").trim(),
-    model_id: (await sbFirstLinkedAirtableId("modelss", row.model_id)) ?? "",
+    model_id: firstMappedLinkedId(row.model_id, modelAt),
     model_user_id: String(row.model_user_id ?? "").trim(),
     event_type: asEventType(row.event_type),
     custom_label: String(row.custom_label ?? "").trim(),
@@ -38,11 +40,25 @@ async function mapRow(row: Row): Promise<ModelPersonalEvent> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<ModelPersonalEvent[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap(
+    "modelss",
+    rows.map((r) => r.model_id)
+  );
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelPersonalEvent> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function listModelPersonalEventsForModel(modelRecordId: string): Promise<ModelPersonalEvent[]> {
   const id = modelRecordId?.trim();
   if (!id) return [];
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped.filter((r) => r.model_id === id).sort((a,b) => a.event_date.localeCompare(b.event_date));
 }
 
@@ -51,7 +67,7 @@ export async function listModelPersonalEventsInDateRange(fromYmd: string, toYmd:
   const to = toYmd.trim().slice(0, 10);
   if (!from || !to) return [];
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped.filter((r) => r.event_date && r.event_date >= from && r.event_date <= to)
     .sort((a,b) => a.event_date.localeCompare(b.event_date));
 }

@@ -3,9 +3,10 @@
  */
 
 import {
+  firstMappedLinkedId,
   publicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbSelectEq,
@@ -49,7 +50,7 @@ type Row = SbRow & {
   payment_threshold_eur?: number | null;
 };
 
-async function mapRow(row: Row): Promise<ModelRecord> {
+function mapRowSync(row: Row, userAt: Map<string, string>): ModelRecord {
   return {
     id: publicId(row),
     model_id: row.model_id ?? "",
@@ -58,11 +59,11 @@ async function mapRow(row: Row): Promise<ModelRecord> {
     platform: (row.platform as ModelRecord["platform"]) ?? "other",
     status: row.status ?? "",
     current_status: (row.current_status === "occupied" ? "occupied" : "free") as ModelRecord["current_status"],
-    current_chatter_id: (await sbFirstLinkedAirtableId("users", row.current_chatter)) ?? "",
+    current_chatter_id: firstMappedLinkedId(row.current_chatter, userAt),
     current_chatter_name: row.current_chatter_name ?? "",
     current_shift_id: row.current_shift_id ?? "",
     entered_at: row.entered_at ?? null,
-    last_chatter_id: (await sbFirstLinkedAirtableId("users", row.last_chatter)) ?? "",
+    last_chatter_id: firstMappedLinkedId(row.last_chatter, userAt),
     last_chatter_name: row.last_chatter_name ?? "",
     last_exit_at: row.last_exit_at ?? null,
     priority: row.priority ?? "",
@@ -81,6 +82,20 @@ async function mapRow(row: Row): Promise<ModelRecord> {
     payment_threshold_eur:
       typeof row.payment_threshold_eur === "number" ? Number(row.payment_threshold_eur) : undefined,
   };
+}
+
+async function mapRows(rows: Row[]): Promise<ModelRecord[]> {
+  if (!rows.length) return [];
+  const userAt = await sbResolveUuidToAirtableMap("users", [
+    ...rows.map((r) => r.current_chatter),
+    ...rows.map((r) => r.last_chatter),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAt));
+}
+
+async function mapRow(row: Row): Promise<ModelRecord> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 function filterCompleteModels(modelss: ModelRecord[]): ModelRecord[] {
@@ -126,7 +141,7 @@ export async function listActiveModelsForAssignment(): Promise<ModelRecord[]> {
 
 export async function listModelss(): Promise<{ modelss: ModelRecord[]; offset?: string }> {
   const rows = await sbSelectAll<Row>(TABLE);
-  const modelss = filterCompleteModels(await Promise.all(rows.map(mapRow)));
+  const modelss = filterCompleteModels(await mapRows(rows));
   return { modelss };
 }
 
@@ -145,7 +160,7 @@ export async function listAllModelss(filterByFormula?: string): Promise<ModelRec
       );
     }
   }
-  return filterCompleteModels(await Promise.all(rows.map(mapRow)));
+  return filterCompleteModels(await mapRows(rows));
 }
 
 export async function listOperationalModelsWithAccounts(): Promise<ModelRecord[]> {

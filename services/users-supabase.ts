@@ -4,9 +4,10 @@
  */
 
 import {
+  firstMappedLinkedId,
   publicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbSelectEq,
@@ -73,7 +74,7 @@ function mapVaTypeField(raw: unknown): VaType | null {
   return null;
 }
 
-async function mapRow(row: Row, includePasswordHash = false): Promise<UserRecord> {
+function mapRowSync(row: Row, modelAt: Map<string, string>, includePasswordHash = false): UserRecord {
   const out: UserRecord = {
     id: publicId(row),
     user_id: row.user_id ?? "",
@@ -87,7 +88,7 @@ async function mapRow(row: Row, includePasswordHash = false): Promise<UserRecord
     updated_at: row.updated_at ?? "",
   };
   if (includePasswordHash && row.password_hash) out.password_hash = row.password_hash;
-  const linkedModelId = await sbFirstLinkedAirtableId("modelss", row.linked_model);
+  const linkedModelId = firstMappedLinkedId(row.linked_model, modelAt);
   if (linkedModelId) out.linked_model_id = linkedModelId;
   if (typeof row.language_preference === "string" && row.language_preference.trim()) {
     out.language_preference = row.language_preference.trim();
@@ -107,8 +108,7 @@ async function mapRow(row: Row, includePasswordHash = false): Promise<UserRecord
   if (typeof row.compensation_value === "number" && !Number.isNaN(row.compensation_value)) {
     out.compensation_value = Number(row.compensation_value);
   }
-  const contractAttachments = await parseContractAttachmentsFromUrls(row.contract_attachments);
-  if (contractAttachments.length > 0) out.contract_attachments = contractAttachments;
+  // contract attachments resolved async in mapRows
   if (row.collaboration_start_date) {
     out.collaboration_start_date = String(row.collaboration_start_date).slice(0, 10);
   }
@@ -118,19 +118,41 @@ async function mapRow(row: Row, includePasswordHash = false): Promise<UserRecord
   return out;
 }
 
+async function mapRows(rows: Row[], includePasswordHash = false): Promise<UserRecord[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap(
+    "modelss",
+    rows.map((r) => r.linked_model)
+  );
+  const mapped = rows.map((r) => mapRowSync(r, modelAt, includePasswordHash));
+  await Promise.all(
+    mapped.map(async (out, i) => {
+      const row = rows[i]!;
+      const contractAttachments = await parseContractAttachmentsFromUrls(row.contract_attachments);
+      if (contractAttachments.length > 0) out.contract_attachments = contractAttachments;
+    })
+  );
+  return mapped;
+}
+
+async function mapRow(row: Row, includePasswordHash = false): Promise<UserRecord> {
+  const [mapped] = await mapRows([row], includePasswordHash);
+  return mapped!;
+}
+
 function genUserId(): string {
   return `user_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
 export async function listUsers(): Promise<{ users: UserRecord[]; offset?: string }> {
   const rows = await sbSelectAll<Row>(TABLE);
-  const users = await Promise.all(rows.map((r) => mapRow(r)));
+  const users = await mapRows(rows);
   return { users };
 }
 
 export async function listAllUsers(): Promise<UserRecord[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  return Promise.all(rows.map((r) => mapRow(r)));
+  return mapRows(rows);
 }
 
 export async function listActiveUsers(): Promise<UserRecord[]> {

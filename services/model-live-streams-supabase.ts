@@ -3,9 +3,10 @@
  */
 
 import {
+  firstMappedLinkedId,
   publicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -32,11 +33,10 @@ type Row = SbRow & {
   updated_at?: string | null;
 };
 
-async function mapRow(row: Row): Promise<ModelLiveStreamRecord> {
-  const model_id = (await sbFirstLinkedAirtableId("modelss", row.model)) ?? "";
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelLiveStreamRecord {
   return {
     id: publicId(row),
-    model_id,
+    model_id: firstMappedLinkedId(row.model, modelAt),
     date: String(row.date ?? "").slice(0, 10),
     planned_start: row.planned_start ?? null,
     planned_end: row.planned_end ?? null,
@@ -50,6 +50,17 @@ async function mapRow(row: Row): Promise<ModelLiveStreamRecord> {
     created_at: row.created_at ?? "",
     updated_at: row.updated_at ?? "",
   };
+}
+
+async function mapRows(rows: Row[]): Promise<ModelLiveStreamRecord[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.model));
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelLiveStreamRecord> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 export function isActiveLiveStreamRecord(
@@ -77,7 +88,7 @@ export async function listAllModelLiveStreamsInRange(opts?: {
   toDate?: string;
 }): Promise<ModelLiveStreamRecord[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  let mapped = await Promise.all(rows.map(mapRow));
+  let mapped = await mapRows(rows);
   if (opts?.fromDate) mapped = mapped.filter((r) => r.date >= opts.fromDate!);
   if (opts?.toDate) mapped = mapped.filter((r) => r.date <= opts.toDate!);
   mapped.sort(

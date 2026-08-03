@@ -2,8 +2,9 @@
  * Supabase backend for services/model-time-off-requests.ts
  */
 import {
-  publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, sbSelectByPublicId, requireSbUuids, type SbRow,
+  firstMappedLinkedId,
+  publicId, sbDeleteByPublicId, sbInsert,
+  sbResolveUuidToAirtableMap, sbSelectAll, sbSelectByPublicId, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelTimeOffRequest } from "@/types";
 
@@ -32,11 +33,11 @@ function rangeOverlaps(start: string, end: string, fromYmd: string, toYmd: strin
   return start <= toYmd && end >= fromYmd;
 }
 
-async function mapRow(row: Row): Promise<ModelTimeOffRequest> {
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelTimeOffRequest {
   return {
     id: publicId(row),
     request_id: row.request_id ?? "",
-    model_id: (await sbFirstLinkedAirtableId("modelss", row.model)) || String(row.model_id ?? ""),
+    model_id: firstMappedLinkedId(row.model, modelAt) || String(row.model_id ?? ""),
     model_name: row.model_name ?? "",
     start_date: sliceYmd(row.start_date),
     end_date: sliceYmd(row.end_date),
@@ -46,13 +47,24 @@ async function mapRow(row: Row): Promise<ModelTimeOffRequest> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<ModelTimeOffRequest[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.model));
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelTimeOffRequest> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function getModelTimeOffRequestsForRange(
   modelId: string, fromYmd: string, toYmd: string
 ): Promise<ModelTimeOffRequest[]> {
   if (!modelId || !fromYmd || !toYmd) return [];
   try {
     const rows = await sbSelectAll<Row>(TABLE);
-    const mapped = await Promise.all(rows.map(mapRow));
+    const mapped = await mapRows(rows);
     return mapped.filter((r) => r.model_id === modelId && rangeOverlaps(r.start_date, r.end_date, fromYmd, toYmd));
   } catch (error) {
     console.warn("[model-time-off-requests] supabase fallback empty", error);

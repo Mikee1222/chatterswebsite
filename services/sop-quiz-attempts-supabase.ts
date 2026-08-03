@@ -2,8 +2,9 @@
  * Supabase backend for services/sop-quiz-attempts.ts
  */
 import {
-  publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, requireSbUuids, type SbRow,
+  firstMappedLinkedId,
+  publicId, sbDeleteByPublicId, sbInsert,
+  sbResolveUuidToAirtableMap, sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { SopQuizAttempt } from "@/types";
 
@@ -21,18 +22,38 @@ function num(v: unknown): number {
   return 0;
 }
 
-async function mapRow(row: Row): Promise<SopQuizAttempt> {
+function mapRowSync(
+  row: Row,
+  userAt: Map<string, string>,
+  fnAt: Map<string, string>,
+  roleAt: Map<string, string>
+): SopQuizAttempt {
   return {
     id: publicId(row),
     attempt_id: String(row.attempt_id ?? ""),
-    user_id: (await sbFirstLinkedAirtableId("users", row.user)) ?? "",
-    sop_function_id: (await sbFirstLinkedAirtableId("sop_functions", row.sop_function)) ?? "",
-    sop_role_id: (await sbFirstLinkedAirtableId("sop_roles", row.sop_role)) ?? "",
+    user_id: firstMappedLinkedId(row.user, userAt),
+    sop_function_id: firstMappedLinkedId(row.sop_function, fnAt),
+    sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     score: num(row.score),
     passed: row.passed === true,
     wrong_count: num(row.wrong_count),
     created_at: row.created_at != null ? String(row.created_at) : undefined,
   };
+}
+
+async function mapRows(rows: Row[]): Promise<SopQuizAttempt[]> {
+  if (!rows.length) return [];
+  const [userAt, fnAt, roleAt] = await Promise.all([
+    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user)),
+    sbResolveUuidToAirtableMap("sop_functions", rows.map((r) => r.sop_function)),
+    sbResolveUuidToAirtableMap("sop_roles", rows.map((r) => r.sop_role)),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAt, fnAt, roleAt));
+}
+
+async function mapRow(row: Row): Promise<SopQuizAttempt> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 export async function recordQuizAttempt(
@@ -62,7 +83,7 @@ export async function recordQuizAttempt(
 export async function getAttemptsByFunction(functionRecordId: string): Promise<SopQuizAttempt[]> {
   const functionId = functionRecordId.trim();
   if (!functionId) return [];
-  const mapped = await Promise.all((await sbSelectAll<Row>(TABLE)).map(mapRow));
+  const mapped = await mapRows(await sbSelectAll<Row>(TABLE));
   return mapped.filter((r) => r.sop_function_id === functionId)
     .sort((a,b) => String(b.created_at??"").localeCompare(String(a.created_at??"")));
 }
@@ -70,7 +91,7 @@ export async function getAttemptsByFunction(functionRecordId: string): Promise<S
 export async function getAttemptsByRole(roleRecordId: string): Promise<SopQuizAttempt[]> {
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
-  const mapped = await Promise.all((await sbSelectAll<Row>(TABLE)).map(mapRow));
+  const mapped = await mapRows(await sbSelectAll<Row>(TABLE));
   return mapped.filter((r) => r.sop_role_id === roleId)
     .sort((a,b) => String(b.created_at??"").localeCompare(String(a.created_at??"")));
 }

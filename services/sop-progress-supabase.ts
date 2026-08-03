@@ -2,10 +2,11 @@
  * Supabase backend for services/sop-progress.ts
  */
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbUpdateByPublicId,
   requireSbUuids,
@@ -49,18 +50,47 @@ function coerceQuizScore(v: unknown): number | null {
   return null;
 }
 
-async function mapRow(row: Row): Promise<SopProgress> {
+function mapRowSync(
+  row: Row,
+  userAt: Map<string, string>,
+  fnAt: Map<string, string>,
+  roleAt: Map<string, string>
+): SopProgress {
   return {
     id: publicId(row),
     progress_id: String(row.progress_id ?? ""),
-    user_id: (await sbFirstLinkedAirtableId("users", row.user)) ?? "",
-    sop_function_id: (await sbFirstLinkedAirtableId("sop_functions", row.sop_function)) ?? "",
-    sop_role_id: (await sbFirstLinkedAirtableId("sop_roles", row.sop_role)) ?? "",
+    user_id: firstMappedLinkedId(row.user, userAt),
+    sop_function_id: firstMappedLinkedId(row.sop_function, fnAt),
+    sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     completed_at: row.completed_at != null ? String(row.completed_at) : "",
     completed_version: coerceVersion(row.completed_version),
     quiz_score: coerceQuizScore(row.quiz_score),
     created_at: row.created_at != null ? String(row.created_at) : undefined,
   };
+}
+
+async function mapRows(rows: Row[]): Promise<SopProgress[]> {
+  if (!rows.length) return [];
+  const [userAt, fnAt, roleAt] = await Promise.all([
+    sbResolveUuidToAirtableMap(
+      "users",
+      rows.map((r) => r.user)
+    ),
+    sbResolveUuidToAirtableMap(
+      "sop_functions",
+      rows.map((r) => r.sop_function)
+    ),
+    sbResolveUuidToAirtableMap(
+      "sop_roles",
+      rows.map((r) => r.sop_role)
+    ),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAt, fnAt, roleAt));
+}
+
+async function mapRow(row: Row): Promise<SopProgress> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 function isCurrent(p: SopProgress, functionById: Map<string, SopFunction>): boolean {
@@ -72,7 +102,7 @@ function isCurrent(p: SopProgress, functionById: Map<string, SopFunction>): bool
 
 async function loadAll(): Promise<SopProgress[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  return Promise.all(rows.map(mapRow));
+  return mapRows(rows);
 }
 
 export async function getProgressForUser(

@@ -2,10 +2,11 @@
  * Supabase backend for services/weekly-availability-requests-va.ts
  */
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -74,12 +75,12 @@ function coerceStatus(v: unknown): WeeklyAvailabilityRequestStatus {
     : "submitted";
 }
 
-async function mapRow(row: Row): Promise<WeeklyAvailabilityRequest> {
+function mapRowSync(row: Row, userAt: Map<string, string>): WeeklyAvailabilityRequest {
   return {
     id: publicId(row),
     request_id: String(row.request_id ?? ""),
     week_start: row.week_start ? airtableWeekStartToMonday(String(row.week_start)) : "",
-    chatter_id: (await sbFirstLinkedAirtableId("users", row.chatter)) ?? "",
+    chatter_id: firstMappedLinkedId(row.chatter, userAt),
     chatter_name: String(row.chatter_name ?? ""),
     day: coerceDay(row.day),
     entry_type: coerceEntry(row.entry_type),
@@ -92,13 +93,24 @@ async function mapRow(row: Row): Promise<WeeklyAvailabilityRequest> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<WeeklyAvailabilityRequest[]> {
+  if (!rows.length) return [];
+  const userAt = await sbResolveUuidToAirtableMap("users", rows.map((r) => r.chatter));
+  return rows.map((r) => mapRowSync(r, userAt));
+}
+
+async function mapRow(row: Row): Promise<WeeklyAvailabilityRequest> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function getRequestsForWeekVa(
   weekStart: string,
   vaRecordId?: string
 ): Promise<WeeklyAvailabilityRequest[]> {
   const weekYmd = ensureMondayForQuery(weekStart);
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   const forWeek = mapped.filter((r) => r.week_start === weekYmd);
   return vaRecordId != null && vaRecordId !== ""
     ? forWeek.filter((r) => r.chatter_id === vaRecordId)

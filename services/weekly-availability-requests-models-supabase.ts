@@ -2,10 +2,12 @@
  * Supabase backend for services/weekly-availability-requests-models.ts
  */
 import {
+  firstMappedLinkedId,
   publicId,
   sbAirtableIdsForUuids,
   sbDeleteByPublicId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -89,12 +91,11 @@ async function resolveModelStable(sessionModelId: string): Promise<{ stableModel
   return { stableModelId: t, airtableRecordId: null };
 }
 
-async function mapRow(row: Row): Promise<ModelWeeklyAvailabilityRequest> {
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelWeeklyAvailabilityRequest {
   const time_windows = windowsFromRecord(row.start_time, row.end_time, row.availability_windows);
   let model_id = String(row.model_id ?? "");
   if (!model_id) {
-    const ats = await sbAirtableIdsForUuids("modelss", row.model);
-    model_id = ats[0] ?? "";
+    model_id = firstMappedLinkedId(row.model, modelAt);
   }
   return {
     id: publicId(row),
@@ -111,6 +112,17 @@ async function mapRow(row: Row): Promise<ModelWeeklyAvailabilityRequest> {
     status: parseStatus(row.status),
     created_at: row.created_at ?? "",
   };
+}
+
+async function mapRows(rows: Row[]): Promise<ModelWeeklyAvailabilityRequest[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.model));
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelWeeklyAvailabilityRequest> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 export async function modelOwnsWeeklyAvailabilityRequest(
@@ -147,7 +159,7 @@ export async function getModelAvailabilityRequestsForWeek(
     }
     return links.length > 0 && resolution.stableModelId === textId;
   });
-  const mapped = await Promise.all(filtered.map(mapRow));
+  const mapped = await mapRows(filtered);
   return mapped.sort(
     (a, b) =>
       a.day.localeCompare(b.day) ||

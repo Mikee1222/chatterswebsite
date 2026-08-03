@@ -2,7 +2,9 @@
  * Supabase backend for services/model-expense-requests.ts
  */
 import {
-  publicId, sbFirstLinkedAirtableId, sbInsert, sbSelectAll,
+  sbResolveUuidToAirtableMap,
+  firstMappedLinkedId,
+  publicId, sbInsert, sbSelectAll,
   sbUpdateByPublicId, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelExpenseRequest, ModelExpenseRequestStatus, ModelExpenseRequestType } from "@/types";
@@ -28,11 +30,11 @@ function asStatus(raw: unknown): ModelExpenseRequestStatus {
   return STATUSES.includes(v as ModelExpenseRequestStatus) ? (v as ModelExpenseRequestStatus) : "pending";
 }
 
-async function mapRow(row: Row): Promise<ModelExpenseRequest> {
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelExpenseRequest {
   return {
     id: publicId(row),
     request_id: String(row.request_id ?? "").trim(),
-    model_id: (await sbFirstLinkedAirtableId("modelss", row.model_id)) ?? "",
+    model_id: firstMappedLinkedId(row.model_id, modelAt),
     model_user_id: String(row.model_user_id ?? "").trim(),
     va_content_assignment_id: String(row.va_content_assignment_id ?? "").trim(),
     assignment_title: String(row.assignment_title ?? "").trim(),
@@ -46,6 +48,20 @@ async function mapRow(row: Row): Promise<ModelExpenseRequest> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<ModelExpenseRequest[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap(
+    "modelss",
+    rows.map((r) => r.model_id)
+  );
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelExpenseRequest> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function listModelExpenseRequestsForModel(modelRecordId: string): Promise<ModelExpenseRequest[]> {
   const id = modelRecordId?.trim();
   if (!id) return [];
@@ -55,7 +71,7 @@ export async function listModelExpenseRequestsForModel(modelRecordId: string): P
 
 export async function listAllModelExpenseRequests(): Promise<ModelExpenseRequest[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped.sort((a,b) => b.created_at.localeCompare(a.created_at));
 }
 

@@ -3,10 +3,12 @@
  */
 import { normalizeAuthRoleSlugs } from "@/lib/sop-auth-roles";
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
   sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -199,8 +201,10 @@ type RoleRow = SbRow & {
   created_at?: string | null;
 };
 
-async function mapRole(row: RoleRow): Promise<SopRole> {
-  return {
+async function mapRoles(rows: RoleRow[]): Promise<SopRole[]> {
+  if (!rows.length) return [];
+  const deptAt = await sbResolveUuidToAirtableMap(DEPTS, rows.map((r) => r.department));
+  return rows.map((row) => ({
     id: publicId(row),
     role_id: String(row.role_id ?? ""),
     name: String(row.name ?? ""),
@@ -208,25 +212,30 @@ async function mapRole(row: RoleRow): Promise<SopRole> {
     description: String(row.description ?? ""),
     icon: String(row.icon ?? ""),
     color: coerceSopColor(row.color),
-    department_id: (await sbFirstLinkedAirtableId(DEPTS, row.department)) ?? "",
+    department_id: firstMappedLinkedId(row.department, deptAt),
     auth_roles: coerceAuthRoles(row.auth_roles),
     assigned_user_ids: Array.isArray(row.assigned_users) ? row.assigned_users.map(String) : [],
     academy_mode: row.academy_mode === true,
     sort_order: coerceSortOrder(row.sort_order),
     is_active: row.is_active !== false,
     created_at: row.created_at != null ? String(row.created_at) : undefined,
-  };
+  }));
+}
+
+async function mapRole(row: RoleRow): Promise<SopRole> {
+  const [mapped] = await mapRoles([row]);
+  return mapped!;
 }
 
 export async function getAllSopRoles(): Promise<SopRole[]> {
   const rows = await sbSelectAll<RoleRow>(ROLES);
-  const mapped = await Promise.all(rows.map(mapRole));
+  const mapped = await mapRoles(rows);
   return mapped.filter((r) => r.is_active).sort((a, b) => a.sort_order - b.sort_order);
 }
 
 export async function getAllSopRolesAdmin(): Promise<SopRole[]> {
   const rows = await sbSelectAll<RoleRow>(ROLES);
-  const mapped = await Promise.all(rows.map(mapRole));
+  const mapped = await mapRoles(rows);
   return mapped.sort((a, b) => a.sort_order - b.sort_order);
 }
 
@@ -359,13 +368,18 @@ type FnRow = SbRow & {
   created_at?: string | null;
 };
 
-async function mapFn(row: FnRow): Promise<SopFunction> {
-  return {
+async function mapFns(rows: FnRow[]): Promise<SopFunction[]> {
+  if (!rows.length) return [];
+  const [roleAt, deptAt] = await Promise.all([
+    sbResolveUuidToAirtableMap(ROLES, rows.map((r) => r.sop_role)),
+    sbResolveUuidToAirtableMap(DEPTS, rows.map((r) => r.department)),
+  ]);
+  return rows.map((row) => ({
     id: publicId(row),
     function_id: String(row.function_id ?? ""),
-    sop_role_id: (await sbFirstLinkedAirtableId(ROLES, row.sop_role)) ?? "",
+    sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     name: String(row.name ?? ""),
-    department_id: (await sbFirstLinkedAirtableId(DEPTS, row.department)) ?? "",
+    department_id: firstMappedLinkedId(row.department, deptAt),
     kpi: String(row.kpi ?? ""),
     standard_type: coerceStandardType(row.standard_type),
     sop_content: String(row.sop_content ?? ""),
@@ -378,7 +392,12 @@ async function mapFn(row: FnRow): Promise<SopFunction> {
     is_active: row.is_active !== false,
     content_version: coerceContentVersion(row.content_version),
     created_at: row.created_at != null ? String(row.created_at) : undefined,
-  };
+  }));
+}
+
+async function mapFn(row: FnRow): Promise<SopFunction> {
+  const [mapped] = await mapFns([row]);
+  return mapped!;
 }
 
 export async function getFunctionById(recordId: string): Promise<SopFunction | null> {
@@ -392,7 +411,7 @@ export async function getFunctionsByRole(roleRecordId: string): Promise<SopFunct
   const id = roleRecordId.trim();
   if (!id) return [];
   const rows = await sbSelectAll<FnRow>(FUNCS);
-  const mapped = await Promise.all(rows.map(mapFn));
+  const mapped = await mapFns(rows);
   return mapped
     .filter((f) => f.is_active && f.sop_role_id === id)
     .sort((a, b) => a.sort_order - b.sort_order);
@@ -402,7 +421,7 @@ export async function getFunctionsByRoleAdmin(roleRecordId: string): Promise<Sop
   const id = roleRecordId.trim();
   if (!id) return [];
   const rows = await sbSelectAll<FnRow>(FUNCS);
-  const mapped = await Promise.all(rows.map(mapFn));
+  const mapped = await mapFns(rows);
   return mapped.filter((f) => f.sop_role_id === id).sort((a, b) => a.sort_order - b.sort_order);
 }
 

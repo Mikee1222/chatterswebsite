@@ -3,8 +3,9 @@
  */
 
 import {
+  sbResolveUuidToAirtableMap,
+  firstMappedLinkedId,
   publicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
   sbUpdateByPublicId,
@@ -53,12 +54,11 @@ function asStatus(raw: unknown): ModelContentRequestStatus {
     : "pending";
 }
 
-async function mapRow(row: Row): Promise<ModelContentRequest> {
-  const model_id = (await sbFirstLinkedAirtableId("modelss", row.model_id)) ?? "";
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelContentRequest {
   return {
     id: publicId(row),
     request_id: String(row.request_id ?? "").trim(),
-    model_id,
+    model_id: firstMappedLinkedId(row.model_id, modelAt),
     model_user_id: String(row.model_user_id ?? "").trim(),
     type: asType(row.type),
     title: String(row.title ?? "").trim(),
@@ -68,6 +68,20 @@ async function mapRow(row: Row): Promise<ModelContentRequest> {
     created_at: String(row.created_at ?? "").trim(),
     updated_at: String(row.updated_at ?? "").trim(),
   };
+}
+
+async function mapRows(rows: Row[]): Promise<ModelContentRequest[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap(
+    "modelss",
+    rows.map((r) => r.model_id)
+  );
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelContentRequest> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
 }
 
 export async function listModelContentRequestsForModel(
@@ -81,7 +95,7 @@ export async function listModelContentRequestsForModel(
 
 export async function listAllModelContentRequests(): Promise<ModelContentRequest[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   mapped.sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
   return mapped;
 }

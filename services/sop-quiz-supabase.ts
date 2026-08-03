@@ -2,10 +2,11 @@
  * Supabase backend for services/sop-quiz.ts
  */
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
@@ -50,11 +51,11 @@ function coerceCorrectOption(v: unknown): SopQuizCorrectOption {
   return CORRECT_OPTIONS.includes(s) ? s : "a";
 }
 
-async function mapRow(row: Row): Promise<SopQuizQuestion> {
+function mapRowSync(row: Row, fnAt: Map<string, string>): SopQuizQuestion {
   return {
     id: publicId(row),
     question_id: String(row.question_id ?? ""),
-    sop_function_id: (await sbFirstLinkedAirtableId("sop_functions", row.sop_function)) ?? "",
+    sop_function_id: firstMappedLinkedId(row.sop_function, fnAt),
     question: String(row.question ?? ""),
     option_a: String(row.option_a ?? ""),
     option_b: String(row.option_b ?? ""),
@@ -67,12 +68,26 @@ async function mapRow(row: Row): Promise<SopQuizQuestion> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<SopQuizQuestion[]> {
+  if (!rows.length) return [];
+  const fnAt = await sbResolveUuidToAirtableMap(
+    "sop_functions",
+    rows.map((r) => r.sop_function)
+  );
+  return rows.map((r) => mapRowSync(r, fnAt));
+}
+
+async function mapRow(row: Row): Promise<SopQuizQuestion> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 async function listAllByFunction(
   functionRecordId: string,
   onlyActive: boolean
 ): Promise<SopQuizQuestion[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped
     .filter((r) => (onlyActive ? r.is_active : true))
     .filter((r) => r.sop_function_id === functionRecordId)

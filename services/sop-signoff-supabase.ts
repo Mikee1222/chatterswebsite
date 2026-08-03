@@ -2,8 +2,9 @@
  * Supabase backend for services/sop-signoff.ts
  */
 import {
-  publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, requireSbUuids, type SbRow,
+  firstMappedLinkedId,
+  publicId, sbDeleteByPublicId, sbInsert,
+  sbResolveUuidToAirtableMap, sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { SopSignoff } from "@/types";
 import { DEFAULT_SIGNOFF_STATEMENT } from "./sop-signoff";
@@ -18,23 +19,41 @@ function genSignoffId(): string {
   return `sop_sign_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-async function mapRow(row: Row): Promise<SopSignoff> {
+function mapRowSync(
+  row: Row,
+  userAt: Map<string, string>,
+  roleAt: Map<string, string>
+): SopSignoff {
   return {
     id: publicId(row),
     signoff_id: String(row.signoff_id ?? ""),
-    user_id: (await sbFirstLinkedAirtableId("users", row.user)) ?? "",
-    sop_role_id: (await sbFirstLinkedAirtableId("sop_roles", row.sop_role)) ?? "",
+    user_id: firstMappedLinkedId(row.user, userAt),
+    sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
     signed_at: row.signed_at != null ? String(row.signed_at) : "",
     statement: String(row.statement ?? ""),
     created_at: row.created_at != null ? String(row.created_at) : undefined,
   };
 }
 
+async function mapRows(rows: Row[]): Promise<SopSignoff[]> {
+  if (!rows.length) return [];
+  const [userAt, roleAt] = await Promise.all([
+    sbResolveUuidToAirtableMap("users", rows.map((r) => r.user)),
+    sbResolveUuidToAirtableMap("sop_roles", rows.map((r) => r.sop_role)),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAt, roleAt));
+}
+
+async function mapRow(row: Row): Promise<SopSignoff> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function getSignoffsByRole(roleRecordId: string): Promise<SopSignoff[]> {
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped.filter((r) => r.sop_role_id === roleId);
 }
 

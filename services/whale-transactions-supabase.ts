@@ -4,10 +4,11 @@
 
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
+  sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
@@ -50,21 +51,21 @@ type Row = SbRow & {
   created_at?: string | null;
 };
 
-async function mapRow(row: Row): Promise<WhaleTransaction> {
-  const [whale_id, chatter_id, model_id] = await Promise.all([
-    sbFirstLinkedAirtableId("whales", row.whale),
-    sbFirstLinkedAirtableId("users", row.chatter),
-    sbFirstLinkedAirtableId("modelss", row.model),
-  ]);
+function mapRowSync(
+  row: Row,
+  whaleAt: Map<string, string>,
+  userAt: Map<string, string>,
+  modelAt: Map<string, string>
+): WhaleTransaction {
   const typeRaw = row.type ?? "";
   return {
     id: publicId(row),
     transaction_id: row.transaction_id ?? "",
-    whale_id: whale_id ?? "",
+    whale_id: firstMappedLinkedId(row.whale, whaleAt),
     whale_username: row.whale_username ?? "",
-    chatter_id: chatter_id ?? "",
+    chatter_id: firstMappedLinkedId(row.chatter, userAt),
     chatter_name: row.chatter_name ?? "",
-    model_id: model_id ?? "",
+    model_id: firstMappedLinkedId(row.model, modelAt),
     model_name: row.model_name ?? "",
     date: row.date ? String(row.date).slice(0, 10) : "",
     time: row.time ?? "",
@@ -80,6 +81,21 @@ async function mapRow(row: Row): Promise<WhaleTransaction> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<WhaleTransaction[]> {
+  if (!rows.length) return [];
+  const [whaleAt, userAt, modelAt] = await Promise.all([
+    sbResolveUuidToAirtableMap("whales", rows.map((r) => r.whale)),
+    sbResolveUuidToAirtableMap("users", rows.map((r) => r.chatter)),
+    sbResolveUuidToAirtableMap("modelss", rows.map((r) => r.model)),
+  ]);
+  return rows.map((r) => mapRowSync(r, whaleAt, userAt, modelAt));
+}
+
+async function mapRow(row: Row): Promise<WhaleTransaction> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function listWhaleTransactions(_params: { pageSize?: number } = {}) {
   const transactions = await listAllWhaleTransactions();
   return { transactions, offset: undefined as string | undefined };
@@ -87,7 +103,7 @@ export async function listWhaleTransactions(_params: { pageSize?: number } = {})
 
 export async function listAllWhaleTransactions(): Promise<WhaleTransaction[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   mapped.sort((a, b) => String(b.date).localeCompare(String(a.date)));
   return mapped;
 }

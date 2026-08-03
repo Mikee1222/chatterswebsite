@@ -5,9 +5,10 @@
  * both backends without duplication.
  */
 import {
+  sbResolveUuidToAirtableMap,
+  firstMappedLinkedId,
   publicId,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
@@ -67,13 +68,13 @@ function expandDatesInWindow(
   return out;
 }
 
-async function mapRow(row: Row): Promise<ModelPeriodRecord> {
+function mapRowSync(row: Row, modelAt: Map<string, string>): ModelPeriodRecord {
   const predRaw = row.predicted_next_date;
   const predicted =
     predRaw != null && String(predRaw).trim() !== "" ? ymdOnly(String(predRaw)) : null;
   return {
     id: publicId(row),
-    model_id: (await sbFirstLinkedAirtableId("modelss", row.model_id)) ?? "",
+    model_id: firstMappedLinkedId(row.model_id, modelAt),
     start_date: ymdOnly(row.start_date),
     end_date: ymdOnly(row.end_date),
     cycle_length_days: typeof row.cycle_length_days === "number" ? row.cycle_length_days : null,
@@ -88,10 +89,24 @@ async function mapRow(row: Row): Promise<ModelPeriodRecord> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<ModelPeriodRecord[]> {
+  if (!rows.length) return [];
+  const modelAt = await sbResolveUuidToAirtableMap(
+    "modelss",
+    rows.map((r) => r.model_id)
+  );
+  return rows.map((r) => mapRowSync(r, modelAt));
+}
+
+async function mapRow(row: Row): Promise<ModelPeriodRecord> {
+  const [mapped] = await mapRows([row]);
+  return mapped!;
+}
+
 export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
   try {
     const rows = await sbSelectAll<Row>(TABLE);
-    const mapped = await Promise.all(rows.map(mapRow));
+    const mapped = await mapRows(rows);
     return mapped.filter((p) => p.start_date && p.end_date);
   } catch {
     return [];
