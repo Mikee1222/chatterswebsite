@@ -7,6 +7,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId, formulaLinkedContains } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { addDays, getTodayYmd } from "@/lib/weekly-program";
 import { getModelById, updateModel } from "@/services/modelss";
 import type { ModelPeriodRecord, ModelRecord } from "@/types";
@@ -130,6 +131,7 @@ function expandDatesInWindow(startYmd: string, endYmd: string, windowStart: stri
 
 /** All period rows (for admin batching). Safe when table is moderate size. */
 export async function listAllModelPeriods(): Promise<ModelPeriodRecord[]> {
+  if (isSupabaseBackend()) return (await import("./model-periods-supabase")).listAllModelPeriods();
   try {
     const records = await listAllRecords<Fields>(TABLE, {});
     return records.map(mapRecord).filter((p) => p.start_date && p.end_date);
@@ -189,6 +191,7 @@ function addUniqueRecords(
 }
 
 export async function getPeriodsForModel(modelId: string): Promise<ModelPeriodRecord[]> {
+  if (isSupabaseBackend()) return (await import("./model-periods-supabase")).getPeriodsForModel(modelId);
   const initial = await getPeriodsForModelRaw(modelId);
   if (initial.length > 0 || !wasRecentlyLogged(modelId)) return initial;
 
@@ -388,6 +391,7 @@ export type CreateModelPeriodInput = {
 };
 
 export async function createPeriod(data: CreateModelPeriodInput): Promise<ModelPeriodRecord> {
+  if (isSupabaseBackend()) return (await import("./model-periods-supabase")).createPeriod(data);
   const periodLen =
     data.period_length_days ??
     (data.start_date && data.end_date ? inclusiveDaySpan(data.start_date, data.end_date) : null);
@@ -419,6 +423,7 @@ export type UpdateModelPeriodInput = Partial<{
 }>;
 
 export async function updatePeriod(id: string, data: UpdateModelPeriodInput): Promise<ModelPeriodRecord> {
+  if (isSupabaseBackend()) return (await import("./model-periods-supabase")).updatePeriod(id, data);
   const payload: Partial<Fields> = {};
   if (data.start_date !== undefined) payload.start_date = data.start_date;
   if (data.end_date !== undefined) payload.end_date = data.end_date;
@@ -438,10 +443,12 @@ export async function updatePeriod(id: string, data: UpdateModelPeriodInput): Pr
 }
 
 export async function deletePeriod(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./model-periods-supabase")).deletePeriod(id);
   await deleteRecord(TABLE, id);
 }
 
 export async function getPeriodById(id: string): Promise<ModelPeriodRecord | null> {
+  if (isSupabaseBackend()) return (await import("./model-periods-supabase")).getPeriodById(id);
   try {
     const rec = await getRecord<Fields>(TABLE, id);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -482,6 +489,13 @@ export async function getPeriodDatesByModelForWeek(
   weekStart: string,
   weekEnd: string
 ): Promise<Record<string, string[]>> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-periods-supabase")).getPeriodDatesByModelForWeek(
+      modelIds,
+      weekStart,
+      weekEnd
+    );
+  }
   const want = new Set(modelIds);
   const out: Record<string, string[]> = {};
   for (const id of modelIds) out[id] = [];

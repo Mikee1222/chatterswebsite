@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { coerceVideoTranscriptStatus, type VideoTranscriptStatus } from "@/lib/video-transcripts-helpers";
 import { WINNER_VIDEO_MAX_FILE_BYTES } from "@/lib/winner-video-files";
 
@@ -99,6 +100,7 @@ function buildFilter(filters: VideoTranscriptFilters): string | undefined {
 }
 
 export async function getVideoTranscripts(filters: VideoTranscriptFilters = {}): Promise<VideoTranscriptRecord[]> {
+  if (isSupabaseBackend()) return (await import("./video-transcripts-supabase")).getVideoTranscripts(filters);
   const filterByFormula = buildFilter(filters);
   const records = await listAllRecords<VideoTranscriptFields>(TABLE, {
     ...(filterByFormula ? { filterByFormula } : {}),
@@ -108,6 +110,7 @@ export async function getVideoTranscripts(filters: VideoTranscriptFilters = {}):
 }
 
 export async function getVideoTranscriptById(id: string): Promise<VideoTranscriptRecord | null> {
+  if (isSupabaseBackend()) return (await import("./video-transcripts-supabase")).getVideoTranscriptById(id);
   try {
     const rec = await getRecord<VideoTranscriptFields>(TABLE, id);
     return mapVideoTranscript(rec);
@@ -123,6 +126,7 @@ export type CreateVideoTranscriptInput = {
 };
 
 export async function createVideoTranscriptRecord(data: CreateVideoTranscriptInput): Promise<VideoTranscriptRecord> {
+  if (isSupabaseBackend()) return (await import("./video-transcripts-supabase")).createVideoTranscriptRecord(data);
   const now = new Date().toISOString();
   const rec = await createRecord<VideoTranscriptFields>(TABLE, {
     label: data.label.trim(),
@@ -161,6 +165,7 @@ export async function updateVideoTranscriptResult(
   id: string,
   data: UpdateVideoTranscriptResultInput,
 ): Promise<VideoTranscriptRecord> {
+  if (isSupabaseBackend()) return (await import("./video-transcripts-supabase")).updateVideoTranscriptResult(id, data);
   const patch: Record<string, unknown> = { status: data.status };
   if (data.transcript !== undefined) patch.transcript = data.transcript.trim();
   if (data.language !== undefined) patch.language = data.language.trim();
@@ -174,5 +179,6 @@ export async function updateVideoTranscriptResult(
 }
 
 export async function deleteVideoTranscript(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./video-transcripts-supabase")).deleteVideoTranscript(id);
   await deleteRecord(TABLE, id);
 }

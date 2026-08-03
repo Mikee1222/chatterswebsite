@@ -4,6 +4,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
 import type { SopFunction, SopQuizFunctionInsight, SopQuizAttempt } from "@/types";
 
@@ -57,6 +58,7 @@ export async function recordQuizAttempt(
   passed: boolean,
   wrongCount: number
 ): Promise<SopQuizAttempt> {
+  if (isSupabaseBackend()) return (await import("./sop-quiz-attempts-supabase")).recordQuizAttempt(userId, functionId, roleId, score, passed, wrongCount);
   const user = userId.trim();
   const fnId = functionId.trim();
   const role = roleId.trim();
@@ -82,6 +84,7 @@ export async function recordQuizAttempt(
 
 /** All attempts for a function (client-side linked filter). */
 export async function getAttemptsByFunction(functionRecordId: string): Promise<SopQuizAttempt[]> {
+  if (isSupabaseBackend()) return (await import("./sop-quiz-attempts-supabase")).getAttemptsByFunction(functionRecordId);
   const functionId = functionRecordId.trim();
   if (!functionId) return [];
 
@@ -97,6 +100,7 @@ export async function getAttemptsByFunction(functionRecordId: string): Promise<S
 
 /** All attempts for a role (client-side linked filter). */
 export async function getAttemptsByRole(roleRecordId: string): Promise<SopQuizAttempt[]> {
+  if (isSupabaseBackend()) return (await import("./sop-quiz-attempts-supabase")).getAttemptsByRole(roleRecordId);
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
 
@@ -111,6 +115,7 @@ export async function getAttemptsByRole(roleRecordId: string): Promise<SopQuizAt
 }
 
 export async function deleteQuizAttempt(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./sop-quiz-attempts-supabase")).deleteQuizAttempt(recordId);
   const id = recordId.trim();
   if (!id) return;
   await deleteRecord(SOP_QUIZ_ATTEMPTS_TABLE, id);

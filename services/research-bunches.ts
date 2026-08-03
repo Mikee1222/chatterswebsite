@@ -6,6 +6,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { spawnContentItem } from "@/services/content-items";
 import { resolveStageOwner } from "@/services/creator-assignments";
 import { getThisWeekMonday } from "@/lib/weekly-program";
@@ -119,6 +120,7 @@ function mapIdea(rec: AirtableRecord<IdeaFields>): ResearchIdea {
 }
 
 export async function listBunchesForResearcher(researcherRecId: string): Promise<ResearchBunch[]> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).listBunchesForResearcher(researcherRecId);
   const records = await listAllRecords<BunchFields>(BUNCHES, {
     filterByFormula: `{researcher_user_id} = "${q(researcherRecId)}"`,
   });
@@ -126,6 +128,7 @@ export async function listBunchesForResearcher(researcherRecId: string): Promise
 }
 
 export async function getBunchById(bunchId: string): Promise<ResearchBunch | null> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).getBunchById(bunchId);
   try {
     return mapBunch(await getRecord<BunchFields>(BUNCHES, bunchId));
   } catch {
@@ -134,6 +137,7 @@ export async function getBunchById(bunchId: string): Promise<ResearchBunch | nul
 }
 
 export async function listBunchesAwaitingQa(): Promise<ResearchBunch[]> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).listBunchesAwaitingQa();
   const records = await listAllRecords<BunchFields>(BUNCHES, {
     filterByFormula: `{status} = "awaiting_qa"`,
   });
@@ -141,6 +145,7 @@ export async function listBunchesAwaitingQa(): Promise<ResearchBunch[]> {
 }
 
 export async function listIdeasForBunch(bunchRecId: string): Promise<ResearchIdea[]> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).listIdeasForBunch(bunchRecId);
   const records = await listAllRecords<IdeaFields>(IDEAS, {
     filterByFormula: `{bunch_id} = "${q(bunchRecId)}"`,
   });
@@ -161,6 +166,7 @@ export async function createManagerBunch(input: {
   film_type?: "self_record" | "filmer";
   created_by_name: string;
 }): Promise<{ bunch: ResearchBunch; researcher: { user_id: string; user_name: string } | null }> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).createManagerBunch(input);
   const researcher = await resolveStageOwner(input.creator_model_id, "researcher");
   const now = new Date().toISOString();
   const rec = await createRecord<BunchFields>(BUNCHES, {
@@ -188,6 +194,7 @@ export async function addIdea(input: {
   idea_text: string;
   reference_link?: string;
 }): Promise<ResearchIdea> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).addIdea(input);
   const rec = await createRecord<IdeaFields>(IDEAS, {
     idea_id: `ri_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     bunch_id: input.bunch_id,
@@ -201,10 +208,12 @@ export async function addIdea(input: {
 }
 
 export async function deleteIdea(ideaId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).deleteIdea(ideaId);
   await deleteRecord(IDEAS, ideaId);
 }
 
 export async function submitBunch(bunchId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).submitBunch(bunchId);
   await updateRecord<BunchFields>(BUNCHES, bunchId, {
     status: "awaiting_qa",
     submitted_at: new Date().toISOString(),
@@ -212,6 +221,7 @@ export async function submitBunch(bunchId: string): Promise<void> {
 }
 
 export async function setIdeaChecked(ideaId: string, checked: boolean): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).setIdeaChecked(ideaId, checked);
   await updateRecord<IdeaFields>(IDEAS, ideaId, { checked });
 }
 
@@ -220,6 +230,7 @@ export async function requestChanges(
   qa: { user_id: string; name: string },
   note?: string
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).requestChanges(bunchId, qa, note);
   await updateRecord<BunchFields>(BUNCHES, bunchId, {
     status: "changes_requested",
     qa_by_user_id: qa.user_id,
@@ -236,6 +247,7 @@ export async function approveBunch(
   bunch: ResearchBunch,
   qa: { user_id: string; name: string }
 ): Promise<{ spawned: number }> {
+  if (isSupabaseBackend()) return (await import("./research-bunches-supabase")).approveBunch(bunch, qa);
   const ideas = await listIdeasForBunch(bunch.id);
   if (ideas.length === 0) throw new Error("Το bunch δεν έχει ιδέες.");
   const unchecked = ideas.filter((i) => !i.checked);

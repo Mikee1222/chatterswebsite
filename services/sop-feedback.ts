@@ -4,6 +4,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
 import type { SopFeedback, SopFeedbackHelpful, SopFeedbackSummary } from "@/types";
 
@@ -68,6 +69,7 @@ export type CreateSopFeedbackInput = {
 
 /** Create member feedback for a function (one row per user + function + role). */
 export async function createSopFeedback(input: CreateSopFeedbackInput): Promise<SopFeedback> {
+  if (isSupabaseBackend()) return (await import("./sop-feedback-supabase")).createSopFeedback(input);
   const userId = input.user_id.trim();
   const functionId = input.sop_function_id.trim();
   const roleId = input.sop_role_id.trim();
@@ -105,6 +107,7 @@ export async function createSopFeedback(input: CreateSopFeedbackInput): Promise<
 
 /** All feedback rows for functions under a role (admin). */
 export async function getFeedbackByRole(roleRecordId: string): Promise<SopFeedback[]> {
+  if (isSupabaseBackend()) return (await import("./sop-feedback-supabase")).getFeedbackByRole(roleRecordId);
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
 
@@ -154,11 +157,13 @@ export function buildFeedbackSummaries(
 }
 
 export async function countFeedbackByRole(roleRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./sop-feedback-supabase")).countFeedbackByRole(roleRecordId);
   const rows = await getFeedbackByRole(roleRecordId);
   return rows.length;
 }
 
 export async function countFeedbackByFunction(functionRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./sop-feedback-supabase")).countFeedbackByFunction(functionRecordId);
   const functionId = functionRecordId.trim();
   if (!functionId) return 0;
   const rows = await listAllRecords<FeedbackFields>(SOP_FEEDBACK_TABLE, {
@@ -168,6 +173,7 @@ export async function countFeedbackByFunction(functionRecordId: string): Promise
 }
 
 export async function deleteFeedbackByRole(roleRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./sop-feedback-supabase")).deleteFeedbackByRole(roleRecordId);
   const roleId = roleRecordId.trim();
   if (!roleId) return 0;
   const rows = await listAllRecords<FeedbackFields>(SOP_FEEDBACK_TABLE, {
@@ -181,6 +187,7 @@ export async function deleteFeedbackByRole(roleRecordId: string): Promise<number
 }
 
 export async function deleteFeedbackByFunction(functionRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./sop-feedback-supabase")).deleteFeedbackByFunction(functionRecordId);
   const functionId = functionRecordId.trim();
   if (!functionId) return 0;
   const rows = await listAllRecords<FeedbackFields>(SOP_FEEDBACK_TABLE, {

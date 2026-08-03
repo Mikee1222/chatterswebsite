@@ -8,6 +8,7 @@ import {
   invalidateListRecordsReadCacheForTable,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { LINK_REDIRECTS_TABLE, LINK_REDIRECT_FIELDS } from "@/lib/link-redirects-schema";
 import type { LinkRedirectRecord } from "@/types";
 
@@ -61,6 +62,7 @@ function mapRedirect(rec: AirtableRecord<RedirectFields>): LinkRedirectRecord {
 }
 
 export async function listRedirectsForPage(pageId: string): Promise<LinkRedirectRecord[]> {
+  if (isSupabaseBackend()) return (await import("./link-redirects-supabase")).listRedirectsForPage(pageId);
   const pid = pageId.trim();
   if (!pid) return [];
   const records = await listAllRecords<RedirectFields>(LINK_REDIRECTS_TABLE, {
@@ -72,6 +74,7 @@ export async function listRedirectsForPage(pageId: string): Promise<LinkRedirect
 }
 
 export async function getRedirectById(recordId: string): Promise<LinkRedirectRecord | null> {
+  if (isSupabaseBackend()) return (await import("./link-redirects-supabase")).getRedirectById(recordId);
   const id = recordId.trim();
   if (!id) return null;
   try {
@@ -87,6 +90,7 @@ export async function getRedirectByPageAndSlug(
   slug: string,
   options?: { activeOnly?: boolean }
 ): Promise<LinkRedirectRecord | null> {
+  if (isSupabaseBackend()) return (await import("./link-redirects-supabase")).getRedirectByPageAndSlug(pageId, slug, options);
   const pid = pageId.trim();
   const normalized = slugify(slug);
   if (!pid || !normalized) return null;
@@ -112,6 +116,7 @@ export type CreateRedirectInput = {
 };
 
 export async function createRedirect(input: CreateRedirectInput): Promise<LinkRedirectRecord> {
+  if (isSupabaseBackend()) return (await import("./link-redirects-supabase")).createRedirect(input);
   const pageId = input.page_id.trim();
   if (!pageId) throw new Error("page_id is required");
   const destination = input.destination_url.trim();
@@ -147,6 +152,7 @@ export type UpdateRedirectInput = Partial<
 >;
 
 export async function updateRedirect(recordId: string, input: UpdateRedirectInput): Promise<LinkRedirectRecord> {
+  if (isSupabaseBackend()) return (await import("./link-redirects-supabase")).updateRedirect(recordId, input);
   const patch: Partial<RedirectFields> = {};
   if (input.slug !== undefined) {
     const next = slugify(input.slug);
@@ -173,12 +179,23 @@ export async function updateRedirect(recordId: string, input: UpdateRedirectInpu
 }
 
 export async function deleteRedirect(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./link-redirects-supabase")).deleteRedirect(recordId);
   await deleteRecord(LINK_REDIRECTS_TABLE, recordId);
   invalidateListRecordsReadCacheForTable(LINK_REDIRECTS_TABLE);
 }
 
 /** Fire-and-forget click counter — never throws. */
 export function incrementClickCount(recordId: string): void {
+  if (isSupabaseBackend()) {
+    void (async () => {
+      try {
+        (await import("./link-redirects-supabase")).incrementClickCount(recordId);
+      } catch {
+        // fire-and-forget
+      }
+    })();
+    return;
+  }
   void (async () => {
     try {
       const rec = await getRecord<RedirectFields>(LINK_REDIRECTS_TABLE, recordId);

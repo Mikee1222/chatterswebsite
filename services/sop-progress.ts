@@ -6,6 +6,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { SopFunction, SopProgress, SopProgressUserSummary } from "@/types";
 
 export const SOP_PROGRESS_TABLE = "sop_progress";
@@ -102,6 +103,13 @@ export async function getProgressForUser(
   roleRecordId: string,
   functions?: SopFunction[]
 ): Promise<string[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).getProgressForUser(
+      userRecordId,
+      roleRecordId,
+      functions
+    );
+  }
   const rows = await getProgressRowsForUser(userRecordId, roleRecordId, functions);
   return rows.map((r) => r.sop_function_id).filter(Boolean);
 }
@@ -112,6 +120,13 @@ export async function getProgressRowsForUser(
   roleRecordId: string,
   functions?: SopFunction[]
 ): Promise<SopProgress[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).getProgressRowsForUser(
+      userRecordId,
+      roleRecordId,
+      functions
+    );
+  }
   const userId = userRecordId.trim();
   const roleId = roleRecordId.trim();
   if (!userId || !roleId) return [];
@@ -154,6 +169,14 @@ export async function markFunctionComplete(
   roleRecordId: string,
   opts: MarkFunctionCompleteOptions
 ): Promise<SopProgress> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).markFunctionComplete(
+      userRecordId,
+      functionRecordId,
+      roleRecordId,
+      opts
+    );
+  }
   const userId = userRecordId.trim();
   const functionId = functionRecordId.trim();
   const roleId = roleRecordId.trim();
@@ -197,6 +220,13 @@ export async function unmarkFunctionComplete(
   functionRecordId: string,
   roleRecordId: string
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).unmarkFunctionComplete(
+      userRecordId,
+      functionRecordId,
+      roleRecordId
+    );
+  }
   const existing = await findProgressRow(
     userRecordId.trim(),
     functionRecordId.trim(),
@@ -214,6 +244,9 @@ export type SopProgressByRole = {
 
 /** All progress rows for a role, grouped by user id. */
 export async function getProgressByRole(roleRecordId: string): Promise<SopProgressByRole> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).getProgressByRole(roleRecordId);
+  }
   const roleId = roleRecordId.trim();
   if (!roleId) return { by_user: new Map(), rows: [] };
 
@@ -237,11 +270,17 @@ export async function getProgressByRole(roleRecordId: string): Promise<SopProgre
 }
 
 export async function countProgressByRole(roleRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).countProgressByRole(roleRecordId);
+  }
   const { rows } = await getProgressByRole(roleRecordId);
   return rows.length;
 }
 
 export async function countProgressByFunction(functionRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).countProgressByFunction(functionRecordId);
+  }
   const functionId = functionRecordId.trim();
   if (!functionId) return 0;
   const rows = await listAllRecords<ProgressFields>(SOP_PROGRESS_TABLE, {
@@ -251,6 +290,9 @@ export async function countProgressByFunction(functionRecordId: string): Promise
 }
 
 export async function deleteProgressByRole(roleRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).deleteProgressByRole(roleRecordId);
+  }
   const roleId = roleRecordId.trim();
   if (!roleId) return 0;
   const rows = await listAllRecords<ProgressFields>(SOP_PROGRESS_TABLE, {
@@ -264,6 +306,9 @@ export async function deleteProgressByRole(roleRecordId: string): Promise<number
 }
 
 export async function deleteProgressByFunction(functionRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).deleteProgressByFunction(functionRecordId);
+  }
   const functionId = functionRecordId.trim();
   if (!functionId) return 0;
   const rows = await listAllRecords<ProgressFields>(SOP_PROGRESS_TABLE, {
@@ -341,6 +386,13 @@ export async function getProgressStateForUser(
   roleRecordId: string,
   functions: SopFunction[]
 ): Promise<SopProgressState> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-progress-supabase")).getProgressStateForUser(
+      userRecordId,
+      roleRecordId,
+      functions
+    );
+  }
   const userId = userRecordId.trim();
   const roleId = roleRecordId.trim();
   if (!userId || !roleId) {

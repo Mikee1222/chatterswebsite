@@ -7,6 +7,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { SopQuizCorrectOption, SopQuizQuestion } from "@/types";
 
 export const SOP_QUIZ_QUESTIONS_TABLE = "sop_quiz_questions";
@@ -66,6 +67,9 @@ function mapQuestionRecord(rec: AirtableRecord<QuestionFields>): SopQuizQuestion
 
 /** Active quiz questions for a function (client-side linked filter). */
 export async function getQuestionsByFunction(functionRecordId: string): Promise<SopQuizQuestion[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).getQuestionsByFunction(functionRecordId);
+  }
   const functionId = functionRecordId.trim();
   if (!functionId) return [];
 
@@ -84,6 +88,9 @@ export async function getQuestionsByFunction(functionRecordId: string): Promise<
 export async function getQuestionsByFunctionAdmin(
   functionRecordId: string
 ): Promise<SopQuizQuestion[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).getQuestionsByFunctionAdmin(functionRecordId);
+  }
   const functionId = functionRecordId.trim();
   if (!functionId) return [];
 
@@ -110,6 +117,9 @@ export type QuizQuestionWrite = {
 };
 
 export async function createQuizQuestion(data: QuizQuestionWrite): Promise<SopQuizQuestion> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).createQuizQuestion(data);
+  }
   const existing = await getQuestionsByFunctionAdmin(data.sop_function_id);
   const maxSort = existing.reduce((m, q) => Math.max(m, q.sort_order), 0);
   const now = new Date().toISOString();
@@ -136,6 +146,9 @@ export async function updateQuizQuestion(
   id: string,
   data: Partial<QuizQuestionWrite>
 ): Promise<SopQuizQuestion> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).updateQuizQuestion(id, data);
+  }
   const fields: Record<string, unknown> = {};
   if (data.question !== undefined) fields.question = data.question;
   if (data.option_a !== undefined) fields.option_a = data.option_a;
@@ -154,15 +167,24 @@ export async function updateQuizQuestion(
 }
 
 export async function deleteQuizQuestion(id: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).deleteQuizQuestion(id);
+  }
   await deleteRecord(SOP_QUIZ_QUESTIONS_TABLE, id);
 }
 
 export async function countQuizQuestionsByFunction(functionRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).countQuizQuestionsByFunction(functionRecordId);
+  }
   const questions = await getQuestionsByFunctionAdmin(functionRecordId);
   return questions.length;
 }
 
 export async function deleteQuizQuestionsByFunction(functionRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).deleteQuizQuestionsByFunction(functionRecordId);
+  }
   const functionId = functionRecordId.trim();
   if (!functionId) return 0;
   const rows = await listAllRecords<QuestionFields>(SOP_QUIZ_QUESTIONS_TABLE, {
@@ -176,6 +198,9 @@ export async function deleteQuizQuestionsByFunction(functionRecordId: string): P
 }
 
 export async function reorderQuizQuestions(orderedIds: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).reorderQuizQuestions(orderedIds);
+  }
   const updates = orderedIds.map((recordId, index) => ({
     id: recordId,
     fields: { sort_order: index + 1 },
@@ -200,6 +225,9 @@ export async function validateQuizAnswers(
   functionRecordId: string,
   answers: QuizAnswerInput[]
 ): Promise<QuizValidationResult> {
+  if (isSupabaseBackend()) {
+    return (await import("./sop-quiz-supabase")).validateQuizAnswers(functionRecordId, answers);
+  }
   const questions = await getQuestionsByFunction(functionRecordId);
   const total = questions.length;
 

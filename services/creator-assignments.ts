@@ -4,6 +4,7 @@ import {
   updateRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { listActiveUsers } from "@/services/users";
 
 const TABLE = "creator_assignments";
@@ -118,6 +119,7 @@ function mapRecord(rec: AirtableRecord<Fields>): CreatorAssignment {
 
 /** All assignment rows (active + inactive). Small table; filter in JS to avoid formula quirks. */
 export async function listAllAssignments(): Promise<CreatorAssignment[]> {
+  if (isSupabaseBackend()) return (await import("./creator-assignments-supabase")).listAllAssignments();
   try {
     const records = await listAllRecords<Fields>(TABLE, {});
     return records.map(mapRecord);
@@ -172,6 +174,7 @@ export async function setAssignment(input: {
   user_id: string;
   user_name: string;
 }): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./creator-assignments-supabase")).setAssignment(input);
   const all = await listAllAssignments();
   const existing = all.find(
     (a) => a.role === input.role && a.creator_model_id === input.creator_model_id

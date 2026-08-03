@@ -4,6 +4,7 @@ import {
   listRecords,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
 
 export const PDF_DOCUMENTS_TABLE = "pdf_documents";
@@ -262,6 +263,7 @@ function mapDocumentRecord(rec: AirtableRecord<DocumentFields>): PdfDocument {
 }
 
 export async function getPdfTemplates(): Promise<PdfTemplate[]> {
+  if (isSupabaseBackend()) return (await import("./pdf-maker-supabase")).getPdfTemplates();
   const { records } = await listRecords<TemplateFields>(PDF_TEMPLATES_TABLE, {
     pageSize: 100,
     _caller: "getPdfTemplates",
@@ -279,6 +281,7 @@ export async function createPdfDocument(input: {
   createdBy?: string;
   fileUrl: string;
 }): Promise<PdfDocument> {
+  if (isSupabaseBackend()) return (await import("./pdf-maker-supabase")).createPdfDocument(input);
   const style = normalizePdfStyle(input.style);
   const metaFields = parseMetaFieldsJson(input.metaFields ?? []);
   const fields: Record<string, unknown> = {
@@ -299,6 +302,7 @@ export async function createPdfDocument(input: {
 }
 
 export async function getPdfHistory(limit = 20): Promise<PdfDocument[]> {
+  if (isSupabaseBackend()) return (await import("./pdf-maker-supabase")).getPdfHistory(limit);
   const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
   const { records } = await listRecords<DocumentFields>(PDF_DOCUMENTS_TABLE, {
     pageSize: safeLimit,
@@ -309,6 +313,7 @@ export async function getPdfHistory(limit = 20): Promise<PdfDocument[]> {
 }
 
 export async function deletePdfDocument(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./pdf-maker-supabase")).deletePdfDocument(recordId);
   const id = recordId.trim();
   if (!id) throw new Error("Missing record id");
   await deleteRecord(PDF_DOCUMENTS_TABLE, id);

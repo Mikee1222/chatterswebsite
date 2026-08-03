@@ -15,6 +15,7 @@ import {
   linkedRecordIds,
   toLinkedRecordPayload,
 } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   countFeedbackByFunction,
   countFeedbackByRole,
@@ -221,6 +222,9 @@ function mapFunctionRecord(rec: AirtableRecord<FunctionFields>): SopFunction {
 }
 
 export async function getFunctionById(recordId: string): Promise<SopFunction | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getFunctionById(recordId);
+  }
   const id = recordId.trim();
   if (!id) return null;
   try {
@@ -234,6 +238,9 @@ export async function getFunctionById(recordId: string): Promise<SopFunction | n
 // ── Departments ──
 
 export async function getAllSopDepartments(): Promise<SopDepartment[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getAllSopDepartments();
+  }
   const rows = await listAllRecords<DepartmentFields>(SOP_DEPARTMENTS_TABLE, {
     filterByFormula: "{is_active}",
     sort: SORT,
@@ -243,6 +250,9 @@ export async function getAllSopDepartments(): Promise<SopDepartment[]> {
 }
 
 export async function getAllSopDepartmentsAdmin(): Promise<SopDepartment[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getAllSopDepartmentsAdmin();
+  }
   const rows = await listAllRecords<DepartmentFields>(SOP_DEPARTMENTS_TABLE, {
     sort: SORT,
     _caller: "getAllSopDepartmentsAdmin",
@@ -253,6 +263,9 @@ export async function getAllSopDepartmentsAdmin(): Promise<SopDepartment[]> {
 export async function createSopDepartment(
   data: Omit<SopDepartment, "id" | "department_id" | "created_at">
 ): Promise<SopDepartment> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).createSopDepartment(data);
+  }
   const fields: Record<string, unknown> = {
     department_id: genStableId("sop_dept"),
     name: data.name,
@@ -269,6 +282,9 @@ export async function updateSopDepartment(
   id: string,
   data: Partial<Omit<SopDepartment, "id" | "department_id">>
 ): Promise<SopDepartment> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).updateSopDepartment(id, data);
+  }
   const fields: Record<string, unknown> = {};
   if (data.name !== undefined) fields.name = data.name;
   if (data.color !== undefined) fields.color = data.color;
@@ -295,6 +311,9 @@ async function countDepartmentLinks(departmentId: string): Promise<{ roles: numb
 export async function getDepartmentDeleteImpact(
   departmentId: string
 ): Promise<SopDepartmentDeleteImpact> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getDepartmentDeleteImpact(departmentId);
+  }
   const { roles, functions } = await countDepartmentLinks(departmentId);
   return {
     roles,
@@ -304,6 +323,9 @@ export async function getDepartmentDeleteImpact(
 }
 
 export async function deleteSopDepartment(id: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).deleteSopDepartment(id);
+  }
   const { roles, functions } = await countDepartmentLinks(id);
   if (roles > 0 || functions > 0) {
     const parts: string[] = [];
@@ -315,6 +337,9 @@ export async function deleteSopDepartment(id: string): Promise<void> {
 }
 
 export async function reorderDepartments(orderedIds: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).reorderDepartments(orderedIds);
+  }
   const updates = orderedIds.map((recordId, index) => ({
     id: recordId,
     fields: { sort_order: index + 1 },
@@ -365,6 +390,9 @@ export function sopRoleMatchesMember(
 }
 
 export async function getAllSopRoles(): Promise<SopRole[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getAllSopRoles();
+  }
   const rows = await listAllRecords<RoleFields>(SOP_ROLES_TABLE, {
     filterByFormula: "{is_active}",
     sort: SORT,
@@ -374,6 +402,9 @@ export async function getAllSopRoles(): Promise<SopRole[]> {
 }
 
 export async function getAllSopRolesAdmin(): Promise<SopRole[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getAllSopRolesAdmin();
+  }
   const rows = await listAllRecords<RoleFields>(SOP_ROLES_TABLE, {
     sort: SORT,
     _caller: "getAllSopRolesAdmin",
@@ -382,6 +413,9 @@ export async function getAllSopRolesAdmin(): Promise<SopRole[]> {
 }
 
 export async function getSopRoleById(recordId: string): Promise<SopRole | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getSopRoleById(recordId);
+  }
   const id = recordId.trim();
   if (!id) return null;
   try {
@@ -393,6 +427,9 @@ export async function getSopRoleById(recordId: string): Promise<SopRole | null> 
 }
 
 export async function getSopRoleBySlug(slug: string): Promise<SopRole | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getSopRoleBySlug(slug);
+  }
   const normalized = slug.trim();
   if (!normalized) return null;
   const escaped = normalized.replace(/"/g, '""');
@@ -408,6 +445,9 @@ export async function getSopRoleBySlug(slug: string): Promise<SopRole | null> {
 export async function createSopRole(
   data: Omit<SopRole, "id" | "role_id" | "created_at">
 ): Promise<SopRole> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).createSopRole(data);
+  }
   const auth_roles = normalizeAuthRoleSlugs(data.auth_roles);
   if (auth_roles.length > 0) {
     await syncSopAuthRoleOptionsSafe(auth_roles);
@@ -438,6 +478,9 @@ export async function updateSopRole(
   id: string,
   data: Partial<Omit<SopRole, "id" | "role_id">>
 ): Promise<SopRole> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).updateSopRole(id, data);
+  }
   const fields: Record<string, unknown> = {};
   if (data.name !== undefined) fields.name = data.name;
   if (data.slug !== undefined) fields.slug = data.slug;
@@ -466,6 +509,9 @@ export async function updateSopRole(
 }
 
 export async function getRoleDeleteImpact(roleId: string): Promise<SopCascadeDeleteImpact> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getRoleDeleteImpact(roleId);
+  }
   const id = roleId.trim();
   const [functions, progress, signoffs, feedback] = await Promise.all([
     getFunctionsByRoleAdmin(id),
@@ -487,6 +533,9 @@ export async function getRoleDeleteImpact(roleId: string): Promise<SopCascadeDel
 }
 
 export async function deleteSopRole(id: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).deleteSopRole(id);
+  }
   const roleId = id.trim();
   const functions = await getFunctionsByRoleAdmin(roleId);
   for (const fn of functions) {
@@ -499,6 +548,9 @@ export async function deleteSopRole(id: string): Promise<void> {
 }
 
 export async function reorderRoles(orderedIds: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).reorderRoles(orderedIds);
+  }
   const updates = orderedIds.map((recordId, index) => ({
     id: recordId,
     fields: { sort_order: index + 1 },
@@ -513,6 +565,9 @@ export async function reorderRoles(orderedIds: string[]): Promise<void> {
  * (Airtable filterByFormula on linked fields is unreliable for record ids).
  */
 export async function getFunctionsByRole(roleRecordId: string): Promise<SopFunction[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getFunctionsByRole(roleRecordId);
+  }
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
   const rows = await listAllRecords<FunctionFields>(SOP_FUNCTIONS_TABLE, {
@@ -526,6 +581,9 @@ export async function getFunctionsByRole(roleRecordId: string): Promise<SopFunct
 }
 
 export async function getFunctionsByRoleAdmin(roleRecordId: string): Promise<SopFunction[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getFunctionsByRoleAdmin(roleRecordId);
+  }
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
   const rows = await listAllRecords<FunctionFields>(SOP_FUNCTIONS_TABLE, {
@@ -558,6 +616,9 @@ export async function createFunction(
     department_id?: string;
   }
 ): Promise<SopFunction> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).createFunction(data);
+  }
   const fields: Record<string, unknown> = {
     function_id: genStableId("sop_fn"),
     name: data.name,
@@ -589,6 +650,9 @@ export async function updateFunction(
   id: string,
   data: UpdateFunctionOptions
 ): Promise<SopFunction> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).updateFunction(id, data);
+  }
   const fields: Record<string, unknown> = {};
   if (data.name !== undefined) fields.name = data.name;
   if (data.kpi !== undefined) fields.kpi = data.kpi;
@@ -624,6 +688,9 @@ export async function updateFunction(
 }
 
 export async function getFunctionDeleteImpact(functionId: string): Promise<SopCascadeDeleteImpact> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).getFunctionDeleteImpact(functionId);
+  }
   const id = functionId.trim();
   const [progress, feedback, quiz_questions] = await Promise.all([
     countProgressByFunction(id),
@@ -640,6 +707,9 @@ export async function getFunctionDeleteImpact(functionId: string): Promise<SopCa
 }
 
 export async function deleteFunction(id: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).deleteFunction(id);
+  }
   const functionId = id.trim();
   await deleteQuizQuestionsByFunction(functionId);
   await deleteProgressByFunction(functionId);
@@ -648,6 +718,9 @@ export async function deleteFunction(id: string): Promise<void> {
 }
 
 export async function reorderFunctions(orderedIds: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./sops-supabase")).reorderFunctions(orderedIds);
+  }
   const updates = orderedIds.map((recordId, index) => ({
     id: recordId,
     fields: { sort_order: index + 1 },

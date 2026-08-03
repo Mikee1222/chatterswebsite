@@ -6,6 +6,7 @@ import {
   getRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 
 const TABLE_MISTAKES = "chatter_mistakes";
 const TABLE_REASONS = "mistake_reasons";
@@ -129,6 +130,7 @@ function mapMistake(rec: AirtableRecord<Record<string, unknown>>): MistakeRecord
 }
 
 export async function getMistakeReasons(): Promise<MistakeReasonRecord[]> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getMistakeReasons();
   const records = await listAllRecords<Record<string, unknown>>(TABLE_REASONS, {
     filterByFormula: "{active} = TRUE()",
     sort: [{ field: "sort_order", direction: "asc" }],
@@ -138,6 +140,7 @@ export async function getMistakeReasons(): Promise<MistakeReasonRecord[]> {
 }
 
 export async function getAllMistakeReasons(): Promise<MistakeReasonRecord[]> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getAllMistakeReasons();
   const records = await listAllRecords<Record<string, unknown>>(TABLE_REASONS, {
     sort: [{ field: "sort_order", direction: "asc" }],
     _caller: "getAllMistakeReasons",
@@ -146,6 +149,7 @@ export async function getAllMistakeReasons(): Promise<MistakeReasonRecord[]> {
 }
 
 export async function getMistakeReasonByReasonId(reasonId: string): Promise<MistakeReasonRecord | null> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getMistakeReasonByReasonId(reasonId);
   const id = reasonId.trim();
   if (!id) return null;
   const { records } = await listRecords<Record<string, unknown>>(TABLE_REASONS, {
@@ -159,12 +163,14 @@ export async function getMistakeReasonByReasonId(reasonId: string): Promise<Mist
 
 /** Reason must exist and be active (VA submit). */
 export async function getActiveMistakeReasonByReasonId(reasonId: string): Promise<MistakeReasonRecord | null> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getActiveMistakeReasonByReasonId(reasonId);
   const r = await getMistakeReasonByReasonId(reasonId);
   if (!r?.active) return null;
   return r;
 }
 
 export async function getMistakesByVA(vaId: string): Promise<MistakeRecord[]> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getMistakesByVA(vaId);
   const id = vaId.trim();
   if (!id) return [];
   const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {
@@ -176,6 +182,7 @@ export async function getMistakesByVA(vaId: string): Promise<MistakeRecord[]> {
 }
 
 export async function getMistakesByChatter(chatterId: string): Promise<MistakeRecord[]> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getMistakesByChatter(chatterId);
   const id = chatterId.trim();
   if (!id) return [];
   const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {
@@ -212,6 +219,7 @@ function mistakeDateMs(iso: string): number {
 
 /** Unreviewed (pending) mistakes count for admin nav badge (fields-only read). */
 export async function countPendingMistakes(): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).countPendingMistakes();
   try {
     const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {
       filterByFormula: `{status} = "pending"`,
@@ -225,6 +233,7 @@ export async function countPendingMistakes(): Promise<number> {
 }
 
 export async function listMistakesForAdmin(filters: MistakeAdminListFilters): Promise<MistakeRecord[]> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).listMistakesForAdmin(filters);
   const formula = buildAdminFilterFormula(filters);
   const records = await listAllRecords<Record<string, unknown>>(TABLE_MISTAKES, {
     ...(formula ? { filterByFormula: formula, _caller: "listMistakesForAdmin" } : { _caller: "listMistakesForAdmin_all" }),
@@ -255,6 +264,7 @@ export async function listMistakesForAdmin(filters: MistakeAdminListFilters): Pr
 }
 
 export async function getMistakeById(recordId: string): Promise<MistakeRecord | null> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).getMistakeById(recordId);
   try {
     const rec = await getRecord<Record<string, unknown>>(TABLE_MISTAKES, recordId);
     return mapMistake(rec as AirtableRecord<Record<string, unknown>>);
@@ -279,6 +289,7 @@ export type CreateMistakeInput = {
 };
 
 export async function createMistakeRow(input: CreateMistakeInput): Promise<{ id: string; mistake_id: string }> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).createMistakeRow(input);
   const mistake_id = `mistake_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const now = new Date().toISOString();
   const created = await createRecord<Record<string, unknown>>(TABLE_MISTAKES, {
@@ -305,6 +316,7 @@ export async function createMistakeRow(input: CreateMistakeInput): Promise<{ id:
 }
 
 export async function updateMistakeRow(recordId: string, fields: Record<string, unknown>): Promise<MistakeRecord> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).updateMistakeRow(recordId, fields);
   const now = new Date().toISOString();
   const updated = await updateRecord<Record<string, unknown>>(TABLE_MISTAKES, recordId, {
     ...fields,
@@ -323,6 +335,7 @@ export type CreateReasonInput = {
 };
 
 export async function createMistakeReason(input: CreateReasonInput): Promise<MistakeReasonRecord> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).createMistakeReason(input);
   const reason_id =
     input.reason_id?.trim() ||
     `mr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
@@ -347,6 +360,7 @@ export async function updateMistakeReasonRow(
     sort_order: number;
   }>
 ): Promise<MistakeReasonRecord> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).updateMistakeReasonRow(recordId, fields);
   const payload: Record<string, unknown> = {};
   if (fields.label !== undefined) payload.label = fields.label;
   if (fields.category !== undefined) payload.category = fields.category;
@@ -358,5 +372,6 @@ export async function updateMistakeReasonRow(
 }
 
 export async function softDeleteMistakeReason(recordId: string): Promise<MistakeReasonRecord> {
+  if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).softDeleteMistakeReason(recordId);
   return updateMistakeReasonRow(recordId, { active: false });
 }

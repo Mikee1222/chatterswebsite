@@ -6,6 +6,7 @@ import {
   getRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { ModelTier } from "@/services/model-tiers";
 
 export const PRICING_ROWS_TABLE = "pricing_rows";
@@ -120,6 +121,7 @@ function mapPricingSpecial(rec: AirtableRecord<SpecialFields>): PricingSpecial {
 }
 
 export async function getAllPricingRows(): Promise<PricingRow[]> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingRows();
   const rows = await listAllRecords<RowFields>(PRICING_ROWS_TABLE, {
     filterByFormula: "{is_active} = TRUE()",
     sort: ROW_SORT,
@@ -129,6 +131,7 @@ export async function getAllPricingRows(): Promise<PricingRow[]> {
 }
 
 export async function getAllPricingRowsAdmin(): Promise<PricingRow[]> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingRowsAdmin();
   const rows = await listAllRecords<RowFields>(PRICING_ROWS_TABLE, {
     sort: ROW_SORT,
     _caller: "getAllPricingRowsAdmin",
@@ -137,6 +140,7 @@ export async function getAllPricingRowsAdmin(): Promise<PricingRow[]> {
 }
 
 export async function createPricingRow(data: Omit<PricingRow, "id">): Promise<PricingRow> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).createPricingRow(data);
   const rec = await createRecord<RowFields>(PRICING_ROWS_TABLE, {
     row_key: pricingRowKey(data.model_tier, data.spender_tier, data.video_number),
     model_tier: data.model_tier,
@@ -153,6 +157,7 @@ export async function createPricingRow(data: Omit<PricingRow, "id">): Promise<Pr
 }
 
 export async function updatePricingRow(id: string, data: Partial<Omit<PricingRow, "id">>): Promise<PricingRow> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).updatePricingRow(id, data);
   const fields: Record<string, unknown> = {};
   if (data.model_tier !== undefined) fields.model_tier = data.model_tier;
   if (data.spender_tier !== undefined) fields.spender_tier = data.spender_tier;
@@ -180,10 +185,12 @@ export async function updatePricingRow(id: string, data: Partial<Omit<PricingRow
 }
 
 export async function deletePricingRow(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).deletePricingRow(id);
   await deleteRecord(PRICING_ROWS_TABLE, id);
 }
 
 export async function getAllPricingSpecials(): Promise<PricingSpecial[]> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingSpecials();
   const rows = await listAllRecords<SpecialFields>(PRICING_SPECIALS_TABLE, {
     filterByFormula: "{is_active} = TRUE()",
     sort: SPECIAL_SORT,
@@ -193,6 +200,7 @@ export async function getAllPricingSpecials(): Promise<PricingSpecial[]> {
 }
 
 export async function getAllPricingSpecialsAdmin(): Promise<PricingSpecial[]> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).getAllPricingSpecialsAdmin();
   const rows = await listAllRecords<SpecialFields>(PRICING_SPECIALS_TABLE, {
     sort: SPECIAL_SORT,
     _caller: "getAllPricingSpecialsAdmin",
@@ -201,6 +209,7 @@ export async function getAllPricingSpecialsAdmin(): Promise<PricingSpecial[]> {
 }
 
 export async function createPricingSpecial(data: Omit<PricingSpecial, "id">): Promise<PricingSpecial> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).createPricingSpecial(data);
   const rec = await createRecord<SpecialFields>(PRICING_SPECIALS_TABLE, {
     label: data.label,
     price_normal: data.price_normal,
@@ -217,6 +226,7 @@ export async function updatePricingSpecial(
   id: string,
   data: Partial<Omit<PricingSpecial, "id">>
 ): Promise<PricingSpecial> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).updatePricingSpecial(id, data);
   const fields: Record<string, unknown> = {};
   if (data.label !== undefined) fields.label = data.label;
   if (data.price_normal !== undefined) fields.price_normal = data.price_normal;
@@ -230,5 +240,6 @@ export async function updatePricingSpecial(
 }
 
 export async function deletePricingSpecial(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./pricing-supabase")).deletePricingSpecial(id);
   await deleteRecord(PRICING_SPECIALS_TABLE, id);
 }
