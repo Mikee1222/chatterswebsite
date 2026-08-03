@@ -2,6 +2,7 @@
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { joinPhoneFileLinks, parsePhoneFileLinks } from "@/lib/marketing-helpers";
 import { deriveShadowbanReportType, type ShadowbanReportType } from "@/lib/shadowban-helpers";
 import { listAllUsers } from "@/services/users";
@@ -365,6 +366,7 @@ function mapPlatform(rec: AirtableRecord<PlatformFields>): MarketingPlatform {
 
 // Platforms
 export async function getPlatforms(): Promise<MarketingPlatform[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getPlatforms();
   const records = await listAllRecords<PlatformFields>(TABLE_PLATFORMS, {
     filterByFormula: `{active} = TRUE()`,
     sort: [{ field: "sort_order", direction: "asc" }],
@@ -373,6 +375,7 @@ export async function getPlatforms(): Promise<MarketingPlatform[]> {
 }
 
 export async function getAllPlatforms(): Promise<MarketingPlatform[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAllPlatforms();
   const records = await listAllRecords<PlatformFields>(TABLE_PLATFORMS, {
     sort: [{ field: "sort_order", direction: "asc" }],
   });
@@ -380,6 +383,7 @@ export async function getAllPlatforms(): Promise<MarketingPlatform[]> {
 }
 
 export async function createPlatform(data: Partial<MarketingPlatform>): Promise<MarketingPlatform> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).createPlatform(data);
   const now = new Date().toISOString();
   const rec = await createRecord<PlatformFields>(TABLE_PLATFORMS, {
     platform_id: `plt_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -394,6 +398,7 @@ export async function createPlatform(data: Partial<MarketingPlatform>): Promise<
 }
 
 export async function updatePlatform(id: string, data: Partial<MarketingPlatform>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).updatePlatform(id, data);
   const patch: Record<string, unknown> = {};
   if (data.name !== undefined) patch.name = data.name;
   if (data.icon !== undefined) patch.icon = data.icon;
@@ -434,6 +439,7 @@ function countAccountsByPhoneId(accounts: SocialAccount[]): Record<string, numbe
 
 // Phones
 export async function getPhones(preloadedAccounts?: SocialAccount[]): Promise<Phone[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getPhones(preloadedAccounts);
   const [phoneRecords, accounts, vaNameById] = await Promise.all([
     listAllRecords<PhoneFields>(TABLE_PHONES, {
       sort: [{ field: FIELD_PHONE_CREATED_AT, direction: "desc" }],
@@ -446,6 +452,7 @@ export async function getPhones(preloadedAccounts?: SocialAccount[]): Promise<Ph
 }
 
 export async function getPhonesByVA(vaId: string): Promise<Phone[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getPhonesByVA(vaId);
   const id = vaId.trim();
   if (!id) return [];
   // NOTE: "Assigned VA" is a multipleRecordLinks field. ARRAYJOIN() on it yields the
@@ -466,6 +473,7 @@ export async function getPhonesByVA(vaId: string): Promise<Phone[]> {
 }
 
 export async function getPhoneDetail(phoneId: string): Promise<PhoneDetail | null> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getPhoneDetail(phoneId);
   const [rec, accounts, vaNameById] = await Promise.all([
     getRecord<PhoneFields>(TABLE_PHONES, phoneId).catch(() => null),
     getAllAccounts(),
@@ -478,6 +486,7 @@ export async function getPhoneDetail(phoneId: string): Promise<PhoneDetail | nul
 }
 
 export async function createPhone(data: Partial<Phone>): Promise<Phone> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).createPhone(data);
   const now = new Date().toISOString();
   const fields: Record<string, unknown> = {
     [FIELD_DEVICE_NAME]: data.device_name ?? "",
@@ -501,6 +510,7 @@ export async function createPhone(data: Partial<Phone>): Promise<Phone> {
 }
 
 export async function updatePhone(id: string, data: Partial<Phone>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).updatePhone(id, data);
   const patch: Record<string, unknown> = {};
   if (data.device_name !== undefined) patch[FIELD_DEVICE_NAME] = data.device_name;
   if (data.icloud_email !== undefined) patch[FIELD_ICLOUD_EMAIL] = data.icloud_email;
@@ -521,6 +531,7 @@ export async function uploadPhonePhotos(
   phoneId: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>,
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).uploadPhonePhotos(phoneId, files);
   for (const file of files) {
     if (!file.bytes.byteLength) continue;
     await uploadAirtableAttachment({
@@ -534,6 +545,7 @@ export async function uploadPhonePhotos(
 }
 
 export async function unlinkAccountFromPhone(accountId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).unlinkAccountFromPhone(accountId);
   await updateRecord(TABLE_ACCOUNTS, accountId, {
     [FIELD_LINKED_PHONE]: [],
     last_updated: new Date().toISOString(),
@@ -541,6 +553,7 @@ export async function unlinkAccountFromPhone(accountId: string): Promise<void> {
 }
 
 export async function deletePhone(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).deletePhone(id);
   const accounts = await getAllAccounts();
   const linked = accounts.filter((a) => a.linked_phone_id === id);
   await Promise.all(linked.map((a) => unlinkAccountFromPhone(a.id)));
@@ -549,6 +562,7 @@ export async function deletePhone(id: string): Promise<void> {
 
 // Social Accounts
 export async function getAllAccounts(): Promise<SocialAccount[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAllAccounts();
   const [records, phoneNameById] = await Promise.all([
     listAllRecords<AccountFields>(TABLE_ACCOUNTS, {
       sort: [{ field: "created_at", direction: "desc" }],
@@ -559,6 +573,7 @@ export async function getAllAccounts(): Promise<SocialAccount[]> {
 }
 
 export async function getAccountsByModel(modelId: string): Promise<SocialAccount[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAccountsByModel(modelId);
   const mid = airtableFormulaString(modelId);
   const [records, phoneNameById] = await Promise.all([
     listAllRecords<AccountFields>(TABLE_ACCOUNTS, {
@@ -571,6 +586,7 @@ export async function getAccountsByModel(modelId: string): Promise<SocialAccount
 }
 
 export async function getAccountsByVA(vaId: string): Promise<SocialAccount[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAccountsByVA(vaId);
   const vid = airtableFormulaString(vaId);
   const [records, phoneNameById] = await Promise.all([
     listAllRecords<AccountFields>(TABLE_ACCOUNTS, {
@@ -583,6 +599,7 @@ export async function getAccountsByVA(vaId: string): Promise<SocialAccount[]> {
 }
 
 export async function createAccount(data: Partial<SocialAccount>): Promise<SocialAccount> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).createAccount(data);
   const now = new Date().toISOString();
   const fields: Record<string, unknown> = {
     account_id: `acc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -609,6 +626,7 @@ export async function createAccount(data: Partial<SocialAccount>): Promise<Socia
 }
 
 export async function updateAccount(id: string, data: Partial<SocialAccount>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).updateAccount(id, data);
   const patch: Record<string, unknown> = {
     last_updated: new Date().toISOString(),
   };
@@ -636,6 +654,7 @@ export async function updateAccount(id: string, data: Partial<SocialAccount>): P
 
 /** Pending reports only (e.g. badges, focused queues). */
 export async function getPendingShadowbanReports(): Promise<ShadowbanReport[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getPendingShadowbanReports();
   const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
     filterByFormula: `{status} = "pending"`,
     sort: [{ field: "created_at", direction: "desc" }],
@@ -644,6 +663,7 @@ export async function getPendingShadowbanReports(): Promise<ShadowbanReport[]> {
 }
 
 export async function getAllShadowbanReports(): Promise<ShadowbanReport[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAllShadowbanReports();
   const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -652,6 +672,7 @@ export async function getAllShadowbanReports(): Promise<ShadowbanReport[]> {
 
 /** Shadowban/ban/lift reports submitted by a specific VA (reported_by_id). */
 export async function getShadowbanReportsByVA(vaId: string): Promise<ShadowbanReport[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getShadowbanReportsByVA(vaId);
   const vid = airtableFormulaString(vaId);
   const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
     filterByFormula: `{reported_by_id} = "${vid}"`,
@@ -663,6 +684,7 @@ export async function getShadowbanReportsByVA(vaId: string): Promise<ShadowbanRe
 export async function createShadowbanReport(
   data: Partial<ShadowbanReport> & { screenshot?: { url: string }[] },
 ): Promise<ShadowbanReport> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).createShadowbanReport(data);
   const now = new Date().toISOString();
   const reportId = `sbr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const rec = await createRecord<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
@@ -685,6 +707,7 @@ export async function createShadowbanReport(
 
 /** Account IDs with a pending VA "restriction lifted" report awaiting admin confirmation. */
 export async function getPendingLiftedReportAccountIds(): Promise<Set<string>> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getPendingLiftedReportAccountIds();
   const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
     filterByFormula: `{status} = "pending"`,
   });
@@ -699,6 +722,7 @@ export async function getPendingLiftedReportAccountIds(): Promise<Set<string>> {
 }
 
 export async function hasPendingLiftedReport(accountId: string): Promise<boolean> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).hasPendingLiftedReport(accountId);
   const aid = airtableFormulaString(accountId);
   const records = await listAllRecords<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, {
     filterByFormula: `AND({status} = "pending", {account_id} = "${aid}")`,
@@ -707,6 +731,7 @@ export async function hasPendingLiftedReport(accountId: string): Promise<boolean
 }
 
 export async function updateShadowbanReport(id: string, data: Partial<ShadowbanReport>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).updateShadowbanReport(id, data);
   const patch: Record<string, unknown> = {};
   if (data.status !== undefined) patch.status = data.status;
   if (data.reviewed_by !== undefined) patch.reviewed_by = data.reviewed_by;
@@ -716,15 +741,18 @@ export async function updateShadowbanReport(id: string, data: Partial<ShadowbanR
 }
 
 export async function deleteShadowbanReport(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).deleteShadowbanReport(id);
   await deleteRecord(TABLE_SHADOWBAN_REPORTS, id);
 }
 
 export async function deleteAccount(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).deleteAccount(id);
   await updateRecord(TABLE_ACCOUNTS, id, { active: false, last_updated: new Date().toISOString() });
 }
 
 // Funnel Links
 export async function getAllFunnels(): Promise<FunnelLink[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAllFunnels();
   const records = await listAllRecords<FunnelFields>(TABLE_FUNNELS, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -732,6 +760,7 @@ export async function getAllFunnels(): Promise<FunnelLink[]> {
 }
 
 export async function getFunnelsByModel(modelId: string): Promise<FunnelLink[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getFunnelsByModel(modelId);
   const mid = airtableFormulaString(modelId);
   const records = await listAllRecords<FunnelFields>(TABLE_FUNNELS, {
     filterByFormula: `AND({model_id} = "${mid}", {active} = TRUE())`,
@@ -740,6 +769,7 @@ export async function getFunnelsByModel(modelId: string): Promise<FunnelLink[]> 
 }
 
 export async function createFunnel(data: Partial<FunnelLink>): Promise<FunnelLink> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).createFunnel(data);
   const rec = await createRecord<FunnelFields>(TABLE_FUNNELS, {
     funnel_id: `fnl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     model_id: data.model_id,
@@ -755,6 +785,7 @@ export async function createFunnel(data: Partial<FunnelLink>): Promise<FunnelLin
 }
 
 export async function updateFunnel(id: string, data: Partial<FunnelLink>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).updateFunnel(id, data);
   const patch: Record<string, unknown> = {};
   if (data.model_id !== undefined) patch.model_id = data.model_id;
   if (data.model_name !== undefined) patch.model_name = data.model_name;
@@ -768,5 +799,6 @@ export async function updateFunnel(id: string, data: Partial<FunnelLink>): Promi
 }
 
 export async function deleteFunnel(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).deleteFunnel(id);
   await updateRecord(TABLE_FUNNELS, id, { active: false });
 }

@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { linkedRecordIds, snapshotText } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   buildGetAllVaTasksFormula,
   formulaVaTaskVisibleToUser,
@@ -214,6 +215,7 @@ async function resolveVaTaskUserLookupKey(userRecordId: string): Promise<string 
 
 /** Tasks assigned to this VA (including “all VAs” when assigned_to is empty). */
 export async function getVaTasksForUser(userRecordId: string): Promise<VaTaskRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).getVaTasksForUser(userRecordId);
   const recordId = userRecordId.trim();
   if (!recordId) return [];
 
@@ -238,6 +240,7 @@ export type GetAllVaTasksOptions = VaTasksFetchRangeOptions;
  * Cron jobs and scripts that need every row call with no options (no formula filter).
  */
 export async function getAllVaTasks(options?: GetAllVaTasksOptions): Promise<VaTaskRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).getAllVaTasks(options);
   const filterByFormula = buildGetAllVaTasksFormula(options);
   const records = await listAllRecords<Fields>(TABLE, {
     ...(filterByFormula ? { filterByFormula } : {}),
@@ -253,6 +256,7 @@ function airtableFormulaString(value: string): string {
 
 /** Completed recurring instances with the same title (`is_recurring` = true). */
 export async function getRecurringTaskHistory(title: string, _assignedToIds: string[]): Promise<VaTaskRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).getRecurringTaskHistory(title);
   const escaped = airtableFormulaString(title);
   const records = await listAllRecords<Fields>(TABLE, {
     filterByFormula: `AND({title} = "${escaped}", {is_recurring} = TRUE(), {status} = "done")`,
@@ -262,6 +266,7 @@ export async function getRecurringTaskHistory(title: string, _assignedToIds: str
 }
 
 export async function getVaTaskById(id: string): Promise<VaTaskRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).getVaTaskById(id);
   try {
     const rec = await getRecord<Fields>(TABLE, id);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -298,6 +303,26 @@ export type VaTaskUpdateInput = Partial<
 >;
 
 export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecord> {
+  if (isSupabaseBackend()) {
+    const task = await (await import("./va-tasks-supabase")).createVaTask(data);
+    try {
+      const { createModelScheduleItemsForVaTask } = await import("@/services/model-schedule");
+      await createModelScheduleItemsForVaTask({
+        taskId: task.id,
+        title: task.title,
+        description: task.description,
+        due_date: task.due_date,
+        assigned_to_ids: task.assigned_to_ids,
+        assigned_model_ids: task.assigned_model_ids,
+        assigned_model_names: task.assigned_model_names,
+        status: task.status,
+        assigned_by_ids: data.assigned_by_ids,
+      });
+    } catch (err) {
+      devLog(`${VA_TASKS_LOG} model_schedule sync error`, err);
+    }
+    return task;
+  }
   const payload: Record<string, unknown> = {
     title: data.title.trim(),
     description: (data.description ?? "").trim(),
@@ -340,6 +365,7 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
 }
 
 export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise<VaTaskRecord> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).updateVaTask(id, data);
   const payload: Record<string, unknown> = {};
   if (data.title !== undefined) payload.title = data.title.trim();
   if (data.description !== undefined) payload.description = data.description.trim();
@@ -386,6 +412,7 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
 }
 
 export async function deleteVaTask(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).deleteVaTask(id);
   if (isVirtualVaTaskId(id)) {
     throw new Error(
       "Cannot delete a projected recurring day — it has no Airtable record yet. Delete a real occurrence of the series instead.",
@@ -416,6 +443,7 @@ export type VaTaskUpcomingReminder = {
  * Reminder time = due_date − reminder_minutes_before. Only pending / in_progress.
  */
 export async function getUpcomingReminders(): Promise<VaTaskUpcomingReminder[]> {
+  if (isSupabaseBackend()) return (await import("./va-tasks-supabase")).getUpcomingReminders();
   const now = Date.now();
   const horizon = now + 60 * 60 * 1000;
   const all = await listAllRecords<Fields>(TABLE, {});

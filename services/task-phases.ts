@@ -1,6 +1,7 @@
 "use server";
 
 import { createRecord, deleteRecord, getRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { isVirtualVaTaskId } from "@/lib/recurrence";
 import { formulaTaskIdIn } from "@/lib/va-tasks-airtable-formula";
 import {
@@ -168,6 +169,7 @@ function mapItem(rec: AirtableRecord<ItemFields>): PhaseItem {
 
 /** Resolve URL param (Airtable `rec…` id or logical `item_…`) to the phase item row id. */
 export async function resolvePhaseItemRowId(paramId: string): Promise<string | null> {
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).resolvePhaseItemRowId(paramId);
   const id = paramId?.trim();
   if (!id) return null;
   if (id.startsWith("rec")) {
@@ -241,6 +243,9 @@ function groupPhasesFromRecords(
 }
 
 async function fetchPhasesGroupedByTaskId(taskIds: string[]): Promise<Record<string, TaskPhase[]>> {
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).fetchPhasesGroupedByTaskId(taskIds);
+  }
   const formula = formulaTaskIdIn(taskIds);
   if (!formula) return {};
 
@@ -336,14 +341,14 @@ export async function getPhasesForTaskDisplay(
 export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> {
   const taskId = data.task_id?.trim() ?? "";
   const assignees = await resolvePhaseAssignees(taskId, data);
-  const rec = await createRecord<PhaseFields>(TABLE_PHASES, {
+  const fields = {
     phase_id: `phase_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     task_id: data.task_id,
     task_title: data.task_title ?? "",
     phase_number: data.phase_number ?? 1,
     title: data.title ?? `Phase ${data.phase_number ?? 1}`,
     description: data.description ?? "",
-    status: "pending",
+    status: "pending" as const,
     ...(data.scheduled_time !== undefined ? { scheduled_time: data.scheduled_time } : {}),
     assigned_va_id: assignees.assigned_va_id,
     assigned_va_name: assignees.assigned_va_name,
@@ -351,7 +356,9 @@ export async function createPhase(data: Partial<TaskPhase>): Promise<TaskPhase> 
     assigned_model_name: assignees.assigned_model_name,
     region: data.region ?? "Global",
     created_at: new Date().toISOString(),
-  });
+  };
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).createPhase(fields);
+  const rec = await createRecord<PhaseFields>(TABLE_PHASES, fields);
   return mapPhase(rec);
 }
 
@@ -374,8 +381,13 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   ) {
     let taskId = data.task_id?.trim() ?? "";
     if (!taskId) {
-      const phaseRec = await getRecord<PhaseFields>(TABLE_PHASES, id);
-      taskId = (phaseRec.fields.task_id as string)?.trim() ?? "";
+      if (isSupabaseBackend()) {
+        const phaseRec = await (await import("./task-phases-supabase")).getPhaseRow(id);
+        taskId = (phaseRec?.task_id as string)?.trim() ?? "";
+      } else {
+        const phaseRec = await getRecord<PhaseFields>(TABLE_PHASES, id);
+        taskId = (phaseRec.fields.task_id as string)?.trim() ?? "";
+      }
     }
     const assignees = await resolvePhaseAssignees(taskId, data);
     if (data.assigned_va_id !== undefined || data.assigned_va_name !== undefined) {
@@ -389,26 +401,30 @@ export async function updatePhase(id: string, data: Partial<TaskPhase>): Promise
   }
 
   if (Object.keys(patch).length === 0) return;
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).updatePhase(id, patch);
   await updateRecord(TABLE_PHASES, id, patch);
 }
 
 export async function deletePhase(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).deletePhase(id);
   await deleteRecord(TABLE_PHASES, id);
 }
 
 export async function createPhaseItem(data: Partial<PhaseItem>): Promise<PhaseItem> {
-  const rec = await createRecord<ItemFields>(TABLE_ITEMS, {
+  const fields = {
     item_id: `item_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     phase_id: data.phase_id,
     task_id: data.task_id,
     title: data.title ?? "",
     description: data.description ?? "",
     requires_screenshot: data.requires_screenshot ?? false,
-    status: "pending",
+    status: "pending" as const,
     sort_order: data.sort_order ?? 0,
     step_type: data.step_type ?? DEFAULT_TASK_STEP_TYPE,
     created_at: new Date().toISOString(),
-  });
+  };
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).createPhaseItem(fields);
+  const rec = await createRecord<ItemFields>(TABLE_ITEMS, fields);
   return mapItem(rec);
 }
 
@@ -425,10 +441,12 @@ export async function updatePhaseItem(id: string, data: Partial<PhaseItem>): Pro
   if (data.completed_by_va_name !== undefined) patch.completed_by_va_name = data.completed_by_va_name;
   if (data.completed_at !== undefined) patch.completed_at = data.completed_at;
   if (Object.keys(patch).length === 0) return;
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).updatePhaseItem(id, patch);
   await updateRecord(TABLE_ITEMS, id, patch);
 }
 
 export async function deletePhaseItem(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./task-phases-supabase")).deletePhaseItem(id);
   await deleteRecord(TABLE_ITEMS, id);
 }
 

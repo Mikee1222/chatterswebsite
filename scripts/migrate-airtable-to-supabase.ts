@@ -165,7 +165,21 @@ async function main() {
         const rows: Record<string, unknown>[] = [];
         const mapRows: { airtable_id: string; table_name: string; supabase_id: string }[] = [];
 
-        for (const rec of slice) {
+        let attProcessed = 0;
+        const attTotal = plan.attachmentFields.length
+          ? slice.filter((rec) =>
+              plan.attachmentFields.some((f) => {
+                const raw = rec.fields[f.airtableField];
+                return Array.isArray(raw) && raw.some((a) => a && typeof a === "object" && "url" in a);
+              })
+            ).length
+          : 0;
+        if (args.pass === "attachments" && attTotal) {
+          console.log(`  rows with attachments: ~${attTotal}`);
+        }
+
+        for (let idx = 0; idx < slice.length; idx++) {
+          const rec = slice[idx];
           const id = existingMap.get(rec.id) ?? newRowId();
           const row: Record<string, unknown> = {
             id,
@@ -189,13 +203,32 @@ async function main() {
                       }))
                   : [];
                 if (atts.length) {
-                  row[f.pgColumn] = await migrateAttachmentsForRow(sb, {
-                    bucket: attachmentBucketFor(plan.pgName, f.pgColumn),
-                    table: plan.pgName,
-                    airtableId: rec.id,
-                    field: f.pgColumn,
-                    attachments: atts,
-                  });
+                  // Skip re-upload when DB already has sb:// tokens for this row
+                  const { data: existingRow } = await sb
+                    .from(plan.pgName)
+                    .select(f.pgColumn)
+                    .eq("airtable_id", rec.id)
+                    .maybeSingle();
+                  const existingUrls = (existingRow as Record<string, unknown> | null)?.[f.pgColumn];
+                  const alreadyMigrated =
+                    Array.isArray(existingUrls) &&
+                    existingUrls.length > 0 &&
+                    existingUrls.every((u) => typeof u === "string" && u.startsWith("sb://"));
+                  if (alreadyMigrated) {
+                    row[f.pgColumn] = existingUrls;
+                  } else {
+                    row[f.pgColumn] = await migrateAttachmentsForRow(sb, {
+                      bucket: attachmentBucketFor(plan.pgName, f.pgColumn),
+                      table: plan.pgName,
+                      airtableId: rec.id,
+                      field: f.pgColumn,
+                      attachments: atts,
+                    });
+                  }
+                  attProcessed += 1;
+                  if (attProcessed % 25 === 0 || attProcessed === 1) {
+                    console.log(`  attachment progress ${attProcessed}/${attTotal || "?"} (${rec.id})`);
+                  }
                 } else {
                   row[f.pgColumn] = null;
                 }
@@ -220,6 +253,13 @@ async function main() {
             table_name: plan.pgName,
             supabase_id: id,
           });
+
+          // Upsert in chunks so a crash mid-table doesn't lose all progress
+          if (rows.length >= 50) {
+            await upsertBatch(sb, plan.pgName, rows.splice(0, rows.length));
+            await upsertBatch(sb, "_airtable_id_map", mapRows.splice(0, mapRows.length), 500);
+            console.log(`  upserted through row ${idx + 1}/${slice.length}`);
+          }
         }
 
         if (rows.length) {

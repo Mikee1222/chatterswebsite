@@ -10,6 +10,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   NOTIFICATIONS_TABLE,
   NOTIFICATION_FIELDS,
@@ -21,6 +22,13 @@ import {
 import type { AppNotification, NotificationCategory, NotificationEventType, NotificationPriority } from "@/types";
 import type { NotificationMetadataItem } from "@/types";
 import { devLog } from "@/lib/dev-log";
+
+/**
+ * event_type storage choice (Supabase):
+ * Permissive `text` + app validation (`validateNotificationPayload` / NOTIFICATION_EVENT_TYPES).
+ * No Postgres ENUM/CHECK — avoids brittle Airtable typecast as a required write path.
+ * See docs/supabase-migration/03-remaining-work.md and services/notifications-supabase.ts.
+ */
 
 type Fields = Record<string, unknown>;
 
@@ -72,6 +80,7 @@ export async function createNotification(fields: {
   entity_id: string;
   metadata?: NotificationMetadataItem[];
 }): Promise<AppNotification | null> {
+  if (isSupabaseBackend()) return (await import("./notifications-supabase")).createNotification(fields);
   const NOTIF = "[NOTIF]";
   const airtableCategory = CATEGORY_TO_AIRTABLE[fields.category] ?? fields.category;
   console.log("[createNotification] called, user_id:", fields.user_id);
@@ -156,6 +165,9 @@ export async function listNotificationsForUser(
   userId: string,
   params: { pageSize?: number; offset?: string; unreadOnly?: boolean; since?: string } = {}
 ) {
+  if (isSupabaseBackend()) {
+    return (await import("./notifications-supabase")).listNotificationsForUser(userId, params);
+  }
   const escaped = userId.replace(/"/g, '""');
   let formula = `{${NOTIFICATION_FIELDS.user_id}} = "${escaped}"`;
   if (params.unreadOnly) {
@@ -177,6 +189,7 @@ export async function listNotificationsForUser(
 }
 
 export async function getUnreadCount(userId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./notifications-supabase")).getUnreadCount(userId);
   const escaped = userId.replace(/"/g, '""');
   const formula = `AND({${NOTIFICATION_FIELDS.user_id}} = "${escaped}", ${unreadReadAtFormula()})`;
   devLog(NOTIFY_UI_DEBUG, "getUnreadCount", JSON.stringify({ airtable_filter: formula, recipient_user_id: userId }));
@@ -189,6 +202,7 @@ export async function getUnreadCount(userId: string): Promise<number> {
 }
 
 export async function markAsRead(recordId: string, userId: string) {
+  if (isSupabaseBackend()) return (await import("./notifications-supabase")).markAsRead(recordId, userId);
   const existing = await getRecord<Fields>(NOTIFICATIONS_TABLE, recordId);
   const ownerId = String((existing.fields as Fields)[NOTIFICATION_FIELDS.user_id] ?? "");
   if (ownerId !== userId) {
@@ -204,6 +218,9 @@ export async function markAsRead(recordId: string, userId: string) {
 
 /** Deletes one notification only if it belongs to the given user (Airtable user id). */
 export async function deleteNotificationForUser(recordId: string, expectedUserId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./notifications-supabase")).deleteNotificationForUser(recordId, expectedUserId);
+  }
   const rec = await getRecord<Fields>(NOTIFICATIONS_TABLE, recordId);
   const uid = String((rec.fields as Fields)[NOTIFICATION_FIELDS.user_id] ?? "");
   if (uid !== expectedUserId) {
@@ -215,6 +232,7 @@ export async function deleteNotificationForUser(recordId: string, expectedUserId
 
 /** Mark every unread notification for this user as read (no page limit). */
 export async function markAllAsRead(userId: string) {
+  if (isSupabaseBackend()) return (await import("./notifications-supabase")).markAllAsRead(userId);
   const readAtValue = new Date().toISOString();
   const escaped = userId.replace(/"/g, '""');
   const formula = `AND({${NOTIFICATION_FIELDS.user_id}} = "${escaped}", ${unreadReadAtFormula()})`;
@@ -274,6 +292,7 @@ export async function markAllAsRead(userId: string) {
 }
 
 export async function getNotificationById(recordId: string): Promise<AppNotification | null> {
+  if (isSupabaseBackend()) return (await import("./notifications-supabase")).getNotificationById(recordId);
   try {
     const rec = await getRecord<Fields>(NOTIFICATIONS_TABLE, recordId);
     return mapRecord(rec);
@@ -292,6 +311,14 @@ export async function findExistingNotification(
   entityId: string,
   eventType: string
 ): Promise<boolean> {
+  if (isSupabaseBackend()) {
+    return (await import("./notifications-supabase")).findExistingNotification(
+      userId,
+      entityType,
+      entityId,
+      eventType
+    );
+  }
   const escapedUser = userId.replace(/"/g, '""');
   const escapedEntityType = entityType.replace(/"/g, '""');
   const escapedEntityId = entityId.replace(/"/g, '""');

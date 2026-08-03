@@ -477,7 +477,19 @@ export async function migrateAttachmentsForRow(
       urls.push(att.url);
       continue;
     }
-    const res = await fetch(att.url);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 45_000);
+    let res: Response;
+    try {
+      res = await fetch(att.url, { signal: controller.signal });
+    } catch (err) {
+      clearTimeout(timeout);
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(`  attachment download fail ${opts.table}.${opts.field}: ${msg}`);
+      urls.push(att.url); // keep original as fallback
+      continue;
+    }
+    clearTimeout(timeout);
     if (!res.ok) {
       console.warn(`  attachment download fail ${opts.table}.${opts.field}: ${res.status}`);
       urls.push(att.url); // keep original as fallback

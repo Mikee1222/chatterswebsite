@@ -51,9 +51,12 @@ function parseCompensationType(raw: unknown): CompensationType | null {
   return null;
 }
 
-function parseContractAttachmentsFromUrls(urls: string[] | null | undefined): UserContractAttachment[] {
+async function parseContractAttachmentsFromUrls(
+  urls: string[] | null | undefined
+): Promise<UserContractAttachment[]> {
   if (!urls?.length) return [];
-  return urls.filter(Boolean).map((url) => ({ url }));
+  const { urlsToAttachments } = await import("@/lib/supabase-signed-url");
+  return urlsToAttachments(urls);
 }
 
 function mapSecondaryRoleField(raw: unknown): "chatter" | "virtual_assistant" | null {
@@ -103,7 +106,7 @@ async function mapRow(row: Row, includePasswordHash = false): Promise<UserRecord
   if (typeof row.compensation_value === "number" && !Number.isNaN(row.compensation_value)) {
     out.compensation_value = Number(row.compensation_value);
   }
-  const contractAttachments = parseContractAttachmentsFromUrls(row.contract_attachments);
+  const contractAttachments = await parseContractAttachmentsFromUrls(row.contract_attachments);
   if (contractAttachments.length > 0) out.contract_attachments = contractAttachments;
   if (row.collaboration_start_date) {
     out.collaboration_start_date = String(row.collaboration_start_date).slice(0, 10);
@@ -341,9 +344,8 @@ export async function uploadUserContractAttachments(
   recordId: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>
 ): Promise<void> {
-  // Dual-run: upload to Supabase Storage attachments bucket and append URLs
-  const { getSupabaseServiceClient } = await import("@/lib/supabase-server");
-  const sb = getSupabaseServiceClient();
+  // Private bucket: store durable sb:// tokens (signed URLs minted on read).
+  const { uploadToPrivateStorage } = await import("@/lib/supabase-signed-url");
   const existing = await sbSelectByPublicId<Row>(TABLE, recordId);
   const urls = [...(existing?.contract_attachments ?? [])];
   for (let i = 0; i < files.length; i++) {
@@ -351,13 +353,13 @@ export async function uploadUserContractAttachments(
     if (!file.bytes.byteLength) continue;
     const safeName = (file.name || "contract.pdf").replace(/[^a-zA-Z0-9._-]/g, "_");
     const objectPath = `users/${recordId}/contract_attachments/${Date.now()}_${i}_${safeName}`;
-    const { error } = await sb.storage.from("attachments").upload(objectPath, file.bytes, {
+    const token = await uploadToPrivateStorage({
+      bucket: "attachments",
+      objectPath,
+      bytes: file.bytes,
       contentType: file.type || "application/octet-stream",
-      upsert: true,
     });
-    if (error) throw new Error(`contract upload: ${error.message}`);
-    const { data } = sb.storage.from("attachments").getPublicUrl(objectPath);
-    if (data?.publicUrl) urls.push(data.publicUrl);
+    urls.push(token);
   }
   await sbUpdateByPublicId(TABLE, recordId, {
     contract_attachments: urls,

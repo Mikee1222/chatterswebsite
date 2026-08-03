@@ -8,6 +8,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { linkedRecordIds, snapshotText } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { createVaTask } from "@/services/va-tasks";
 import { createPhase, createPhaseItem, getPhasesByTask, type TaskPhase } from "@/services/task-phases";
 import { getUserByAirtableId } from "@/services/users";
@@ -139,6 +140,7 @@ function mapPhase(rec: AirtableRecord<PhaseFields>, items: TaskTemplateItemRecor
 }
 
 export async function getTaskTemplates(category?: TaskTemplateCategory): Promise<TaskTemplateRecord[]> {
+  if (isSupabaseBackend()) return (await import("./task-templates-supabase")).getTaskTemplates(category);
   const records = await listAllRecords<TemplateFields>(TABLE_TEMPLATES, {
     sort: [{ field: "name", direction: "asc" }],
   });
@@ -148,6 +150,7 @@ export async function getTaskTemplates(category?: TaskTemplateCategory): Promise
 }
 
 export async function getAllTaskTemplatesAdmin(): Promise<TaskTemplateRecord[]> {
+  if (isSupabaseBackend()) return (await import("./task-templates-supabase")).getAllTaskTemplatesAdmin();
   const records = await listAllRecords<TemplateFields>(TABLE_TEMPLATES, {
     sort: [{ field: "name", direction: "asc" }],
   });
@@ -155,6 +158,7 @@ export async function getAllTaskTemplatesAdmin(): Promise<TaskTemplateRecord[]> 
 }
 
 export async function getTaskTemplateDetail(templateId: string): Promise<TaskTemplateDetail | null> {
+  if (isSupabaseBackend()) return (await import("./task-templates-supabase")).getTaskTemplateDetail(templateId);
   let templateRec: AirtableRecord<TemplateFields>;
   try {
     templateRec = await getRecord<TemplateFields>(TABLE_TEMPLATES, templateId);
@@ -264,6 +268,7 @@ async function replaceTemplatePhases(
 }
 
 export async function createTaskTemplate(data: TaskTemplateCreateInput): Promise<TaskTemplateDetail> {
+  if (isSupabaseBackend()) return (await import("./task-templates-supabase")).createTaskTemplate(data);
   const rec = await createRecord<TemplateFields>(TABLE_TEMPLATES, {
     template_id: `tpl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     name: data.name.trim(),
@@ -283,6 +288,7 @@ export async function createTaskTemplate(data: TaskTemplateCreateInput): Promise
 }
 
 export async function updateTaskTemplate(id: string, data: TaskTemplateUpdateInput): Promise<TaskTemplateDetail> {
+  if (isSupabaseBackend()) return (await import("./task-templates-supabase")).updateTaskTemplate(id, data);
   const patch: Record<string, unknown> = {};
   if (data.name !== undefined) patch.name = data.name.trim();
   if (data.description !== undefined) patch.description = data.description.trim();
@@ -300,6 +306,7 @@ export async function updateTaskTemplate(id: string, data: TaskTemplateUpdateInp
 }
 
 export async function deleteTaskTemplate(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./task-templates-supabase")).deleteTaskTemplate(id);
   await updateRecord(TABLE_TEMPLATES, id, { is_active: false });
 }
 

@@ -8,6 +8,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   coerceWinnerVideoContentType,
   coerceWinnerVideoStatus,
@@ -27,6 +28,14 @@ import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import type { NotificationEventType, NotificationPriority } from "@/types";
 
 const TABLE = "winner_videos";
+
+async function persistWinnerVideoFields(id: string, fields: Record<string, unknown>): Promise<void> {
+  if (isSupabaseBackend()) {
+    await (await import("./winner-videos-supabase")).updateWinnerVideoFields(id, fields);
+    return;
+  }
+  await updateRecord(TABLE, id, fields);
+}
 
 /** Notify every active user whose role grants `permission` (e.g. winner_videos:manage reviewers). */
 async function notifyPermissionHolders(params: {
@@ -241,6 +250,7 @@ export async function getWinnerVideosBySubmitter(vaId: string): Promise<WinnerVi
 }
 
 export async function getAllWinnerVideos(filters: WinnerVideoFilters = {}): Promise<WinnerVideoRecord[]> {
+  if (isSupabaseBackend()) return (await import("./winner-videos-supabase")).getAllWinnerVideos(filters);
   const filterByFormula = buildFilter(filters);
   const records = await listAllRecords<WinnerVideoFields>(TABLE, {
     ...(filterByFormula ? { filterByFormula } : {}),
@@ -250,6 +260,7 @@ export async function getAllWinnerVideos(filters: WinnerVideoFilters = {}): Prom
 }
 
 export async function getWinnerVideoById(id: string): Promise<WinnerVideoRecord | null> {
+  if (isSupabaseBackend()) return (await import("./winner-videos-supabase")).getWinnerVideoById(id);
   try {
     const rec = await getRecord<WinnerVideoFields>(TABLE, id);
     return mapWinnerVideo(rec);
@@ -271,7 +282,7 @@ export type CreateWinnerVideoInput = {
 
 export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<WinnerVideoRecord> {
   const now = new Date().toISOString();
-  const rec = await createRecord<WinnerVideoFields>(TABLE, {
+  const fields = {
     video_id: `wv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     reference_model_id: data.reference_model_id?.trim() || undefined,
     reference_model_name: data.reference_model_name.trim(),
@@ -283,8 +294,10 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     submitted_at: now,
     status: "Pending",
     views_at_submission: data.views_at_submission ?? undefined,
-  });
-  const video = mapWinnerVideo(rec);
+  };
+  const video = isSupabaseBackend()
+    ? await (await import("./winner-videos-supabase")).createWinnerVideoRow(fields)
+    : mapWinnerVideo(await createRecord<WinnerVideoFields>(TABLE, fields));
 
   await notifyPermissionHolders({
     permission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
@@ -306,6 +319,9 @@ export async function uploadWinnerVideoScreenshot(
   id: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>,
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./winner-videos-supabase")).uploadWinnerVideoScreenshot(id, files);
+  }
   for (const file of files) {
     await uploadAirtableAttachment({
       recordId: id,
@@ -348,7 +364,7 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
     patch.script_status = "Needs Script";
   }
 
-  await updateRecord(TABLE, id, patch);
+  await persistWinnerVideoFields(id, patch);
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after approve");
@@ -398,7 +414,7 @@ export async function rejectWinnerVideo(id: string, data: RejectWinnerVideoInput
   if (!reason) throw new Error("Rejection reason is required");
 
   const now = new Date().toISOString();
-  await updateRecord(TABLE, id, {
+  await persistWinnerVideoFields(id, {
     status: "Rejected",
     rejection_reason: reason,
     reviewed_by_name: data.reviewed_by_name.trim(),
@@ -443,7 +459,7 @@ export async function updateWinnerVideoStatus(
     patch.reviewed_by_name = data.reviewed_by_name.trim();
     patch.reviewed_at = new Date().toISOString();
   }
-  await updateRecord(TABLE, id, patch);
+  await persistWinnerVideoFields(id, patch);
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after status update");
   return updated;
@@ -556,7 +572,7 @@ async function writeCreativeScriptSubmission(
   if (!scriptText) throw new Error("Script text is required");
 
   const now = new Date().toISOString();
-  await updateRecord(TABLE, id, {
+  await persistWinnerVideoFields(id, {
     assigned_creator_name: modelName,
     script_status: "Pending Review",
     script_video_type: videoType,
@@ -650,7 +666,7 @@ export async function approveCreativeScript(
   if (!scriptText) throw new Error("Script text is required");
 
   const now = new Date().toISOString();
-  await updateRecord(TABLE, id, {
+  await persistWinnerVideoFields(id, {
     script_status: "Approved",
     script_text: scriptText,
     script_reviewed_by_name: data.reviewed_by_name.trim(),
@@ -694,7 +710,7 @@ export async function rejectCreativeScript(
   if (!scriptText) throw new Error("Script text is required");
 
   const now = new Date().toISOString();
-  await updateRecord(TABLE, id, {
+  await persistWinnerVideoFields(id, {
     script_status: "Rejected",
     script_text: scriptText,
     script_rejection_reason: reason,
@@ -727,7 +743,7 @@ export async function saveCreativeScriptText(id: string, script_text: string): P
   const text = script_text.trim();
   if (!text) throw new Error("Script text is required");
 
-  await updateRecord(TABLE, id, { script_text: text });
+  await persistWinnerVideoFields(id, { script_text: text });
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after save");
