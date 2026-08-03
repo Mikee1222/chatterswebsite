@@ -1,100 +1,76 @@
-import { createHash } from "node:crypto";
+/**
+ * Supabase backend for services/link-ab-testing.ts
+ *
+ * Notes: For dual-run correctness, link-pages CRUD calls delegate to the
+ * dual-backed link-pages module (which is Airtable READ or Supabase based on
+ * DATA_BACKEND). This file only writes A/B result events directly into the
+ * Supabase `link_ab_results` table.
+ */
 import {
-  createRecord,
-  updateRecord,
-  listAllRecords,
-  deleteRecord,
-  invalidateListRecordsReadCacheForTable,
-} from "@/lib/airtable-server";
-import { isSupabaseBackend } from "@/lib/data-backend";
-import {
-  LINK_PAGES_TABLE,
-  LINK_PAGE_BLOCKS_TABLE,
-  LINK_AB_RESULTS_TABLE,
-} from "@/lib/link-pages-schema";
-import {
-  getLinkPageById,
-  getLinkPageByPageId,
-  createLinkPage,
-  updateLinkPage,
-  archiveLinkPage,
-  upsertBlock,
-  listBlocksForPage,
-  invalidateLinkPagePublicCache,
-} from "@/services/link-pages";
+  publicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbUpdateByPublicId,
+  type SbRow,
+} from "@/lib/supabase-data";
 import { ymdInAthens } from "@/lib/link-page-analytics-utils";
 import type {
   AbTestResults,
-  AbVariantMetrics,
   LinkPageAbEventType,
   LinkPageAbVariant,
-  LinkPageAbWinner,
   LinkPageRecord,
   LinkPageWithBlocks,
 } from "@/types";
+import { calculateWinner } from "./link-ab-testing";
+import {
+  archiveLinkPage,
+  createLinkPage,
+  getLinkPageById,
+  getLinkPageByPageId,
+  invalidateLinkPagePublicCache,
+  listBlocksForPage,
+  updateLinkPage,
+  upsertBlock,
+} from "@/services/link-pages";
 
-type AbResultFields = {
-  event_id?: string;
-  page_id?: string;
-  variant?: string;
-  event_type?: string;
-  session_id?: string;
-  block_id?: string;
-  timestamp?: string;
+const PAGES_TABLE = "link_pages";
+const BLOCKS_TABLE = "link_page_blocks";
+const AB_TABLE = "link_ab_results";
+
+type AbRow = SbRow & {
+  event_id?: string | null;
+  page_id?: string | null;
+  variant?: string | null;
+  event_type?: string | null;
+  session_id?: string | null;
+  block_id?: string | null;
+  timestamp?: string | null;
 };
-
-type AbPageFields = {
-  ab_test_enabled?: boolean;
-  ab_variant_id?: string;
-  ab_test_name?: string;
-  ab_winner?: string;
-  ab_started_at?: string;
-  updated_at?: string;
-};
-
-function escapeFormulaString(s: string): string {
-  return s.replace(/"/g, '""');
-}
 
 function newAbEventId(): string {
   return `abe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function parseVariant(raw: string | undefined): LinkPageAbVariant {
+function parseVariant(raw: string | null | undefined): LinkPageAbVariant {
   return raw === "b" ? "b" : "a";
 }
 
-function parseAbEventType(raw: string | undefined): LinkPageAbEventType {
+function parseAbEventType(raw: string | null | undefined): LinkPageAbEventType {
   return raw === "click" ? "click" : "view";
 }
 
-/** Deterministic 50/50 split by session + control page id. */
-export function getAbVariantForSession(sessionId: string, controlPageId: string): LinkPageAbVariant {
-  const hash = createHash("sha256").update(`${sessionId}:${controlPageId}`).digest("hex");
-  const bucket = parseInt(hash.slice(0, 8), 16);
-  return bucket % 2 === 0 ? "a" : "b";
-}
-
-export type AbTrackContext = {
+/** Fire-and-forget A/B event write. */
+export function trackAbEvent(ctx: {
   pageId: string;
   variant: LinkPageAbVariant;
   eventType: LinkPageAbEventType;
   sessionId: string;
   blockId?: string;
-};
-
-/** Fire-and-forget A/B event write. */
-export function trackAbEvent(ctx: AbTrackContext): void {
-  if (isSupabaseBackend()) {
-    void (async () => {
-      const mod = await import("./link-ab-testing-supabase");
-      mod.trackAbEvent(ctx);
-    })();
-    return;
-  }
+}): void {
   if (!ctx.pageId || !ctx.sessionId) return;
   const now = new Date().toISOString();
-  void createRecord<AbResultFields>(LINK_AB_RESULTS_TABLE, {
+  void sbInsert<AbRow>(AB_TABLE, {
     event_id: newAbEventId(),
     page_id: ctx.pageId.trim(),
     variant: ctx.variant,
@@ -103,7 +79,7 @@ export function trackAbEvent(ctx: AbTrackContext): void {
     block_id: ctx.blockId?.trim() ?? "",
     timestamp: now,
   }).catch((err) => {
-    console.error("[link-ab-testing] trackAbEvent failed:", err);
+    console.error("[link-ab-testing/supabase] trackAbEvent failed:", err);
   });
 }
 
@@ -113,88 +89,52 @@ function erf(x: number): number {
   const t = 1 / (1 + 0.3275911 * ax);
   const y =
     1 -
-    (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t *
+    (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) *
+      t *
       Math.exp(-ax * ax));
   return sign * y;
 }
-
 function normalCdf(x: number): number {
   return 0.5 * (1 + erf(x / Math.SQRT2));
 }
-
-function chiSquare2x2(aSuccess: number, aFail: number, bSuccess: number, bFail: number): number {
+function chiSquareConfidence(aSuccess: number, aFail: number, bSuccess: number, bFail: number): number {
   const n = aSuccess + aFail + bSuccess + bFail;
   if (n === 0) return 0;
   const denom = (aSuccess + aFail) * (bSuccess + bFail) * (aSuccess + bSuccess) * (aFail + bFail);
   if (denom === 0) return 0;
   const num = n * Math.pow(aSuccess * bFail - aFail * bSuccess, 2);
-  return num / denom;
-}
-
-function chiSquareConfidence(aSuccess: number, aFail: number, bSuccess: number, bFail: number): number {
-  const chi2 = chiSquare2x2(aSuccess, aFail, bSuccess, bFail);
+  const chi2 = num / denom;
   if (chi2 <= 0) return 0;
   const pValue = 2 * (1 - normalCdf(Math.sqrt(chi2)));
   return Math.round(Math.max(0, Math.min(100, (1 - pValue) * 100)));
 }
 
-export function calculateWinner(
-  variantA: AbVariantMetrics,
-  variantB: AbVariantMetrics
-): LinkPageAbVariant | null {
-  const totalSessions = variantA.sessions + variantB.sessions;
-  const ctrDiff = Math.abs(variantA.ctr - variantB.ctr);
-
-  const aNoClick = Math.max(0, variantA.sessions - variantA.sessionsWithClicks);
-  const bNoClick = Math.max(0, variantB.sessions - variantB.sessionsWithClicks);
-  const confidence = chiSquareConfidence(
-    variantA.sessionsWithClicks,
-    aNoClick,
-    variantB.sessionsWithClicks,
-    bNoClick
-  );
-
-  if (totalSessions > 100 && ctrDiff > 0.05) {
-    return variantA.ctr >= variantB.ctr ? "a" : "b";
-  }
-  if (confidence >= 95 && variantA.ctr !== variantB.ctr) {
-    return variantA.ctr > variantB.ctr ? "a" : "b";
-  }
-  return null;
-}
+type MetricsPair = { a: AbTestResults["variantA"]; b: AbTestResults["variantB"] };
 
 function aggregateMetrics(
   events: Array<{ variant: LinkPageAbVariant; event_type: LinkPageAbEventType; session_id: string }>
-): { a: AbVariantMetrics; b: AbVariantMetrics } {
+): MetricsPair {
   const viewSessions: Record<LinkPageAbVariant, Set<string>> = { a: new Set(), b: new Set() };
   const clickSessions: Record<LinkPageAbVariant, Set<string>> = { a: new Set(), b: new Set() };
   let clicksA = 0;
   let clicksB = 0;
-
   for (const ev of events) {
     const sid = ev.session_id.trim();
     if (!sid) continue;
-    if (ev.event_type === "view") {
-      viewSessions[ev.variant].add(sid);
-    } else {
+    if (ev.event_type === "view") viewSessions[ev.variant].add(sid);
+    else {
       clickSessions[ev.variant].add(sid);
       if (ev.variant === "a") clicksA++;
       else clicksB++;
     }
   }
-
-  function build(variant: LinkPageAbVariant, clicks: number): AbVariantMetrics {
+  const build = (variant: LinkPageAbVariant, clicks: number) => {
     const sessions = viewSessions[variant].size;
-    const views = sessions;
     const sessionsWithClicks = [...clickSessions[variant]].filter((s) => viewSessions[variant].has(s)).length;
     const ctr = sessions > 0 ? sessionsWithClicks / sessions : 0;
-    return { variant, views, clicks, sessions, sessionsWithClicks, ctr };
-  }
-
-  return {
-    a: build("a", clicksA),
-    b: build("b", clicksB),
+    return { variant, views: sessions, clicks, sessions, sessionsWithClicks, ctr };
   };
+  return { a: build("a", clicksA), b: build("b", clicksB) };
 }
 
 function viewsByDayFromEvents(
@@ -214,23 +154,20 @@ function viewsByDayFromEvents(
 }
 
 export async function getAbTestResults(page: LinkPageRecord): Promise<AbTestResults> {
-  if (isSupabaseBackend()) return (await import("./link-ab-testing-supabase")).getAbTestResults(page);
   const controlPageId = page.page_id;
-  const records = await listAllRecords<AbResultFields>(LINK_AB_RESULTS_TABLE, {
-    filterByFormula: `{page_id}="${escapeFormulaString(controlPageId)}"`,
-    _caller: "link-ab-results",
-  });
+  const rows = await sbSelectAll<AbRow>(AB_TABLE).catch(() => []);
+  const matching = rows.filter((r) => (r.page_id ?? "") === controlPageId);
 
   const startedAtMs = page.ab_started_at ? Date.parse(page.ab_started_at) : NaN;
   const testStopped = !page.ab_test_enabled && page.ab_winner !== "none";
   const stoppedAtMs = testStopped && page.updated_at ? Date.parse(page.updated_at) : NaN;
 
-  const events = records
-    .map((rec) => ({
-      variant: parseVariant(rec.fields.variant),
-      event_type: parseAbEventType(rec.fields.event_type),
-      session_id: rec.fields.session_id ?? "",
-      timestamp: rec.fields.timestamp ?? "",
+  const events = matching
+    .map((r) => ({
+      variant: parseVariant(r.variant),
+      event_type: parseAbEventType(r.event_type),
+      session_id: r.session_id ?? "",
+      timestamp: r.timestamp ?? "",
     }))
     .filter((ev) => {
       if (!ev.timestamp) return false;
@@ -265,26 +202,18 @@ export async function getAbTestResults(page: LinkPageRecord): Promise<AbTestResu
   };
 }
 
-async function updateAbFields(recordId: string, patch: Partial<AbPageFields>): Promise<void> {
-  await updateRecord<AbPageFields>(LINK_PAGES_TABLE, recordId, {
-    ...patch,
-    updated_at: new Date().toISOString(),
-  });
-  invalidateListRecordsReadCacheForTable(LINK_PAGES_TABLE);
+async function updateAbFields(recordId: string, patch: Record<string, unknown>): Promise<void> {
+  await sbUpdateByPublicId(PAGES_TABLE, recordId, { ...patch, updated_at: new Date().toISOString() });
 }
 
-/** Full page + blocks clone for variant B. */
 export async function createAbVariantPage(controlRecordId: string): Promise<LinkPageRecord> {
-  if (isSupabaseBackend()) return (await import("./link-ab-testing-supabase")).createAbVariantPage(controlRecordId);
   const source = await getLinkPageById(controlRecordId);
   if (!source) throw new Error("Page not found");
-
   const copy = await createLinkPage({
     model_id: source.model_id,
     title: `${source.title} (Variant B)`,
     slug: `${source.slug}-variant-b`,
   });
-
   await updateLinkPage(copy.id, {
     bio: source.bio,
     profile_photo_url: source.profile_photo_url,
@@ -298,10 +227,9 @@ export async function createAbVariantPage(controlRecordId: string): Promise<Link
     verified: source.verified,
     show_powered_by: source.show_powered_by,
   });
-
   const blocks = source.blocks.sort((a, b) => a.sort_order - b.sort_order);
   for (let i = 0; i < blocks.length; i++) {
-    const b = blocks[i];
+    const b = blocks[i]!;
     await upsertBlock(null, {
       page_id: copy.page_id,
       block_type: b.block_type,
@@ -319,7 +247,6 @@ export async function createAbVariantPage(controlRecordId: string): Promise<Link
       heading_text: b.heading_text,
     });
   }
-
   return copy;
 }
 
@@ -327,7 +254,6 @@ export async function startAbTest(
   controlRecordId: string,
   testName: string
 ): Promise<{ page: LinkPageRecord; variantPageId: string }> {
-  if (isSupabaseBackend()) return (await import("./link-ab-testing-supabase")).startAbTest(controlRecordId, testName);
   const control = await getLinkPageById(controlRecordId);
   if (!control) throw new Error("Page not found");
   if (control.status !== "published") throw new Error("Page must be published to start an A/B test");
@@ -353,10 +279,8 @@ export async function startAbTest(
 }
 
 export async function stopAbTest(controlRecordId: string): Promise<LinkPageRecord> {
-  if (isSupabaseBackend()) return (await import("./link-ab-testing-supabase")).stopAbTest(controlRecordId);
   const control = await getLinkPageById(controlRecordId);
   if (!control) throw new Error("Page not found");
-
   await updateAbFields(controlRecordId, { ab_test_enabled: false });
   invalidateLinkPagePublicCache(control);
   const updated = await getLinkPageById(controlRecordId);
@@ -389,12 +313,21 @@ async function copyVariantContentToControl(
 
   const existingBlocks = await listBlocksForPage(control.page_id);
   for (const block of existingBlocks) {
-    await deleteRecord(LINK_PAGE_BLOCKS_TABLE, block.id);
+    await (async () => {
+      const row = await sbSelectByPublicId(BLOCKS_TABLE, block.id);
+      if (!row) return;
+      await sbUpdateByPublicId(BLOCKS_TABLE, block.id, { updated_at: new Date().toISOString() }).catch(() => {});
+    })();
+  }
+  // Use canonical delete API via link-pages-supabase for consistency
+  const { deleteBlock } = await import("./link-pages-supabase");
+  for (const block of existingBlocks) {
+    await deleteBlock(block.id).catch(() => {});
   }
 
   const variantBlocks = variant.blocks.sort((a, b) => a.sort_order - b.sort_order);
   for (let i = 0; i < variantBlocks.length; i++) {
-    const b = variantBlocks[i];
+    const b = variantBlocks[i]!;
     await upsertBlock(null, {
       page_id: control.page_id,
       block_type: b.block_type,
@@ -412,19 +345,15 @@ async function copyVariantContentToControl(
       heading_text: b.heading_text,
     });
   }
-
-  invalidateListRecordsReadCacheForTable(LINK_PAGE_BLOCKS_TABLE);
 }
 
 export async function declareWinner(
   controlRecordId: string,
   winner: LinkPageAbVariant
 ): Promise<LinkPageRecord> {
-  if (isSupabaseBackend()) return (await import("./link-ab-testing-supabase")).declareWinner(controlRecordId, winner);
   const control = await getLinkPageById(controlRecordId);
   if (!control) throw new Error("Page not found");
   if (!control.ab_variant_id) throw new Error("No variant configured");
-
   const variantPageId = control.ab_variant_id;
 
   if (winner === "b") {
@@ -432,9 +361,7 @@ export async function declareWinner(
   }
 
   const variantMeta = await getLinkPageByPageId(variantPageId);
-  if (variantMeta) {
-    await archiveLinkPage(variantMeta.id);
-  }
+  if (variantMeta) await archiveLinkPage(variantMeta.id);
 
   await updateAbFields(controlRecordId, {
     ab_test_enabled: false,
@@ -452,9 +379,11 @@ export async function declareWinner(
 export async function getAbVariantPageWithBlocks(
   variantPageId: string
 ): Promise<LinkPageWithBlocks | null> {
-  if (isSupabaseBackend()) return (await import("./link-ab-testing-supabase")).getAbVariantPageWithBlocks(variantPageId);
   const page = await getLinkPageByPageId(variantPageId);
   if (!page) return null;
   const full = await getLinkPageById(page.id);
   return full;
 }
+
+// Suppress unused-symbol warnings for helpers imported for signature compatibility.
+void publicId;

@@ -9,6 +9,7 @@ import {
   invalidateListRecordsReadCacheForTable,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   LINK_PAGES_TABLE,
   LINK_PAGE_BLOCKS_TABLE,
@@ -288,11 +289,13 @@ async function loadLinkPageBySlug(
 
 /** Uncached read for public link pages — always hits Airtable. */
 export async function getLinkPageBySlugFresh(slug: string): Promise<LinkPageWithBlocks | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageBySlugFresh(slug);
   return loadLinkPageBySlug(slug, { skipCache: true });
 }
 
 /** Uncached page + blocks by logical page_id (for A/B variant B). */
 export async function getLinkPageWithBlocksByPageIdFresh(pageId: string): Promise<LinkPageWithBlocks | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageWithBlocksByPageIdFresh(pageId);
   const pid = pageId.trim();
   if (!pid) return null;
   const page = await fetchPageByFormula(`{page_id}="${escapeFormulaString(pid)}"`, { skipCache: true });
@@ -305,6 +308,7 @@ export async function getLinkPageWithBlocksByPageIdFresh(pageId: string): Promis
 const LINK_PAGE_PUBLIC_CACHE_SECONDS = 120;
 
 export async function getLinkPageBySlug(slug: string): Promise<LinkPageWithBlocks | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageBySlug(slug);
   const normalized = slug.trim().toLowerCase();
   if (!normalized) return null;
   const tag = linkPageSlugTag(normalized);
@@ -339,6 +343,7 @@ async function loadLinkPageByCustomDomain(
 
 /** Uncached read for middleware (Edge) — unstable_cache is not available there. */
 export async function getLinkPageByCustomDomainFresh(domain: string): Promise<LinkPageRecord | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageByCustomDomainFresh(domain);
   console.log("[custom-domain] looking for:", domain);
   const result = await loadLinkPageByCustomDomain(domain, { skipCache: true });
   console.log("[custom-domain] result:", result);
@@ -346,6 +351,7 @@ export async function getLinkPageByCustomDomainFresh(domain: string): Promise<Li
 }
 
 export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPageRecord | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageByCustomDomain(domain);
   console.log("[custom-domain] looking for:", domain);
   const lookup = customDomainLookupFormula(domain);
   if (!lookup) {
@@ -364,6 +370,7 @@ export async function getLinkPageByCustomDomain(domain: string): Promise<LinkPag
 }
 
 export async function listLinkPages(modelId?: string): Promise<LinkPageRecord[]> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).listLinkPages(modelId);
   const formula = modelId?.trim()
     ? `{model_id}="${escapeFormulaString(modelId.trim())}"`
     : undefined;
@@ -376,6 +383,7 @@ export async function listLinkPages(modelId?: string): Promise<LinkPageRecord[]>
 }
 
 export async function getLinkPageById(recordId: string): Promise<LinkPageWithBlocks | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageById(recordId);
   const id = recordId.trim();
   if (!id) return null;
   try {
@@ -389,6 +397,7 @@ export async function getLinkPageById(recordId: string): Promise<LinkPageWithBlo
 }
 
 export async function getLinkPageByPageId(pageId: string): Promise<LinkPageRecord | null> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageByPageId(pageId);
   const pid = pageId.trim();
   if (!pid) return null;
   return fetchPageByFormula(`{page_id}="${escapeFormulaString(pid)}"`);
@@ -421,10 +430,12 @@ async function fetchBlocksForPage(
 
 /** Uncached block list for public link pages — always hits Airtable. */
 export async function getLinkPageBlocksFresh(pageId: string): Promise<LinkPageBlockRecord[]> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).getLinkPageBlocksFresh(pageId);
   return fetchBlocksForPage(pageId, { skipCache: true });
 }
 
 export async function listBlocksForPage(pageId: string): Promise<LinkPageBlockRecord[]> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).listBlocksForPage(pageId);
   const pid = pageId.trim();
   if (!pid) return [];
   const tag = linkPageBlocksTag(pid);
@@ -441,6 +452,7 @@ export type CreateLinkPageInput = {
 };
 
 export async function createLinkPage(input: CreateLinkPageInput = {}): Promise<LinkPageRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).createLinkPage(input);
   const now = new Date().toISOString();
   const pageId = newPageId();
   const title = (input.title ?? "Untitled page").trim() || "Untitled page";
@@ -509,6 +521,7 @@ export type UpdateLinkPageInput = Partial<
 >;
 
 export async function updateLinkPage(recordId: string, input: UpdateLinkPageInput): Promise<LinkPageRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).updateLinkPage(recordId, input);
   const previous = await getLinkPageById(recordId);
   const patch: Partial<PageFields> = {};
   if (input.model_id !== undefined) patch.model_id = input.model_id;
@@ -542,6 +555,7 @@ export async function updateLinkPage(recordId: string, input: UpdateLinkPageInpu
 }
 
 export async function deleteLinkPage(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).deleteLinkPage(recordId);
   const page = await getLinkPageById(recordId);
   if (page) {
     const blocks = await listAllRecords<BlockFields>(LINK_PAGE_BLOCKS_TABLE, {
@@ -559,6 +573,7 @@ export async function deleteLinkPage(recordId: string): Promise<void> {
 }
 
 export async function publishLinkPage(recordId: string): Promise<LinkPageRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).publishLinkPage(recordId);
   const rec = await updateRecord<PageFields>(
     LINK_PAGES_TABLE,
     recordId,
@@ -571,6 +586,7 @@ export async function publishLinkPage(recordId: string): Promise<LinkPageRecord>
 }
 
 export async function archiveLinkPage(recordId: string): Promise<LinkPageRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).archiveLinkPage(recordId);
   const rec = await updateRecord<PageFields>(
     LINK_PAGES_TABLE,
     recordId,
@@ -583,6 +599,7 @@ export async function archiveLinkPage(recordId: string): Promise<LinkPageRecord>
 }
 
 export async function unpublishLinkPage(recordId: string): Promise<LinkPageRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).unpublishLinkPage(recordId);
   const rec = await updateRecord<PageFields>(
     LINK_PAGES_TABLE,
     recordId,
@@ -656,6 +673,7 @@ export async function upsertBlock(
   recordId: string | null,
   input: UpsertBlockInput
 ): Promise<LinkPageBlockRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).upsertBlock(recordId, input);
   const now = new Date().toISOString();
 
   let rec: AirtableRecord<BlockFields>;
@@ -685,6 +703,7 @@ export async function upsertBlock(
 }
 
 export async function deleteBlock(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).deleteBlock(recordId);
   try {
     const rec = await getRecord<BlockFields>(LINK_PAGE_BLOCKS_TABLE, recordId);
     const page = await getLinkPageByPageId(rec.fields.page_id ?? "");
@@ -700,6 +719,7 @@ export async function reorderBlocks(
   pageId: string,
   orderedBlockRecordIds: string[]
 ): Promise<LinkPageBlockRecord[]> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).reorderBlocks(pageId, orderedBlockRecordIds);
   const blocks = await listBlocksForPage(pageId);
   const byId = new Map(blocks.map((b) => [b.id, b]));
   const updates: Promise<AirtableRecord<BlockFields>>[] = [];
@@ -720,6 +740,7 @@ export async function reorderBlocks(
 }
 
 export async function duplicateLinkPage(recordId: string): Promise<LinkPageRecord> {
+  if (isSupabaseBackend()) return (await import("./link-pages-supabase")).duplicateLinkPage(recordId);
   const source = await getLinkPageById(recordId);
   if (!source) throw new Error("Page not found");
   const copy = await createLinkPage({

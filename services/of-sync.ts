@@ -10,6 +10,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { OF_SUBSCRIBERS_TABLE } from "@/lib/airtable-schema";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { listAllModelss } from "@/services/modelss";
 import { categorizeSubscriber, parseSubscriber, type OFSubscriber } from "@/services/of-subscribers";
 
@@ -216,6 +217,13 @@ export async function syncSubscribersChunkForAccount(
   offset: number,
   options?: { highValueOnly?: boolean }
 ): Promise<{ synced: number; checked: number; errors: number; has_more: boolean; next_offset: number }> {
+  if (isSupabaseBackend())
+    return (await import("./of-sync-supabase")).syncSubscribersChunkForAccount(
+      ofAccountId,
+      modelName,
+      offset,
+      options
+    );
   const id = ofAccountId.trim();
   const safeOffset = Math.max(0, Math.floor(offset));
   const minSpend = options?.highValueOnly === true ? 500 : 10;
@@ -343,6 +351,8 @@ export async function syncSubscribersForAccount(
   ofAccountId: string,
   modelName: string
 ): Promise<{ synced: number; checked: number; errors: number }> {
+  if (isSupabaseBackend())
+    return (await import("./of-sync-supabase")).syncSubscribersForAccount(ofAccountId, modelName);
   const id = ofAccountId.trim();
   if (!id || !/^\d+$/.test(id)) {
     console.warn("[of-sync] Invalid of_account_id:", ofAccountId);
@@ -458,6 +468,7 @@ export async function syncSubscribersForAccount(
 }
 
 export async function syncAllAccounts(): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./of-sync-supabase")).syncAllAccounts();
   const models = await listAllModelss();
   const targets = models.filter((m) => (m.of_user_id ?? "").trim() !== "");
   for (const m of targets) {

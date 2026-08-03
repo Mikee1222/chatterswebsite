@@ -1,11 +1,8 @@
-import { listAllRecords, createRecord, type AirtableRecord } from "@/lib/airtable-server";
-import { isSupabaseBackend } from "@/lib/data-backend";
-import {
-  LINK_PAGE_ANALYTICS_TABLE,
-  LINK_PAGE_ANALYTICS_FIELDS,
-} from "@/lib/link-pages-schema";
+/**
+ * Supabase backend for services/link-page-analytics.ts
+ */
+import { sbInsert, sbSelectAll, type SbRow } from "@/lib/supabase-data";
 import type {
-  AnalyticsPeriodMetrics,
   AnalyticsSummary,
   GlobalAnalyticsSummary,
   LinkPageAnalyticsEventType,
@@ -25,60 +22,35 @@ import {
   withPercent,
   ymdInAthens,
 } from "@/lib/link-page-analytics-utils";
+import type { TrackContext, EnhancedTrackContext } from "./link-page-analytics";
 
-type AnalyticsFields = {
-  event_id?: string;
-  page_id?: string;
-  block_id?: string;
-  event_type?: string;
-  ip_address?: string;
-  country?: string;
-  city?: string;
-  region?: string;
-  device_type?: string;
-  browser?: string;
-  os?: string;
-  referrer?: string;
-  user_agent?: string;
-  session_id?: string;
-  visitor_id?: string;
-  is_new_visitor?: boolean;
-  is_new_session?: boolean;
-  timestamp?: string;
-  utm_source?: string;
-  utm_medium?: string;
-  utm_campaign?: string;
-};
+const TABLE = "link_page_analytics";
 
-export type TrackContext = {
-  pageId: string;
-  blockId?: string;
-  ip?: string;
-  userAgent?: string;
-  referrer?: string;
-  sessionId?: string;
-  visitorId?: string;
-  isNewVisitor?: boolean;
-  isNewSession?: boolean;
-  utmSource?: string;
-  utmMedium?: string;
-  utmCampaign?: string;
-};
-
-type ParsedUa = {
-  device_type: LinkPageDeviceType;
-  browser: string;
-  os: string;
-};
-
-type GeoInfo = {
-  country: string;
-  city: string;
-  region: string;
+type AnalyticsRow = SbRow & {
+  event_id?: string | null;
+  page_id?: string | null;
+  block_id?: string | null;
+  event_type?: string | null;
+  ip_address?: string | null;
+  country?: string | null;
+  city?: string | null;
+  region?: string | null;
+  device_type?: string | null;
+  browser?: string | null;
+  os?: string | null;
+  referrer?: string | null;
+  user_agent?: string | null;
+  session_id?: string | null;
+  visitor_id?: string | null;
+  is_new_visitor?: boolean | null;
+  is_new_session?: boolean | null;
+  timestamp?: string | null;
+  utm_source?: string | null;
+  utm_medium?: string | null;
+  utm_campaign?: string | null;
 };
 
 type MappedEvent = {
-  id: string;
   event_id: string;
   page_id: string;
   block_id: string;
@@ -102,23 +74,9 @@ type MappedEvent = {
   utm_campaign: string;
 };
 
-function visitorKey(e: Pick<MappedEvent, "visitor_id" | "session_id">): string {
-  return e.visitor_id?.trim() || e.session_id?.trim() || "";
-}
-
 const BOT_UA_PATTERNS = [
-  "bot",
-  "crawler",
-  "spider",
-  "preview",
-  "facebot",
-  "facebookexternalhit",
-  "twitterbot",
-  "linkedinbot",
-  "telegrambot",
-  "whatsapp",
-  "slackbot",
-  "googlebot",
+  "bot", "crawler", "spider", "preview", "facebot", "facebookexternalhit",
+  "twitterbot", "linkedinbot", "telegrambot", "whatsapp", "slackbot", "googlebot",
 ];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -133,7 +91,7 @@ function isInternalAdminReferrer(referrer: string): boolean {
   return r.includes("/admin") || r.includes("admin/link-pages");
 }
 
-function parseUserAgent(ua: string): ParsedUa {
+function parseUserAgent(ua: string): { device_type: LinkPageDeviceType; browser: string; os: string } {
   const lower = ua.toLowerCase();
   let device_type: LinkPageDeviceType = "desktop";
   if (/mobile|iphone|android.*mobile|windows phone/.test(lower)) device_type = "mobile";
@@ -156,31 +114,18 @@ function parseUserAgent(ua: string): ParsedUa {
   return { device_type, browser, os };
 }
 
-async function lookupGeo(ip: string): Promise<GeoInfo> {
+async function lookupGeo(ip: string): Promise<{ country: string; city: string; region: string }> {
   const empty = { country: "", city: "", region: "" };
-  if (!ip || ip === "127.0.0.1" || ip.startsWith("::") || ip.startsWith("10.") || ip.startsWith("192.168.")) {
-    return empty;
-  }
+  if (!ip || ip === "127.0.0.1" || ip.startsWith("::") || ip.startsWith("10.") || ip.startsWith("192.168.")) return empty;
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,city,regionName`, {
-      signal: controller.signal,
-    });
+    const res = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=status,country,city,regionName`, { signal: controller.signal });
     clearTimeout(timeout);
     if (!res.ok) return empty;
-    const data = (await res.json()) as {
-      status?: string;
-      country?: string;
-      city?: string;
-      regionName?: string;
-    };
+    const data = (await res.json()) as { status?: string; country?: string; city?: string; regionName?: string };
     if (data.status !== "success") return empty;
-    return {
-      country: data.country ?? "",
-      city: data.city ?? "",
-      region: data.regionName ?? "",
-    };
+    return { country: data.country ?? "", city: data.city ?? "", region: data.regionName ?? "" };
   } catch {
     return empty;
   }
@@ -195,11 +140,10 @@ async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackConte
     const ua = ctx.userAgent ?? "";
     if (isBotUserAgent(ua)) return;
     if (eventType === "page_view" && isInternalAdminReferrer(ctx.referrer ?? "")) return;
-
     const parsed = parseUserAgent(ua);
     const geo = ctx.ip ? await lookupGeo(ctx.ip) : { country: "", city: "", region: "" };
     const now = new Date().toISOString();
-    const fields: AnalyticsFields = {
+    await sbInsert(TABLE, {
       event_id: newEventId(),
       page_id: ctx.pageId,
       block_id: ctx.blockId ?? "",
@@ -221,74 +165,55 @@ async function writeEvent(eventType: LinkPageAnalyticsEventType, ctx: TrackConte
       utm_source: ctx.utmSource ?? "",
       utm_medium: ctx.utmMedium ?? "",
       utm_campaign: ctx.utmCampaign ?? "",
-    };
-    await createRecord<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, fields);
+    });
   } catch {
-    // fire-and-forget — never throw
+    // fire-and-forget
   }
 }
 
-export type EnhancedTrackContext = TrackContext & {
-  eventType?: LinkPageAnalyticsEventType;
-};
-
-/** Client fingerprint tracking — page views and enhanced metadata. Never throws. */
 export function writeEnhancedEvent(ctx: EnhancedTrackContext): Promise<void> {
-  if (isSupabaseBackend()) {
-    return import("./link-page-analytics-supabase").then((m) => m.writeEnhancedEvent(ctx));
-  }
   const eventType = ctx.eventType === "link_click" ? "link_click" : "page_view";
   return writeEvent(eventType, ctx);
 }
 
-/** Fire-and-forget page view tracking. Never throws. */
 export function trackPageView(ctx: TrackContext): Promise<void> {
-  if (isSupabaseBackend()) {
-    return import("./link-page-analytics-supabase").then((m) => m.trackPageView(ctx));
-  }
   return writeEvent("page_view", ctx);
 }
 
-/** Fire-and-forget link click tracking. Never throws. */
 export function trackLinkClick(ctx: TrackContext): void {
-  if (isSupabaseBackend()) {
-    void (async () => {
-      const m = await import("./link-page-analytics-supabase");
-      m.trackLinkClick(ctx);
-    })();
-    return;
-  }
   void writeEvent("link_click", ctx);
 }
 
-function mapAnalyticsRecord(rec: AirtableRecord<AnalyticsFields>): MappedEvent {
-  const f = rec.fields;
+function mapEvent(row: AnalyticsRow): MappedEvent {
   return {
-    id: rec.id,
-    event_id: f.event_id ?? "",
-    page_id: f.page_id ?? "",
-    block_id: f.block_id ?? "",
-    event_type: (f.event_type === "link_click" ? "link_click" : "page_view") as LinkPageAnalyticsEventType,
-    ip_address: f.ip_address ?? "",
-    country: f.country ?? "",
-    city: f.city ?? "",
-    region: f.region ?? "",
-    device_type: (["mobile", "desktop", "tablet"].includes(f.device_type ?? "")
-      ? f.device_type
+    event_id: row.event_id ?? "",
+    page_id: row.page_id ?? "",
+    block_id: row.block_id ?? "",
+    event_type: (row.event_type === "link_click" ? "link_click" : "page_view") as LinkPageAnalyticsEventType,
+    ip_address: row.ip_address ?? "",
+    country: row.country ?? "",
+    city: row.city ?? "",
+    region: row.region ?? "",
+    device_type: (["mobile", "desktop", "tablet"].includes(row.device_type ?? "")
+      ? row.device_type
       : "desktop") as LinkPageDeviceType,
-    browser: f.browser ?? "",
-    os: f.os ?? "",
-    referrer: f.referrer ?? "",
-    user_agent: f.user_agent ?? "",
-    session_id: f.session_id ?? "",
-    visitor_id: f.visitor_id ?? "",
-    is_new_visitor: f.is_new_visitor === true,
-    is_new_session: f.is_new_session === true,
-    timestamp: f.timestamp ?? "",
-    utm_source: f.utm_source ?? "",
-    utm_medium: f.utm_medium ?? "",
-    utm_campaign: f.utm_campaign ?? "",
+    browser: row.browser ?? "",
+    os: row.os ?? "",
+    referrer: row.referrer ?? "",
+    user_agent: row.user_agent ?? "",
+    session_id: row.session_id ?? "",
+    visitor_id: row.visitor_id ?? "",
+    is_new_visitor: row.is_new_visitor === true,
+    is_new_session: row.is_new_session === true,
+    timestamp: row.timestamp ?? "",
+    utm_source: row.utm_source ?? "",
+    utm_medium: row.utm_medium ?? "",
+    utm_campaign: row.utm_campaign ?? "",
   };
+}
+
+function visitorKey(e: MappedEvent): string {
+  return e.visitor_id?.trim() || e.session_id?.trim() || "";
 }
 
 function dayOfWeekFromIso(iso: string): number {
@@ -312,14 +237,9 @@ function getPeriodBounds(days: number): { currentStart: Date; previousStart: Dat
   return { currentStart, previousStart, fetchSince: previousStart };
 }
 
-type AnalyticsRangeOptions = { days?: number; from?: Date; to?: Date };
+type Options = { days?: number; from?: Date; to?: Date };
 
-function resolvePeriodBounds(options: AnalyticsRangeOptions = {}): {
-  currentStart: Date;
-  currentEnd: Date;
-  previousStart: Date;
-  fetchSince: Date;
-} {
+function resolvePeriodBounds(options: Options = {}) {
   if (options.from && options.to) {
     const currentStart = options.from;
     const currentEnd = options.to;
@@ -344,13 +264,25 @@ function filterEventsInRange(events: MappedEvent[], start: Date, end?: Date): Ma
   });
 }
 
-function computeCoreMetrics(events: MappedEvent[]): AnalyticsPeriodMetrics {
+type CoreMetrics = {
+  pageViews: number;
+  linkClicks: number;
+  uniqueVisitors: number;
+  newVisitors: number;
+  returningVisitors: number;
+  returningRate: number;
+  uniqueClickers: number;
+  trueCtr: number;
+  visitsWithClicks: number;
+  ctr: number;
+};
+
+function computeCoreMetrics(events: MappedEvent[]): CoreMetrics {
   const pageViews = events.filter((e) => e.event_type === "page_view").length;
   const linkClicks = events.filter((e) => e.event_type === "link_click").length;
   const visitorsWithView = new Set<string>();
   const visitorsWithClick = new Set<string>();
   const newVisitorIds = new Set<string>();
-
   for (const e of events) {
     const vid = visitorKey(e);
     if (!vid) continue;
@@ -360,7 +292,6 @@ function computeCoreMetrics(events: MappedEvent[]): AnalyticsPeriodMetrics {
     }
     if (e.event_type === "link_click") visitorsWithClick.add(vid);
   }
-
   const uniqueVisitors = visitorsWithView.size || pageViews;
   const newVisitors = newVisitorIds.size;
   const returningVisitors = Math.max(0, uniqueVisitors - newVisitors);
@@ -368,25 +299,10 @@ function computeCoreMetrics(events: MappedEvent[]): AnalyticsPeriodMetrics {
   const uniqueClickers = visitorsWithClick.size;
   const trueCtr = uniqueVisitors > 0 ? Math.round((uniqueClickers / uniqueVisitors) * 100) : 0;
   const visitsWithClicks = [...visitorsWithView].filter((v) => visitorsWithClick.has(v)).length;
-
-  return {
-    pageViews,
-    linkClicks,
-    uniqueVisitors,
-    newVisitors,
-    returningVisitors,
-    returningRate,
-    uniqueClickers,
-    trueCtr,
-    visitsWithClicks,
-    ctr: trueCtr,
-  };
+  return { pageViews, linkClicks, uniqueVisitors, newVisitors, returningVisitors, returningRate, uniqueClickers, trueCtr, visitsWithClicks, ctr: trueCtr };
 }
 
-function buildPreviousComparison(
-  current: AnalyticsPeriodMetrics,
-  previous: AnalyticsPeriodMetrics
-): AnalyticsSummary["previousPeriodComparison"] {
+function buildPreviousComparison(current: CoreMetrics, previous: CoreMetrics) {
   return {
     pageViews: computeTrend(current.pageViews, previous.pageViews),
     linkClicks: computeTrend(current.linkClicks, previous.linkClicks),
@@ -398,7 +314,7 @@ function buildPreviousComparison(
   };
 }
 
-function buildHourlyDistribution(events: MappedEvent[]): { hourlyDistribution: AnalyticsSummary["hourlyDistribution"]; peakHour: number } {
+function buildHourlyDistribution(events: MappedEvent[]) {
   const hourlyMap = new Map<number, { views: number; clicks: number }>();
   for (let h = 0; h < 24; h++) hourlyMap.set(h, { views: 0, clicks: 0 });
   for (const e of events) {
@@ -408,9 +324,7 @@ function buildHourlyDistribution(events: MappedEvent[]): { hourlyDistribution: A
     if (e.event_type === "page_view") cur.views += 1;
     else cur.clicks += 1;
   }
-  const hourlyDistribution = [...hourlyMap.entries()]
-    .map(([hour, v]) => ({ hour, ...v }))
-    .sort((a, b) => a.hour - b.hour);
+  const hourlyDistribution = [...hourlyMap.entries()].map(([hour, v]) => ({ hour, ...v })).sort((a, b) => a.hour - b.hour);
   const peakHour = hourlyDistribution.reduce(
     (best, row) => (row.clicks > best.clicks ? row : best),
     hourlyDistribution[0] ?? { hour: 0, views: 0, clicks: 0 }
@@ -418,7 +332,7 @@ function buildHourlyDistribution(events: MappedEvent[]): { hourlyDistribution: A
   return { hourlyDistribution, peakHour };
 }
 
-function buildReferrerBreakdown(events: MappedEvent[]): AnalyticsSummary["referrerBreakdown"] {
+function buildReferrerBreakdown(events: MappedEvent[]) {
   const labelMap = new Map<string, { referrer: string; count: number }>();
   for (const e of events) {
     if (e.event_type !== "page_view") continue;
@@ -441,7 +355,7 @@ function buildReferrerBreakdown(events: MappedEvent[]): AnalyticsSummary["referr
     .slice(0, 10);
 }
 
-function buildDeviceBreakdown(events: MappedEvent[]): AnalyticsSummary["deviceBreakdown"] {
+function buildDeviceBreakdown(events: MappedEvent[]) {
   const deviceMap = new Map<string, number>();
   for (const e of events) {
     if (e.event_type !== "page_view") continue;
@@ -449,13 +363,10 @@ function buildDeviceBreakdown(events: MappedEvent[]): AnalyticsSummary["deviceBr
     deviceMap.set(key, (deviceMap.get(key) ?? 0) + 1);
   }
   const total = [...deviceMap.values()].reduce((s, n) => s + n, 0);
-  return withPercent(
-    [...deviceMap.entries()].map(([device, count]) => ({ device, count })),
-    total
-  );
+  return withPercent([...deviceMap.entries()].map(([device, count]) => ({ device, count })), total);
 }
 
-function buildCountryBreakdown(events: MappedEvent[]): AnalyticsSummary["countryBreakdown"] {
+function buildCountryBreakdown(events: MappedEvent[]) {
   const countryMap = new Map<string, number>();
   for (const e of events) {
     if (e.event_type !== "page_view") continue;
@@ -464,15 +375,12 @@ function buildCountryBreakdown(events: MappedEvent[]): AnalyticsSummary["country
   }
   const total = [...countryMap.values()].reduce((s, n) => s + n, 0);
   return withPercent(
-    [...countryMap.entries()]
-      .map(([country, count]) => ({ country, count, flag: countryToFlag(country) }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10),
+    [...countryMap.entries()].map(([country, count]) => ({ country, count, flag: countryToFlag(country) })).sort((a, b) => b.count - a.count).slice(0, 10),
     total
   );
 }
 
-function buildCityBreakdown(events: MappedEvent[]): AnalyticsSummary["cityBreakdown"] {
+function buildCityBreakdown(events: MappedEvent[]) {
   const cityMap = new Map<string, number>();
   for (const e of events) {
     if (e.event_type !== "page_view") continue;
@@ -482,15 +390,12 @@ function buildCityBreakdown(events: MappedEvent[]): AnalyticsSummary["cityBreakd
   }
   const total = [...cityMap.values()].reduce((s, n) => s + n, 0);
   return withPercent(
-    [...cityMap.entries()]
-      .map(([city, count]) => ({ city, count }))
-      .sort((a, b) => b.count - a.count)
-      .slice(0, 10),
+    [...cityMap.entries()].map(([city, count]) => ({ city, count })).sort((a, b) => b.count - a.count).slice(0, 10),
     total
   );
 }
 
-function buildViewsByDay(events: MappedEvent[]): AnalyticsSummary["viewsByDay"] {
+function buildViewsByDay(events: MappedEvent[]) {
   const viewsByDayMap = new Map<string, { views: number; clicks: number }>();
   for (const e of events) {
     const date = ymdInAthens(e.timestamp);
@@ -500,9 +405,7 @@ function buildViewsByDay(events: MappedEvent[]): AnalyticsSummary["viewsByDay"] 
     else cur.clicks += 1;
     viewsByDayMap.set(date, cur);
   }
-  return [...viewsByDayMap.entries()]
-    .map(([date, v]) => ({ date, ...v }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  return [...viewsByDayMap.entries()].map(([date, v]) => ({ date, ...v })).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function buildSparklineForBlock(allEvents: MappedEvent[], blockId: string): number[] {
@@ -512,35 +415,25 @@ function buildSparklineForBlock(allEvents: MappedEvent[], blockId: string): numb
   for (const e of allEvents) {
     if (e.event_type !== "link_click" || e.block_id !== blockId) continue;
     const date = ymdInAthens(e.timestamp);
-    if (clicksByDay.has(date)) {
-      clicksByDay.set(date, (clicksByDay.get(date) ?? 0) + 1);
-    }
+    if (clicksByDay.has(date)) clicksByDay.set(date, (clicksByDay.get(date) ?? 0) + 1);
   }
   return dayLabels.map((d) => clicksByDay.get(d) ?? 0);
 }
 
-export { cleanReferrerLabel } from "@/lib/link-page-analytics-utils";
-
-export async function getPageAnalytics(
-  pageId: string,
-  options: AnalyticsRangeOptions = {}
-): Promise<AnalyticsSummary> {
-  if (isSupabaseBackend()) return (await import("./link-page-analytics-supabase")).getPageAnalytics(pageId, options);
+export async function getPageAnalytics(pageId: string, options: Options = {}): Promise<AnalyticsSummary> {
   const pid = pageId.trim();
   const { currentStart, currentEnd, previousStart, fetchSince } = resolvePeriodBounds(options);
 
-  const [records, blocks, redirects] = await Promise.all([
-    listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
-      filterByFormula: `AND({page_id}='${pid.replace(/'/g, "\\'")}', IS_AFTER({timestamp}, '${fetchSince.toISOString()}'))`,
-      sort: [{ field: LINK_PAGE_ANALYTICS_FIELDS.timestamp, direction: "desc" }],
-      _caller: "link-page-analytics",
-    }).catch(() => []),
+  const [rows, blocks, redirects] = await Promise.all([
+    sbSelectAll<AnalyticsRow>(TABLE).catch(() => [] as AnalyticsRow[]),
     getLinkPageBlocksFresh(pid).catch(() => []),
     listRedirectsForPage(pid).catch(() => []),
   ]);
 
   const blockMap = new Map(blocks.map((b) => [b.block_id, b]));
-  const allEvents = records.map(mapAnalyticsRecord);
+  const allEvents = rows
+    .filter((r) => (r.page_id ?? "") === pid && r.timestamp && Date.parse(r.timestamp) >= fetchSince.getTime())
+    .map(mapEvent);
   const currentEvents = filterEventsInRange(allEvents, currentStart, options.from && options.to ? currentEnd : undefined);
   const previousEvents = filterEventsInRange(allEvents, previousStart, currentStart);
 
@@ -569,11 +462,7 @@ export async function getPageAnalytics(
         url,
         clicks,
         uniqueClicks: uniqueClicksByBlock.get(block_id)?.size ?? 0,
-        platform: detectLinkPlatform({
-          platform: block?.platform ?? "",
-          icon: block?.icon ?? "",
-          url,
-        }),
+        platform: detectLinkPlatform({ platform: block?.platform ?? "", icon: block?.icon ?? "", url }),
         sparkline: buildSparklineForBlock(allEvents, block_id),
       };
     })
@@ -581,12 +470,7 @@ export async function getPageAnalytics(
     .slice(0, 10);
 
   const redirectClicks = redirects
-    .map((r) => ({
-      redirect_id: r.redirect_id,
-      slug: r.slug,
-      label: r.label?.trim() || r.slug,
-      clicks: r.click_count,
-    }))
+    .map((r) => ({ redirect_id: r.redirect_id, slug: r.slug, label: r.label?.trim() || r.slug, clicks: r.click_count }))
     .sort((a, b) => b.clicks - a.clicks);
 
   const utmMap = new Map<string, number>();
@@ -594,14 +478,14 @@ export async function getPageAnalytics(
     if (e.event_type !== "link_click") continue;
     const source = e.utm_source?.trim();
     if (!source) continue;
-    const campaign = e.utm_campaign?.trim() || "—";
+    const campaign = e.utm_campaign?.trim() || "\u2014";
     const key = `${source}\0${campaign}`;
     utmMap.set(key, (utmMap.get(key) ?? 0) + 1);
   }
   const utmBreakdown = [...utmMap.entries()]
     .map(([key, count]) => {
       const [source, campaign] = key.split("\0");
-      return { source: source ?? "", campaign: campaign ?? "—", count };
+      return { source: source ?? "", campaign: campaign ?? "\u2014", count };
     })
     .sort((a, b) => b.count - a.count)
     .slice(0, 10);
@@ -625,19 +509,20 @@ export async function getPageAnalytics(
 }
 
 export async function getRealtimeVisitors(pageId: string): Promise<number> {
-  if (isSupabaseBackend()) return (await import("./link-page-analytics-supabase")).getRealtimeVisitors(pageId);
   const pid = pageId.trim();
-  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const records = await listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
-    filterByFormula: `AND({page_id}='${pid.replace(/'/g, "\\'")}', {event_type}='page_view', IS_AFTER({timestamp}, '${since}'))`,
-    _caller: "link-page-realtime",
-  }).catch(() => []);
-  const visitors = new Set(
-    records
-      .map((r) => r.fields.visitor_id?.trim() || r.fields.session_id?.trim())
-      .filter((s): s is string => typeof s === "string" && !!s)
+  const sinceMs = Date.now() - 5 * 60 * 1000;
+  const rows = await sbSelectAll<AnalyticsRow>(TABLE).catch(() => [] as AnalyticsRow[]);
+  const filtered = rows.filter(
+    (r) =>
+      (r.page_id ?? "") === pid &&
+      (r.event_type ?? "") === "page_view" &&
+      r.timestamp &&
+      Date.parse(r.timestamp) >= sinceMs
   );
-  return visitors.size || records.length;
+  const visitors = new Set(
+    filtered.map((r) => r.visitor_id?.trim() || r.session_id?.trim() || "").filter((s) => Boolean(s))
+  );
+  return visitors.size || filtered.length;
 }
 
 export function extractClientIp(headers: Headers): string {
@@ -649,21 +534,16 @@ export function extractClientIp(headers: Headers): string {
   );
 }
 
-export async function getGlobalAnalytics(options: AnalyticsRangeOptions = {}): Promise<GlobalAnalyticsSummary> {
-  if (isSupabaseBackend()) return (await import("./link-page-analytics-supabase")).getGlobalAnalytics(options);
+export async function getGlobalAnalytics(options: Options = {}): Promise<GlobalAnalyticsSummary> {
   const { currentStart, currentEnd, previousStart, fetchSince } = resolvePeriodBounds(options);
-
-  const [records, pages] = await Promise.all([
-    listAllRecords<AnalyticsFields>(LINK_PAGE_ANALYTICS_TABLE, {
-      filterByFormula: `IS_AFTER({timestamp}, '${fetchSince.toISOString()}')`,
-      sort: [{ field: LINK_PAGE_ANALYTICS_FIELDS.timestamp, direction: "desc" }],
-      _caller: "link-page-global-analytics",
-    }).catch(() => []),
+  const [rows, pages] = await Promise.all([
+    sbSelectAll<AnalyticsRow>(TABLE).catch(() => [] as AnalyticsRow[]),
     listLinkPages(),
   ]);
-
   const pageMeta = new Map(pages.map((p) => [p.page_id, { title: p.title, slug: p.slug }]));
-  const allEvents = records.map(mapAnalyticsRecord);
+  const allEvents = rows
+    .filter((r) => r.timestamp && Date.parse(r.timestamp) >= fetchSince.getTime())
+    .map(mapEvent);
   const currentEvents = filterEventsInRange(allEvents, currentStart, options.from && options.to ? currentEnd : undefined);
   const previousEvents = filterEventsInRange(allEvents, previousStart, currentStart);
 

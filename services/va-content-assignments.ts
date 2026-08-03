@@ -1,6 +1,7 @@
 "use server";
 
 import { createRecord, listAllRecords, getRecord, updateRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { notify, notifyByRoleConfig } from "@/services/notification-service";
 import { getUserByAirtableId } from "@/services/users";
@@ -406,6 +407,7 @@ export async function getVAContentAssignmentForVa(
   assignmentRecordId: string,
   vaUserRecordId: string
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
   if (!assignmentRecordId || !vaUserRecordId?.trim()) return null;
   try {
     const keys = await vaIdentityLookupKeys(vaUserRecordId);
@@ -432,6 +434,7 @@ export async function updatePendingVAContentAssignmentByVa(
   vaUserRecordId: string,
   patch: VaUpdatePendingAssignmentInput
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).updatePendingVAContentAssignmentByVa(assignmentRecordId, vaUserRecordId, patch);
   const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
   if (!current || !isVaEditableStatus(current.status)) return null;
   const fields: Partial<Fields> = {};
@@ -453,6 +456,7 @@ export async function deletePendingVAContentAssignmentByVa(
   assignmentRecordId: string,
   vaUserRecordId: string
 ): Promise<boolean> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).deletePendingVAContentAssignmentByVa(assignmentRecordId, vaUserRecordId);
   const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
   if (!current || !isVaEditableStatus(current.status)) return false;
   await deleteRecord(TABLE, assignmentRecordId);
@@ -472,6 +476,7 @@ export async function appendVAContentAssignmentVaNotes(
   vaUserRecordId: string,
   noteBlock: string
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).appendVAContentAssignmentVaNotes(assignmentRecordId, vaUserRecordId, noteBlock);
   const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
   if (!current) return null;
   const b = noteBlock.trim();
@@ -484,6 +489,7 @@ export async function appendVAContentAssignmentVaNotes(
 
 /** All content assignments created by / assigned to this VA (users record id). */
 export async function listVAContentAssignmentsForVaUser(vaUserRecordId: string): Promise<VaContentAssignmentRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).listVAContentAssignmentsForVaUser(vaUserRecordId);
   if (!vaUserRecordId?.trim()) return [];
   const keys = await vaIdentityLookupKeys(vaUserRecordId);
   console.log(`${DEBUG_PREFIX} listVAContentAssignmentsForVaUser`, { lookupKeys: keys });
@@ -494,6 +500,7 @@ export async function listVAContentAssignmentsForVaUser(vaUserRecordId: string):
 
 /** Distinct modelss record ids linked from rows where `va` contains this users record id. */
 export async function getModelIdsAssignedToVa(vaUserRecordId: string): Promise<string[]> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).getModelIdsAssignedToVa(vaUserRecordId);
   const rows = await listVAContentAssignmentsForVaUser(vaUserRecordId);
   return [...new Set(rows.map((r) => r.model_id).filter(Boolean))];
 }
@@ -508,6 +515,7 @@ function vaAssignmentDisplayDateYmd(v: VaContentAssignmentRecord): string | null
 
 /** All VA content assignments whose calendar date (`scheduled_date` else `deadline`) falls in the range inclusive. */
 export async function listAllVAContentAssignmentsInRange(fromDate: string, toDate: string): Promise<VaContentAssignmentRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).listAllVAContentAssignmentsInRange(fromDate, toDate);
   if (!fromDate || !toDate) return [];
   try {
     const records = await listAllRecords<Fields>(TABLE);
@@ -527,6 +535,7 @@ export async function listVAContentAssignmentsForModel(
   modelRecordId: string,
   stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).listVAContentAssignmentsForModel(modelRecordId, stableModelId);
   if (!modelRecordId) return [];
   try {
     let sid = stableModelId?.trim() ?? "";
@@ -549,6 +558,7 @@ export async function listDistinctVaUserIdsForModel(
   modelRecordId: string,
   stableModelId?: string | null,
 ): Promise<string[]> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).listDistinctVaUserIdsForModel(modelRecordId, stableModelId);
   const rows = await listVAContentAssignmentsForModel(modelRecordId, stableModelId);
   const ids = new Set<string>();
   for (const r of rows) {
@@ -560,6 +570,7 @@ export async function listDistinctVaUserIdsForModel(
 
 /** Admin/staff list: all VA content assignments across all models. */
 export async function listAllVAContentAssignments(): Promise<VaContentAssignmentRecord[]> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).listAllVAContentAssignments();
   try {
     const records = await listAllRecords<Fields>(TABLE);
     return sortAssignmentsForAdmin(records.map((r) => mapRecord(r as AirtableRecord<Fields>)));
@@ -570,6 +581,7 @@ export async function listAllVAContentAssignments(): Promise<VaContentAssignment
 
 /** Admin/staff lookup by Airtable record id. */
 export async function getVAContentAssignmentById(assignmentRecordId: string): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).getVAContentAssignmentById(assignmentRecordId);
   if (!assignmentRecordId) return null;
   try {
     const rec = await getRecord<Fields>(TABLE, assignmentRecordId);
@@ -581,6 +593,7 @@ export async function getVAContentAssignmentById(assignmentRecordId: string): Pr
 
 /** Pending count across all VA content assignments (for admin nav badge). */
 export async function countPendingVAContentAssignments(): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).countPendingVAContentAssignments();
   try {
     const records = await listAllRecords<Fields>(TABLE, {
       filterByFormula: `OR({status}="pending",{status}="pending_approval")`,
@@ -610,6 +623,7 @@ export async function cancelVAContentAssignment(
   assignmentRecordId: string,
   input: CancelVAContentAssignmentInput
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).cancelVAContentAssignment(assignmentRecordId, input);
   const current = await getVAContentAssignmentById(assignmentRecordId);
   if (!current) return null;
   const reason = input.reason.trim();
@@ -629,6 +643,7 @@ export async function countPendingVAContentAssignmentsForModel(
   modelRecordId: string,
   stableModelId?: string | null,
 ): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).countPendingVAContentAssignmentsForModel(modelRecordId, stableModelId);
   if (!modelRecordId) return 0;
   let sid = stableModelId?.trim() ?? "";
   if (!sid) {
@@ -665,6 +680,7 @@ export async function getVAContentAssignmentForModel(
   modelRecordId: string,
   stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).getVAContentAssignmentForModel(assignmentRecordId, modelRecordId, stableModelId);
   if (!assignmentRecordId || !modelRecordId) return null;
   try {
     const rec = await getRecord<Fields>(TABLE, assignmentRecordId);
@@ -702,6 +718,7 @@ export async function scheduleVAContentAssignmentForModel(
   input: ScheduleVAContentAssignmentInput,
   stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).scheduleVAContentAssignmentForModel(assignmentRecordId, modelRecordId, input, stableModelId);
   const current = await getVAContentAssignmentForModel(
     assignmentRecordId,
     modelRecordId,
@@ -731,6 +748,7 @@ export async function completeVAContentAssignmentForModel(
   input: CompleteVAContentAssignmentInput,
   stableModelId?: string | null,
 ): Promise<VaContentAssignmentRecord | null> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).completeVAContentAssignmentForModel(assignmentRecordId, modelRecordId, input, stableModelId);
   const current = await getVAContentAssignmentForModel(
     assignmentRecordId,
     modelRecordId,
@@ -811,6 +829,7 @@ export async function uploadVAContentAssignmentAttachments(
 export async function createVaContentAssignmentAdmin(
   input: CreateVaContentAssignmentAdminInput
 ): Promise<VaContentAssignmentRecord> {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).createVaContentAssignmentAdmin(input);
   const assignment_id = `vca_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const priorityNorm = (input.priority || "normal").toLowerCase();
   const payload: Record<string, unknown> = {
@@ -863,6 +882,7 @@ export async function reviewVAContentAssignmentByAdmin(
   | { ok: true; action: "approved" | "rejected"; record: VaContentAssignmentRecord }
   | { ok: false; error: string; statusCode: number }
 > {
+  if (isSupabaseBackend()) return (await import("./va-content-assignments-supabase")).reviewVAContentAssignmentByAdmin(assignmentRecordId, input);
   const rid = assignmentRecordId?.trim();
   if (!rid) return { ok: false, error: "Missing id", statusCode: 400 };
 

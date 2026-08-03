@@ -21,6 +21,7 @@ import { listAllVAContentAssignments } from "@/services/va-content-assignments";
 import { listAllWhales } from "@/services/whales";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { listAllRecords, updateRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 
 /** Stored Airtable event_type for va_task_reminder (see EVENT_TYPE_TO_AIRTABLE). */
 const AIRTABLE_EVENT_TASK_SHIFT_STARTED = "task_shift_started";
@@ -500,7 +501,13 @@ export async function runPersonalEventReminders(): Promise<PersonalEventReminder
       )
     );
     reminders_sent += vaIds.length;
-    await updateRecord("model_personal_events", ev.id, { reminder_sent: true }).catch(() => {});
+    if (isSupabaseBackend()) {
+      await (await import("./cron-notification-jobs-supabase"))
+        .markPersonalEventReminderSent(ev.id)
+        .catch(() => {});
+    } else {
+      await updateRecord("model_personal_events", ev.id, { reminder_sent: true }).catch(() => {});
+    }
   }
 
   return { ok: true, events_scanned: events.length, reminders_sent };
@@ -567,6 +574,8 @@ export type PhaseOverdueCronResult = {
 
 /** Mark pending phases past `scheduled_time` as overdue and notify admins + assigned VA. */
 export async function runPhaseOverdueCheck(): Promise<PhaseOverdueCronResult> {
+  if (isSupabaseBackend())
+    return (await import("./cron-notification-jobs-supabase")).runPhaseOverdueCheck();
   const esc = (s: string) => String(s).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   let phases_marked = 0;
   let notifications_sent = 0;

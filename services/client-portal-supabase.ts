@@ -1,18 +1,19 @@
-import { unstable_cache } from "next/cache";
+/**
+ * Supabase backend for services/client-portal.ts
+ *
+ * Delegates to dual-backed client-billing where possible; direct table CRUD
+ * for the sub-tables that only client-portal touches.
+ */
 import {
-  listRecords,
-  listAllRecords,
-  getRecord,
-  createRecord,
-  updateRecord,
-  deleteRecord,
-  type AirtableRecord,
-} from "@/lib/airtable-server";
-import { isSupabaseBackend } from "@/lib/data-backend";
-import {
-  formulaLinkedContains,
-  linkedRecordIds,
-} from "@/lib/airtable-linked";
+  publicId,
+  sbDeleteByPublicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbUpdateByPublicId,
+  type SbRow,
+} from "@/lib/supabase-data";
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { formatDateEuropean } from "@/lib/format";
 import { getCycleAmountDue, isBillingOverdue } from "@/lib/client-portal-utils";
 import {
@@ -36,7 +37,6 @@ import type {
   ClientAttentionItem,
   ClientModelRecord,
   ClientRecord,
-  ClientStatus,
   ClientTeamRole,
   ClientUserType,
   CreateAdminClientInput,
@@ -52,22 +52,122 @@ import type {
   UpdatePaymentSubmissionInput,
 } from "@/types/client-portal";
 
-export { getCycleAmountDue } from "@/lib/client-portal-utils";
-
-const TABLES = {
-  clients: "clients",
-  billing_cycles: "billing_cycles",
-  billing_cycle_revenues: "billing_cycle_revenues",
-  payment_submissions: "payment_submissions",
-  payment_methods: "payment_methods",
-  invoices: "invoices",
-  client_models: "client_models",
-  /** Client billing models (B2B portal) — Airtable `modelss` table. */
-  billing_models: "modelss",
-  calendar_events: "calendar_events",
-} as const;
+const CLIENTS = "clients";
+const CYCLES = "billing_cycles";
+const REVENUES = "billing_cycle_revenues";
+const SUBMISSIONS = "payment_submissions";
+const METHODS = "payment_methods";
+const INVOICES = "invoices";
+const CLIENT_MODELS = "client_models";
+const BILLING_MODELS = "modelss";
+const CALENDAR = "calendar_events";
 
 const TEAM_ROLES: ClientTeamRole[] = ["admin", "manager", "chatter", "virtual_assistant"];
+
+type ClientRow = SbRow & {
+  company_name?: string | null;
+  display_name?: string | null;
+  email?: string | null;
+  status?: string | null;
+  user_type?: string | null;
+  role?: string | null;
+  client_percentage?: number | null;
+  net_profit_goal?: number | null;
+  portal_access?: boolean | null;
+  telegram_group_link?: string | null;
+  telegram_group_name?: string | null;
+  password?: string | null;
+};
+
+type CycleRow = SbRow & {
+  client?: string[] | null;
+  kind?: string | null;
+  period_start?: string | null;
+  period_end?: string | null;
+  due_date?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  status?: string | null;
+  amount_due?: number | null;
+  amount_crm?: number | null;
+  total_fee_usd?: number | null;
+  total_turnover_usd?: number | null;
+  client_notified_at?: string | null;
+  created_at?: string | null;
+};
+
+type RevenueRow = SbRow & {
+  billing_cycle?: string[] | null;
+  client?: string[] | null;
+  model?: string[] | null;
+  turnover_usd?: number | null;
+  fee_percent?: number | null;
+  fee_usd?: number | null;
+  status?: string | null;
+  created_at?: string | null;
+};
+
+type SubmissionRow = SbRow & {
+  billing_cycle?: string[] | null;
+  client?: string[] | null;
+  selected_payment_method?: string[] | null;
+  submitted_amount?: number | null;
+  submitted_currency?: string | null;
+  submitted_datetime?: string | null;
+  reference_id?: string | null;
+  note?: string | null;
+  proof_url?: string | null;
+  proof_attachment?: Array<{ url?: string; filename?: string }> | null;
+  status?: string | null;
+  admin_note?: string | null;
+};
+
+type MethodRow = SbRow & {
+  type?: string | null;
+  label?: string | null;
+  details?: string | null;
+  network?: string | null;
+  is_available?: boolean | null;
+  scope?: string | null;
+  client?: string[] | null;
+  open_url?: string | null;
+  fallback_url?: string | null;
+  beneficiary?: string | null;
+  iban?: string | null;
+  bic?: string | null;
+  wallet_address?: string | null;
+};
+
+type InvoiceRow = SbRow & {
+  billing_cycle?: string[] | null;
+  client?: string[] | null;
+  invoice_number?: string | null;
+  sent_to_email?: string | null;
+  sent_at?: string | null;
+  attachment?: Array<{ url?: string; filename?: string }> | null;
+  viewed_at?: string | null;
+};
+
+type ClientModelRow = SbRow & {
+  client?: string[] | null;
+  model?: string[] | null;
+};
+
+type ModelRow = SbRow & {
+  model_name?: string | null;
+  model_id?: string | null;
+  status?: string | null;
+  platform?: string | null;
+};
+
+type CalendarRow = SbRow & {
+  title?: string | null;
+  start_datetime?: string | null;
+  end_datetime?: string | null;
+  notes?: string | null;
+  scope?: string | null;
+  client?: string[] | null;
+};
 
 function mapUserType(raw: unknown): ClientUserType | undefined {
   if (raw === "team_member") return "team_member";
@@ -82,181 +182,182 @@ function mapTeamRole(raw: unknown): ClientTeamRole | undefined {
   return undefined;
 }
 
-function mapClient(rec: AirtableRecord<Record<string, unknown>>): ClientRecord {
-  const f = rec.fields;
+function mapClient(row: ClientRow): ClientRecord {
   return {
-    id: rec.id,
-    company_name: String(f.company_name ?? ""),
-    display_name: String(f.display_name ?? ""),
-    email: String(f.email ?? ""),
-    status: (f.status as ClientRecord["status"]) ?? "inactive",
-    user_type: mapUserType(f.user_type),
-    role: mapTeamRole(f.role),
-    client_percentage: typeof f.client_percentage === "number" ? f.client_percentage : undefined,
-    net_profit_goal: typeof f.net_profit_goal === "number" ? f.net_profit_goal : undefined,
+    id: publicId(row),
+    company_name: row.company_name ?? "",
+    display_name: row.display_name ?? "",
+    email: row.email ?? "",
+    status: (row.status as ClientRecord["status"]) ?? "inactive",
+    user_type: mapUserType(row.user_type),
+    role: mapTeamRole(row.role),
+    client_percentage: typeof row.client_percentage === "number" ? row.client_percentage : undefined,
+    net_profit_goal: typeof row.net_profit_goal === "number" ? row.net_profit_goal : undefined,
   };
 }
 
-function mapAdminClient(rec: AirtableRecord<Record<string, unknown>>): AdminClientRecord {
-  const f = rec.fields;
+function mapAdminClient(row: ClientRow): AdminClientRecord {
   return {
-    ...mapClient(rec),
-    portal_access: f.portal_access !== false,
-    telegram_group_link:
-      typeof f.telegram_group_link === "string" ? f.telegram_group_link : undefined,
-    telegram_group_name:
-      typeof f.telegram_group_name === "string" ? f.telegram_group_name : undefined,
+    ...mapClient(row),
+    portal_access: row.portal_access !== false,
+    telegram_group_link: typeof row.telegram_group_link === "string" ? row.telegram_group_link : undefined,
+    telegram_group_name: typeof row.telegram_group_name === "string" ? row.telegram_group_name : undefined,
   };
 }
 
-function mapBillingCycle(rec: AirtableRecord<Record<string, unknown>>): BillingCycleRecord {
-  const f = rec.fields;
+function mapBillingCycle(row: CycleRow): BillingCycleRecord {
   return {
-    id: rec.id,
-    client: linkedRecordIds(f.client),
-    kind: (f.kind as BillingCycleRecord["kind"]) ?? "chatting_weekly",
-    period_start: String(f.period_start ?? ""),
-    period_end: String(f.period_end ?? ""),
-    due_date: String(f.due_date ?? ""),
-    amount: typeof f.amount === "number" ? f.amount : 0,
-    currency: String(f.currency ?? "USD"),
-    status: (f.status as BillingCycleStatus) ?? "draft",
-    amount_due: typeof f.amount_due === "number" ? f.amount_due : undefined,
-    amount_crm: typeof f.amount_crm === "number" ? f.amount_crm : undefined,
-    total_fee_usd: typeof f.total_fee_usd === "number" ? f.total_fee_usd : undefined,
-    total_turnover_usd: typeof f.total_turnover_usd === "number" ? f.total_turnover_usd : undefined,
-    client_notified_at: typeof f.client_notified_at === "string" ? f.client_notified_at : undefined,
-    created_at: typeof f.created_at === "string" ? f.created_at : undefined,
+    id: publicId(row),
+    client: (row.client ?? []) as string[],
+    kind: (row.kind as BillingCycleRecord["kind"]) ?? "chatting_weekly",
+    period_start: row.period_start ?? "",
+    period_end: row.period_end ?? "",
+    due_date: row.due_date ?? "",
+    amount: typeof row.amount === "number" ? row.amount : 0,
+    currency: row.currency ?? "USD",
+    status: (row.status as BillingCycleStatus) ?? "draft",
+    amount_due: typeof row.amount_due === "number" ? row.amount_due : undefined,
+    amount_crm: typeof row.amount_crm === "number" ? row.amount_crm : undefined,
+    total_fee_usd: typeof row.total_fee_usd === "number" ? row.total_fee_usd : undefined,
+    total_turnover_usd: typeof row.total_turnover_usd === "number" ? row.total_turnover_usd : undefined,
+    client_notified_at: typeof row.client_notified_at === "string" ? row.client_notified_at : undefined,
+    created_at: typeof row.created_at === "string" ? row.created_at : undefined,
   };
 }
 
-function mapPaymentMethod(rec: AirtableRecord<Record<string, unknown>>): PaymentMethodRecord {
-  const f = rec.fields;
+function mapRevenue(row: RevenueRow): BillingCycleRevenueRecord {
   return {
-    id: rec.id,
-    type: String(f.type ?? ""),
-    label: String(f.label ?? ""),
-    details: String(f.details ?? ""),
-    network: typeof f.network === "string" ? f.network : undefined,
-    is_available: Boolean(f.is_available),
-    scope: String(f.scope ?? ""),
-    client: linkedRecordIds(f.client),
-    open_url: typeof f.open_url === "string" ? f.open_url : undefined,
-    fallback_url: typeof f.fallback_url === "string" ? f.fallback_url : undefined,
-    beneficiary: typeof f.beneficiary === "string" ? f.beneficiary : undefined,
-    iban: typeof f.iban === "string" ? f.iban : undefined,
-    bic: typeof f.bic === "string" ? f.bic : undefined,
-    wallet_address: typeof f.wallet_address === "string" ? f.wallet_address : undefined,
+    id: publicId(row),
+    billing_cycle: (row.billing_cycle ?? []) as string[],
+    client: (row.client ?? []) as string[],
+    model: (row.model ?? []) as string[],
+    turnover_usd: typeof row.turnover_usd === "number" ? row.turnover_usd : 0,
+    fee_percent: typeof row.fee_percent === "number" ? row.fee_percent : 0,
+    fee_usd: typeof row.fee_usd === "number" ? row.fee_usd : undefined,
+    status: typeof row.status === "string" ? (row.status as BillingCycleRevenueStatus) : undefined,
+    created_at: typeof row.created_at === "string" ? row.created_at : undefined,
   };
 }
 
-function mapPaymentSubmission(rec: AirtableRecord<Record<string, unknown>>): PaymentSubmissionRecord {
-  const f = rec.fields;
-  const proofAttachment = Array.isArray(f.proof_attachment)
-    ? (f.proof_attachment as Array<{ url?: string; filename?: string }>)
+function mapMethod(row: MethodRow): PaymentMethodRecord {
+  return {
+    id: publicId(row),
+    type: row.type ?? "",
+    label: row.label ?? "",
+    details: row.details ?? "",
+    network: typeof row.network === "string" ? row.network : undefined,
+    is_available: Boolean(row.is_available),
+    scope: row.scope ?? "",
+    client: (row.client ?? []) as string[],
+    open_url: typeof row.open_url === "string" ? row.open_url : undefined,
+    fallback_url: typeof row.fallback_url === "string" ? row.fallback_url : undefined,
+    beneficiary: typeof row.beneficiary === "string" ? row.beneficiary : undefined,
+    iban: typeof row.iban === "string" ? row.iban : undefined,
+    bic: typeof row.bic === "string" ? row.bic : undefined,
+    wallet_address: typeof row.wallet_address === "string" ? row.wallet_address : undefined,
+  };
+}
+
+function mapSubmission(row: SubmissionRow): PaymentSubmissionRecord {
+  const proofAttachment = Array.isArray(row.proof_attachment)
+    ? row.proof_attachment
         .filter((a) => typeof a.url === "string")
-        .map((a) => ({ url: a.url!, filename: a.filename }))
+        .map((a) => ({ url: a.url as string, filename: a.filename }))
     : undefined;
-
   return {
-    id: rec.id,
-    billing_cycle: linkedRecordIds(f.billing_cycle),
-    client: linkedRecordIds(f.client),
-    selected_payment_method: linkedRecordIds(f.selected_payment_method),
-    submitted_amount: typeof f.submitted_amount === "number" ? f.submitted_amount : 0,
-    submitted_currency: String(f.submitted_currency ?? ""),
-    submitted_datetime: String(f.submitted_datetime ?? ""),
-    reference_id: typeof f.reference_id === "string" ? f.reference_id : undefined,
-    note: typeof f.note === "string" ? f.note : undefined,
-    proof_url: typeof f.proof_url === "string" ? f.proof_url : undefined,
+    id: publicId(row),
+    billing_cycle: (row.billing_cycle ?? []) as string[],
+    client: (row.client ?? []) as string[],
+    selected_payment_method: (row.selected_payment_method ?? []) as string[],
+    submitted_amount: typeof row.submitted_amount === "number" ? row.submitted_amount : 0,
+    submitted_currency: row.submitted_currency ?? "",
+    submitted_datetime: row.submitted_datetime ?? "",
+    reference_id: typeof row.reference_id === "string" ? row.reference_id : undefined,
+    note: typeof row.note === "string" ? row.note : undefined,
+    proof_url: typeof row.proof_url === "string" ? row.proof_url : undefined,
     proof_attachment: proofAttachment,
-    status: (f.status as PaymentSubmissionRecord["status"]) ?? "pending_review",
-    admin_note: typeof f.admin_note === "string" ? f.admin_note : undefined,
+    status: (row.status as PaymentSubmissionRecord["status"]) ?? "pending_review",
+    admin_note: typeof row.admin_note === "string" ? row.admin_note : undefined,
   };
 }
 
-function mapInvoice(rec: AirtableRecord<Record<string, unknown>>): InvoiceRecord {
-  const f = rec.fields;
-  const attachment = Array.isArray(f.attachment)
-    ? (f.attachment as Array<{ url?: string; filename?: string }>)
-        .filter((a) => typeof a.url === "string")
-        .map((a) => ({ url: a.url!, filename: a.filename }))
+function mapInvoice(row: InvoiceRow): InvoiceRecord {
+  const attachment = Array.isArray(row.attachment)
+    ? row.attachment.filter((a) => typeof a.url === "string").map((a) => ({ url: a.url as string, filename: a.filename }))
     : undefined;
-
   return {
-    id: rec.id,
-    billing_cycle: linkedRecordIds(f.billing_cycle),
-    client: linkedRecordIds(f.client),
-    invoice_number: typeof f.invoice_number === "string" ? f.invoice_number : undefined,
-    sent_to_email: typeof f.sent_to_email === "string" ? f.sent_to_email : undefined,
-    sent_at: typeof f.sent_at === "string" ? f.sent_at : undefined,
+    id: publicId(row),
+    billing_cycle: (row.billing_cycle ?? []) as string[],
+    client: (row.client ?? []) as string[],
+    invoice_number: typeof row.invoice_number === "string" ? row.invoice_number : undefined,
+    sent_to_email: typeof row.sent_to_email === "string" ? row.sent_to_email : undefined,
+    sent_at: typeof row.sent_at === "string" ? row.sent_at : undefined,
     attachment,
-    viewed_at: typeof f.viewed_at === "string" ? f.viewed_at : undefined,
+    viewed_at: typeof row.viewed_at === "string" ? row.viewed_at : undefined,
   };
 }
 
-function mapModel(rec: AirtableRecord<Record<string, unknown>>): ModelRecord {
-  const f = rec.fields;
+function mapModelRow(row: ModelRow): ModelRecord {
   return {
-    id: rec.id,
-    model_name: String(f.model_name ?? ""),
-    status: String(f.status ?? "active"),
-    platform: typeof f.platform === "string" ? f.platform : undefined,
+    id: publicId(row),
+    model_name: row.model_name ?? "",
+    status: row.status ?? "active",
+    platform: typeof row.platform === "string" ? row.platform : undefined,
   };
 }
 
-function mapCalendarEvent(rec: AirtableRecord<Record<string, unknown>>): CalendarEventRecord {
-  const f = rec.fields;
+function mapCalendar(row: CalendarRow): CalendarEventRecord {
   return {
-    id: rec.id,
-    title: String(f.title ?? ""),
-    start_datetime: String(f.start_datetime ?? ""),
-    end_datetime: String(f.end_datetime ?? ""),
-    notes: typeof f.notes === "string" ? f.notes : undefined,
-    scope: String(f.scope ?? "global"),
-    client: linkedRecordIds(f.client),
+    id: publicId(row),
+    title: row.title ?? "",
+    start_datetime: row.start_datetime ?? "",
+    end_datetime: row.end_datetime ?? "",
+    notes: typeof row.notes === "string" ? row.notes : undefined,
+    scope: row.scope ?? "global",
+    client: (row.client ?? []) as string[],
   };
 }
 
-function recordIncludesClient(clientField: unknown, clientId: string): boolean {
-  return linkedRecordIds(clientField).includes(clientId);
+function recordIncludesClient(clientField: string[] | null | undefined, clientId: string): boolean {
+  return (clientField ?? []).includes(clientId);
+}
+
+/** clientId may be an Airtable rec id or a uuid; resolve to the linked-field value used in tables. */
+async function resolveClientLinkedIds(clientId: string): Promise<string[]> {
+  const trimmed = clientId.trim();
+  if (!trimmed) return [];
+  // The linked column stores UUIDs of the target row. If we were given an Airtable rec id,
+  // find the client row and use its uuid.
+  const row = await sbSelectByPublicId<ClientRow>(CLIENTS, trimmed);
+  if (!row) return [trimmed];
+  return Array.from(new Set([row.id, ...(row.airtable_id ? [row.airtable_id] : []), trimmed]));
 }
 
 export async function getClientById(clientId: string): Promise<ClientRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientById(clientId);
-  const rec = await getRecord<Record<string, unknown>>(TABLES.clients, clientId);
-  return mapClient(rec);
+  const row = await sbSelectByPublicId<ClientRow>(CLIENTS, clientId);
+  if (!row) throw new Error("Client not found");
+  return mapClient(row);
 }
 
 export async function getAdminClientById(clientId: string): Promise<AdminClientRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getAdminClientById(clientId);
-  const rec = await getRecord<Record<string, unknown>>(TABLES.clients, clientId);
-  return mapAdminClient(rec);
+  const row = await sbSelectByPublicId<ClientRow>(CLIENTS, clientId);
+  if (!row) throw new Error("Client not found");
+  return mapAdminClient(row);
 }
 
 export async function listAllClients(activeOnly = false): Promise<AdminClientRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).listAllClients(activeOnly);
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.clients, {
-    filterByFormula: activeOnly ? '{status} = "active"' : undefined,
-    sort: [{ field: "company_name", direction: "asc" }],
-    _caller: "listAllClients",
-  });
-  return records.map(mapAdminClient);
+  const rows = await sbSelectAll<ClientRow>(CLIENTS);
+  const filtered = activeOnly ? rows.filter((r) => (r.status ?? "") === "active") : rows;
+  return filtered
+    .map(mapAdminClient)
+    .sort((a, b) => (a.company_name || "").localeCompare(b.company_name || ""));
 }
 
-/** Full clients list cached 60s — use on heavy admin pages instead of listAllClients(). */
-export const getCachedListAllClients = unstable_cache(
-  async (activeOnly: boolean) => listAllClients(activeOnly),
-  ["all-clients-v1"],
-  { revalidate: 60 }
-);
-
-/** @deprecated Prefer `listAllClients` — alias kept for callers using the older name. */
+export const getCachedListAllClients = async (activeOnly: boolean) => listAllClients(activeOnly);
 export const getAllClients = listAllClients;
 
 export async function createAdminClient(data: CreateAdminClientInput): Promise<AdminClientRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).createAdminClient(data);
-  const fields: Record<string, unknown> = {
+  const insert: Record<string, unknown> = {
     display_name: data.display_name.trim(),
     email: data.email.trim().toLowerCase(),
     password: data.passwordHash,
@@ -264,18 +365,14 @@ export async function createAdminClient(data: CreateAdminClientInput): Promise<A
     status: data.status,
     portal_access: data.user_type === "client",
   };
-
   if (data.user_type === "client") {
-    if (data.company_name?.trim()) fields.company_name = data.company_name.trim();
-    if (typeof data.client_percentage === "number") {
-      fields.client_percentage = data.client_percentage;
-    }
+    if (data.company_name?.trim()) insert.company_name = data.company_name.trim();
+    if (typeof data.client_percentage === "number") insert.client_percentage = data.client_percentage;
   } else if (data.role) {
-    fields.role = data.role;
+    insert.role = data.role;
   }
-
-  const rec = await createRecord<Record<string, unknown>>(TABLES.clients, fields);
-  return mapAdminClient(rec);
+  const row = await sbInsert<ClientRow>(CLIENTS, insert);
+  return mapAdminClient(row);
 }
 
 export async function updateClientPortalAccess(
@@ -289,85 +386,64 @@ export async function updateAdminClient(
   clientId: string,
   data: UpdateAdminClientInput
 ): Promise<AdminClientRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).updateAdminClient(clientId, data);
-  const fields: Record<string, unknown> = {};
-
-  if (data.portal_access !== undefined) fields.portal_access = data.portal_access;
-  if (data.company_name !== undefined) fields.company_name = data.company_name.trim();
-  if (data.display_name !== undefined) fields.display_name = data.display_name.trim();
-  if (data.email !== undefined) fields.email = data.email.trim().toLowerCase();
-  if (typeof data.client_percentage === "number") {
-    fields.client_percentage = data.client_percentage;
-  }
-  if (data.status !== undefined) fields.status = data.status;
-  if (data.passwordHash) fields.password = data.passwordHash;
-  if (data.telegram_group_link !== undefined) fields.telegram_group_link = data.telegram_group_link;
-  if (data.telegram_group_name !== undefined) fields.telegram_group_name = data.telegram_group_name;
-
-  const rec = await updateRecord<Record<string, unknown>>(TABLES.clients, clientId, fields);
-  return mapAdminClient(rec);
-}
-
-function mapClientModelAssignment(
-  rec: AirtableRecord<Record<string, unknown>>,
-  modelNameById?: Map<string, string>
-): ClientModelRecord {
-  const model = linkedRecordIds(rec.fields.model);
-  const modelId = model[0];
-  return {
-    id: rec.id,
-    client: linkedRecordIds(rec.fields.client),
-    model,
-    model_name: modelId ? modelNameById?.get(modelId) : undefined,
-  };
+  const patch: Record<string, unknown> = {};
+  if (data.portal_access !== undefined) patch.portal_access = data.portal_access;
+  if (data.company_name !== undefined) patch.company_name = data.company_name.trim();
+  if (data.display_name !== undefined) patch.display_name = data.display_name.trim();
+  if (data.email !== undefined) patch.email = data.email.trim().toLowerCase();
+  if (typeof data.client_percentage === "number") patch.client_percentage = data.client_percentage;
+  if (data.status !== undefined) patch.status = data.status;
+  if (data.passwordHash) patch.password = data.passwordHash;
+  if (data.telegram_group_link !== undefined) patch.telegram_group_link = data.telegram_group_link;
+  if (data.telegram_group_name !== undefined) patch.telegram_group_name = data.telegram_group_name;
+  const row = await sbUpdateByPublicId<ClientRow>(CLIENTS, clientId, patch);
+  return mapAdminClient(row);
 }
 
 export async function createClientModelAssignment(
   clientId: string,
   modelId: string
 ): Promise<ClientModelRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).createClientModelAssignment(clientId, modelId);
-  const rec = await createRecord<Record<string, unknown>>(TABLES.client_models, {
+  const row = await sbInsert<ClientModelRow>(CLIENT_MODELS, {
     client: [clientId],
     model: [modelId],
   });
-
   let modelName: string | undefined;
   try {
-    const modelRec = await getRecord<Record<string, unknown>>(TABLES.billing_models, modelId);
-    modelName = String(modelRec.fields.model_name ?? "");
+    const m = await sbSelectByPublicId<ModelRow>(BILLING_MODELS, modelId);
+    modelName = m?.model_name ?? undefined;
   } catch {
-    /* model row may be missing */
+    /* model may be missing */
   }
-
-  return mapClientModelAssignment(rec, modelName ? new Map([[modelId, modelName]]) : undefined);
+  return {
+    id: publicId(row),
+    client: (row.client ?? []) as string[],
+    model: (row.model ?? []) as string[],
+    model_name: modelName,
+  };
 }
 
 export async function deleteClientModelAssignment(assignmentId: string): Promise<void> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).deleteClientModelAssignment(assignmentId);
-  await deleteRecord(TABLES.client_models, assignmentId);
+  await sbDeleteByPublicId(CLIENT_MODELS, assignmentId);
 }
 
 export async function getClientModelAssignmentsForModel(modelId: string): Promise<ClientModelRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientModelAssignmentsForModel(modelId);
-  const records = await listAllRecords<Record<string, unknown>>("client_models", {
-    filterByFormula: `FIND("${modelId}", ARRAYJOIN({model})) > 0`,
-    _caller: "getClientModelAssignmentsForModel",
-  });
-  return records.map((r) => ({
-    id: r.id,
-    client: Array.isArray(r.fields.client) ? (r.fields.client as string[]) : [],
-    model: Array.isArray(r.fields.model) ? (r.fields.model as string[]) : [],
-    model_name: String(r.fields.model_name ?? ""),
-  }));
+  const rows = await sbSelectAll<ClientModelRow>(CLIENT_MODELS);
+  return rows
+    .filter((r) => (r.model ?? []).includes(modelId))
+    .map((r) => ({
+      id: publicId(r),
+      client: (r.client ?? []) as string[],
+      model: (r.model ?? []) as string[],
+      model_name: "",
+    }));
 }
 
 export async function createBillingCycleForClient(
   clientId: string,
   data: CreateBillingCycleInput
 ): Promise<BillingCycleRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).createBillingCycleForClient(clientId, data);
-  const fields: Record<string, unknown> = {
+  const insert: Record<string, unknown> = {
     client: [clientId],
     kind: data.kind,
     period_start: data.period_start,
@@ -377,137 +453,111 @@ export async function createBillingCycleForClient(
     currency: data.currency,
     status: "draft",
   };
-  if (data.kind === "crm_monthly") {
-    fields.amount_crm = data.amount;
-  }
-  const rec = await createRecord<Record<string, unknown>>(TABLES.billing_cycles, fields);
-  return mapBillingCycle(rec);
+  if (data.kind === "crm_monthly") insert.amount_crm = data.amount;
+  const row = await sbInsert<CycleRow>(CYCLES, insert);
+  return mapBillingCycle(row);
 }
 
 export async function getPendingPaymentSubmissionsForClient(
   clientId: string
 ): Promise<PaymentSubmissionRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getPendingPaymentSubmissionsForClient(clientId);
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.payment_submissions, {
-    sort: [{ field: "submitted_datetime", direction: "desc" }],
-    _caller: "getPendingPaymentSubmissionsForClient",
-  });
-  return records
-    .map(mapPaymentSubmission)
-    .filter(
-      (s) => s.client.includes(clientId) && s.status === "pending_review");
+  const linked = await resolveClientLinkedIds(clientId);
+  const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
+  return rows
+    .map(mapSubmission)
+    .filter((s) => s.client.some((c) => linked.includes(c)) && s.status === "pending_review")
+    .sort((a, b) => (a.submitted_datetime < b.submitted_datetime ? 1 : -1));
 }
 
 export async function getPaymentSubmissionById(
   submissionId: string
 ): Promise<PaymentSubmissionRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getPaymentSubmissionById(submissionId);
-  const rec = await getRecord<Record<string, unknown>>(TABLES.payment_submissions, submissionId);
-  return mapPaymentSubmission(rec);
+  const row = await sbSelectByPublicId<SubmissionRow>(SUBMISSIONS, submissionId);
+  if (!row) throw new Error("Payment submission not found");
+  return mapSubmission(row);
 }
 
 export async function updatePaymentSubmissionReview(
   submissionId: string,
   data: UpdatePaymentSubmissionInput
 ): Promise<PaymentSubmissionRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).updatePaymentSubmissionReview(submissionId, data);
-  const fields: Record<string, unknown> = { status: data.status };
-  if (data.admin_note !== undefined) {
-    fields.admin_note = data.admin_note;
-  }
-  const rec = await updateRecord<Record<string, unknown>>(
-    TABLES.payment_submissions,
-    submissionId,
-    fields
-  );
-
-  // Airtable PATCH returns the full updated record — use it directly
-  // but override with our known values since Airtable may cache old values
-  const mapped = mapPaymentSubmission(rec);
-  return {
-    ...mapped,
-    status: data.status as PaymentSubmissionRecord["status"],
-  };
+  const patch: Record<string, unknown> = { status: data.status };
+  if (data.admin_note !== undefined) patch.admin_note = data.admin_note;
+  const row = await sbUpdateByPublicId<SubmissionRow>(SUBMISSIONS, submissionId, patch);
+  return { ...mapSubmission(row), status: data.status as PaymentSubmissionRecord["status"] };
 }
 
 export async function updateBillingCycleStatus(
   cycleId: string,
   status: BillingCycleStatus
 ): Promise<BillingCycleRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).updateBillingCycleStatus(cycleId, status);
-  const rec = await updateRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId, { status });
-  return mapBillingCycle(rec);
+  const row = await sbUpdateByPublicId<CycleRow>(CYCLES, cycleId, { status });
+  return mapBillingCycle(row);
 }
 
 export async function getClientBillingCycles(clientId: string): Promise<BillingCycleRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientBillingCycles(clientId);
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycles, {
-    sort: [{ field: "period_start", direction: "desc" }],
-    fields: ["client", "period_start", "period_end", "due_date", "status", "kind",
-             "amount_due", "total_fee_usd", "currency", "client_notified_at"],
-    _caller: "getClientBillingCycles",
-  });
-
-  const revenueRecords = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
-    fields: ["billing_cycle", "client"],
-    _caller: "getClientBillingCycles:revenues",
-  });
-  const cycleIdsFromRevenues = new Set<string>();
-  for (const r of revenueRecords) {
-    if (!recordIncludesClient(r.fields.client, clientId)) continue;
-    for (const cycleId of linkedRecordIds(r.fields.billing_cycle)) {
-      cycleIdsFromRevenues.add(cycleId);
+  const linked = await resolveClientLinkedIds(clientId);
+  const [cycleRows, revenueRows] = await Promise.all([
+    sbSelectAll<CycleRow>(CYCLES),
+    sbSelectAll<RevenueRow>(REVENUES),
+  ]);
+  const cycleUuidsFromRevenues = new Set<string>();
+  for (const r of revenueRows) {
+    if (!(r.client ?? []).some((c) => linked.includes(c))) continue;
+    for (const cycleUuid of r.billing_cycle ?? []) cycleUuidsFromRevenues.add(cycleUuid);
+  }
+  const cycleAirtableFromRevenues = new Set<string>();
+  if (cycleUuidsFromRevenues.size > 0) {
+    for (const c of cycleRows) {
+      if (cycleUuidsFromRevenues.has(c.id) && c.airtable_id) cycleAirtableFromRevenues.add(c.airtable_id);
     }
   }
-
-  const cycles = records.map(mapBillingCycle);
-  const filtered = cycles.filter(
-    (cycle) => recordIncludesClient(cycle.client, clientId) || cycleIdsFromRevenues.has(cycle.id)
-  );
-
-  return filtered.sort((a, b) => b.period_start.localeCompare(a.period_start));
+  const cycles = cycleRows.map(mapBillingCycle);
+  return cycles
+    .filter(
+      (cycle) =>
+        cycle.client.some((c) => linked.includes(c)) ||
+        cycleAirtableFromRevenues.has(cycle.id) ||
+        cycleUuidsFromRevenues.has(cycle.id)
+    )
+    .sort((a, b) => (a.period_start < b.period_start ? 1 : -1));
 }
 
 export async function getClientPaymentMethods(clientId: string): Promise<PaymentMethodRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientPaymentMethods(clientId);
-  const filterByFormula = `AND({is_available} = TRUE(), OR({scope} = "global", ${formulaLinkedContains("client", clientId)}))`;
-  const { records } = await listRecords<Record<string, unknown>>(TABLES.payment_methods, {
-    filterByFormula,
-    _caller: "getClientPaymentMethods",
-  });
-  return records.map(mapPaymentMethod);
+  const linked = await resolveClientLinkedIds(clientId);
+  const rows = await sbSelectAll<MethodRow>(METHODS);
+  return rows
+    .filter(
+      (r) =>
+        r.is_available === true &&
+        ((r.scope ?? "") === "global" || (r.client ?? []).some((c) => linked.includes(c)))
+    )
+    .map(mapMethod);
 }
 
 export async function getClientInvoices(clientId: string): Promise<InvoiceRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientInvoices(clientId);
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.invoices, {
-    sort: [{ field: "sent_at", direction: "desc" }],
-    _caller: "getClientInvoices",
-  });
-
-  return records
+  const linked = await resolveClientLinkedIds(clientId);
+  const rows = await sbSelectAll<InvoiceRow>(INVOICES);
+  return rows
     .map(mapInvoice)
-    .filter((invoice) => recordIncludesClient(invoice.client, clientId));
+    .filter((invoice) => invoice.client.some((c) => linked.includes(c)))
+    .sort((a, b) => ((a.sent_at ?? "") < (b.sent_at ?? "") ? 1 : -1));
 }
 
-/** Enrich invoices with linked billing cycle period info. */
 export async function getClientInvoicesEnriched(clientId: string): Promise<EnrichedInvoice[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientInvoicesEnriched(clientId);
   const invoices = await getClientInvoices(clientId);
-  const cycleIds = [...new Set(invoices.map((i) => i.billing_cycle[0]).filter(Boolean))];
-
+  const cycleIds = [...new Set(invoices.map((i) => i.billing_cycle[0]).filter(Boolean) as string[])];
   const cycleMap = new Map<string, BillingCycleRecord>();
   await Promise.all(
     cycleIds.map(async (cycleId) => {
       try {
-        const rec = await getRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId);
-        cycleMap.set(cycleId, mapBillingCycle(rec));
+        const cycle = await getBillingCycleByIdFromBilling(cycleId);
+        if (cycle) cycleMap.set(cycleId, cycle);
       } catch {
-        /* cycle may have been deleted */
+        /* skip missing */
       }
     })
   );
-
   return invoices.map((invoice) => {
     const cycleId = invoice.billing_cycle[0];
     const cycle = cycleId ? cycleMap.get(cycleId) : undefined;
@@ -526,73 +576,58 @@ export async function getClientInvoicesEnriched(clientId: string): Promise<Enric
 }
 
 export async function getClientModels(clientId: string): Promise<ClientModelRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientModels(clientId);
+  const linked = await resolveClientLinkedIds(clientId);
   const [assignments, models] = await Promise.all([
-    listAllRecords<Record<string, unknown>>(TABLES.client_models, {
-      _caller: "getClientModels:assignments",
-    }),
-    listAllRecords<Record<string, unknown>>(TABLES.billing_models, {
-      _caller: "getClientModels:models",
-    }),
+    sbSelectAll<ClientModelRow>(CLIENT_MODELS),
+    sbSelectAll<ModelRow>(BILLING_MODELS),
   ]);
-
-  const modelNameById = new Map(models.map((m) => [m.id, String(m.fields.model_name ?? "")]));
-
+  const modelNameById = new Map(models.map((m) => [m.id, m.model_name ?? ""]));
+  const airtableToUuid = new Map<string, string>();
+  for (const m of models) {
+    if (m.airtable_id) airtableToUuid.set(m.airtable_id, m.id);
+  }
   return assignments
+    .filter((rec) => (rec.client ?? []).some((c) => linked.includes(c)))
     .map((rec) => {
-      const client = linkedRecordIds(rec.fields.client);
-      const model = linkedRecordIds(rec.fields.model);
-      const modelId = model[0];
+      const modelUuids = rec.model ?? [];
+      const modelId = modelUuids[0];
       return {
-        id: rec.id,
-        client,
-        model,
+        id: publicId(rec),
+        client: (rec.client ?? []) as string[],
+        model: modelUuids,
         model_name: modelId ? modelNameById.get(modelId) : undefined,
       };
-    })
-    .filter((row) => recordIncludesClient(row.client, clientId));
+    });
 }
 
 export async function getLatestSubmissionForCycle(
   cycleId: string,
   clientId?: string
 ): Promise<PaymentSubmissionRecord | null> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getLatestSubmissionForCycle(cycleId, clientId);
-  const formulaParts = [formulaLinkedContains("billing_cycle", cycleId)];
-  if (clientId) {
-    formulaParts.push(formulaLinkedContains("client", clientId));
-  }
-
-  const { records } = await listRecords<Record<string, unknown>>(TABLES.payment_submissions, {
-    filterByFormula: `AND(${formulaParts.join(", ")})`,
-    sort: [{ field: "submitted_datetime", direction: "desc" }],
-    pageSize: 1,
-    _caller: "getLatestSubmissionForCycle",
-  });
-
-  const rec = records[0];
-  return rec ? mapPaymentSubmission(rec) : null;
+  const linked = clientId ? await resolveClientLinkedIds(clientId) : [];
+  const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
+  const filtered = rows
+    .filter((r) => (r.billing_cycle ?? []).includes(cycleId))
+    .filter((r) => !clientId || (r.client ?? []).some((c) => linked.includes(c)))
+    .sort((a, b) => ((a.submitted_datetime ?? "") < (b.submitted_datetime ?? "") ? 1 : -1));
+  return filtered[0] ? mapSubmission(filtered[0]) : null;
 }
 
 export async function getPaymentSubmissionsForClient(
   clientId: string
 ): Promise<PaymentSubmissionRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getPaymentSubmissionsForClient(clientId);
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.payment_submissions, {
-    sort: [{ field: "submitted_datetime", direction: "desc" }],
-    _caller: "getPaymentSubmissionsForClient",
-  });
-
-  return records
-    .map(mapPaymentSubmission)
-    .filter((sub) => recordIncludesClient(sub.client, clientId));
+  const linked = await resolveClientLinkedIds(clientId);
+  const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
+  return rows
+    .map(mapSubmission)
+    .filter((sub) => sub.client.some((c) => linked.includes(c)))
+    .sort((a, b) => (a.submitted_datetime < b.submitted_datetime ? 1 : -1));
 }
 
 export async function createPaymentSubmission(
   data: CreatePaymentSubmissionInput
 ): Promise<PaymentSubmissionRecord> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).createPaymentSubmission(data);
-  const fields: Record<string, unknown> = {
+  const insert: Record<string, unknown> = {
     billing_cycle: data.billing_cycle,
     client: data.client,
     selected_payment_method: data.selected_payment_method,
@@ -605,36 +640,28 @@ export async function createPaymentSubmission(
     status: data.status,
   };
   if (data.proof_attachment?.length) {
-    fields.proof_attachment = data.proof_attachment.map((a) => ({
-      url: a.url,
-      filename: a.filename,
-    }));
+    insert.proof_attachment = data.proof_attachment.map((a) => ({ url: a.url, filename: a.filename }));
   }
-  const rec = await createRecord<Record<string, unknown>>(TABLES.payment_submissions, fields);
-  return mapPaymentSubmission(rec);
+  const row = await sbInsert<SubmissionRow>(SUBMISSIONS, insert);
+  return mapSubmission(row);
 }
 
 export async function getCalendarEvents(clientId: string): Promise<CalendarEventRecord[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getCalendarEvents(clientId);
-  const filterByFormula = `OR({scope} = "global", ${formulaLinkedContains("client", clientId)})`;
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.calendar_events, {
-    filterByFormula,
-    sort: [{ field: "start_datetime", direction: "asc" }],
-    _caller: "getCalendarEvents",
-  });
-  return records.map(mapCalendarEvent);
+  const linked = await resolveClientLinkedIds(clientId);
+  const rows = await sbSelectAll<CalendarRow>(CALENDAR);
+  return rows
+    .filter((r) => (r.scope ?? "") === "global" || (r.client ?? []).some((c) => linked.includes(c)))
+    .map(mapCalendar)
+    .sort((a, b) => (a.start_datetime < b.start_datetime ? -1 : 1));
 }
 
-/** Billing cycles for a client with their latest submission attached. */
 export async function getClientBillingCyclesWithSubmissions(
   clientId: string
 ): Promise<Array<BillingCycleRecord & { latestSubmission: PaymentSubmissionRecord | null }>> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientBillingCyclesWithSubmissions(clientId);
   const [cycles, submissions] = await Promise.all([
     getClientBillingCycles(clientId),
     getPaymentSubmissionsForClient(clientId),
   ]);
-
   const latestByCycle = new Map<string, PaymentSubmissionRecord>();
   for (const sub of submissions) {
     const cycleId = sub.billing_cycle[0];
@@ -647,14 +674,9 @@ export async function getClientBillingCyclesWithSubmissions(
       latestByCycle.set(cycleId, sub);
     }
   }
-
-  return cycles.map((cycle) => ({
-    ...cycle,
-    latestSubmission: latestByCycle.get(cycle.id) ?? null,
-  }));
+  return cycles.map((cycle) => ({ ...cycle, latestSubmission: latestByCycle.get(cycle.id) ?? null }));
 }
 
-/** Pending / overdue cycles that still accept payment. */
 export function filterPayableCycles(cycles: BillingCycleRecord[]): BillingCycleRecord[] {
   const payableStatuses: BillingCycleStatus[] = ["announced", "overdue", "pending_review"];
   return cycles.filter((cycle) => {
@@ -667,28 +689,12 @@ export function filterPayableCycles(cycles: BillingCycleRecord[]): BillingCycleR
 }
 
 export async function getModelById(modelId: string): Promise<ModelRecord | null> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getModelById(modelId);
   try {
-    const rec = await getRecord<Record<string, unknown>>(TABLES.billing_models, modelId);
-    return mapModel(rec);
+    const row = await sbSelectByPublicId<ModelRow>(BILLING_MODELS, modelId);
+    return row ? mapModelRow(row) : null;
   } catch {
     return null;
   }
-}
-
-function mapBillingCycleRevenue(rec: AirtableRecord<Record<string, unknown>>): BillingCycleRevenueRecord {
-  const f = rec.fields;
-  return {
-    id: rec.id,
-    billing_cycle: linkedRecordIds(f.billing_cycle),
-    client: linkedRecordIds(f.client),
-    model: linkedRecordIds(f.model),
-    turnover_usd: typeof f.turnover_usd === "number" ? f.turnover_usd : 0,
-    fee_percent: typeof f.fee_percent === "number" ? f.fee_percent : 0,
-    fee_usd: typeof f.fee_usd === "number" ? f.fee_usd : undefined,
-    status: typeof f.status === "string" ? (f.status as BillingCycleRevenueStatus) : undefined,
-    created_at: typeof f.created_at === "string" ? f.created_at : undefined,
-  };
 }
 
 function feeFromRevenue(r: BillingCycleRevenueRecord): number {
@@ -706,9 +712,13 @@ function filterPayableRevenues(
     if (s === "announced" || s === "overdue" || s === "pending_review") {
       result.push(r);
       if (s === "announced" && pastDeadline) {
-        updateRecord<Record<string, unknown>>(TABLES.billing_cycle_revenues, r.id, {
-          status: "overdue",
-        }).catch(() => {});
+        void (async () => {
+          try {
+            await sbUpdateByPublicId(REVENUES, r.id, { status: "overdue" });
+          } catch {
+            /* ignore */
+          }
+        })();
       }
     }
   }
@@ -719,19 +729,19 @@ async function listBillingCycleRevenuesForClientAndCycle(
   clientId: string,
   cycleId: string
 ): Promise<BillingCycleRevenueRecord[]> {
+  const linked = await resolveClientLinkedIds(clientId);
   const revenues = await getBillingCycleRevenues(cycleId);
-  return revenues.filter((r) => r.client.includes(clientId));
+  return revenues.filter((r) => r.client.some((c) => linked.includes(c)));
 }
 
 async function listPayableRevenuesForClient(clientId: string): Promise<BillingCycleRevenueRecord[]> {
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
-    _caller: "listPayableRevenuesForClient",
-  });
-  return records
-    .map(mapBillingCycleRevenue)
+  const linked = await resolveClientLinkedIds(clientId);
+  const rows = await sbSelectAll<RevenueRow>(REVENUES);
+  return rows
+    .map(mapRevenue)
     .filter(
       (r) =>
-        r.client.includes(clientId) &&
+        r.client.some((c) => linked.includes(c)) &&
         (r.status === "announced" || r.status === "overdue" || r.status === "pending_review")
     );
 }
@@ -744,7 +754,6 @@ export async function getClientCurrentBillingCycle(
   clientId: string,
   kind: BillingCycleKind
 ): Promise<BillingCycleRecord | null> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientCurrentBillingCycle(clientId, kind);
   const cycles = await getClientBillingCycles(clientId);
   const matching = cycles
     .filter((c) => c.kind === kind && c.status !== "draft")
@@ -763,10 +772,8 @@ export async function getClientCurrentChattingCycleFromRevenues(
   clientId: string,
   cycleIdHint?: string
 ): Promise<ChattingCycleResult | null> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientCurrentChattingCycleFromRevenues(clientId, cycleIdHint);
   const revenues = await listPayableRevenuesForClient(clientId);
   if (revenues.length === 0) return null;
-
   const cycleIdToRevenues = new Map<string, BillingCycleRevenueRecord[]>();
   for (const r of revenues) {
     const cid = r.billing_cycle[0];
@@ -775,26 +782,21 @@ export async function getClientCurrentChattingCycleFromRevenues(
     list.push(r);
     cycleIdToRevenues.set(cid, list);
   }
-
   const cycleIds = Array.from(cycleIdToRevenues.keys());
   const cycleRecords = await Promise.all(cycleIds.map((id) => getBillingCycleByIdFromBilling(id)));
   const validCycles = cycleRecords.filter(
-    (c): c is NonNullable<typeof c> => c != null && c.kind === "chatting_weekly");
+    (c): c is NonNullable<typeof c> => c != null && c.kind === "chatting_weekly"
+  );
   if (validCycles.length === 0) return null;
-
   validCycles.sort((a, b) => (b.period_end || "").localeCompare(a.period_end || ""));
-  let chosen = validCycles[0];
+  let chosen = validCycles[0]!;
   if (cycleIdHint && cycleIdToRevenues.has(cycleIdHint)) {
     const hinted = validCycles.find((c) => c.id === cycleIdHint);
     if (hinted) chosen = hinted;
   }
-
   const payableRevenues = cycleIdToRevenues.get(chosen.id) ?? [];
   const amountDue = payableRevenues.reduce((sum, r) => sum + feeFromRevenue(r), 0);
-  return {
-    cycle: { ...chosen, amount_due: amountDue },
-    payableRevenues,
-  };
+  return { cycle: { ...chosen, amount_due: amountDue }, payableRevenues };
 }
 
 export async function getAllClientBillingModels(): Promise<ModelRecord[]> {
@@ -817,7 +819,6 @@ export async function getClientPartnershipAnalytics(
   clientId: string,
   monthKey: string
 ): Promise<GunzoPartnershipData> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientPartnershipAnalytics(clientId, monthKey);
   const empty: GunzoPartnershipData = {
     weeks: [],
     weeklyPerModel: [],
@@ -828,6 +829,8 @@ export async function getClientPartnershipAnalytics(
     bestModelOfMonthId: null,
     bestModelOfMonthName: null,
   };
+
+  const linked = await resolveClientLinkedIds(clientId);
 
   const [chattingCyclesAll, clientCycles, assignments, allModelsList] = await Promise.all([
     getAllBillingCycles(),
@@ -846,7 +849,9 @@ export async function getClientPartnershipAnalytics(
   ) as string[];
   availableMonths2026.sort();
 
-  const [y, m] = monthKey.split("-").map(Number);
+  const [yStr, mStr] = monthKey.split("-");
+  const y = Number(yStr);
+  const m = Number(mStr);
   if (Number.isNaN(y) || Number.isNaN(m)) return { ...empty, availableMonths2026 };
 
   const lastDay = lastDayOfMonth(y, m);
@@ -864,10 +869,8 @@ export async function getClientPartnershipAnalytics(
   });
   const cycleIdsForMonth = chattingCyclesInMonth.map((c) => c.id).filter(Boolean);
   const allRevenuesRaw =
-    cycleIdsForMonth.length > 0
-      ? await getBillingCycleRevenuesForCycles(cycleIdsForMonth)
-      : [];
-  const allRevenues = allRevenuesRaw.filter((r) => r.client.includes(clientId));
+    cycleIdsForMonth.length > 0 ? await getBillingCycleRevenuesForCycles(cycleIdsForMonth) : [];
+  const allRevenues = allRevenuesRaw.filter((r) => r.client.some((c) => linked.includes(c)));
 
   const cycleIdByKey = new Map<string, string>();
   chattingCyclesInMonth.forEach((c) => {
@@ -885,7 +888,7 @@ export async function getClientPartnershipAnalytics(
 
   const weeks = weekRanges.map(([start, end]) => {
     const cycleId = cycleIdByKey.get(`${start}|${end}`);
-    const revs = cycleId ? (revenuesByCycleId.get(cycleId) ?? []) : [];
+    const revs = cycleId ? revenuesByCycleId.get(cycleId) ?? [] : [];
     const turnoverUsd = revs.reduce((s, r) => s + (r.turnover_usd ?? 0), 0);
     const feeUsd = revs.reduce((s, r) => s + feeFromRevenue(r), 0);
     let bestModelId: string | null = null;
@@ -903,7 +906,7 @@ export async function getClientPartnershipAnalytics(
       turnoverUsd,
       feeUsd,
       bestModelId,
-      bestModelName: bestModelId ? (modelMap.get(bestModelId) ?? null) : null,
+      bestModelName: bestModelId ? modelMap.get(bestModelId) ?? null : null,
     };
   });
 
@@ -1005,13 +1008,11 @@ export async function getClientPartnershipAnalytics(
 }
 
 export async function getClientAttentionItems(clientId: string): Promise<ClientAttentionItem[]> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientAttentionItems(clientId);
   const [invoices, billingCycles, submissions] = await Promise.all([
     getClientInvoices(clientId),
     getClientBillingCycles(clientId),
     getPaymentSubmissionsForClient(clientId),
   ]);
-
   const items: ClientAttentionItem[] = [];
   const now = new Date();
   const threeDaysFromNow = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
@@ -1033,10 +1034,9 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
         type: "payment_due",
         recordId: cycle.id,
         severity: cycle.status === "overdue" ? "high" : "medium",
-        title: "⏰ Payment Due Soon",
+        title: "\u23F0 Payment Due Soon",
         description: `${cycle.kind === "chatting_weekly" ? "Chatting" : "CRM"} payment due ${formatDateEuropean(cycle.due_date)}`,
-        link:
-          cycle.kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
+        link: cycle.kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
       });
     });
 
@@ -1050,7 +1050,7 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
         type: "proof_rejected",
         recordId: submission.id,
         severity: "high",
-        title: "❌ Payment Proof Rejected",
+        title: "\u274C Payment Proof Rejected",
         description: "Your payment proof needs attention. Please review and resubmit.",
         link: kind === "chatting_weekly" ? "/client/pay-chatting" : "/client/pay-crm",
       });
@@ -1069,7 +1069,7 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
         type: "invoice",
         recordId: invoice.id,
         severity: "low",
-        title: "📄 New Invoice Available",
+        title: "\uD83D\uDCC4 New Invoice Available",
         description: `Invoice #${invoice.invoice_number || invoice.id.slice(0, 8)}`,
         link: "/client/invoices",
       });
@@ -1081,7 +1081,6 @@ export async function getClientAttentionItems(clientId: string): Promise<ClientA
 }
 
 export async function getClientUnreadCounts(clientId: string): Promise<{ invoices: number }> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).getClientUnreadCounts(clientId);
   const invoices = await getClientInvoices(clientId);
   const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
   const unreadInvoices = invoices.filter((invoice) => {
@@ -1093,21 +1092,19 @@ export async function getClientUnreadCounts(clientId: string): Promise<{ invoice
 }
 
 export async function markInvoiceAsViewed(invoiceId: string): Promise<void> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).markInvoiceAsViewed(invoiceId);
-  await updateRecord<Record<string, unknown>>(TABLES.invoices, invoiceId, {
-    viewed_at: new Date().toISOString(),
-  });
+  await sbUpdateByPublicId(INVOICES, invoiceId, { viewed_at: new Date().toISOString() });
 }
 
 export async function markSubmissionAsSeen(_submissionId: string): Promise<void> {
-  /* client_seen_at field optional — no-op if absent */
+  /* no-op: client_seen_at optional */
 }
 
 export async function markBillingCycleAsNotified(cycleId: string): Promise<void> {
-  if (isSupabaseBackend()) return (await import("./client-portal-supabase")).markBillingCycleAsNotified(cycleId);
-  await updateRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId, {
-    client_notified_at: new Date().toISOString(),
-  }).catch(() => {});
+  try {
+    await sbUpdateByPublicId(CYCLES, cycleId, { client_notified_at: new Date().toISOString() });
+  } catch {
+    /* swallow */
+  }
 }
 
 export async function submitClientPaymentProof(
@@ -1128,16 +1125,11 @@ export async function submitClientPaymentProof(
   if (existing && existing.status !== "rejected") {
     return { submissionId: existing.id, alreadySubmitted: true };
   }
-
   const cycle = await getBillingCycleByIdFromBilling(billingCycleId);
   if (cycle) {
-    const hasPending =
-      cycle.status === "pending_review" || cycle.status === "confirmed_paid";
-    if (hasPending) {
-      return { submissionId: existing?.id ?? billingCycleId, alreadySubmitted: true };
-    }
+    const hasPending = cycle.status === "pending_review" || cycle.status === "confirmed_paid";
+    if (hasPending) return { submissionId: existing?.id ?? billingCycleId, alreadySubmitted: true };
   }
-
   const submission = await createPaymentSubmission({
     billing_cycle: [billingCycleId],
     client: [clientId],
@@ -1150,18 +1142,18 @@ export async function submitClientPaymentProof(
     proof_attachment: data.proof_attachment,
     status: "pending_review",
   });
-
   if (cycle?.kind === "chatting_weekly") {
     await updateRevenuesStatusForClientAndCycle(
       clientId,
       billingCycleId,
       ["announced", "overdue"],
-      "pending_review");
+      "pending_review"
+    );
   } else if (cycle?.kind === "crm_monthly") {
     await updateBillingCycleRecord(billingCycleId, { status: "pending_review" });
   }
-
   return { submissionId: submission.id, alreadySubmitted: false };
 }
 
-export type { GunzoPartnershipData, ClientAttentionItem, ChattingCycleResult };
+void recordIncludesClient;
+void getSupabaseServiceClient;

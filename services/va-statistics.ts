@@ -5,6 +5,7 @@
 
 import { addDaysAthensYmd, getTodayYmdAthens, ymdInAthens } from "@/lib/airtable-datetime";
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import { getAllVaTasks } from "@/services/va-tasks";
 import { listAllShifts } from "@/services/shifts";
@@ -217,6 +218,9 @@ type PhaseItemRow = {
 
 async function loadPhaseItemsForTasks(taskIds: Set<string>): Promise<PhaseItemRow[]> {
   if (taskIds.size === 0) return [];
+  if (isSupabaseBackend()) {
+    return (await import("./va-statistics-supabase")).loadPhaseItemsForTasks(taskIds);
+  }
   type ItemFields = {
     task_id?: string;
     step_type?: string;
@@ -260,6 +264,9 @@ async function loadPunctualityFromNotifications(
   startYmd: string,
   endYmd: string,
 ): Promise<PunctualityCounts> {
+  if (isSupabaseBackend()) {
+    return (await import("./va-statistics-supabase")).loadPunctualityFromNotifications(startYmd, endYmd);
+  }
   type NFields = {
     event_type?: string;
     created_at?: string;

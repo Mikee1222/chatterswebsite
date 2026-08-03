@@ -1,0 +1,522 @@
+/**
+ * Supabase backend for services/va-content-assignments.ts
+ */
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
+import {
+  publicId,
+  sbAirtableIdsForUuids,
+  sbDeleteByPublicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbUpdateByPublicId,
+  sbUuidsForAirtableIds,
+  type SbRow,
+} from "@/lib/supabase-data";
+import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { notify, notifyByRoleConfig } from "@/services/notification-service";
+import { getUserByAirtableId } from "@/services/users";
+import { getModelById } from "@/services/modelss";
+import type { VaContentAssignmentRecord } from "@/types";
+import {
+  validateAssignmentFileCount,
+  validateAssignmentFileSizes,
+  type ParsedAssignmentFile,
+} from "@/lib/va-content-assignment-files";
+import type {
+  VaUpdatePendingAssignmentInput,
+  CreateVaContentAssignmentAdminInput,
+  ReviewVAContentAssignmentAdminInput,
+  ScheduleVAContentAssignmentInput,
+  CompleteVAContentAssignmentInput,
+  VaAttachmentCell,
+} from "./va-content-assignments";
+
+const TABLE = "va_content_assignments";
+
+type Row = SbRow & {
+  assignment_id?: string | null;
+  model?: string[] | null;
+  va?: string[] | null;
+  model_id?: string | null;
+  va_id?: string | null;
+  title?: string | null;
+  description?: string | null;
+  content_type?: string | null;
+  file_url?: string | null;
+  file_attachment?: string[] | null;
+  deadline?: string | null;
+  scheduled_date?: string | null;
+  status?: string | null;
+  priority?: string | null;
+  model_notes?: string | null;
+  va_notes?: string | null;
+  completed_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  rejection_reason?: string | null;
+  admin_edit_notes?: string | null;
+  reviewed_by?: string | null;
+  reviewed_at?: string | null;
+};
+
+function attachmentsFromUrls(v: string[] | null | undefined): VaAttachmentCell[] {
+  if (!Array.isArray(v)) return [];
+  return v.filter((x): x is string => typeof x === "string" && x.length > 0).map((url) => ({ url }));
+}
+
+async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
+  const modelUuids = row.model ?? [];
+  const vaUuids = row.va ?? [];
+  const [modelAtIds, vaAtIds] = await Promise.all([
+    sbAirtableIdsForUuids("modelss", modelUuids),
+    sbAirtableIdsForUuids("users", vaUuids),
+  ]);
+  const modelIdText = typeof row.model_id === "string" ? row.model_id.trim() : "";
+  return {
+    id: publicId(row),
+    assignment_id: row.assignment_id ?? "",
+    model_id: modelAtIds[0] ?? modelIdText,
+    va_id: vaAtIds[0] ?? (typeof row.va_id === "string" && row.va_id.trim() ? row.va_id.trim() : null),
+    title: row.title ?? "",
+    description: row.description ?? "",
+    content_type: row.content_type ?? "",
+    file_url: row.file_url ?? null,
+    file_attachment: attachmentsFromUrls(row.file_attachment),
+    deadline: row.deadline ?? null,
+    scheduled_date: row.scheduled_date ?? null,
+    status: row.status ?? "",
+    priority: row.priority ?? "",
+    model_notes: row.model_notes ?? "",
+    va_notes: row.va_notes ?? "",
+    completed_at: row.completed_at ?? null,
+    created_at: row.created_at ?? "",
+    updated_at: row.updated_at ?? "",
+    rejection_reason: typeof row.rejection_reason === "string" ? row.rejection_reason : "",
+    admin_edit_notes: typeof row.admin_edit_notes === "string" ? row.admin_edit_notes : "",
+    reviewed_by: typeof row.reviewed_by === "string" ? row.reviewed_by : "",
+    reviewed_at: typeof row.reviewed_at === "string" ? row.reviewed_at : null,
+  };
+}
+
+async function vaUuidsForUserKey(vaUserRecordId: string): Promise<string[]> {
+  const rid = vaUserRecordId?.trim();
+  if (!rid) return [];
+  if (!rid.startsWith("rec")) return [];
+  const uuids = await sbUuidsForAirtableIds("users", [rid]);
+  return uuids;
+}
+
+async function modelUuidForKey(modelRecordId: string): Promise<string | null> {
+  if (!modelRecordId.startsWith("rec")) return null;
+  const uuids = await sbUuidsForAirtableIds("modelss", [modelRecordId]);
+  return uuids[0] ?? null;
+}
+
+function statusNorm(status: string | undefined): string {
+  return String(status ?? "").trim().toLowerCase();
+}
+function isHiddenFromModelStatus(status: string | undefined): boolean {
+  const k = statusNorm(status);
+  return k === "pending_approval" || k === "rejected";
+}
+function isVaEditableStatus(status: string | undefined): boolean {
+  const k = statusNorm(status);
+  return k === "pending" || k === "pending_approval";
+}
+
+function sortAssignmentsForVa(rows: VaContentAssignmentRecord[]): VaContentAssignmentRecord[] {
+  return [...rows].sort((a, b) => (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0));
+}
+function sortAssignmentsForAdmin(rows: VaContentAssignmentRecord[]): VaContentAssignmentRecord[] {
+  return [...rows].sort((a, b) => {
+    const da = Date.parse(a.deadline ?? "") || Number.POSITIVE_INFINITY;
+    const db = Date.parse(b.deadline ?? "") || Number.POSITIVE_INFINITY;
+    if (da !== db) return da - db;
+    return (Date.parse(b.created_at || "") || 0) - (Date.parse(a.created_at || "") || 0);
+  });
+}
+function sortAssignmentsForModel(rows: VaContentAssignmentRecord[]): VaContentAssignmentRecord[] {
+  return [...rows].sort((a, b) => {
+    const da = a.deadline?.trim() ? Date.parse(a.deadline) : NaN;
+    const db = b.deadline?.trim() ? Date.parse(b.deadline) : NaN;
+    if (!Number.isNaN(da) && !Number.isNaN(db)) return da - db;
+    if (!Number.isNaN(da)) return -1;
+    if (!Number.isNaN(db)) return 1;
+    return 0;
+  });
+}
+
+export async function getVAContentAssignmentForVa(
+  assignmentRecordId: string,
+  vaUserRecordId: string
+): Promise<VaContentAssignmentRecord | null> {
+  if (!assignmentRecordId || !vaUserRecordId?.trim()) return null;
+  const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
+  if (!row) return null;
+  const vaUuids = await vaUuidsForUserKey(vaUserRecordId);
+  const rowUuids = row.va ?? [];
+  const stableUserId = (await getUserByAirtableId(vaUserRecordId).catch(() => null))?.user_id?.trim() ?? "";
+  const matches = vaUuids.some((u) => rowUuids.includes(u)) ||
+    (stableUserId && row.va_id === stableUserId);
+  return matches ? mapRow(row) : null;
+}
+
+export async function updatePendingVAContentAssignmentByVa(
+  assignmentRecordId: string,
+  vaUserRecordId: string,
+  patch: VaUpdatePendingAssignmentInput
+): Promise<VaContentAssignmentRecord | null> {
+  const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
+  if (!current || !isVaEditableStatus(current.status)) return null;
+  const fields: Record<string, unknown> = {};
+  if (patch.title !== undefined) fields.title = patch.title.trim();
+  if (patch.description !== undefined) fields.description = patch.description.trim();
+  if (patch.deadline !== undefined) fields.deadline = patch.deadline?.trim() ? patch.deadline.trim() : "";
+  if (patch.priority !== undefined) fields.priority = (patch.priority || "normal").trim().toLowerCase();
+  if (Object.keys(fields).length === 0) return current;
+  const row = await sbUpdateByPublicId<Row>(TABLE, assignmentRecordId, fields);
+  return mapRow(row);
+}
+
+export async function deletePendingVAContentAssignmentByVa(
+  assignmentRecordId: string,
+  vaUserRecordId: string
+): Promise<boolean> {
+  const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
+  if (!current || !isVaEditableStatus(current.status)) return false;
+  await sbDeleteByPublicId(TABLE, assignmentRecordId);
+  return true;
+}
+
+function appendNoteBlock(existing: string, block: string): string {
+  const e = existing.trim();
+  const b = block.trim();
+  if (!b) return e;
+  return e ? `${e}\n\n${b}` : b;
+}
+
+export async function appendVAContentAssignmentVaNotes(
+  assignmentRecordId: string,
+  vaUserRecordId: string,
+  noteBlock: string
+): Promise<VaContentAssignmentRecord | null> {
+  const current = await getVAContentAssignmentForVa(assignmentRecordId, vaUserRecordId);
+  if (!current) return null;
+  const b = noteBlock.trim();
+  if (!b) return null;
+  const row = await sbUpdateByPublicId<Row>(TABLE, assignmentRecordId, {
+    va_notes: appendNoteBlock(current.va_notes, b),
+  });
+  return mapRow(row);
+}
+
+export async function listVAContentAssignmentsForVaUser(vaUserRecordId: string): Promise<VaContentAssignmentRecord[]> {
+  const rid = vaUserRecordId?.trim();
+  if (!rid) return [];
+  const vaUuids = await vaUuidsForUserKey(rid);
+  const stable = (await getUserByAirtableId(rid).catch(() => null))?.user_id?.trim() ?? "";
+  const sb = getSupabaseServiceClient();
+  const filters: string[] = [];
+  if (vaUuids.length) filters.push(`va.cs.{${vaUuids.join(",")}}`);
+  if (stable) filters.push(`va_id.eq.${stable}`);
+  if (!filters.length) return [];
+  const { data, error } = await sb.from(TABLE).select("*").or(filters.join(","));
+  if (error) throw new Error(`va_content_assignments: ${error.message}`);
+  const mapped = await Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
+  return sortAssignmentsForVa(mapped);
+}
+
+export async function getModelIdsAssignedToVa(vaUserRecordId: string): Promise<string[]> {
+  const rows = await listVAContentAssignmentsForVaUser(vaUserRecordId);
+  return [...new Set(rows.map((r) => r.model_id).filter(Boolean))];
+}
+
+function vaAssignmentDisplayDateYmd(v: VaContentAssignmentRecord): string | null {
+  const s = v.scheduled_date?.trim().slice(0, 10);
+  if (s && /^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  const d = v.deadline?.trim().slice(0, 10);
+  if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+  return null;
+}
+
+export async function listAllVAContentAssignmentsInRange(fromDate: string, toDate: string): Promise<VaContentAssignmentRecord[]> {
+  if (!fromDate || !toDate) return [];
+  const rows = await sbSelectAll<Row>(TABLE).catch(() => []);
+  const mapped = await Promise.all(rows.map(mapRow));
+  return mapped.filter((v) => {
+    const ymd = vaAssignmentDisplayDateYmd(v);
+    return ymd != null && ymd >= fromDate && ymd <= toDate;
+  });
+}
+
+export async function listVAContentAssignmentsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null
+): Promise<VaContentAssignmentRecord[]> {
+  if (!modelRecordId) return [];
+  let sid = stableModelId?.trim() ?? "";
+  if (!sid) {
+    const rec = await getModelById(modelRecordId).catch(() => null);
+    sid = rec?.model_id?.trim() ?? "";
+  }
+  const modelUuid = await modelUuidForKey(modelRecordId);
+  const sb = getSupabaseServiceClient();
+  const parts: string[] = [];
+  if (modelUuid) parts.push(`model.cs.{${modelUuid}}`);
+  if (sid) parts.push(`model_id.eq.${sid}`);
+  if (!parts.length) return [];
+  const { data, error } = await sb.from(TABLE).select("*").or(parts.join(","));
+  if (error) throw new Error(`va_content_assignments: ${error.message}`);
+  const mapped = await Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
+  return sortAssignmentsForModel(mapped.filter((row) => !isHiddenFromModelStatus(row.status)));
+}
+
+export async function listDistinctVaUserIdsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null
+): Promise<string[]> {
+  const rows = await listVAContentAssignmentsForModel(modelRecordId, stableModelId);
+  const ids = new Set<string>();
+  for (const r of rows) {
+    const v = r.va_id?.trim();
+    if (v) ids.add(v);
+  }
+  return [...ids];
+}
+
+export async function listAllVAContentAssignments(): Promise<VaContentAssignmentRecord[]> {
+  const rows = await sbSelectAll<Row>(TABLE).catch(() => []);
+  const mapped = await Promise.all(rows.map(mapRow));
+  return sortAssignmentsForAdmin(mapped);
+}
+
+export async function getVAContentAssignmentById(assignmentRecordId: string): Promise<VaContentAssignmentRecord | null> {
+  if (!assignmentRecordId) return null;
+  const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
+  return row ? mapRow(row) : null;
+}
+
+export async function countPendingVAContentAssignments(): Promise<number> {
+  try {
+    const sb = getSupabaseServiceClient();
+    const { count } = await sb.from(TABLE).select("id", { count: "exact", head: true }).in("status", ["pending", "pending_approval"]);
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+export async function cancelVAContentAssignment(
+  assignmentRecordId: string,
+  input: { reason: string; actorLabel?: string }
+): Promise<VaContentAssignmentRecord | null> {
+  const current = await getVAContentAssignmentById(assignmentRecordId);
+  if (!current) return null;
+  const reason = input.reason.trim();
+  if (!reason) return null;
+  const actor = input.actorLabel?.trim() || "Admin";
+  const noteBlock = `[${actor} cancelled] ${reason}`;
+  const row = await sbUpdateByPublicId<Row>(TABLE, assignmentRecordId, {
+    status: "cancelled",
+    model_notes: appendNoteBlock(current.model_notes, noteBlock),
+  });
+  return mapRow(row);
+}
+
+export async function countPendingVAContentAssignmentsForModel(
+  modelRecordId: string,
+  stableModelId?: string | null
+): Promise<number> {
+  if (!modelRecordId) return 0;
+  const rows = await listVAContentAssignmentsForModel(modelRecordId, stableModelId);
+  return rows.filter((r) => statusNorm(r.status) === "pending").length;
+}
+
+export async function getVAContentAssignmentForModel(
+  assignmentRecordId: string,
+  modelRecordId: string,
+  stableModelId?: string | null
+): Promise<VaContentAssignmentRecord | null> {
+  const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
+  if (!row) return null;
+  const mapped = await mapRow(row);
+  const uuid = await modelUuidForKey(modelRecordId);
+  const linkMatch = uuid ? (row.model ?? []).includes(uuid) : false;
+  const sidMatch = Boolean(stableModelId?.trim() && row.model_id === stableModelId.trim());
+  const idAsStableMatch = Boolean(!modelRecordId.startsWith("rec") && row.model_id === modelRecordId);
+  if (!linkMatch && !sidMatch && !idAsStableMatch) return null;
+  if (isHiddenFromModelStatus(mapped.status)) return null;
+  return mapped;
+}
+
+export async function scheduleVAContentAssignmentForModel(
+  assignmentRecordId: string,
+  modelRecordId: string,
+  input: ScheduleVAContentAssignmentInput,
+  stableModelId?: string | null
+): Promise<VaContentAssignmentRecord | null> {
+  const current = await getVAContentAssignmentForModel(assignmentRecordId, modelRecordId, stableModelId);
+  if (!current || current.status !== "pending") return null;
+  const noteBlock =
+    input.notes?.trim() != null && String(input.notes?.trim()).length > 0
+      ? `[Scheduled] ${input.scheduled_date_iso.slice(0, 10)} — ${input.notes!.trim()}`
+      : `[Scheduled] ${input.scheduled_date_iso.slice(0, 10)}`;
+  const row = await sbUpdateByPublicId<Row>(TABLE, assignmentRecordId, {
+    status: "scheduled",
+    scheduled_date: input.scheduled_date_iso,
+    model_notes: appendNoteBlock(current.model_notes, noteBlock),
+  });
+  return mapRow(row);
+}
+
+export async function completeVAContentAssignmentForModel(
+  assignmentRecordId: string,
+  modelRecordId: string,
+  input: CompleteVAContentAssignmentInput,
+  stableModelId?: string | null
+): Promise<VaContentAssignmentRecord | null> {
+  const current = await getVAContentAssignmentForModel(assignmentRecordId, modelRecordId, stableModelId);
+  if (!current || current.status !== "scheduled") return null;
+  const completedAt = new Date().toISOString();
+  const noteBlock =
+    input.completion_notes?.trim() != null && String(input.completion_notes?.trim()).length > 0
+      ? `[Completed] ${input.completion_notes!.trim()}`
+      : `[Completed] ${completedAt.slice(0, 10)}`;
+  const row = await sbUpdateByPublicId<Row>(TABLE, assignmentRecordId, {
+    status: "completed",
+    completed_at: completedAt,
+    model_notes: appendNoteBlock(current.model_notes, noteBlock),
+  });
+  return mapRow(row);
+}
+
+export async function uploadVAContentAssignmentAttachments(
+  _assignmentRecordId: string,
+  files: ParsedAssignmentFile[]
+): Promise<{ uploaded: number; error?: string }> {
+  const countErr = validateAssignmentFileCount(files.length);
+  if (countErr) return { uploaded: 0, error: countErr };
+  const sizeErr = validateAssignmentFileSizes(files);
+  if (sizeErr) return { uploaded: 0, error: sizeErr };
+  // Attachments still handled via Airtable. Supabase migration for file uploads is out of scope.
+  return { uploaded: 0, error: "Attachment upload not implemented for Supabase backend" };
+}
+
+export async function createVaContentAssignmentAdmin(
+  input: CreateVaContentAssignmentAdminInput
+): Promise<VaContentAssignmentRecord> {
+  const assignment_id = `vca_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  const priorityNorm = (input.priority || "normal").toLowerCase();
+  const vaUuids = await sbUuidsForAirtableIds("users", [input.va_user_record_id]);
+  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_record_id]);
+  const payload: Record<string, unknown> = {
+    assignment_id,
+    va: vaUuids,
+    model: modelUuids,
+    title: input.title.trim(),
+    description: input.description.trim(),
+    content_type: (input.content_type || "Other").trim(),
+    priority: priorityNorm,
+    status: input.direct_assign ? "pending" : "pending_approval",
+    model_notes: "",
+    va_notes: "",
+    created_at: new Date().toISOString(),
+  };
+  if (input.deadline?.trim()) payload.deadline = input.deadline.trim();
+  const url = input.file_url?.trim();
+  if (url && /^https:\/\//i.test(url)) {
+    payload.file_url = url;
+    payload.file_attachment = [url];
+  }
+  const row = await sbInsert<Row>(TABLE, payload);
+  return mapRow(row);
+}
+
+export async function reviewVAContentAssignmentByAdmin(
+  assignmentRecordId: string,
+  input: ReviewVAContentAssignmentAdminInput
+): Promise<
+  | { ok: true; action: "approved" | "rejected"; record: VaContentAssignmentRecord }
+  | { ok: false; error: string; statusCode: number }
+> {
+  const rid = assignmentRecordId?.trim();
+  if (!rid) return { ok: false, error: "Missing id", statusCode: 400 };
+  const row = await sbSelectByPublicId<Row>(TABLE, rid);
+  if (!row) return { ok: false, error: "Not found", statusCode: 404 };
+  const current = await mapRow(row);
+  if (statusNorm(current.status) !== "pending_approval") {
+    return { ok: false, error: "Assignment is not awaiting approval", statusCode: 400 };
+  }
+  const now = new Date().toISOString();
+  const reviewer = input.reviewerLabel?.trim() || "Admin";
+
+  if (input.action === "reject") {
+    const reason = input.rejection_reason?.trim();
+    if (!reason) return { ok: false, error: "Rejection reason required", statusCode: 400 };
+    const updated = await sbUpdateByPublicId<Row>(TABLE, rid, {
+      status: "rejected",
+      rejection_reason: reason,
+      reviewed_by: reviewer,
+      reviewed_at: now,
+    });
+    const mapped = await mapRow(updated);
+    const vaTarget = current.va_id?.trim();
+    if (vaTarget) {
+      await notify({
+        user_id: vaTarget,
+        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "❌ Assignment rejected",
+        body: `Your assignment "${current.title}" was rejected. Reason: ${reason}`,
+        entity_type: "va_content_assignment",
+        entity_id: rid,
+        _triggerSource: "va_assignment_admin_review",
+      }).catch(() => {});
+    }
+    return { ok: true, action: "rejected", record: mapped };
+  }
+
+  if (input.action === "approve" || input.action === "edit_and_approve") {
+    const updateData: Record<string, unknown> = {
+      status: "pending",
+      reviewed_by: reviewer,
+      reviewed_at: now,
+    };
+    if (input.action === "edit_and_approve" && input.edits) {
+      const e = input.edits;
+      if (typeof e.title === "string" && e.title.trim()) updateData.title = e.title.trim();
+      if (typeof e.description === "string") updateData.description = e.description.trim();
+      if (e.deadline !== undefined) updateData.deadline = e.deadline?.trim() ? e.deadline.trim() : "";
+      if (typeof e.content_type === "string" && e.content_type.trim()) updateData.content_type = e.content_type.trim();
+      if (typeof e.priority === "string" && e.priority.trim()) updateData.priority = e.priority.trim().toLowerCase();
+      if (typeof e.admin_edit_notes === "string" && e.admin_edit_notes.trim()) updateData.admin_edit_notes = e.admin_edit_notes.trim();
+    }
+    const updated = await sbUpdateByPublicId<Row>(TABLE, rid, updateData);
+    const mapped = await mapRow(updated);
+    const vaTarget = current.va_id?.trim();
+    if (vaTarget) {
+      const displayTitle = (mapped.title || current.title).trim() || "VA content assignment";
+      await notifyByRoleConfig(NOTIFICATION_EVENT.VA_CONTENT_ASSIGNED, {
+        personal_user_id: vaTarget,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: "📋 New VA content assignment",
+        body: `${displayTitle} — open Content assignments or your calendar.`,
+        entity_type: "va_content_assignment",
+        entity_id: rid,
+      }).catch(() => {});
+      await notify({
+        user_id: vaTarget,
+        event_type: NOTIFICATION_EVENT.SYSTEM_ALERT,
+        priority: NOTIFICATION_PRIORITY.NORMAL,
+        title: input.action === "edit_and_approve" ? "✅ Assignment approved (with edits)" : "✅ Assignment approved",
+        body: `Your assignment "${current.title}" was approved and sent to the model.`,
+        entity_type: "va_content_assignment",
+        entity_id: rid,
+        _triggerSource: "va_assignment_admin_review",
+      }).catch(() => {});
+    }
+    return { ok: true, action: "approved", record: mapped };
+  }
+  return { ok: false, error: "Invalid action", statusCode: 400 };
+}
