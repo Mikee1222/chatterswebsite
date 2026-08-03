@@ -264,9 +264,26 @@ export function AdminWinnerVideosClient({
               addToast={addToast}
               onRefresh={() => void reload()}
               refreshing={loading}
+              busyId={pendingId}
+              onApprove={(video) => {
+                setApproveId(video.id);
+                setCreatorId("");
+                setCreativeId("");
+                setDeadline("");
+              }}
+              onReject={(video) => {
+                setRejectId(video.id);
+                setRejectReason("");
+              }}
+              onMarkRecreated={(video) => {
+                setRecreatedId(video.id);
+                setRecreationLink(video.recreation_link ?? "");
+              }}
+              onMarkPublished={(video) => void patchVideo(video.id, { action: "status", status: "Published" })}
             />
           ) : (
-            videos.map((v) => (
+            <div className="space-y-3">
+            {videos.map((v) => (
               <FindingCard key={v.id} pending={v.status === "Pending" && pendingId === v.id}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="space-y-1">
@@ -383,7 +400,8 @@ export function AdminWinnerVideosClient({
                   </p>
                 ) : null}
               </FindingCard>
-            ))
+            ))}
+            </div>
           )}
         </div>
       )}

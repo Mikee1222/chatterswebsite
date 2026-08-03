@@ -1887,10 +1887,10 @@ export function AdminVaTasksClient({
                           <button
                             type="button"
                             onClick={() => removeDraftPhaseItem(dp.tempId, draftItem.tempId)}
-                            className="text-[#B8B4B8]/15 opacity-0 transition group-hover:opacity-100 hover:text-red-400"
+                            className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center text-[#B8B4B8]/50 opacity-100 transition hover:text-red-400 md:opacity-0 md:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100"
                             aria-label="Remove item"
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-4 w-4" />
                           </button>
                         </div>
                       );
@@ -1901,7 +1901,10 @@ export function AdminVaTasksClient({
               ) : null}
             </div>
 
-            <div className="sticky bottom-0 flex gap-3 border-t border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm">
+            <div
+              className="sticky bottom-0 flex gap-3 border-t border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm"
+              style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+            >
               <button
                 type="button"
                 onClick={() => void handleSubmitTask()}

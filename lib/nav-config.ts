@@ -1027,14 +1027,30 @@ export function shouldUsePersonalVaTasksNav(
   return isCustomNavRole(role) && set.has(PERMISSIONS.VA_TASKS_VIEW) && !qualifiesForAdminVaTasksNav(set);
 }
 
-/** Rewrite admin VA Tasks href → personal task view when appropriate. */
+/**
+ * Chatters already have personal `/weekly-program`. Shared nav also surfaces the admin
+ * board when roles DB grants `chatter_program:view` (Supabase/Airtable), but admin layout
+ * rejects chatters → `/dashboard`. Drop the unreachable duplicate.
+ */
+export function shouldHideAdminProgramNavForChatter(role: string): boolean {
+  return role.trim().toLowerCase() === "chatter";
+}
+
+/** Rewrite admin VA Tasks href → personal task view when appropriate; hide chatter admin program dupes. */
 export function resolvePermissionAwareNavHrefs(
   items: NavItem[],
   role: string,
   granted: ReadonlySet<Permission> | readonly Permission[]
 ): NavItem[] {
-  if (!shouldUsePersonalVaTasksNav(role, granted)) return items;
-  return items.map((item) =>
+  let next = items;
+  if (shouldHideAdminProgramNavForChatter(role)) {
+    next = next.filter(
+      (item) =>
+        item.href !== ROUTES.admin.weeklyProgram && item.href !== ROUTES.admin.weeklyProgramVa
+    );
+  }
+  if (!shouldUsePersonalVaTasksNav(role, granted)) return next;
+  return next.map((item) =>
     item.href === ROUTES.admin.vaTasks ? { ...item, href: ROUTES.va.tasks } : item
   );
 }

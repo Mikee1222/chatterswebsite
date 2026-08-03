@@ -269,7 +269,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
               </p>
             ) : null}
           </div>
-          <div className="flex shrink-0 items-center gap-2 self-center opacity-0 transition group-hover:opacity-100">
+          <div className="flex shrink-0 items-center gap-1 self-center opacity-100 transition md:opacity-0 md:group-hover:opacity-100 [@media(pointer:coarse)]:opacity-100">
             <button
               type="button"
               onClick={() =>
@@ -278,25 +278,25 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                 })
               }
               className={cn(
-                "relative h-4 w-8 rounded-full transition-all",
+                "relative h-5 w-9 min-h-[44px] min-w-[44px] rounded-full transition-all",
                 item.requires_screenshot ? "bg-[#D4AF8C]" : "bg-white/15",
               )}
               aria-label="Toggle screenshot required"
             >
               <span
                 className={cn(
-                  "absolute top-0.5 h-3 w-3 rounded-full bg-white transition-all",
-                  item.requires_screenshot ? "left-4" : "left-0.5",
+                  "absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-white transition-all",
+                  item.requires_screenshot ? "left-[1.35rem]" : "left-1",
                 )}
               />
             </button>
             <button
               type="button"
               onClick={() => void onDeletePhaseItem(item.id, phase.id, task.id)}
-              className="rounded p-1 text-[#B8B4B8]/15 hover:bg-red-500/10 hover:text-red-400"
+              className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-[#B8B4B8]/50 hover:bg-red-500/10 hover:text-red-400"
               aria-label="Remove item"
             >
-              <X className="h-3 w-3" />
+              <X className="h-4 w-4" />
             </button>
           </div>
         </div>
@@ -357,7 +357,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                 <button
                   type="button"
                   onClick={() => onEdit(task)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
+                  className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
                 >
                   <Pencil className="h-3 w-3" aria-hidden />
                   Edit
@@ -366,7 +366,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
                   type="button"
                   disabled={isConfirmingDelete}
                   onClick={() => onDelete(task)}
-                  className="inline-flex items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
+                  className="inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10 disabled:opacity-50"
                 >
                   <Trash2 className="h-3 w-3" aria-hidden />
                   Delete

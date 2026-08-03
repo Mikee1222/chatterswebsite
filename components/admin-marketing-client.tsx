@@ -572,6 +572,18 @@ export function AdminMarketingClient({
   const [error, setError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [highlightAccountId, setHighlightAccountId] = React.useState<string | null>(null);
+  const [statusMenuOpenId, setStatusMenuOpenId] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!statusMenuOpenId) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Element | null;
+      if (t?.closest?.(`[data-status-menu="${statusMenuOpenId}"]`)) return;
+      setStatusMenuOpenId(null);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [statusMenuOpenId]);
 
   const modelNameById = React.useMemo(() => {
     const m: Record<string, string> = {};
@@ -1791,24 +1803,25 @@ export function AdminMarketingClient({
                                   href={acc.account_link}
                                   target="_blank"
                                   rel="noreferrer"
-                                  className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-white/10 hover:text-white"
+                                  className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-white/30 transition-all hover:bg-white/10 hover:text-white"
                                 >
-                                  <ExternalLink className="h-3.5 w-3.5" />
+                                  <ExternalLink className="h-4 w-4" />
                                 </a>
                               ) : null}
                               <button
                                 type="button"
                                 onClick={() => openEditAccount(acc)}
-                                className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-white/10 hover:text-white"
+                                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-white/30 transition-all hover:bg-white/10 hover:text-white"
                               >
-                                <Pencil className="h-3.5 w-3.5" />
+                                <Pencil className="h-4 w-4" />
                               </button>
                               <button
                                 type="button"
                                 onClick={() => void handleDeleteAccount(acc.id)}
-                                className="rounded-lg p-1.5 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
+                                className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg p-2 text-white/30 transition-all hover:bg-red-500/10 hover:text-red-400"
+                                aria-label="Delete account"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-4 w-4" />
                               </button>
                             </div>
                           </div>
@@ -1902,11 +1915,16 @@ export function AdminMarketingClient({
                             </div>
                           ) : null}
 
-                          <div className="group/status relative mt-auto">
+                          <div className="relative mt-auto" data-status-menu={acc.id}>
                             <button
                               type="button"
+                              aria-expanded={statusMenuOpenId === acc.id}
+                              aria-haspopup="menu"
+                              onClick={() =>
+                                setStatusMenuOpenId((cur) => (cur === acc.id ? null : acc.id))
+                              }
                               className={cn(
-                                "flex w-full items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
+                                "flex w-full min-h-[44px] items-center gap-2 rounded-xl border px-3 py-2 text-xs font-semibold transition-all",
                                 statusCfg.bg,
                                 statusCfg.border,
                               )}
@@ -1922,16 +1940,26 @@ export function AdminMarketingClient({
                               <ChevronDown className={cn("ml-auto h-3 w-3 opacity-50", statusCfg.color)} />
                             </button>
 
-                            <div className="absolute bottom-full left-0 z-30 mb-1 hidden min-w-[11rem] rounded-xl border border-white/15 bg-[#0f0f1a] p-1.5 shadow-2xl group-hover/status:block">
+                            <div
+                              role="menu"
+                              className={cn(
+                                "absolute bottom-full left-0 z-30 mb-1 min-w-[11rem] rounded-xl border border-white/15 bg-[#0f0f1a] p-1.5 shadow-2xl",
+                                statusMenuOpenId === acc.id ? "block" : "hidden",
+                              )}
+                            >
                               {(["active", "shadowbanned", "banned"] as const).map((status) => {
                                 const cfg = STATUS_CONFIG[status];
                                 return (
                                   <button
                                     key={status}
                                     type="button"
-                                    onClick={() => void handleUpdateAccountStatus(acc.id, status)}
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setStatusMenuOpenId(null);
+                                      void handleUpdateAccountStatus(acc.id, status);
+                                    }}
                                     className={cn(
-                                      "flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all hover:bg-white/5",
+                                      "flex w-full min-h-[44px] items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold transition-all hover:bg-white/5",
                                       cfg.color,
                                       acc.account_status === status ? "bg-white/5" : "",
                                     )}
@@ -1947,12 +1975,14 @@ export function AdminMarketingClient({
                               <div className="my-1 h-px bg-white/[0.08]" />
                               <button
                                 type="button"
+                                role="menuitem"
                                 onClick={() => {
+                                  setStatusMenuOpenId(null);
                                   setShadowbanReportTarget(acc);
                                   setShadowbanFile(null);
                                   setShadowbanNotes("");
                                 }}
-                                className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/10"
+                                className="flex w-full min-h-[44px] items-center gap-2.5 rounded-lg px-3 py-2.5 text-xs font-semibold text-amber-400 transition-all hover:bg-amber-500/10"
                               >
                                 Report shadowban
                               </button>

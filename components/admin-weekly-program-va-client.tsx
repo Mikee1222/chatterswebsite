@@ -178,6 +178,7 @@ export function AdminWeeklyProgramVaClient({
   const [availFilterShiftType, setAvailFilterShiftType] = React.useState<WeeklyProgramShiftType | "">("");
   const [availFilterDay, setAvailFilterDay] = React.useState<WeeklyProgramDay | "">("");
   const [mobileHelperOpen, setMobileHelperOpen] = React.useState(false);
+  const [modalAvailOpen, setModalAvailOpen] = React.useState(false);
   const [duplicateOpenDay, setDuplicateOpenDay] = React.useState<WeeklyProgramDay | null>(null);
   const [duplicateTargetDay, setDuplicateTargetDay] = React.useState<WeeklyProgramDay>("Tuesday");
   /** Monday YYYY-MM-DD of the week rows are created in (duplicate day flow). */
@@ -1253,7 +1254,7 @@ export function AdminWeeklyProgramVaClient({
             className="relative flex h-full w-full flex-col overflow-hidden md:ml-64 md:w-[calc(100vw-16rem)] md:flex-row md:flex-1 md:flex-shrink-0 md:items-stretch md:gap-6 md:p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-black/95 shadow-2xl md:min-w-[380px] md:max-w-4xl md:rounded-2xl md:border md:border-white/10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
+            <div className="order-2 flex min-h-0 w-full flex-1 flex-col overflow-hidden rounded-none border-0 bg-black/95 shadow-2xl md:order-1 md:min-w-[380px] md:max-w-4xl md:rounded-2xl md:border md:border-white/10" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
               <div className="flex h-full min-h-0 flex-col overflow-hidden">
                 <ShiftEntryModal
                   asPanel
@@ -1272,12 +1273,29 @@ export function AdminWeeklyProgramVaClient({
                 />
               </div>
             </div>
-            <aside className="hidden md:flex md:h-full md:min-h-0 md:w-[400px] md:shrink-0 md:flex-col md:overflow-hidden md:rounded-2xl md:border md:border-white/10 md:bg-black/95 md:shadow-2xl md:shadow-black/50 md:backdrop-blur-xl" style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
-              <div className="border-b border-white/10 bg-black/40 px-5 py-4 shrink-0">
-                <h2 className="text-sm font-semibold uppercase tracking-wider text-white/80">VA availability</h2>
-                <p className="mt-1 text-xs text-white/50">Filter and use in schedule while creating the shift</p>
-              </div>
-              <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+            <aside className={cn(
+              "order-1 flex min-h-0 w-full shrink-0 flex-col overflow-hidden border-b border-white/10 bg-black/95 md:order-2 md:h-full md:w-[400px] md:shrink-0 md:rounded-2xl md:border md:border-white/10 md:shadow-2xl md:shadow-black/50 md:backdrop-blur-xl",
+              modalAvailOpen ? "max-h-[45vh] md:max-h-none" : "md:max-h-none",
+            )} style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.06), 0 24px 64px -12px rgba(0,0,0,0.7), 0 0 80px -24px hsl(330 80% 55% / 0.08)" }}>
+              <button
+                type="button"
+                onClick={() => setModalAvailOpen((o) => !o)}
+                className="flex min-h-[44px] w-full items-center justify-between gap-3 border-b border-white/10 bg-black/40 px-5 py-4 text-left shrink-0 md:pointer-events-none"
+                aria-expanded={modalAvailOpen}
+              >
+                <div>
+                  <h2 className="text-sm font-semibold uppercase tracking-wider text-white/80">VA availability</h2>
+                  <p className="mt-1 text-xs text-white/50">Filter and use in schedule while creating the shift</p>
+                </div>
+                <span
+                  className="text-white/60 transition-transform md:hidden"
+                  style={{ transform: modalAvailOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                  aria-hidden
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </span>
+              </button>
+              <div className={cn("min-h-0 flex-1 flex-col overflow-hidden p-4", modalAvailOpen ? "flex" : "hidden md:flex")}>
                 <div className="grid grid-cols-1 gap-3 shrink-0">
                   <CustomSelect portaled
                     value={availFilterChatter}
@@ -1330,7 +1348,7 @@ export function AdminWeeklyProgramVaClient({
                             <button
                               type="button"
                               onClick={() => useRequestInSchedule(r)}
-                              className="mt-2 w-full rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 py-2 text-xs font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors"
+                              className="mt-2 w-full min-h-[44px] rounded-lg border border-[hsl(330,80%,55%)]/40 bg-[hsl(330,80%,55%)]/10 py-2 text-xs font-medium text-[hsl(330,90%,75%)] hover:bg-[hsl(330,80%,55%)]/20 transition-colors"
                             >
                               Use in schedule
                             </button>

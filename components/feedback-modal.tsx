@@ -99,7 +99,8 @@ export function FeedbackModal({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 w-full max-w-lg rounded-2xl border border-white/10 bg-[#0f0f1a] p-6"
+        className="relative z-10 max-h-[min(90vh,100dvh)] w-full max-w-lg overflow-y-auto rounded-2xl border border-white/10 bg-[#0f0f1a] p-6"
+        style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}
       >
         {success ? (
           <div className="flex min-h-[240px] flex-col items-center justify-center text-center">

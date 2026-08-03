@@ -377,13 +377,27 @@ export function WinnerVideoKanbanCard({
   onCopy,
   onRefresh,
   refreshing = false,
+  onApprove,
+  onReject,
+  onMarkRecreated,
+  onMarkPublished,
+  busy = false,
 }: {
   video: WinnerVideoRecord;
   onCopy: (video: WinnerVideoRecord) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  onApprove?: (video: WinnerVideoRecord) => void;
+  onReject?: (video: WinnerVideoRecord) => void;
+  onMarkRecreated?: (video: WinnerVideoRecord) => void;
+  onMarkPublished?: (video: WinnerVideoRecord) => void;
+  busy?: boolean;
 }) {
   const notePreview = truncateNote(video.note);
+  const hasActions =
+    (video.status === "Pending" && (onApprove || onReject)) ||
+    (video.status === "Approved" && onMarkRecreated) ||
+    (video.status === "Recreated" && onMarkPublished);
 
   return (
     <FindingCard className="p-3">
@@ -403,6 +417,50 @@ export function WinnerVideoKanbanCard({
       <p className="mt-2 text-[11px] text-[#B8B4B8]/45">
         {video.submitted_at ? formatDateTimeAthens(video.submitted_at) : "—"}
       </p>
+      {hasActions ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          {video.status === "Pending" && onApprove ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onApprove(video)}
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-3 py-1.5 text-xs font-medium text-emerald-300 disabled:opacity-50"
+            >
+              Approve
+            </button>
+          ) : null}
+          {video.status === "Pending" && onReject ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onReject(video)}
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-1.5 text-xs font-medium text-red-300 disabled:opacity-50"
+            >
+              Reject
+            </button>
+          ) : null}
+          {video.status === "Approved" && onMarkRecreated ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onMarkRecreated(video)}
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 disabled:opacity-50"
+            >
+              Mark recreated
+            </button>
+          ) : null}
+          {video.status === "Recreated" && onMarkPublished ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => onMarkPublished(video)}
+              className="inline-flex min-h-[44px] items-center rounded-lg border border-[#D4AF8C]/35 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-medium text-[#D4AF8C] disabled:opacity-50"
+            >
+              Mark published
+            </button>
+          ) : null}
+        </div>
+      ) : null}
     </FindingCard>
   );
 }
@@ -413,6 +471,11 @@ type WinnerVideoKanbanBoardProps = {
   addToast: (toast: ReturnType<typeof winnerVideoLocalToast>) => void;
   onRefresh?: () => void;
   refreshing?: boolean;
+  onApprove?: (video: WinnerVideoRecord) => void;
+  onReject?: (video: WinnerVideoRecord) => void;
+  onMarkRecreated?: (video: WinnerVideoRecord) => void;
+  onMarkPublished?: (video: WinnerVideoRecord) => void;
+  busyId?: string | null;
 };
 
 export function WinnerVideoKanbanBoard({
@@ -421,6 +484,11 @@ export function WinnerVideoKanbanBoard({
   addToast,
   onRefresh,
   refreshing = false,
+  onApprove,
+  onReject,
+  onMarkRecreated,
+  onMarkPublished,
+  busyId = null,
 }: WinnerVideoKanbanBoardProps) {
   const grouped = React.useMemo(() => {
     const map: Record<WinnerVideoStatus, WinnerVideoRecord[]> = {
@@ -473,6 +541,11 @@ export function WinnerVideoKanbanBoard({
                       onCopy={onCopy}
                       onRefresh={onRefresh}
                       refreshing={refreshing}
+                      onApprove={onApprove}
+                      onReject={onReject}
+                      onMarkRecreated={onMarkRecreated}
+                      onMarkPublished={onMarkPublished}
+                      busy={busyId === video.id}
                     />
                   ))
                 )}

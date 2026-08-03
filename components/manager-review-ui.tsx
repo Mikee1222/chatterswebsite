@@ -413,7 +413,7 @@ export function QuickActionMarkFixed({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/50 hover:bg-gradient-to-br hover:from-emerald-500/20 hover:to-emerald-600/10 hover:shadow-[0_0_16px_-4px_rgba(16,185,129,0.35)] disabled:opacity-50",
+        "inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-emerald-500/30 bg-emerald-500/8 px-3 py-1.5 text-xs font-medium text-emerald-300 transition hover:border-emerald-500/50 hover:bg-gradient-to-br hover:from-emerald-500/20 hover:to-emerald-600/10 hover:shadow-[0_0_16px_-4px_rgba(16,185,129,0.35)] disabled:opacity-50",
         className,
       )}
     >
@@ -440,7 +440,7 @@ export function QuickActionEscalate({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:border-red-500/45 hover:bg-gradient-to-br hover:from-red-500/20 hover:to-amber-600/10 hover:shadow-[0_0_16px_-4px_rgba(239,68,68,0.35)] disabled:opacity-50",
+        "inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:border-red-500/45 hover:bg-gradient-to-br hover:from-red-500/20 hover:to-amber-600/10 hover:shadow-[0_0_16px_-4px_rgba(239,68,68,0.35)] disabled:opacity-50",
         className,
       )}
     >
@@ -466,7 +466,7 @@ export function QuickActionDelete({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1 rounded-lg border border-white/10 bg-transparent px-2.5 py-1.5 text-xs text-red-400/55 transition hover:border-red-500/30 hover:bg-red-500/8 hover:text-red-300 disabled:opacity-50",
+        "inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-white/10 bg-transparent px-2.5 py-1.5 text-xs text-red-400/55 transition hover:border-red-500/30 hover:bg-red-500/8 hover:text-red-300 disabled:opacity-50",
         className,
       )}
     >
@@ -492,7 +492,7 @@ export function QuickActionAdd({
       disabled={disabled}
       onClick={onClick}
       className={cn(
-        "inline-flex items-center gap-1 rounded-lg border border-[#FF1493]/35 bg-[#FF1493]/10 px-2.5 py-1.5 text-xs font-medium text-[#FFB3D9] transition hover:border-[#FF1493]/55 hover:bg-[#FF1493]/18 hover:shadow-[0_0_14px_-4px_rgba(255,20,147,0.35)] disabled:opacity-40",
+        "inline-flex min-h-[44px] items-center gap-1 rounded-lg border border-[#FF1493]/35 bg-[#FF1493]/10 px-2.5 py-1.5 text-xs font-medium text-[#FFB3D9] transition hover:border-[#FF1493]/55 hover:bg-[#FF1493]/18 hover:shadow-[0_0_14px_-4px_rgba(255,20,147,0.35)] disabled:opacity-40",
         className,
       )}
     >
@@ -648,9 +648,10 @@ export function ReviewModalShell({
       <div
         className={cn(
           VA_CARD,
-          "relative max-h-[90vh] w-full max-w-lg overflow-y-auto p-5",
+          "relative max-h-[min(90vh,100dvh)] w-full max-w-lg overflow-y-auto p-5",
           "shadow-[0_24px_64px_-16px_rgba(0,0,0,0.75),0_0_48px_-12px_rgba(255,20,147,0.15)]",
         )}
+        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
       >
         <h2 className="text-lg font-semibold text-white">{title}</h2>
         <div className={cn(VA_CHAMPAGNE_DIVIDER, "my-3")} />
