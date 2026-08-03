@@ -1,19 +1,20 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../helpers/auth";
 import { tryGetRoleCredentials } from "../helpers/credentials";
-import { assertPageHealthy, dismissOverlays } from "../helpers/assert-page";
+import { assertPageHealthy, dismissOverlays, gotoWithRetry } from "../helpers/assert-page";
 
-test.describe.serial("chatter interactive flows", () => {
-  test.beforeEach(async ({ page }) => {
-    test.setTimeout(180_000);
-    const creds = tryGetRoleCredentials("chatter");
-    test.skip(!creds, "Missing E2E_CHATTER_* credentials");
-    await loginAs(page, creds!);
-    await dismissOverlays(page);
-  });
+async function asChatter(page: import("@playwright/test").Page) {
+  const creds = tryGetRoleCredentials("chatter");
+  test.skip(!creds, "Missing E2E_CHATTER_* credentials");
+  await loginAs(page, creds!);
+  await dismissOverlays(page);
+}
 
+test.describe("chatter interactive flows", () => {
   test("Weekly Program stays on /weekly-program (no redirect to /dashboard)", async ({ page }) => {
-    await page.goto("/weekly-program", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asChatter(page);
+    await gotoWithRetry(page, "/weekly-program");
     await assertPageHealthy(page, "chatter weekly program");
     await page.waitForTimeout(1500);
     const url = new URL(page.url());
@@ -24,7 +25,9 @@ test.describe.serial("chatter interactive flows", () => {
   });
 
   test("submit rebill/tip page loads", async ({ page }) => {
-    await page.goto("/log-transaction", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asChatter(page);
+    await gotoWithRetry(page, "/log-transaction");
     await assertPageHealthy(page, "log transaction");
     const amount = page.locator('input[name="amount"], input[placeholder*="amount" i]').first();
     if (await amount.isVisible().catch(() => false)) {
@@ -39,7 +42,9 @@ test.describe.serial("chatter interactive flows", () => {
   });
 
   test("Shift page: start/end controls visible or active-state UI", async ({ page }) => {
-    await page.goto("/shift", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asChatter(page);
+    await gotoWithRetry(page, "/shift");
     await assertPageHealthy(page, "chatter shift");
     const start = page.getByRole("button", { name: /start shift|start/i });
     const end = page.getByRole("button", { name: /end shift|end/i });
@@ -49,7 +54,9 @@ test.describe.serial("chatter interactive flows", () => {
   });
 
   test("Custom request page loads", async ({ page }) => {
-    await page.goto("/request-custom", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asChatter(page);
+    await gotoWithRetry(page, "/request-custom");
     await assertPageHealthy(page, "request custom");
   });
 });

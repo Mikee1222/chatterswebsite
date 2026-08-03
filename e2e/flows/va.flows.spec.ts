@@ -1,19 +1,20 @@
 import { test, expect } from "@playwright/test";
 import { loginAs } from "../helpers/auth";
 import { tryGetRoleCredentials } from "../helpers/credentials";
-import { assertPageHealthy, dismissOverlays } from "../helpers/assert-page";
+import { assertPageHealthy, dismissOverlays, gotoWithRetry } from "../helpers/assert-page";
 
-test.describe.serial("VA interactive flows", () => {
-  test.beforeEach(async ({ page }) => {
-    test.setTimeout(180_000);
-    const creds = tryGetRoleCredentials("virtual_assistant");
-    test.skip(!creds, "Missing E2E_VA_* credentials");
-    await loginAs(page, creds!);
-    await dismissOverlays(page);
-  });
+async function asVa(page: import("@playwright/test").Page) {
+  const creds = tryGetRoleCredentials("virtual_assistant");
+  test.skip(!creds, "Missing E2E_VA_* credentials");
+  await loginAs(page, creds!);
+  await dismissOverlays(page);
+}
 
+test.describe("VA interactive flows", () => {
   test("My Tasks (VA tasks) loads", async ({ page }) => {
-    await page.goto("/va-tasks", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asVa(page);
+    await gotoWithRetry(page, "/va-tasks");
     await page.waitForTimeout(1000);
     expect(new URL(page.url()).pathname).toBe("/va-tasks");
     await assertPageHealthy(page, "va tasks");
@@ -21,7 +22,9 @@ test.describe.serial("VA interactive flows", () => {
   });
 
   test("complete checklist item if available", async ({ page }) => {
-    await page.goto("/va-tasks", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asVa(page);
+    await gotoWithRetry(page, "/va-tasks");
     await assertPageHealthy(page, "va tasks");
     const checkbox = page.getByRole("checkbox").first();
     if (!(await checkbox.isVisible().catch(() => false))) {
@@ -33,7 +36,9 @@ test.describe.serial("VA interactive flows", () => {
   });
 
   test("Winner / Research submit page (if permitted)", async ({ page }) => {
-    await page.goto("/winners", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asVa(page);
+    await gotoWithRetry(page, "/winners");
     await page.waitForTimeout(1000);
     const path = new URL(page.url()).pathname;
     if (path === "/winners") {
@@ -47,7 +52,9 @@ test.describe.serial("VA interactive flows", () => {
   });
 
   test("Marketing page loads", async ({ page }) => {
-    await page.goto("/va/marketing", { waitUntil: "domcontentloaded" });
+    test.setTimeout(180_000);
+    await asVa(page);
+    await gotoWithRetry(page, "/va/marketing");
     await assertPageHealthy(page, "va marketing");
   });
 });

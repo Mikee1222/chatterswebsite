@@ -29,7 +29,7 @@ export async function assertPageHealthy(page: Page, label: string): Promise<void
   }
 }
 
-async function gotoWithRetry(page: Page, href: string, attempts = 2): Promise<void> {
+export async function gotoWithRetry(page: Page, href: string, attempts = 3): Promise<void> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
     try {

@@ -34,6 +34,11 @@ export async function loginAs(page: Page, creds: RoleCredentials): Promise<void>
     );
   }
 
+  // Let post-login redirects (dashboard → role home) settle before the next goto.
+  // Avoid networkidle — the app keeps websockets/polling open on Preview.
+  await page.waitForLoadState("domcontentloaded").catch(() => undefined);
+  await page.waitForTimeout(800);
+
   (page as Page & { __e2eConsoleErrors?: string[] }).__e2eConsoleErrors = consoleErrors;
 }
 
