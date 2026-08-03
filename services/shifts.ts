@@ -14,6 +14,7 @@ import {
 import { firstLinkedId, snapshotText, formulaLinkedContains } from "@/lib/airtable-linked";
 import { formatRelativeTime } from "@/lib/format";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { Shift, ShiftModel } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
@@ -228,11 +229,13 @@ function mapShiftModel(rec: AirtableRecord<ShiftModelFields>): ShiftModel {
 }
 
 export async function listShifts(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).listShifts();
   const { records, offset } = await listRecords<ShiftFields>(SHIFTS_TABLE, params);
   return { shifts: records.map(mapShift), offset };
 }
 
 export async function listAllShifts(filterByFormula?: string, caller = "shifts.listAllShifts") {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).listAllShifts(filterByFormula, caller);
   const records = await listAllRecords<ShiftFields>(
     SHIFTS_TABLE,
     filterByFormula ? { filterByFormula, _caller: caller } : { _caller: caller }
@@ -242,10 +245,12 @@ export async function listAllShifts(filterByFormula?: string, caller = "shifts.l
 
 /** Resolved Airtable status column name (case-sensitive) for formula filters. */
 export async function getShiftStatusFieldName(): Promise<string> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getShiftStatusFieldName();
   return getShiftsStatusFieldName();
 }
 
 export async function getActiveShifts(staffRole?: "chatter" | "virtual_assistant") {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getActiveShifts(staffRole);
   const statusField = await getShiftsStatusFieldName();
   const statusPart = `OR({${statusField}} = "active", {${statusField}} = "on_break")`;
   const formula = staffRole
@@ -256,6 +261,7 @@ export async function getActiveShifts(staffRole?: "chatter" | "virtual_assistant
 
 /** Active/on-break chatter shifts that include this model (via `shift_models.model`, session not left). */
 export async function getActiveShiftsWithModel(modelId: string): Promise<Shift[]> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getActiveShiftsWithModel(modelId);
   const trimmed = modelId.trim();
   if (!trimmed) return [];
   const activeShifts = await getActiveShifts("chatter");
@@ -271,6 +277,9 @@ export async function getActiveShiftsWithModel(modelId: string): Promise<Shift[]
 
 /** Chatter user ids with an open `shift_models` row for this model (`left_at` empty). */
 export async function getChatterIdsFromOpenShiftModels(modelId: string): Promise<string[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getChatterIdsFromOpenShiftModels(modelId);
+  }
   const trimmed = modelId.trim();
   if (!trimmed) return [];
   const records = await listAllRecords<ShiftModelFields>(SHIFT_MODELS_TABLE, {
@@ -288,6 +297,7 @@ export async function getChatterIdsFromOpenShiftModels(modelId: string): Promise
 
 /** All currently live shifts (chatter + VA). For live-shifts page. */
 export async function getLiveShifts(): Promise<Shift[]> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getLiveShifts();
   const statusField = await getShiftsStatusFieldName();
   const formula = `OR({${statusField}} = "active", {${statusField}} = "on_break")`;
   return listAllShifts(formula, "shifts.getLiveShifts");
@@ -295,6 +305,7 @@ export async function getLiveShifts(): Promise<Shift[]> {
 
 /** Shifts currently on break (for break-reminder cron). */
 export async function listShiftsOnBreak(): Promise<Shift[]> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).listShiftsOnBreak();
   const statusField = await getShiftsStatusFieldName();
   const formula = `{${statusField}} = "on_break"`;
   return listAllShifts(formula, "shifts.listShiftsOnBreak");
@@ -302,6 +313,7 @@ export async function listShiftsOnBreak(): Promise<Shift[]> {
 
 /** Shifts that fall in the given month (yearMonth = "YYYY-MM"). Uses date field. */
 export async function getShiftsForMonth(yearMonth: string): Promise<Shift[]> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getShiftsForMonth(yearMonth);
   if (!/^\d{4}-\d{2}$/.test(yearMonth)) return [];
   const start = `${yearMonth}-01`;
   const endDate = new Date(`${yearMonth}-01T12:00:00.000Z`);
@@ -317,6 +329,7 @@ export async function getShiftsForMonth(yearMonth: string): Promise<Shift[]> {
  * For “today” on the server, pass {@link getTodayYmdAthens} so DATESTR matches Greece (UTC+3) day.
  */
 export async function getShiftsForDate(dateYmd: string): Promise<Shift[]> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getShiftsForDate(dateYmd);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateYmd)) return [];
   const formula = `DATESTR({date}) = "${dateYmd.replace(/"/g, '""')}"`;
   return listAllShifts(formula, "shifts.getShiftsForDate");
@@ -326,6 +339,9 @@ export { getTodayYmdAthens };
 
 /** Shifts where chatter linked field contains chatterRecordId (users table record id). Uses linked relation, not text snapshot. */
 export async function getShiftsByChatter(chatterRecordId: string, staffRole?: "chatter" | "virtual_assistant") {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getShiftsByChatter(chatterRecordId, staffRole);
+  }
   const formula = formulaLinkedContains("chatter", chatterRecordId);
   const shifts = await listAllShifts(formula);
   if (staffRole) return shifts.filter((s) => s.staff_role === staffRole);
@@ -337,6 +353,9 @@ export async function getActiveShiftByStaff(
   userRecordId: string,
   staffRole: "chatter" | "virtual_assistant"
 ): Promise<Shift | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getActiveShiftByStaff(userRecordId, staffRole);
+  }
   const statusField = await getShiftsStatusFieldName();
   const statusPart = `OR({${statusField}} = "active", {${statusField}} = "on_break")`;
   const formula = `AND(${statusPart}, {staff_role} = "${staffRole.replace(/"/g, '""')}")`;
@@ -349,6 +368,7 @@ export async function getActiveShiftByStaff(
 }
 
 export async function getShiftById(recordId: string): Promise<Shift | null> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getShiftById(recordId);
   try {
     const rec = await getRecord<ShiftFields>(SHIFTS_TABLE, recordId);
     return mapShift(rec);
@@ -358,6 +378,9 @@ export async function getShiftById(recordId: string): Promise<Shift | null> {
 }
 
 export async function getActiveShiftByChatter(chatterRecordId: string) {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getActiveShiftByChatter(chatterRecordId);
+  }
   return getActiveShiftByStaff(chatterRecordId, "chatter");
 }
 
@@ -366,6 +389,9 @@ export async function getActiveShiftByChatter(chatterRecordId: string) {
  * Accepts `rec…` ids or stable `user_…` primary-field values.
  */
 export async function resolveShiftChatterRecordId(userIdOrRecordId: string): Promise<string | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).resolveShiftChatterRecordId(userIdOrRecordId);
+  }
   const trimmed = userIdOrRecordId.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith("rec")) return trimmed;
@@ -382,6 +408,9 @@ export async function resolveShiftChatterRecordId(userIdOrRecordId: string): Pro
 
 /** Active VA tasks shift for this user (`shift_type` = task). */
 export async function getActiveVaTaskShift(userRecordId: string): Promise<Shift | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getActiveVaTaskShift(userRecordId);
+  }
   const chatterRecordId = await resolveShiftChatterRecordId(userRecordId);
   if (!chatterRecordId) return null;
   const shifts = await getActiveShifts("virtual_assistant");
@@ -418,6 +447,7 @@ export type ShiftWriteFields = Partial<{
 }>;
 
 export async function createShift(fields: ShiftWriteFields) {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).createShift(fields);
   const rec = await createRecord(SHIFTS_TABLE, fields as Record<string, unknown>) as AirtableRecord<ShiftFields>;
   if (process.env.NODE_ENV !== "production") {
     const f = rec.fields;
@@ -436,12 +466,14 @@ export async function createShift(fields: ShiftWriteFields) {
 }
 
 export async function updateShift(recordId: string, fields: Partial<ShiftWriteFields>) {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).updateShift(recordId, fields);
   const rec = await updateRecord(SHIFTS_TABLE, recordId, fields as Partial<ShiftFields>);
   return mapShift(rec as AirtableRecord<ShiftFields>);
 }
 
 /** Shift models for this shift. No formula (linked-field formula can 422); fetch and filter in code. */
 export async function listShiftModels(shiftRecordId: string) {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).listShiftModels(shiftRecordId);
   const records = await listAllRecords<ShiftModelFields>(SHIFT_MODELS_TABLE, {});
   const filtered = records.filter((r) => {
     const raw = (r.fields as Record<string, unknown>).shift ?? (r.fields as Record<string, unknown>).Shift;
@@ -453,6 +485,9 @@ export async function listShiftModels(shiftRecordId: string) {
 
 /** Single bulk read: shift_models linked to any of the given shift record IDs. */
 export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promise<ShiftModel[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).listShiftModelsForShifts(shiftRecordIds);
+  }
   if (shiftRecordIds.length === 0) return [];
   const set = new Set(shiftRecordIds);
   const records = await listAllRecords<ShiftModelFields>(SHIFT_MODELS_TABLE, {
@@ -467,6 +502,9 @@ export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promis
 }
 
 export async function getActiveShiftModels(shiftRecordId: string) {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getActiveShiftModels(shiftRecordId);
+  }
   const all = await listShiftModels(shiftRecordId);
   return all.filter((sm) => !sm.left_at);
 }
@@ -475,6 +513,9 @@ export async function getActiveShiftModels(shiftRecordId: string) {
 export async function getActiveShiftModelsForShiftIds(
   shiftIds: string[]
 ): Promise<Record<string, ShiftModel[]>> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).getActiveShiftModelsForShiftIds(shiftIds);
+  }
   const normalized = Array.from(new Set(shiftIds.map((id) => id.trim()).filter(Boolean)));
   if (normalized.length === 0) return {};
   const all = await listShiftModelsForShifts(normalized);
@@ -501,11 +542,15 @@ export type ShiftModelWriteFields = Partial<{
 }>;
 
 export async function createShiftModel(fields: ShiftModelWriteFields) {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).createShiftModel(fields);
   const rec = await createRecord(SHIFT_MODELS_TABLE, fields as Record<string, unknown>);
   return mapShiftModel(rec as AirtableRecord<ShiftModelFields>);
 }
 
 export async function updateShiftModel(recordId: string, fields: Partial<ShiftModelWriteFields>) {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).updateShiftModel(recordId, fields);
+  }
   const rec = await updateRecord(SHIFT_MODELS_TABLE, recordId, fields as Partial<ShiftModelFields>);
   return mapShiftModel(rec as AirtableRecord<ShiftModelFields>);
 }
@@ -523,6 +568,7 @@ export type LastAssignmentInfo = {
 export async function getLastAssignmentBatch(
   pairs: { chatterId: string; modelId: string }[]
 ): Promise<Record<string, LastAssignmentInfo>> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getLastAssignmentBatch(pairs);
   if (pairs.length === 0) return {};
   const pairsSet = new Set(pairs.map((p) => `${p.chatterId}:${p.modelId}`));
   const [shiftModelRecords, shiftRecords] = await Promise.all([

@@ -122,3 +122,41 @@ export async function sbUpsertByAirtableId<T extends SbRow>(
   if (error) throw new Error(`sbUpsert ${table}: ${error.message}`);
   return data as T;
 }
+
+/** Resolve Postgres UUIDs → Airtable rec ids (for dual-run public APIs). */
+export async function sbAirtableIdsForUuids(
+  table: string,
+  uuids: string[] | null | undefined
+): Promise<string[]> {
+  if (!uuids?.length) return [];
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.from(table).select("id, airtable_id").in("id", uuids);
+  if (error) throw new Error(`sbAirtableIdsForUuids ${table}: ${error.message}`);
+  const byId = new Map((data ?? []).map((r) => [r.id as string, (r.airtable_id as string) || ""]));
+  return uuids.map((id) => byId.get(id) || "").filter(Boolean);
+}
+
+/** Resolve Airtable rec ids → Postgres UUIDs for uuid[] link writes. */
+export async function sbUuidsForAirtableIds(
+  table: string,
+  airtableIds: string[] | null | undefined
+): Promise<string[]> {
+  if (!airtableIds?.length) return [];
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from(table)
+    .select("id, airtable_id")
+    .in("airtable_id", airtableIds);
+  if (error) throw new Error(`sbUuidsForAirtableIds ${table}: ${error.message}`);
+  const byAt = new Map((data ?? []).map((r) => [r.airtable_id as string, r.id as string]));
+  return airtableIds.map((id) => byAt.get(id) || "").filter(Boolean);
+}
+
+/** First linked airtable id from a uuid[] column (dual-run). */
+export async function sbFirstLinkedAirtableId(
+  table: string,
+  uuids: string[] | null | undefined
+): Promise<string | null> {
+  const ids = await sbAirtableIdsForUuids(table, uuids);
+  return ids[0] ?? null;
+}

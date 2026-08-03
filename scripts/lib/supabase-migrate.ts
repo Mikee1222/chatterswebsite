@@ -95,20 +95,11 @@ export function pgIdent(name: string): string {
   return name.length <= 63 ? name : name.slice(0, 63);
 }
 
-export function parseInitSchema(sqlPath?: string): Map<string, PgTable> {
-  const file =
-    sqlPath ??
-    path.join(process.cwd(), "supabase/migrations/20260803000001_init_schema.sql");
-  const sql = readFileSync(file, "utf8");
-  const tables = new Map<string, PgTable>();
-
-  const headerRe =
-    /--\s+([a-z0-9_]+)\s+\(Airtable:\s*'([^']*)'\)/gi;
-  const airtableByPg = new Map<string, string>();
-  for (const m of sql.matchAll(headerRe)) {
-    airtableByPg.set(m[1], m[2]);
-  }
-
+function parseCreateTablesFromSql(
+  sql: string,
+  tables: Map<string, PgTable>,
+  airtableByPg: Map<string, string>
+): void {
   const createRe =
     /CREATE TABLE IF NOT EXISTS public\.("?[a-zA-Z0-9_]+"?)\s*\(([\s\S]*?)\);/g;
   let match: RegExpExecArray | null;
@@ -165,6 +156,73 @@ export function parseInitSchema(sqlPath?: string): Map<string, PgTable> {
       columns,
       linkColumns,
     });
+  }
+}
+
+/** Merge ADD COLUMN IF NOT EXISTS clauses into already-parsed tables. */
+function applyAlterColumnsFromSql(sql: string, tables: Map<string, PgTable>): void {
+  const alterRe =
+    /ALTER TABLE public\.([a-zA-Z0-9_]+)\s+([\s\S]*?);/gi;
+  let match: RegExpExecArray | null;
+  while ((match = alterRe.exec(sql)) !== null) {
+    const tableName = match[1];
+    const body = match[2];
+    const t = tables.get(tableName);
+    if (!t) continue;
+    const existing = new Set(t.columns.map((c) => c.name));
+    for (const line of body.split("\n")) {
+      const m = line
+        .trim()
+        .replace(/,$/, "")
+        .match(/^ADD COLUMN IF NOT EXISTS\s+("?)([a-zA-Z0-9_]+)\1\s+(.+)$/i);
+      if (!m) continue;
+      const quoted = m[1] === '"';
+      const name = pgIdent(m[2]);
+      if (existing.has(name)) continue;
+      const typeRaw = m[3].toLowerCase();
+      let type: PgColumnType = "unknown";
+      if (typeRaw.startsWith("uuid[]")) type = "uuid[]";
+      else if (typeRaw.startsWith("text[]")) type = "text[]";
+      else if (typeRaw.startsWith("text")) type = "text";
+      else if (typeRaw.startsWith("numeric")) type = "numeric";
+      else if (typeRaw.startsWith("boolean")) type = "boolean";
+      else if (typeRaw.startsWith("date")) type = "date";
+      else if (typeRaw.startsWith("timestamptz")) type = "timestamptz";
+      t.columns.push({ name, type, quoted });
+      existing.add(name);
+      if (type === "uuid[]") t.linkColumns.push(name);
+    }
+  }
+}
+
+export function parseInitSchema(sqlPath?: string): Map<string, PgTable> {
+  const migrationsDir = path.join(process.cwd(), "supabase/migrations");
+  const files = sqlPath
+    ? [sqlPath]
+    : [
+        path.join(migrationsDir, "20260803000001_init_schema.sql"),
+        path.join(migrationsDir, "20260803000004_new_app_tables.sql"),
+      ].filter((f) => {
+        try {
+          readFileSync(f);
+          return true;
+        } catch {
+          return false;
+        }
+      });
+
+  const tables = new Map<string, PgTable>();
+  const airtableByPg = new Map<string, string>();
+  const headerRe =
+    /--\s+([a-z0-9_]+)\s+\(Airtable:\s*'([^']*)'\)/gi;
+
+  for (const file of files) {
+    const sql = readFileSync(file, "utf8");
+    for (const m of sql.matchAll(headerRe)) {
+      airtableByPg.set(m[1], m[2]);
+    }
+    parseCreateTablesFromSql(sql, tables, airtableByPg);
+    applyAlterColumnsFromSql(sql, tables);
   }
 
   // Ensure code-only tables that have no Airtable header still map name→name
@@ -406,9 +464,19 @@ export async function migrateAttachmentsForRow(
   }
 ): Promise<string[]> {
   const urls: string[] = [];
+  const PUBLIC_BUCKETS = new Set(["link-page-assets"]);
   for (let i = 0; i < opts.attachments.length; i++) {
     const att = opts.attachments[i];
     if (!att?.url) continue;
+    // Already migrated to this project's storage — keep as-is
+    if (
+      att.url.includes("/storage/v1/object/") &&
+      !att.url.includes("airtableusercontent.com") &&
+      !att.url.includes("dl.airtable.com")
+    ) {
+      urls.push(att.url);
+      continue;
+    }
     const res = await fetch(att.url);
     if (!res.ok) {
       console.warn(`  attachment download fail ${opts.table}.${opts.field}: ${res.status}`);
@@ -429,9 +497,13 @@ export async function migrateAttachmentsForRow(
       urls.push(att.url);
       continue;
     }
-    const { data } = sb.storage.from(opts.bucket).getPublicUrl(objectPath);
-    // Private buckets: store path; public: store public URL
-    urls.push(data?.publicUrl || objectPath);
+    if (PUBLIC_BUCKETS.has(opts.bucket)) {
+      const { data } = sb.storage.from(opts.bucket).getPublicUrl(objectPath);
+      urls.push(data?.publicUrl || objectPath);
+    } else {
+      // Private bucket: store durable path token; dual-run readers mint signed URLs.
+      urls.push(`sb://${opts.bucket}/${objectPath}`);
+    }
   }
   return urls;
 }
@@ -468,6 +540,7 @@ export const MIGRATION_ORDER: string[] = [
   "mass_lists",
   "challenges",
   "mistakes",
+  "mistake_reasons",
   // core hubs
   "users",
   "modelss",
@@ -476,7 +549,7 @@ export const MIGRATION_ORDER: string[] = [
   // mid
   "models",
   "chatters",
-  "creators",
+  // intentionally excluded (gone from Airtable): creators
   "whales",
   "shifts",
   "shift_models",
@@ -484,6 +557,9 @@ export const MIGRATION_ORDER: string[] = [
   "va_tasks",
   "va_task_phases",
   "va_task_phase_items",
+  "task_templates",
+  "task_template_phases",
+  "task_template_items",
   "va_content_assignments",
   "custom_requests",
   "notifications",
@@ -511,6 +587,7 @@ export const MIGRATION_ORDER: string[] = [
   "model_content_requests",
   "model_expense_requests",
   "model_social_accounts",
+  "model_funnel_links",
   "weekly_availability_requests",
   "weekly_availability_requests_models",
   "weekly_availability_requests_va",
@@ -518,10 +595,11 @@ export const MIGRATION_ORDER: string[] = [
   "weekly_program_va",
   "whale_activity",
   "whale_transactions",
-  "whale_tracker",
+  // intentionally excluded (gone from Airtable): whale_tracker
   "feedback",
   "fines_and_bonuses",
-  "fines_and_bonuses_legacy",
+  // intentionally excluded (gone from Airtable): fines_and_bonuses_legacy
+  "chatter_mistakes",
   "rebills",
   "tips",
   "of_subscribers",
@@ -538,13 +616,21 @@ export const MIGRATION_ORDER: string[] = [
   "sop_signoffs",
   "sop_feedback",
   "marketing_phones", // Airtable table renamed to "phones"
-  "marketing_funnels", // gone from Airtable (see model_funnel_links — schema gap)
+  // intentionally excluded (gone; use model_funnel_links): marketing_funnels
+  "marketing_daily_reviews",
+  "marketing_spot_checks",
+  "marketing_exec_audits",
   "shadowban_reports",
   "winner_videos",
   "video_transcripts",
   "pdf_documents",
+  "creator_assignments",
+  "research_bunches",
+  "research_ideas",
+  "content_items",
+  "content_item_events",
   // legacy
-  "chatter_complaints",
+  // intentionally excluded (gone from Airtable): chatter_complaints
   "chatter_performance",
   "chatters_apply_form",
   "feedback_cc",
@@ -553,6 +639,15 @@ export const MIGRATION_ORDER: string[] = [
   "paypal_money_received",
   "self_evaluations",
 ];
+
+/** Tables present in Postgres schema but removed from Airtable — do not migrate. */
+export const GONE_AIRTABLE_TABLES = [
+  "creators",
+  "chatter_complaints",
+  "whale_tracker",
+  "fines_and_bonuses_legacy",
+  "marketing_funnels",
+] as const;
 
 /** Join tables populated from already-migrated uuid[] link columns. */
 export const JOIN_TABLE_SPECS: Array<{

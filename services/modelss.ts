@@ -3,6 +3,7 @@
 import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
 import { filterActiveModelsForAssignment } from "@/lib/assignment-filters";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { ModelRecord } from "@/types";
 import { listAllUsers } from "@/services/users";
 
@@ -79,6 +80,7 @@ function filterCompleteModels(modelss: ModelRecord[]): ModelRecord[] {
 
 /** Active modelss only — for assignment dropdowns (not admin list pages). */
 export async function listActiveModelsForAssignment(): Promise<ModelRecord[]> {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).listActiveModelsForAssignment();
   return filterActiveModelsForAssignment(await listAllModelss());
 }
 
@@ -107,11 +109,13 @@ export type ModelssWriteFields = {
 };
 
 export async function listModelss(params: ListParams = {}) {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).listModelss();
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { modelss: filterCompleteModels(records.map(mapRecord)), offset };
 }
 
 export async function listAllModelss(filterByFormula?: string) {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).listAllModelss(filterByFormula);
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
   return filterCompleteModels(records.map(mapRecord));
 }
@@ -122,6 +126,7 @@ export async function listAllModelss(filterByFormula?: string) {
  * Other pages should use listAllModelss() for full agency operations.
  */
 export async function listOperationalModelsWithAccounts(): Promise<ModelRecord[]> {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).listOperationalModelsWithAccounts();
   const [users, allModelss] = await Promise.all([
     listAllUsers(),
     listAllModelss(),
@@ -136,6 +141,7 @@ export async function listOperationalModelsWithAccounts(): Promise<ModelRecord[]
 }
 
 export async function getModelById(recordId: string): Promise<ModelRecord | null> {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).getModelById(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec);
@@ -146,20 +152,24 @@ export async function getModelById(recordId: string): Promise<ModelRecord | null
 
 /** Active modelss on the Gunzo team (excludes chatting_agency). */
 export async function listActiveGunzoTeamModelss(): Promise<ModelRecord[]> {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).listActiveGunzoTeamModelss();
   return listAllModelss('AND({team} = "gunzo_team", {status} = "active")');
 }
 
 export async function getFreeModelss() {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).getFreeModelss();
   const modelss = await listAllModelss('{current_status} = "free"');
   return modelss;
 }
 
 export async function getOccupiedModelss() {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).getOccupiedModelss();
   const modelss = await listAllModelss('{current_status} = "occupied"');
   return modelss;
 }
 
 export async function updateModel(recordId: string, fields: Partial<Fields & ModelssWriteFields>) {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).updateModel(recordId, fields);
   const rec = await updateRecord(TABLE, recordId, fields as Partial<Fields>);
   const after = mapRecord(rec as AirtableRecord<Fields>);
   return after;
@@ -176,6 +186,7 @@ export type CreateModelFields = {
 };
 
 export async function createModel(fields: CreateModelFields): Promise<ModelRecord> {
+  if (isSupabaseBackend()) return (await import("./modelss-supabase")).createModel(fields);
   const modelId = `model_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const rec = await createRecord<Fields>(TABLE, {
     model_id: modelId,

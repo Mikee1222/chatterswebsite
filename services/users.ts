@@ -11,6 +11,7 @@ import {
 } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import { filterActiveUsersForAssignment, isUserActiveForAssignment } from "@/lib/assignment-filters";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { UserRecord, UserRole, VaType, CompensationType, UserContractAttachment } from "@/types";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
@@ -136,18 +137,21 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
 }
 
 export async function listUsers(params: ListParams = {}) {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).listUsers();
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { users: records.map((r) => mapRecord(r)), offset };
 }
 
 /** All users (full table). Uses a 5-minute in-memory cache in `listAllRecords` for the `users` table — see `lib/airtable-server.ts`. */
 export async function listAllUsers(): Promise<UserRecord[]> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).listAllUsers();
   const records = await listAllRecords<Fields>(TABLE, {});
   return records.map((r) => mapRecord(r));
 }
 
 /** Active, login-enabled users — for assignment pickers and staff lists. */
 export async function listActiveUsers(): Promise<UserRecord[]> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).listActiveUsers();
   return getCachedActiveUsers();
 }
 
@@ -163,6 +167,7 @@ const getCachedActiveUsers = unstable_cache(
  * pickers like the "Assign to Creative" dropdown (creative_scripts:submit).
  */
 export async function listUsersWithPermission(permission: Permission): Promise<UserRecord[]> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).listUsersWithPermission(permission);
   const users = await listAllUsers();
   const roleCache = new Map<string, Set<Permission>>();
   const out: UserRecord[] = [];
@@ -194,6 +199,11 @@ export async function listUsersWithPermission(permission: Permission): Promise<U
 export async function getActiveModelUserAirtableIdByLinkedModelRecordId(
   modelssRecordId: string | null | undefined
 ): Promise<string | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./users-supabase")).getActiveModelUserAirtableIdByLinkedModelRecordId(
+      modelssRecordId
+    );
+  }
   const id = modelssRecordId?.trim();
   if (!id) return null;
   const users = await listAllUsers();
@@ -207,6 +217,7 @@ export async function getActiveModelUserAirtableIdByLinkedModelRecordId(
 
 /** For display / accounts list; does not include password_hash. */
 export async function getUserByEmail(email: string): Promise<UserRecord | null> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).getUserByEmail(email);
   const { users } = await listUsers({
     filterByFormula: `{email} = "${email.replace(/"/g, '""')}"`,
     pageSize: 1,
@@ -216,6 +227,7 @@ export async function getUserByEmail(email: string): Promise<UserRecord | null> 
 
 /** For login only; includes password_hash for verification. Never expose to client. */
 export async function getUserByEmailForAuth(email: string): Promise<UserRecord | null> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).getUserByEmailForAuth(email);
   const normalized = email.trim().toLowerCase();
   const { records } = await listRecords<Fields>(TABLE, {
     filterByFormula: `{email} = "${normalized.replace(/"/g, '""')}"`,
@@ -226,6 +238,7 @@ export async function getUserByEmailForAuth(email: string): Promise<UserRecord |
 }
 
 export async function getUserByAirtableId(recordId: string): Promise<UserRecord | null> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).getUserByAirtableId(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec);
@@ -236,6 +249,7 @@ export async function getUserByAirtableId(recordId: string): Promise<UserRecord 
 
 /** Lookup by stable `user_id` primary field (e.g. `user_1772905978251_vz1u16hc`). */
 export async function getUserByUserId(userId: string): Promise<UserRecord | null> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).getUserByUserId(userId);
   const trimmed = userId.trim();
   if (!trimmed) return null;
   const { records } = await listRecords<Fields>(TABLE, {
@@ -269,6 +283,7 @@ export type CreateUserInput = {
 };
 
 export async function createUser(input: CreateUserInput): Promise<UserRecord> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).createUser(input);
   const fields: Record<string, unknown> = {
     user_id: genUserId(),
     full_name: input.full_name.trim(),
@@ -353,6 +368,9 @@ export async function uploadUserContractAttachments(
   recordId: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./users-supabase")).uploadUserContractAttachments(recordId, files);
+  }
   for (const file of files) {
     if (!file.bytes.byteLength) continue;
     await uploadAirtableAttachment({
@@ -366,6 +384,7 @@ export async function uploadUserContractAttachments(
 }
 
 export async function updateUser(recordId: string, input: UpdateUserInput): Promise<UserRecord> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).updateUser(recordId, input);
   const fields: Partial<Fields> = {};
   if (input.full_name !== undefined) fields.full_name = input.full_name.trim();
   if (input.email !== undefined) fields.email = input.email.trim().toLowerCase();
@@ -402,6 +421,7 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
 }
 
 export async function setPasswordHash(recordId: string, passwordHash: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./users-supabase")).setPasswordHash(recordId, passwordHash);
   await updateRecord<Fields>(TABLE, recordId, {
     password_hash: passwordHash,
   });
@@ -409,6 +429,9 @@ export async function setPasswordHash(recordId: string, passwordHash: string): P
 
 /** Persist User-Agent after login for new-device notification dedup. */
 export async function updateLastLoginUserAgent(recordId: string, userAgent: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./users-supabase")).updateLastLoginUserAgent(recordId, userAgent);
+  }
   await updateRecord<Fields>(TABLE, recordId, {
     last_login_user_agent: userAgent.trim(),
   });
@@ -424,6 +447,12 @@ export async function relinkModelUserForModelProfile(
   modelRecordId: string,
   selectedUserId: string | null
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./users-supabase")).relinkModelUserForModelProfile(
+      modelRecordId,
+      selectedUserId
+    );
+  }
   const modelId = modelRecordId?.trim();
   if (!modelId) return;
   const selectedId = selectedUserId?.trim() || null;
