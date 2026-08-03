@@ -123,35 +123,160 @@ export async function sbUpsertByAirtableId<T extends SbRow>(
   return data as T;
 }
 
-/** Resolve Postgres UUIDs → Airtable rec ids (for dual-run public APIs). */
+/** PostgREST IN-list chunk size (URL/payload safety). */
+const ID_LOOKUP_CHUNK = 80;
+/** Max parallel chunk queries within one flush. */
+const ID_LOOKUP_CONCURRENCY = 3;
+
+type IdPair = { id: string; airtable_id: string | null };
+
+/** Test double for ID lookups — avoids live DNS when simulating large batches. */
+let idLookupFetchOverride:
+  | ((table: string, column: "id" | "airtable_id", values: string[]) => Promise<IdPair[]>)
+  | null = null;
+
+/** @internal test helper */
+export function __setSbIdLookupFetchForTests(
+  fn: typeof idLookupFetchOverride
+): void {
+  idLookupFetchOverride = fn;
+}
+
+/** @internal test helper — query count since last reset */
+export let __sbIdLookupQueryCount = 0;
+
+/** @internal test helper */
+export function __resetSbIdLookupStats(): void {
+  __sbIdLookupQueryCount = 0;
+}
+
+async function fetchIdPairs(
+  table: string,
+  column: "id" | "airtable_id",
+  values: string[]
+): Promise<IdPair[]> {
+  __sbIdLookupQueryCount += 1;
+  if (idLookupFetchOverride) {
+    return idLookupFetchOverride(table, column, values);
+  }
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.from(table).select("id, airtable_id").in(column, values);
+  if (error) {
+    const detail = [error.message, error.code, error.details, error.hint]
+      .filter(Boolean)
+      .join(" | ");
+    const label = column === "id" ? "sbAirtableIdsForUuids" : "sbUuidsForAirtableIds";
+    throw new Error(`${label} ${table}: ${detail || "unknown error"}`);
+  }
+  return (data ?? []) as IdPair[];
+}
+
+async function runChunkedIdLookup(
+  table: string,
+  column: "id" | "airtable_id",
+  values: string[]
+): Promise<IdPair[]> {
+  const unique = [...new Set(values.filter(Boolean))];
+  if (!unique.length) return [];
+
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += ID_LOOKUP_CHUNK) {
+    chunks.push(unique.slice(i, i + ID_LOOKUP_CHUNK));
+  }
+
+  const out: IdPair[] = [];
+  let next = 0;
+  async function worker() {
+    for (;;) {
+      const i = next++;
+      if (i >= chunks.length) return;
+      const rows = await fetchIdPairs(table, column, chunks[i]!);
+      out.push(...rows);
+    }
+  }
+  const n = Math.min(ID_LOOKUP_CONCURRENCY, chunks.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return out;
+}
+
+type CoalesceWaiter = {
+  requested: string[];
+  resolve: (map: Map<string, string>) => void;
+  reject: (err: unknown) => void;
+};
+
+type CoalesceBucket = {
+  keys: Set<string>;
+  waiters: CoalesceWaiter[];
+  scheduled: boolean;
+};
+
+const uuidToAtBuckets = new Map<string, CoalesceBucket>();
+const atToUuidBuckets = new Map<string, CoalesceBucket>();
+
+function scheduleCoalesceFlush(
+  buckets: Map<string, CoalesceBucket>,
+  table: string,
+  run: (keys: string[]) => Promise<Map<string, string>>
+): void {
+  const bucket = buckets.get(table);
+  if (!bucket || bucket.scheduled) return;
+  bucket.scheduled = true;
+  queueMicrotask(() => {
+    void (async () => {
+      const current = buckets.get(table);
+      if (!current) return;
+      buckets.delete(table);
+      try {
+        const map = await run([...current.keys]);
+        for (const w of current.waiters) w.resolve(map);
+      } catch (err) {
+        for (const w of current.waiters) w.reject(err);
+      }
+    })();
+  });
+}
+
+function enqueueIdLookup(
+  buckets: Map<string, CoalesceBucket>,
+  table: string,
+  requested: string[],
+  run: (keys: string[]) => Promise<Map<string, string>>
+): Promise<Map<string, string>> {
+  return new Promise((resolve, reject) => {
+    let bucket = buckets.get(table);
+    if (!bucket) {
+      bucket = { keys: new Set(), waiters: [], scheduled: false };
+      buckets.set(table, bucket);
+    }
+    for (const id of requested) {
+      if (id) bucket.keys.add(id);
+    }
+    bucket.waiters.push({ requested, resolve, reject });
+    scheduleCoalesceFlush(buckets, table, run);
+  });
+}
+
+/**
+ * Resolve Postgres UUIDs → Airtable rec ids (for dual-run public APIs).
+ * Concurrent callers for the same table are coalesced into chunked IN queries
+ * (chunk 80, concurrency 3) so N+1 Promise.all mappers cannot open 1000+ sockets.
+ */
 export async function sbAirtableIdsForUuids(
   table: string,
   uuids: string[] | null | undefined
 ): Promise<string[]> {
   if (!uuids?.length) return [];
-  const unique = [...new Set(uuids.filter(Boolean))];
-  const sb = getSupabaseServiceClient();
-  // Chunk large IN lists to avoid PostgREST URL / payload limits.
-  const chunkSize = 200;
-  const byId = new Map<string, string>();
-  for (let i = 0; i < unique.length; i += chunkSize) {
-    const chunk = unique.slice(i, i + chunkSize);
-    const { data, error } = await sb.from(table).select("id, airtable_id").in("id", chunk);
-    if (error) {
-      const detail = [error.message, error.code, error.details, error.hint]
-        .filter(Boolean)
-        .join(" | ");
-      throw new Error(`sbAirtableIdsForUuids ${table}: ${detail || "unknown error"}`);
+  const map = await enqueueIdLookup(uuidToAtBuckets, table, uuids.filter(Boolean), async (keys) => {
+    const rows = await runChunkedIdLookup(table, "id", keys);
+    const byId = new Map<string, string>();
+    for (const r of rows) {
+      byId.set(r.id, (r.airtable_id || "").trim() || r.id);
     }
-    for (const r of data ?? []) {
-      byId.set(
-        r.id as string,
-        ((r.airtable_id as string) || "").trim() || (r.id as string)
-      );
-    }
-  }
+    return byId;
+  });
   // Prefer airtable_id; fall back to uuid for rows created natively in Supabase.
-  return uuids.map((id) => byId.get(id) || id).filter(Boolean);
+  return uuids.map((id) => map.get(id) || id).filter(Boolean);
 }
 
 /**
@@ -159,6 +284,7 @@ export async function sbAirtableIdsForUuids(
  * Accepts Airtable `rec…` ids (looked up via the target table's `airtable_id`)
  * or already-UUID values (passed through). Matches `_airtable_id_map` identity
  * for migrated rows (same airtable_id → supabase uuid).
+ * Concurrent rec… lookups coalesce + chunk like sbAirtableIdsForUuids.
  */
 export async function sbUuidsForAirtableIds(
   table: string,
@@ -167,15 +293,14 @@ export async function sbUuidsForAirtableIds(
   if (!airtableIds?.length) return [];
   const recIds = airtableIds.filter((id) => id.startsWith("rec"));
   if (!recIds.length) return airtableIds.filter(Boolean);
-  const sb = getSupabaseServiceClient();
-  const { data, error } = await sb
-    .from(table)
-    .select("id, airtable_id")
-    .in("airtable_id", recIds);
-  if (error) throw new Error(`sbUuidsForAirtableIds ${table}: ${error.message}`);
-  const byAt = new Map((data ?? []).map((r) => [r.airtable_id as string, r.id as string]));
+
+  const map = await enqueueIdLookup(atToUuidBuckets, table, recIds, async (keys) => {
+    const rows = await runChunkedIdLookup(table, "airtable_id", keys);
+    return new Map(rows.map((r) => [r.airtable_id as string, r.id]));
+  });
+
   return airtableIds
-    .map((id) => (id.startsWith("rec") ? byAt.get(id) || "" : id))
+    .map((id) => (id.startsWith("rec") ? map.get(id) || "" : id))
     .filter(Boolean);
 }
 

@@ -6,7 +6,6 @@ import {
   publicId,
   sbAirtableIdsForUuids,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
@@ -82,12 +81,36 @@ function parseModelNames(model_name: string | null | undefined): string[] {
     .filter(Boolean);
 }
 
-async function mapRow(row: Row): Promise<WeeklyProgramRecord> {
+async function resolveUuidMap(table: string, uuidLists: (string[] | null | undefined)[]): Promise<Map<string, string>> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const list of uuidLists) {
+    for (const id of list ?? []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  if (!unique.length) return new Map();
+  const resolved = await sbAirtableIdsForUuids(table, unique);
+  const map = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    map.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return map;
+}
+
+function mapRowSync(
+  row: Row,
+  userAtByUuid: Map<string, string>,
+  modelAtByUuid: Map<string, string>
+): WeeklyProgramRecord {
+  const chatterUuid = row.chatter?.find(Boolean);
   const chatter_id =
-    (await sbFirstLinkedAirtableId("users", row.chatter)) ||
+    (chatterUuid ? userAtByUuid.get(chatterUuid) || chatterUuid : "") ||
     String(row.chatter_id ?? "").trim() ||
     "";
-  const model_ids = await sbAirtableIdsForUuids("modelss", row.models);
+  const model_ids = (row.models ?? []).map((id) => modelAtByUuid.get(id) || id).filter(Boolean);
   return {
     id: publicId(row),
     program_id: String(row.program_id ?? ""),
@@ -106,17 +129,37 @@ async function mapRow(row: Row): Promise<WeeklyProgramRecord> {
   };
 }
 
+async function mapRows(rows: Row[]): Promise<WeeklyProgramRecord[]> {
+  if (!rows.length) return [];
+  const [userAtByUuid, modelAtByUuid] = await Promise.all([
+    resolveUuidMap(
+      "users",
+      rows.map((r) => r.chatter)
+    ),
+    resolveUuidMap(
+      "modelss",
+      rows.map((r) => r.models)
+    ),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAtByUuid, modelAtByUuid));
+}
+
+async function mapRow(row: Row): Promise<WeeklyProgramRecord> {
+  const [mapped] = await mapRows([row]);
+  return mapped;
+}
+
 export async function listWeeklyProgramVa(params: ListParams & { filterByFormula?: string } = {}) {
   void params;
   const rows = await sbSelectAll<Row>(TABLE);
-  const programs = await Promise.all(rows.map(mapRow));
+  const programs = await mapRows(rows);
   return { programs, offset: undefined as string | undefined };
 }
 
 export async function listAllWeeklyProgramVa(_filterByFormula?: string): Promise<WeeklyProgramRecord[]> {
   void _filterByFormula;
   const rows = await sbSelectAll<Row>(TABLE);
-  return Promise.all(rows.map(mapRow));
+  return mapRows(rows);
 }
 
 export async function getProgramsForWeekVa(weekStart: string): Promise<WeeklyProgramRecord[]> {

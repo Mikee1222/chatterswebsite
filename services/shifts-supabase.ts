@@ -7,8 +7,8 @@ import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { devLog } from "@/lib/dev-log";
 import {
   publicId,
+  sbAirtableIdsForUuids,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
@@ -72,7 +72,32 @@ function getShiftStatus(raw: unknown): Shift["status"] {
   return "active";
 }
 
-async function mapShift(row: ShiftRow): Promise<Shift> {
+function firstLinked(map: Map<string, string>, uuids: string[] | null | undefined): string {
+  const id = uuids?.find(Boolean);
+  if (!id) return "";
+  return map.get(id) || id;
+}
+
+async function resolveUuidMap(table: string, uuidLists: (string[] | null | undefined)[]): Promise<Map<string, string>> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const list of uuidLists) {
+    for (const id of list ?? []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  if (!unique.length) return new Map();
+  const resolved = await sbAirtableIdsForUuids(table, unique);
+  const map = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    map.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return map;
+}
+
+function mapShiftSync(row: ShiftRow, userAtByUuid: Map<string, string>): Shift {
   const break_started_at = row.break_started_at?.trim() || null;
   const break_reminder_at = row.break_reminder_at?.trim() || null;
   let status = getShiftStatus(row.status);
@@ -86,7 +111,7 @@ async function mapShift(row: ShiftRow): Promise<Shift> {
   return {
     id: publicId(row),
     shift_id: row.shift_id ?? "",
-    chatter_id: (await sbFirstLinkedAirtableId("users", row.chatter)) ?? "",
+    chatter_id: firstLinked(userAtByUuid, row.chatter),
     chatter_name: row.chatter_name ?? "",
     week_start: row.week_start ?? "",
     date: row.date ?? "",
@@ -119,14 +144,19 @@ async function mapShift(row: ShiftRow): Promise<Shift> {
   };
 }
 
-async function mapShiftModel(row: ShiftModelRow): Promise<ShiftModel> {
+function mapShiftModelSync(
+  row: ShiftModelRow,
+  shiftAtByUuid: Map<string, string>,
+  userAtByUuid: Map<string, string>,
+  modelAtByUuid: Map<string, string>
+): ShiftModel {
   return {
     id: publicId(row),
     shift_model_id: row.shift_model_id ?? "",
-    shift_id: (await sbFirstLinkedAirtableId("shifts", row.shift)) ?? "",
-    chatter_id: (await sbFirstLinkedAirtableId("users", row.chatter)) ?? "",
+    shift_id: firstLinked(shiftAtByUuid, row.shift),
+    chatter_id: firstLinked(userAtByUuid, row.chatter),
     chatter_name: row.chatter_name ?? "",
-    model_id: (await sbFirstLinkedAirtableId("modelss", row.model)) ?? "",
+    model_id: firstLinked(modelAtByUuid, row.model),
     model_name: row.model_name ?? "",
     entered_at: row.entered_at ?? null,
     left_at: row.left_at ?? null,
@@ -140,9 +170,48 @@ async function mapShiftModel(row: ShiftModelRow): Promise<ShiftModel> {
   };
 }
 
+/** Batch UUID→airtable_id once per list (avoids N+1 fetch storms). */
+async function mapShifts(rows: ShiftRow[]): Promise<Shift[]> {
+  if (!rows.length) return [];
+  const userAtByUuid = await resolveUuidMap(
+    "users",
+    rows.map((r) => r.chatter)
+  );
+  return rows.map((r) => mapShiftSync(r, userAtByUuid));
+}
+
+async function mapShift(row: ShiftRow): Promise<Shift> {
+  const [mapped] = await mapShifts([row]);
+  return mapped;
+}
+
+async function mapShiftModels(rows: ShiftModelRow[]): Promise<ShiftModel[]> {
+  if (!rows.length) return [];
+  const [shiftAtByUuid, userAtByUuid, modelAtByUuid] = await Promise.all([
+    resolveUuidMap(
+      "shifts",
+      rows.map((r) => r.shift)
+    ),
+    resolveUuidMap(
+      "users",
+      rows.map((r) => r.chatter)
+    ),
+    resolveUuidMap(
+      "modelss",
+      rows.map((r) => r.model)
+    ),
+  ]);
+  return rows.map((r) => mapShiftModelSync(r, shiftAtByUuid, userAtByUuid, modelAtByUuid));
+}
+
+async function mapShiftModel(row: ShiftModelRow): Promise<ShiftModel> {
+  const [mapped] = await mapShiftModels([row]);
+  return mapped;
+}
+
 export async function listShifts(): Promise<{ shifts: Shift[]; offset?: string }> {
   const rows = await sbSelectAll<ShiftRow>(SHIFTS_TABLE);
-  return { shifts: await Promise.all(rows.map(mapShift)) };
+  return { shifts: await mapShifts(rows) };
 }
 
 export async function listAllShifts(
@@ -175,7 +244,7 @@ export async function listAllShifts(
       return true;
     });
   }
-  return Promise.all(rows.map(mapShift));
+  return mapShifts(rows);
 }
 
 export async function getShiftStatusFieldName(): Promise<string> {
@@ -207,7 +276,7 @@ export async function getChatterIdsFromOpenShiftModels(modelId: string): Promise
   const trimmed = modelId.trim();
   if (!trimmed) return [];
   const rows = await sbSelectAll<ShiftModelRow>(SHIFT_MODELS_TABLE);
-  const mapped = await Promise.all(rows.map(mapShiftModel));
+  const mapped = await mapShiftModels(rows);
   const ids = new Set<string>();
   for (const sm of mapped) {
     if (sm.model_id === trimmed && !sm.left_at && sm.chatter_id.trim()) {
@@ -361,7 +430,7 @@ export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promis
   if (shiftRecordIds.length === 0) return [];
   const set = new Set(shiftRecordIds);
   const rows = await sbSelectAll<ShiftModelRow>(SHIFT_MODELS_TABLE);
-  const mapped = await Promise.all(rows.map(mapShiftModel));
+  const mapped = await mapShiftModels(rows);
   return mapped.filter((sm) => set.has(sm.shift_id));
 }
 
@@ -459,7 +528,7 @@ export async function getLastAssignmentBatch(
     sbSelectAll<ShiftModelRow>(SHIFT_MODELS_TABLE),
     sbSelectAll<ShiftRow>(SHIFTS_TABLE),
   ]);
-  const mappedShifts = await Promise.all(shifts.map(mapShift));
+  const mappedShifts = await mapShifts(shifts);
   const shiftIdToInfo: Record<string, { date: string; dateTime: string }> = {};
   for (const s of mappedShifts) {
     const date = s.date ?? "";
@@ -472,7 +541,7 @@ export async function getLastAssignmentBatch(
           : "";
     shiftIdToInfo[s.id] = { date, dateTime };
   }
-  const mappedSms = await Promise.all(shiftModels.map(mapShiftModel));
+  const mappedSms = await mapShiftModels(shiftModels);
   const result: Record<string, LastAssignmentInfo> = {};
   for (const sm of mappedSms) {
     const key = `${sm.chatter_id}:${sm.model_id}`;

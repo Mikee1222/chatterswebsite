@@ -55,7 +55,31 @@ type Row = SbRow & {
   model_name?: string | null;
 };
 
-async function mapRow(row: Row): Promise<CustomRequest> {
+async function resolveUuidMap(table: string, uuidLists: (string[] | null | undefined)[]): Promise<Map<string, string>> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const list of uuidLists) {
+    for (const id of list ?? []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  if (!unique.length) return new Map();
+  const resolved = await sbAirtableIdsForUuids(table, unique);
+  const map = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    map.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return map;
+}
+
+function mapRowSync(
+  row: Row,
+  userAtByUuid: Map<string, string>,
+  modelAtByUuid: Map<string, string>,
+  scheduleAtByUuid: Map<string, string>
+): CustomRequest {
   // Airtable/product sometimes say "approved"; canonical stored value is "accepted".
   const rawAdmin = row.admin_status === "approved" ? "accepted" : row.admin_status;
   const adminStatus = (rawAdmin === "pending" || rawAdmin === "accepted" || rawAdmin === "rejected")
@@ -66,18 +90,18 @@ async function mapRow(row: Row): Promise<CustomRequest> {
     row.model_status === "declined")
     ? row.model_status
     : "waiting_schedule";
-  const chatterAtIds = await sbAirtableIdsForUuids("users", row.requested_by_chatter);
-  const modelAtIds = await sbAirtableIdsForUuids("modelss", row.assigned_model);
-  const scheduleAtIds = await sbAirtableIdsForUuids("model_schedule", row.linked_schedule_item);
+  const chatterUuid = row.requested_by_chatter?.find(Boolean);
+  const modelUuid = row.assigned_model?.find(Boolean);
+  const scheduleUuid = row.linked_schedule_item?.find(Boolean);
   const assignedVa = typeof row.assigned_va === "string" ? row.assigned_va.trim() : "";
   const req: CustomRequest = {
     id: publicId(row),
     request_id: row.request_id ?? "",
     fan_username: row.fan_username ?? "",
-    requested_by_chatter_id: chatterAtIds[0] ?? "",
+    requested_by_chatter_id: chatterUuid ? userAtByUuid.get(chatterUuid) || chatterUuid : "",
     requested_by_chatter_name: String(row.chatter_name ?? ""),
     assigned_va_id: assignedVa,
-    assigned_model_id: modelAtIds[0] ?? "",
+    assigned_model_id: modelUuid ? modelAtByUuid.get(modelUuid) || modelUuid : "",
     assigned_model_name: String(row.model_name ?? ""),
     request_title: row.request_title ?? "",
     request_details: row.request_details ?? "",
@@ -91,7 +115,9 @@ async function mapRow(row: Row): Promise<CustomRequest> {
     admin_notes: row.admin_notes ?? "",
     model_notes: row.model_notes ?? "",
     decline_reason: typeof row.decline_reason === "string" ? row.decline_reason : "",
-    linked_schedule_item_id: scheduleAtIds[0] ?? null,
+    linked_schedule_item_id: scheduleUuid
+      ? scheduleAtByUuid.get(scheduleUuid) || scheduleUuid
+      : null,
     uploaded_at: (row.uploaded_at ?? "").trim() || null,
     uploaded_by_model: Boolean(row.uploaded_by_model),
     created_at: row.created_at ?? "",
@@ -102,6 +128,30 @@ async function mapRow(row: Row): Promise<CustomRequest> {
   req.model_id = req.assigned_model_id;
   req.model_name = req.assigned_model_name;
   return req;
+}
+
+async function mapRows(rows: Row[]): Promise<CustomRequest[]> {
+  if (!rows.length) return [];
+  const [userAtByUuid, modelAtByUuid, scheduleAtByUuid] = await Promise.all([
+    resolveUuidMap(
+      "users",
+      rows.map((r) => r.requested_by_chatter)
+    ),
+    resolveUuidMap(
+      "modelss",
+      rows.map((r) => r.assigned_model)
+    ),
+    resolveUuidMap(
+      "model_schedule",
+      rows.map((r) => r.linked_schedule_item)
+    ),
+  ]);
+  return rows.map((r) => mapRowSync(r, userAtByUuid, modelAtByUuid, scheduleAtByUuid));
+}
+
+async function mapRow(row: Row): Promise<CustomRequest> {
+  const [mapped] = await mapRows([row]);
+  return mapped;
 }
 
 function bump(patch: Record<string, unknown>): Record<string, unknown> {
@@ -123,7 +173,7 @@ export async function deleteCustomRequestRecord(recordId: string): Promise<void>
 
 export async function listCustomRequests(params: { filterByFormula?: string; pageSize?: number; offset?: string } = {}): Promise<{ requests: CustomRequest[]; offset?: string }> {
   const rows = await selectAllSorted();
-  const requests = await Promise.all(rows.map(mapRow));
+  const requests = await mapRows(rows);
   return { requests, offset: undefined };
 }
 
@@ -133,7 +183,7 @@ export async function listCustomRequestsByModel(assignedModelRecordId: string): 
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb.from(TABLE).select("*").contains("assigned_model", uuids).order("created_at", { ascending: false });
   if (error) throw new Error(`custom_requests: ${error.message}`);
-  return Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
+  return mapRows(((data ?? []) as unknown as Row[]) ?? []);
 }
 
 export async function listApprovedCustomRequestsByModel(assignedModelRecordId: string): Promise<CustomRequest[]> {
@@ -151,7 +201,7 @@ function customPrimaryDateKey(r: CustomRequest): string | null {
 
 export async function listAcceptedCustomRequestsInDateRange(fromDate: string, toDate: string): Promise<CustomRequest[]> {
   const rows = await selectAllSorted();
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   return mapped
     .filter((r) => r.admin_status === "accepted")
     .filter((r) => {
@@ -171,7 +221,7 @@ export async function listCustomRequestsByChatter(chatterRecordId: string): Prom
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb.from(TABLE).select("*").contains("requested_by_chatter", uuids).order("created_at", { ascending: false });
   if (error) throw new Error(`custom_requests: ${error.message}`);
-  return Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
+  return mapRows(((data ?? []) as unknown as Row[]) ?? []);
 }
 
 export async function createCustomRequest(fields: CreateCustomRequestFields): Promise<CustomRequest> {
@@ -248,7 +298,7 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
 
 export async function listAllCustomRequests(): Promise<CustomRequest[]> {
   const rows = await selectAllSorted();
-  return Promise.all(rows.map(mapRow));
+  return mapRows(rows);
 }
 
 export async function listCustomRequestsPaginated(
@@ -268,7 +318,7 @@ export async function listCustomRequestsPaginated(
     .range(offset, offset + pageSize - 1);
   if (error) throw new Error(`custom_requests: ${error.message}`);
   const rows = (data ?? []) as unknown as Row[];
-  const mapped = await Promise.all(rows.map(mapRow));
+  const mapped = await mapRows(rows);
   const total = count ?? mapped.length;
   const hasMore = offset + rows.length < total;
   return {
@@ -283,7 +333,7 @@ export async function listAdminPendingCustomRequests(): Promise<CustomRequest[]>
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb.from(TABLE).select("*").eq("admin_status", "pending").order("created_at", { ascending: false });
   if (error) throw new Error(`custom_requests: ${error.message}`);
-  return Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
+  return mapRows(((data ?? []) as unknown as Row[]) ?? []);
 }
 
 export async function countAdminPendingCustomRequests(): Promise<number> {
@@ -483,7 +533,7 @@ export async function listStuckCustomRequestsSince(olderThanIso: string): Promis
     if (!Number.isFinite(updatedMs)) return false;
     return updatedMs <= thresholdMs;
   });
-  return Promise.all(filtered.map(mapRow));
+  return mapRows(filtered);
 }
 
 export async function markCustomRequestStuckAlertSent(recordId: string, sent: boolean): Promise<void> {
