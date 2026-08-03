@@ -52,6 +52,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { MarketingSpotCheck } from "@/services/marketing-reviews";
 import type { ModelRecord, UserRecord } from "@/types";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type DateRange = "all" | "7d" | "30d" | "custom";
 
@@ -203,6 +204,14 @@ export function AdminSpotChecksClient({
     void reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterVa, filterCreator, filterType, filterStatus, filterDateRange, filterDateFrom, filterDateTo]);
+
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+  useSupabaseRealtimeRefresh(
+    ["marketing_spot_checks"],
+    () => void reloadRef.current(),
+    { debounceMs: 700 },
+  );
 
   const hasFilters =
     Boolean(filterVa || filterCreator || filterType || filterStatus) || filterDateRange !== "all";

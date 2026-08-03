@@ -23,6 +23,8 @@ import { truncateNote } from "@/lib/winner-videos-copy";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
   initialQueue: WinnerVideoRecord[];
@@ -43,6 +45,7 @@ function modelNameFromSelection(modelId: string, models: ModelRecord[]): string 
 
 export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props) {
   const { addToast } = useToast();
+  const isSupabaseBackend = useIsSupabaseBackend();
   const [queue, setQueue] = React.useState(initialQueue);
   const [loading, setLoading] = React.useState(false);
   const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -82,12 +85,18 @@ export function CreativeScriptsQueueClient({ initialQueue, gunzoModels }: Props)
     }
   }
 
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+
   React.useEffect(() => {
+    if (isSupabaseBackend) return;
     const id = window.setInterval(() => {
-      void reload();
+      void reloadRef.current();
     }, 60_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [isSupabaseBackend]);
+
+  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
 
   function openForm(video: WinnerVideoRecord) {
     if (activeId === video.id) {

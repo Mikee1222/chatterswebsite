@@ -9,6 +9,7 @@ import { listAllUsers } from "@/services/users";
 import { AdminLiveShiftsClient } from "@/components/admin-live-shifts-client";
 import type { AdminShiftQueueRow } from "@/types";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
+import { SupabaseLiveShiftsRealtime } from "@/components/supabase-live-shifts-realtime";
 import type { ShiftModel } from "@/types";
 
 export default async function AdminLiveShiftsPage() {
@@ -41,6 +42,7 @@ export default async function AdminLiveShiftsPage() {
 
   return (
     <RouterRefreshInterval intervalMs={60_000}>
+      <SupabaseLiveShiftsRealtime />
       <AdminLiveShiftsClient
         shiftsWithModels={withModelNames}
         shiftQueue={shiftQueue}

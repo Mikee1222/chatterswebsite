@@ -23,6 +23,8 @@ import { formatDateTimeAthens } from "@/lib/format";
 import { copyTextToClipboard } from "@/lib/winner-videos-copy";
 import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
   initialScripts: WinnerVideoRecord[];
@@ -30,6 +32,7 @@ type Props = {
 
 export function AdminCreativeScriptsReview({ initialScripts }: Props) {
   const { addToast } = useToast();
+  const isSupabaseBackend = useIsSupabaseBackend();
   const [scripts, setScripts] = React.useState(initialScripts);
   const [loading, setLoading] = React.useState(false);
   const [pendingId, setPendingId] = React.useState<string | null>(null);
@@ -60,12 +63,18 @@ export function AdminCreativeScriptsReview({ initialScripts }: Props) {
     }
   }
 
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+
   React.useEffect(() => {
+    if (isSupabaseBackend) return;
     const id = window.setInterval(() => {
-      void reload();
+      void reloadRef.current();
     }, 60_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [isSupabaseBackend]);
+
+  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
 
   async function patchScript(id: string, body: Record<string, unknown>) {
     setPendingId(id);

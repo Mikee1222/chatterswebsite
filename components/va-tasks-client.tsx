@@ -30,6 +30,7 @@ import {
   ENGAGEMENT_SCREENSHOT_TARGET,
   isEngagementScreenshotItem,
 } from "@/lib/va-task-screenshots";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
   tasks: VaTaskRecord[];
@@ -232,6 +233,12 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
   const isViewingToday = selectedYmd === todayYmd;
+
+  useSupabaseRealtimeRefresh(
+    ["va_tasks", "va_task_phases", "va_task_phase_items"],
+    () => router.refresh(),
+    { debounceMs: 700 },
+  );
 
   const [deferredSearch, setDeferredSearch] = React.useState("");
   const handleDeferredSearchChange = React.useCallback((q: string) => setDeferredSearch(q), []);

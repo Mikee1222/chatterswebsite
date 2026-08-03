@@ -7,6 +7,7 @@ import { ClientPortalNav } from "@/components/client-portal-nav";
 import { ClientPortalHeader } from "@/components/client-portal-header";
 import { ClientMobileBottomNav } from "@/components/client-mobile-bottom-nav";
 import { ClientMobileMenuProvider } from "@/contexts/client-mobile-menu-context";
+import { getDataBackend } from "@/lib/data-backend";
 
 export default async function ClientLayout({
   children,
@@ -19,7 +20,7 @@ export default async function ClientLayout({
   }
 
   return (
-    <Providers>
+    <Providers dataBackend={getDataBackend()}>
       <ClientMobileMenuProvider>
         <div className="dashboard-bg relative flex h-[100dvh] overflow-hidden text-white [--bg-base:#0a0612] md:h-screen">
           <AnimatedBackground />

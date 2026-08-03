@@ -37,6 +37,8 @@ import { filterWinnerVideosClient, type WinnerVideoDateRange, type WinnerVideoVi
 import { WINNER_VIDEO_CONTENT_TYPES, type WinnerVideoContentType } from "@/lib/winner-videos-helpers";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
   initialSubmissions: WinnerVideoRecord[];
@@ -45,6 +47,7 @@ type Props = {
 
 export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props) {
   const { addToast } = useToast();
+  const isSupabaseBackend = useIsSupabaseBackend();
   const copySubmission = useWinnerVideoCopy(addToast);
   const [submissions, setSubmissions] = React.useState(initialSubmissions);
   const [loading, setLoading] = React.useState(false);
@@ -105,12 +108,18 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
     }
   }
 
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+
   React.useEffect(() => {
+    if (isSupabaseBackend) return;
     const id = window.setInterval(() => {
-      void reload();
+      void reloadRef.current();
     }, 60_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [isSupabaseBackend]);
+
+  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

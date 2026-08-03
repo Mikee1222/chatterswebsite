@@ -21,6 +21,7 @@ import { useToast } from "@/contexts/toast-context";
 import { formatDateTimeAthens } from "@/lib/format";
 import type { MarketingSpotCheck } from "@/services/marketing-reviews";
 import type { ModelRecord } from "@/types";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high") {
   return {
@@ -67,6 +68,14 @@ export function SupervisorSpotChecksClient({
       setLoading(false);
     }
   }
+
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+  useSupabaseRealtimeRefresh(
+    ["marketing_spot_checks"],
+    () => void reloadRef.current(),
+    { debounceMs: 700 },
+  );
 
   async function handleSubmit(values: SpotCheckFormValues) {
     setSaving(true);

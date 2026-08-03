@@ -26,6 +26,7 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { getUnreadCount } from "@/services/notifications";
+import { getDataBackend } from "@/lib/data-backend";
 
 /** Dashboard layout: desktop = left sidebar + topbar; mobile = app shell (header + bottom nav + FAB + live mini bar). */
 export default async function DashboardLayout({
@@ -35,6 +36,7 @@ export default async function DashboardLayout({
 }) {
   const user = await getSessionFromCookies();
   if (!user) return <ClientRedirect to={ROUTES.login} />;
+  const dataBackend = getDataBackend();
 
   if (user.role === "client") {
     return <>{children}</>;
@@ -104,7 +106,7 @@ export default async function DashboardLayout({
     : 0;
 
   return (
-    <Providers initialUnreadCount={initialUnreadCount}>
+    <Providers initialUnreadCount={initialUnreadCount} dataBackend={dataBackend}>
       <SidebarProvider>
         <div className="relative min-h-screen dashboard-bg">
           <AnimatedBackground />

@@ -33,6 +33,8 @@ import {
   staffDisplayName,
   type StaffUserOption,
 } from "@/components/staff-assignee-picker";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 function localToast(id: string, title: string, body: string, priority: "normal" | "high"): AppNotification {
   return {
@@ -306,6 +308,7 @@ export function AdminVaTasksClient({
   canViewProgress = false,
 }: Props) {
   const router = useRouter();
+  const isSupabaseBackend = useIsSupabaseBackend();
   const { addToast } = useToast();
   const canShowList = canManage || canViewList;
   const defaultViewMode = canShowList ? "list" : "progress";
@@ -567,11 +570,23 @@ export function AdminVaTasksClient({
 
   React.useEffect(() => {
     if (viewMode !== "progress" || !canViewProgress || !isTabVisible) return;
+    if (isSupabaseBackend) return; // live updates via useSupabaseRealtimeRefresh
     const id = window.setInterval(() => {
       void loadProgressPhases();
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [viewMode, canViewProgress, isTabVisible, loadProgressPhases]);
+  }, [viewMode, canViewProgress, isTabVisible, loadProgressPhases, isSupabaseBackend]);
+
+  useSupabaseRealtimeRefresh(
+    ["va_tasks", "va_task_phases", "va_task_phase_items"],
+    () => {
+      router.refresh();
+      if (viewMode === "progress" && canViewProgress) {
+        void loadProgressPhases();
+      }
+    },
+    { debounceMs: 700 },
+  );
 
   React.useEffect(() => {
     setShowAllTasks(false);

@@ -33,6 +33,7 @@ import {
   VA_STATUS_BADGE,
 } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type ModelGroup<T> = { modelName: string; items: T[] };
 
@@ -639,6 +640,16 @@ export function VaMarketingClient() {
     void reloadFunnels();
     void reloadReports();
   }, [reload, reloadFunnels, reloadReports]);
+
+  useSupabaseRealtimeRefresh(
+    ["model_social_accounts"],
+    () => {
+      void reload();
+      void reloadFunnels();
+      void reloadReports();
+    },
+    { debounceMs: 800 },
+  );
 
   const grouped = React.useMemo(() => groupByModel(accounts), [accounts]);
   const activeCount = accounts.filter((a) => (a.account_status ?? "active") === "active").length;

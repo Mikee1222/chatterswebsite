@@ -6,6 +6,7 @@ import { getLiveShifts } from "@/services/shifts";
 import { getActiveShiftModelsForShiftIds } from "@/services/shifts";
 import { LiveShiftsPageLists } from "@/components/live-shifts-page-lists";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
+import { SupabaseLiveShiftsRealtime } from "@/components/supabase-live-shifts-realtime";
 import type { ShiftModel } from "@/types";
 
 export default async function LiveShiftsPage() {
@@ -26,6 +27,7 @@ export default async function LiveShiftsPage() {
 
   return (
     <RouterRefreshInterval intervalMs={60_000}>
+    <SupabaseLiveShiftsRealtime />
     <div className="space-y-8">
       <div>
         <h1 className="text-xl font-semibold text-white">Live shifts</h1>

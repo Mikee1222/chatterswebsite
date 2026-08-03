@@ -42,6 +42,8 @@ import { cn } from "@/lib/utils";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
 import { AdminCreativeScriptsReview } from "@/components/admin-creative-scripts-review";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type AdminTab = "submissions" | "scripts";
 
@@ -63,6 +65,7 @@ export function AdminWinnerVideosClient({
   canManageScripts = false,
 }: Props) {
   const { addToast } = useToast();
+  const isSupabaseBackend = useIsSupabaseBackend();
   const copySubmission = useWinnerVideoCopy(addToast);
   const [videos, setVideos] = React.useState(initialVideos);
   const [loading, setLoading] = React.useState(false);
@@ -138,13 +141,19 @@ export function AdminWinnerVideosClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
 
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+
   React.useEffect(() => {
+    if (isSupabaseBackend) return;
     const id = window.setInterval(() => {
-      void reload();
+      void reloadRef.current();
     }, 60_000);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
+  }, [isSupabaseBackend, filterStatus, filterContentType, filterDateRange, filterDateFrom, filterDateTo]);
+
+  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
 
   async function patchVideo(id: string, body: Record<string, unknown>) {
     setPendingId(id);

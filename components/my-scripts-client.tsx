@@ -28,6 +28,8 @@ import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
 import { cn } from "@/lib/utils";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
   initialScripts: WinnerVideoRecord[];
@@ -48,6 +50,7 @@ function modelNameFromSelection(modelId: string, models: ModelRecord[]): string 
 
 export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
   const { addToast } = useToast();
+  const isSupabaseBackend = useIsSupabaseBackend();
   const [scripts, setScripts] = React.useState(initialScripts);
   const [loading, setLoading] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
@@ -83,12 +86,18 @@ export function MyScriptsClient({ initialScripts, gunzoModels }: Props) {
     }
   }
 
+  const reloadRef = React.useRef(reload);
+  reloadRef.current = reload;
+
   React.useEffect(() => {
+    if (isSupabaseBackend) return;
     const id = window.setInterval(() => {
-      void reload();
+      void reloadRef.current();
     }, 60_000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [isSupabaseBackend]);
+
+  useSupabaseRealtimeRefresh(["winner_videos"], () => void reloadRef.current(), { debounceMs: 600 });
 
   async function copyScript(video: WinnerVideoRecord) {
     const ok = await copyTextToClipboard(formatCreativeScriptCopy(video));

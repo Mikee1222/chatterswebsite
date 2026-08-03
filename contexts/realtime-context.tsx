@@ -12,6 +12,8 @@ import {
 } from "react";
 import type { ReactNode, Dispatch, SetStateAction } from "react";
 import type { AppNotification } from "@/types";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { useSupabaseRealtime } from "@/lib/hooks/use-supabase-realtime";
 
 type ConnectionStatus = "idle" | "connecting" | "connected" | "disconnected" | "error";
 
@@ -211,15 +213,27 @@ export function RealtimeProvider({
     };
   }, [addNotification, dispatchRealtimeEvent]);
 
-  // When WebSocket is not configured, poll unread count at a stable interval (no storm on failure)
+  const isSupabaseBackend = useIsSupabaseBackend();
+
+  // Supabase: replace 30s unread poll with postgres/broadcast invalidate → targeted refresh
+  useSupabaseRealtime({
+    tables: ["notifications"],
+    enabled: isSupabaseBackend && !wsUrl,
+    debounceMs: 500,
+    onEvent: () => {
+      void refreshUnreadCount();
+    },
+  });
+
+  // When WebSocket is not configured and not on Supabase, poll unread count (Airtable path)
   const POLL_INTERVAL_MS = 30000;
   useEffect(() => {
-    if (wsUrl) return;
+    if (wsUrl || isSupabaseBackend) return;
     const t = setInterval(() => {
       refreshUnreadCount().then(() => {});
     }, POLL_INTERVAL_MS);
     return () => clearInterval(t);
-  }, [wsUrl, refreshUnreadCount]);
+  }, [wsUrl, isSupabaseBackend, refreshUnreadCount]);
 
   useEffect(() => {
     if (!wsUrl) return;
