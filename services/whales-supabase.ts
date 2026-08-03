@@ -4,6 +4,7 @@
 
 import {
   publicId,
+  sbDeleteByPublicId,
   sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
@@ -257,3 +258,8 @@ export async function updateWhale(recordId: string, fields: WhaleWriteFields) {
   const updated = await sbUpdateByPublicId<Row>(TABLE, recordId, payload);
   return mapRow(updated);
 }
+
+export async function deleteWhale(recordId: string): Promise<void> {
+  await sbDeleteByPublicId(TABLE, recordId);
+}
+

@@ -3,7 +3,7 @@
  */
 import {
   publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, sbUuidsForAirtableIds, type SbRow,
+  sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { SopQuizAttempt } from "@/types";
 
@@ -41,11 +41,16 @@ export async function recordQuizAttempt(
   const user = userId.trim(); const fnId = functionId.trim(); const role = roleId.trim();
   if (!user || !fnId || !role) throw new Error("user, function, and role are required");
   const now = new Date().toISOString();
+  const [userUuids, fnUuids, roleUuids] = await Promise.all([
+    requireSbUuids("users", [user], "user"),
+    requireSbUuids("sop_functions", [fnId], "sop_function"),
+    requireSbUuids("sop_roles", [role], "sop_role"),
+  ]);
   const row = await sbInsert<Row>(TABLE, {
     attempt_id: genId(),
-    user: await sbUuidsForAirtableIds("users", [user]),
-    sop_function: await sbUuidsForAirtableIds("sop_functions", [fnId]),
-    sop_role: await sbUuidsForAirtableIds("sop_roles", [role]),
+    user: userUuids,
+    sop_function: fnUuids,
+    sop_role: roleUuids,
     score: Math.max(0, Math.min(100, Math.round(score))),
     passed,
     wrong_count: Math.max(0, Math.floor(wrongCount)),

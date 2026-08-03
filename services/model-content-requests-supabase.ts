@@ -8,7 +8,7 @@ import {
   sbInsert,
   sbSelectAll,
   sbUpdateByPublicId,
-  sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { notify, notifyAdmins } from "@/services/notification-service";
@@ -94,7 +94,7 @@ export async function createModelContentRequest(input: {
   description: string;
 }): Promise<ModelContentRequest> {
   const now = new Date().toISOString();
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const modelUuids = await requireSbUuids("modelss", [input.model_id], "model");
   const inserted = await sbInsert<Row>(TABLE, {
     request_id: `mcr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     model_id: modelUuids,

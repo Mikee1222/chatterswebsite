@@ -11,6 +11,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { awardPoints } from "@/services/points-engine";
@@ -228,8 +229,10 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const request_title = (fields.request_title ?? fields.custom_type ?? "Custom request").trim();
   const request_details = (fields.request_details ?? fields.description ?? "").trim();
-  const chatterUuids = await sbUuidsForAirtableIds("users", [fields.chatter_record_id]);
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [fields.model_record_id]);
+  const [chatterUuids, modelUuids] = await Promise.all([
+    requireSbUuids("users", [fields.chatter_record_id], "chatter"),
+    requireSbUuids("modelss", [fields.model_record_id], "model"),
+  ]);
   const payload = bump({
     request_id: requestId,
     requested_by_chatter: chatterUuids,
@@ -398,13 +401,17 @@ export async function updateCustomRequestModelSchedule(
   }
   if (input.model_notes !== undefined) fields.model_notes = input.model_notes;
   if (input.linked_schedule_item_id !== undefined) {
-    const schedUuids = input.linked_schedule_item_id
-      ? await sbUuidsForAirtableIds("model_schedule", [input.linked_schedule_item_id])
+    fields.linked_schedule_item = input.linked_schedule_item_id
+      ? await requireSbUuids(
+          "model_schedule",
+          [input.linked_schedule_item_id],
+          "linked_schedule_item"
+        )
       : [];
-    fields.linked_schedule_item = schedUuids;
   }
   if (input.uploaded_at !== undefined) {
-    fields.uploaded_at = input.uploaded_at?.trim() ? input.uploaded_at.trim() : "";
+    // uploaded_at is timestamptz — empty string is invalid (22007); clear with null.
+    fields.uploaded_at = input.uploaded_at?.trim() ? input.uploaded_at.trim() : null;
   }
   if (input.uploaded_by_model !== undefined) {
     fields.uploaded_by_model = input.uploaded_by_model;

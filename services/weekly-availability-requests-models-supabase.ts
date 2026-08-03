@@ -10,6 +10,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import {
@@ -184,7 +185,7 @@ export async function createModelAvailabilityRequest(input: {
         : input.start_time && input.end_time
           ? airtablePayloadFromWindows([{ start: input.start_time, end: input.end_time }])
           : emptyTimeFieldsPayload();
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const modelUuids = await requireSbUuids("modelss", [input.model_id], "model");
   const row = await sbInsert<Row>(TABLE, {
     request_id: `avail_model_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     week_start: ensureMondayForQuery(input.week_start),

@@ -16,6 +16,30 @@ export function publicId(row: { id: string; airtable_id?: string | null }): stri
   return row.airtable_id || row.id;
 }
 
+/**
+ * Require every public/Airtable id to resolve to a Postgres UUID.
+ * Throws instead of inserting empty uuid[] link columns on map misses.
+ */
+export async function requireSbUuids(
+  table: string,
+  airtableIds: string[] | null | undefined,
+  label?: string
+): Promise<string[]> {
+  const requested = [
+    ...new Set((airtableIds ?? []).map((id) => String(id).trim()).filter(Boolean)),
+  ];
+  if (!requested.length) {
+    throw new Error(`requireSbUuids ${table}: missing ${label ?? "linked"} id(s)`);
+  }
+  const uuids = await sbUuidsForAirtableIds(table, requested);
+  if (uuids.length < requested.length) {
+    throw new Error(
+      `requireSbUuids ${table}: unresolved ${label ?? "link"} id(s) among: ${requested.join(", ")}`
+    );
+  }
+  return uuids;
+}
+
 export async function sbSelectAll<T extends SbRow>(
   table: string,
   columns = "*"

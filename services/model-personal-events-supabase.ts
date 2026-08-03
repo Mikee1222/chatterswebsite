@@ -3,7 +3,7 @@
  */
 import {
   publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, sbUuidsForAirtableIds, type SbRow,
+  sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelPersonalEvent, ModelPersonalEventType } from "@/types";
 
@@ -61,7 +61,7 @@ export async function createModelPersonalEvent(input: {
   custom_label?: string; event_date: string; event_time?: string; notes?: string;
 }): Promise<ModelPersonalEvent> {
   const now = new Date().toISOString();
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const modelUuids = await requireSbUuids("modelss", [input.model_id], "model");
   const row = await sbInsert<Row>(TABLE, {
     event_id: `mpe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     model_id: modelUuids,

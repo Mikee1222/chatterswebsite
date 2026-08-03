@@ -285,3 +285,22 @@ export async function deleteWhaleTransactionForChatter(recordId: string, chatter
   await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
   await deleteRecord(TABLE, recordId);
 }
+
+/** Delete all transactions linked to a whale (before deleting the whale). */
+export async function deleteWhaleTransactionsForWhale(whaleRecordId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).deleteWhaleTransactionsForWhale(
+      whaleRecordId
+    );
+  }
+  const txns = await listAllRecords<Fields>(TABLE, {
+    fields: ["whale"],
+    pageSize: 100,
+    _caller: "whale-transactions.deleteWhaleTransactionsForWhale",
+  });
+  for (const rec of txns) {
+    if (firstLinkedId(rec.fields.whale) === whaleRecordId) {
+      await deleteRecord(TABLE, rec.id);
+    }
+  }
+}

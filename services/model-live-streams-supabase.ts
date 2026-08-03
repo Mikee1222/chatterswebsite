@@ -9,7 +9,7 @@ import {
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
-  sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelLiveStreamRecord } from "@/types";
@@ -115,7 +115,7 @@ export async function createModelLiveStream(input: {
   details_en?: string;
   details_es?: string;
 }): Promise<ModelLiveStreamRecord> {
-  const model = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const model = await requireSbUuids("modelss", [input.model_id], "model");
   const inserted = await sbInsert<Row>(TABLE, {
     model,
     date: input.date,

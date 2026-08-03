@@ -2,6 +2,7 @@
  * Supabase backend for services/whale-transactions.ts (DATA_BACKEND=supabase).
  */
 
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import {
   publicId,
   sbDeleteByPublicId,
@@ -11,6 +12,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { TRANSACTION_TYPES } from "@/lib/airtable-options";
@@ -113,13 +115,13 @@ export async function createWhaleTransaction(fields: CreateWhaleTransactionField
     throw new Error("session_length_minutes is required and must be a non-negative integer");
   }
   const transactionId = `txn_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const [whale, chatter, model] = await Promise.all([
-    sbUuidsForAirtableIds("whales", [fields.whale_record_id]),
-    sbUuidsForAirtableIds("users", [fields.chatter_record_id]),
-    fields.model_record_id
-      ? sbUuidsForAirtableIds("modelss", [fields.model_record_id])
-      : Promise.resolve([] as string[]),
+  const [whale, chatter] = await Promise.all([
+    requireSbUuids("whales", [fields.whale_record_id], "whale"),
+    requireSbUuids("users", [fields.chatter_record_id], "chatter"),
   ]);
+  const model = fields.model_record_id
+    ? await sbUuidsForAirtableIds("modelss", [fields.model_record_id])
+    : [];
   const payload: Record<string, unknown> = {
     transaction_id: transactionId,
     whale,
@@ -236,4 +238,28 @@ export async function deleteWhaleTransactionForChatter(
 ) {
   await assertOwned(recordId, chatterRecordId);
   await sbDeleteByPublicId(TABLE, recordId);
+}
+
+/** Delete all transactions linked to a whale (before deleting the whale). */
+export async function deleteWhaleTransactionsForWhale(whaleRecordId: string): Promise<void> {
+  const id = whaleRecordId.trim();
+  if (!id) return;
+  const whaleUuids = await sbUuidsForAirtableIds("whales", [id]);
+  // Native supabase rows may already use uuid as public id
+  const uuid =
+    whaleUuids[0] ??
+    (await sbSelectByPublicId<{ id: string }>("whales", id))?.id ??
+    (id.includes("-") ? id : null);
+  if (!uuid) return;
+
+  const { getSupabaseServiceClient } = await import("@/lib/supabase-server");
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from(TABLE)
+    .select("id, airtable_id")
+    .contains("whale", [uuid]);
+  if (error) throw new Error(`deleteWhaleTransactionsForWhale: ${error.message}`);
+  for (const row of data ?? []) {
+    await sbDeleteByPublicId(TABLE, publicId(row as { id: string; airtable_id?: string | null }));
+  }
 }

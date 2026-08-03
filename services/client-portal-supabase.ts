@@ -13,6 +13,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -412,8 +413,8 @@ export async function createClientModelAssignment(
   modelId: string
 ): Promise<ClientModelRecord> {
   const [clientUuids, modelUuids] = await Promise.all([
-    sbUuidsForAirtableIds(CLIENTS, [clientId]),
-    sbUuidsForAirtableIds(BILLING_MODELS, [modelId]),
+    requireSbUuids(CLIENTS, [clientId], "client"),
+    requireSbUuids(BILLING_MODELS, [modelId], "model"),
   ]);
   const row = await sbInsert<ClientModelRow>(CLIENT_MODELS, {
     client: clientUuids,
@@ -467,7 +468,7 @@ export async function createBillingCycleForClient(
   clientId: string,
   data: CreateBillingCycleInput
 ): Promise<BillingCycleRecord> {
-  const clientUuids = await sbUuidsForAirtableIds(CLIENTS, [clientId]);
+  const clientUuids = await requireSbUuids(CLIENTS, [clientId], "client");
   const insert: Record<string, unknown> = {
     client: clientUuids,
     kind: data.kind,
@@ -574,16 +575,12 @@ export async function getClientInvoicesEnriched(clientId: string): Promise<Enric
   const invoices = await getClientInvoices(clientId);
   const cycleIds = [...new Set(invoices.map((i) => i.billing_cycle[0]).filter(Boolean) as string[])];
   const cycleMap = new Map<string, BillingCycleRecord>();
-  await Promise.all(
-    cycleIds.map(async (cycleId) => {
-      try {
-        const cycle = await getBillingCycleByIdFromBilling(cycleId);
-        if (cycle) cycleMap.set(cycleId, cycle);
-      } catch {
-        /* skip missing */
-      }
-    })
-  );
+  if (cycleIds.length) {
+    const allCycles = await getAllBillingCycles();
+    for (const cycle of allCycles) {
+      if (cycleIds.includes(cycle.id)) cycleMap.set(cycle.id, cycle);
+    }
+  }
   return invoices.map((invoice) => {
     const cycleId = invoice.billing_cycle[0];
     const cycle = cycleId ? cycleMap.get(cycleId) : undefined;
@@ -654,9 +651,9 @@ export async function createPaymentSubmission(
   data: CreatePaymentSubmissionInput
 ): Promise<PaymentSubmissionRecord> {
   const [billing_cycle, client, selected_payment_method] = await Promise.all([
-    sbUuidsForAirtableIds(CYCLES, data.billing_cycle),
-    sbUuidsForAirtableIds(CLIENTS, data.client),
-    sbUuidsForAirtableIds(METHODS, data.selected_payment_method),
+    requireSbUuids(CYCLES, data.billing_cycle, "billing_cycle"),
+    requireSbUuids(CLIENTS, data.client, "client"),
+    requireSbUuids(METHODS, data.selected_payment_method, "selected_payment_method"),
   ]);
   const insert: Record<string, unknown> = {
     billing_cycle,
@@ -814,10 +811,11 @@ export async function getClientCurrentChattingCycleFromRevenues(
     cycleIdToRevenues.set(cid, list);
   }
   const cycleIds = Array.from(cycleIdToRevenues.keys());
-  const cycleRecords = await Promise.all(cycleIds.map((id) => getBillingCycleByIdFromBilling(id)));
-  const validCycles = cycleRecords.filter(
-    (c): c is NonNullable<typeof c> => c != null && c.kind === "chatting_weekly"
-  );
+  const allCycles = await getAllBillingCycles();
+  const cycleById = new Map(allCycles.map((c) => [c.id, c]));
+  const validCycles = cycleIds
+    .map((id) => cycleById.get(id))
+    .filter((c): c is BillingCycleRecord => c != null && c.kind === "chatting_weekly");
   if (validCycles.length === 0) return null;
   validCycles.sort((a, b) => (b.period_end || "").localeCompare(a.period_end || ""));
   let chosen = validCycles[0]!;

@@ -11,6 +11,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import {
@@ -188,10 +189,14 @@ export async function updateWeeklyProgramVa(
 ): Promise<WeeklyProgramRecord> {
   const patch: Record<string, unknown> = { ...fields, updated_at: new Date().toISOString() };
   if (Array.isArray(fields.chatter)) {
-    patch.chatter = await sbUuidsForAirtableIds("users", fields.chatter as string[]);
+    patch.chatter = (fields.chatter as string[]).length
+      ? await requireSbUuids("users", fields.chatter as string[], "chatter")
+      : [];
   }
   if (Array.isArray(fields.models)) {
-    patch.models = await sbUuidsForAirtableIds("modelss", fields.models as string[]);
+    patch.models = (fields.models as string[]).length
+      ? await requireSbUuids("modelss", fields.models as string[], "models")
+      : [];
   }
   const row = await sbUpdateByPublicId<Row>(TABLE, recordId, patch);
   return mapRow(row);
@@ -199,8 +204,10 @@ export async function updateWeeklyProgramVa(
 
 export async function createWeeklyProgramVa(fields: CreateWeeklyProgramVaFields): Promise<WeeklyProgramRecord> {
   const programId = `prog_va_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const chatterUuids = await sbUuidsForAirtableIds("users", fields.chatter);
-  const modelUuids = await sbUuidsForAirtableIds("modelss", fields.models);
+  const [chatterUuids, modelUuids] = await Promise.all([
+    requireSbUuids("users", fields.chatter, "chatter"),
+    requireSbUuids("modelss", fields.models, "models"),
+  ]);
   const row = await sbInsert<Row>(TABLE, {
     program_id: programId,
     chatter: chatterUuids,

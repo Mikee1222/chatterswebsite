@@ -1,4 +1,4 @@
-import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
+import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, deleteRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { buildWhalesFilterFormula, WHALES_DEFAULT_PAGE_SIZE, type WhalesListFilters } from "@/lib/whales-filters";
@@ -229,3 +229,9 @@ export async function updateWhale(recordId: string, fields: WhaleWriteFields) {
   const rec = await updateRecord(TABLE, recordId, fields as Partial<Fields>);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
+
+export async function deleteWhale(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).deleteWhale(recordId);
+  await deleteRecord(TABLE, recordId);
+}
+

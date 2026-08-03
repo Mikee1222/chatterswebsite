@@ -13,6 +13,7 @@ import {
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   type SbRow,
+  requireSbUuids,
 } from "@/lib/supabase-data";
 import { filterActiveUsersForAssignment, isUserActiveForAssignment } from "@/lib/assignment-filters";
 import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
@@ -237,7 +238,7 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   };
   if (input.password_hash) row.password_hash = input.password_hash;
   if (input.linked_model_id) {
-    row.linked_model = await sbUuidsForAirtableIds("modelss", [input.linked_model_id]);
+    row.linked_model = await requireSbUuids("modelss", [input.linked_model_id], "linked_model");
   }
   if (input.language_preference) row.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) row.telegram_username = input.telegram_username.trim();
@@ -283,7 +284,7 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   if (input.notes !== undefined) patch.notes = input.notes;
   if (input.linked_model_id !== undefined) {
     patch.linked_model = input.linked_model_id
-      ? await sbUuidsForAirtableIds("modelss", [input.linked_model_id])
+      ? await requireSbUuids("modelss", [input.linked_model_id], "linked_model")
       : [];
   }
   if (input.language_preference !== undefined) {

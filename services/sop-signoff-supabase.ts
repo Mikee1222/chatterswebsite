@@ -3,7 +3,7 @@
  */
 import {
   publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, sbUuidsForAirtableIds, type SbRow,
+  sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { SopSignoff } from "@/types";
 import { DEFAULT_SIGNOFF_STATEMENT } from "./sop-signoff";
@@ -53,8 +53,10 @@ export async function createSignoff(userRecordId: string, roleRecordId: string, 
   const existing = await getSignoffForUserRole(userId, roleId);
   if (existing) return existing;
   const now = new Date().toISOString();
-  const userUuids = await sbUuidsForAirtableIds("users", [userId]);
-  const roleUuids = await sbUuidsForAirtableIds("sop_roles", [roleId]);
+  const [userUuids, roleUuids] = await Promise.all([
+    requireSbUuids("users", [userId], "user"),
+    requireSbUuids("sop_roles", [roleId], "sop_role"),
+  ]);
   const row = await sbInsert<Row>(TABLE, {
     signoff_id: genSignoffId(),
     user: userUuids,

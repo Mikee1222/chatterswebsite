@@ -11,6 +11,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -179,7 +180,7 @@ export async function updatePendingVAContentAssignmentByVa(
   const fields: Record<string, unknown> = {};
   if (patch.title !== undefined) fields.title = patch.title.trim();
   if (patch.description !== undefined) fields.description = patch.description.trim();
-  if (patch.deadline !== undefined) fields.deadline = patch.deadline?.trim() ? patch.deadline.trim() : "";
+  if (patch.deadline !== undefined) fields.deadline = patch.deadline?.trim() ? patch.deadline.trim() : null;
   if (patch.priority !== undefined) fields.priority = (patch.priority || "normal").trim().toLowerCase();
   if (Object.keys(fields).length === 0) return current;
   const row = await sbUpdateByPublicId<Row>(TABLE, assignmentRecordId, fields);
@@ -408,8 +409,10 @@ export async function createVaContentAssignmentAdmin(
 ): Promise<VaContentAssignmentRecord> {
   const assignment_id = `vca_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const priorityNorm = (input.priority || "normal").toLowerCase();
-  const vaUuids = await sbUuidsForAirtableIds("users", [input.va_user_record_id]);
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_record_id]);
+  const [vaUuids, modelUuids] = await Promise.all([
+    requireSbUuids("users", [input.va_user_record_id], "va"),
+    requireSbUuids("modelss", [input.model_record_id], "model"),
+  ]);
   const payload: Record<string, unknown> = {
     assignment_id,
     va: vaUuids,
@@ -489,7 +492,7 @@ export async function reviewVAContentAssignmentByAdmin(
       const e = input.edits;
       if (typeof e.title === "string" && e.title.trim()) updateData.title = e.title.trim();
       if (typeof e.description === "string") updateData.description = e.description.trim();
-      if (e.deadline !== undefined) updateData.deadline = e.deadline?.trim() ? e.deadline.trim() : "";
+      if (e.deadline !== undefined) updateData.deadline = e.deadline?.trim() ? e.deadline.trim() : null;
       if (typeof e.content_type === "string" && e.content_type.trim()) updateData.content_type = e.content_type.trim();
       if (typeof e.priority === "string" && e.priority.trim()) updateData.priority = e.priority.trim().toLowerCase();
       if (typeof e.admin_edit_notes === "string" && e.admin_edit_notes.trim()) updateData.admin_edit_notes = e.admin_edit_notes.trim();

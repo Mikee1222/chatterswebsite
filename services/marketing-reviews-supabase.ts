@@ -10,6 +10,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -319,7 +320,8 @@ export async function getDailyReviewDetail(id: string): Promise<MarketingDailyRe
 
 async function getExecAuditsForDailyReview(dailyReviewId: string): Promise<MarketingExecAudit[]> {
   const uuids = await sbUuidsForAirtableIds(TABLE_DAILY_REVIEWS, [dailyReviewId]);
-  const targetUuid = uuids[0] ?? dailyReviewId;
+  if (!uuids.length) return [];
+  const targetUuid = uuids[0]!;
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb.from(TABLE_EXEC_AUDITS).select("*").contains("daily_review", [targetUuid]).order("exec_va_name", { ascending: true });
   if (error) throw new Error(`marketing_exec_audits: ${error.message}`);
@@ -388,7 +390,7 @@ export async function createExecAudit(
   const label =
     data.audit_label?.trim() ||
     `Exec audit — ${data.exec_va_name || "VA"} — ${data.reviewing_day || todayIsoDate()}`;
-  const uuids = await sbUuidsForAirtableIds(TABLE_DAILY_REVIEWS, [data.daily_review_id]);
+  const uuids = await requireSbUuids(TABLE_DAILY_REVIEWS, [data.daily_review_id], "daily_review");
   const row = await sbInsert<ExecAuditRow>(TABLE_EXEC_AUDITS, {
     audit_label: label,
     daily_review: uuids,
@@ -410,8 +412,11 @@ export async function updateExecAudit(id: string, data: Partial<MarketingExecAud
   const patch: Record<string, unknown> = {};
   if (data.audit_label !== undefined) patch.audit_label = data.audit_label;
   if (data.daily_review_id !== undefined) {
-    const uuids = await sbUuidsForAirtableIds(TABLE_DAILY_REVIEWS, [data.daily_review_id]);
-    patch.daily_review = uuids;
+    patch.daily_review = await requireSbUuids(
+      TABLE_DAILY_REVIEWS,
+      [data.daily_review_id],
+      "daily_review"
+    );
   }
   if (data.exec_va_id !== undefined) patch.exec_va_id = data.exec_va_id;
   if (data.exec_va_name !== undefined) patch.exec_va_name = data.exec_va_name;

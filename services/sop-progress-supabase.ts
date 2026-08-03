@@ -8,7 +8,7 @@ import {
   sbInsert,
   sbSelectAll,
   sbUpdateByPublicId,
-  sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import type { SopFunction, SopProgress } from "@/types";
@@ -144,9 +144,9 @@ export async function markFunctionComplete(
     return mapRow(updated);
   }
   const [userUuids, fnUuids, roleUuids] = await Promise.all([
-    sbUuidsForAirtableIds("users", [uid]),
-    sbUuidsForAirtableIds("sop_functions", [fid]),
-    sbUuidsForAirtableIds("sop_roles", [rid]),
+    requireSbUuids("users", [uid], "user"),
+    requireSbUuids("sop_functions", [fid], "sop_function"),
+    requireSbUuids("sop_roles", [rid], "sop_role"),
   ]);
   const row = await sbInsert<Row>(TABLE, {
     progress_id: genProgressId(),

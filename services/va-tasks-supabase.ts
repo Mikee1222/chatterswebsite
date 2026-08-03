@@ -19,6 +19,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -310,8 +311,10 @@ export type VaTaskUpdateInput = Partial<
 >;
 
 export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecord> {
-  const assignedTo = await sbUuidsForAirtableIds("users", data.assigned_to_ids);
-  const assignedBy = await sbUuidsForAirtableIds("users", data.assigned_by_ids ?? []);
+  const assignedTo = await requireSbUuids("users", data.assigned_to_ids, "assigned_to");
+  const assignedBy = data.assigned_by_ids?.length
+    ? await sbUuidsForAirtableIds("users", data.assigned_by_ids)
+    : [];
   const payload: Record<string, unknown> = {
     title: data.title.trim(),
     description: (data.description ?? "").trim(),
@@ -346,7 +349,9 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
   if (data.title !== undefined) payload.title = data.title.trim();
   if (data.description !== undefined) payload.description = data.description.trim();
   if (data.assigned_to_ids !== undefined) {
-    payload.assigned_to = await sbUuidsForAirtableIds("users", data.assigned_to_ids);
+    payload.assigned_to = data.assigned_to_ids.length
+      ? await requireSbUuids("users", data.assigned_to_ids, "assigned_to")
+      : [];
   }
   if (data.assigned_by_ids !== undefined) {
     payload.assigned_by = await sbUuidsForAirtableIds("users", data.assigned_by_ids);

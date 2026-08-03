@@ -9,6 +9,7 @@ import {
   sbSelectAll,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -108,7 +109,7 @@ export async function createQuizQuestion(data: QuizQuestionWrite): Promise<SopQu
   const existing = await getQuestionsByFunctionAdmin(data.sop_function_id);
   const maxSort = existing.reduce((m, q) => Math.max(m, q.sort_order), 0);
   const now = new Date().toISOString();
-  const uuids = await sbUuidsForAirtableIds("sop_functions", [data.sop_function_id]);
+  const uuids = await requireSbUuids("sop_functions", [data.sop_function_id], "sop_function");
   const row = await sbInsert<Row>(TABLE, {
     question_id: genQuestionId(),
     sop_function: uuids,
@@ -139,7 +140,7 @@ export async function updateQuizQuestion(
   if (data.sort_order !== undefined) patch.sort_order = data.sort_order;
   if (data.is_active !== undefined) patch.is_active = data.is_active;
   if (data.sop_function_id !== undefined) {
-    patch.sop_function = await sbUuidsForAirtableIds("sop_functions", [data.sop_function_id]);
+    patch.sop_function = await requireSbUuids("sop_functions", [data.sop_function_id], "sop_function");
   }
   const updated = await sbUpdateByPublicId<Row>(TABLE, id, patch);
   return mapRow(updated);

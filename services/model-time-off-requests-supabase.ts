@@ -3,7 +3,7 @@
  */
 import {
   publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, sbSelectByPublicId, sbUuidsForAirtableIds, type SbRow,
+  sbSelectAll, sbSelectByPublicId, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelTimeOffRequest } from "@/types";
 
@@ -63,7 +63,7 @@ export async function getModelTimeOffRequestsForRange(
 export async function createModelTimeOffRequest(input: {
   model_id: string; model_name: string; start_date: string; end_date: string; reason: string;
 }): Promise<ModelTimeOffRequest> {
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const modelUuids = await requireSbUuids("modelss", [input.model_id], "model");
   const row = await sbInsert<Row>(TABLE, {
     request_id: `timeoff_model_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     model: modelUuids,

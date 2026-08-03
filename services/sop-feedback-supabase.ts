@@ -3,7 +3,7 @@
  */
 import {
   publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
-  sbSelectAll, sbUuidsForAirtableIds, type SbRow,
+  sbSelectAll, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { SopFeedback, SopFeedbackHelpful } from "@/types";
 import type { CreateSopFeedbackInput } from "./sop-feedback";
@@ -46,11 +46,16 @@ export async function createSopFeedback(input: CreateSopFeedbackInput): Promise<
   const existing = mapped.find((r) => r.user_id === userId && r.sop_function_id === functionId && r.sop_role_id === roleId);
   if (existing) return existing;
   const now = new Date().toISOString();
+  const [user, sop_function, sop_role] = await Promise.all([
+    requireSbUuids("users", [userId], "user"),
+    requireSbUuids("sop_functions", [functionId], "sop_function"),
+    requireSbUuids("sop_roles", [roleId], "sop_role"),
+  ]);
   const row = await sbInsert<Row>(TABLE, {
     feedback_id: genId(),
-    user: await sbUuidsForAirtableIds("users", [userId]),
-    sop_function: await sbUuidsForAirtableIds("sop_functions", [functionId]),
-    sop_role: await sbUuidsForAirtableIds("sop_roles", [roleId]),
+    user,
+    sop_function,
+    sop_role,
     helpful: input.helpful,
     comment: (input.comment ?? "").trim(),
     created_at: now,

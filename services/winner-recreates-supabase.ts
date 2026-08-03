@@ -28,15 +28,16 @@ function defaultCount(tier: string): number {
 
 export async function listWinnerLibrary(): Promise<WinnerLibraryEntry[]> {
   const sb = getSupabaseServiceClient();
+  // winner_tier is nullable text — empty strings aren't stored; filter null only.
   const { data, error } = await sb
     .from("winner_videos")
     .select("*")
     .neq("status", "rejected")
-    .not("winner_tier", "is", null)
-    .neq("winner_tier", "");
+    .not("winner_tier", "is", null);
   if (error) throw new Error(`listWinnerLibrary: ${error.message}`);
   const recs = (data ?? []) as unknown as WinnerRow[];
   return recs
+    .filter((f) => (f.winner_tier ?? "").toString().trim() !== "")
     .map((f) => {
       const tier = (f.winner_tier === "super_winner" ? "super_winner" : "winner") as "winner" | "super_winner";
       const cnt = Number(f.recreate_count);

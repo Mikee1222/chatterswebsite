@@ -3,12 +3,13 @@
  */
 import {
   publicId,
+  sbAirtableIdsForUuids,
   sbDeleteByPublicId,
-  sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { devLog } from "@/lib/dev-log";
@@ -57,11 +58,36 @@ function isoOrEmpty(v: unknown): string {
   return s.includes("T") ? s : s.replace(" ", "T");
 }
 
-async function mapRow(row: Row): Promise<ModelScheduleItem> {
+async function resolveUuidMap(table: string, uuidLists: (string[] | null | undefined)[]): Promise<Map<string, string>> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const list of uuidLists) {
+    for (const id of list ?? []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  if (!unique.length) return new Map();
+  const resolved = await sbAirtableIdsForUuids(table, unique);
+  const map = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    map.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return map;
+}
+
+function mapRowSync(
+  row: Row,
+  modelAtByUuid: Map<string, string>,
+  crAtByUuid: Map<string, string>
+): ModelScheduleItem {
+  const modelUuid = row.model?.find(Boolean);
   const model_id =
-    (await sbFirstLinkedAirtableId("modelss", row.model)) ||
+    (modelUuid ? modelAtByUuid.get(modelUuid) || modelUuid : "") ||
     String(row.model_id ?? "").trim() ||
     "";
+  const crUuid = row.linked_custom_request?.find(Boolean);
   return {
     id: publicId(row),
     model_id,
@@ -79,10 +105,30 @@ async function mapRow(row: Row): Promise<ModelScheduleItem> {
     instructions: row.instructions ?? "",
     instructions_en: row.instructions_en ?? null,
     instructions_es: row.instructions_es ?? null,
-    linked_custom_request_id: (await sbFirstLinkedAirtableId("custom_requests", row.linked_custom_request)) ?? null,
+    linked_custom_request_id: crUuid ? crAtByUuid.get(crUuid) || crUuid : null,
     created_at: isoOrEmpty(row.created_at),
     updated_at: isoOrEmpty(row.updated_at),
   };
+}
+
+async function mapRows(rows: Row[]): Promise<ModelScheduleItem[]> {
+  if (!rows.length) return [];
+  const [modelAtByUuid, crAtByUuid] = await Promise.all([
+    resolveUuidMap(
+      "modelss",
+      rows.map((r) => r.model)
+    ),
+    resolveUuidMap(
+      "custom_requests",
+      rows.map((r) => r.linked_custom_request)
+    ),
+  ]);
+  return rows.map((r) => mapRowSync(r, modelAtByUuid, crAtByUuid));
+}
+
+async function mapRow(row: Row): Promise<ModelScheduleItem> {
+  const [mapped] = await mapRows([row]);
+  return mapped;
 }
 
 export async function listModelScheduleItems(
@@ -91,7 +137,7 @@ export async function listModelScheduleItems(
 ): Promise<ModelScheduleItem[]> {
   if (!modelId) return [];
   const rows = await sbSelectAll<Row>(TABLE);
-  let mapped = await Promise.all(rows.map(mapRow));
+  let mapped = await mapRows(rows);
   mapped = mapped.filter((r) => r.model_id === modelId);
   if (opts?.fromDate) mapped = mapped.filter((r) => r.date >= opts.fromDate!);
   if (opts?.toDate) mapped = mapped.filter((r) => r.date <= opts.toDate!);
@@ -104,7 +150,7 @@ export async function listAllModelScheduleItemsInRange(opts?: {
   toDate?: string;
 }): Promise<ModelScheduleItem[]> {
   const rows = await sbSelectAll<Row>(TABLE);
-  let mapped = await Promise.all(rows.map(mapRow));
+  let mapped = await mapRows(rows);
   if (opts?.fromDate) mapped = mapped.filter((r) => r.date >= opts.fromDate!);
   if (opts?.toDate) mapped = mapped.filter((r) => r.date <= opts.toDate!);
   mapped.sort((a, b) => a.date.localeCompare(b.date) || (a.start_time ?? "").localeCompare(b.start_time ?? ""));
@@ -119,8 +165,10 @@ export async function createModelScheduleItemForCustom(
   input: CreateModelScheduleCustomInput
 ): Promise<ModelScheduleItem> {
   const date = input.date.trim().slice(0, 10);
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_record_id]);
-  const crUuids = await sbUuidsForAirtableIds("custom_requests", [input.custom_request_id]);
+  const [modelUuids, crUuids] = await Promise.all([
+    requireSbUuids("modelss", [input.model_record_id], "model"),
+    requireSbUuids("custom_requests", [input.custom_request_id], "custom_request"),
+  ]);
   const payload: Record<string, unknown> = {
     model: modelUuids,
     title: input.title.trim() || "Custom",
@@ -135,10 +183,12 @@ export async function createModelScheduleItemForCustom(
   const mn = input.model_name?.trim();
   if (mn) payload.model_name = mn;
   if (input.chatter_record_id?.trim()) {
-    payload.chatter = await sbUuidsForAirtableIds("users", [input.chatter_record_id.trim()]);
+    const chatter = await sbUuidsForAirtableIds("users", [input.chatter_record_id.trim()]);
+    if (chatter.length) payload.chatter = chatter;
   }
   if (input.created_by_record_id?.trim()) {
-    payload.created_by = await sbUuidsForAirtableIds("users", [input.created_by_record_id.trim()]);
+    const created_by = await sbUuidsForAirtableIds("users", [input.created_by_record_id.trim()]);
+    if (created_by.length) payload.created_by = created_by;
   }
   const row = await sbInsert<Row>(TABLE, payload);
   return mapRow(row);
@@ -215,9 +265,17 @@ export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyn
     if (name) nameByModelId.set(id, name);
   });
   const creator = input.assigned_by_ids?.map((id) => id.trim()).find(Boolean);
+  let chatterUuids: string[] = [];
+  let createdByUuids: string[] = [];
+  if (vaChatterId) {
+    chatterUuids = await sbUuidsForAirtableIds("users", [vaChatterId]);
+  }
+  if (creator) {
+    createdByUuids = await sbUuidsForAirtableIds("users", [creator]);
+  }
   for (const modelId of modelIds) {
     try {
-      const modelUuids = await sbUuidsForAirtableIds("modelss", [modelId]);
+      const modelUuids = await requireSbUuids("modelss", [modelId], "model");
       const payload: Record<string, unknown> = {
         model: modelUuids,
         title: input.title.trim() || "VA task",
@@ -230,8 +288,8 @@ export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyn
       };
       const modelName = nameByModelId.get(modelId);
       if (modelName) payload.model_name = modelName;
-      if (vaChatterId) payload.chatter = await sbUuidsForAirtableIds("users", [vaChatterId]);
-      if (creator) payload.created_by = await sbUuidsForAirtableIds("users", [creator]);
+      if (chatterUuids.length) payload.chatter = chatterUuids;
+      if (createdByUuids.length) payload.created_by = createdByUuids;
       const row = await sbInsert<Row>(TABLE, payload);
       await notifyModelScheduleCreated(modelId, await mapRow(row), creator ?? null);
     } catch (err) {
@@ -251,7 +309,7 @@ export async function createModelScheduleTimeOff(input: {
   const start = input.start_date.trim().slice(0, 10);
   const end = input.end_date.trim().slice(0, 10);
   const reason = input.reason.trim() || "Time off";
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_record_id]);
+  const modelUuids = await requireSbUuids("modelss", [input.model_record_id], "model");
   const payload: Record<string, unknown> = {
     model: modelUuids,
     title: "Time off",
@@ -262,7 +320,8 @@ export async function createModelScheduleTimeOff(input: {
   };
   if (input.model_name?.trim()) payload.model_name = input.model_name.trim();
   if (input.created_by_record_id?.trim()) {
-    payload.created_by = await sbUuidsForAirtableIds("users", [input.created_by_record_id.trim()]);
+    const created_by = await sbUuidsForAirtableIds("users", [input.created_by_record_id.trim()]);
+    if (created_by.length) payload.created_by = created_by;
   }
   const row = await sbInsert<Row>(TABLE, payload);
   return mapRow(row);

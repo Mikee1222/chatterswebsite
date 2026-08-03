@@ -3,7 +3,7 @@
  */
 import {
   publicId, sbFirstLinkedAirtableId, sbInsert, sbSelectAll,
-  sbUpdateByPublicId, sbUuidsForAirtableIds, type SbRow,
+  sbUpdateByPublicId, requireSbUuids, type SbRow,
 } from "@/lib/supabase-data";
 import type { ModelExpenseRequest, ModelExpenseRequestStatus, ModelExpenseRequestType } from "@/types";
 
@@ -64,7 +64,7 @@ export async function createModelExpenseRequest(input: {
   assignment_title: string; type: ModelExpenseRequestType; airbnb_link: string; notes?: string;
 }): Promise<ModelExpenseRequest> {
   const now = new Date().toISOString();
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const modelUuids = await requireSbUuids("modelss", [input.model_id], "model");
   const row = await sbInsert<Row>(TABLE, {
     request_id: `mer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
     model_id: modelUuids,

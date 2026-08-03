@@ -10,6 +10,7 @@ import {
   sbSelectByPublicId,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import {
@@ -133,7 +134,7 @@ export async function createWeeklyAvailabilityRequestVa(
   fields: CreateWeeklyAvailabilityRequestVaFields
 ): Promise<WeeklyAvailabilityRequest> {
   const requestId = `avail_va_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-  const chatterUuids = await sbUuidsForAirtableIds("users", fields.chatter ?? []);
+  const chatterUuids = await requireSbUuids("users", fields.chatter ?? [], "chatter");
   const payload: Record<string, unknown> = {
     request_id: requestId,
     week_start: fields.week_start,

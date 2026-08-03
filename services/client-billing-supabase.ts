@@ -16,6 +16,7 @@ import {
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   type SbRow,
+  requireSbUuids,
 } from "@/lib/supabase-data";
 import { urlsToAttachments } from "@/lib/supabase-signed-url";
 import { listAllModelss } from "@/services/modelss";
@@ -125,18 +126,39 @@ function feeFromParts(turnover: number, feePercent: number): number {
   return turnover * (feePercent / 100);
 }
 
-async function mapBillingCycle(
+async function resolveUuidMap(table: string, uuidLists: (string[] | null | undefined)[]): Promise<Map<string, string>> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const list of uuidLists) {
+    for (const id of list ?? []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  if (!unique.length) return new Map();
+  const resolved = await sbAirtableIdsForUuids(table, unique);
+  const map = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    map.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return map;
+}
+
+function mapLinked(ids: string[] | null | undefined, atByUuid: Map<string, string>): string[] {
+  return (ids ?? []).map((id) => atByUuid.get(id) || id).filter(Boolean);
+}
+
+function mapBillingCycleSync(
   row: CycleRow,
+  clientAtByUuid: Map<string, string>,
+  modelAtByUuid: Map<string, string>,
   revenueTotals?: { total_fee_usd?: number; total_turnover_usd?: number; amount_due?: number }
-): Promise<BillingCycleRecord> {
-  const [client, model] = await Promise.all([
-    sbAirtableIdsForUuids(TABLES.clients, row.client),
-    sbAirtableIdsForUuids(TABLES.modelss, row.model),
-  ]);
+): BillingCycleRecord {
   const amount = safeNum(row.amount) ?? 0;
   return {
     id: publicId(row),
-    client,
+    client: mapLinked(row.client, clientAtByUuid),
     kind: (row.kind as BillingCycleKind) ?? "chatting_weekly",
     period_start: String(row.period_start ?? "").slice(0, 10),
     period_end: String(row.period_end ?? "").slice(0, 10),
@@ -144,7 +166,7 @@ async function mapBillingCycle(
     amount,
     currency: String(row.currency ?? "USD"),
     status: (row.status as BillingCycleStatus) ?? "draft",
-    model,
+    model: mapLinked(row.model, modelAtByUuid),
     model_turnover: safeNum(row.model_turnover) ?? undefined,
     client_percentage_snapshot: safeNum(row.client_percentage_snapshot) ?? undefined,
     amount_due: revenueTotals?.amount_due ?? amount,
@@ -156,12 +178,37 @@ async function mapBillingCycle(
   };
 }
 
-async function mapBillingCycleRevenue(row: RevenueRow): Promise<BillingCycleRevenueRecord> {
-  const [billing_cycle, client, model] = await Promise.all([
-    sbAirtableIdsForUuids(TABLES.billing_cycles, row.billing_cycle),
-    sbAirtableIdsForUuids(TABLES.clients, row.client),
-    sbAirtableIdsForUuids(TABLES.modelss, row.model),
+async function mapBillingCycles(
+  rows: CycleRow[],
+  totalsByPublicId?: Map<string, { total_fee_usd?: number; total_turnover_usd?: number; amount_due?: number }>
+): Promise<BillingCycleRecord[]> {
+  if (!rows.length) return [];
+  const [clientAtByUuid, modelAtByUuid] = await Promise.all([
+    resolveUuidMap(TABLES.clients, rows.map((r) => r.client)),
+    resolveUuidMap(TABLES.modelss, rows.map((r) => r.model)),
   ]);
+  return rows.map((r) =>
+    mapBillingCycleSync(r, clientAtByUuid, modelAtByUuid, totalsByPublicId?.get(publicId(r)))
+  );
+}
+
+async function mapBillingCycle(
+  row: CycleRow,
+  revenueTotals?: { total_fee_usd?: number; total_turnover_usd?: number; amount_due?: number }
+): Promise<BillingCycleRecord> {
+  const totals = revenueTotals
+    ? new Map([[publicId(row), revenueTotals]])
+    : undefined;
+  const [mapped] = await mapBillingCycles([row], totals);
+  return mapped;
+}
+
+function mapBillingCycleRevenueSync(
+  row: RevenueRow,
+  cycleAtByUuid: Map<string, string>,
+  clientAtByUuid: Map<string, string>,
+  modelAtByUuid: Map<string, string>
+): BillingCycleRevenueRecord {
   const turnover_usd = safeNum(row.turnover_usd) ?? 0;
   const fee_percent = safeNum(row.fee_percent) ?? 0;
   const statusVal = row.status;
@@ -171,9 +218,9 @@ async function mapBillingCycleRevenue(row: RevenueRow): Promise<BillingCycleReve
       : undefined;
   return {
     id: publicId(row),
-    billing_cycle,
-    client,
-    model,
+    billing_cycle: mapLinked(row.billing_cycle, cycleAtByUuid),
+    client: mapLinked(row.client, clientAtByUuid),
+    model: mapLinked(row.model, modelAtByUuid),
     turnover_usd,
     fee_percent,
     fee_usd: feeFromParts(turnover_usd, fee_percent),
@@ -182,28 +229,53 @@ async function mapBillingCycleRevenue(row: RevenueRow): Promise<BillingCycleReve
   };
 }
 
-async function mapPaymentSubmission(row: PaymentRow): Promise<PaymentSubmissionRecord> {
-  const [billing_cycle, client, selected_payment_method] = await Promise.all([
-    sbAirtableIdsForUuids(TABLES.billing_cycles, row.billing_cycle),
-    sbAirtableIdsForUuids(TABLES.clients, row.client),
-    sbAirtableIdsForUuids("payment_methods", row.selected_payment_method),
+async function mapBillingCycleRevenues(rows: RevenueRow[]): Promise<BillingCycleRevenueRecord[]> {
+  if (!rows.length) return [];
+  const [cycleAtByUuid, clientAtByUuid, modelAtByUuid] = await Promise.all([
+    resolveUuidMap(TABLES.billing_cycles, rows.map((r) => r.billing_cycle)),
+    resolveUuidMap(TABLES.clients, rows.map((r) => r.client)),
+    resolveUuidMap(TABLES.modelss, rows.map((r) => r.model)),
   ]);
-  const proof_attachment = await urlsToAttachments(row.proof_attachment);
-  return {
-    id: publicId(row),
-    billing_cycle,
-    client,
-    selected_payment_method,
-    submitted_amount: safeNum(row.submitted_amount) ?? 0,
-    submitted_currency: String(row.submitted_currency ?? ""),
-    submitted_datetime: String(row.submitted_datetime ?? ""),
-    reference_id: row.reference_id ?? undefined,
-    note: row.note ?? undefined,
-    proof_url: row.proof_url ?? undefined,
-    proof_attachment: proof_attachment.length ? proof_attachment : undefined,
-    status: (row.status as PaymentSubmissionStatus) ?? "pending_review",
-    admin_note: row.admin_note ?? undefined,
-  };
+  return rows.map((r) => mapBillingCycleRevenueSync(r, cycleAtByUuid, clientAtByUuid, modelAtByUuid));
+}
+
+async function mapBillingCycleRevenue(row: RevenueRow): Promise<BillingCycleRevenueRecord> {
+  const [mapped] = await mapBillingCycleRevenues([row]);
+  return mapped;
+}
+
+async function mapPaymentSubmissions(rows: PaymentRow[]): Promise<PaymentSubmissionRecord[]> {
+  if (!rows.length) return [];
+  const [cycleAtByUuid, clientAtByUuid, methodAtByUuid] = await Promise.all([
+    resolveUuidMap(TABLES.billing_cycles, rows.map((r) => r.billing_cycle)),
+    resolveUuidMap(TABLES.clients, rows.map((r) => r.client)),
+    resolveUuidMap("payment_methods", rows.map((r) => r.selected_payment_method)),
+  ]);
+  return Promise.all(
+    rows.map(async (row) => {
+      const proof_attachment = await urlsToAttachments(row.proof_attachment);
+      return {
+        id: publicId(row),
+        billing_cycle: mapLinked(row.billing_cycle, cycleAtByUuid),
+        client: mapLinked(row.client, clientAtByUuid),
+        selected_payment_method: mapLinked(row.selected_payment_method, methodAtByUuid),
+        submitted_amount: safeNum(row.submitted_amount) ?? 0,
+        submitted_currency: String(row.submitted_currency ?? ""),
+        submitted_datetime: String(row.submitted_datetime ?? ""),
+        reference_id: row.reference_id ?? undefined,
+        note: row.note ?? undefined,
+        proof_url: row.proof_url ?? undefined,
+        proof_attachment: proof_attachment.length ? proof_attachment : undefined,
+        status: (row.status as PaymentSubmissionStatus) ?? "pending_review",
+        admin_note: row.admin_note ?? undefined,
+      };
+    })
+  );
+}
+
+async function mapPaymentSubmission(row: PaymentRow): Promise<PaymentSubmissionRecord> {
+  const [mapped] = await mapPaymentSubmissions([row]);
+  return mapped;
 }
 
 function monthKeyFromCycle(cycle: BillingCycleRecord): string | null {
@@ -275,10 +347,14 @@ export async function getClientModelsForBilling(clientId: string): Promise<Clien
     listAllModelss(),
   ]);
   const modelNameById = new Map(models.map((m) => [m.id, m.model_name]));
+  const [clientAtByUuid, modelAtByUuid] = await Promise.all([
+    resolveUuidMap(TABLES.clients, assignments.map((r) => r.client)),
+    resolveUuidMap(TABLES.modelss, assignments.map((r) => r.model)),
+  ]);
   const out: ClientModelRecord[] = [];
   for (const row of assignments) {
-    const client = await sbAirtableIdsForUuids(TABLES.clients, row.client);
-    const model = await sbAirtableIdsForUuids(TABLES.modelss, row.model);
+    const client = mapLinked(row.client, clientAtByUuid);
+    const model = mapLinked(row.model, modelAtByUuid);
     if (!client.includes(clientId)) continue;
     const modelId = model[0];
     out.push({
@@ -295,7 +371,7 @@ export async function getAllBillingCycles(month?: string): Promise<BillingCycleR
   const rows = await sbSelectAll<CycleRow>(TABLES.billing_cycles);
   rows.sort((a, b) => String(b.period_start ?? "").localeCompare(String(a.period_start ?? "")));
   const allRevenues = await sbSelectAll<RevenueRow>(TABLES.billing_cycle_revenues);
-  const mappedRevenues = await Promise.all(allRevenues.map(mapBillingCycleRevenue));
+  const mappedRevenues = await mapBillingCycleRevenues(allRevenues);
   const byCycle = new Map<string, BillingCycleRevenueRecord[]>();
   for (const r of mappedRevenues) {
     for (const cid of r.billing_cycle) {
@@ -304,14 +380,16 @@ export async function getAllBillingCycles(month?: string): Promise<BillingCycleR
       byCycle.set(cid, list);
     }
   }
-  const cycles = await Promise.all(
-    rows.map(async (row) => {
-      const id = publicId(row);
-      const revs = byCycle.get(id) ?? [];
-      const totals = await resolveCycleTotals(row.id, revs);
-      return mapBillingCycle(row, totals);
-    })
-  );
+  const totalsByPublicId = new Map<
+    string,
+    { total_fee_usd?: number; total_turnover_usd?: number; amount_due?: number }
+  >();
+  for (const row of rows) {
+    const id = publicId(row);
+    const revs = byCycle.get(id) ?? [];
+    totalsByPublicId.set(id, await resolveCycleTotals(row.id, revs));
+  }
+  const cycles = await mapBillingCycles(rows, totalsByPublicId);
   if (!month) return cycles;
   return cycles.filter((c) => monthKeyFromCycle(c) === month);
 }
@@ -326,7 +404,7 @@ export async function getBillingCycleById(cycleId: string): Promise<BillingCycle
 
 export async function getBillingCycleRevenues(cycleId: string): Promise<BillingCycleRevenueRecord[]> {
   const all = await sbSelectAll<RevenueRow>(TABLES.billing_cycle_revenues);
-  const mapped = await Promise.all(all.map(mapBillingCycleRevenue));
+  const mapped = await mapBillingCycleRevenues(all);
   return mapped
     .filter((r) => r.billing_cycle.includes(cycleId))
     .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
@@ -338,7 +416,7 @@ export async function getBillingCycleRevenuesForCycles(
   if (cycleIds.length === 0) return [];
   const set = new Set(cycleIds);
   const all = await sbSelectAll<RevenueRow>(TABLES.billing_cycle_revenues);
-  const mapped = await Promise.all(all.map(mapBillingCycleRevenue));
+  const mapped = await mapBillingCycleRevenues(all);
   return mapped
     .filter((r) => r.billing_cycle.some((id) => set.has(id)))
     .sort((a, b) => String(a.created_at ?? "").localeCompare(String(b.created_at ?? "")));
@@ -365,10 +443,10 @@ export async function getBillingCycleClientCounts(
 
 export async function createBillingCycle(data: CreateBillingCycleInput): Promise<BillingCycleRecord> {
   const clientUuids = data.client?.length
-    ? await sbUuidsForAirtableIds(TABLES.clients, data.client)
+    ? await requireSbUuids(TABLES.clients, data.client, "client")
     : [];
   const modelUuids = data.model?.length
-    ? await sbUuidsForAirtableIds(TABLES.modelss, data.model)
+    ? await requireSbUuids(TABLES.modelss, data.model, "model")
     : [];
   const row: Record<string, unknown> = {
     client: clientUuids,
@@ -419,10 +497,10 @@ export async function updateBillingCycle(
 ): Promise<BillingCycleRecord> {
   const patch: Record<string, unknown> = {};
   if (data.client !== undefined) {
-    patch.client = await sbUuidsForAirtableIds(TABLES.clients, data.client);
+    patch.client = await requireSbUuids(TABLES.clients, data.client, "client");
   }
   if (data.model !== undefined) {
-    patch.model = await sbUuidsForAirtableIds(TABLES.modelss, data.model);
+    patch.model = await requireSbUuids(TABLES.modelss, data.model, "model");
   }
   if (data.kind !== undefined) patch.kind = data.kind;
   if (data.period_start !== undefined) patch.period_start = data.period_start;
@@ -537,9 +615,9 @@ export async function createBillingCycleRevenue(data: {
   status?: BillingCycleRevenueStatus;
 }): Promise<BillingCycleRevenueRecord> {
   const [billing_cycle, client, model] = await Promise.all([
-    sbUuidsForAirtableIds(TABLES.billing_cycles, data.billing_cycle),
-    sbUuidsForAirtableIds(TABLES.clients, data.client),
-    sbUuidsForAirtableIds(TABLES.modelss, data.model),
+    requireSbUuids(TABLES.billing_cycles, data.billing_cycle, "billing_cycle"),
+    requireSbUuids(TABLES.clients, data.client, "client"),
+    requireSbUuids(TABLES.modelss, data.model, "model"),
   ]);
   const inserted = await sbInsert<RevenueRow>(TABLES.billing_cycle_revenues, {
     billing_cycle,
@@ -628,7 +706,7 @@ export async function getAllPaymentSubmissions(
   filters?: PaymentSubmissionFilters
 ): Promise<PaymentSubmissionRecord[]> {
   const rows = await sbSelectAll<PaymentRow>(TABLES.payment_submissions);
-  let mapped = await Promise.all(rows.map(mapPaymentSubmission));
+  let mapped = await mapPaymentSubmissions(rows);
   if (filters?.status) mapped = mapped.filter((r) => r.status === filters.status);
   if (filters?.clientId) mapped = mapped.filter((r) => r.client.includes(filters.clientId!));
   mapped.sort((a, b) => String(b.submitted_datetime).localeCompare(String(a.submitted_datetime)));

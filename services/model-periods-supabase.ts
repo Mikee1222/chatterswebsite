@@ -12,7 +12,7 @@ import {
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
-  sbUuidsForAirtableIds,
+  requireSbUuids,
   type SbRow,
 } from "@/lib/supabase-data";
 import { addDays } from "@/lib/weekly-program";
@@ -112,7 +112,7 @@ export async function createPeriod(data: CreateModelPeriodInput): Promise<ModelP
     (data.start_date && data.end_date
       ? inclusiveDaySpan(data.start_date, data.end_date)
       : null);
-  const modelUuids = await sbUuidsForAirtableIds("modelss", [data.model_id]);
+  const modelUuids = await requireSbUuids("modelss", [data.model_id], "model");
   const row = await sbInsert<Row>(TABLE, {
     model_id: modelUuids,
     start_date: data.start_date,
