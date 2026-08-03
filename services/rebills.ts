@@ -2,8 +2,8 @@
  * Dual-backend rebills CRUD (chatter rebill submissions).
  */
 import { isSupabaseBackend } from "@/lib/data-backend";
-import { createRecord, listAllRecords, updateRecord } from "@/lib/airtable-server";
-import { publicId, sbInsert, sbSelectAll, sbUpdateByPublicId, type SbRow } from "@/lib/supabase-data";
+import { createRecord, listAllRecords, updateRecord, getRecord } from "@/lib/airtable-server";
+import { publicId, sbInsert, sbSelectAll, sbSelectByPublicId, sbUpdateByPublicId, type SbRow } from "@/lib/supabase-data";
 
 const TABLE = "rebills";
 
@@ -122,11 +122,64 @@ export async function listAllRebills(): Promise<RebillRecord[]> {
 
 export async function updateRebill(
   id: string,
-  fields: Partial<{ status: string; checked: boolean }>
+  fields: Partial<{ status: string; checked: boolean; admin_notes: string }>
 ): Promise<void> {
   if (isSupabaseBackend()) {
     await sbUpdateByPublicId(TABLE, id, fields);
     return;
   }
   await updateRecord(TABLE, id, fields);
+}
+
+
+export async function getRebillById(id: string): Promise<RebillRecord | null> {
+  if (isSupabaseBackend()) {
+    const r = await sbSelectByPublicId<
+      SbRow & {
+        rebill_id?: string | null;
+        chatter_id?: string | null;
+        chatter_name?: string | null;
+        model_id?: string | null;
+        model_name?: string | null;
+        sub_username?: string | null;
+        sub_name?: string | null;
+        sub_type?: string | null;
+        status?: string | null;
+        screenshot?: string[] | null;
+        created_at?: string | null;
+      }
+    >(TABLE, id);
+    if (!r) return null;
+    return {
+      id: publicId(r),
+      rebill_id: r.rebill_id ?? "",
+      chatter_id: r.chatter_id ?? "",
+      chatter_name: r.chatter_name ?? "",
+      model_id: r.model_id ?? "",
+      model_name: r.model_name ?? "",
+      sub_username: r.sub_username ?? r.sub_name ?? "",
+      sub_type: r.sub_type ?? "paid",
+      status: r.status ?? "pending",
+      screenshot: r.screenshot ?? [],
+      created_at: r.created_at ?? null,
+    };
+  }
+  try {
+    const rec = await getRecord<Record<string, unknown>>(TABLE, id);
+    return {
+      id: rec.id,
+      rebill_id: String(rec.fields.rebill_id ?? ""),
+      chatter_id: String(rec.fields.chatter_id ?? ""),
+      chatter_name: String(rec.fields.chatter_name ?? ""),
+      model_id: String(rec.fields.model_id ?? ""),
+      model_name: String(rec.fields.model_name ?? ""),
+      sub_username: String(rec.fields.sub_username ?? ""),
+      sub_type: String(rec.fields.sub_type ?? "paid"),
+      status: String(rec.fields.status ?? "pending"),
+      screenshot: [],
+      created_at: typeof rec.fields.created_at === "string" ? rec.fields.created_at : null,
+    };
+  } catch {
+    return null;
+  }
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { updateRecord } from "@/lib/airtable-server";
+import { updateFeedback } from "@/services/feedback";
 
 const ALLOWED_STATUS = new Set(["new", "in_review", "resolved", "wont_fix"]);
 
@@ -12,14 +12,13 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
 
   const { id } = await ctx.params;
   const body = (await req.json().catch(() => ({}))) as { status?: unknown; admin_notes?: unknown };
-  const allowed: Record<string, unknown> = {};
+  const allowed: { status?: string; admin_notes?: string } = {};
   if (typeof body.status === "string" && ALLOWED_STATUS.has(body.status)) {
     allowed.status = body.status;
   }
   if (body.admin_notes !== undefined) {
     allowed.admin_notes = typeof body.admin_notes === "string" ? body.admin_notes : String(body.admin_notes ?? "");
   }
-  await updateRecord("feedback", id, allowed);
+  await updateFeedback(id, allowed);
   return NextResponse.json({ success: true });
 }
-

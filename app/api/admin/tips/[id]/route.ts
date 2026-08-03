@@ -3,16 +3,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { getRecord, updateRecord } from "@/lib/airtable-server";
+import { getTipById, updateTip } from "@/services/tips";
 import { ROUTES } from "@/lib/routes";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-
-type TipFields = {
-  status?: string;
-  chatter_id?: string;
-  chatter_name?: string;
-};
 
 const bodySchema = z.object({
   status: z.enum(["pending", "verified", "rejected"]).optional(),
@@ -45,19 +39,19 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const existing = await getRecord<TipFields>("tips", id);
+  const existing = await getTipById(id);
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const prevStatus = String(existing.fields?.status ?? "pending").trim();
+  const prevStatus = String(existing.status ?? "pending").trim();
 
-  const fields: Record<string, unknown> = {};
+  const fields: { status?: string; admin_notes?: string } = {};
   if (status !== undefined) fields.status = status;
   if (admin_notes !== undefined) fields.admin_notes = admin_notes;
 
-  const record = await updateRecord<Record<string, unknown>>("tips", id, fields);
+  await updateTip(id, fields);
 
-  const chatterId = String(existing.fields?.chatter_id ?? "").trim();
+  const chatterId = String(existing.chatter_id ?? "").trim();
   if (chatterId && status !== undefined && status !== prevStatus) {
     if (status === "verified") {
       await notify({
@@ -88,6 +82,8 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   revalidatePath(ROUTES.admin.rebillsTips);
   revalidatePath(ROUTES.chatter.myRebills);
 
-  const chatterName = String(existing.fields?.chatter_name ?? "").trim();
-  return NextResponse.json({ success: true, record, chatter_name: chatterName || undefined });
+  return NextResponse.json({
+    success: true,
+    chatter_name: existing.chatter_name || undefined,
+  });
 }

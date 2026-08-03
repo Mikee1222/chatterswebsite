@@ -3,20 +3,13 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { getRecord, updateRecord } from "@/lib/airtable-server";
+import { getRebillById, updateRebill } from "@/services/rebills";
 import { ROUTES } from "@/lib/routes";
 import { awardPoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
 import { updateChallengeProgress } from "@/services/challenges";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
-
-type RebillFields = {
-  status?: string;
-  chatter_id?: string;
-  chatter_name?: string;
-  admin_notes?: string;
-};
 
 const bodySchema = z.object({
   status: z.enum(["pending", "verified", "rejected"]).optional(),
@@ -49,20 +42,20 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
     return NextResponse.json({ error: "No fields to update" }, { status: 400 });
   }
 
-  const existing = await getRecord<RebillFields>("rebills", id);
+  const existing = await getRebillById(id);
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const prevStatus = String(existing.fields?.status ?? "pending").trim();
-  const fields: Record<string, unknown> = {};
+  const prevStatus = String(existing.status ?? "pending").trim();
+  const fields: { status?: string; admin_notes?: string } = {};
   if (status !== undefined) fields.status = status;
   if (admin_notes !== undefined) fields.admin_notes = admin_notes;
 
-  const record = await updateRecord<Record<string, unknown>>("rebills", id, fields);
+  await updateRebill(id, fields);
 
   let pointsAwarded = 0;
-  const chatterId = String(existing.fields?.chatter_id ?? "").trim();
+  const chatterId = String(existing.chatter_id ?? "").trim();
   const transitioningToVerified = status === "verified" && prevStatus !== "verified";
   const transitioningToRejected = status === "rejected" && prevStatus !== "rejected";
   if (transitioningToVerified && chatterId) {
@@ -101,11 +94,9 @@ export async function PATCH(req: Request, ctx: { params: Promise<{ id: string }>
   revalidatePath(ROUTES.admin.rebillsTips);
   revalidatePath(ROUTES.chatter.myRebills);
 
-  const chatterName = String(existing.fields?.chatter_name ?? "").trim();
   return NextResponse.json({
     success: true,
-    record,
     points_awarded: pointsAwarded,
-    chatter_name: chatterName || undefined,
+    chatter_name: existing.chatter_name || undefined,
   });
 }

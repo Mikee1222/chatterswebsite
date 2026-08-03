@@ -120,7 +120,7 @@ export async function listAllTips(): Promise<TipRecord[]> {
 
 export async function updateTip(
   id: string,
-  fields: Partial<{ status: string; checked: boolean }>
+  fields: Partial<{ status: string; checked: boolean; admin_notes: string }>
 ): Promise<void> {
   if (isSupabaseBackend()) {
     await sbUpdateByPublicId(TABLE, id, fields);
@@ -130,6 +130,53 @@ export async function updateTip(
 }
 
 export async function getTipById(id: string): Promise<TipRecord | null> {
-  const all = await listAllTips();
-  return all.find((t) => t.id === id) ?? null;
+  if (isSupabaseBackend()) {
+    const r = await sbSelectByPublicId<
+      SbRow & {
+        tip_id?: string | null;
+        chatter_id?: string | null;
+        chatter_name?: string | null;
+        model_id?: string | null;
+        model_name?: string | null;
+        sub_username?: string | null;
+        amount_usd?: number | null;
+        amount?: number | null;
+        status?: string | null;
+        screenshot?: string[] | null;
+        created_at?: string | null;
+      }
+    >(TABLE, id);
+    if (!r) return null;
+    return {
+      id: publicId(r),
+      tip_id: r.tip_id ?? "",
+      chatter_id: r.chatter_id ?? "",
+      chatter_name: r.chatter_name ?? "",
+      model_id: r.model_id ?? "",
+      model_name: r.model_name ?? "",
+      sub_username: r.sub_username ?? "",
+      amount_usd: Number(r.amount_usd ?? r.amount ?? 0),
+      status: r.status ?? "pending",
+      screenshot: r.screenshot ?? [],
+      created_at: r.created_at ?? null,
+    };
+  }
+  try {
+    const rec = await getRecord<Record<string, unknown>>(TABLE, id);
+    return {
+      id: rec.id,
+      tip_id: String(rec.fields.tip_id ?? ""),
+      chatter_id: String(rec.fields.chatter_id ?? ""),
+      chatter_name: String(rec.fields.chatter_name ?? ""),
+      model_id: String(rec.fields.model_id ?? ""),
+      model_name: String(rec.fields.model_name ?? ""),
+      sub_username: String(rec.fields.sub_username ?? ""),
+      amount_usd: Number(rec.fields.amount_usd ?? 0),
+      status: String(rec.fields.status ?? "pending"),
+      screenshot: [],
+      created_at: typeof rec.fields.created_at === "string" ? rec.fields.created_at : null,
+    };
+  } catch {
+    return null;
+  }
 }

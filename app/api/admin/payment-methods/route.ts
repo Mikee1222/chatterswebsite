@@ -1,27 +1,28 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { createRecord, listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
-import { linkedRecordIds } from "@/lib/airtable-linked";
+import {
+  createPaymentMethod,
+  listAllPaymentMethods,
+} from "@/services/payment-methods";
 import type { PaymentMethodRecord } from "@/types/client-portal";
 
-function mapPaymentMethod(rec: AirtableRecord<Record<string, unknown>>): PaymentMethodRecord {
-  const f = rec.fields;
+function toRecord(m: Awaited<ReturnType<typeof listAllPaymentMethods>>[number]): PaymentMethodRecord {
   return {
-    id: rec.id,
-    type: String(f.type ?? ""),
-    label: String(f.label ?? ""),
-    details: String(f.details ?? ""),
-    network: typeof f.network === "string" ? f.network : undefined,
-    is_available: Boolean(f.is_available),
-    scope: String(f.scope ?? ""),
-    client: linkedRecordIds(f.client),
-    open_url: typeof f.open_url === "string" ? f.open_url : undefined,
-    fallback_url: typeof f.fallback_url === "string" ? f.fallback_url : undefined,
-    beneficiary: typeof f.beneficiary === "string" ? f.beneficiary : undefined,
-    iban: typeof f.iban === "string" ? f.iban : undefined,
-    bic: typeof f.bic === "string" ? f.bic : undefined,
-    wallet_address: typeof f.wallet_address === "string" ? f.wallet_address : undefined,
+    id: m.id,
+    type: m.type,
+    label: m.label,
+    details: m.details,
+    network: m.network || undefined,
+    is_available: m.is_available,
+    scope: m.scope,
+    client: [],
+    open_url: m.open_url || undefined,
+    fallback_url: m.fallback_url || undefined,
+    beneficiary: m.beneficiary || undefined,
+    iban: m.iban || undefined,
+    bic: m.bic || undefined,
+    wallet_address: m.wallet_address || undefined,
   };
 }
 
@@ -41,55 +42,24 @@ type PaymentMethodBody = {
   client?: string[];
 };
 
-function buildFields(body: PaymentMethodBody): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
-
-  if (typeof body.label === "string") fields.label = body.label.trim();
-  if (body.type === "Bank" || body.type === "Crypto") fields.type = body.type;
-  if (typeof body.details === "string") fields.details = body.details.trim();
-  if (typeof body.scope === "string") fields.scope = body.scope.trim();
-  if (typeof body.network === "string") fields.network = body.network.trim();
-  if (typeof body.is_available === "boolean") fields.is_available = body.is_available;
-  if (typeof body.beneficiary === "string") fields.beneficiary = body.beneficiary.trim();
-  if (typeof body.iban === "string") fields.iban = body.iban.trim();
-  if (typeof body.bic === "string") fields.bic = body.bic.trim();
-  if (typeof body.wallet_address === "string") fields.wallet_address = body.wallet_address.trim();
-  if (typeof body.open_url === "string") fields.open_url = body.open_url.trim();
-  if (typeof body.fallback_url === "string") fields.fallback_url = body.fallback_url.trim();
-
-  if (body.scope === "global") {
-    fields.client = [];
-  } else if (Array.isArray(body.client)) {
-    fields.client = body.client.filter((id) => typeof id === "string" && id.trim());
-  }
-
-  return fields;
-}
-
 function validateCreate(body: PaymentMethodBody): string | null {
   const label = typeof body.label === "string" ? body.label.trim() : "";
   if (!label) return "Label is required.";
-
   if (body.type !== "Bank" && body.type !== "Crypto") return "Type must be Bank or Crypto.";
-
   const scope = typeof body.scope === "string" ? body.scope.trim() : "";
   if (scope !== "global" && scope !== "client") return "Scope must be global or client.";
-
   if (scope === "client") {
     const clientIds = Array.isArray(body.client) ? body.client.filter(Boolean) : [];
     if (clientIds.length === 0) return "Select a client for client-specific methods.";
   }
-
   if (body.type === "Crypto") {
     const wallet = typeof body.wallet_address === "string" ? body.wallet_address.trim() : "";
     if (!wallet) return "Wallet address is required for crypto methods.";
   }
-
   if (body.type === "Bank") {
     const iban = typeof body.iban === "string" ? body.iban.trim() : "";
     if (!iban) return "IBAN is required for bank methods.";
   }
-
   return null;
 }
 
@@ -98,10 +68,8 @@ export async function GET() {
   if (!(await hasPermission(session, "payments:manage"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const records = await listAllRecords<Record<string, unknown>>("payment_methods", {
-      _caller: "admin/payment-methods:GET",
-    });
-    return NextResponse.json({ paymentMethods: records.map(mapPaymentMethod) });
+    const methods = await listAllPaymentMethods();
+    return NextResponse.json({ paymentMethods: methods.map(toRecord) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to list payment methods.";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -124,14 +92,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: validationError }, { status: 400 });
   }
 
-  const fields = buildFields({
-    ...body,
-    is_available: body.is_available ?? true,
-  });
-
   try {
-    const created = await createRecord<Record<string, unknown>>("payment_methods", fields);
-    return NextResponse.json({ paymentMethod: mapPaymentMethod(created) });
+    const created = await createPaymentMethod({
+      label: body.label?.trim() ?? "",
+      type: body.type ?? "",
+      details: body.details?.trim() ?? "",
+      scope: body.scope?.trim() ?? "",
+      network: body.network?.trim() ?? "",
+      is_available: body.is_available ?? true,
+      beneficiary: body.beneficiary?.trim() ?? "",
+      iban: body.iban?.trim() ?? "",
+      bic: body.bic?.trim() ?? "",
+      wallet_address: body.wallet_address?.trim() ?? "",
+      open_url: body.open_url?.trim() ?? "",
+      fallback_url: body.fallback_url?.trim() ?? "",
+    });
+    return NextResponse.json({ paymentMethod: toRecord(created) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to create payment method.";
     return NextResponse.json({ error: message }, { status: 500 });

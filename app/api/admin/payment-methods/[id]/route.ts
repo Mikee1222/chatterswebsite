@@ -2,30 +2,28 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import {
-  deleteRecord,
-  updateRecord,
-  type AirtableRecord,
-} from "@/lib/airtable-server";
-import { linkedRecordIds } from "@/lib/airtable-linked";
+  deletePaymentMethod,
+  updatePaymentMethod,
+  type PaymentMethodRow,
+} from "@/services/payment-methods";
 import type { PaymentMethodRecord } from "@/types/client-portal";
 
-function mapPaymentMethod(rec: AirtableRecord<Record<string, unknown>>): PaymentMethodRecord {
-  const f = rec.fields;
+function toRecord(m: PaymentMethodRow): PaymentMethodRecord {
   return {
-    id: rec.id,
-    type: String(f.type ?? ""),
-    label: String(f.label ?? ""),
-    details: String(f.details ?? ""),
-    network: typeof f.network === "string" ? f.network : undefined,
-    is_available: Boolean(f.is_available),
-    scope: String(f.scope ?? ""),
-    client: linkedRecordIds(f.client),
-    open_url: typeof f.open_url === "string" ? f.open_url : undefined,
-    fallback_url: typeof f.fallback_url === "string" ? f.fallback_url : undefined,
-    beneficiary: typeof f.beneficiary === "string" ? f.beneficiary : undefined,
-    iban: typeof f.iban === "string" ? f.iban : undefined,
-    bic: typeof f.bic === "string" ? f.bic : undefined,
-    wallet_address: typeof f.wallet_address === "string" ? f.wallet_address : undefined,
+    id: m.id,
+    type: m.type,
+    label: m.label,
+    details: m.details,
+    network: m.network || undefined,
+    is_available: m.is_available,
+    scope: m.scope,
+    client: [],
+    open_url: m.open_url || undefined,
+    fallback_url: m.fallback_url || undefined,
+    beneficiary: m.beneficiary || undefined,
+    iban: m.iban || undefined,
+    bic: m.bic || undefined,
+    wallet_address: m.wallet_address || undefined,
   };
 }
 
@@ -45,9 +43,8 @@ type PaymentMethodBody = {
   client?: string[];
 };
 
-function buildFields(body: PaymentMethodBody): Record<string, unknown> {
-  const fields: Record<string, unknown> = {};
-
+function buildFields(body: PaymentMethodBody): Partial<PaymentMethodRow> {
+  const fields: Partial<PaymentMethodRow> = {};
   if (typeof body.label === "string") fields.label = body.label.trim();
   if (body.type === "Bank" || body.type === "Crypto") fields.type = body.type;
   if (typeof body.details === "string") fields.details = body.details.trim();
@@ -60,13 +57,6 @@ function buildFields(body: PaymentMethodBody): Record<string, unknown> {
   if (typeof body.wallet_address === "string") fields.wallet_address = body.wallet_address.trim();
   if (typeof body.open_url === "string") fields.open_url = body.open_url.trim();
   if (typeof body.fallback_url === "string") fields.fallback_url = body.fallback_url.trim();
-
-  if (body.scope === "global") {
-    fields.client = [];
-  } else if (Array.isArray(body.client)) {
-    fields.client = body.client.filter((id) => typeof id === "string" && id.trim());
-  }
-
   return fields;
 }
 
@@ -113,8 +103,8 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
   }
 
   try {
-    const updated = await updateRecord<Record<string, unknown>>("payment_methods", id, fields);
-    return NextResponse.json({ paymentMethod: mapPaymentMethod(updated) });
+    const updated = await updatePaymentMethod(id, fields);
+    return NextResponse.json({ paymentMethod: toRecord(updated) });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to update payment method.";
     return NextResponse.json({ error: message }, { status: 500 });
@@ -131,7 +121,7 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ id: str
   }
 
   try {
-    await deleteRecord("payment_methods", id);
+    await deletePaymentMethod(id);
     return NextResponse.json({ success: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Failed to delete payment method.";
