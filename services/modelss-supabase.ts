@@ -186,6 +186,30 @@ export async function updateModel(
   return mapRow(updated);
 }
 
+export async function batchUpdateModels(
+  updates: { id: string; fields: Partial<Row & ModelssWriteFields> }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  await Promise.all(updates.map((u) => updateModel(u.id, u.fields)));
+}
+
+/** Free models among the given IDs. Keys match the lookup IDs passed in. */
+export async function getFreeModelsByRecordIds(
+  recordIds: string[]
+): Promise<Map<string, { model_name: string }>> {
+  const out = new Map<string, { model_name: string }>();
+  const unique = [...new Set(recordIds.filter((id) => id?.trim()))];
+  await Promise.all(
+    unique.map(async (id) => {
+      const m = await getModelById(id);
+      if (m && m.current_status === "free") {
+        out.set(id, { model_name: m.model_name ?? "" });
+      }
+    })
+  );
+  return out;
+}
+
 export type CreateModelFields = {
   model_name: string;
   platform?: string;

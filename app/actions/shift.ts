@@ -20,10 +20,17 @@ import {
   getActiveShiftByStaff,
   createShiftModel,
   updateShiftModel,
+  batchCreateShiftModels,
+  batchUpdateShiftModels,
+  deleteShiftModel,
 } from "@/services/shifts";
 import { getUserByAirtableId } from "@/services/users";
-import { updateModel, getModelById } from "@/services/modelss";
-import { batchCreateRecords, batchUpdateRecords, deleteRecord, listRecords } from "@/lib/airtable-server";
+import {
+  updateModel,
+  getModelById,
+  batchUpdateModels,
+  getFreeModelsByRecordIds,
+} from "@/services/modelss";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
@@ -33,35 +40,6 @@ import { notify, notifyAdmins, notifyByRoleConfig } from "@/services/notificatio
 import { awardShiftEndPoints } from "@/services/points-engine";
 
 const MAX_BREAK_MINUTES_PER_SHIFT = 45;
-
-const MODELSS_TABLE = "modelss";
-const SHIFT_MODELS_TABLE = "shift_models";
-
-/** Fewer Airtable reads than N×getRecord; chunked OR(RECORD_ID()…) stays under formula size limits. */
-async function fetchFreeModelsByRecordIds(recordIds: string[]): Promise<Map<string, { model_name: string }>> {
-  const out = new Map<string, { model_name: string }>();
-  const unique = [...new Set(recordIds.filter((id) => id?.trim()))];
-  const chunkSize = 25;
-  for (let i = 0; i < unique.length; i += chunkSize) {
-    const chunk = unique.slice(i, i + chunkSize);
-    const escaped = chunk.map((id) => id.replace(/"/g, '""'));
-    const orClause =
-      chunk.length === 1
-        ? `RECORD_ID()="${escaped[0]}"`
-        : `OR(${escaped.map((id) => `RECORD_ID()="${id}"`).join(",")})`;
-    const formula = `AND(${orClause}, {current_status}="free")`;
-    const { records } = await listRecords<{ model_name?: string }>(MODELSS_TABLE, {
-      filterByFormula: formula,
-      fields: ["model_name", "current_status"],
-      pageSize: 100,
-      _caller: "shift.fetchFreeModelsByRecordIds",
-    });
-    for (const r of records) {
-      out.set(r.id, { model_name: typeof r.fields?.model_name === "string" ? r.fields.model_name : "" });
-    }
-  }
-  return out;
-}
 import { broadcastRealtimeToAll } from "@/lib/realtime-broadcast";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import {
@@ -152,7 +130,7 @@ export async function startShiftWithModels(
       staff_role: "chatter",
     });
     const nowStr = now.toISOString();
-    const freeById = await fetchFreeModelsByRecordIds(modelRecordIds);
+    const freeById = await getFreeModelsByRecordIds(modelRecordIds);
     const eligible: { modelRecordId: string; model_name: string }[] = [];
     const seen = new Set<string>();
     for (const modelRecordId of modelRecordIds) {
@@ -165,8 +143,7 @@ export async function startShiftWithModels(
     const modelNames = eligible.map((e) => e.model_name).filter(Boolean);
 
     if (eligible.length > 0) {
-      await batchCreateRecords(
-        SHIFT_MODELS_TABLE,
+      await batchCreateShiftModels(
         eligible.map((e) => ({
           shift: [created.id],
           model: [e.modelRecordId],
@@ -177,8 +154,7 @@ export async function startShiftWithModels(
           status: "active",
         }))
       );
-      await batchUpdateRecords(
-        MODELSS_TABLE,
+      await batchUpdateModels(
         eligible.map((e) => ({
           id: e.modelRecordId,
           fields: {
@@ -408,8 +384,7 @@ export async function bulkAddModelsToShift(params: {
     const now = new Date().toISOString();
     let createdRecords: { id: string }[] = [];
     try {
-      createdRecords = await batchCreateRecords(
-        SHIFT_MODELS_TABLE,
+      createdRecords = await batchCreateShiftModels(
         eligible.map((e) => ({
           shift: [shiftRecordId],
           model: [e.modelRecordId],
@@ -425,8 +400,7 @@ export async function bulkAddModelsToShift(params: {
       return { success: false, error: "Failed to add models. Please try again." };
     }
     try {
-      await batchUpdateRecords(
-        MODELSS_TABLE,
+      await batchUpdateModels(
         eligible.map((e) => ({
           id: e.modelRecordId,
           fields: {
@@ -441,8 +415,7 @@ export async function bulkAddModelsToShift(params: {
     } catch (e) {
       console.error("[bulkAddModelsToShift] model status update failed — rolling back shift_model rows:", e);
       try {
-        await batchUpdateRecords(
-          SHIFT_MODELS_TABLE,
+        await batchUpdateShiftModels(
           createdRecords.map((r) => ({
             id: r.id,
             fields: { left_at: now, status: "left" },
@@ -987,14 +960,12 @@ export async function endShift(shiftRecordId: string) {
   const pendingRelease = shiftModels.filter((sm) => !sm.left_at);
   const modelRowsToFree = pendingRelease.filter((sm) => sm.model_id);
   if (pendingRelease.length > 0) {
-    await batchUpdateRecords(
-      "shift_models",
+    await batchUpdateShiftModels(
       pendingRelease.map((sm) => ({ id: sm.id, fields: { left_at: now } }))
     );
   }
   if (modelRowsToFree.length > 0) {
-    await batchUpdateRecords(
-      "modelss",
+    await batchUpdateModels(
       modelRowsToFree.map((sm) => ({
         id: sm.model_id,
         fields: {
@@ -1103,14 +1074,12 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
     const modelRowsToFree = pendingRelease.filter((sm) => sm.model_id);
 
     if (pendingRelease.length > 0) {
-      await batchUpdateRecords(
-        SHIFT_MODELS_TABLE,
+      await batchUpdateShiftModels(
         pendingRelease.map((sm) => ({ id: sm.id, fields: { left_at: now } }))
       );
     }
     if (modelRowsToFree.length > 0) {
-      await batchUpdateRecords(
-        MODELSS_TABLE,
+      await batchUpdateModels(
         modelRowsToFree.map((sm) => ({
           id: sm.model_id,
           fields: {
@@ -1133,7 +1102,7 @@ export async function adminForceEndShift(shiftId: string, reason?: string): Prom
 
     for (const sm of shiftModels) {
       try {
-        await deleteRecord(SHIFT_MODELS_TABLE, sm.id);
+        await deleteShiftModel(sm.id);
       } catch (e) {
         console.error("[adminForceEndShift] delete shift_model failed", sm.id, e);
       }

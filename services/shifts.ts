@@ -483,6 +483,17 @@ export async function listShiftModels(shiftRecordId: string) {
   return filtered.map((r) => mapShiftModel(r as AirtableRecord<ShiftModelFields>));
 }
 
+export async function getShiftModelById(recordId: string): Promise<ShiftModel | null> {
+  if (isSupabaseBackend()) return (await import("./shifts-supabase")).getShiftModelById(recordId);
+  try {
+    const { getRecord } = await import("@/lib/airtable-server");
+    const rec = await getRecord<ShiftModelFields>(SHIFT_MODELS_TABLE, recordId);
+    return mapShiftModel(rec as AirtableRecord<ShiftModelFields>);
+  } catch {
+    return null;
+  }
+}
+
 /** Single bulk read: shift_models linked to any of the given shift record IDs. */
 export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promise<ShiftModel[]> {
   if (isSupabaseBackend()) {
@@ -547,12 +558,48 @@ export async function createShiftModel(fields: ShiftModelWriteFields) {
   return mapShiftModel(rec as AirtableRecord<ShiftModelFields>);
 }
 
+/** Batch-create shift_models (Airtable batch API or parallel Supabase inserts). */
+export async function batchCreateShiftModels(
+  rows: ShiftModelWriteFields[]
+): Promise<{ id: string }[]> {
+  if (rows.length === 0) return [];
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).batchCreateShiftModels(rows);
+  }
+  const { batchCreateRecords } = await import("@/lib/airtable-server");
+  const created = await batchCreateRecords(SHIFT_MODELS_TABLE, rows as Record<string, unknown>[]);
+  return created.map((r) => ({ id: r.id }));
+}
+
 export async function updateShiftModel(recordId: string, fields: Partial<ShiftModelWriteFields>) {
   if (isSupabaseBackend()) {
     return (await import("./shifts-supabase")).updateShiftModel(recordId, fields);
   }
   const rec = await updateRecord(SHIFT_MODELS_TABLE, recordId, fields as Partial<ShiftModelFields>);
   return mapShiftModel(rec as AirtableRecord<ShiftModelFields>);
+}
+
+/** Batch-update shift_models (Airtable batch API or parallel Supabase updates). */
+export async function batchUpdateShiftModels(
+  updates: { id: string; fields: Partial<ShiftModelWriteFields> }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).batchUpdateShiftModels(updates);
+  }
+  const { batchUpdateRecords } = await import("@/lib/airtable-server");
+  await batchUpdateRecords(
+    SHIFT_MODELS_TABLE,
+    updates.map((u) => ({ id: u.id, fields: u.fields as Record<string, unknown> }))
+  );
+}
+
+export async function deleteShiftModel(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./shifts-supabase")).deleteShiftModel(recordId);
+  }
+  const { deleteRecord } = await import("@/lib/airtable-server");
+  await deleteRecord(SHIFT_MODELS_TABLE, recordId);
 }
 
 export type LastAssignmentInfo = {

@@ -4,13 +4,18 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { getActiveShifts, createShiftModel, updateShiftModel, listShiftModels } from "@/services/shifts";
+import {
+  getActiveShifts,
+  createShiftModel,
+  updateShiftModel,
+  listShiftModels,
+  getShiftModelById,
+} from "@/services/shifts";
 import { getModelById, updateModel } from "@/services/modelss";
 import { createActivityLog } from "@/services/activity-logs";
 import { broadcastRealtimeToAll } from "@/lib/realtime-broadcast";
-import { firstLinkedId } from "@/lib/airtable-linked";
 
-/** Enter a model (chatter only, during active shift). modelRecordId = Airtable record id of the model (modelss). */
+/** Enter a model (chatter only, during active shift). modelRecordId = modelss row id (UUID or Airtable rec…). */
 export async function enterModel(modelRecordId: string) {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
@@ -64,25 +69,17 @@ export async function enterModel(modelRecordId: string) {
   return { success: true };
 }
 
-/** Leave a model (chatter only). shiftModelRecordId = Airtable record id of the shift_models row. */
+/** Leave a model (chatter only). shiftModelRecordId = shift_models row id (UUID or Airtable rec…). */
 export async function leaveModel(shiftModelRecordId: string) {
   const user = await getSessionFromCookies();
   if (!user) return { error: "Not authenticated" };
 
-  const { getRecord } = await import("@/lib/airtable-server");
-  type SMFields = {
-    shift?: string | string[];
-    chatter?: string | string[];
-    model?: string | string[];
-    model_name?: string;
-    left_at?: string;
-    entered_at?: string;
-  };
-  const smRec = await getRecord<SMFields>("shift_models", shiftModelRecordId);
-  if (smRec.fields.left_at) return { error: "Session already ended" };
+  const sm = await getShiftModelById(shiftModelRecordId);
+  if (!sm) return { error: "Shift model session not found" };
+  if (sm.left_at) return { error: "Session already ended" };
 
   const now = new Date().toISOString();
-  const enteredAt = smRec.fields.entered_at ? new Date(smRec.fields.entered_at).getTime() : Date.now();
+  const enteredAt = sm.entered_at ? new Date(sm.entered_at).getTime() : Date.now();
   const sessionMinutes = Math.round((Date.now() - enteredAt) / 60000);
 
   await updateShiftModel(shiftModelRecordId, {
@@ -91,8 +88,8 @@ export async function leaveModel(shiftModelRecordId: string) {
     session_minutes: sessionMinutes,
   });
 
-  const modelRecordId = firstLinkedId(smRec.fields.model) ?? null;
-  const shiftRecordId = firstLinkedId(smRec.fields.shift);
+  const modelRecordId = sm.model_id?.trim() || null;
+  const shiftRecordId = sm.shift_id?.trim() || null;
   const chatterRecordId = user.airtableUserId ?? "";
 
   if (modelRecordId) {
@@ -120,7 +117,7 @@ export async function leaveModel(shiftModelRecordId: string) {
     action_type: "model_left",
     entity_type: "model",
     entity_id: modelRecordId ?? "",
-    summary: `${user.fullName ?? user.email} left ${smRec.fields.model_name ?? "model"}`,
+    summary: `${user.fullName ?? user.email} left ${sm.model_name || "model"}`,
   });
 
   return { success: true };

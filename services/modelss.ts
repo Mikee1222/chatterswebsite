@@ -175,6 +175,55 @@ export async function updateModel(recordId: string, fields: Partial<Fields & Mod
   return after;
 }
 
+/** Batch-update modelss (Airtable batch API or parallel Supabase updates). */
+export async function batchUpdateModels(
+  updates: { id: string; fields: Partial<Fields & ModelssWriteFields> }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  if (isSupabaseBackend()) {
+    return (await import("./modelss-supabase")).batchUpdateModels(updates);
+  }
+  const { batchUpdateRecords } = await import("@/lib/airtable-server");
+  await batchUpdateRecords(
+    TABLE,
+    updates.map((u) => ({ id: u.id, fields: u.fields as Record<string, unknown> }))
+  );
+}
+
+/**
+ * Free models among the given record IDs.
+ * Map keys match the lookup IDs passed in (UUID or rec…).
+ */
+export async function getFreeModelsByRecordIds(
+  recordIds: string[]
+): Promise<Map<string, { model_name: string }>> {
+  if (isSupabaseBackend()) {
+    return (await import("./modelss-supabase")).getFreeModelsByRecordIds(recordIds);
+  }
+  const out = new Map<string, { model_name: string }>();
+  const unique = [...new Set(recordIds.filter((id) => id?.trim()))];
+  const chunkSize = 25;
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const escaped = chunk.map((id) => id.replace(/"/g, '""'));
+    const orClause =
+      chunk.length === 1
+        ? `RECORD_ID()="${escaped[0]}"`
+        : `OR(${escaped.map((id) => `RECORD_ID()="${id}"`).join(",")})`;
+    const formula = `AND(${orClause}, {current_status}="free")`;
+    const { records } = await listRecords<{ model_name?: string }>(TABLE, {
+      filterByFormula: formula,
+      fields: ["model_name", "current_status"],
+      pageSize: 100,
+      _caller: "modelss.getFreeModelsByRecordIds",
+    });
+    for (const r of records) {
+      out.set(r.id, { model_name: typeof r.fields?.model_name === "string" ? r.fields.model_name : "" });
+    }
+  }
+  return out;
+}
+
 /** Admin create: model_name, platform, status, priority, notes. Defaults: current_status=free, priority=medium, linked/snapshot fields empty. */
 export type CreateModelFields = {
   model_name: string;

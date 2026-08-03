@@ -7,6 +7,7 @@ import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { devLog } from "@/lib/dev-log";
 import {
   publicId,
+  sbDeleteByPublicId,
   sbFirstLinkedAirtableId,
   sbInsert,
   sbSelectAll,
@@ -350,6 +351,12 @@ export async function listShiftModels(shiftRecordId: string) {
   return (await listShiftModelsForShifts([shiftRecordId]));
 }
 
+export async function getShiftModelById(recordId: string): Promise<ShiftModel | null> {
+  const row = await sbSelectByPublicId<ShiftModelRow>(SHIFT_MODELS_TABLE, recordId);
+  if (!row) return null;
+  return mapShiftModel(row);
+}
+
 export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promise<ShiftModel[]> {
   if (shiftRecordIds.length === 0) return [];
   const set = new Set(shiftRecordIds);
@@ -412,10 +419,29 @@ export async function createShiftModel(fields: ShiftModelWriteFields) {
   return mapShiftModel(created);
 }
 
+export async function batchCreateShiftModels(
+  rows: ShiftModelWriteFields[]
+): Promise<{ id: string }[]> {
+  if (rows.length === 0) return [];
+  const created = await Promise.all(rows.map((fields) => createShiftModel(fields)));
+  return created.map((r) => ({ id: r.id }));
+}
+
 export async function updateShiftModel(recordId: string, fields: Partial<ShiftModelWriteFields>) {
   const patch = await shiftModelWriteToPg(fields);
   const updated = await sbUpdateByPublicId<ShiftModelRow>(SHIFT_MODELS_TABLE, recordId, patch);
   return mapShiftModel(updated);
+}
+
+export async function batchUpdateShiftModels(
+  updates: { id: string; fields: Partial<ShiftModelWriteFields> }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+  await Promise.all(updates.map((u) => updateShiftModel(u.id, u.fields)));
+}
+
+export async function deleteShiftModel(recordId: string): Promise<void> {
+  await sbDeleteByPublicId(SHIFT_MODELS_TABLE, recordId);
 }
 
 export type LastAssignmentInfo = {
