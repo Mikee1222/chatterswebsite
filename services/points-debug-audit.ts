@@ -4,6 +4,7 @@
  */
 
 import { deleteRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { getPointsConfig } from "@/services/points-config";
 import { finalLevelNoDowngrade } from "@/services/points-engine";
 
@@ -43,6 +44,7 @@ function txSortKey(a: AirtableRecord<PointsTxFields>, b: AirtableRecord<PointsTx
 }
 
 export async function runPointsAudit(): Promise<PointsAuditIssue[]> {
+  if (isSupabaseBackend()) return (await import("./points-debug-audit-supabase")).runPointsAudit();
   const issues: PointsAuditIssue[] = [];
   let issueSeq = 0;
   const nextId = () => `audit-${++issueSeq}`;
@@ -121,6 +123,7 @@ export type PointsAuditFixResult = {
  * then recomputes `total_points` / `level` from the full ledger for every affected chatter.
  */
 export async function applyPointsAuditFixAll(): Promise<PointsAuditFixResult> {
+  if (isSupabaseBackend()) return (await import("./points-debug-audit-supabase")).applyPointsAuditFixAll();
   const errors: string[] = [];
   let deletedLedgerRows = 0;
   let updatedChatterRows = 0;

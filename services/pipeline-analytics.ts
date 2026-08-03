@@ -1,4 +1,5 @@
 import { listAllRecords } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 
 type EventFields = { stage?: string; action?: string; actor_name?: string; duration_seconds?: number; at?: string };
 type ItemFields = { stage?: string; status?: string };
@@ -18,6 +19,7 @@ export type PipelineAnalytics = {
 const STAGES = ["creative", "filming", "icloud_raw", "editing", "icloud_edited", "post"] as const;
 
 export async function getPipelineAnalytics(): Promise<PipelineAnalytics> {
+  if (isSupabaseBackend()) return (await import("./pipeline-analytics-supabase")).getPipelineAnalytics();
   const [events, items, bunches] = await Promise.all([
     listAllRecords<EventFields>("content_item_events", {}).catch(() => []),
     listAllRecords<ItemFields>("content_items", {}).catch(() => []),

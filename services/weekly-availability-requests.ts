@@ -10,6 +10,7 @@ import {
   type ListParams,
 } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText, formulaLinkedContains } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { WEEKLY_PROGRAM_DAY_OPTIONS, WEEKLY_PROGRAM_SHIFT_TYPES, ensureMondayForQuery, airtableWeekStartToMonday } from "@/lib/weekly-program";
 import type {
   WeeklyAvailabilityRequest,
@@ -141,6 +142,7 @@ export async function getRequestsForWeek(
   weekStart: string,
   chatterRecordId?: string
 ): Promise<WeeklyAvailabilityRequest[]> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-supabase")).getRequestsForWeek(weekStart, chatterRecordId);
   const weekYmd = ensureMondayForQuery(weekStart);
 
   if (process.env.NODE_ENV !== "production") {
@@ -259,6 +261,7 @@ export async function getRequestsForWeek(
 export async function getWeeklyAvailabilityRequestById(
   recordId: string
 ): Promise<WeeklyAvailabilityRequest | null> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-supabase")).getWeeklyAvailabilityRequestById(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -273,6 +276,7 @@ export async function getRequestByWeekDayChatter(
   chatterRecordId: string,
   day: WeeklyProgramDay
 ): Promise<WeeklyAvailabilityRequest | null> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-supabase")).getRequestByWeekDayChatter(weekStart, chatterRecordId, day);
   const all = await getRequestsForWeek(weekStart, chatterRecordId);
   return all.find((r) => r.day === day) ?? null;
 }
@@ -302,6 +306,7 @@ export type CreateWeeklyAvailabilityRequestFields = {
 export async function createWeeklyAvailabilityRequest(
   fields: CreateWeeklyAvailabilityRequestFields
 ): Promise<WeeklyAvailabilityRequest> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-supabase")).createWeeklyAvailabilityRequest(fields);
   const requestId = `avail_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const payload: Record<string, unknown> = {
     request_id: requestId,
@@ -354,6 +359,7 @@ export async function updateWeeklyAvailabilityRequest(
   recordId: string,
   fields: UpdateWeeklyAvailabilityRequestFields
 ): Promise<WeeklyAvailabilityRequest> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-supabase")).updateWeeklyAvailabilityRequest(recordId, fields);
   const payload: Record<string, unknown> = {
     entry_type: fields.entry_type,
     notes: fields.notes ?? "",
@@ -370,6 +376,7 @@ export async function updateWeeklyAvailabilityRequest(
 }
 
 export async function deleteWeeklyAvailabilityRequest(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-supabase")).deleteWeeklyAvailabilityRequest(recordId);
   const id = recordId?.trim();
   if (!id) throw new Error("Missing record id");
   await deleteRecord(TABLE, id);

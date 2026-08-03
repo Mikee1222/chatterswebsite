@@ -7,6 +7,8 @@
  */
 
 import { updateRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { sbUpdateByPublicId } from "@/lib/supabase-data";
 import { getActiveModelUserAirtableIdByLinkedModelRecordId } from "@/services/users";
 import { notify, notifyByRoleConfig } from "@/services/notification-service";
 import {
@@ -193,9 +195,16 @@ export async function agencyAppendAdminNote(recordId: string, note: string): Pro
   const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
   const block = `[${stamp}]\n${trimmed}`;
   const next = prev ? `${prev}\n\n${block}` : block;
-  await updateRecord<NotesFields & { updated_at?: string }>(TABLE, recordId, {
-    admin_notes: next,
-    updated_at: new Date().toISOString(),
-  });
+  if (isSupabaseBackend()) {
+    await sbUpdateByPublicId(TABLE, recordId, {
+      admin_notes: next,
+      updated_at: new Date().toISOString(),
+    });
+  } else {
+    await updateRecord<NotesFields & { updated_at?: string }>(TABLE, recordId, {
+      admin_notes: next,
+      updated_at: new Date().toISOString(),
+    });
+  }
   return { ok: true };
 }

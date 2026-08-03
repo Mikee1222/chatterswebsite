@@ -10,6 +10,7 @@ import {
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { awardPoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
 import { getAdminNotificationIds } from "@/services/admin-notification-settings";
@@ -25,6 +26,7 @@ import type {
 const TABLE = "custom_requests";
 
 export async function deleteCustomRequestRecord(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).deleteCustomRequestRecord(recordId);
   const id = recordId?.trim();
   if (!id) throw new Error("Missing record id");
   await deleteRecord(TABLE, id);
@@ -113,12 +115,14 @@ function mapRecord(rec: AirtableRecord<Fields>): CustomRequest {
 }
 
 export async function listCustomRequests(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listCustomRequests(params);
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { requests: records.map((r) => mapRecord(r as AirtableRecord<Fields>)), offset };
 }
 
 /** List custom requests assigned to this model (modelss record id). */
 export async function listCustomRequestsByModel(assignedModelRecordId: string): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listCustomRequestsByModel(assignedModelRecordId);
   const all = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -128,6 +132,7 @@ export async function listCustomRequestsByModel(assignedModelRecordId: string): 
 
 /** Customs assigned to this model with agency acceptance (`admin_status === 'accepted'`). */
 export async function listApprovedCustomRequestsByModel(assignedModelRecordId: string): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listApprovedCustomRequestsByModel(assignedModelRecordId);
   const rows = await listCustomRequestsByModel(assignedModelRecordId);
   return rows.filter((r) => r.admin_status === "accepted");
 }
@@ -145,6 +150,7 @@ function customPrimaryDateKey(r: CustomRequest): string | null {
  * whose primary date (scheduled date, else deadline, else created) falls in [fromDate, toDate] inclusive.
  */
 export async function listAcceptedCustomRequestsInDateRange(fromDate: string, toDate: string): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listAcceptedCustomRequestsInDateRange(fromDate, toDate);
   const all = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -159,12 +165,14 @@ export async function listAcceptedCustomRequestsInDateRange(fromDate: string, to
 
 /** Accepted customs still waiting for the model to schedule (`waiting_schedule`). */
 export async function countApprovedCustomRequestsWaitingSchedule(assignedModelRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).countApprovedCustomRequestsWaitingSchedule(assignedModelRecordId);
   const rows = await listApprovedCustomRequestsByModel(assignedModelRecordId);
   return rows.filter((r) => r.model_status === "waiting_schedule").length;
 }
 
 /** List custom requests by chatter (requested_by_chatter link). */
 export async function listCustomRequestsByChatter(chatterRecordId: string): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listCustomRequestsByChatter(chatterRecordId);
   const all = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -190,6 +198,7 @@ export type CreateCustomRequestFields = {
 };
 
 export async function createCustomRequest(fields: CreateCustomRequestFields): Promise<CustomRequest> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).createCustomRequest(fields);
   const requestId = `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const request_title = (fields.request_title ?? fields.custom_type ?? "Custom request").trim();
   const request_details = (fields.request_details ?? fields.description ?? "").trim();
@@ -258,6 +267,7 @@ export async function createCustomRequest(fields: CreateCustomRequestFields): Pr
 }
 
 export async function listAllCustomRequests(): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listAllCustomRequests();
   const records = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -278,6 +288,7 @@ export async function listCustomRequestsPaginated(
   pageSize = 50,
   cursor?: string | null
 ): Promise<{ records: CustomRequest[]; hasMore: boolean; total: number; nextOffset: string | null }> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listCustomRequestsPaginated(filters, page, pageSize, cursor);
   void page;
   const { records, offset } = await listRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
@@ -300,6 +311,7 @@ export async function listCustomRequestsPaginated(
 
 /** Admin queue: `admin_status` pending only (Airtable value is `pending`, not `declined`). */
 export async function listAdminPendingCustomRequests(): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listAdminPendingCustomRequests();
   const records = await listAllRecords<Fields>(TABLE, {
     filterByFormula: `{admin_status} = "pending"`,
     sort: [{ field: "created_at", direction: "desc" }],
@@ -309,6 +321,7 @@ export async function listAdminPendingCustomRequests(): Promise<CustomRequest[]>
 
 /** Pending admin_status count for nav badge (fields-only read). */
 export async function countAdminPendingCustomRequests(): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).countAdminPendingCustomRequests();
   try {
     const records = await listAllRecords<Fields>(TABLE, {
       filterByFormula: `{admin_status} = "pending"`,
@@ -325,6 +338,7 @@ export async function patchCustomRequestRecord(
   recordId: string,
   fields: Partial<Pick<Fields, "request_details" | "price" | "deadline_requested" | "admin_status" | "decline_reason">>
 ): Promise<CustomRequest> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).patchCustomRequestRecord(recordId, fields as never);
   const nextFields: Partial<Fields> = { ...fields };
   if (fields.admin_status !== undefined) {
     // Any status transition should allow future stuck alerts if the request stalls again.
@@ -339,6 +353,7 @@ export async function updateCustomRequestAdminStatus(
   recordId: string,
   admin_status: CustomRequestAdminStatus
 ): Promise<CustomRequest> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).updateCustomRequestAdminStatus(recordId, admin_status);
   const rec = await updateRecord<Fields>(
     TABLE,
     recordId,
@@ -361,6 +376,7 @@ export async function updateCustomRequestModelSchedule(
     uploaded_by_model?: boolean;
   }
 ): Promise<CustomRequest> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).updateCustomRequestModelSchedule(recordId, input);
   const prev = await getCustomRequestById(recordId);
   const fields: Partial<Fields> = {};
   if (input.model_status !== undefined) fields.model_status = input.model_status;
@@ -427,11 +443,13 @@ export async function updateCustomRequestStatus(
   recordId: string,
   status: string
 ): Promise<CustomRequest> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).updateCustomRequestStatus(recordId, status);
   const admin_status = (status === "accepted" || status === "rejected" ? status : "pending") as CustomRequestAdminStatus;
   return updateCustomRequestAdminStatus(recordId, admin_status);
 }
 
 export async function getCustomRequestById(recordId: string): Promise<CustomRequest | null> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).getCustomRequestById(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -457,6 +475,7 @@ function customRequestRawTerminal(adminRaw: string, modelRaw: string): boolean {
  * (dedup entity_id `custom_overdue_${recordId}`), per admin via findExistingNotification.
  */
 export async function runCustomRequestOverdue48hAdminAlerts(): Promise<{ ok: true; alerts_sent: number }> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).runCustomRequestOverdue48hAdminAlerts();
   const { findExistingNotification } = await import("@/services/notifications");
   const { notify } = await import("@/services/notification-service");
   const adminIds = await getAdminNotificationIds();
@@ -510,6 +529,7 @@ export async function runCustomRequestOverdue48hAdminAlerts(): Promise<{ ok: tru
 
 /** Cron helper: requests stuck for 2+ days without updates and not yet alerted. */
 export async function listStuckCustomRequestsSince(olderThanIso: string): Promise<CustomRequest[]> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).listStuckCustomRequestsSince(olderThanIso);
   const thresholdMs = new Date(olderThanIso).getTime();
   if (!Number.isFinite(thresholdMs)) return [];
   const all = await listAllRecords<Fields>(TABLE, {});
@@ -532,11 +552,13 @@ export async function listStuckCustomRequestsSince(olderThanIso: string): Promis
 }
 
 export async function markCustomRequestStuckAlertSent(recordId: string, sent: boolean): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).markCustomRequestStuckAlertSent(recordId, sent);
   await updateRecord<Fields>(TABLE, recordId, bumpCustomRequestWrite({ stuck_alert_sent: sent }));
 }
 
 /** Open customs with admin pending or model in_progress (raw fields; excludes terminal statuses). */
 export async function countCustomRequestsPendingOrInProgress(): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./custom-requests-supabase")).countCustomRequestsPendingOrInProgress();
   const records = await listAllRecords<Fields>(TABLE, {});
   let n = 0;
   for (const rec of records) {

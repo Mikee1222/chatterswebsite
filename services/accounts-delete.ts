@@ -2,6 +2,7 @@
 
 import { listAllRecords as listAllFromAirtable, deleteRecord, updateRecord } from "@/lib/airtable-server";
 import { formulaLinkedContains } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { listAllShifts, listShiftModelsForShifts } from "@/services/shifts";
 import { listAllWeeklyProgram } from "@/services/weekly-program";
 import { listAllWeeklyProgramVa } from "@/services/weekly-program-va";
@@ -30,6 +31,7 @@ async function deleteRecordsWithLogging(userId: string, step: string, table: str
  * Each category is best-effort: failures are logged and the rest continues.
  */
 export async function deleteUserLinkedRecordsBeforeUserDelete(userRecordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./accounts-delete-supabase")).deleteUserLinkedRecordsBeforeUserDelete(userRecordId);
   const userId = userRecordId?.trim();
   if (!userId) return;
 
@@ -188,6 +190,7 @@ export type DeleteCheckResult = {
  * by {@link deleteUserLinkedRecordsBeforeUserDelete}; this always allows delete for a valid id.
  */
 export async function getDeleteBlockReasonsForUser(userRecordId: string): Promise<DeleteCheckResult> {
+  if (isSupabaseBackend()) return (await import("./accounts-delete-supabase")).getDeleteBlockReasonsForUser(userRecordId);
   if (!userRecordId?.trim()) return { canDelete: false, reasons: ["Invalid user"], summary: "Invalid user." };
   return {
     canDelete: true,
@@ -203,6 +206,7 @@ export async function getDeleteBlockReasonsForUser(userRecordId: string): Promis
  * shift_models, whales, custom_requests.
  */
 export async function getDeleteBlockReasonsForModel(modelRecordId: string): Promise<DeleteCheckResult> {
+  if (isSupabaseBackend()) return (await import("./accounts-delete-supabase")).getDeleteBlockReasonsForModel(modelRecordId);
   const reasons: string[] = [];
   if (!modelRecordId?.trim()) return { canDelete: false, reasons: ["Invalid model"], summary: "Invalid model." };
 

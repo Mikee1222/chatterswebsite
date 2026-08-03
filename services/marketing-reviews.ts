@@ -10,6 +10,7 @@ import {
 } from "@/lib/airtable-server";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
 import { uploadAirtableAttachment } from "@/lib/airtable-upload-attachment";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   SPOT_CHECK_STATUSES,
   SPOT_CHECK_TYPES,
@@ -278,6 +279,7 @@ function daysAgoIso(days: number): string {
 }
 
 export async function getSpotChecks(filters: SpotCheckFilters = {}): Promise<MarketingSpotCheck[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getSpotChecks(filters);
   const filterByFormula = buildSpotCheckFilter(filters);
   const records = await listAllRecords<SpotCheckFields>(TABLE_SPOT_CHECKS, {
     ...(filterByFormula ? { filterByFormula } : {}),
@@ -287,6 +289,7 @@ export async function getSpotChecks(filters: SpotCheckFilters = {}): Promise<Mar
 }
 
 export async function getSpotCheckById(id: string): Promise<MarketingSpotCheck | null> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getSpotCheckById(id);
   const rec = await getRecord<SpotCheckFields>(TABLE_SPOT_CHECKS, id);
   return rec ? mapSpotCheck(rec) : null;
 }
@@ -294,6 +297,7 @@ export async function getSpotCheckById(id: string): Promise<MarketingSpotCheck |
 export async function createSpotCheck(
   data: Partial<MarketingSpotCheck> & { manager_name: string },
 ): Promise<MarketingSpotCheck> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).createSpotCheck(data);
   const now = new Date().toISOString();
   const subject =
     data.subject?.trim() ||
@@ -341,6 +345,7 @@ export async function createSpotCheck(
 }
 
 export async function updateSpotCheck(id: string, data: Partial<MarketingSpotCheck>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).updateSpotCheck(id, data);
   const patch: Record<string, unknown> = {};
   if (data.subject !== undefined) patch.subject = data.subject;
   if (data.type !== undefined) patch.type = data.type;
@@ -384,6 +389,7 @@ export async function updateSpotCheck(id: string, data: Partial<MarketingSpotChe
 }
 
 export async function deleteSpotCheck(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).deleteSpotCheck(id);
   await deleteRecord(TABLE_SPOT_CHECKS, id);
 }
 
@@ -391,6 +397,7 @@ export async function uploadSpotCheckAttachments(
   id: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>,
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).uploadSpotCheckAttachments(id, files);
   for (const file of files) {
     if (!file.bytes.byteLength) continue;
     await uploadAirtableAttachment({
@@ -404,6 +411,7 @@ export async function uploadSpotCheckAttachments(
 }
 
 export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviews();
   const records = await listAllRecords<DailyReviewFields>(TABLE_DAILY_REVIEWS, {
     sort: [{ field: "review_date", direction: "desc" }],
   });
@@ -411,6 +419,7 @@ export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
 }
 
 export async function getDailyReviewByDate(date: string): Promise<MarketingDailyReview | null> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviewByDate(date);
   const targetKey = toReviewDateKey(date);
   if (!targetKey) return null;
   // Airtable filterByFormula string equality on date fields is unreliable (date⇄text
@@ -424,6 +433,7 @@ export async function getDailyReviewByDate(date: string): Promise<MarketingDaily
 }
 
 export async function getDailyReviewDetail(id: string): Promise<MarketingDailyReviewDetail | null> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviewDetail(id);
   const rec = await getRecord<DailyReviewFields>(TABLE_DAILY_REVIEWS, id);
   if (!rec) return null;
   const review = mapDailyReview(rec);
@@ -443,6 +453,7 @@ async function getExecAuditsForDailyReview(dailyReviewId: string): Promise<Marke
 export async function createDailyReview(
   data: Partial<MarketingDailyReview> & { manager_name: string; review_date: string },
 ): Promise<MarketingDailyReview> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).createDailyReview(data);
   // Guard against duplicate reviews for the same calendar day (defense-in-depth in case
   // the API-layer check is bypassed or a concurrent request slips through). Returns the
   // existing review instead of creating a second one.
@@ -468,6 +479,7 @@ export async function createDailyReview(
 }
 
 export async function updateDailyReview(id: string, data: Partial<MarketingDailyReview>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).updateDailyReview(id, data);
   const patch: Record<string, unknown> = {};
   if (data.review_label !== undefined) patch.review_label = data.review_label;
   if (data.review_date !== undefined) patch.review_date = data.review_date;
@@ -488,6 +500,7 @@ export async function uploadDailyReviewAttachments(
   id: string,
   files: Array<{ name: string; type: string; bytes: Uint8Array }>,
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).uploadDailyReviewAttachments(id, files);
   for (const file of files) {
     if (!file.bytes.byteLength) continue;
     await uploadAirtableAttachment({
@@ -501,6 +514,7 @@ export async function uploadDailyReviewAttachments(
 }
 
 export async function deleteDailyReview(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).deleteDailyReview(id);
   const audits = await getExecAuditsForDailyReview(id);
   for (const audit of audits) {
     await deleteRecord(TABLE_EXEC_AUDITS, audit.id);
@@ -509,12 +523,14 @@ export async function deleteDailyReview(id: string): Promise<void> {
 }
 
 export async function deleteExecAudit(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).deleteExecAudit(id);
   await deleteRecord(TABLE_EXEC_AUDITS, id);
 }
 
 export async function createExecAudit(
   data: Partial<MarketingExecAudit> & { daily_review_id: string },
 ): Promise<MarketingExecAudit> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).createExecAudit(data);
   const label =
     data.audit_label?.trim() ||
     `Exec audit — ${data.exec_va_name || "VA"} — ${data.reviewing_day || todayIsoDate()}`;
@@ -536,6 +552,7 @@ export async function createExecAudit(
 }
 
 export async function updateExecAudit(id: string, data: Partial<MarketingExecAudit>): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).updateExecAudit(id, data);
   const patch: Record<string, unknown> = {};
   if (data.audit_label !== undefined) patch.audit_label = data.audit_label;
   if (data.daily_review_id !== undefined) {
@@ -556,6 +573,7 @@ export async function updateExecAudit(id: string, data: Partial<MarketingExecAud
 }
 
 export async function getExecAuditsForVA(vaId: string): Promise<MarketingExecAudit[]> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getExecAuditsForVA(vaId);
   const vid = escapeFormulaString(vaId.trim());
   const records = await listAllRecords<ExecAuditFields>(TABLE_EXEC_AUDITS, {
     filterByFormula: `{exec_va_id} = "${vid}"`,
@@ -565,6 +583,7 @@ export async function getExecAuditsForVA(vaId: string): Promise<MarketingExecAud
 }
 
 export async function getVaReviewHistory(vaId: string): Promise<VaReviewHistorySummary> {
+  if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getVaReviewHistory(vaId);
   const since = daysAgoIso(30);
   const [spotChecks, execAudits] = await Promise.all([
     getSpotChecks({ exec_va_id: vaId, date_from: since }),

@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId, formulaTextEquals, linkedRecordIds } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { getModelById, listAllModelss } from "@/services/modelss";
 import {
   airtableWeekStartToMonday,
@@ -120,6 +121,7 @@ export async function modelOwnsWeeklyAvailabilityRequest(
   mappedRowModelId: string,
   sessionModelId: string
 ): Promise<boolean> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-models-supabase")).modelOwnsWeeklyAvailabilityRequest(mappedRowModelId, sessionModelId);
   const a = mappedRowModelId.trim();
   const b = sessionModelId.trim();
   if (!a || !b) return false;
@@ -156,6 +158,7 @@ export async function getModelAvailabilityRequestsForWeek(
   weekStart: string,
   modelId: string
 ): Promise<ModelWeeklyAvailabilityRequest[]> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-models-supabase")).getModelAvailabilityRequestsForWeek(weekStart, modelId);
   if (!weekStart || !modelId) return [];
   const monday = ensureMondayForQuery(weekStart);
   const resolution = await resolveSessionModelForWeeklyFilter(modelId.trim());
@@ -176,6 +179,7 @@ export async function getModelAvailabilityRequestsForWeek(
 }
 
 export async function getModelAvailabilityRequestById(recordId: string): Promise<ModelWeeklyAvailabilityRequest | null> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-models-supabase")).getModelAvailabilityRequestById(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -195,6 +199,7 @@ export async function createModelAvailabilityRequest(input: {
   time_windows?: ModelAvailabilityTimeWindow[] | null;
   notes?: string;
 }): Promise<ModelWeeklyAvailabilityRequest> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-models-supabase")).createModelAvailabilityRequest(input);
   const noTime =
     input.entry_type !== "availability" &&
     input.entry_type !== "live_window" &&
@@ -232,6 +237,7 @@ export async function updateModelAvailabilityRequest(
     status?: WeeklyAvailabilityRequestStatus;
   }
 ): Promise<ModelWeeklyAvailabilityRequest> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-models-supabase")).updateModelAvailabilityRequest(recordId, patch);
   const fields: Partial<Fields> = {
     entry_type: patch.entry_type,
     ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
@@ -251,6 +257,7 @@ export async function updateModelAvailabilityRequest(
 }
 
 export async function deleteModelAvailabilityRequest(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./weekly-availability-requests-models-supabase")).deleteModelAvailabilityRequest(recordId);
   await deleteRecord(TABLE, recordId);
 }
 

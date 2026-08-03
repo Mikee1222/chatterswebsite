@@ -2,6 +2,7 @@
 
 import { listAllRecords, deleteRecord, updateRecord, getRecord } from "@/lib/airtable-server";
 import { formulaLinkedContains, formulaTextEquals, linkedRecordIds } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getModelById } from "@/services/modelss";
 import { deleteUserLinkedRecordsBeforeUserDelete } from "@/services/accounts-delete";
@@ -154,6 +155,7 @@ async function assertCanDeleteLastAdmin(userRecordId: string): Promise<void> {
  * Admin-only: delete a modelss row after removing or unlinking dependent Airtable records (best-effort).
  */
 export async function forceDeleteModel(modelId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./force-delete-cascade-supabase")).forceDeleteModel(modelId);
   const id = modelId.trim();
   if (!id) throw new Error("Missing model id");
 
@@ -215,6 +217,7 @@ export async function forceDeleteModel(modelId: string): Promise<void> {
  * Admin caller must enforce role; this function applies cascade + user row delete and safety guards.
  */
 export async function forceDeleteUser(userRecordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./force-delete-cascade-supabase")).forceDeleteUser(userRecordId);
   const id = userRecordId.trim();
   if (!id) throw new Error("Missing user id");
 

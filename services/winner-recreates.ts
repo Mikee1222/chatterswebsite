@@ -1,4 +1,5 @@
 import { getRecord, updateRecord, listAllRecords } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { getThisWeekMonday } from "@/lib/weekly-program";
 import { spawnContentItem } from "@/services/content-items";
 
@@ -38,6 +39,7 @@ function defaultCount(tier: string): number {
  * video link so the creative can see exactly which video to recreate.
  */
 export async function listWinnerLibrary(): Promise<WinnerLibraryEntry[]> {
+  if (isSupabaseBackend()) return (await import("./winner-recreates-supabase")).listWinnerLibrary();
   const recs = await listAllRecords<WinnerFields>("winner_videos", {
     filterByFormula: `AND(NOT({status} = "rejected"), NOT({winner_tier} = ""))`,
   });
@@ -65,6 +67,7 @@ export async function updateWinnerLibraryEntry(
   id: string,
   patch: { tier?: "winner" | "super_winner"; recreate_count?: number; elements?: string }
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./winner-recreates-supabase")).updateWinnerLibraryEntry(id, patch);
   const fields: WinnerFields = {};
   if (patch.tier) fields.winner_tier = patch.tier;
   if (typeof patch.recreate_count === "number") fields.recreate_count = patch.recreate_count;
@@ -85,6 +88,7 @@ export async function submitPipelineWinner(input: {
   submitted_by_id: string;
   submitted_by_name: string;
 }): Promise<string> {
+  if (isSupabaseBackend()) return (await import("./winner-recreates-supabase")).submitPipelineWinner(input);
   const { createWinnerVideo } = await import("@/services/winner-videos");
   const v = await createWinnerVideo({
     reference_model_name: input.creator_name || "winner",
@@ -115,6 +119,7 @@ export async function spawnRecreatesFromWinner(
   actor: { user_id: string; user_name: string },
   countOverride?: number
 ): Promise<{ count: number; tier: string }> {
+  if (isSupabaseBackend()) return (await import("./winner-recreates-supabase")).spawnRecreatesFromWinner(winnerId, actor, countOverride);
   const rec = await getRecord<WinnerFields>("winner_videos", winnerId);
   const f = rec.fields;
   const tier = (f.winner_tier ?? "winner").trim() || "winner";

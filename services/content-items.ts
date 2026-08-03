@@ -5,6 +5,15 @@ import {
   listAllRecords,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import {
+  publicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbUpdateByPublicId,
+  type SbRow,
+} from "@/lib/supabase-data";
 import { resolveStageOwner, type PipelineRole } from "@/services/creator-assignments";
 // NOTE: services/modelss + services/users are "use server" modules — importing them
 // statically here breaks client-reference splitting when this module is reached through
@@ -102,6 +111,74 @@ function mapItem(rec: AirtableRecord<Fields>): ContentItem {
   };
 }
 
+type SbItemRow = SbRow & Partial<Record<keyof Fields, string | null>>;
+
+function mapItemFromRow(row: SbItemRow): ContentItem {
+  return {
+    id: publicId(row),
+    title: row.title ?? "",
+    creator_model_id: row.creator_model_id ?? "",
+    creator_name: row.creator_name ?? "",
+    week: row.week ?? "",
+    source: row.source ?? "",
+    stage: row.stage ?? "",
+    status: row.status ?? "",
+    assignee_user_id: row.assignee_user_id ?? "",
+    assignee_name: row.assignee_name ?? "",
+    film_type: row.film_type ?? "",
+    reference_link: row.reference_link ?? "",
+    stage_entered_at: row.stage_entered_at ?? "",
+    assigned_at: row.assigned_at ?? "",
+    deadline: row.deadline ?? "",
+  };
+}
+
+async function createItem(fields: Fields): Promise<{ id: string; item: ContentItem }> {
+  if (isSupabaseBackend()) {
+    const row = await sbInsert<SbItemRow>(TABLE, fields as Record<string, unknown>);
+    return { id: publicId(row), item: mapItemFromRow(row) };
+  }
+  const rec = await createRecord<Fields>(TABLE, fields);
+  return { id: rec.id, item: mapItem(rec) };
+}
+
+async function updateItem(id: string, fields: Partial<Fields>): Promise<void> {
+  if (isSupabaseBackend()) {
+    await sbUpdateByPublicId<SbItemRow>(TABLE, id, fields as Record<string, unknown>);
+    return;
+  }
+  await updateRecord<Fields>(TABLE, id, fields);
+}
+
+async function getItemRow(id: string): Promise<ContentItem | null> {
+  if (isSupabaseBackend()) {
+    const row = await sbSelectByPublicId<SbItemRow>(TABLE, id);
+    return row ? mapItemFromRow(row) : null;
+  }
+  try {
+    return mapItem(await getRecord<Fields>(TABLE, id));
+  } catch {
+    return null;
+  }
+}
+
+async function listItemsWhere(predicate: (row: SbItemRow) => boolean, airtableFormula?: string): Promise<ContentItem[]> {
+  if (isSupabaseBackend()) {
+    const rows = await sbSelectAll<SbItemRow>(TABLE);
+    return rows.filter(predicate).map(mapItemFromRow);
+  }
+  const records = await listAllRecords<Fields>(TABLE, airtableFormula ? { filterByFormula: airtableFormula } : {});
+  return records.map(mapItem);
+}
+
+async function createEventRow(fields: Record<string, unknown>): Promise<void> {
+  if (isSupabaseBackend()) {
+    await sbInsert(EVENTS_TABLE, fields);
+    return;
+  }
+  await createRecord(EVENTS_TABLE, fields);
+}
+
 export async function logContentEvent(input: {
   item_id: string;
   stage: string;
@@ -112,7 +189,7 @@ export async function logContentEvent(input: {
   duration_seconds?: number;
 }): Promise<void> {
   try {
-    await createRecord(EVENTS_TABLE, {
+    await createEventRow({
       event_id: `ev_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
       item_id: input.item_id,
       stage: input.stage,
@@ -232,7 +309,7 @@ export async function spawnContentItem(input: {
   const owner = role ? await resolveStageOwner(input.creator_model_id, role) : null;
   const now = new Date().toISOString();
 
-  const rec = await createRecord<Fields>(TABLE, {
+  const { id: createdId, item } = await createItem({
     item_id: `ci_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
     title: input.title,
     creator_model_id: input.creator_model_id,
@@ -256,7 +333,7 @@ export async function spawnContentItem(input: {
   });
 
   await logContentEvent({
-    item_id: rec.id,
+    item_id: createdId,
     stage,
     action: "spawned",
     actor_user_id: input.actor_user_id,
@@ -265,17 +342,17 @@ export async function spawnContentItem(input: {
   });
   if (!owner) {
     await logContentEvent({
-      item_id: rec.id,
+      item_id: createdId,
       stage,
       action: "blocked",
       actor_user_id: input.actor_user_id,
       actor_name: input.actor_name,
       note: `no ${role} assigned for creator`,
     });
-    await notifyBlocked(rec.id, input.title, stage, role);
+    await notifyBlocked(createdId, input.title, stage, role);
   }
-  if (owner) await notifyOwner(owner.user_id, rec.id, input.title, stage, input.actor_user_id);
-  return mapItem(rec);
+  if (owner) await notifyOwner(owner.user_id, createdId, input.title, stage, input.actor_user_id);
+  return item;
 }
 
 // ============================================================================
@@ -311,11 +388,7 @@ function secondsSince(iso: string): number {
 }
 
 export async function getItemById(id: string): Promise<ContentItem | null> {
-  try {
-    return mapItem(await getRecord<Fields>(TABLE, id));
-  } catch {
-    return null;
-  }
+  return getItemRow(id);
 }
 
 /** Filming owner: self-record → the creator's model-user; filmer → assigned filmer. */
@@ -349,32 +422,25 @@ async function ownerForStage(
 
 /** List items currently owned by a user (their working queue). */
 export async function listItemsForAssignee(userRecId: string): Promise<ContentItem[]> {
-  const records = await listAllRecords<Fields>(TABLE, {
-    filterByFormula: `AND({assignee_user_id} = "${userRecId.replace(/"/g, '""')}", OR({status}="in_progress",{status}="rejected"))`,
-  });
-  return records.map(mapItem);
+  return listItemsWhere(
+    (row) => row.assignee_user_id === userRecId && (row.status === "in_progress" || row.status === "rejected"),
+    `AND({assignee_user_id} = "${userRecId.replace(/"/g, '""')}", OR({status}="in_progress",{status}="rejected"))`,
+  );
 }
 
 /** Items awaiting QA (all stages). Caller filters by which stage's qaRole they hold. */
 export async function listItemsAwaitingQa(): Promise<ContentItem[]> {
-  const records = await listAllRecords<Fields>(TABLE, {
-    filterByFormula: `{status} = "awaiting_qa"`,
-  });
-  return records.map(mapItem);
+  return listItemsWhere((row) => row.status === "awaiting_qa", `{status} = "awaiting_qa"`);
 }
 
 /** All non-done items (QA cockpit / overview). */
 export async function listActiveContentItems(): Promise<ContentItem[]> {
-  const records = await listAllRecords<Fields>(TABLE, { filterByFormula: `NOT({status} = "done")` });
-  return records.map(mapItem);
+  return listItemsWhere((row) => row.status !== "done", `NOT({status} = "done")`);
 }
 
 /** Blocked (no owner) — surfaced to managers to fix assignments. */
 export async function listBlockedItems(): Promise<ContentItem[]> {
-  const records = await listAllRecords<Fields>(TABLE, {
-    filterByFormula: `{status} = "blocked_unassigned"`,
-  });
-  return records.map(mapItem);
+  return listItemsWhere((row) => row.status === "blocked_unassigned", `{status} = "blocked_unassigned"`);
 }
 
 /** Move an item from its current stage into the next (auto-route owner + timing). */
@@ -400,14 +466,14 @@ async function advanceStage(
   }
 
   if (!next) {
-    await updateRecord<Fields>(TABLE, item.id, { stage: "done", status: "done", updated_at: nowIso() });
+    await updateItem(item.id, { stage: "done", status: "done", updated_at: nowIso() });
     return;
   }
 
   // Terminal stages (analytics/done) have no owner role → mark done, not blocked.
   const isTerminal = !STAGE_ROLE[next as Exclude<ContentStage, "analytics" | "done">];
   const owner = isTerminal ? null : await ownerForStage(item, next);
-  await updateRecord<Fields>(TABLE, item.id, {
+  await updateItem(item.id, {
     stage: next,
     status: isTerminal ? "done" : owner ? "in_progress" : "blocked_unassigned",
     assignee_user_id: owner?.user_id ?? "",
@@ -435,7 +501,7 @@ export async function submitStage(itemId: string, actor: { user_id: string; user
   const flow = STAGE_FLOW[item.stage as ContentStage];
   if (!flow || !flow.next) throw new Error("Δεν προχωράει άλλο.");
   if (flow.qaRole) {
-    await updateRecord<Fields>(TABLE, item.id, { status: "awaiting_qa", updated_at: nowIso() });
+    await updateItem(item.id, { status: "awaiting_qa", updated_at: nowIso() });
     await logContentEvent({
       item_id: item.id,
       stage: item.stage,
@@ -474,7 +540,7 @@ export async function qaRejectItem(
   const item = await getItemById(itemId);
   if (!item) throw new Error("Item not found.");
   if (item.status !== "awaiting_qa") throw new Error("Δεν είναι σε QA.");
-  await updateRecord<Fields>(TABLE, item.id, { status: "rejected", stage_entered_at: nowIso(), updated_at: nowIso() });
+  await updateItem(item.id, { status: "rejected", stage_entered_at: nowIso(), updated_at: nowIso() });
   await logContentEvent({
     item_id: item.id,
     stage: item.stage,
@@ -516,7 +582,7 @@ export async function retryStageOwner(
   if (item.status !== "blocked_unassigned") throw new Error("Δεν είναι blocked.");
   const owner = await ownerForStage(item, item.stage as ContentStage);
   if (!owner) return { resolved: false };
-  await updateRecord<Fields>(TABLE, item.id, {
+  await updateItem(item.id, {
     status: "in_progress",
     assignee_user_id: owner.user_id,
     assignee_name: owner.user_name,
@@ -550,7 +616,7 @@ export async function setFilmType(
     patch.assignee_name = owner?.user_name ?? "";
     patch.status = owner ? (item.status === "awaiting_qa" ? "awaiting_qa" : "in_progress") : "blocked_unassigned";
   }
-  await updateRecord<Fields>(TABLE, item.id, patch);
+  await updateItem(item.id, patch);
   await logContentEvent({
     item_id: item.id,
     stage: item.stage,
