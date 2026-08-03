@@ -1,5 +1,6 @@
 import { listRecords, listAllRecords, getRecord, createRecord, updateRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { buildWhalesFilterFormula, WHALES_DEFAULT_PAGE_SIZE, type WhalesListFilters } from "@/lib/whales-filters";
 import type { Whale } from "@/types";
 import { devLog } from "@/lib/dev-log";
@@ -96,17 +97,20 @@ export type WhaleWriteFields = Partial<{
 }>;
 
 export async function listWhales(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).listWhales(params);
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { whales: records.map(mapRecord), offset };
 }
 
 export async function listAllWhales(filterByFormula?: string) {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).listAllWhales(filterByFormula);
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
   return records.map(mapRecord);
 }
 
 /** Whales with no chatter assigned (admin badge + assignment queue). */
 export async function countWhalesWithoutChatter(): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).countWhalesWithoutChatter();
   const all = await listAllWhales();
   return all.filter((w) => !w.assigned_chatter_id?.trim()).length;
 }
@@ -121,6 +125,7 @@ export type WhaleStatusCounts = {
 };
 
 export async function getWhaleStatusCounts(): Promise<WhaleStatusCounts> {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).getWhaleStatusCounts();
   const records = await listAllRecords<Pick<Fields, "status">>(TABLE, { fields: ["status"] });
   let active = 0;
   let inactive = 0;
@@ -153,6 +158,9 @@ export async function listWhalesPaginated(
   pageSize: number = WHALES_DEFAULT_PAGE_SIZE,
   offset?: string
 ): Promise<{ whales: Whale[]; nextOffset: string | null }> {
+  if (isSupabaseBackend()) {
+    return (await import("./whales-supabase")).listWhalesPaginated(filters, pageSize, offset);
+  }
   const formula = buildWhalesFilterFormula(filters);
   const params: ListParams & { filterByFormula?: string } = {
     pageSize: Math.min(100, Math.max(1, pageSize)),
@@ -173,6 +181,9 @@ export async function listWhalesPaginated(
  * linked record IDs.
  */
 export async function getWhalesByChatter(chatterRecordId: string): Promise<Whale[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./whales-supabase")).getWhalesByChatter(chatterRecordId);
+  }
   const all = await listAllWhales();
   const matched = all.filter((w) => w.assigned_chatter_id === chatterRecordId);
   if (process.env.NODE_ENV !== "production") {
@@ -192,6 +203,7 @@ export async function getWhalesByChatter(chatterRecordId: string): Promise<Whale
 }
 
 export async function getWhaleById(recordId: string): Promise<Whale | null> {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).getWhaleById(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec);
@@ -201,16 +213,19 @@ export async function getWhaleById(recordId: string): Promise<Whale | null> {
 }
 
 export async function getWhaleByWhaleId(whaleId: string): Promise<Whale | null> {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).getWhaleByWhaleId(whaleId);
   const { whales } = await listWhales({ filterByFormula: `{whale_id} = "${whaleId.replace(/"/g, '""')}"`, pageSize: 1 });
   return whales[0] ?? null;
 }
 
 export async function createWhale(fields: WhaleWriteFields) {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).createWhale(fields);
   const rec = await createRecord(TABLE, fields as Record<string, unknown>);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
 export async function updateWhale(recordId: string, fields: WhaleWriteFields) {
+  if (isSupabaseBackend()) return (await import("./whales-supabase")).updateWhale(recordId, fields);
   const rec = await updateRecord(TABLE, recordId, fields as Partial<Fields>);
   return mapRecord(rec as AirtableRecord<Fields>);
 }

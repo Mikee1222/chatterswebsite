@@ -6,6 +6,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 
 const TABLE = "fines_and_bonuses";
 
@@ -123,6 +124,9 @@ function isVisibleToChatter(entry: FineBonusRecord): boolean {
 }
 
 export async function getFinesBonusesForUser(userId: string): Promise<FineBonusRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).getFinesBonusesForUser(userId);
+  }
   const id = userId.trim();
   if (!id) return [];
   const records = await listAllRecords<Record<string, unknown>>(TABLE, {
@@ -136,6 +140,9 @@ export async function getFinesBonusesForUser(userId: string): Promise<FineBonusR
 }
 
 export async function listFinesBonuses(filters: FinesBonusesListFilters = {}): Promise<FineBonusRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).listFinesBonuses(filters);
+  }
   const formula = buildListFormula(filters);
   const records = await listAllRecords<Record<string, unknown>>(TABLE, {
     ...(formula ? { filterByFormula: formula, _caller: "listFinesBonuses" } : { _caller: "listFinesBonuses_all" }),
@@ -146,6 +153,9 @@ export async function listFinesBonuses(filters: FinesBonusesListFilters = {}): P
 
 /** Pending review count for admin nav badge (fields-only read). */
 export async function countPendingReviewFinesBonuses(): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).countPendingReviewFinesBonuses();
+  }
   try {
     const records = await listAllRecords<Record<string, unknown>>(TABLE, {
       filterByFormula: `{status} = "pending_review"`,
@@ -201,6 +211,9 @@ export function isPendingExtraRevenueReview(entry: FineBonusRecord): boolean {
 }
 
 export async function hasFineBonusForSpin(spinId: string): Promise<boolean> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).hasFineBonusForSpin(spinId);
+  }
   const id = spinId.trim();
   if (!id) return false;
   const { records } = await listRecords<Record<string, unknown>>(TABLE, {
@@ -227,6 +240,9 @@ export type CreateSpinWheelCashBonusInput = {
 export async function createSpinWheelCashBonus(
   data: CreateSpinWheelCashBonusInput
 ): Promise<{ id: string; record: FineBonusRecord } | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).createSpinWheelCashBonus(data);
+  }
   if (await hasFineBonusForSpin(data.spinId)) return null;
   const spinDate = data.spinCreatedAt ? new Date(data.spinCreatedAt) : new Date();
   const month = `${spinDate.getFullYear()}-${String(spinDate.getMonth() + 1).padStart(2, "0")}`;
@@ -258,6 +274,9 @@ export async function createFineBonus(
     screenshot_url?: string;
   }
 ): Promise<{ id: string; record: FineBonusRecord }> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).createFineBonus(data);
+  }
   const entry_id = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
   const created_at = new Date().toISOString();
   const amount = Math.round(Math.max(0, data.amount) * 100) / 100;
@@ -291,6 +310,9 @@ export async function createFineBonus(
 export async function createExtraRevenueSubmission(
   data: CreateExtraRevenueInput
 ): Promise<{ id: string; record: FineBonusRecord }> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).createExtraRevenueSubmission(data);
+  }
   const paymentLabel =
     data.payment_method === "Other" && data.payment_source?.trim()
       ? data.payment_source.trim()
@@ -326,6 +348,9 @@ export type UpdateFineBonusInput = {
 };
 
 export async function updateFineBonus(recordId: string, data: UpdateFineBonusInput): Promise<FineBonusRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).updateFineBonus(recordId, data);
+  }
   const fields: Record<string, unknown> = {};
   if (data.type !== undefined) fields.type = data.type;
   if (data.amount !== undefined) {
@@ -339,6 +364,9 @@ export async function updateFineBonus(recordId: string, data: UpdateFineBonusInp
 }
 
 export async function deleteFineBonus(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).deleteFineBonus(recordId);
+  }
   await deleteRecord(TABLE, recordId);
 }
 
@@ -348,6 +376,14 @@ export async function reviewExtraRevenueSubmission(
   admin: { admin_id: string; admin_name: string },
   rejectReason?: string
 ): Promise<FineBonusRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./fines-bonuses-supabase")).reviewExtraRevenueSubmission(
+      recordId,
+      action,
+      admin,
+      rejectReason
+    );
+  }
   const fields: Record<string, unknown> = {
     status: action === "approve" ? "approved" : "rejected",
     admin_id: admin.admin_id,

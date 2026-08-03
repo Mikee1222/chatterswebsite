@@ -1,18 +1,15 @@
 
-import { listAllRecords } from "@/lib/airtable-server";
-import { linkedRecordIds } from "@/lib/airtable-linked";
 import { NOTIFICATION_EVENT } from "@/lib/notification-types";
 import { formatMoney } from "@/lib/notification-copy";
 import { EVENT_TYPE_TO_AIRTABLE } from "@/lib/notifications-schema";
 import { notify, notifyByRoleConfig } from "@/services/notification-service";
 import { findExistingNotification } from "@/services/notifications";
-import { getBillingCycleRevenues } from "@/services/client-billing";
+import {
+  getAllBillingCycles,
+  getBillingCycleRevenues,
+  getBillingCycleRevenuesForCycles,
+} from "@/services/client-billing";
 import type { BillingCycleKind } from "@/types/client-portal";
-
-const TABLES = {
-  billing_cycles: "billing_cycles",
-  billing_cycle_revenues: "billing_cycle_revenues",
-} as const;
 
 export function kindLabelFor(kind: BillingCycleKind): string {
   return kind === "chatting_weekly" ? "Chatting" : "CRM";
@@ -147,54 +144,43 @@ export async function sendBillingDueReminders() {
   twoDaysFromNow.setDate(today.getDate() + 2);
   const targetDate = twoDaysFromNow.toISOString().slice(0, 10);
 
-  const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycles, {
-    _caller: "sendBillingDueReminders",
-  });
+  const cycles = await getAllBillingCycles();
+  const dueSoon = cycles.filter(
+    (c) =>
+      String(c.due_date ?? "").slice(0, 10) === targetDate &&
+      (c.status === "announced" || c.status === "overdue")
+  );
 
-  const dueSoon = records.filter((r) => {
-    const f = r.fields;
-    return (
-      String(f.due_date ?? "").slice(0, 10) === targetDate &&
-      (f.status === "announced" || f.status === "overdue")
-    );
-  });
+  const revenueRecords = await getBillingCycleRevenuesForCycles(dueSoon.map((c) => c.id));
 
-  const revenueRecords = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
-    fields: ["billing_cycle", "client", "fee_usd"],
-    _caller: "sendBillingDueReminders:revenues",
-  });
-
-  for (const rec of dueSoon) {
-    const f = rec.fields;
-    const cycleClientIds = linkedRecordIds(f.client);
+  for (const cycle of dueSoon) {
+    const cycleClientIds = cycle.client ?? [];
     const clientIds =
       cycleClientIds.length > 0
         ? cycleClientIds
         : [
             ...new Set(
               revenueRecords
-                .filter((r) => linkedRecordIds(r.fields.billing_cycle).includes(rec.id))
-                .flatMap((r) => linkedRecordIds(r.fields.client))
+                .filter((r) => r.billing_cycle.includes(cycle.id))
+                .flatMap((r) => r.client)
             ),
           ];
 
-    const kind = String(f.kind ?? "chatting_weekly") as BillingCycleKind;
+    const kind = cycle.kind;
     const kindLabel = kindLabelFor(kind);
-    const dueDate = String(f.due_date ?? "");
-    const currency = String(f.currency ?? "USD");
-    const cycleAmountDue = typeof f.amount_due === "number" ? f.amount_due : 0;
-    const cycleStatus = String(f.status ?? "");
-    const isOverdue = cycleStatus === "overdue";
+    const dueDate = String(cycle.due_date ?? "");
+    const currency = String(cycle.currency ?? "USD");
+    const cycleAmountDue = cycle.amount_due ?? cycle.amount ?? 0;
+    const isOverdue = cycle.status === "overdue";
 
     for (const clientId of clientIds) {
       const revenue = revenueRecords.find(
-        (r) =>
-          linkedRecordIds(r.fields.billing_cycle).includes(rec.id) &&
-          linkedRecordIds(r.fields.client).includes(clientId)
+        (r) => r.billing_cycle.includes(cycle.id) && r.client.includes(clientId)
       );
-      const feeUsd = revenue?.fields.fee_usd;
       const amountDue =
-        typeof feeUsd === "number" && Number.isFinite(feeUsd) ? feeUsd : cycleAmountDue;
+        revenue?.fee_usd != null && Number.isFinite(revenue.fee_usd)
+          ? revenue.fee_usd
+          : cycleAmountDue;
       const amount = formatMoney(amountDue, currency);
 
       const reminderTitle = isOverdue ? "🚨 Payment overdue" : "⏰ Payment due in 2 days";
@@ -209,7 +195,7 @@ export async function sendBillingDueReminders() {
         title: reminderTitle,
         body: reminderBody,
         entity_type: "billing_cycle",
-        entity_id: rec.id,
+        entity_id: cycle.id,
         _triggerSource: "sendBillingDueReminders",
       });
 

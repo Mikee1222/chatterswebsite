@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { linkedRecordIds } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   getPaymentSubmissionById,
   updatePaymentSubmissionReview,
@@ -178,6 +179,9 @@ function monthKeyFromCycle(cycle: BillingCycleRecord): string | null {
 }
 
 export async function listAllBillingModels(): Promise<ModelRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).listAllBillingModels();
+  }
   const records = await listAllModelss();
   return records
     .map(
@@ -193,6 +197,9 @@ export async function listAllBillingModels(): Promise<ModelRecord[]> {
 }
 
 export async function getClientModelsForBilling(clientId: string): Promise<ClientModelRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getClientModelsForBilling(clientId);
+  }
   const [assignments, models] = await Promise.all([
     listAllRecords<Record<string, unknown>>(TABLES.client_models, {
       _caller: "getClientModelsForBilling:assignments",
@@ -218,6 +225,9 @@ export async function getClientModelsForBilling(clientId: string): Promise<Clien
 }
 
 export async function getAllBillingCycles(month?: string): Promise<BillingCycleRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getAllBillingCycles(month);
+  }
   const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycles, {
     sort: [{ field: "period_start", direction: "desc" }],
     _caller: "getAllBillingCycles",
@@ -229,6 +239,9 @@ export async function getAllBillingCycles(month?: string): Promise<BillingCycleR
 }
 
 export async function getBillingCycleById(cycleId: string): Promise<BillingCycleRecord | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getBillingCycleById(cycleId);
+  }
   try {
     const rec = await getRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId);
     return mapBillingCycle(rec);
@@ -238,6 +251,9 @@ export async function getBillingCycleById(cycleId: string): Promise<BillingCycle
 }
 
 export async function getBillingCycleRevenues(cycleId: string): Promise<BillingCycleRevenueRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getBillingCycleRevenues(cycleId);
+  }
   const { records } = await listRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
     filterByFormula: `FIND("${cycleId}", {billing_cycle}) > 0`,
     sort: [{ field: "created_at", direction: "asc" }],
@@ -260,6 +276,9 @@ export async function getBillingCycleRevenues(cycleId: string): Promise<BillingC
 export async function getBillingCycleRevenuesForCycles(
   cycleIds: string[]
 ): Promise<BillingCycleRevenueRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getBillingCycleRevenuesForCycles(cycleIds);
+  }
   if (cycleIds.length === 0) return [];
   const cycleIdSet = new Set(cycleIds);
 
@@ -276,6 +295,9 @@ export async function getBillingCycleRevenuesForCycles(
 export async function getBillingCycleClientCounts(
   cycleIds: string[]
 ): Promise<Record<string, number>> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getBillingCycleClientCounts(cycleIds);
+  }
   if (cycleIds.length === 0) return {};
 
   const records = await listAllRecords<Record<string, unknown>>(TABLES.billing_cycle_revenues, {
@@ -319,6 +341,9 @@ export type CreateBillingCycleInput = {
 };
 
 export async function createBillingCycle(data: CreateBillingCycleInput): Promise<BillingCycleRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).createBillingCycle(data);
+  }
   const fields: Record<string, unknown> = {
     client: data.client ?? [],
     kind: data.kind,
@@ -382,11 +407,17 @@ export async function updateBillingCycle(
   cycleId: string,
   data: UpdateBillingCycleInput
 ): Promise<BillingCycleRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).updateBillingCycle(cycleId, data);
+  }
   const rec = await updateRecord<Record<string, unknown>>(TABLES.billing_cycles, cycleId, data);
   return mapBillingCycle(rec);
 }
 
 export async function deleteBillingCycle(cycleId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).deleteBillingCycle(cycleId);
+  }
   await deleteRecord(TABLES.billing_cycles, cycleId);
 }
 
@@ -395,6 +426,9 @@ export type GeneratePeriodsResult =
   | { ok: false; userMessage: string; errorCode: string };
 
 export async function generateWeeklyPeriods(month: string): Promise<GeneratePeriodsResult> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).generateWeeklyPeriods(month);
+  }
   const [year, monthNum] = month.split("-").map(Number);
   if (Number.isNaN(year) || Number.isNaN(monthNum)) {
     return { ok: false, userMessage: "Invalid month format (YYYY-MM)", errorCode: "invalid_month" };
@@ -445,6 +479,12 @@ export async function generateBillingPeriodsRange(
   periodStart: string,
   periodEnd: string
 ): Promise<GeneratePeriodsResult> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).generateBillingPeriodsRange(
+      periodStart,
+      periodEnd
+    );
+  }
   const rangeStart = new Date(periodStart + "T12:00:00");
   const endLimit = new Date(periodEnd + "T12:00:00");
   const periods: { period_start: string; period_end: string; due_date: string }[] = [];
@@ -494,6 +534,9 @@ export async function createBillingCycleRevenue(data: {
   fee_percent: number;
   status?: BillingCycleRevenueStatus;
 }): Promise<BillingCycleRevenueRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).createBillingCycleRevenue(data);
+  }
   const fields: Record<string, unknown> = {
     billing_cycle: data.billing_cycle,
     client: data.client,
@@ -528,6 +571,9 @@ export async function updateBillingCycleRevenue(
   revenueId: string,
   data: { turnover_usd?: number; fee_percent?: number; status?: BillingCycleRevenueStatus }
 ): Promise<BillingCycleRevenueRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).updateBillingCycleRevenue(revenueId, data);
+  }
   const rec = await updateRecord<Record<string, unknown>>(
     TABLES.billing_cycle_revenues,
     revenueId,
@@ -540,6 +586,9 @@ export async function deleteBillingCycleRevenue(revenueId: string): Promise<{
   cycleId: string | null;
   clientId: string | null;
 }> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).deleteBillingCycleRevenue(revenueId);
+  }
   const rec = await getRecord<Record<string, unknown>>(TABLES.billing_cycle_revenues, revenueId);
   const cycleId = linkedRecordIds(rec.fields.billing_cycle)[0] ?? null;
   const clientId = linkedRecordIds(rec.fields.client)[0] ?? null;
@@ -591,6 +640,9 @@ export type PaymentSubmissionFilters = {
 export async function getAllPaymentSubmissions(
   filters?: PaymentSubmissionFilters
 ): Promise<PaymentSubmissionRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).getAllPaymentSubmissions(filters);
+  }
   const formulaParts: string[] = [];
   if (filters?.status) {
     formulaParts.push(`{status} = "${filters.status}"`);
@@ -619,6 +671,9 @@ export async function updatePaymentSubmission(
   submissionId: string,
   data: { status: "approved" | "rejected"; admin_note?: string }
 ): Promise<PaymentSubmissionRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).updatePaymentSubmission(submissionId, data);
+  }
   const submission = await getPaymentSubmissionById(submissionId);
   const clientId = submission.client[0];
   const billingCycleId = submission.billing_cycle[0];
@@ -660,6 +715,9 @@ export type BillingClientRecord = Pick<
 >;
 
 export async function listBillingClients(): Promise<BillingClientRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./client-billing-supabase")).listBillingClients();
+  }
   const records = await listAllRecords<Record<string, unknown>>(TABLES.clients, {
     filterByFormula: '{status} = "active"',
     sort: [{ field: "company_name", direction: "asc" }],

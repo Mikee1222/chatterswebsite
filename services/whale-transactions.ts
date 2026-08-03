@@ -11,6 +11,7 @@ import {
   type ListParams,
 } from "@/lib/airtable-server";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { TRANSACTION_TYPES } from "@/lib/airtable-options";
 import type {
   WhaleTransaction,
@@ -65,12 +66,16 @@ function mapRecord(rec: AirtableRecord<Fields>): WhaleTransaction {
 }
 
 export async function listWhaleTransactions(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./whale-transactions-supabase")).listWhaleTransactions(params);
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { transactions: records.map(mapRecord), offset };
 }
 
 /** List all transactions (for admin). Filter by yearMonth "YYYY-MM" in app using date field (YYYY-MM-DD). */
 export async function listAllWhaleTransactions(): Promise<WhaleTransaction[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).listAllWhaleTransactions();
+  }
   const records = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "date", direction: "desc" }],
   });
@@ -83,6 +88,12 @@ export async function listAllWhaleTransactions(): Promise<WhaleTransaction[]> {
  * so we fetch records and filter by chatter linked record id in code.
  */
 export async function listTransactionsByChatter(chatterRecordId: string, limit = 50) {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).listTransactionsByChatter(
+      chatterRecordId,
+      limit
+    );
+  }
   const allRecords = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -123,6 +134,9 @@ export type CreateWhaleTransactionFields = {
 };
 
 export async function createWhaleTransaction(fields: CreateWhaleTransactionFields) {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).createWhaleTransaction(fields);
+  }
   const mins = fields.session_length_minutes;
   if (mins == null || typeof mins !== "number" || !Number.isInteger(mins) || mins < 0) {
     throw new Error("session_length_minutes is required and must be a non-negative integer");
@@ -199,6 +213,12 @@ export async function peekWhaleTransactionForChatter(
   recordId: string,
   chatterRecordId: string,
 ): Promise<WhaleTransaction | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).peekWhaleTransactionForChatter(
+      recordId,
+      chatterRecordId
+    );
+  }
   try {
     return await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
   } catch {
@@ -225,6 +245,13 @@ export async function updateWhaleTransactionForChatter(
   chatterRecordId: string,
   fields: UpdateWhaleTransactionFields
 ) {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).updateWhaleTransactionForChatter(
+      recordId,
+      chatterRecordId,
+      fields
+    );
+  }
   await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
   if (fields.session_length_minutes != null) {
     const m = fields.session_length_minutes;
@@ -249,6 +276,12 @@ export async function updateWhaleTransactionForChatter(
 }
 
 export async function deleteWhaleTransactionForChatter(recordId: string, chatterRecordId: string) {
+  if (isSupabaseBackend()) {
+    return (await import("./whale-transactions-supabase")).deleteWhaleTransactionForChatter(
+      recordId,
+      chatterRecordId
+    );
+  }
   await assertWhaleTransactionOwnedByChatter(recordId, chatterRecordId);
   await deleteRecord(TABLE, recordId);
 }

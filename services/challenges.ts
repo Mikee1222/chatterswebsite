@@ -7,6 +7,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { awardPoints } from "@/services/points-engine";
 import { listAllUsers } from "@/services/users";
 import { CHALLENGE_METRICS, type ChallengeMetric } from "@/lib/challenges";
@@ -108,6 +109,9 @@ function isLiveInWindow(c: ChallengeRow, today: string): boolean {
 }
 
 export async function getActiveChallenges(userId: string): Promise<ChallengeRow[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).getActiveChallenges(userId);
+  }
   const uid = userId.trim();
   const records = await listAllRecords<ChallengeFields>(CHALLENGES, {
     _caller: "challenges.getActiveChallenges",
@@ -120,6 +124,9 @@ export async function getActiveChallenges(userId: string): Promise<ChallengeRow[
 }
 
 export async function getAllChallengesForAdmin(): Promise<ChallengeRow[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).getAllChallengesForAdmin();
+  }
   const records = await listAllRecords<ChallengeFields>(CHALLENGES, {
     _caller: "challenges.getAllChallengesForAdmin",
   });
@@ -186,6 +193,9 @@ export async function getChallengeProgress(
   userId: string,
   challengeId: string
 ): Promise<ChallengeProgressRow | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).getChallengeProgress(userId, challengeId);
+  }
   if (!userId.trim() || !challengeId.trim()) return null;
   const { records } = await listRecords<ProgressFields>(PROGRESS, {
     filterByFormula: `AND({user_id} = "${escapeFormulaString(userId)}", {challenge_id} = "${escapeFormulaString(challengeId)}")`,
@@ -203,6 +213,9 @@ export type ChallengeWithPersonalProgress = ChallengeRow & {
 };
 
 export async function getAllChallengesWithProgress(userId: string): Promise<ChallengeWithPersonalProgress[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).getAllChallengesWithProgress(userId);
+  }
   const active = await getActiveChallenges(userId);
   if (!userId.trim() || active.length === 0) return [];
 
@@ -308,6 +321,13 @@ export async function updateChallengeProgress(
   metric: ChallengeMetric,
   incrementBy: number
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).updateChallengeProgress(
+      userId,
+      metric,
+      incrementBy
+    );
+  }
   if (!userId.trim() || !Number.isFinite(incrementBy) || incrementBy <= 0) return;
   try {
     const list = await challengesMatchingMetricInWindow(metric, userId);
@@ -344,6 +364,9 @@ export async function updateChallengeProgress(
 
 /** Safety pass: ensure any progress row that should be completed gets reward (idempotent if already completed). */
 export async function checkAndCompleteChallenges(userId: string, metric: ChallengeMetric): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).checkAndCompleteChallenges(userId, metric);
+  }
   const list = await challengesMatchingMetricInWindow(metric, userId);
   for (const ch of list) {
     const row = await findProgressRecord(userId, ch.id);
@@ -357,6 +380,9 @@ export async function checkAndCompleteChallenges(userId: string, metric: Challen
 
 /** Completed participants per challenge id (for admin aggregate bar). */
 export async function getCompletionCountsByChallenge(): Promise<Record<string, number>> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).getCompletionCountsByChallenge();
+  }
   const all = await listAllRecords<ProgressFields>(PROGRESS, { _caller: "challenges.getCompletionCountsByChallenge" });
   const out: Record<string, number> = {};
   for (const r of all) {
@@ -370,11 +396,17 @@ export async function getCompletionCountsByChallenge(): Promise<Record<string, n
 }
 
 export async function activeChatterCount(): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).activeChatterCount();
+  }
   const users = await listAllUsers();
   return users.filter((u) => u.role === "chatter" && (!u.status || u.status.toLowerCase() === "active")).length;
 }
 
 export async function deleteProgressForChallenge(challengeId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).deleteProgressForChallenge(challengeId);
+  }
   const all = await listAllRecords<ProgressFields>(PROGRESS, { _caller: "challenges.deleteProgressForChallenge" });
   for (const r of all) {
     if (String(r.fields?.challenge_id ?? "").trim() === challengeId) {

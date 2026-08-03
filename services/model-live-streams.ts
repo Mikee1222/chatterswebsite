@@ -6,7 +6,7 @@ import {
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
-import { getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { ModelLiveStreamRecord } from "@/types";
 
 const TABLE = "model_live_streams";
@@ -50,6 +50,9 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelLiveStreamRecord {
 }
 
 export async function listModelLiveStreams(modelId: string): Promise<ModelLiveStreamRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-live-streams-supabase")).listModelLiveStreams(modelId);
+  }
   if (!modelId) return [];
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "date", direction: "asc" }] });
   return records
@@ -63,6 +66,9 @@ export async function listAllModelLiveStreamsInRange(opts?: {
   fromDate?: string;
   toDate?: string;
 }): Promise<ModelLiveStreamRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-live-streams-supabase")).listAllModelLiveStreamsInRange(opts);
+  }
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "date", direction: "asc" }] });
   let rows = records.map(mapRecord);
   if (opts?.fromDate) rows = rows.filter((r) => r.date >= opts.fromDate!);
@@ -72,6 +78,9 @@ export async function listAllModelLiveStreamsInRange(opts?: {
 }
 
 export async function getModelLiveStreamById(id: string): Promise<ModelLiveStreamRecord | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-live-streams-supabase")).getModelLiveStreamById(id);
+  }
   try {
     const rec = await getRecord<Fields>(TABLE, id);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -88,6 +97,9 @@ export function isActiveLiveStreamRecord(r: Pick<ModelLiveStreamRecord, "status"
 }
 
 export async function getActiveLiveStreamForModel(modelId: string): Promise<ModelLiveStreamRecord | null> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-live-streams-supabase")).getActiveLiveStreamForModel(modelId);
+  }
   if (!modelId) return null;
   // `model` links to modelss; ARRAYJOIN in formulas yields model_id slug, not rec… ids.
   // Match listModelLiveStreams: filter active rows in formula, then match linked record id in JS.
@@ -114,6 +126,9 @@ export async function createModelLiveStream(input: {
   details_en?: string;
   details_es?: string;
 }): Promise<ModelLiveStreamRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-live-streams-supabase")).createModelLiveStream(input);
+  }
   const rec = await createRecord<Fields>(TABLE, {
     model: [input.model_id],
     date: input.date,
@@ -155,6 +170,9 @@ export async function updateModelLiveStream(
     details_es: string | null;
   }>
 ): Promise<ModelLiveStreamRecord> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-live-streams-supabase")).updateModelLiveStream(id, patch);
+  }
   const rec = await updateRecord<Fields>(TABLE, id, patch as Partial<Fields>);
   return mapRecord(rec as AirtableRecord<Fields>);
 }

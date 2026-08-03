@@ -2,6 +2,7 @@
 
 import { createRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { notify, notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_ENTITY, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import type { ModelContentRequest, ModelContentRequestStatus, ModelContentRequestType } from "@/types";
@@ -52,6 +53,11 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelContentRequest {
 }
 
 export async function listModelContentRequestsForModel(modelRecordId: string): Promise<ModelContentRequest[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-content-requests-supabase")).listModelContentRequestsForModel(
+      modelRecordId
+    );
+  }
   const id = modelRecordId?.trim();
   if (!id) return [];
   const records = await listAllRecords<Fields>(TABLE, {
@@ -61,6 +67,9 @@ export async function listModelContentRequestsForModel(modelRecordId: string): P
 }
 
 export async function listAllModelContentRequests(): Promise<ModelContentRequest[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-content-requests-supabase")).listAllModelContentRequests();
+  }
   const records = await listAllRecords<Fields>(TABLE, {
     sort: [{ field: "created_at", direction: "desc" }],
   });
@@ -74,6 +83,9 @@ export async function createModelContentRequest(input: {
   title: string;
   description: string;
 }): Promise<ModelContentRequest> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-content-requests-supabase")).createModelContentRequest(input);
+  }
   const now = new Date().toISOString();
   const rec = await createRecord<Fields>(TABLE, {
     request_id: `mcr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -110,6 +122,12 @@ export async function updateModelContentRequest(
   recordId: string,
   input: Partial<Pick<ModelContentRequest, "status" | "admin_notes">>
 ): Promise<ModelContentRequest> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-content-requests-supabase")).updateModelContentRequest(
+      recordId,
+      input
+    );
+  }
   const fields: Partial<Fields> = {
     updated_at: new Date().toISOString(),
   };

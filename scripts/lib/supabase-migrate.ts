@@ -478,7 +478,7 @@ export async function migrateAttachmentsForRow(
       continue;
     }
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45_000);
+    const timeout = setTimeout(() => controller.abort(), 180_000);
     let res: Response;
     try {
       res = await fetch(att.url, { signal: controller.signal });
