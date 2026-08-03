@@ -1,17 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { getRecord } from "@/lib/airtable-server";
-import { firstLinkedId } from "@/lib/airtable-linked";
 import { addDaysAthensYmd, getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
 import { getInflowwEarningsSnapshot, InflowwApiError } from "@/lib/infloww-api";
 import { listEarningsAgencyCutConfig } from "@/services/earnings-config";
 import { getModelById } from "@/services/modelss";
-
-type UserFields = {
-  linked_model?: string | string[];
-  linked_model_id?: string | string[];
-};
+import { getUserByAirtableId } from "@/services/users";
 
 /**
  * Current calendar week (Mon–Sun, Athens +3 convention) gross/net/agency totals
@@ -27,16 +21,21 @@ export async function GET() {
   const userRecordId = user.airtableUserId ?? user.id;
   let linkedModelId: string | null = null;
   try {
-    const rec = await getRecord<UserFields>("users", userRecordId);
-    const f = rec.fields ?? {};
-    linkedModelId = firstLinkedId(f.linked_model) ?? firstLinkedId(f.linked_model_id) ?? null;
+    const rec = await getUserByAirtableId(userRecordId);
+    linkedModelId = rec?.linked_model_id?.trim() || null;
   } catch {
     linkedModelId = null;
   }
 
   if (!linkedModelId) {
     return NextResponse.json(
-      { week_start: getWeekStartYmdInAthens(0), week_end: addDaysAthensYmd(getWeekStartYmdInAthens(0), 6), gross: 0, net: 0, agency_cut: 0 },
+      {
+        week_start: getWeekStartYmdInAthens(0),
+        week_end: addDaysAthensYmd(getWeekStartYmdInAthens(0), 6),
+        gross: 0,
+        net: 0,
+        agency_cut: 0,
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   }

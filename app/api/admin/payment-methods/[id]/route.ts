@@ -17,7 +17,7 @@ function toRecord(m: PaymentMethodRow): PaymentMethodRecord {
     network: m.network || undefined,
     is_available: m.is_available,
     scope: m.scope,
-    client: [],
+    client: m.client ?? [],
     open_url: m.open_url || undefined,
     fallback_url: m.fallback_url || undefined,
     beneficiary: m.beneficiary || undefined,
@@ -57,6 +57,11 @@ function buildFields(body: PaymentMethodBody): Partial<PaymentMethodRow> {
   if (typeof body.wallet_address === "string") fields.wallet_address = body.wallet_address.trim();
   if (typeof body.open_url === "string") fields.open_url = body.open_url.trim();
   if (typeof body.fallback_url === "string") fields.fallback_url = body.fallback_url.trim();
+  if (Array.isArray(body.client)) {
+    fields.client = body.client.map((id) => String(id).trim()).filter(Boolean);
+  } else if (typeof body.scope === "string" && body.scope.trim() === "global") {
+    fields.client = [];
+  }
   return fields;
 }
 

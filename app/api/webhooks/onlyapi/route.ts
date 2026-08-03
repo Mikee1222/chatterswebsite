@@ -1,16 +1,24 @@
 import { NextResponse } from "next/server";
-import { createRecord, listRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
-import { OF_SUBSCRIBERS_TABLE } from "@/lib/airtable-schema";
 import { listAllModelss } from "@/services/modelss";
-import { categorizeSubscriber, type OFSubscriber } from "@/services/of-subscribers";
+import {
+  categorizeSubscriber,
+  createStoredSubscriber,
+  findStoredSubscriber,
+  updateStoredSubscriber,
+  type OFSubscriber,
+} from "@/services/of-subscribers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const TABLE = OF_SUBSCRIBERS_TABLE;
-
 type OnlyApiWebhookEvent =
-  | "new_tip"| "new_purchase"| "renewed_subscriber"| "expired_subscriber"| "balance_increased"| "new_message"| "payout_completed";
+  | "new_tip"
+  | "new_purchase"
+  | "renewed_subscriber"
+  | "expired_subscriber"
+  | "balance_increased"
+  | "new_message"
+  | "payout_completed";
 
 type WebhookBody = {
   event?: string;
@@ -19,23 +27,6 @@ type WebhookBody = {
   amount?: number;
   data?: Record<string, unknown>;
 };
-
-type SubscriberFields = {
-  of_user_id?: number;
-  of_account_id?: string;
-  model_name?: string;
-  display_name?: string;
-  username?: string;
-  subscribed_at?: string;
-  expires_at?: string;
-  total_spent?: number;
-  category?: string;
-  last_synced_at?: string;
-};
-
-function escapeFormulaString(s: string): string {
-  return s.replace(/"/g, '""');
-}
 
 function roundMoney(n: number): number {
   return Math.round(n * 100) / 100;
@@ -52,21 +43,8 @@ function verifyWebhookSecret(request: Request): boolean {
   return h1 === secret || h2 === secret;
 }
 
-async function findSubscriber(
-  modelOfUserId: string,
-  fanUserId: number
-): Promise<AirtableRecord<SubscriberFields> | null> {
-  const esc = escapeFormulaString(modelOfUserId.trim());
-  const { records } = await listRecords<SubscriberFields>(TABLE, {
-    filterByFormula: `AND({of_account_id}="${esc}", {of_user_id}=${fanUserId})`,
-    pageSize: 1,
-    _caller: "onlyapi-webhook",
-  });
-  return records[0] ?? null;
-}
-
 async function resolveModelName(modelOfUserId: string): Promise<string> {
-  const esc = escapeFormulaString(modelOfUserId.trim());
+  const esc = modelOfUserId.trim().replace(/"/g, '""');
   try {
     const rows = await listAllModelss(`{of_user_id}="${esc}"`);
     const name = rows[0]?.model_name?.trim();
@@ -119,7 +97,11 @@ export async function POST(request: Request) {
     const data = body.data ?? {};
 
     if (!event || !modelOfUserId || !fanRaw || !Number.isFinite(fanNum)) {
-      console.warn("[webhook/onlyapi] missing event, of_user_id, or fan_user_id", { event, modelOfUserId, fanRaw });
+      console.warn("[webhook/onlyapi] missing event, of_user_id, or fan_user_id", {
+        event,
+        modelOfUserId,
+        fanRaw,
+      });
       return NextResponse.json({ received: true });
     }
 
@@ -128,22 +110,22 @@ export async function POST(request: Request) {
       case "new_purchase":
       case "balance_increased": {
         const amount = roundMoney(parseAmount(body));
-        const existing = await findSubscriber(modelOfUserId, fanNum);
+        const existing = await findStoredSubscriber(modelOfUserId, fanNum);
         const nowIso = new Date().toISOString();
 
         if (existing) {
-          const prev = Number(existing.fields.total_spent ?? 0);
+          const prev = Number(existing.total_spent ?? 0);
           const total_spent = roundMoney(prev + amount);
           const sub: OFSubscriber = {
             of_user_id: fanNum,
-            username: String(existing.fields.username ?? ""),
-            display_name: String(existing.fields.display_name ?? ""),
-            subscribed_at: String(existing.fields.subscribed_at ?? nowIso),
-            expires_at: String(existing.fields.expires_at ?? ""),
+            username: String(existing.username ?? ""),
+            display_name: String(existing.display_name ?? ""),
+            subscribed_at: String(existing.subscribed_at ?? nowIso),
+            expires_at: String(existing.expires_at ?? ""),
             total_spent,
           };
           const category = categorizeSubscriber(sub);
-          await updateRecord<SubscriberFields>(TABLE, existing.id, {
+          await updateStoredSubscriber(existing.id, {
             total_spent,
             category,
             last_synced_at: nowIso,
@@ -153,7 +135,6 @@ export async function POST(request: Request) {
           );
         } else if (amount >= 500) {
           const model_name = await resolveModelName(modelOfUserId);
-          const nowIso = new Date().toISOString();
           const sub: OFSubscriber = {
             of_user_id: fanNum,
             username: String(data.username ?? ""),
@@ -162,7 +143,7 @@ export async function POST(request: Request) {
             expires_at: String(data.expires_at ?? ""),
             total_spent: amount,
           };
-          await createRecord(TABLE, {
+          await createStoredSubscriber({
             of_user_id: fanNum,
             of_account_id: modelOfUserId,
             model_name,
@@ -186,10 +167,10 @@ export async function POST(request: Request) {
       }
       case "renewed_subscriber":
       case "expired_subscriber": {
-        const existing = await findSubscriber(modelOfUserId, fanNum);
+        const existing = await findStoredSubscriber(modelOfUserId, fanNum);
         const expiresAt = parseExpiresAt(data);
         if (existing && expiresAt) {
-          await updateRecord<SubscriberFields>(TABLE, existing.id, {
+          await updateStoredSubscriber(existing.id, {
             expires_at: expiresAt,
             last_synced_at: new Date().toISOString(),
           });

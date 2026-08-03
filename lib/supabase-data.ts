@@ -109,6 +109,18 @@ export async function sbInsert<T extends SbRow>(
   return data as T;
 }
 
+/** Bulk insert — one round-trip. Returns inserted rows in order. */
+export async function sbInsertMany<T extends SbRow>(
+  table: string,
+  rows: Record<string, unknown>[]
+): Promise<T[]> {
+  if (!rows.length) return [];
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.from(table).insert(rows).select("*");
+  if (error) throw new Error(`sbInsertMany ${table}: ${error.message}`);
+  return (data as unknown as T[]) ?? [];
+}
+
 export async function sbUpdateByPublicId<T extends SbRow>(
   table: string,
   publicOrUuid: string,
@@ -335,4 +347,64 @@ export async function sbFirstLinkedAirtableId(
 ): Promise<string | null> {
   const ids = await sbAirtableIdsForUuids(table, uuids);
   return ids[0] ?? null;
+}
+
+/**
+ * Build uuid → public/Airtable id map for many uuid[] columns in one lookup.
+ * Use before mapping list rows so N rows don't each open separate ID queries.
+ */
+export async function sbResolveUuidToAirtableMap(
+  table: string,
+  uuidLists: (string[] | null | undefined)[]
+): Promise<Map<string, string>> {
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const list of uuidLists) {
+    for (const id of list ?? []) {
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      unique.push(id);
+    }
+  }
+  if (!unique.length) return new Map();
+  const resolved = await sbAirtableIdsForUuids(table, unique);
+  const map = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    map.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return map;
+}
+
+/** Map a uuid[] column through a prebuilt uuid→airtable map. */
+export function mapLinkedIds(
+  uuids: string[] | null | undefined,
+  atByUuid: Map<string, string>
+): string[] {
+  return (uuids ?? []).map((id) => atByUuid.get(id) || id).filter(Boolean);
+}
+
+/** First linked id from a prebuilt map (sync). */
+export function firstMappedLinkedId(
+  uuids: string[] | null | undefined,
+  atByUuid: Map<string, string>
+): string {
+  const id = uuids?.find(Boolean);
+  if (!id) return "";
+  return atByUuid.get(id) || id;
+}
+
+/**
+ * Resolve link ids → UUIDs. Empty input → []. Non-empty with unresolved → throw.
+ * Use for optional link arrays that must never write broken empty arrays on miss.
+ */
+export async function requireSbUuidsOrEmpty(
+  table: string,
+  airtableIds: string[] | null | undefined,
+  label?: string
+): Promise<string[]> {
+  const requested = [
+    ...new Set((airtableIds ?? []).map((id) => String(id).trim()).filter(Boolean)),
+  ];
+  if (!requested.length) return [];
+  return requireSbUuids(table, requested, label);
 }

@@ -16,7 +16,7 @@ function toRecord(m: Awaited<ReturnType<typeof listAllPaymentMethods>>[number]):
     network: m.network || undefined,
     is_available: m.is_available,
     scope: m.scope,
-    client: [],
+    client: m.client ?? [],
     open_url: m.open_url || undefined,
     fallback_url: m.fallback_url || undefined,
     beneficiary: m.beneficiary || undefined,
@@ -93,11 +93,13 @@ export async function POST(request: Request) {
   }
 
   try {
+    const scope = body.scope?.trim() ?? "";
+    const clientIds = Array.isArray(body.client) ? body.client.filter(Boolean) : [];
     const created = await createPaymentMethod({
       label: body.label?.trim() ?? "",
       type: body.type ?? "",
       details: body.details?.trim() ?? "",
-      scope: body.scope?.trim() ?? "",
+      scope,
       network: body.network?.trim() ?? "",
       is_available: body.is_available ?? true,
       beneficiary: body.beneficiary?.trim() ?? "",
@@ -106,6 +108,7 @@ export async function POST(request: Request) {
       wallet_address: body.wallet_address?.trim() ?? "",
       open_url: body.open_url?.trim() ?? "",
       fallback_url: body.fallback_url?.trim() ?? "",
+      client: scope === "client" ? clientIds : [],
     });
     return NextResponse.json({ paymentMethod: toRecord(created) });
   } catch (err) {
