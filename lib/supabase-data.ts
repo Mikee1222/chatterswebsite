@@ -129,15 +129,27 @@ export async function sbAirtableIdsForUuids(
   uuids: string[] | null | undefined
 ): Promise<string[]> {
   if (!uuids?.length) return [];
+  const unique = [...new Set(uuids.filter(Boolean))];
   const sb = getSupabaseServiceClient();
-  const { data, error } = await sb.from(table).select("id, airtable_id").in("id", uuids);
-  if (error) throw new Error(`sbAirtableIdsForUuids ${table}: ${error.message}`);
-  const byId = new Map(
-    (data ?? []).map((r) => [
-      r.id as string,
-      ((r.airtable_id as string) || "").trim() || (r.id as string),
-    ])
-  );
+  // Chunk large IN lists to avoid PostgREST URL / payload limits.
+  const chunkSize = 200;
+  const byId = new Map<string, string>();
+  for (let i = 0; i < unique.length; i += chunkSize) {
+    const chunk = unique.slice(i, i + chunkSize);
+    const { data, error } = await sb.from(table).select("id, airtable_id").in("id", chunk);
+    if (error) {
+      const detail = [error.message, error.code, error.details, error.hint]
+        .filter(Boolean)
+        .join(" | ");
+      throw new Error(`sbAirtableIdsForUuids ${table}: ${detail || "unknown error"}`);
+    }
+    for (const r of data ?? []) {
+      byId.set(
+        r.id as string,
+        ((r.airtable_id as string) || "").trim() || (r.id as string)
+      );
+    }
+  }
   // Prefer airtable_id; fall back to uuid for rows created natively in Supabase.
   return uuids.map((id) => byId.get(id) || id).filter(Boolean);
 }

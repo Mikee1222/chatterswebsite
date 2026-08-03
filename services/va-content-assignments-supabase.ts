@@ -15,8 +15,6 @@ import {
 } from "@/lib/supabase-data";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { notify, notifyByRoleConfig } from "@/services/notification-service";
-import { getUserByAirtableId } from "@/services/users";
-import { getModelById } from "@/services/modelss";
 import type { VaContentAssignmentRecord } from "@/types";
 import {
   validateAssignmentFileCount,
@@ -36,10 +34,10 @@ const TABLE = "va_content_assignments";
 
 type Row = SbRow & {
   assignment_id?: string | null;
+  /** M2M: linked modelss UUIDs (Airtable `model` / `assigned_model`). No `model_id` text col. */
   model?: string[] | null;
+  /** M2M: linked users UUIDs (Airtable `va`). No `va_id` text col — use join `va_content_assignment_vas`. */
   va?: string[] | null;
-  model_id?: string | null;
-  va_id?: string | null;
   title?: string | null;
   description?: string | null;
   content_type?: string | null;
@@ -52,7 +50,7 @@ type Row = SbRow & {
   model_notes?: string | null;
   va_notes?: string | null;
   completed_at?: string | null;
-  created_at?: string | null;
+  created_time?: string | null;
   updated_at?: string | null;
   rejection_reason?: string | null;
   admin_edit_notes?: string | null;
@@ -72,12 +70,11 @@ async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
     sbAirtableIdsForUuids("modelss", modelUuids),
     sbAirtableIdsForUuids("users", vaUuids),
   ]);
-  const modelIdText = typeof row.model_id === "string" ? row.model_id.trim() : "";
   return {
     id: publicId(row),
     assignment_id: row.assignment_id ?? "",
-    model_id: modelAtIds[0] ?? modelIdText,
-    va_id: vaAtIds[0] ?? (typeof row.va_id === "string" && row.va_id.trim() ? row.va_id.trim() : null),
+    model_id: modelAtIds[0] ?? "",
+    va_id: vaAtIds[0] ?? null,
     title: row.title ?? "",
     description: row.description ?? "",
     content_type: row.content_type ?? "",
@@ -90,7 +87,7 @@ async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
     model_notes: row.model_notes ?? "",
     va_notes: row.va_notes ?? "",
     completed_at: row.completed_at ?? null,
-    created_at: row.created_at ?? "",
+    created_at: row.created_time ?? "",
     updated_at: row.updated_at ?? "",
     rejection_reason: typeof row.rejection_reason === "string" ? row.rejection_reason : "",
     admin_edit_notes: typeof row.admin_edit_notes === "string" ? row.admin_edit_notes : "",
@@ -99,18 +96,30 @@ async function mapRow(row: Row): Promise<VaContentAssignmentRecord> {
   };
 }
 
+/** Resolve VA public id (Airtable `rec…` or Postgres uuid) → users.id uuid(s). */
 async function vaUuidsForUserKey(vaUserRecordId: string): Promise<string[]> {
   const rid = vaUserRecordId?.trim();
   if (!rid) return [];
-  if (!rid.startsWith("rec")) return [];
-  const uuids = await sbUuidsForAirtableIds("users", [rid]);
-  return uuids;
+  return sbUuidsForAirtableIds("users", [rid]);
 }
 
 async function modelUuidForKey(modelRecordId: string): Promise<string | null> {
-  if (!modelRecordId.startsWith("rec")) return null;
-  const uuids = await sbUuidsForAirtableIds("modelss", [modelRecordId]);
+  const rid = modelRecordId?.trim();
+  if (!rid) return null;
+  const uuids = await sbUuidsForAirtableIds("modelss", [rid]);
   return uuids[0] ?? null;
+}
+
+/** Keep join table `va_content_assignment_vas` in sync with denormalized `va uuid[]`. */
+async function syncAssignmentVas(assignmentUuid: string, vaUuids: string[]): Promise<void> {
+  const sb = getSupabaseServiceClient();
+  await sb.from("va_content_assignment_vas").delete().eq("assignment_id", assignmentUuid);
+  if (!vaUuids.length) return;
+  const rows = vaUuids.map((user_id) => ({ assignment_id: assignmentUuid, user_id }));
+  const { error } = await sb.from("va_content_assignment_vas").upsert(rows, {
+    onConflict: "assignment_id,user_id",
+  });
+  if (error) console.error("[va-content-assignments] sync vas join", error.message);
 }
 
 function statusNorm(status: string | undefined): string {
@@ -156,9 +165,7 @@ export async function getVAContentAssignmentForVa(
   if (!row) return null;
   const vaUuids = await vaUuidsForUserKey(vaUserRecordId);
   const rowUuids = row.va ?? [];
-  const stableUserId = (await getUserByAirtableId(vaUserRecordId).catch(() => null))?.user_id?.trim() ?? "";
-  const matches = vaUuids.some((u) => rowUuids.includes(u)) ||
-    (stableUserId && row.va_id === stableUserId);
+  const matches = vaUuids.some((u) => rowUuids.includes(u));
   return matches ? mapRow(row) : null;
 }
 
@@ -215,13 +222,11 @@ export async function listVAContentAssignmentsForVaUser(vaUserRecordId: string):
   const rid = vaUserRecordId?.trim();
   if (!rid) return [];
   const vaUuids = await vaUuidsForUserKey(rid);
-  const stable = (await getUserByAirtableId(rid).catch(() => null))?.user_id?.trim() ?? "";
+  const userUuid = vaUuids[0];
+  if (!userUuid) return [];
   const sb = getSupabaseServiceClient();
-  const filters: string[] = [];
-  if (vaUuids.length) filters.push(`va.cs.{${vaUuids.join(",")}}`);
-  if (stable) filters.push(`va_id.eq.${stable}`);
-  if (!filters.length) return [];
-  const { data, error } = await sb.from(TABLE).select("*").or(filters.join(","));
+  // Filter on `va uuid[]` (Airtable multi-link). There is no `va_id` text column.
+  const { data, error } = await sb.from(TABLE).select("*").contains("va", [userUuid]);
   if (error) throw new Error(`va_content_assignments: ${error.message}`);
   const mapped = await Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
   return sortAssignmentsForVa(mapped);
@@ -252,21 +257,14 @@ export async function listAllVAContentAssignmentsInRange(fromDate: string, toDat
 
 export async function listVAContentAssignmentsForModel(
   modelRecordId: string,
-  stableModelId?: string | null
+  _stableModelId?: string | null
 ): Promise<VaContentAssignmentRecord[]> {
   if (!modelRecordId) return [];
-  let sid = stableModelId?.trim() ?? "";
-  if (!sid) {
-    const rec = await getModelById(modelRecordId).catch(() => null);
-    sid = rec?.model_id?.trim() ?? "";
-  }
+  // Schema has `model uuid[]` only — no `model_id` text column on this table.
   const modelUuid = await modelUuidForKey(modelRecordId);
+  if (!modelUuid) return [];
   const sb = getSupabaseServiceClient();
-  const parts: string[] = [];
-  if (modelUuid) parts.push(`model.cs.{${modelUuid}}`);
-  if (sid) parts.push(`model_id.eq.${sid}`);
-  if (!parts.length) return [];
-  const { data, error } = await sb.from(TABLE).select("*").or(parts.join(","));
+  const { data, error } = await sb.from(TABLE).select("*").contains("model", [modelUuid]);
   if (error) throw new Error(`va_content_assignments: ${error.message}`);
   const mapped = await Promise.all(((data ?? []) as unknown as Row[]).map(mapRow));
   return sortAssignmentsForModel(mapped.filter((row) => !isHiddenFromModelStatus(row.status)));
@@ -336,16 +334,18 @@ export async function countPendingVAContentAssignmentsForModel(
 export async function getVAContentAssignmentForModel(
   assignmentRecordId: string,
   modelRecordId: string,
-  stableModelId?: string | null
+  _stableModelId?: string | null
 ): Promise<VaContentAssignmentRecord | null> {
   const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
   if (!row) return null;
   const mapped = await mapRow(row);
   const uuid = await modelUuidForKey(modelRecordId);
   const linkMatch = uuid ? (row.model ?? []).includes(uuid) : false;
-  const sidMatch = Boolean(stableModelId?.trim() && row.model_id === stableModelId.trim());
-  const idAsStableMatch = Boolean(!modelRecordId.startsWith("rec") && row.model_id === modelRecordId);
-  if (!linkMatch && !sidMatch && !idAsStableMatch) return null;
+  // Fallback: caller passed a Postgres uuid directly as modelRecordId
+  const idAsUuidMatch = Boolean(
+    !modelRecordId.startsWith("rec") && (row.model ?? []).includes(modelRecordId)
+  );
+  if (!linkMatch && !idAsUuidMatch) return null;
   if (isHiddenFromModelStatus(mapped.status)) return null;
   return mapped;
 }
@@ -421,7 +421,6 @@ export async function createVaContentAssignmentAdmin(
     status: input.direct_assign ? "pending" : "pending_approval",
     model_notes: "",
     va_notes: "",
-    created_at: new Date().toISOString(),
   };
   if (input.deadline?.trim()) payload.deadline = input.deadline.trim();
   const url = input.file_url?.trim();
@@ -430,6 +429,9 @@ export async function createVaContentAssignmentAdmin(
     payload.file_attachment = [url];
   }
   const row = await sbInsert<Row>(TABLE, payload);
+  if (vaUuids.length) {
+    await syncAssignmentVas(row.id, vaUuids).catch(() => {});
+  }
   return mapRow(row);
 }
 

@@ -174,7 +174,9 @@ export async function listNotificationsForUser(
     .range(offsetNum, offsetNum + pageSize - 1);
 
   if (params.unreadOnly) {
-    q = q.or("read_at.is.null,read_at.eq.");
+    // read_at is a Postgres `date` — empty-string eq is invalid (22007).
+    // Unread = NULL only (matches Airtable BLANK(read_at)).
+    q = q.is("read_at", null);
   }
   if (params.since) {
     q = q.gt("created_at", params.since);
@@ -195,12 +197,23 @@ export async function listNotificationsForUser(
 
 export async function getUnreadCount(userId: string): Promise<number> {
   const sb = getSupabaseServiceClient();
+  // read_at is `date` — do NOT use `read_at.eq.` / empty string (PostgREST 22007).
   const { count, error } = await sb
     .from(TABLE)
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .or("read_at.is.null,read_at.eq.");
-  if (error) throw new Error(`getUnreadCount: ${error.message}`);
+    .is("read_at", null);
+  if (error) {
+    const detail = [error.message, error.code, error.details, error.hint]
+      .filter(Boolean)
+      .join(" | ");
+    console.error("[notifications-supabase] getUnreadCount failed", {
+      userId,
+      detail,
+      error,
+    });
+    throw new Error(`getUnreadCount: ${detail || "unknown Supabase error"}`);
+  }
   return count ?? 0;
 }
 
@@ -235,7 +248,7 @@ export async function markAllAsRead(userId: string) {
     .from(TABLE)
     .select("id, airtable_id, user_id")
     .eq("user_id", userId)
-    .or("read_at.is.null,read_at.eq.");
+    .is("read_at", null);
   if (error) throw new Error(`markAllAsRead select: ${error.message}`);
   const rows = (data as Row[]) ?? [];
   if (!rows.length) return 0;

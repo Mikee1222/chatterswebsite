@@ -117,7 +117,6 @@ export async function forceDeleteModel(modelId: string): Promise<void> {
     { table: "model_schedule", field: "model" },
     { table: "model_time_off_requests", field: "model" },
     { table: "va_content_assignments", field: "model" },
-    { table: "va_content_assignments", field: "assigned_model" },
     { table: "whale_transactions", field: "model" },
     { table: "whales", field: "assigned_model" },
   ];
@@ -128,7 +127,6 @@ export async function forceDeleteModel(modelId: string): Promise<void> {
 
   if (stableModelId) {
     for (const [table, field] of [
-      ["va_content_assignments", "model_id"],
       ["model_tasks", "model_id"],
       ["model_live_streams", "model_id"],
       ["model_periods", "model_id"],

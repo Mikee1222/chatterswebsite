@@ -116,17 +116,18 @@ function toDateOnly(raw: string | null | undefined): string | undefined {
   return `${y}-${m}-${day}`;
 }
 
-async function mapRow(row: Row): Promise<VaTaskRecord> {
-  const [assigned_to_ids, assigned_by_ids] = await Promise.all([
-    sbAirtableIdsForUuids("users", row.assigned_to),
-    sbAirtableIdsForUuids("users", row.assigned_by),
-  ]);
+function mapRowSync(
+  row: Row,
+  userAtByUuid: Map<string, string>
+): VaTaskRecord {
+  const resolveUsers = (uuids: string[] | null | undefined) =>
+    (uuids ?? []).map((id) => userAtByUuid.get(id) || id).filter(Boolean);
   return {
     id: publicId(row),
     title: row.title?.trim() ? String(row.title) : "",
     description: row.description?.trim() ? String(row.description) : "",
-    assigned_to_ids,
-    assigned_by_ids,
+    assigned_to_ids: resolveUsers(row.assigned_to),
+    assigned_by_ids: resolveUsers(row.assigned_by),
     assigned_model_ids: parseCommaList(row.assigned_model_ids),
     assigned_model_names: parseCommaList(row.assigned_model_names),
     status: parseStatus(row.status),
@@ -149,6 +150,28 @@ async function mapRow(row: Row): Promise<VaTaskRecord> {
     overdue_notified_at: row.overdue_notified_at?.trim() ? String(row.overdue_notified_at) : null,
     created_at: row.created_at?.trim() ? String(row.created_at) : null,
   };
+}
+
+/** Batch UUID→airtable_id once per list (avoids N+1 fetch storms / intermittent fetch failed). */
+async function mapRows(rows: Row[]): Promise<VaTaskRecord[]> {
+  if (!rows.length) return [];
+  const uuids = new Set<string>();
+  for (const row of rows) {
+    for (const id of row.assigned_to ?? []) if (id) uuids.add(id);
+    for (const id of row.assigned_by ?? []) if (id) uuids.add(id);
+  }
+  const unique = [...uuids];
+  const resolved = await sbAirtableIdsForUuids("users", unique);
+  const userAtByUuid = new Map<string, string>();
+  for (let i = 0; i < unique.length; i++) {
+    userAtByUuid.set(unique[i]!, resolved[i] || unique[i]!);
+  }
+  return rows.map((row) => mapRowSync(row, userAtByUuid));
+}
+
+async function mapRow(row: Row): Promise<VaTaskRecord> {
+  const [mapped] = await mapRows([row]);
+  return mapped;
 }
 
 async function syncVaTaskModels(taskUuid: string, modelPublicIds: string[]): Promise<void> {
@@ -192,13 +215,13 @@ export async function getVaTasksForUser(userRecordId: string): Promise<VaTaskRec
     .select("*")
     .or(`assigned_to.is.null,assigned_to.eq.{},assigned_to.cs.{${userUuid}}`);
   if (error) throw new Error(`getVaTasksForUser: ${error.message}`);
-  return Promise.all(((data as Row[]) ?? []).map(mapRow));
+  return mapRows((data as Row[]) ?? []);
 }
 
 export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise<VaTaskRecord[]> {
   if (!options) {
     const rows = await sbSelectAll<Row>(TABLE);
-    return Promise.all(rows.map(mapRow));
+    return mapRows(rows);
   }
 
   const start = options.athensStartYmd.trim().slice(0, 10);
@@ -206,13 +229,8 @@ export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise
   const includeBucketDates = options.includeBucketDates === true;
   const includeRecurring = options.includeRecurring !== false && !includeBucketDates;
 
-  const sb = getSupabaseServiceClient();
-  // Athens calendar bucketing via timezone conversion
-  const dueInRange = `and(due_date.not.is.null,due_date.gte.${start}T00:00:00+03:00,due_date.lt.${end}T23:59:59.999+03:00)`;
-  // PostgREST can't easily do SET_TIMEZONE; filter broader in UTC then refine in JS with Athens YMD
-  const { data, error } = await sb.from(TABLE).select("*");
-  if (error) throw new Error(`getAllVaTasks: ${error.message}`);
-  void dueInRange;
+  // Paginate via sbSelectAll — bare select("*") silently caps at PostgREST max-rows.
+  const data = await sbSelectAll<Row>(TABLE);
 
   const athensYmd = (iso: string | null | undefined): string | null => {
     if (!iso) return null;
@@ -230,7 +248,7 @@ export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise
 
   const inRange = (ymd: string | null) => ymd != null && ymd >= start && ymd <= end;
 
-  const filtered = ((data as Row[]) ?? []).filter((row) => {
+  const filtered = data.filter((row) => {
     if (includeRecurring && row.is_recurring) return true;
     if (includeBucketDates) {
       return (
@@ -242,7 +260,7 @@ export async function getAllVaTasks(options?: VaTasksFetchRangeOptions): Promise
     return inRange(athensYmd(row.due_date));
   });
 
-  return Promise.all(filtered.map(mapRow));
+  return mapRows(filtered);
 }
 
 export async function getRecurringTaskHistory(title: string): Promise<VaTaskRecord[]> {
@@ -255,7 +273,7 @@ export async function getRecurringTaskHistory(title: string): Promise<VaTaskReco
     .eq("status", "done")
     .order("due_date", { ascending: false });
   if (error) throw new Error(`getRecurringTaskHistory: ${error.message}`);
-  return Promise.all(((data as Row[]) ?? []).map(mapRow));
+  return mapRows((data as Row[]) ?? []);
 }
 
 export async function getVaTaskById(id: string): Promise<VaTaskRecord | null> {
