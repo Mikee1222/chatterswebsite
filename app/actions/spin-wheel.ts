@@ -6,16 +6,16 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
-import { createRecord, getRecord, updateRecord } from "@/lib/airtable-server";
 import { awardPoints, consumeOneSpin, refundOneSpin } from "@/services/points-engine";
 import {
   computeSpinRotationDelta,
+  createSpinRecord,
   getActiveSpinPrizes,
+  getPrizeById,
+  getSpinById,
+  markSpinClaimed,
   pickWeightedPrizeIndex,
 } from "@/services/spin-wheel";
-
-const SPINS_TABLE = "spin_wheel_spins";
-const PRIZES_TABLE = "spin_wheel_prizes";
 
 export type SpinWheelPrizeResult = {
   id: string;
@@ -61,7 +61,7 @@ export async function spinWheelAction(): Promise<
 
   let spinRec: { id: string };
   try {
-    spinRec = await createRecord(SPINS_TABLE, {
+    spinRec = await createSpinRecord({
       user_id: userId,
       prize_id: prize.id,
       prize_label: prize.label,
@@ -137,20 +137,16 @@ export async function markSpinClaimedAction(
   }
   if (!spinId.trim()) return { success: false, error: "Missing spin id." };
   try {
-    const spinRec = await getRecord<{
-      prize_id?: string;
-      claimed?: boolean;
-      user_id?: string;
-      prize_label?: string;
-      created_at?: string;
-    }>(SPINS_TABLE, spinId);
-    if (spinRec.fields?.claimed) {
+    const spinRec = await getSpinById(spinId);
+    if (!spinRec) return { success: false, error: "Spin not found." };
+    if (spinRec.claimed) {
       return { success: false, error: "Already marked as claimed." };
     }
-    const prizeId = String(spinRec.fields?.prize_id ?? "").trim();
+    const prizeId = spinRec.prize_id.trim();
     if (!prizeId) return { success: false, error: "Spin has no prize linked." };
-    const prizeRec = await getRecord<{ prize_type?: string; prize_value?: string }>(PRIZES_TABLE, prizeId);
-    const pt = String(prizeRec.fields?.prize_type ?? "").toLowerCase();
+    const prizeRec = await getPrizeById(prizeId);
+    if (!prizeRec) return { success: false, error: "Prize not found." };
+    const pt = prizeRec.prize_type.toLowerCase();
     const markableTypes = new Set(["cash", "extra_break", "custom", "mystery", "bonus", "break"]);
     if (!markableTypes.has(pt)) {
       return {
@@ -158,11 +154,11 @@ export async function markSpinClaimedAction(
         error: "Only manual-fulfillment prizes (bonus, break, custom, etc.) can be marked claimed here.",
       };
     }
-    const chatterId = String(spinRec.fields?.user_id ?? "").trim();
-    const prizeLabel = String(spinRec.fields?.prize_label ?? "prize").trim() || "prize";
+    const chatterId = spinRec.user_id.trim();
+    const prizeLabel = spinRec.prize_label.trim() || "prize";
     const paidIso = new Date().toISOString();
     const claimNote = `Marked paid ${paidIso}`;
-    await updateRecord(SPINS_TABLE, spinId, { claimed: true, claim_note: claimNote });
+    await markSpinClaimed(spinId, claimNote);
 
     if (chatterId && pt === "cash") {
       try {
@@ -171,11 +167,11 @@ export async function markSpinClaimedAction(
 
         const chatterUser = await getUserByAirtableId(chatterId).catch(() => null);
         const chatterName = chatterUser?.full_name?.trim() || chatterId;
-        const prizeAmount = Math.max(0, parseFloat(String(prizeRec.fields?.prize_value ?? "0")) || 0);
+        const prizeAmount = Math.max(0, parseFloat(String(prizeRec.prize_value ?? "0")) || 0);
 
         await createSpinWheelCashBonus({
           spinId,
-          spinCreatedAt: String(spinRec.fields?.created_at ?? "").trim() || undefined,
+          spinCreatedAt: spinRec.created_at.trim() || undefined,
           user_id: chatterId,
           user_name: chatterName,
           prize_label: prizeLabel,

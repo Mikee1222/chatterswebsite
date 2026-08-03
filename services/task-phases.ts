@@ -269,6 +269,33 @@ export async function getPhasesByTask(taskId: string): Promise<TaskPhase[]> {
   return grouped[taskId] ?? [];
 }
 
+/** Lightweight phase lookup (record id → phase_id) for ownership / create-item routing. */
+export async function getPhaseById(
+  id: string
+): Promise<{ id: string; phase_id: string } | null> {
+  const rid = id?.trim();
+  if (!rid) return null;
+  if (isSupabaseBackend()) {
+    const row = await (await import("./task-phases-supabase")).getPhaseRow(rid);
+    if (!row) return null;
+    const { publicId } = await import("@/lib/supabase-data");
+    const publicPhaseId = publicId(row);
+    return {
+      id: publicPhaseId,
+      phase_id: String(row.phase_id ?? publicPhaseId),
+    };
+  }
+  try {
+    const rec = await getRecord<PhaseFields>(TABLE_PHASES, rid);
+    return {
+      id: rec.id,
+      phase_id: String(rec.fields?.phase_id ?? rec.id),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export type TaskPhaseDisplaySpec = {
   taskId: string;
   sourceTaskId?: string | null;

@@ -1,4 +1,11 @@
-import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import {
+  createRecord,
+  deleteRecord,
+  getRecord,
+  listAllRecords,
+  updateRecord,
+  type AirtableRecord,
+} from "@/lib/airtable-server";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { listAllUsers } from "@/services/users";
 
@@ -170,4 +177,89 @@ export function computeSpinRotationDelta(winIndex: number, prizeCount: number): 
   const arc = 360 / n;
   const fullTurns = 5 + Math.floor(Math.random() * 4);
   return fullTurns * 360 - (winIndex + 0.5) * arc;
+}
+
+export async function createSpinRecord(fields: {
+  user_id: string;
+  prize_id: string;
+  prize_label: string;
+  created_at: string;
+  claimed: boolean;
+}): Promise<{ id: string }> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).createSpinRecord(fields);
+  const created = await createRecord(SPINS, fields);
+  return { id: created.id };
+}
+
+export async function getSpinById(id: string): Promise<SpinHistoryRow | null> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).getSpinById(id);
+  try {
+    const rec = await getRecord<SpinFields>(SPINS, id);
+    return mapSpin(rec as AirtableRecord<SpinFields>);
+  } catch {
+    return null;
+  }
+}
+
+export async function getPrizeById(id: string): Promise<SpinPrizeRow | null> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).getPrizeById(id);
+  try {
+    const rec = await getRecord<PrizeFields>(PRIZES, id);
+    return mapPrize(rec as AirtableRecord<PrizeFields>);
+  } catch {
+    return null;
+  }
+}
+
+export async function markSpinClaimed(id: string, claimNote: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).markSpinClaimed(id, claimNote);
+  await updateRecord(SPINS, id, { claimed: true, claim_note: claimNote });
+}
+
+const SORT_ORDER_FALLBACK_WARNING =
+  "Some rows were saved without `sort_order` (add a number field `sort_order` in Airtable to persist wheel order).";
+
+export async function createSpinPrize(
+  fields: Record<string, unknown>
+): Promise<{ id: string; warning?: string }> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).createSpinPrize(fields);
+  try {
+    const created = await createRecord(PRIZES, fields);
+    return { id: created.id };
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/sort_order|UNKNOWN_FIELD_NAME/i.test(msg)) {
+      const { sort_order: _s, ...rest } = fields;
+      const created = await createRecord(PRIZES, rest);
+      return { id: created.id, warning: SORT_ORDER_FALLBACK_WARNING };
+    }
+    throw e;
+  }
+}
+
+export async function updateSpinPrize(
+  id: string,
+  fields: Record<string, unknown>
+): Promise<{ warning?: string }> {
+  if (isSupabaseBackend()) {
+    await (await import("./spin-wheel-supabase")).updateSpinPrize(id, fields);
+    return {};
+  }
+  try {
+    await updateRecord(PRIZES, id, fields);
+    return {};
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (/sort_order|UNKNOWN_FIELD_NAME/i.test(msg)) {
+      const { sort_order: _s, ...rest } = fields;
+      await updateRecord(PRIZES, id, rest);
+      return { warning: SORT_ORDER_FALLBACK_WARNING };
+    }
+    throw e;
+  }
+}
+
+export async function deleteSpinPrize(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).deleteSpinPrize(id);
+  await deleteRecord(PRIZES, id);
 }

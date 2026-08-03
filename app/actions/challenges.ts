@@ -3,13 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
-import { deleteProgressForChallenge } from "@/services/challenges";
+import {
+  createChallenge,
+  deleteChallenge,
+  updateChallenge,
+} from "@/services/challenges";
 import type { ChallengeMetric } from "@/lib/challenges";
-import { createRecord, deleteRecord, updateRecord } from "@/lib/airtable-server";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-
-const TABLE = "challenges";
 
 export type ChallengeData = {
   title: string;
@@ -57,7 +58,7 @@ export async function createChallengeAction(
   if (!data.title.trim()) return { success: false, error: "Title is required." };
 
   try {
-    const created = await createRecord(TABLE, {
+    const created = await createChallenge({
       ...normalizeCreatePayload(data),
       created_by: session.airtableUserId ?? session.id,
     });
@@ -93,7 +94,7 @@ export async function updateChallengeAction(
     if (Object.keys(patch).length === 0) {
       return { success: false, error: "Nothing to update." };
     }
-    await updateRecord(TABLE, id, patch);
+    await updateChallenge(id, patch);
     revalidatePath(ROUTES.admin.challenges);
     revalidatePath(ROUTES.chatter.challenges);
     return { success: true };
@@ -111,8 +112,7 @@ export async function deleteChallengeAction(
   if (!id.trim()) return { success: false, error: "Missing id." };
 
   try {
-    await deleteProgressForChallenge(id);
-    await deleteRecord(TABLE, id);
+    await deleteChallenge(id);
     revalidatePath(ROUTES.admin.challenges);
     revalidatePath(ROUTES.chatter.challenges);
     return { success: true };

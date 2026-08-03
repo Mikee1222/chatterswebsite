@@ -6,13 +6,19 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { invalidateListRecordsReadCacheForTable } from "@/lib/airtable-server";
 import {
-  createRecord,
-  deleteRecord,
-  updateRecord,
-  invalidateListRecordsReadCacheForTable,
-} from "@/lib/airtable-server";
-import { SPIN_PRIZE_UI_TYPES, defaultHexForSpinPrizeUi, spinPrizeUiToDb, type SpinPrizeUiType } from "@/lib/spin-wheel-prize-types";
+  SPIN_PRIZE_UI_TYPES,
+  defaultHexForSpinPrizeUi,
+  spinPrizeUiToDb,
+  type SpinPrizeUiType,
+} from "@/lib/spin-wheel-prize-types";
+import {
+  createSpinPrize,
+  deleteSpinPrize,
+  updateSpinPrize,
+} from "@/services/spin-wheel";
 
 const TABLE = "spin_wheel_prizes";
 
@@ -61,7 +67,7 @@ function validateValueForType(ui: SpinPrizeUiType, prizeValue: string, label: st
   }
 }
 
-function buildAirtableFields(
+function buildPrizeFields(
   ui: SpinPrizeUiType,
   label: string,
   prizeValue: string,
@@ -124,11 +130,11 @@ export async function saveSpinWheelPrizesAction(raw: unknown): Promise<SaveSpinW
     for (const id of deletedIds) {
       const rid = id?.trim();
       if (!rid || rid.startsWith("new-")) continue;
-      await deleteRecord(TABLE, rid);
+      await deleteSpinPrize(rid);
     }
 
     for (const row of prizes) {
-      const fields = buildAirtableFields(
+      const fields = buildPrizeFields(
         row.prizeTypeUi,
         row.label,
         row.prize_value,
@@ -139,39 +145,17 @@ export async function saveSpinWheelPrizesAction(raw: unknown): Promise<SaveSpinW
       );
       const existingId = row.id?.trim();
       if (existingId && !existingId.startsWith("new-")) {
-        try {
-          await updateRecord(TABLE, existingId, fields);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (/sort_order|UNKNOWN_FIELD_NAME/i.test(msg)) {
-            const { sort_order: _s, ...rest } = fields;
-            await updateRecord(TABLE, existingId, rest);
-            warnings.push(
-              "Some rows were saved without `sort_order` (add a number field `sort_order` in Airtable to persist wheel order).",
-            );
-          } else {
-            throw e;
-          }
-        }
+        const result = await updateSpinPrize(existingId, fields);
+        if (result.warning) warnings.push(result.warning);
       } else {
-        try {
-          await createRecord(TABLE, fields);
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (/sort_order|UNKNOWN_FIELD_NAME/i.test(msg)) {
-            const { sort_order: _s, ...rest } = fields;
-            await createRecord(TABLE, rest);
-            warnings.push(
-              "New prizes were created without `sort_order` (add a number field `sort_order` in Airtable to persist wheel order).",
-            );
-          } else {
-            throw e;
-          }
-        }
+        const result = await createSpinPrize(fields);
+        if (result.warning) warnings.push(result.warning);
       }
     }
 
-    invalidateListRecordsReadCacheForTable(TABLE);
+    if (!isSupabaseBackend()) {
+      invalidateListRecordsReadCacheForTable(TABLE);
+    }
     revalidatePath(ROUTES.admin.rewardsConfig);
     revalidatePath(ROUTES.chatter.rewards);
     revalidatePath(ROUTES.admin.rewards);

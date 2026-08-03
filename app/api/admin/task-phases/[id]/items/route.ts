@@ -1,10 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
-import { getRecord } from "@/lib/airtable-server";
-import { createPhaseItem } from "@/services/task-phases";
-
-type PhaseFields = { phase_id?: string };
+import { createPhaseItem, getPhaseById } from "@/services/task-phases";
 
 export async function POST(req: Request, ctx: { params: Promise<{ id: string }> }) {
   const session = await getSessionFromCookies();
@@ -26,8 +23,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!task_id) {
     return NextResponse.json({ error: "task_id required" }, { status: 400 });
   }
-  const phaseRec = await getRecord<PhaseFields>("va_task_phases", phaseAirtableId);
-  const phaseKey = String(phaseRec.fields?.phase_id ?? phaseRec.id);
+  const phaseRec = await getPhaseById(phaseAirtableId);
+  if (!phaseRec) {
+    return NextResponse.json({ error: "Phase not found" }, { status: 404 });
+  }
+  const phaseKey = String(phaseRec.phase_id || phaseRec.id);
   const item = await createPhaseItem({
     phase_id: phaseKey,
     task_id,

@@ -4,9 +4,14 @@ import { revalidatePath } from "next/cache";
 import { ROUTES } from "@/lib/routes";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { createRecord, deleteRecord, listAllRecords } from "@/lib/airtable-server";
-import { firstLinkedId } from "@/lib/airtable-linked";
-import { createWhale, updateWhale, getWhaleById, type WhaleWriteFields } from "@/services/whales";
+import {
+  createWhale,
+  deleteWhale as deleteWhaleRecord,
+  updateWhale,
+  getWhaleById,
+  type WhaleWriteFields,
+} from "@/services/whales";
+import { deleteWhaleTransactionsForWhale } from "@/services/whale-transactions";
 import { awardPoints, maybeAwardWhaleUpdatePoints } from "@/services/points-engine";
 import { getPointsConfig } from "@/services/points-config";
 import { notify, notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
@@ -18,8 +23,6 @@ import {
 import { devLog } from "@/lib/dev-log";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-
-const WHALES_TABLE = "whales";
 
 async function requireWhalesAssign(): Promise<{ ok: true } | { ok: false; error: string }> {
   const user = await getSessionFromCookies();
@@ -76,7 +79,7 @@ export async function createWhaleAction(input: {
 
     const whale_id = `whale_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
-    const fields: Record<string, unknown> = {
+    const fields: WhaleWriteFields = {
       whale_id,
       username,
       platform,
@@ -88,7 +91,7 @@ export async function createWhaleAction(input: {
       created_by: chatterName,
     };
 
-    const rec = await createRecord(WHALES_TABLE, fields);
+    const rec = await createWhale(fields);
 
     setTimeout(() => {
       void getPointsConfig()
@@ -425,20 +428,8 @@ export async function deleteWhale(whaleRecordId: string): Promise<AssignWhaleRes
       return { success: false, error: "Unauthorized" };
     }
 
-    const txns = await listAllRecords<{ whale?: string | string[] }>("whale_transactions", {
-      fields: ["whale"],
-      pageSize: 100,
-    });
-
-    const relatedTxnIds = txns
-      .filter((rec) => firstLinkedId(rec.fields.whale) === whaleRecordId)
-      .map((rec) => rec.id);
-
-    for (const txnId of relatedTxnIds) {
-      await deleteRecord("whale_transactions", txnId);
-    }
-
-    await deleteRecord("whales", whaleRecordId);
+    await deleteWhaleTransactionsForWhale(whaleRecordId);
+    await deleteWhaleRecord(whaleRecordId);
     revalidatePath(ROUTES.admin.whales);
     revalidatePath(ROUTES.chatter.myWhales);
     return { success: true };

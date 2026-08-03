@@ -301,3 +301,23 @@ export async function deleteProgressForChallenge(challengeId: string): Promise<v
     await sbDeleteByPublicId(PROGRESS, publicId(r));
   }
 }
+
+export async function createChallenge(
+  fields: Record<string, unknown>
+): Promise<{ id: string }> {
+  const inserted = await sbInsert<ChallengeSbRow>(CHALLENGES, fields);
+  return { id: publicId(inserted) };
+}
+
+export async function updateChallenge(
+  id: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  if (!Object.keys(fields).length) return;
+  await sbUpdateByPublicId(CHALLENGES, id, fields);
+}
+
+export async function deleteChallenge(id: string): Promise<void> {
+  await sbDeleteByPublicId(CHALLENGES, id);
+  await deleteProgressForChallenge(id);
+}

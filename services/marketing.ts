@@ -572,6 +572,23 @@ export async function getAllAccounts(): Promise<SocialAccount[]> {
   return records.map((rec) => mapAccount(rec, phoneNameById));
 }
 
+/** Lookup a social account by its logical `account_id` field (not the row record id). */
+export async function getAccountByAccountId(accountId: string): Promise<SocialAccount | null> {
+  const aid = accountId.trim();
+  if (!aid) return null;
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAccountByAccountId(aid);
+  const mid = airtableFormulaString(aid);
+  const [records, phoneNameById] = await Promise.all([
+    listAllRecords<AccountFields>(TABLE_ACCOUNTS, {
+      filterByFormula: `{account_id} = "${mid}"`,
+      pageSize: 1,
+    }),
+    buildPhoneNameById(),
+  ]);
+  const rec = records[0];
+  return rec ? mapAccount(rec, phoneNameById) : null;
+}
+
 export async function getAccountsByModel(modelId: string): Promise<SocialAccount[]> {
   if (isSupabaseBackend()) return (await import("./marketing-supabase")).getAccountsByModel(modelId);
   const mid = airtableFormulaString(modelId);
@@ -668,6 +685,18 @@ export async function getAllShadowbanReports(): Promise<ShadowbanReport[]> {
     sort: [{ field: "created_at", direction: "desc" }],
   });
   return records.map(mapShadowbanReport);
+}
+
+export async function getShadowbanReportById(id: string): Promise<ShadowbanReport | null> {
+  const rid = id.trim();
+  if (!rid) return null;
+  if (isSupabaseBackend()) return (await import("./marketing-supabase")).getShadowbanReportById(rid);
+  try {
+    const rec = await getRecord<ShadowbanReportFields>(TABLE_SHADOWBAN_REPORTS, rid);
+    return mapShadowbanReport(rec);
+  } catch {
+    return null;
+  }
 }
 
 /** Shadowban/ban/lift reports submitted by a specific VA (reported_by_id). */

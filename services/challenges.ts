@@ -414,3 +414,31 @@ export async function deleteProgressForChallenge(challengeId: string): Promise<v
     }
   }
 }
+
+export async function createChallenge(
+  fields: Record<string, unknown>
+): Promise<{ id: string }> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).createChallenge(fields);
+  }
+  const created = await createRecord(CHALLENGES, fields);
+  return { id: created.id };
+}
+
+export async function updateChallenge(
+  id: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).updateChallenge(id, fields);
+  }
+  await updateRecord(CHALLENGES, id, fields);
+}
+
+export async function deleteChallenge(id: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).deleteChallenge(id);
+  }
+  await deleteProgressForChallenge(id);
+  await deleteRecord(CHALLENGES, id);
+}

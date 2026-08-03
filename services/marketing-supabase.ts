@@ -397,6 +397,15 @@ export async function getAllAccounts(): Promise<SocialAccount[]> {
   return mapped.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
 }
 
+export async function getAccountByAccountId(accountId: string): Promise<SocialAccount | null> {
+  const aid = accountId.trim();
+  if (!aid) return null;
+  const rows = await sbSelectEq<AccountRow>(T_ACCOUNTS, "account_id", aid, "*", 1);
+  if (!rows[0]) return null;
+  const phoneNameById = await buildPhoneNameById();
+  return mapAccount(rows[0], phoneNameById);
+}
+
 export async function getAccountsByModel(modelId: string): Promise<SocialAccount[]> {
   const mid = modelId.trim();
   if (!mid) return [];
@@ -602,6 +611,12 @@ export async function getAllShadowbanReports(): Promise<ShadowbanReport[]> {
   const rows = await sbSelectAll<ShadowbanRow>(T_SHADOWBAN);
   const mapped = await Promise.all(rows.map(mapShadowbanReport));
   return mapped.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
+}
+
+export async function getShadowbanReportById(id: string): Promise<ShadowbanReport | null> {
+  const row = await sbSelectByPublicId<ShadowbanRow>(T_SHADOWBAN, id);
+  if (!row) return null;
+  return mapShadowbanReport(row);
 }
 
 export async function getShadowbanReportsByVA(vaId: string): Promise<ShadowbanReport[]> {

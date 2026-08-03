@@ -1,7 +1,15 @@
 /**
  * Supabase backend for services/spin-wheel.ts
  */
-import { publicId, sbSelectAll, type SbRow } from "@/lib/supabase-data";
+import {
+  publicId,
+  sbDeleteByPublicId,
+  sbInsert,
+  sbSelectAll,
+  sbSelectByPublicId,
+  sbUpdateByPublicId,
+  type SbRow,
+} from "@/lib/supabase-data";
 import { listAllUsers } from "@/services/users";
 import type { AdminSpinRow, SpinHistoryRow, SpinPrizeRow } from "./spin-wheel";
 
@@ -101,4 +109,47 @@ export async function getAllSpinsForAdmin(): Promise<AdminSpinRow[]> {
   });
   rows.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   return rows;
+}
+
+export async function createSpinRecord(fields: {
+  user_id: string;
+  prize_id: string;
+  prize_label: string;
+  created_at: string;
+  claimed: boolean;
+}): Promise<{ id: string }> {
+  const inserted = await sbInsert<SpinRow>(SPINS, fields);
+  return { id: publicId(inserted) };
+}
+
+export async function getSpinById(id: string): Promise<SpinHistoryRow | null> {
+  const row = await sbSelectByPublicId<SpinRow>(SPINS, id);
+  return row ? mapSpin(row) : null;
+}
+
+export async function getPrizeById(id: string): Promise<SpinPrizeRow | null> {
+  const row = await sbSelectByPublicId<PrizeRow>(PRIZES, id);
+  return row ? mapPrize(row) : null;
+}
+
+export async function markSpinClaimed(id: string, claimNote: string): Promise<void> {
+  await sbUpdateByPublicId(SPINS, id, { claimed: true, claim_note: claimNote });
+}
+
+export async function createSpinPrize(
+  fields: Record<string, unknown>
+): Promise<{ id: string }> {
+  const inserted = await sbInsert<PrizeRow>(PRIZES, fields);
+  return { id: publicId(inserted) };
+}
+
+export async function updateSpinPrize(
+  id: string,
+  fields: Record<string, unknown>
+): Promise<void> {
+  await sbUpdateByPublicId(PRIZES, id, fields);
+}
+
+export async function deleteSpinPrize(id: string): Promise<void> {
+  await sbDeleteByPublicId(PRIZES, id);
 }
