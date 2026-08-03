@@ -9,6 +9,7 @@ import {
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import {
   getFallbackNotificationDefaults,
   notificationDefaultsToPreferenceFields,
@@ -77,6 +78,7 @@ function mapRecord(rec: AirtableRecord<Fields>): NotificationPreference {
 }
 
 export async function getPreferencesByUserId(userId: string): Promise<NotificationPreference | null> {
+  if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).getPreferencesByUserId(userId);
   const { records } = await listRecords<Fields>(TABLE, {
     filterByFormula: `{user_id} = "${userId.replace(/"/g, '""')}"`,
     pageSize: 1,
@@ -85,16 +87,19 @@ export async function getPreferencesByUserId(userId: string): Promise<Notificati
 }
 
 export async function listNotificationPreferences(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).listNotificationPreferences(params);
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { preferences: records.map(mapRecord), offset };
 }
 
 export async function createNotificationPreference(fields: Partial<Fields>) {
+  if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).createNotificationPreference(fields);
   const rec = await createRecord(TABLE, fields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
 export async function updateNotificationPreference(recordId: string, fields: Partial<Fields>) {
+  if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).updateNotificationPreference(recordId, fields);
   const rec = await updateRecord(TABLE, recordId, fields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
@@ -123,6 +128,7 @@ export async function createDefaultPreferencesForUser(
   userId: string,
   roleName?: string
 ): Promise<NotificationPreference> {
+  if (isSupabaseBackend()) return (await import("./notification-preferences-supabase")).createDefaultPreferencesForUser(userId, roleName);
   const existing = await getPreferencesByUserId(userId);
   if (existing) return existing;
   const preferenceId = `pref_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;

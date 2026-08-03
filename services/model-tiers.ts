@@ -5,6 +5,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 
 export const MODEL_TIERS_TABLE = "model_tiers";
 
@@ -51,6 +52,7 @@ function mapTierRecord(rec: AirtableRecord<TierFields>): ModelTierRecord {
 }
 
 export async function getAllModelTiers(): Promise<ModelTierRecord[]> {
+  if (isSupabaseBackend()) return (await import("./model-tiers-supabase")).getAllModelTiers();
   const rows = await listAllRecords<TierFields>(MODEL_TIERS_TABLE, {
     filterByFormula: "{is_active} = TRUE()",
     sort: SORT,
@@ -60,6 +62,7 @@ export async function getAllModelTiers(): Promise<ModelTierRecord[]> {
 }
 
 export async function getAllModelTiersAdmin(): Promise<ModelTierRecord[]> {
+  if (isSupabaseBackend()) return (await import("./model-tiers-supabase")).getAllModelTiersAdmin();
   const rows = await listAllRecords<TierFields>(MODEL_TIERS_TABLE, {
     sort: SORT,
     _caller: "getAllModelTiersAdmin",
@@ -70,6 +73,7 @@ export async function getAllModelTiersAdmin(): Promise<ModelTierRecord[]> {
 export async function createModelTier(
   data: Omit<ModelTierRecord, "id">
 ): Promise<ModelTierRecord> {
+  if (isSupabaseBackend()) return (await import("./model-tiers-supabase")).createModelTier(data);
   const rec = await createRecord<TierFields>(MODEL_TIERS_TABLE, {
     model_name: data.model_name,
     tier: data.tier,
@@ -83,6 +87,7 @@ export async function updateModelTier(
   id: string,
   data: Partial<Omit<ModelTierRecord, "id">>
 ): Promise<ModelTierRecord> {
+  if (isSupabaseBackend()) return (await import("./model-tiers-supabase")).updateModelTier(id, data);
   const fields: Record<string, unknown> = {};
   if (data.model_name !== undefined) fields.model_name = data.model_name;
   if (data.tier !== undefined) fields.tier = data.tier;
@@ -93,5 +98,6 @@ export async function updateModelTier(
 }
 
 export async function deleteModelTier(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./model-tiers-supabase")).deleteModelTier(id);
   await deleteRecord(MODEL_TIERS_TABLE, id);
 }

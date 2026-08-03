@@ -9,6 +9,7 @@ import {
   type ListParams,
 } from "@/lib/airtable-server";
 import { firstLinkedId, linkedRecordIds, snapshotText } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { WEEKLY_PROGRAM_DAY_OPTIONS, WEEKLY_PROGRAM_SHIFT_TYPES, ensureMondayForQuery, airtableWeekStartToMonday } from "@/lib/weekly-program";
 import { rangesOverlap } from "@/lib/weekly-program-conflicts";
 import type { WeeklyProgramRecord, WeeklyProgramDay, WeeklyProgramShiftType } from "@/types";
@@ -101,11 +102,13 @@ function mapRecord(rec: AirtableRecord<Fields>): WeeklyProgramRecord {
 }
 
 export async function listWeeklyProgramVa(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).listWeeklyProgramVa(params);
   const { records, offset } = await listRecords<Fields>(TABLE, params);
   return { programs: records.map((r) => mapRecord(r as AirtableRecord<Fields>)), offset };
 }
 
 export async function listAllWeeklyProgramVa(filterByFormula?: string): Promise<WeeklyProgramRecord[]> {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).listAllWeeklyProgramVa(filterByFormula);
   const records = await listAllRecords<Fields>(TABLE, filterByFormula ? { filterByFormula } : {});
   return records.map((r) => mapRecord(r as AirtableRecord<Fields>));
 }
@@ -131,6 +134,7 @@ function weekStartFormulaText(fieldName: string, weekStartYmd: string): string {
 }
 
 export async function getProgramsForWeekVa(weekStart: string): Promise<WeeklyProgramRecord[]> {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).getProgramsForWeekVa(weekStart);
   const weekYmd = ensureMondayForQuery(weekStart);
   let fieldName = WEEK_START_FIELD;
   let rawRecords: AirtableRecord<Fields>[] = [];
@@ -226,11 +230,15 @@ export async function getProgramsForWeekAndVa(
   weekStart: string,
   vaRecordId: string
 ): Promise<WeeklyProgramRecord[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./weekly-program-va-supabase")).getProgramsForWeekAndVa(weekStart, vaRecordId);
+  }
   const all = await getProgramsForWeekVa(weekStart);
   return all.filter((p) => p.chatter_id === vaRecordId);
 }
 
 export async function getWeeklyProgramVaById(recordId: string): Promise<WeeklyProgramRecord | null> {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).getWeeklyProgramVaById(recordId);
   try {
     const rec = await getRecord<Fields>(TABLE, recordId);
     return mapRecord(rec as AirtableRecord<Fields>);
@@ -240,6 +248,7 @@ export async function getWeeklyProgramVaById(recordId: string): Promise<WeeklyPr
 }
 
 export async function updateWeeklyProgramVa(recordId: string, fields: Partial<Fields>) {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).updateWeeklyProgramVa(recordId, fields);
   const rec = await updateRecord(TABLE, recordId, fields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
@@ -257,6 +266,7 @@ export type CreateWeeklyProgramVaFields = {
 };
 
 export async function createWeeklyProgramVa(fields: CreateWeeklyProgramVaFields): Promise<WeeklyProgramRecord> {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).createWeeklyProgramVa(fields);
   const programId = `prog_va_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
   const rec = await createRecord<Fields>(TABLE, {
     program_id: programId,
@@ -274,6 +284,7 @@ export async function createWeeklyProgramVa(fields: CreateWeeklyProgramVaFields)
 }
 
 export async function deleteWeeklyProgramVa(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./weekly-program-va-supabase")).deleteWeeklyProgramVa(recordId);
   await deleteRecord(TABLE, recordId);
 }
 
@@ -292,6 +303,19 @@ export async function checkScheduledShiftConflictsVa(
   start_time: string,
   end_time: string
 ): Promise<ConflictResultVa> {
+  if (isSupabaseBackend()) {
+    return (await import("./weekly-program-va-supabase")).checkScheduledShiftConflictsVa(
+      _vaId,
+      modelIds,
+      _day,
+      _shiftType,
+      weekStart,
+      excludeRecordId,
+      modelIdToName,
+      start_time,
+      end_time
+    );
+  }
   const programs = await getProgramsForWeekVa(weekStart);
   const others = programs.filter((p) => p.id !== excludeRecordId);
   const modelSet = new Set(modelIds.filter(Boolean));

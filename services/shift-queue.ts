@@ -1,4 +1,5 @@
 import { listAllRecords, createRecord, updateRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { ShiftQueueEntryApi, ShiftQueueStatus, ShiftQueueType } from "@/types";
 
 /** Add `queue_type` + `target_shift_id` in Airtable when missing (see `scripts/create-shift-queue-table.ts`). */
@@ -78,6 +79,7 @@ function mapShiftQueueRecord(rec: AirtableRecord<ShiftQueueFields>): ShiftQueueE
 
 /** FIFO: waiting rows for a completed shift (auto-start queue). */
 export async function listShiftQueueWaitingForShift(shiftId: string): Promise<ShiftQueueEntryApi[]> {
+  if (isSupabaseBackend()) return (await import("./shift-queue-supabase")).listShiftQueueWaitingForShift(shiftId);
   const sid = escapeFormulaString(shiftId.trim());
   const formula = `AND({waiting_for_shift_id} = "${sid}", {status} = "waiting")`;
   const records = await listAllRecords<ShiftQueueFields>(SHIFT_QUEUE_TABLE, {
@@ -89,6 +91,7 @@ export async function listShiftQueueWaitingForShift(shiftId: string): Promise<Sh
 }
 
 export async function getShiftQueueWaitingForChatter(chatterId: string): Promise<ShiftQueueEntryApi | null> {
+  if (isSupabaseBackend()) return (await import("./shift-queue-supabase")).getShiftQueueWaitingForChatter(chatterId);
   const cid = escapeFormulaString(chatterId.trim());
   const formula = `AND({chatter_id} = "${cid}", {status} = "waiting")`;
   const records = await listAllRecords<ShiftQueueFields>(SHIFT_QUEUE_TABLE, {
@@ -101,6 +104,7 @@ export async function getShiftQueueWaitingForChatter(chatterId: string): Promise
 
 /** All waiting rows (admin live view). */
 export async function listAllShiftQueueWaiting(): Promise<ShiftQueueEntryApi[]> {
+  if (isSupabaseBackend()) return (await import("./shift-queue-supabase")).listAllShiftQueueWaiting();
   const records = await listAllRecords<ShiftQueueFields>(SHIFT_QUEUE_TABLE, {
     filterByFormula: `{status} = "waiting"`,
     sort: [{ field: "created_at", direction: "asc" }],
@@ -117,10 +121,12 @@ export async function updateShiftQueueRecord(
     cancelled_at: string;
   }>
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./shift-queue-supabase")).updateShiftQueueRecord(recordId, fields);
   await updateRecord(SHIFT_QUEUE_TABLE, recordId, fields as Record<string, unknown>);
 }
 
 export async function deleteShiftQueueRecord(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./shift-queue-supabase")).deleteShiftQueueRecord(recordId);
   await deleteRecord(SHIFT_QUEUE_TABLE, recordId);
 }
 
@@ -137,6 +143,7 @@ export async function createShiftQueueEntry(payload: {
   queue_type?: ShiftQueueType;
   target_shift_id?: string;
 }): Promise<{ id: string }> {
+  if (isSupabaseBackend()) return (await import("./shift-queue-supabase")).createShiftQueueEntry(payload);
   const rec = await createRecord(SHIFT_QUEUE_TABLE, payload as Record<string, unknown>);
   return { id: rec.id };
 }

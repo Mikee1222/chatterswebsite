@@ -1,0 +1,82 @@
+/**
+ * Supabase backend for services/model-personal-events.ts
+ */
+import {
+  publicId, sbDeleteByPublicId, sbFirstLinkedAirtableId, sbInsert,
+  sbSelectAll, sbUuidsForAirtableIds, type SbRow,
+} from "@/lib/supabase-data";
+import type { ModelPersonalEvent, ModelPersonalEventType } from "@/types";
+
+const TABLE = "model_personal_events";
+const EVENT_TYPES: ModelPersonalEventType[] = ["nails","lashes","hairdresser","surgery","fillers","custom"];
+
+type Row = SbRow & {
+  event_id?: string | null; model_id?: string[] | null; model_user_id?: string | null;
+  event_type?: string | null; custom_label?: string | null; event_date?: string | null;
+  event_time?: string | null; notes?: string | null; created_at?: string | null;
+  reminder_sent?: boolean | null;
+};
+
+function asEventType(raw: unknown): ModelPersonalEventType {
+  const v = typeof raw === "string" ? raw.trim() : "";
+  return EVENT_TYPES.includes(v as ModelPersonalEventType) ? (v as ModelPersonalEventType) : "custom";
+}
+
+async function mapRow(row: Row): Promise<ModelPersonalEvent> {
+  return {
+    id: publicId(row),
+    event_id: String(row.event_id ?? "").trim(),
+    model_id: (await sbFirstLinkedAirtableId("modelss", row.model_id)) ?? "",
+    model_user_id: String(row.model_user_id ?? "").trim(),
+    event_type: asEventType(row.event_type),
+    custom_label: String(row.custom_label ?? "").trim(),
+    event_date: String(row.event_date ?? "").trim().slice(0, 10),
+    event_time: String(row.event_time ?? "").trim() || null,
+    notes: String(row.notes ?? "").trim(),
+    created_at: String(row.created_at ?? "").trim(),
+    reminder_sent: row.reminder_sent === true,
+  };
+}
+
+export async function listModelPersonalEventsForModel(modelRecordId: string): Promise<ModelPersonalEvent[]> {
+  const id = modelRecordId?.trim();
+  if (!id) return [];
+  const rows = await sbSelectAll<Row>(TABLE);
+  const mapped = await Promise.all(rows.map(mapRow));
+  return mapped.filter((r) => r.model_id === id).sort((a,b) => a.event_date.localeCompare(b.event_date));
+}
+
+export async function listModelPersonalEventsInDateRange(fromYmd: string, toYmd: string): Promise<ModelPersonalEvent[]> {
+  const from = fromYmd.trim().slice(0, 10);
+  const to = toYmd.trim().slice(0, 10);
+  if (!from || !to) return [];
+  const rows = await sbSelectAll<Row>(TABLE);
+  const mapped = await Promise.all(rows.map(mapRow));
+  return mapped.filter((r) => r.event_date && r.event_date >= from && r.event_date <= to)
+    .sort((a,b) => a.event_date.localeCompare(b.event_date));
+}
+
+export async function createModelPersonalEvent(input: {
+  model_id: string; model_user_id: string; event_type: ModelPersonalEventType;
+  custom_label?: string; event_date: string; event_time?: string; notes?: string;
+}): Promise<ModelPersonalEvent> {
+  const now = new Date().toISOString();
+  const modelUuids = await sbUuidsForAirtableIds("modelss", [input.model_id]);
+  const row = await sbInsert<Row>(TABLE, {
+    event_id: `mpe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    model_id: modelUuids,
+    model_user_id: input.model_user_id,
+    event_type: input.event_type,
+    custom_label: input.custom_label?.trim() || "",
+    event_date: input.event_date.trim().slice(0, 10),
+    event_time: input.event_time?.trim() || "",
+    notes: input.notes?.trim() || "",
+    created_at: now,
+    reminder_sent: false,
+  });
+  return mapRow(row);
+}
+
+export async function deleteModelPersonalEvent(recordId: string): Promise<void> {
+  await sbDeleteByPublicId(TABLE, recordId);
+}

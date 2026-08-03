@@ -7,6 +7,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { getTimesForShiftType } from "@/lib/weekly-program";
 import { getPointsConfig, type PointsConfig } from "@/services/points-config";
@@ -219,6 +220,9 @@ export async function awardPoints(
   category: string,
   referenceId?: string
 ): Promise<number> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).awardPoints(userId, points, reason, category, referenceId);
+  }
   const config = await getCachedPointsConfig();
   const createdAt = new Date().toISOString();
   const todayAthens = getTodayYmdAthens();
@@ -317,6 +321,9 @@ export async function awardPoints(
  * Rolls back the balance update if the Airtable delete fails.
  */
 export async function deletePointsTransaction(transactionId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).deletePointsTransaction(transactionId);
+  }
   const tid = transactionId.trim();
   if (!tid) throw new Error("Missing transaction id");
 
@@ -366,6 +373,7 @@ export async function deletePointsTransaction(transactionId: string): Promise<vo
 
 /** Decrement `spins_available` by one when the chatter uses a spin. */
 export async function consumeOneSpin(userId: string): Promise<{ ok: true; remaining: number } | { ok: false; error: string }> {
+  if (isSupabaseBackend()) return (await import("./points-engine-supabase")).consumeOneSpin(userId);
   if (!userId.trim()) return { ok: false, error: "Missing user." };
   const row = await findChatterPointsRecord(userId);
   if (!row) return { ok: false, error: "No points profile." };
@@ -378,6 +386,7 @@ export async function consumeOneSpin(userId: string): Promise<{ ok: true; remain
 
 /** Undo one spin deduction (e.g. if recording the spin failed). */
 export async function refundOneSpin(userId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./points-engine-supabase")).refundOneSpin(userId);
   if (!userId.trim()) return;
   const row = await findChatterPointsRecord(userId);
   if (!row) return;
@@ -391,6 +400,7 @@ export async function getChatterPoints(userId: string): Promise<{
   streak_days: number;
   spins_available: number;
 }> {
+  if (isSupabaseBackend()) return (await import("./points-engine-supabase")).getChatterPoints(userId);
   let row = await findChatterPointsRecord(userId);
   if (!row) {
     const created = await createRecord<ChatterPointsFields>(CHATTER_POINTS, {
@@ -413,6 +423,9 @@ export async function getChatterPoints(userId: string): Promise<{
 
 /** Award points for a completed chatter shift (hours + bonuses/penalties). */
 export async function awardShiftEndPoints(shift: Shift, shiftRecordId: string, chatterUserId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).awardShiftEndPoints(shift, shiftRecordId, chatterUserId);
+  }
   if (!chatterUserId.trim()) return;
 
   const config = await getCachedPointsConfig();
@@ -505,6 +518,14 @@ export async function maybeAwardWhaleUpdatePoints(
   whaleRecordId: string,
   assignedChatterId: string
 ): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).maybeAwardWhaleUpdatePoints(
+      before,
+      after,
+      whaleRecordId,
+      assignedChatterId
+    );
+  }
   if (!assignedChatterId.trim()) return;
 
   const config = await getCachedPointsConfig();
@@ -647,6 +668,9 @@ export async function getRecentPointsTransactions(
   userId: string,
   limit = 10
 ): Promise<PointsTransactionActivity[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).getRecentPointsTransactions(userId, limit);
+  }
   if (!userId.trim()) return [];
   const { records } = await listRecords<PointsTxFields>(POINTS_TRANSACTIONS, {
     filterByFormula: `{user_id} = "${escapeFormulaString(userId)}"`,
@@ -668,6 +692,9 @@ export async function getRecentPointsTransactions(
 
 /** Newest ledger rows across all chatters (admin). */
 export async function getGlobalRecentPointsLedger(limit = 50): Promise<AdminPointsLedgerRow[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).getGlobalRecentPointsLedger(limit);
+  }
   const cap = Math.min(100, Math.max(1, Math.floor(limit)));
   const { records } = await listRecords<PointsTxFields>(POINTS_TRANSACTIONS, {
     sort: [{ field: "created_at", direction: "desc" }],
@@ -762,6 +789,9 @@ export type AdminPointsLedgerRow = {
 
 /** All `chatter_points` rows with chatter display names (admin leaderboard table). */
 export async function getAllChatterPointsSummaries(): Promise<ChatterPointsSummaryRow[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).getAllChatterPointsSummaries();
+  }
   const [cpRows, users, cfg] = await Promise.all([
     listAllRecords<ChatterPointsFields>(CHATTER_POINTS, { _caller: "points-engine.getAllChatterPointsSummaries" }),
     listAllRecords<{ full_name?: string; role?: string }>("users", {}),
@@ -796,6 +826,9 @@ export async function getAllChatterPointsSummaries(): Promise<ChatterPointsSumma
 export async function getLeaderboard(
   period: "weekly" | "monthly" | "alltime"
 ): Promise<LeaderboardRow[]> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).getLeaderboard(period);
+  }
   const now = Date.now();
   if (leaderboardCache && leaderboardCache.period === period && now < leaderboardCache.expiresAt) {
     return leaderboardCache.rows.map((r) => ({ ...r }));
@@ -854,6 +887,7 @@ export async function getLeaderboard(
  * Awards streak milestones at 5 and 30 days.
  */
 export async function updateStreak(userId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./points-engine-supabase")).updateStreak(userId);
   const row = await findChatterPointsRecord(userId);
   if (!row) return;
 
@@ -883,6 +917,9 @@ export async function updateStreak(userId: string): Promise<void> {
 }
 
 export async function runUpdateStreaksForActiveChatters(): Promise<{ processed: number; errors: number }> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).runUpdateStreaksForActiveChatters();
+  }
   const userRecs = await listAllRecords<{ role?: string; status?: string }>("users", {});
   let processed = 0;
   let errors = 0;
@@ -904,6 +941,9 @@ export async function runUpdateStreaksForActiveChatters(): Promise<{ processed: 
 
 /** One-time-style migration: align `chatter_points.level` with `total_points` and current thresholds. */
 export async function fixAllChatterLevels(): Promise<{ examined: number; updated: number }> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).fixAllChatterLevels();
+  }
   const cfg = await getCachedPointsConfig();
   const rows = await listAllRecords<ChatterPointsFields>(CHATTER_POINTS, {
     _caller: "points-engine.fixAllChatterLevels",
@@ -971,6 +1011,9 @@ async function setLevelFromPointsMigrationMarker(value: string): Promise<void> {
 
 /** Boot hook: one row in system_settings prevents re-running across isolates / cold starts. Skipped during `next build`. */
 export async function runLevelFromPointsMigrationIfNeeded(): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./points-engine-supabase")).runLevelFromPointsMigrationIfNeeded();
+  }
   if (process.env.npm_lifecycle_event === "build") return;
   const marker = await getLevelFromPointsMigrationMarker();
   if (marker === "done") return;

@@ -1,6 +1,7 @@
 "use server";
 
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { ModelTaskRecord, ModelTaskStatus } from "@/types";
 
@@ -74,11 +75,13 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelTaskRecord {
 }
 
 export async function listModelTasks(modelId: string): Promise<ModelTaskRecord[]> {
+  if (isSupabaseBackend()) return (await import("./model-tasks-supabase")).listModelTasks(modelId);
   if (!modelId) return [];
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "created_at", direction: "desc" }] });
   return records.map(mapRecord).filter((r) => r.model_id === modelId);
 }
 
 export async function getTasks(modelId: string): Promise<ModelTaskRecord[]> {
+  if (isSupabaseBackend()) return (await import("./model-tasks-supabase")).getTasks(modelId);
   return listModelTasks(modelId);
 }

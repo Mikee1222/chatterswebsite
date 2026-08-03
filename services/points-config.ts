@@ -1,5 +1,7 @@
 import { createRecord, listRecords, updateRecord } from "@/lib/airtable-server";
 import { escapeAirtableString } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { getSystemSetting, setSystemSetting } from "@/services/system-settings";
 
 const TABLE = "system_settings";
 const CONFIG_KEY = "points_config";
@@ -56,6 +58,11 @@ function mergeParsed(raw: unknown): PointsConfig {
 
 export async function getPointsConfig(): Promise<PointsConfig> {
   try {
+    if (isSupabaseBackend()) {
+      const raw = await getSystemSetting(CONFIG_KEY);
+      if (raw == null || String(raw).trim() === "") return { ...DEFAULT_CONFIG };
+      return mergeParsed(JSON.parse(String(raw)) as unknown);
+    }
     const escaped = escapeAirtableString(CONFIG_KEY);
     const { records } = await listRecords<SystemSettingFields>(TABLE, {
       filterByFormula: `{setting_key} = "${escaped}"`,
@@ -72,8 +79,12 @@ export async function getPointsConfig(): Promise<PointsConfig> {
 }
 
 export async function savePointsConfig(config: PointsConfig): Promise<void> {
-  const escaped = escapeAirtableString(CONFIG_KEY);
   const value = JSON.stringify(config);
+  if (isSupabaseBackend()) {
+    await setSystemSetting(CONFIG_KEY, value, "Rewards points configuration (JSON)");
+    return;
+  }
+  const escaped = escapeAirtableString(CONFIG_KEY);
   const { records } = await listRecords<SystemSettingFields>(TABLE, {
     filterByFormula: `{setting_key} = "${escaped}"`,
     pageSize: 1,

@@ -6,6 +6,7 @@ import {
   updateRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { PushSubscriptionRecord } from "@/types";
 import { devLog } from "@/lib/dev-log";
 import { sendWebPush } from "@/lib/web-push-server";
@@ -52,6 +53,7 @@ function subscriptionSortKey(rec: PushSubscriptionRecord): number {
  * Returns at most the 2 most recently created subscriptions for this user.
  */
 export async function getActiveSubscriptionsForUser(userId: string): Promise<PushSubscriptionRecord[]> {
+  if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).getActiveSubscriptionsForUser(userId);
   try {
     const filterFormula = `{user_id} = "${userId.replace(/"/g, '""')}"`;
     const records = await listAllRecords<Fields>(TABLE, {
@@ -90,6 +92,7 @@ export async function findSubscriptionByUserAndEndpoint(
   userId: string,
   endpoint: string
 ): Promise<PushSubscriptionRecord | null> {
+  if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).findSubscriptionByUserAndEndpoint(userId, endpoint);
   const records = await listAllRecords<Fields>(TABLE, {
     filterByFormula: `{user_id} = "${userId.replace(/"/g, '""')}"`,
   });
@@ -103,6 +106,7 @@ type SafeCreateFields = Pick<Fields, "subscription_id" | "user_id" | "endpoint" 
 };
 
 export async function createPushSubscription(fields: Partial<Fields>) {
+  if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).createPushSubscription(fields);
   const safe: Record<string, unknown> = {};
   if (fields.subscription_id != null) safe.subscription_id = fields.subscription_id;
   if (fields.user_id != null) safe.user_id = fields.user_id;
@@ -119,6 +123,7 @@ export async function updatePushSubscription(
   recordId: string,
   fields: Partial<Pick<Fields, "p256dh" | "auth" | "role">>
 ) {
+  if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).updatePushSubscription(recordId, fields);
   const safe: Record<string, unknown> = {};
   if (fields.p256dh != null) safe.p256dh = fields.p256dh;
   if (fields.auth != null) safe.auth = fields.auth;
@@ -129,6 +134,7 @@ export async function updatePushSubscription(
 
 /** Deactivate subscription. Table has no "active" field – we only update keys/role; consider deleting record in Airtable if needed. */
 export async function deactivateSubscription(recordId: string) {
+  if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).deactivateSubscription(recordId);
   const rec = await updateRecord<Fields>(TABLE, recordId, {});
   return mapRecord(rec);
 }
@@ -138,6 +144,7 @@ export async function sendPushToUser(
   userId: string,
   notification: { title: string; body: string; url?: string }
 ): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).sendPushToUser(userId, notification);
   const subscriptions = await getActiveSubscriptionsForUser(userId);
   for (const sub of subscriptions) {
     try {

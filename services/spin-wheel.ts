@@ -1,4 +1,5 @@
 import { listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { listAllUsers } from "@/services/users";
 
 const PRIZES = "spin_wheel_prizes";
@@ -42,6 +43,7 @@ function mapPrize(rec: AirtableRecord<PrizeFields>): SpinPrizeRow {
 
 /** All prize rows for admin CRUD (active and inactive). */
 export async function getAllSpinPrizes(): Promise<SpinPrizeRow[]> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).getAllSpinPrizes();
   const records = await listAllRecords<PrizeFields>(PRIZES, { _caller: "spin-wheel.getAllSpinPrizes" });
   return records
     .map((r) => mapPrize(r as AirtableRecord<PrizeFields>))
@@ -52,6 +54,7 @@ export async function getAllSpinPrizes(): Promise<SpinPrizeRow[]> {
 
 /** Active prizes, ordered by sort_order then label so server and wheel UI stay aligned. */
 export async function getActiveSpinPrizes(): Promise<SpinPrizeRow[]> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).getActiveSpinPrizes();
   const records = await listAllRecords<PrizeFields>(PRIZES, { _caller: "spin-wheel.getActiveSpinPrizes" });
   return records
     .map((r) => mapPrize(r as AirtableRecord<PrizeFields>))
@@ -94,6 +97,7 @@ function mapSpin(rec: AirtableRecord<SpinFields>): SpinHistoryRow {
 }
 
 export async function getRecentSpinsForUser(userId: string, limit = 12): Promise<SpinHistoryRow[]> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).getRecentSpinsForUser(userId, limit);
   if (!userId.trim()) return [];
   const all = await listAllRecords<SpinFields>(SPINS, { _caller: "spin-wheel.getRecentSpinsForUser" });
   const mine = all
@@ -115,6 +119,7 @@ export type AdminSpinRow = SpinHistoryRow & {
 };
 
 export async function getAllSpinsForAdmin(): Promise<AdminSpinRow[]> {
+  if (isSupabaseBackend()) return (await import("./spin-wheel-supabase")).getAllSpinsForAdmin();
   const [spins, prizes, users] = await Promise.all([
     listAllRecords<SpinFields>(SPINS, { _caller: "spin-wheel.getAllSpinsForAdmin" }),
     listAllRecords<PrizeFields>(PRIZES, { _caller: "spin-wheel.getAllSpinsForAdmin.prizes" }),

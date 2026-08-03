@@ -5,6 +5,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 
 export const MASS_LISTS_TABLE = "mass_lists";
 
@@ -67,6 +68,7 @@ function mapMassListRecord(rec: AirtableRecord<MassListFields>): MassListRecord 
 }
 
 export async function getAllMassLists(): Promise<MassListRecord[]> {
+  if (isSupabaseBackend()) return (await import("./mass-lists-supabase")).getAllMassLists();
   const rows = await listAllRecords<MassListFields>(MASS_LISTS_TABLE, {
     filterByFormula: "{is_active}",
     sort: SORT,
@@ -76,6 +78,7 @@ export async function getAllMassLists(): Promise<MassListRecord[]> {
 }
 
 export async function getAllMassListsAdmin(): Promise<MassListRecord[]> {
+  if (isSupabaseBackend()) return (await import("./mass-lists-supabase")).getAllMassListsAdmin();
   const rows = await listAllRecords<MassListFields>(MASS_LISTS_TABLE, {
     sort: SORT,
     _caller: "getAllMassListsAdmin",
@@ -86,6 +89,7 @@ export async function getAllMassListsAdmin(): Promise<MassListRecord[]> {
 export async function createMassList(
   data: Omit<MassListRecord, "id" | "created_at">
 ): Promise<MassListRecord> {
+  if (isSupabaseBackend()) return (await import("./mass-lists-supabase")).createMassList(data);
   const fields: Record<string, unknown> = {
     name: data.name,
     emoji: data.emoji,
@@ -106,6 +110,7 @@ export async function updateMassList(
   id: string,
   data: Partial<Omit<MassListRecord, "id">>
 ): Promise<MassListRecord> {
+  if (isSupabaseBackend()) return (await import("./mass-lists-supabase")).updateMassList(id, data);
   const fields: Record<string, unknown> = {};
   if (data.emoji !== undefined) fields.emoji = data.emoji;
   if (data.name !== undefined) fields.name = data.name;
@@ -122,5 +127,6 @@ export async function updateMassList(
 }
 
 export async function deleteMassList(id: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./mass-lists-supabase")).deleteMassList(id);
   await deleteRecord(MASS_LISTS_TABLE, id);
 }

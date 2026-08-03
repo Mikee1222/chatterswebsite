@@ -1,6 +1,7 @@
 "use server";
 
 import { createRecord, listAllRecords, updateRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { ModelExpenseRequest, ModelExpenseRequestStatus, ModelExpenseRequestType } from "@/types";
 
@@ -54,6 +55,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelExpenseRequest {
 }
 
 export async function listModelExpenseRequestsForModel(modelRecordId: string): Promise<ModelExpenseRequest[]> {
+  if (isSupabaseBackend()) return (await import("./model-expense-requests-supabase")).listModelExpenseRequestsForModel(modelRecordId);
   const id = modelRecordId?.trim();
   if (!id) return [];
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "created_at", direction: "desc" }] });
@@ -61,6 +63,7 @@ export async function listModelExpenseRequestsForModel(modelRecordId: string): P
 }
 
 export async function listAllModelExpenseRequests(): Promise<ModelExpenseRequest[]> {
+  if (isSupabaseBackend()) return (await import("./model-expense-requests-supabase")).listAllModelExpenseRequests();
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "created_at", direction: "desc" }] });
   return records.map(mapRecord);
 }
@@ -74,6 +77,7 @@ export async function createModelExpenseRequest(input: {
   airbnb_link: string;
   notes?: string;
 }): Promise<ModelExpenseRequest> {
+  if (isSupabaseBackend()) return (await import("./model-expense-requests-supabase")).createModelExpenseRequest(input);
   const now = new Date().toISOString();
   const rec = await createRecord<Fields>(TABLE, {
     request_id: `mer_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -96,6 +100,7 @@ export async function updateModelExpenseRequest(
   recordId: string,
   input: Partial<Pick<ModelExpenseRequest, "status" | "admin_notes">>
 ): Promise<ModelExpenseRequest> {
+  if (isSupabaseBackend()) return (await import("./model-expense-requests-supabase")).updateModelExpenseRequest(recordId, input);
   const fields: Partial<Fields> = { updated_at: new Date().toISOString() };
   if (input.status !== undefined) fields.status = input.status;
   if (input.admin_notes !== undefined) fields.admin_notes = input.admin_notes;

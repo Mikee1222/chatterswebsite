@@ -1,4 +1,5 @@
 import { listRecords, createRecord, type AirtableRecord, type ListParams } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import type { ActivityLog } from "@/types";
 
 const TABLE = "activity_logs";
@@ -32,6 +33,7 @@ function mapRecord(rec: AirtableRecord<Fields>): ActivityLog {
 }
 
 export async function listActivityLogs(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./activity-logs-supabase")).listActivityLogs(params);
   const sort = params.sort ?? [{ field: "created_at", direction: "desc" as const }];
   const pageSize = Math.min(50, Math.max(1, params.pageSize ?? 50));
   const hasFilter = typeof params.filterByFormula === "string" && params.filterByFormula.trim().length > 0;
@@ -63,6 +65,7 @@ export async function listActivityLogs(params: ListParams & { filterByFormula?: 
 }
 
 export async function listRecentActivityLogs(limit = 20) {
+  if (isSupabaseBackend()) return (await import("./activity-logs-supabase")).listRecentActivityLogs(limit);
   const { logs } = await listActivityLogs({ pageSize: limit });
   return logs;
 }
@@ -88,6 +91,7 @@ export function buildActivityLogsFilterByFormula(filters: ActivityLogQueryFilter
 }
 
 export async function createActivityLog(fields: Partial<Fields>) {
+  if (isSupabaseBackend()) return (await import("./activity-logs-supabase")).createActivityLog(fields);
   const rec = await createRecord(TABLE, fields);
   return mapRecord(rec as AirtableRecord<Fields>);
 }

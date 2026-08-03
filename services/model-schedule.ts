@@ -1,5 +1,6 @@
 import { listAllRecords, createRecord, getRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
 import { firstLinkedId } from "@/lib/airtable-linked";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { devLog } from "@/lib/dev-log";
 import type { ModelScheduleItem, ModelScheduleItemType, ModelTimeOffRequest, VaTaskStatus } from "@/types";
 
@@ -79,6 +80,7 @@ export async function listModelScheduleItems(
   modelId: string,
   opts?: { fromDate?: string; toDate?: string }
 ): Promise<ModelScheduleItem[]> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).listModelScheduleItems(modelId, opts);
   if (!modelId) return [];
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "date", direction: "asc" }] });
   let rows = records.map(mapRecord).filter((r) => r.model_id === modelId);
@@ -93,6 +95,7 @@ export async function listAllModelScheduleItemsInRange(opts?: {
   fromDate?: string;
   toDate?: string;
 }): Promise<ModelScheduleItem[]> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).listAllModelScheduleItemsInRange(opts);
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "date", direction: "asc" }] });
   let rows = records.map(mapRecord);
   if (opts?.fromDate) rows = rows.filter((r) => r.date >= opts.fromDate!);
@@ -102,6 +105,7 @@ export async function listAllModelScheduleItemsInRange(opts?: {
 }
 
 export async function getSchedule(modelId: string): Promise<ModelScheduleItem[]> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).getSchedule(modelId);
   return listModelScheduleItems(modelId);
 }
 
@@ -125,6 +129,7 @@ export type CreateModelScheduleCustomInput = {
 export async function createModelScheduleItemForCustom(
   input: CreateModelScheduleCustomInput
 ): Promise<ModelScheduleItem> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).createModelScheduleItemForCustom(input);
   const date = input.date.trim().slice(0, 10);
   const payload: Record<string, unknown> = {
     model: [input.model_record_id],
@@ -180,6 +185,7 @@ export type VaTaskScheduleSyncInput = {
 
 /** Best-effort: one `model_schedule` row per assigned model (`item_type` = va_content). */
 export async function createModelScheduleItemsForVaTask(input: VaTaskScheduleSyncInput): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).createModelScheduleItemsForVaTask(input);
   const dueRaw = input.due_date?.trim();
   if (!dueRaw) return;
   const { date, start_time, end_time } = parseDueForSchedule(dueRaw);
@@ -273,6 +279,7 @@ export async function createModelScheduleTimeOff(input: {
   model_name?: string;
   created_by_record_id?: string | null;
 }): Promise<ModelScheduleItem> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).createModelScheduleTimeOff(input);
   const start = input.start_date.trim().slice(0, 10);
   const end = input.end_date.trim().slice(0, 10);
   const reason = input.reason.trim() || "Time off";
@@ -326,6 +333,7 @@ export function modelScheduleTimeOffItemToRequest(item: ModelScheduleItem): Mode
 }
 
 export async function getModelScheduleItemById(recordId: string): Promise<ModelScheduleItem | null> {
+  if (isSupabaseBackend()) return (await import("./model-schedule-supabase")).getModelScheduleItemById(recordId);
   const id = recordId?.trim();
   if (!id) return null;
   try {
@@ -338,6 +346,9 @@ export async function getModelScheduleItemById(recordId: string): Promise<ModelS
 
 /** Deletes a calendar time-off row if it belongs to the model and is still cancellable (`pending`/`scheduled`/empty status). */
 export async function deleteModelScheduleTimeOffForModel(recordId: string, modelRecordId: string): Promise<boolean> {
+  if (isSupabaseBackend()) {
+    return (await import("./model-schedule-supabase")).deleteModelScheduleTimeOffForModel(recordId, modelRecordId);
+  }
   const item = await getModelScheduleItemById(recordId);
   if (!item || item.model_id !== modelRecordId || item.item_type !== "time_off") return false;
   const st = (item.status ?? "").trim().toLowerCase();

@@ -4,6 +4,7 @@ import {
   deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId, toLinkedRecordPayload } from "@/lib/airtable-linked";
 import type { SopSignoff } from "@/types";
 
@@ -40,6 +41,7 @@ function mapSignoffRecord(rec: AirtableRecord<SignoffFields>): SopSignoff {
 
 /** All signoff rows for a role. */
 export async function getSignoffsByRole(roleRecordId: string): Promise<SopSignoff[]> {
+  if (isSupabaseBackend()) return (await import("./sop-signoff-supabase")).getSignoffsByRole(roleRecordId);
   const roleId = roleRecordId.trim();
   if (!roleId) return [];
 
@@ -56,6 +58,7 @@ export async function getSignoffForUserRole(
   userRecordId: string,
   roleRecordId: string
 ): Promise<SopSignoff | null> {
+  if (isSupabaseBackend()) return (await import("./sop-signoff-supabase")).getSignoffForUserRole(userRecordId, roleRecordId);
   const userId = userRecordId.trim();
   const roleId = roleRecordId.trim();
   if (!userId || !roleId) return null;
@@ -70,6 +73,7 @@ export async function createSignoff(
   roleRecordId: string,
   statement: string
 ): Promise<SopSignoff> {
+  if (isSupabaseBackend()) return (await import("./sop-signoff-supabase")).createSignoff(userRecordId, roleRecordId, statement);
   const userId = userRecordId.trim();
   const roleId = roleRecordId.trim();
   if (!userId || !roleId) {
@@ -94,11 +98,13 @@ export async function createSignoff(
 }
 
 export async function countSignoffsByRole(roleRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./sop-signoff-supabase")).countSignoffsByRole(roleRecordId);
   const signoffs = await getSignoffsByRole(roleRecordId);
   return signoffs.length;
 }
 
 export async function deleteSignoffsByRole(roleRecordId: string): Promise<number> {
+  if (isSupabaseBackend()) return (await import("./sop-signoff-supabase")).deleteSignoffsByRole(roleRecordId);
   const roleId = roleRecordId.trim();
   if (!roleId) return 0;
   const rows = await listAllRecords<SignoffFields>(SOP_SIGNOFFS_TABLE, {

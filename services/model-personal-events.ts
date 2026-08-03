@@ -1,4 +1,5 @@
 import { createRecord, deleteRecord, listAllRecords, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { ModelPersonalEvent, ModelPersonalEventType } from "@/types";
 
@@ -57,6 +58,7 @@ export function personalEventEmoji(eventType: ModelPersonalEventType): string {
 }
 
 export async function listModelPersonalEventsForModel(modelRecordId: string): Promise<ModelPersonalEvent[]> {
+  if (isSupabaseBackend()) return (await import("./model-personal-events-supabase")).listModelPersonalEventsForModel(modelRecordId);
   const id = modelRecordId?.trim();
   if (!id) return [];
   const records = await listAllRecords<Fields>(TABLE, { sort: [{ field: "event_date", direction: "asc" }] });
@@ -64,6 +66,7 @@ export async function listModelPersonalEventsForModel(modelRecordId: string): Pr
 }
 
 export async function listModelPersonalEventsInDateRange(fromYmd: string, toYmd: string): Promise<ModelPersonalEvent[]> {
+  if (isSupabaseBackend()) return (await import("./model-personal-events-supabase")).listModelPersonalEventsInDateRange(fromYmd, toYmd);
   const from = fromYmd.trim().slice(0, 10);
   const to = toYmd.trim().slice(0, 10);
   if (!from || !to) return [];
@@ -82,6 +85,7 @@ export async function createModelPersonalEvent(input: {
   event_time?: string;
   notes?: string;
 }): Promise<ModelPersonalEvent> {
+  if (isSupabaseBackend()) return (await import("./model-personal-events-supabase")).createModelPersonalEvent(input);
   const now = new Date().toISOString();
   const rec = await createRecord<Fields>(TABLE, {
     event_id: `mpe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -99,5 +103,6 @@ export async function createModelPersonalEvent(input: {
 }
 
 export async function deleteModelPersonalEvent(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) return (await import("./model-personal-events-supabase")).deleteModelPersonalEvent(recordId);
   await deleteRecord(TABLE, recordId);
 }

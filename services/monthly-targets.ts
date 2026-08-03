@@ -6,6 +6,7 @@ import {
   type AirtableRecord,
   type ListParams,
 } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId, snapshotText } from "@/lib/airtable-linked";
 import type { MonthlyTarget } from "@/types";
 
@@ -53,6 +54,7 @@ export type MonthlyTargetWriteFields = Partial<{
 }>;
 
 export async function listMonthlyTargets(params: ListParams & { filterByFormula?: string } = {}) {
+  if (isSupabaseBackend()) return (await import("./monthly-targets-supabase")).listMonthlyTargets(params);
   const records = await listAllRecords<Fields>(TABLE, params.filterByFormula ? { filterByFormula: params.filterByFormula } : {});
   return records.map((r) => mapRecord(r as AirtableRecord<Fields>));
 }
@@ -62,6 +64,7 @@ export async function getMonthlyTargetByTeamMemberAndMonth(
   teamMemberRecordId: string,
   monthKey: string
 ): Promise<MonthlyTarget | null> {
+  if (isSupabaseBackend()) return (await import("./monthly-targets-supabase")).getMonthlyTargetByTeamMemberAndMonth(teamMemberRecordId, monthKey);
   if (!monthKey || !/^\d{4}-\d{2}$/.test(monthKey)) return null;
   const escaped = monthKey.replace(/"/g, '""');
   const formula = `{month_key} = "${escaped}"`;
@@ -74,11 +77,13 @@ export async function getMonthlyTargetByTeamMemberAndMonth(
 }
 
 export async function createMonthlyTarget(fields: MonthlyTargetWriteFields): Promise<MonthlyTarget> {
+  if (isSupabaseBackend()) return (await import("./monthly-targets-supabase")).createMonthlyTarget(fields);
   const rec = await createRecord(TABLE, fields as Record<string, unknown>);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
 export async function updateMonthlyTarget(recordId: string, fields: Partial<MonthlyTargetWriteFields>): Promise<MonthlyTarget> {
+  if (isSupabaseBackend()) return (await import("./monthly-targets-supabase")).updateMonthlyTarget(recordId, fields);
   const rec = await updateRecord(TABLE, recordId, fields as Partial<Fields>);
   return mapRecord(rec as AirtableRecord<Fields>);
 }
@@ -91,6 +96,7 @@ export async function upsertMonthlyTarget(
   targetAmountUsd: number,
   options: { notes?: string; is_active?: boolean } = {}
 ): Promise<MonthlyTarget> {
+  if (isSupabaseBackend()) return (await import("./monthly-targets-supabase")).upsertMonthlyTarget(teamMemberRecordId, teamMemberName, monthKey, targetAmountUsd, options);
   const existing = await getMonthlyTargetByTeamMemberAndMonth(teamMemberRecordId, monthKey);
   const payload: MonthlyTargetWriteFields = {
     month_key: monthKey,

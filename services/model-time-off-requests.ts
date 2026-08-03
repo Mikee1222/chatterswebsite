@@ -1,6 +1,7 @@
 "use server";
 
 import { listAllRecords, createRecord, getRecord, deleteRecord, type AirtableRecord } from "@/lib/airtable-server";
+import { isSupabaseBackend } from "@/lib/data-backend";
 import { firstLinkedId } from "@/lib/airtable-linked";
 import type { ModelTimeOffRequest } from "@/types";
 
@@ -59,6 +60,7 @@ export async function getModelTimeOffRequestsForRange(
   fromYmd: string,
   toYmd: string
 ): Promise<ModelTimeOffRequest[]> {
+  if (isSupabaseBackend()) return (await import("./model-time-off-requests-supabase")).getModelTimeOffRequestsForRange(modelId, fromYmd, toYmd);
   if (!modelId || !fromYmd || !toYmd) return [];
   let records: AirtableRecord<Fields>[] = [];
   try {
@@ -80,6 +82,7 @@ export async function createModelTimeOffRequest(input: {
   end_date: string;
   reason: string;
 }): Promise<ModelTimeOffRequest> {
+  if (isSupabaseBackend()) return (await import("./model-time-off-requests-supabase")).createModelTimeOffRequest(input);
   const rec = await createRecord<Fields>(TABLE, {
     request_id: `timeoff_model_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     model: [input.model_id],
@@ -94,6 +97,7 @@ export async function createModelTimeOffRequest(input: {
 
 /** Delete a pending/submitted time-off request owned by this model. */
 export async function deleteModelTimeOffRequestForModel(recordId: string, modelRecordId: string): Promise<boolean> {
+  if (isSupabaseBackend()) return (await import("./model-time-off-requests-supabase")).deleteModelTimeOffRequestForModel(recordId, modelRecordId);
   const id = recordId?.trim();
   if (!id || !modelRecordId?.trim()) return false;
   try {
