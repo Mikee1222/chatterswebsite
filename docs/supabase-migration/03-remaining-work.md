@@ -22,6 +22,8 @@ routes reads and writes to the Postgres implementation across the board.
   - `fines_and_bonuses` gained category/status/source/payment/model/screenshot cols
     (`20260803000006_fines_bonuses_extra_cols.sql`)
   - dual-backend schema gaps (`20260803000007_dual_backend_schema_gaps.sql`)
+  - `custom_requests.stuck_alert_sent` boolean default false
+    (`20260803000008_custom_requests_stuck_alert_sent.sql`) — cron stuck-alert flag
 
 ## Phase 3 — Dual-backend (complete)
 
@@ -73,7 +75,23 @@ routes reads and writes to the Postgres implementation across the board.
 - [ ] Confirm cron routes hit both `runPhaseOverdueCheck` and
       `runPersonalEventReminders` cleanly on Supabase
 - [ ] `of-sync` staging run against a low-volume account
+  (**note:** a 401 from The Only API / MCP is **not** a Supabase migration bug —
+  Postgres upsert in `of-sync-supabase` already works. Confirm `THE_ONLY_API_KEY`
+  in local `.env.local` separately; do not treat MCP auth as a dual-backend failure.)
 - [ ] Flip production `DATA_BACKEND=supabase`
+
+### Local smoke notes (`scripts/_smoke-supabase-local.ts`)
+
+Run with `DATA_BACKEND=supabase` only in **local** `.env.local` (never Vercel).
+
+| Test | Expectation |
+|---|---|
+| custom request lifecycle | PASS — needs `custom_requests.stuck_alert_sent` (migration `20260803000008`) |
+| client portal payment | PASS — link fields resolve `rec…` → UUID via `sbUuidsForAirtableIds` |
+| of-sync chunk | May FAIL with 401 if `THE_ONLY_API_KEY` is missing/invalid — **credential issue outside migration**; Supabase write path is fine |
+
+Schema gap closed: `custom_requests.stuck_alert_sent boolean NOT NULL DEFAULT false`
+(matches Airtable checkbox + `runStuckCustomRequestAlerts` cron).
 
 ## Feature flag
 

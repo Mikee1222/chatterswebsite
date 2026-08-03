@@ -132,24 +132,39 @@ export async function sbAirtableIdsForUuids(
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb.from(table).select("id, airtable_id").in("id", uuids);
   if (error) throw new Error(`sbAirtableIdsForUuids ${table}: ${error.message}`);
-  const byId = new Map((data ?? []).map((r) => [r.id as string, (r.airtable_id as string) || ""]));
-  return uuids.map((id) => byId.get(id) || "").filter(Boolean);
+  const byId = new Map(
+    (data ?? []).map((r) => [
+      r.id as string,
+      ((r.airtable_id as string) || "").trim() || (r.id as string),
+    ])
+  );
+  // Prefer airtable_id; fall back to uuid for rows created natively in Supabase.
+  return uuids.map((id) => byId.get(id) || id).filter(Boolean);
 }
 
-/** Resolve Airtable rec ids → Postgres UUIDs for uuid[] link writes. */
+/**
+ * Resolve public link ids → Postgres UUIDs for uuid / uuid[] FK writes.
+ * Accepts Airtable `rec…` ids (looked up via the target table's `airtable_id`)
+ * or already-UUID values (passed through). Matches `_airtable_id_map` identity
+ * for migrated rows (same airtable_id → supabase uuid).
+ */
 export async function sbUuidsForAirtableIds(
   table: string,
   airtableIds: string[] | null | undefined
 ): Promise<string[]> {
   if (!airtableIds?.length) return [];
+  const recIds = airtableIds.filter((id) => id.startsWith("rec"));
+  if (!recIds.length) return airtableIds.filter(Boolean);
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb
     .from(table)
     .select("id, airtable_id")
-    .in("airtable_id", airtableIds);
+    .in("airtable_id", recIds);
   if (error) throw new Error(`sbUuidsForAirtableIds ${table}: ${error.message}`);
   const byAt = new Map((data ?? []).map((r) => [r.airtable_id as string, r.id as string]));
-  return airtableIds.map((id) => byAt.get(id) || "").filter(Boolean);
+  return airtableIds
+    .map((id) => (id.startsWith("rec") ? byAt.get(id) || "" : id))
+    .filter(Boolean);
 }
 
 /** First linked airtable id from a uuid[] column (dual-run). */

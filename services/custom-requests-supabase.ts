@@ -56,8 +56,10 @@ type Row = SbRow & {
 };
 
 async function mapRow(row: Row): Promise<CustomRequest> {
-  const adminStatus = (row.admin_status === "pending" || row.admin_status === "accepted" || row.admin_status === "rejected")
-    ? row.admin_status
+  // Airtable/product sometimes say "approved"; canonical stored value is "accepted".
+  const rawAdmin = row.admin_status === "approved" ? "accepted" : row.admin_status;
+  const adminStatus = (rawAdmin === "pending" || rawAdmin === "accepted" || rawAdmin === "rejected")
+    ? rawAdmin
     : "pending";
   const modelStatus = (row.model_status === "waiting_schedule" || row.model_status === "scheduled" ||
     row.model_status === "in_progress" || row.model_status === "completed" || row.model_status === "uploaded" ||
@@ -307,9 +309,12 @@ export async function patchCustomRequestRecord(
 
 export async function updateCustomRequestAdminStatus(
   recordId: string,
-  admin_status: CustomRequestAdminStatus
+  admin_status: CustomRequestAdminStatus | "approved"
 ): Promise<CustomRequest> {
-  const row = await sbUpdateByPublicId<Row>(TABLE, recordId, bump({ admin_status, stuck_alert_sent: false }));
+  // Product UI says "approved"; Postgres/Airtable canonical value is "accepted".
+  const status: CustomRequestAdminStatus =
+    admin_status === "approved" ? "accepted" : admin_status;
+  const row = await sbUpdateByPublicId<Row>(TABLE, recordId, bump({ admin_status: status, stuck_alert_sent: false }));
   return mapRow(row);
 }
 

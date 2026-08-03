@@ -6,11 +6,13 @@
  */
 import {
   publicId,
+  sbAirtableIdsForUuids,
   sbDeleteByPublicId,
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
   sbUpdateByPublicId,
+  sbUuidsForAirtableIds,
   type SbRow,
 } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -258,7 +260,12 @@ function mapMethod(row: MethodRow): PaymentMethodRecord {
   };
 }
 
-function mapSubmission(row: SubmissionRow): PaymentSubmissionRecord {
+async function mapSubmission(row: SubmissionRow): Promise<PaymentSubmissionRecord> {
+  const [billing_cycle, client, selected_payment_method] = await Promise.all([
+    sbAirtableIdsForUuids(CYCLES, row.billing_cycle),
+    sbAirtableIdsForUuids(CLIENTS, row.client),
+    sbAirtableIdsForUuids(METHODS, row.selected_payment_method),
+  ]);
   const proofAttachment = Array.isArray(row.proof_attachment)
     ? row.proof_attachment
         .filter((a) => typeof a.url === "string")
@@ -266,9 +273,9 @@ function mapSubmission(row: SubmissionRow): PaymentSubmissionRecord {
     : undefined;
   return {
     id: publicId(row),
-    billing_cycle: (row.billing_cycle ?? []) as string[],
-    client: (row.client ?? []) as string[],
-    selected_payment_method: (row.selected_payment_method ?? []) as string[],
+    billing_cycle,
+    client,
+    selected_payment_method,
     submitted_amount: typeof row.submitted_amount === "number" ? row.submitted_amount : 0,
     submitted_currency: row.submitted_currency ?? "",
     submitted_datetime: row.submitted_datetime ?? "",
@@ -404,9 +411,13 @@ export async function createClientModelAssignment(
   clientId: string,
   modelId: string
 ): Promise<ClientModelRecord> {
+  const [clientUuids, modelUuids] = await Promise.all([
+    sbUuidsForAirtableIds(CLIENTS, [clientId]),
+    sbUuidsForAirtableIds(BILLING_MODELS, [modelId]),
+  ]);
   const row = await sbInsert<ClientModelRow>(CLIENT_MODELS, {
-    client: [clientId],
-    model: [modelId],
+    client: clientUuids,
+    model: modelUuids,
   });
   let modelName: string | undefined;
   try {
@@ -415,10 +426,14 @@ export async function createClientModelAssignment(
   } catch {
     /* model may be missing */
   }
+  const [client, model] = await Promise.all([
+    sbAirtableIdsForUuids(CLIENTS, row.client),
+    sbAirtableIdsForUuids(BILLING_MODELS, row.model),
+  ]);
   return {
     id: publicId(row),
-    client: (row.client ?? []) as string[],
-    model: (row.model ?? []) as string[],
+    client,
+    model,
     model_name: modelName,
   };
 }
@@ -428,23 +443,33 @@ export async function deleteClientModelAssignment(assignmentId: string): Promise
 }
 
 export async function getClientModelAssignmentsForModel(modelId: string): Promise<ClientModelRecord[]> {
+  const modelUuids = await sbUuidsForAirtableIds(BILLING_MODELS, [modelId]);
+  const modelSet = new Set(modelUuids.length ? modelUuids : [modelId]);
   const rows = await sbSelectAll<ClientModelRow>(CLIENT_MODELS);
-  return rows
-    .filter((r) => (r.model ?? []).includes(modelId))
-    .map((r) => ({
-      id: publicId(r),
-      client: (r.client ?? []) as string[],
-      model: (r.model ?? []) as string[],
-      model_name: "",
-    }));
+  const matched = rows.filter((r) => (r.model ?? []).some((m) => modelSet.has(m) || m === modelId));
+  return Promise.all(
+    matched.map(async (r) => {
+      const [client, model] = await Promise.all([
+        sbAirtableIdsForUuids(CLIENTS, r.client),
+        sbAirtableIdsForUuids(BILLING_MODELS, r.model),
+      ]);
+      return {
+        id: publicId(r),
+        client,
+        model,
+        model_name: "",
+      };
+    })
+  );
 }
 
 export async function createBillingCycleForClient(
   clientId: string,
   data: CreateBillingCycleInput
 ): Promise<BillingCycleRecord> {
+  const clientUuids = await sbUuidsForAirtableIds(CLIENTS, [clientId]);
   const insert: Record<string, unknown> = {
-    client: [clientId],
+    client: clientUuids,
     kind: data.kind,
     period_start: data.period_start,
     period_end: data.period_end,
@@ -463,8 +488,8 @@ export async function getPendingPaymentSubmissionsForClient(
 ): Promise<PaymentSubmissionRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
   const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
-  return rows
-    .map(mapSubmission)
+  const mapped = await Promise.all(rows.map(mapSubmission));
+  return mapped
     .filter((s) => s.client.some((c) => linked.includes(c)) && s.status === "pending_review")
     .sort((a, b) => (a.submitted_datetime < b.submitted_datetime ? 1 : -1));
 }
@@ -484,7 +509,8 @@ export async function updatePaymentSubmissionReview(
   const patch: Record<string, unknown> = { status: data.status };
   if (data.admin_note !== undefined) patch.admin_note = data.admin_note;
   const row = await sbUpdateByPublicId<SubmissionRow>(SUBMISSIONS, submissionId, patch);
-  return { ...mapSubmission(row), status: data.status as PaymentSubmissionRecord["status"] };
+  const mapped = await mapSubmission(row);
+  return { ...mapped, status: data.status as PaymentSubmissionRecord["status"] };
 }
 
 export async function updateBillingCycleStatus(
@@ -610,7 +636,7 @@ export async function getLatestSubmissionForCycle(
     .filter((r) => (r.billing_cycle ?? []).includes(cycleId))
     .filter((r) => !clientId || (r.client ?? []).some((c) => linked.includes(c)))
     .sort((a, b) => ((a.submitted_datetime ?? "") < (b.submitted_datetime ?? "") ? 1 : -1));
-  return filtered[0] ? mapSubmission(filtered[0]) : null;
+  return filtered[0] ? await mapSubmission(filtered[0]) : null;
 }
 
 export async function getPaymentSubmissionsForClient(
@@ -618,8 +644,8 @@ export async function getPaymentSubmissionsForClient(
 ): Promise<PaymentSubmissionRecord[]> {
   const linked = await resolveClientLinkedIds(clientId);
   const rows = await sbSelectAll<SubmissionRow>(SUBMISSIONS);
-  return rows
-    .map(mapSubmission)
+  const mapped = await Promise.all(rows.map(mapSubmission));
+  return mapped
     .filter((sub) => sub.client.some((c) => linked.includes(c)))
     .sort((a, b) => (a.submitted_datetime < b.submitted_datetime ? 1 : -1));
 }
@@ -627,10 +653,15 @@ export async function getPaymentSubmissionsForClient(
 export async function createPaymentSubmission(
   data: CreatePaymentSubmissionInput
 ): Promise<PaymentSubmissionRecord> {
+  const [billing_cycle, client, selected_payment_method] = await Promise.all([
+    sbUuidsForAirtableIds(CYCLES, data.billing_cycle),
+    sbUuidsForAirtableIds(CLIENTS, data.client),
+    sbUuidsForAirtableIds(METHODS, data.selected_payment_method),
+  ]);
   const insert: Record<string, unknown> = {
-    billing_cycle: data.billing_cycle,
-    client: data.client,
-    selected_payment_method: data.selected_payment_method,
+    billing_cycle,
+    client,
+    selected_payment_method,
     submitted_amount: data.submitted_amount,
     submitted_currency: data.submitted_currency,
     submitted_datetime: data.submitted_datetime,
