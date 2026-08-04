@@ -27,7 +27,19 @@ Already present on Production (unchanged): `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUP
 | Method | `vercel redeploy` of prior Production commit after env set (least-risk) |
 | Ready | ~02:37–02:41 EEST 2026-08-04 |
 
-Dual-backend support confirmed on this `main` commit (`lib/data-backend.ts` + `isSupabaseBackend` service forks). Preview branch has additional E2E/nav fixes not yet on Production `main`.
+Dual-backend support confirmed on this `main` commit (`lib/data-backend.ts` + `isSupabaseBackend` service forks).
+
+## Hotfix — preview fixes merged to main (2026-08-04)
+
+| Field | Value |
+|-------|--------|
+| Action | Fast-forward merge `supabase-preview-test` → `main` |
+| Merge commit / HEAD | `430cd7847364cc1fdf4c2005a8b2bee8f486e6de` |
+| Previous Production SHA | `b54567a690f0a4b46f0057e162c66312b82bdb7b` (missing today's fixes) |
+| Includes | getUnreadCount date fix, dual-backend N+1, Weekly Program redirect, mobile UI, Priority 4/5, Realtime, E2E harness, cutover docs |
+| Why | Production was live on `DATA_BACKEND=supabase` but still running old `main@b54567a`, causing getUnreadCount 500s and page timeouts |
+
+Update the Production deployment ID/URL below after Vercel redeploys from this push. Rollback still uses `vercel env rm DATA_BACKEND production -y` then `vercel redeploy <latest-prod-deployment-url> --target=production`.
 
 ## Verification summary
 
