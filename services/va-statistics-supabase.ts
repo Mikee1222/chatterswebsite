@@ -11,7 +11,7 @@
  * consumed by the main service when isSupabaseBackend() is true.
  */
 
-import { ymdInAthens } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd, ymdInAthens } from "@/lib/airtable-datetime";
 import { sbSelectWhere, type SbRow } from "@/lib/supabase-data";
 import { TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 
@@ -98,14 +98,17 @@ function ymdInRange(ymd: string, start: string, end: string): boolean {
 }
 
 /**
- * Athens day bounds → UTC ISO window with ±1 day pad so timezone edge rows
- * are included; exact Athens YMD filter still applied in JS.
+ * Athens day bounds → UTC ISO window with ±1 calendar day pad so timezone edge
+ * rows are included; exact Athens YMD filter still applied in JS.
  */
 function athensRangeToUtcPad(startYmd: string, endYmd: string): { gte: string; lt: string } {
+  const startPad = addDaysAthensYmd(startYmd, -1);
+  const endPadExclusive = addDaysAthensYmd(endYmd, 2);
   return {
-    gte: `${startYmd}T00:00:00.000+02:00`,
-    // end exclusive + 1 calendar day pad for EEST (+03)
-    lt: `${endYmd}T23:59:59.999+03:00`,
+    // Interpret YMD as Athens midnight via fixed offsets spanning EET/EEST, then
+    // widen by ±1 calendar day so neither winter nor summer clips the range.
+    gte: `${startPad}T00:00:00.000Z`,
+    lt: `${endPadExclusive}T00:00:00.000Z`,
   };
 }
 
@@ -127,7 +130,7 @@ export async function loadPunctualityFromNotifications(
       q
         .in("event_type", [...PUNCTUALITY_EVENTS])
         .gte("created_at", gte)
-        .lte("created_at", lt),
+        .lt("created_at", lt),
     "id, airtable_id, event_type, created_at, user_id"
   ).catch(() => [] as NotificationSbRow[]);
 

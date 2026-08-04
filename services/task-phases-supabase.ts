@@ -231,4 +231,93 @@ export async function getPhaseRow(id: string): Promise<PhaseRow | null> {
   return sbSelectByPublicId<PhaseRow>(T_PHASES, id);
 }
 
+export async function completePhaseItem(
+  itemPublicId: string,
+  vaId: string,
+  vaName: string,
+  options?: { screenshotAttachments?: { url: string }[] },
+): Promise<{
+  phaseCompleted: boolean;
+  allPhasesCompleted: boolean;
+  itemTitle: string;
+  taskId: string;
+  phaseStableId: string;
+  phaseAirtableId: string;
+}> {
+  const row = await sbSelectByPublicId<ItemRow>(T_ITEMS, itemPublicId);
+  if (!row) throw new Error("Item not found");
+
+  const now = new Date().toISOString();
+  const phaseStableId = String(row.phase_id ?? "").trim();
+  const taskId = String(row.task_id ?? "").trim();
+  const itemTitle = String(row.title ?? "Task").trim() || "Task";
+  const prior = Array.isArray(row.screenshot)
+    ? row.screenshot.map((u) => String(u ?? "").trim()).filter(Boolean)
+    : [];
+  const incoming = (options?.screenshotAttachments ?? [])
+    .map((a) => String(a.url ?? "").trim())
+    .filter(Boolean);
+  const merged = [...prior, ...incoming];
+
+  if (row.requires_screenshot === true && merged.length === 0) {
+    throw new Error("Screenshot is required to complete this checklist item.");
+  }
+
+  await updatePhaseItem(publicId(row), {
+    status: "completed",
+    completed_by_va_id: vaId,
+    completed_by_va_name: vaName,
+    completed_at: now,
+    ...(merged.length > 0 ? { screenshot: merged.map((url) => ({ url })) } : {}),
+  });
+
+  const allItems = phaseStableId
+    ? await sbSelectEq<ItemRow>(T_ITEMS, "phase_id", phaseStableId)
+    : [];
+  // Count this item as completed even if the eq read is momentarily stale.
+  const completedCount = allItems.filter(
+    (r) => r.status === "completed" || publicId(r) === publicId(row),
+  ).length;
+  const allItemsDone = allItems.length > 0 && completedCount >= allItems.length;
+
+  let phaseCompleted = false;
+  let allPhasesCompleted = false;
+  let phaseAirtableId = "";
+
+  const phaseRows = taskId ? await sbSelectEq<PhaseRow>(T_PHASES, "task_id", taskId) : [];
+  const phaseRow = phaseRows.find(
+    (p) => publicId(p) === phaseStableId || String(p.phase_id ?? "").trim() === phaseStableId,
+  );
+  phaseAirtableId = phaseRow ? publicId(phaseRow) : "";
+
+  if (phaseAirtableId && completedCount === 1 && (phaseRow?.status ?? "pending") === "pending") {
+    await updatePhase(phaseAirtableId, {
+      status: "in_progress",
+      start_time: now,
+    });
+  }
+
+  if (allItemsDone && taskId && phaseStableId) {
+    phaseCompleted = true;
+    if (phaseAirtableId) {
+      await updatePhase(phaseAirtableId, {
+        status: "completed",
+        completed_at: now,
+        end_time: now,
+      });
+    }
+    const allPhasesRefetched = await sbSelectEq<PhaseRow>(T_PHASES, "task_id", taskId);
+    allPhasesCompleted =
+      allPhasesRefetched.length > 0 &&
+      allPhasesRefetched.every(
+        (r) =>
+          r.status === "completed" ||
+          publicId(r) === phaseAirtableId ||
+          String(r.phase_id ?? "").trim() === phaseStableId,
+      );
+  }
+
+  return { phaseCompleted, allPhasesCompleted, itemTitle, taskId, phaseStableId, phaseAirtableId };
+}
+
 export { DEFAULT_TASK_STEP_TYPE };

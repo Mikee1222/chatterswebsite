@@ -529,6 +529,14 @@ export async function completePhaseItem(
   phaseStableId: string;
   phaseAirtableId: string;
 }> {
+  if (isSupabaseBackend()) {
+    return (await import("./task-phases-supabase")).completePhaseItem(
+      itemAirtableId,
+      vaId,
+      vaName,
+      options,
+    );
+  }
   const now = new Date().toISOString();
   const itemRec = await getRecord<ItemFields>(TABLE_ITEMS, itemAirtableId);
   const f = itemRec.fields ?? {};

@@ -407,14 +407,26 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
   const dailyIndex = (series: VaDailyTrendPoint[], ymd: string) =>
     series.findIndex((d) => d.ymd === ymd);
 
+  // Seed perVa from VA shifts first. Marketing executives (and others) who work
+  // staff_role=virtual_assistant shifts are not always role=virtual_assistant;
+  // without this, their tasks were dropped from per-VA attribution and only
+  // appeared in the anonymous team-only bucket.
+  for (const shift of shiftsInRange) {
+    const uid = shift.chatter_id?.trim();
+    if (!uid) continue;
+    const row = ensureVa(uid, shift.chatter_name);
+    const hours = workedHours(shift);
+    if (shift.status === "completed" || shift.status === "active" || shift.status === "on_break") {
+      row.shifts.shifts += 1;
+      row.shifts.total_hours += hours;
+      const di = dailyIndex(row.daily, (shift.date ?? "").slice(0, 10));
+      if (di >= 0) row.daily[di]!.hours_worked += hours;
+    }
+  }
+
   for (const task of tasksInRange) {
-    const assignees =
-      task.assigned_to_ids.length > 0
-        ? task.assigned_to_ids.filter((id) => vaIds.has(id) || perVa.has(id))
-        : [];
-    // Unassigned ("all VAs") — attribute to each VA only for team rollup via a synthetic path;
-    // count once in team totals by processing assignees or falling back to team-only.
-    const targets = assignees.length > 0 ? assignees : [];
+    // Attribute to every assignee on a VA task (ensureVa), not only formal VA roles.
+    const targets = task.assigned_to_ids.map((id) => id.trim()).filter(Boolean);
     const ymd = taskBucketYmd(task);
     const isDone = task.status === "done";
     const isOpen = task.status === "pending" || task.status === "in_progress";
@@ -475,11 +487,11 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
     }
   }
 
-  // Team-only / unassigned tasks
+  // Team-only / unassigned tasks (no assignee ids at all)
   const teamTasks = emptyTaskMetrics();
   const teamDaily = emptyDailySeries(startYmd, endYmd);
   for (const task of tasksInRange) {
-    const assignees = task.assigned_to_ids.filter((id) => vaIds.has(id));
+    const assignees = task.assigned_to_ids.map((id) => id.trim()).filter(Boolean);
     if (assignees.length > 0) continue;
     const ymd = taskBucketYmd(task);
     const isDone = task.status === "done";
@@ -508,19 +520,6 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
         teamTasks.screenshot_required += 1;
         if (item.screenshot_count > 0) teamTasks.screenshot_provided += 1;
       }
-    }
-  }
-
-  for (const shift of shiftsInRange) {
-    const uid = shift.chatter_id?.trim();
-    if (!uid) continue;
-    const row = ensureVa(uid, shift.chatter_name);
-    const hours = workedHours(shift);
-    if (shift.status === "completed" || shift.status === "active" || shift.status === "on_break") {
-      row.shifts.shifts += 1;
-      row.shifts.total_hours += hours;
-      const di = dailyIndex(row.daily, (shift.date ?? "").slice(0, 10));
-      if (di >= 0) row.daily[di]!.hours_worked += hours;
     }
   }
 
