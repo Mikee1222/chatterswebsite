@@ -19,12 +19,22 @@ Already present on Production (unchanged): `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUP
 
 | Field | Value |
 |-------|--------|
+| Deployment ID | `dpl_9C9HS6GhJDrMzGuGhaVoMRVocwbc` (**current** after hotfix merge) |
+| URL | https://chatterswebsite-37otpsfz2-mikee1222s-projects.vercel.app |
+| Aliases | https://www.gunzoteam.com , https://gunzoteam.com |
+| Git branch | **`main`** |
+| Git SHA | `5b00bec49bb86ba5f6b25bb0d28b66a7e7bdeca8` (includes `430cd78` preview merge + docs note) |
+| Method | Auto-deploy from `git push origin main` after merging `supabase-preview-test` |
+| Ready | ~03:09–03:13 EEST 2026-08-04 |
+
+### Prior cutover deployment (superseded)
+
+| Field | Value |
+|-------|--------|
 | Deployment ID | `dpl_2kmDEf6cJnaQL6aGWEyfYnY7Dp5k` |
 | URL | https://chatterswebsite-6xvv99g15-mikee1222s-projects.vercel.app |
-| Aliases | https://www.gunzoteam.com , https://gunzoteam.com |
-| Git branch | **`main`** (not `supabase-preview-test`) |
-| Git SHA | `b54567a690f0a4b46f0057e162c66312b82bdb7b` |
-| Method | `vercel redeploy` of prior Production commit after env set (least-risk) |
+| Git SHA | `b54567a690f0a4b46f0057e162c66312b82bdb7b` (missing today's preview fixes — caused getUnreadCount 500s) |
+| Method | `vercel redeploy` of prior Production commit after env set |
 | Ready | ~02:37–02:41 EEST 2026-08-04 |
 
 Dual-backend support confirmed on this `main` commit (`lib/data-backend.ts` + `isSupabaseBackend` service forks).
@@ -69,7 +79,7 @@ vercel env rm DATA_BACKEND production -y
 # vercel env rm NEXT_PUBLIC_SUPABASE_URL production -y
 
 # 2) Redeploy current Production deployment (same commit, new env)
-vercel redeploy chatterswebsite-6xvv99g15-mikee1222s-projects.vercel.app --target production
+vercel redeploy chatterswebsite-37otpsfz2-mikee1222s-projects.vercel.app --target production
 # Or redeploy whatever is currently aliased to www.gunzoteam.com:
 # vercel ls chatterswebsite --prod
 # vercel redeploy <latest-prod-deployment-url> --target production
