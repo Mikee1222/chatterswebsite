@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { PERMISSIONS } from "@/lib/permissions";
 import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { FreeModelssTable } from "@/components/free-modelss-table";
 import { Select, selectOptionClass, btnSecondaryClass } from "@/components/ui/form";
 
@@ -18,7 +18,7 @@ export default async function FreeModelssPage({
     redirect(ROUTES.dashboard);
   }
 
-  const all = await listAllModelss().catch(() => []);
+  const all = await getCachedModelss().catch(() => []);
 
   let filtered = all;
   if (searchParams.platform) filtered = filtered.filter((m) => m.platform === searchParams.platform);

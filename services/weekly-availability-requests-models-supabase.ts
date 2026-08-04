@@ -8,8 +8,8 @@ import {
   sbDeleteByPublicId,
   sbInsert,
   sbResolveUuidToAirtableMap,
-  sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   requireSbUuids,
@@ -146,11 +146,8 @@ export async function getModelAvailabilityRequestsForWeek(
   if (!weekStart || !modelId) return [];
   const monday = ensureMondayForQuery(weekStart);
   const resolution = await resolveModelStable(modelId.trim());
-  const rows = await sbSelectAll<Row>(TABLE);
+  const rows = await sbSelectWhere<Row>(TABLE, (q) => q.eq("week_start", monday));
   const filtered = rows.filter((row) => {
-    const raw = row.week_start;
-    if (!raw) return false;
-    if (String(raw).slice(0, 10) !== monday) return false;
     const textId = String(row.model_id ?? "");
     if (resolution.stableModelId && textId === resolution.stableModelId) return true;
     const links = Array.isArray(row.model) ? row.model : [];

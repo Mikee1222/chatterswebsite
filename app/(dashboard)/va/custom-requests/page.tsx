@@ -5,7 +5,7 @@ import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
 import { listAdminPendingCustomRequests, listAllCustomRequests } from "@/services/custom-requests";
 import { listVAContentAssignmentsForVaUser } from "@/services/va-content-assignments";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { VaCustomRequestsClient } from "@/components/va-custom-requests-client";
 import type { CustomRequest } from "@/types";
 
@@ -27,7 +27,7 @@ export default async function VaCustomRequestsPage() {
     listAllCustomRequests().catch(() => [] as CustomRequest[]),
     listAdminPendingCustomRequests().catch(() => [] as CustomRequest[]),
     listVAContentAssignmentsForVaUser(vaId).catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
 
   const pendingCount = pendingQueue.length;

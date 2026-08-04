@@ -6,7 +6,7 @@ import { LanguageProvider } from "@/lib/language-provider";
 import { listModelScheduleItems } from "@/services/model-schedule";
 import { listModelLiveStreams } from "@/services/model-live-streams";
 import { getPeriodDatesForWeek, getCurrentPeriod, getUpcomingPeriod } from "@/services/model-periods";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getThisWeekMonday, addDays } from "@/lib/weekly-program";
 import { modelLiveStreamPlatformLabel } from "@/lib/airtable-options";
 import type { ModelLiveStreamRecord, ModelScheduleItem } from "@/types";
@@ -54,7 +54,7 @@ export default async function AdminModelSchedulesPage({
 }) {
   const user = await requireAdminRoute(await getSessionFromCookies(), PERMISSIONS.MODELS_SCHEDULES);
 
-  const models = await listAllModelss().catch(() => []);
+  const models = await getCachedModelss().catch(() => []);
   const modelParam = typeof searchParams?.model === "string" ? searchParams.model.trim() : "";
   const modelId = modelParam && models.some((m) => m.id === modelParam) ? modelParam : models[0]?.id ?? "";
 

@@ -3,7 +3,7 @@ import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { CreateAccountForm } from "@/components/create-account-form";
 import { isModelActiveForAssignment } from "@/lib/assignment-filters";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { listAllUsers } from "@/services/users";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
@@ -22,7 +22,7 @@ export default async function NewAccountPage({
   const defaultRole =
     roleParam === "chatter" || roleParam === "virtual_assistant" ? roleParam : undefined;
   const [allModels, allUsers, roles] = await Promise.all([
-    listAllModelss(),
+    getCachedModelss(),
     listAllUsers(),
     getRoles(),
   ]);

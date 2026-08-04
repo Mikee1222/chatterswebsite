@@ -2,7 +2,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listLinkPages } from "@/services/link-pages";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { AdminLinkPagesClient } from "@/components/admin-link-pages-client";
 import type { LinkPageRecord } from "@/types";
 
@@ -11,7 +11,7 @@ export default async function AdminLinkPagesPage() {
 
   const [pages, models] = await Promise.all([
     listLinkPages().catch(() => [] as LinkPageRecord[]),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
 
   const modelById: Record<string, string> = Object.fromEntries(

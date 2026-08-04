@@ -9,6 +9,7 @@ import {
   sbInsert,
   sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   requireSbUuids,
@@ -165,16 +166,21 @@ export async function listAllWeeklyProgramVa(_filterByFormula?: string): Promise
 
 export async function getProgramsForWeekVa(weekStart: string): Promise<WeeklyProgramRecord[]> {
   const weekYmd = ensureMondayForQuery(weekStart);
-  const all = await listAllWeeklyProgramVa();
-  return all.filter((p) => p.week_start === weekYmd);
+  const rows = await sbSelectWhere<Row>(TABLE, (q) => q.eq("week_start", weekYmd));
+  return mapRows(rows);
 }
 
 export async function getProgramsForWeekAndVa(
   weekStart: string,
   vaRecordId: string
 ): Promise<WeeklyProgramRecord[]> {
-  const all = await getProgramsForWeekVa(weekStart);
-  return all.filter((p) => p.chatter_id === vaRecordId);
+  const weekYmd = ensureMondayForQuery(weekStart);
+  const uuids = await sbUuidsForAirtableIds("users", [vaRecordId]);
+  if (!uuids[0]) return [];
+  const rows = await sbSelectWhere<Row>(TABLE, (q) =>
+    q.eq("week_start", weekYmd).contains("chatter", [uuids[0]!])
+  );
+  return mapRows(rows);
 }
 
 export async function getWeeklyProgramVaById(recordId: string): Promise<WeeklyProgramRecord | null> {

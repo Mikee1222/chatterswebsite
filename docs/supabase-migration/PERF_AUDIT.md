@@ -86,13 +86,42 @@ Prior Sprint indexes (`20260804000001_realtime_and_perf_indexes.sql`) already co
 
 | Item | Why deferred |
 |---|---|
-| Wire `getCachedModelss` on every remaining admin page | Models table ~14 rows; low ROI vs VA Statistics |
-| Convert remaining `sbSelectAll` domains (whales, weekly programs, SOPs lists, etc.) to always-filtered queries | Not the measured 30s path; do incrementally when a route shows pain |
 | Drop unused indexes (advisor lists ~90) | Risk of false “unused” early after cutover; revisit after weeks of stats |
 | `CONCURRENTLY` indexes | Supabase `apply_migration` runs in a transaction — used non-concurrent `IF NOT EXISTS` (safe; brief write locks on small/medium tables) |
 | `/admin/model-schedules` resolveWeekHref | Owned by another agent — untouched |
 | Client-portal partnership analytics still loads all billing cycles | Functional; optimize when billing pages are profiled |
 | Dual broadcast + postgres realtime | By design for JWT-optional fallback |
+| Remaining full-table `sbSelectAll` on tiny lookup tables (SOPs, prizes, tiers, users/modelss lists, etc.) | Tables are small; convert when a route shows pain |
+| `listAllWhales` / `listAllWeeklyProgram` full dumps | Still used by account-delete and cron; week/chatter paths are filtered |
+
+## Follow-up completed (low-priority items)
+
+**Date:** 2026-08-04 (same day)
+
+### 1. `getCachedModelss` on remaining pages
+
+Switched dropdown/reference/display call sites from `listAllModelss()` → `getCachedModelss()` (60s `unstable_cache`):
+
+- Dashboard layout quick-stats, shift page (shared cache; dropped duplicate shift-only cache)
+- Admin: marketing, accounts, link-pages, custom-requests, expense-requests, model-content-requests, model-schedules
+- Accounts create/edit, free-modelss, fines-bonuses (cache + filter `status === "active"`)
+- VA: schedule, custom-requests, whales; chatter weekly-program / va-weekly-program / my-whales
+- `lib/schedule-overview-page-data.ts`
+
+**Left uncached (intentional):** API/webhook/cron/sync paths that need formula filters or immediate freshness after mutations (`api/admin/models`, search, OF webhook/sync, period notifications, client-billing, task-templates). Client `custom-request-history.tsx` cannot use `unstable_cache`.
+
+### 2. Remaining `sbSelectAll` → filtered queries
+
+| File | Table | Before | After |
+|---|---|---|---|
+| `weekly-program-supabase.ts` `getProgramsForWeek*` | `weekly_program` (475 rows) | Full scan ~**8.2 ms** / 475 rows | `week_start` (+ optional chatter contains) ~**0.9 ms** / ~19 rows |
+| `weekly-program-va-supabase.ts` | `weekly_program_va` (17) | Full table then filter | Same `week_start` / chatter pattern |
+| `weekly-availability-requests(-va/-models)-supabase.ts` | avail tables (406 / 46 / 1) | Full scan ~**13 ms** / 406 | `week_start` (+ chatter) → ~3 rows typical week |
+| `whales-supabase.ts` paginated / by-chatter / unassigned count | `whales` (38) | Always load all 38 | PostgREST `eq`/`ilike`/`contains`/`or` empty array |
+| `whale-transactions-supabase.ts` `listTransactionsByChatter` | `whale_transactions` (3) | Full list then filter | `contains(chatter, …)` |
+| `whale-activity-supabase.ts` | `whale_activity` (0) | Full table | `eq(whale_id)` + order |
+
+`listAllWhales` / `listAllWeeklyProgram` / `listAllWeeklyProgramVa` remain full-table for account-delete + cron dump callers.
 
 ## Test
 

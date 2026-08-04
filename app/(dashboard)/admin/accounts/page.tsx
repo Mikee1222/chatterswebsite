@@ -1,7 +1,7 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { listAllUsers } from "@/services/users";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getRoles } from "@/services/roles";
 import { redirect } from "next/navigation";
 import { AccountsView, type AccountStats } from "@/components/accounts-view";
@@ -31,7 +31,7 @@ export default async function AdminAccountsPage({
 
   const [users, modelss, roles, params, canCreate] = await Promise.all([
     listAllUsers().catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
     getRoles().catch(() => []),
     searchParams,
     hasPermission(user, PERMISSIONS.ACCOUNTS_CREATE),

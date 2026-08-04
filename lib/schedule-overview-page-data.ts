@@ -6,7 +6,7 @@ import { listAcceptedCustomRequestsInDateRange } from "@/services/custom-request
 import { getCurrentPeriod, getPeriodsForModel, getUpcomingPeriod } from "@/services/model-periods";
 import { listAllModelLiveStreamsInRange } from "@/services/model-live-streams";
 import { listAllModelScheduleItemsInRange } from "@/services/model-schedule";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { listModelPersonalEventsInDateRange } from "@/services/model-personal-events";
 import { listAllUsers } from "@/services/users";
 import { listAllVAContentAssignmentsInRange } from "@/services/va-content-assignments";
@@ -108,7 +108,7 @@ export type ScheduleOverviewPageData = {
  */
 export async function loadScheduleOverviewPageData(opts: {
   weekParam: string;
-  /** Restrict to these model record ids; null = all models from listAllModelss(). */
+  /** Restrict to these model record ids; null = all models from getCachedModelss(). */
   allowedModelIds: string[] | null;
 }): Promise<ScheduleOverviewPageData> {
   const trimmed = opts.weekParam.trim().slice(0, 10);
@@ -119,7 +119,7 @@ export async function loadScheduleOverviewPageData(opts: {
   const allowed: Set<string> | null = opts.allowedModelIds == null ? null : new Set(opts.allowedModelIds);
 
   const [allModels, scheduleItemsRaw, liveStreamsRaw, customsRaw, vaRaw, personalEventsRaw, users] = await Promise.all([
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
     listAllModelScheduleItemsInRange({ fromDate: windowStart, toDate: windowEnd }).catch(() => []),
     listAllModelLiveStreamsInRange({ fromDate: windowStart, toDate: windowEnd }).catch(() => []),
     listAcceptedCustomRequestsInDateRange(windowStart, windowEnd).catch(() => []),

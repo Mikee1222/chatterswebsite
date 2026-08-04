@@ -11,6 +11,7 @@ import {
   sbResolveUuidToAirtableMap,
   sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   requireSbUuids,
@@ -109,16 +110,17 @@ export async function listAllWhaleTransactions(): Promise<WhaleTransaction[]> {
 }
 
 export async function listTransactionsByChatter(chatterRecordId: string, limit = 50) {
-  const all = await listAllWhaleTransactions();
-  const matched = all.filter((t) => t.chatter_id === chatterRecordId);
-  const limited = matched
-    .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
-    .slice(0, limit);
+  const uuids = await sbUuidsForAirtableIds("users", [chatterRecordId]);
+  if (!uuids[0]) return [];
+  const rows = await sbSelectWhere<Row>(TABLE, (q) =>
+    q.contains("chatter", [uuids[0]!]).order("created_at", { ascending: false })
+  );
+  const limited = (await mapRows(rows)).slice(0, limit);
   if (process.env.NODE_ENV !== "production") {
     devLog("[listTransactionsByChatter:sb]", {
       chatterRecordId,
-      totalFetched: all.length,
-      matchedCount: matched.length,
+      totalFetched: limited.length,
+      matchedCount: limited.length,
       returnedCount: limited.length,
     });
   }

@@ -19,7 +19,7 @@ import { countWhalesWithoutChatter } from "@/services/whales";
 import { countAdminPendingCustomRequests } from "@/services/custom-requests";
 import { countPendingReviewFinesBonuses } from "@/services/fines-bonuses";
 import { countPendingMistakes } from "@/services/chatter-mistakes";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getRoles } from "@/services/roles";
 import type { ModelLang } from "@/lib/model-i18n";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
@@ -82,7 +82,7 @@ export default async function DashboardLayout({
     const [chatterShifts, vaShifts, modelss] = await Promise.all([
       getActiveShifts("chatter").catch(() => []),
       getActiveShifts("virtual_assistant").catch(() => []),
-      listAllModelss().catch(() => []),
+      getCachedModelss().catch(() => []),
     ]);
     quickStats = {
       activeShiftsCount: chatterShifts.length + vaShifts.length,

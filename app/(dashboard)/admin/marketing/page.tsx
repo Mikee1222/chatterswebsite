@@ -4,7 +4,7 @@ import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { buildRoleLabels, filterVaUsers, toStaffUserOptions } from "@/lib/staff-assignee-data";
 import { getAllAccounts, getAllFunnels, getAllPlatforms, getAllShadowbanReports, getPhones } from "@/services/marketing";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getRoles } from "@/services/roles";
 import { listActiveUsers } from "@/services/users";
 import { AdminMarketingClient } from "@/components/admin-marketing-client";
@@ -16,7 +16,7 @@ export default async function AdminMarketingPage() {
     getAllPlatforms().catch(() => []),
     getAllAccounts().catch(() => []),
     getAllFunnels().catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
     listActiveUsers().catch(() => []),
     getAllShadowbanReports().catch(() => []),
     getRoles().catch(() => []),
