@@ -295,5 +295,28 @@ export async function deleteTaskTemplate(id: string): Promise<void> {
   await sbUpdateByPublicId(T_TEMPLATES, id, { is_active: false });
 }
 
+/** Full independent copy of a template (phases + items). Does not link to the original. */
+export async function duplicateTaskTemplate(id: string): Promise<TaskTemplateDetail> {
+  const detail = await getTaskTemplateDetail(id);
+  if (!detail) throw new Error("Template not found");
+  return createTaskTemplate({
+    name: `${detail.name.trim() || "Template"} (Copy)`,
+    description: detail.description,
+    category: detail.category,
+    phases: detail.phases.map((p) => ({
+      phase_number: p.phase_number,
+      title: p.title,
+      description: p.description,
+      items: p.items.map((i) => ({
+        title: i.title,
+        description: i.description,
+        requires_screenshot: i.requires_screenshot,
+        sort_order: i.sort_order,
+        step_type: i.step_type,
+      })),
+    })),
+  });
+}
+
 // Keep client import happy if needed
 void getSupabaseServiceClient;

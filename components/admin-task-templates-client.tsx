@@ -2,7 +2,25 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
-import { ClipboardList, ImageIcon, Plus, Trash2, X, Zap } from "lucide-react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { useReducedMotion } from "framer-motion";
+import { ClipboardList, Copy, GripVertical, ImageIcon, Plus, Trash2, X, Zap } from "lucide-react";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { useToast } from "@/contexts/toast-context";
 import { cn } from "@/lib/utils";
@@ -54,9 +72,219 @@ function emptyDraftPhase(): DraftPhase {
   return { tempId: newTempId(), title: "", description: "", items: [] };
 }
 
+function SortableDraftItem({
+  item,
+  itemIdx,
+  phaseTempId,
+  reduceMotion,
+  onUpdate,
+  onRemove,
+}: {
+  item: DraftItem;
+  itemIdx: number;
+  phaseTempId: string;
+  reduceMotion: boolean;
+  onUpdate: (phaseTempId: string, itemTempId: string, patch: Partial<DraftItem>) => void;
+  onRemove: (phaseTempId: string, itemTempId: string) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.tempId,
+  });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: reduceMotion ? undefined : transition,
+    opacity: isDragging ? 0.45 : 1,
+    zIndex: isDragging ? 50 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "group flex items-center gap-2.5",
+        isDragging && !reduceMotion && "scale-[1.01]",
+      )}
+    >
+      <button
+        type="button"
+        {...listeners}
+        {...attributes}
+        className="shrink-0 cursor-grab touch-none rounded p-0.5 text-white/20 transition-colors hover:text-white/50 active:cursor-grabbing"
+        aria-label="Drag to reorder item"
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+      <select
+        value={item.step_type}
+        onChange={(e) =>
+          onUpdate(phaseTempId, item.tempId, {
+            step_type: e.target.value as TaskStepType,
+          })
+        }
+        className="w-[7.5rem] shrink-0 rounded-lg border border-white/10 bg-[#141414] px-2 py-1 text-[10px] text-white/70 focus:border-pink-500/40 focus:outline-none"
+        aria-label="Step type"
+      >
+        {TASK_STEP_TYPES.map((t) => (
+          <option key={t} value={t}>
+            {t}
+          </option>
+        ))}
+      </select>
+      <input
+        value={item.title}
+        onChange={(e) => onUpdate(phaseTempId, item.tempId, { title: e.target.value })}
+        placeholder={`Item ${itemIdx + 1}…`}
+        className="min-w-0 flex-1 border-b border-transparent bg-transparent py-0.5 text-xs text-white/80 focus:border-white/20 focus:outline-none"
+      />
+      <button
+        type="button"
+        onClick={() =>
+          onUpdate(phaseTempId, item.tempId, {
+            requires_screenshot: !item.requires_screenshot,
+          })
+        }
+        title="Requires screenshot"
+        className={cn(
+          "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition",
+          item.requires_screenshot
+            ? "border-amber-500/40 bg-amber-500/20 text-amber-400"
+            : "border-white/10 bg-white/5 text-white/25",
+        )}
+      >
+        <ImageIcon className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        onClick={() => onRemove(phaseTempId, item.tempId)}
+        className="rounded p-1 text-white/15 opacity-0 transition group-hover:opacity-100 hover:text-red-400"
+        aria-label="Remove item"
+      >
+        <X className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
+function SortableDraftPhase({
+  phase,
+  phaseIndex,
+  reduceMotion,
+  onUpdatePhase,
+  onRemovePhase,
+  onAddItem,
+  onUpdateItem,
+  onRemoveItem,
+  onItemDragEnd,
+}: {
+  phase: DraftPhase;
+  phaseIndex: number;
+  reduceMotion: boolean;
+  onUpdatePhase: (tempId: string, patch: Partial<DraftPhase>) => void;
+  onRemovePhase: (tempId: string) => void;
+  onAddItem: (phaseTempId: string) => void;
+  onUpdateItem: (phaseTempId: string, itemTempId: string, patch: Partial<DraftItem>) => void;
+  onRemoveItem: (phaseTempId: string, itemTempId: string) => void;
+  onItemDragEnd: (phaseTempId: string, event: DragEndEvent) => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: phase.tempId,
+  });
+
+  const itemSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition: reduceMotion ? undefined : transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 40 : undefined,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        "overflow-hidden rounded-xl border border-[#1f1f1f] bg-[#0a0a0a]",
+        isDragging && !reduceMotion && "shadow-lg shadow-black/40",
+      )}
+    >
+      <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
+        <button
+          type="button"
+          {...listeners}
+          {...attributes}
+          className="shrink-0 cursor-grab touch-none rounded p-0.5 text-white/20 transition-colors hover:text-white/50 active:cursor-grabbing"
+          aria-label="Drag to reorder phase"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-pink-500/20 bg-pink-500/15 text-xs font-bold text-pink-400">
+          {phaseIndex + 1}
+        </div>
+        <input
+          value={phase.title}
+          onChange={(e) => onUpdatePhase(phase.tempId, { title: e.target.value })}
+          placeholder={`Phase ${phaseIndex + 1} title`}
+          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white placeholder:text-white/20 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => onRemovePhase(phase.tempId)}
+          className="rounded-lg p-1 text-white/20 transition hover:bg-red-500/10 hover:text-red-400"
+          aria-label="Remove phase"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <div className="px-4 py-3">
+        <div className="mb-2 space-y-2">
+          {phase.items.length > 0 ? (
+            <DndContext
+              id={`phase-items-${phase.tempId}`}
+              sensors={itemSensors}
+              collisionDetection={closestCenter}
+              onDragEnd={(e) => onItemDragEnd(phase.tempId, e)}
+            >
+              <SortableContext
+                items={phase.items.map((i) => i.tempId)}
+                strategy={verticalListSortingStrategy}
+              >
+                {phase.items.map((item, itemIdx) => (
+                  <SortableDraftItem
+                    key={item.tempId}
+                    item={item}
+                    itemIdx={itemIdx}
+                    phaseTempId={phase.tempId}
+                    reduceMotion={reduceMotion}
+                    onUpdate={onUpdateItem}
+                    onRemove={onRemoveItem}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => onAddItem(phase.tempId)}
+          className="text-xs text-white/30 transition hover:text-pink-400"
+        >
+          + Add item
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
+  const reduceMotion = useReducedMotion() ?? false;
   const [templates, setTemplates] = React.useState(initialTemplates);
   const [search, setSearch] = React.useState("");
   const [filterCategory, setFilterCategory] = React.useState("");
@@ -70,6 +298,12 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
   const [error, setError] = React.useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = React.useState<TaskTemplateRecord | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [duplicatingId, setDuplicatingId] = React.useState<string | null>(null);
+
+  const phaseSensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   React.useEffect(() => setTemplates(initialTemplates), [initialTemplates]);
 
@@ -195,6 +429,31 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
     );
   }
 
+  function handlePhaseDragEnd(event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setDraftPhases((prev) => {
+      const oldIndex = prev.findIndex((p) => p.tempId === active.id);
+      const newIndex = prev.findIndex((p) => p.tempId === over.id);
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
+    });
+  }
+
+  function handleItemDragEnd(phaseTempId: string, event: DragEndEvent) {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setDraftPhases((prev) =>
+      prev.map((p) => {
+        if (p.tempId !== phaseTempId) return p;
+        const oldIndex = p.items.findIndex((i) => i.tempId === active.id);
+        const newIndex = p.items.findIndex((i) => i.tempId === over.id);
+        if (oldIndex < 0 || newIndex < 0) return p;
+        return { ...p, items: arrayMove(p.items, oldIndex, newIndex) };
+      }),
+    );
+  }
+
   async function handleSave() {
     if (!name.trim()) {
       setError("Name is required");
@@ -241,6 +500,60 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
       setError("Network error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleDuplicate(t: TaskTemplateRecord) {
+    setDuplicatingId(t.id);
+    try {
+      const res = await fetch(`/api/admin/task-templates/${encodeURIComponent(t.id)}/duplicate`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        template?: TaskTemplateRecord;
+      };
+      if (!res.ok) {
+        addToast({
+          id: `tpl-dup-err-${Date.now()}`,
+          notification_id: `tpl-dup-err-${Date.now()}`,
+          user_id: "local",
+          category: "system",
+          event_type: "system_alert",
+          priority: "high",
+          title: "Duplicate failed",
+          body: data.error?.trim() || "Could not duplicate template.",
+          entity_type: "system",
+          entity_id: "",
+          read_at: null,
+          created_at: new Date().toISOString(),
+        });
+        return;
+      }
+      if (data.template) {
+        setTemplates((prev) =>
+          [...prev, data.template!].sort((a, b) => a.name.localeCompare(b.name)),
+        );
+      }
+      router.refresh();
+    } catch {
+      addToast({
+        id: `tpl-dup-net-${Date.now()}`,
+        notification_id: `tpl-dup-net-${Date.now()}`,
+        user_id: "local",
+        category: "system",
+        event_type: "system_alert",
+        priority: "high",
+        title: "Duplicate failed",
+        body: "Network error while duplicating.",
+        entity_type: "system",
+        entity_id: "",
+        read_at: null,
+        created_at: new Date().toISOString(),
+      });
+    } finally {
+      setDuplicatingId(null);
     }
   }
 
@@ -341,14 +654,26 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
                 >
                   {t.category}
                 </span>
-                <button
-                  type="button"
-                  onClick={() => setPendingDelete(t)}
-                  className="rounded-lg p-1.5 text-white/25 transition hover:bg-red-500/10 hover:text-red-400"
-                  aria-label="Delete template"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-0.5">
+                  <button
+                    type="button"
+                    onClick={() => void handleDuplicate(t)}
+                    disabled={duplicatingId === t.id}
+                    className="rounded-lg p-1.5 text-white/25 transition hover:bg-white/10 hover:text-white disabled:opacity-40"
+                    aria-label="Duplicate template"
+                    title="Duplicate"
+                  >
+                    <Copy className="h-4 w-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPendingDelete(t)}
+                    className="rounded-lg p-1.5 text-white/25 transition hover:bg-red-500/10 hover:text-red-400"
+                    aria-label="Delete template"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <h2 className="text-lg font-bold text-white">{t.name}</h2>
               {t.description ? <p className="mt-2 line-clamp-3 text-sm text-white/45">{t.description}</p> : null}
@@ -436,94 +761,34 @@ export function AdminTaskTemplatesClient({ initialTemplates }: Props) {
                 </div>
 
                 <div className="space-y-3">
-                  {draftPhases.map((phase, phaseIndex) => (
-                    <div key={phase.tempId} className="overflow-hidden rounded-xl border border-[#1f1f1f] bg-[#0a0a0a]">
-                      <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-xl border border-pink-500/20 bg-pink-500/15 text-xs font-bold text-pink-400">
-                          {phaseIndex + 1}
-                        </div>
-                        <input
-                          value={phase.title}
-                          onChange={(e) => updatePhase(phase.tempId, { title: e.target.value })}
-                          placeholder={`Phase ${phaseIndex + 1} title`}
-                          className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-white placeholder:text-white/20 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => removePhase(phase.tempId)}
-                          className="rounded-lg p-1 text-white/20 transition hover:bg-red-500/10 hover:text-red-400"
-                          aria-label="Remove phase"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      </div>
-                      <div className="px-4 py-3">
-                        <div className="mb-2 space-y-2">
-                          {phase.items.map((item, itemIdx) => (
-                            <div key={item.tempId} className="group flex items-center gap-2.5">
-                              <div className="h-4 w-4 shrink-0 rounded border border-white/20 bg-white/5" />
-                              <select
-                                value={item.step_type}
-                                onChange={(e) =>
-                                  updateItem(phase.tempId, item.tempId, {
-                                    step_type: e.target.value as TaskStepType,
-                                  })
-                                }
-                                className="w-[7.5rem] shrink-0 rounded-lg border border-white/10 bg-[#141414] px-2 py-1 text-[10px] text-white/70 focus:border-pink-500/40 focus:outline-none"
-                                aria-label="Step type"
-                              >
-                                {TASK_STEP_TYPES.map((t) => (
-                                  <option key={t} value={t}>
-                                    {t}
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                value={item.title}
-                                onChange={(e) =>
-                                  updateItem(phase.tempId, item.tempId, { title: e.target.value })
-                                }
-                                placeholder={`Item ${itemIdx + 1}…`}
-                                className="min-w-0 flex-1 border-b border-transparent bg-transparent py-0.5 text-xs text-white/80 focus:border-white/20 focus:outline-none"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateItem(phase.tempId, item.tempId, {
-                                    requires_screenshot: !item.requires_screenshot,
-                                  })
-                                }
-                                title="Requires screenshot"
-                                className={cn(
-                                  "flex h-6 w-6 shrink-0 items-center justify-center rounded-md border transition",
-                                  item.requires_screenshot
-                                    ? "border-amber-500/40 bg-amber-500/20 text-amber-400"
-                                    : "border-white/10 bg-white/5 text-white/25",
-                                )}
-                              >
-                                <ImageIcon className="h-3 w-3" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => removeItem(phase.tempId, item.tempId)}
-                                className="rounded p-1 text-white/15 opacity-0 transition group-hover:opacity-100 hover:text-red-400"
-                                aria-label="Remove item"
-                              >
-                                <X className="h-3 w-3" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => addItem(phase.tempId)}
-                          className="text-xs text-white/30 transition hover:text-pink-400"
-                        >
-                          + Add item
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                  {draftPhases.length > 0 ? (
+                    <DndContext
+                      id="task-template-phases"
+                      sensors={phaseSensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={handlePhaseDragEnd}
+                    >
+                      <SortableContext
+                        items={draftPhases.map((p) => p.tempId)}
+                        strategy={verticalListSortingStrategy}
+                      >
+                        {draftPhases.map((phase, phaseIndex) => (
+                          <SortableDraftPhase
+                            key={phase.tempId}
+                            phase={phase}
+                            phaseIndex={phaseIndex}
+                            reduceMotion={reduceMotion}
+                            onUpdatePhase={updatePhase}
+                            onRemovePhase={removePhase}
+                            onAddItem={addItem}
+                            onUpdateItem={updateItem}
+                            onRemoveItem={removeItem}
+                            onItemDragEnd={handleItemDragEnd}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  ) : null}
                 </div>
               </div>
 
