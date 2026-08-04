@@ -350,7 +350,9 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
   );
   const vaIds = new Set(vaUsers.map((u) => u.id));
 
-  const [allTasks, punctuality] = await Promise.all([
+  const shiftFormula = `AND(DATESTR({date}) >= "${startYmd.replace(/"/g, '""')}", DATESTR({date}) <= "${endYmd.replace(/"/g, '""')}", {staff_role} = "virtual_assistant")`;
+
+  const [allTasks, punctuality, shiftsInRangeRaw] = await Promise.all([
     getAllVaTasks({
       athensStartYmd: startYmd,
       athensEndYmd: endYmd,
@@ -358,6 +360,7 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
       includeRecurring: false,
     }),
     loadPunctualityFromNotifications(startYmd, endYmd),
+    listAllShifts(shiftFormula, "va-statistics.shifts").catch(() => [] as Shift[]),
   ]);
 
   const tasksInRange = allTasks.filter((t) => {
@@ -373,8 +376,7 @@ export async function computeVaStatisticsReport(range: VaStatisticsRange): Promi
     itemsByTask.set(item.task_id, list);
   }
 
-  const shiftFormula = `AND(DATESTR({date}) >= "${startYmd.replace(/"/g, '""')}", DATESTR({date}) <= "${endYmd.replace(/"/g, '""')}", {staff_role} = "virtual_assistant")`;
-  const shiftsInRange = (await listAllShifts(shiftFormula, "va-statistics.shifts").catch(() => [])).filter(
+  const shiftsInRange = shiftsInRangeRaw.filter(
     (s) => ymdInRange((s.date ?? "").slice(0, 10), startYmd, endYmd),
   );
 

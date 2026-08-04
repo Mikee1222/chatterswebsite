@@ -59,6 +59,32 @@ export async function sbSelectAll<T extends SbRow>(
   return out;
 }
 
+/**
+ * Paginated select with caller-applied PostgREST filters (eq/gte/in/overlaps/…).
+ * Prefer this over sbSelectAll + in-memory filter for large tables.
+ */
+export async function sbSelectWhere<T extends SbRow>(
+  table: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  applyFilters: (query: any) => any,
+  columns = "*"
+): Promise<T[]> {
+  const sb = getSupabaseServiceClient();
+  const pageSize = 1000;
+  const out: T[] = [];
+  let from = 0;
+  for (;;) {
+    const filtered = applyFilters(sb.from(table).select(columns));
+    const { data, error } = await filtered.range(from, from + pageSize - 1);
+    if (error) throw new Error(`sbSelectWhere ${table}: ${error.message}`);
+    if (!data?.length) break;
+    out.push(...(data as unknown as T[]));
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+  return out;
+}
+
 export async function sbSelectEq<T extends SbRow>(
   table: string,
   column: string,
