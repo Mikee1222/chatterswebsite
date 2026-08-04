@@ -27,7 +27,7 @@ export async function sendPushNotification(
           tag: String(notification.data?.type ?? "system"),
         }
       );
-      if (ok) {
+      if (ok.ok) {
         devLog("[push] sent successfully", {
           userId,
           endpoint: sub.endpoint.slice(0, 64),
@@ -36,7 +36,9 @@ export async function sendPushNotification(
         console.error("[push] failed", {
           userId,
           endpoint: sub.endpoint.slice(0, 64),
-          error: "sendWebPush returned false",
+          error: ok.error ?? "sendWebPush returned false",
+          status: ok.status,
+          stale: ok.stale,
         });
       }
     } catch (err) {

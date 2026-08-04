@@ -30,17 +30,28 @@ export type PushPayload = {
   notification_id?: string;
 };
 
+export type WebPushSendResult = {
+  ok: boolean;
+  /** HTTP status from the push service, or null if not reached. */
+  status: number | null;
+  /** True when the endpoint is gone (410/404) and the subscription should be removed. */
+  stale: boolean;
+  error?: string;
+};
+
 /**
  * Workers-compatible send path: uses Web Crypto + fetch instead of Node https.request.
  */
 export async function sendWebPush(
   subscription: Pick<PushSubscriptionRecord, "endpoint" | "p256dh" | "auth">,
   payload: PushPayload
-): Promise<boolean> {
+): Promise<WebPushSendResult> {
   const keys = getVapidKeys();
   if (!keys) {
+    const msg = "VAPID not configured (missing VAPID_PUBLIC_KEY or VAPID_PRIVATE_KEY)";
+    console.error(PUSH_DEBUG, msg);
     devLog(PUSH_DEBUG, "push skipped", JSON.stringify({ reason: "VAPID not configured" }));
-    return false;
+    return { ok: false, status: null, stale: false, error: msg };
   }
 
   const payloadStr = JSON.stringify({
@@ -51,7 +62,7 @@ export async function sendWebPush(
     ...(payload.notification_id ? { notification_id: payload.notification_id } : {}),
   });
 
-  const run = pushSendQueue.then(async (): Promise<boolean> => {
+  const run = pushSendQueue.then(async (): Promise<WebPushSendResult> => {
     devLog(PUSH_DEBUG, "using workers-compatible send path");
     const vapid = {
       subject: "mailto:support@gunzoteam.com",
@@ -79,28 +90,41 @@ export async function sendWebPush(
     });
     if (res.ok || res.status === 201) {
       devLog(PUSH_DEBUG, "push success", JSON.stringify({ endpoint_preview: subscription.endpoint?.slice(0, 60) }));
-      return true;
+      return { ok: true, status: res.status, stale: false };
     }
     const text = await res.text();
-    devLog(PUSH_DEBUG, "push failure", JSON.stringify({
+    const stale = res.status === 410 || res.status === 404;
+    const detail = {
       status: res.status,
       statusText: res.statusText,
       body_preview: text?.slice(0, 200) ?? null,
       endpoint_preview: subscription.endpoint?.slice(0, 60) ?? null,
-    }));
-    return false;
+      stale,
+    };
+    console.error(PUSH_DEBUG, "push failure", JSON.stringify(detail));
+    devLog(PUSH_DEBUG, "push failure", JSON.stringify(detail));
+    return {
+      ok: false,
+      status: res.status,
+      stale,
+      error: `push service ${res.status} ${res.statusText}`.trim(),
+    };
   }).catch((err) => {
     const errorMessage = err instanceof Error ? err.message : String(err);
+    console.error(PUSH_DEBUG, "push failure", JSON.stringify({
+      error_message: errorMessage,
+      endpoint_preview: subscription.endpoint?.slice(0, 60) ?? null,
+    }));
     devLog(PUSH_DEBUG, "push failure", JSON.stringify({
       error_message: errorMessage,
       endpoint_preview: subscription.endpoint?.slice(0, 60) ?? null,
     }));
-    return false;
+    return { ok: false, status: null, stale: false, error: errorMessage };
   });
 
   pushSendQueue = run.then(
     () => undefined,
     () => undefined
   );
-  return (await run) as boolean;
+  return (await run) as WebPushSendResult;
 }

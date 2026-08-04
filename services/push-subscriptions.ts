@@ -4,6 +4,7 @@ import {
   listAllRecords,
   createRecord,
   updateRecord,
+  deleteRecord,
   type AirtableRecord,
 } from "@/lib/airtable-server";
 import { isSupabaseBackend } from "@/lib/data-backend";
@@ -12,6 +13,8 @@ import { devLog } from "@/lib/dev-log";
 import { sendWebPush } from "@/lib/web-push-server";
 
 const TABLE = "push_subscriptions";
+/** Try several endpoints so stale newest rows don't block still-valid older ones. */
+const MAX_SUBSCRIPTIONS_PER_SEND = 5;
 
 type Fields = {
   subscription_id?: string;
@@ -50,7 +53,7 @@ function subscriptionSortKey(rec: PushSubscriptionRecord): number {
 
 /**
  * Get subscriptions for user (push sends are capped per Worker subrequest limit).
- * Returns at most the 2 most recently created subscriptions for this user.
+ * Returns at most the newest active subscriptions for this user.
  */
 export async function getActiveSubscriptionsForUser(userId: string): Promise<PushSubscriptionRecord[]> {
   if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).getActiveSubscriptionsForUser(userId);
@@ -59,13 +62,13 @@ export async function getActiveSubscriptionsForUser(userId: string): Promise<Pus
     const records = await listAllRecords<Fields>(TABLE, {
       filterByFormula: filterFormula,
     });
-    const mapped = records.map(mapRecord);
+    const mapped = records.map(mapRecord).filter((r) => r.active !== false);
     const sorted = [...mapped].sort((a, b) => {
       const diff = subscriptionSortKey(b) - subscriptionSortKey(a);
       if (diff !== 0) return diff;
       return (b.id ?? "").localeCompare(a.id ?? "");
     });
-    const result = sorted.slice(0, 2);
+    const result = sorted.slice(0, MAX_SUBSCRIPTIONS_PER_SEND);
     devLog(
       PUSH_DEBUG,
       "subscriptions found count",
@@ -73,16 +76,14 @@ export async function getActiveSubscriptionsForUser(userId: string): Promise<Pus
         recipient_user_id: userId,
         total_in_airtable: mapped.length,
         returned: result.length,
-        capped_at: 2,
+        capped_at: MAX_SUBSCRIPTIONS_PER_SEND,
         filter: "user_id equals recipient, newest first",
       })
     );
     return result;
   } catch (err) {
+    console.error(PUSH_DEBUG, "getActiveSubscriptionsForUser failed", err instanceof Error ? err.message : String(err));
     devLog(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ stage: "getActiveSubscriptionsForUser", recipient_user_id: userId, error: err instanceof Error ? err.message : String(err) }));
-    if (process.env.NODE_ENV !== "production") {
-      console.warn("[push-subscriptions] getActiveSubscriptionsForUser failed", err);
-    }
     return [];
   }
 }
@@ -132,14 +133,23 @@ export async function updatePushSubscription(
   return mapRecord(rec as AirtableRecord<Fields>);
 }
 
-/** Deactivate subscription. Table has no "active" field – we only update keys/role; consider deleting record in Airtable if needed. */
+/** Deactivate subscription (Supabase) or delete (Airtable — no reliable active column). */
 export async function deactivateSubscription(recordId: string) {
   if (isSupabaseBackend()) return (await import("./push-subscriptions-supabase")).deactivateSubscription(recordId);
-  const rec = await updateRecord<Fields>(TABLE, recordId, {});
-  return mapRecord(rec);
+  await deleteRecord(TABLE, recordId);
+  return null;
 }
 
-/** Send web push to a user's active subscriptions (newest first, capped at 2). */
+/** Permanently remove a push subscription row (e.g. after push service 410 Gone). */
+export async function deletePushSubscription(recordId: string): Promise<void> {
+  if (isSupabaseBackend()) {
+    await (await import("./push-subscriptions-supabase")).deletePushSubscription(recordId);
+    return;
+  }
+  await deleteRecord(TABLE, recordId);
+}
+
+/** Send web push to a user's active subscriptions (newest first). Prunes stale endpoints. */
 export async function sendPushToUser(
   userId: string,
   notification: { title: string; body: string; url?: string }
@@ -148,7 +158,7 @@ export async function sendPushToUser(
   const subscriptions = await getActiveSubscriptionsForUser(userId);
   for (const sub of subscriptions) {
     try {
-      await sendWebPush(
+      const result = await sendWebPush(
         { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
         {
           title: notification.title,
@@ -157,8 +167,13 @@ export async function sendPushToUser(
           tag: "billing",
         }
       );
+      if (result.stale && sub.id) {
+        await deletePushSubscription(sub.id).catch((err) => {
+          console.error(PUSH_DEBUG, "failed to prune stale subscription", sub.id, err);
+        });
+      }
     } catch (err) {
-      devLog(
+      console.error(
         PUSH_DEBUG,
         "push failure with exact error",
         JSON.stringify({

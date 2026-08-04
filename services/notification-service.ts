@@ -521,11 +521,11 @@ function logNotifyPushOutcome(
 
 /** Send web push to one subscription (VAPID). Payload includes url for tap-to-open. Returns true if sent successfully. */
 async function sendPushToSubscription(
-  subscription: { endpoint: string; p256dh: string; auth: string; role?: string },
+  subscription: { id?: string; endpoint: string; p256dh: string; auth: string; role?: string },
   payload: { title: string; body: string; entity_type: string; notification_id?: string }
 ): Promise<boolean> {
   const path = getPushTargetPath(payload.entity_type, subscription.role as "admin" | "manager" | "chatter" | "virtual_assistant" | undefined);
-  return sendWebPush(
+  const result = await sendWebPush(
     { endpoint: subscription.endpoint, p256dh: subscription.p256dh, auth: subscription.auth },
     {
       title: payload.title,
@@ -535,11 +535,18 @@ async function sendPushToSubscription(
       notification_id: payload.notification_id,
     }
   );
+  if (result.stale && subscription.id) {
+    const { deletePushSubscription } = await import("@/services/push-subscriptions");
+    await deletePushSubscription(subscription.id).catch((err) => {
+      console.error("[push-debug] failed to prune stale subscription", subscription.id, err);
+    });
+  }
+  return result.ok;
 }
 
 /** One subscription at a time (no Promise.all) to stay under Cloudflare Worker subrequest limits. */
 async function sendWebPushToSubscriptionsSequentially(
-  subscriptions: Array<{ endpoint: string; p256dh: string; auth: string; role?: string }>,
+  subscriptions: Array<{ id?: string; endpoint: string; p256dh: string; auth: string; role?: string }>,
   payload: { title: string; body: string; entity_type: string; notification_id?: string },
   logRecipientUserId: string,
   eventType?: NotificationEventType
@@ -571,13 +578,16 @@ async function sendWebPushToSubscriptionsSequentially(
       }));
     }
     index += 1;
+    console.log(`[notify] Sending push now to ${logRecipientUserId} sub=${index}/${subscriptions.length}`);
     devLog(PUSH_DEBUG, "sending push now", JSON.stringify({ recipient_user_id: logRecipientUserId, endpoint_preview: sub.endpoint?.slice(0, 60) }));
     const success = await sendPushToSubscription(sub, payload);
     if (success) {
       pushSuccessCount++;
+      console.log(`[notify] push success for ${logRecipientUserId}`);
       devLog(PUSH_DEBUG, "push success", JSON.stringify({ recipient_user_id: logRecipientUserId }));
       devLog(NOTIF, "12 after_push_send", JSON.stringify({ success: true, recipient_user_id: logRecipientUserId }));
     } else {
+      console.error(`[notify] push failed for ${logRecipientUserId} (see [push-debug] above)`);
       devLog(PUSH_DEBUG, "push failure with exact error", JSON.stringify({ recipient_user_id: logRecipientUserId, note: "see sendWebPush log above for error" }));
       devLog(NOTIF, "12 after_push_send", JSON.stringify({ success: false, recipient_user_id: logRecipientUserId, error_message: "sendWebPush returned false" }));
     }
@@ -1004,6 +1014,7 @@ export async function notify(options: NotifyOptions) {
 
   const pushSuccessCount = await sendWebPushToSubscriptionsSequentially(
     subscriptions.map((sub) => ({
+      id: sub.id,
       endpoint: sub.endpoint,
       p256dh: sub.p256dh,
       auth: sub.auth,

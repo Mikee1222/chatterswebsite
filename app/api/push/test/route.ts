@@ -29,11 +29,15 @@ export async function POST() {
 
   let sent = 0;
   for (const sub of subscriptions) {
-    const ok = await sendWebPush(
+    const result = await sendWebPush(
       { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
       payload
     );
-    if (ok) sent++;
+    if (result.ok) sent++;
+    if (result.stale && sub.id) {
+      const { deletePushSubscription } = await import("@/services/push-subscriptions");
+      await deletePushSubscription(sub.id).catch(() => {});
+    }
   }
 
   if (process.env.NODE_ENV !== "production") {

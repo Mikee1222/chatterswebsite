@@ -6,6 +6,7 @@ import {
   sbInsert,
   sbSelectEq,
   sbUpdateByPublicId,
+  sbDeleteByPublicId,
   type SbRow,
 } from "@/lib/supabase-data";
 import type { PushSubscriptionRecord } from "@/types";
@@ -14,6 +15,7 @@ import { sendWebPush } from "@/lib/web-push-server";
 
 const TABLE = "push_subscriptions";
 const PUSH_DEBUG = "[push-debug]";
+const MAX_SUBSCRIPTIONS_PER_SEND = 5;
 
 type Row = SbRow & {
   subscription_id?: string | null;
@@ -50,14 +52,15 @@ function subscriptionSortKey(rec: PushSubscriptionRecord): number {
 export async function getActiveSubscriptionsForUser(userId: string): Promise<PushSubscriptionRecord[]> {
   try {
     const rows = await sbSelectEq<Row>(TABLE, "user_id", userId);
-    const mapped = rows.map(mapRow);
+    const mapped = rows.map(mapRow).filter((r) => r.active !== false);
     const sorted = [...mapped].sort((a, b) => {
       const diff = subscriptionSortKey(b) - subscriptionSortKey(a);
       if (diff !== 0) return diff;
       return (b.id ?? "").localeCompare(a.id ?? "");
     });
-    return sorted.slice(0, 2);
+    return sorted.slice(0, MAX_SUBSCRIPTIONS_PER_SEND);
   } catch (err) {
+    console.error(PUSH_DEBUG, "getActiveSubscriptionsForUser failed", err instanceof Error ? err.message : String(err));
     devLog(PUSH_DEBUG, "push failure", JSON.stringify({ stage: "getActiveSubscriptionsForUser", err: String(err) }));
     return [];
   }
@@ -80,6 +83,7 @@ export async function createPushSubscription(fields: Partial<Row>) {
   if (fields.p256dh != null) safe.p256dh = fields.p256dh;
   if (fields.auth != null) safe.auth = fields.auth;
   if (fields.role != null) safe.role = fields.role;
+  safe.is_active = true;
   const row = await sbInsert<Row>(TABLE, safe);
   return mapRow(row);
 }
@@ -92,6 +96,7 @@ export async function updatePushSubscription(
   if (fields.p256dh != null) safe.p256dh = fields.p256dh;
   if (fields.auth != null) safe.auth = fields.auth;
   if (fields.role != null) safe.role = fields.role;
+  safe.is_active = true;
   const row = await sbUpdateByPublicId<Row>(TABLE, recordId, safe);
   return mapRow(row);
 }
@@ -101,6 +106,10 @@ export async function deactivateSubscription(recordId: string) {
   return mapRow(row);
 }
 
+export async function deletePushSubscription(recordId: string): Promise<void> {
+  await sbDeleteByPublicId(TABLE, recordId);
+}
+
 export async function sendPushToUser(
   userId: string,
   notification: { title: string; body: string; url?: string }
@@ -108,7 +117,7 @@ export async function sendPushToUser(
   const subscriptions = await getActiveSubscriptionsForUser(userId);
   for (const sub of subscriptions) {
     try {
-      await sendWebPush(
+      const result = await sendWebPush(
         { endpoint: sub.endpoint, p256dh: sub.p256dh, auth: sub.auth },
         {
           title: notification.title,
@@ -117,7 +126,13 @@ export async function sendPushToUser(
           tag: "billing",
         }
       );
+      if (result.stale && sub.id) {
+        await deletePushSubscription(sub.id).catch((err) => {
+          console.error(PUSH_DEBUG, "failed to prune stale subscription", sub.id, err);
+        });
+      }
     } catch (err) {
+      console.error(PUSH_DEBUG, "push failure", JSON.stringify({ stage: "sendPushToUser", err: String(err) }));
       devLog(PUSH_DEBUG, "push failure", JSON.stringify({ stage: "sendPushToUser", err: String(err) }));
     }
   }

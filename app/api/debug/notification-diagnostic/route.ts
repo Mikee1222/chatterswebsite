@@ -178,9 +178,14 @@ export async function GET(req: Request) {
               tag: "diagnostic",
             });
             delivery.push({
-              pass: ok,
+              pass: ok.ok,
               endpoint: sub.endpoint?.length ? `${sub.endpoint.slice(0, 50)}…` : "",
+              error: ok.ok ? undefined : ok.error,
             });
+            if (ok.stale && sub.id) {
+              const { deletePushSubscription } = await import("@/services/push-subscriptions");
+              await deletePushSubscription(sub.id).catch(() => {});
+            }
           } catch (err) {
             delivery.push({
               pass: false,

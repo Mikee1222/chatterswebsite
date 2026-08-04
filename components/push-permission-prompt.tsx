@@ -7,6 +7,7 @@ import { useNotificationPrompt } from "@/contexts/notification-prompt-context";
 import { Check, BellOff } from "lucide-react";
 
 const PERMISSION_DISMISSED_KEY = "chatter-push-permission-dismissed";
+const PUSH_SYNCED_SESSION_KEY = "chatter-push-synced-session";
 const DISMISS_RESHOW_DAYS = 7;
 
 function pushLog(...args: unknown[]) {
@@ -87,58 +88,112 @@ export async function runPushEnableFlow(role?: UserRole | (string & {}) | null):
       return { status: "denied" };
     }
 
-    if (!reg.pushManager) {
-      pushLog("Exit: pushManager unavailable on registration");
-      return { status: "unsupported", reason: "Push is not supported in this browser." };
-    }
-
-    pushLog("Fetching VAPID public key…");
-    const vapidRes = await fetch("/api/push/vapid-public", { credentials: "include" });
-    if (!vapidRes.ok) {
-      pushLog("Exit: VAPID key missing or error", vapidRes.status);
-      return { status: "error", message: "Server push config missing. Try again later." };
-    }
-    const { publicKey } = (await vapidRes.json()) as { publicKey?: string };
-    if (!publicKey) {
-      pushLog("Exit: VAPID key empty in response");
-      return { status: "error", message: "Server push config invalid." };
-    }
-    pushLog("VAPID key received");
-
-    pushLog("Creating push subscription…");
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
-    });
-    pushLog("Subscription object created", { endpoint: !!sub?.endpoint });
-
-    const j = sub.toJSON();
-    const body = {
-      endpoint: j.endpoint,
-      keys: j.keys as { p256dh: string; auth: string },
-      role: role ?? undefined,
-    };
-    pushLog("Posting subscription to backend POST /api/push/subscribe…");
-    const subscribeRes = await fetch("/api/push/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(body),
-    });
-
-    if (!subscribeRes.ok) {
-      const err = await subscribeRes.json().catch(() => ({}));
-      const msg = (err as { error?: string }).error || "Failed to save subscription";
-      pushLog("Airtable save failure", subscribeRes.status, msg);
-      return { status: "error", message: msg };
-    }
-    pushLog("Airtable save success – subscription stored on backend");
-    return { status: "success" };
+    return await persistPushSubscription(reg, role);
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     pushLog("Flow error:", e);
     return { status: "error", message };
   }
+}
+
+/**
+ * When Notification.permission is already granted, re-register SW + upsert the current
+ * PushSubscription to the backend. Fixes stale/expired endpoints after OS or browser churn
+ * without showing the permission prompt again.
+ */
+export async function ensurePushSubscriptionSynced(
+  role?: UserRole | (string & {}) | null
+): Promise<PushEnableResult | { status: "skipped" }> {
+  if (typeof window === "undefined") return { status: "skipped" };
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) return { status: "skipped" };
+  if (Notification.permission !== "granted") return { status: "skipped" };
+  if (!window.isSecureContext) return { status: "skipped" };
+  try {
+    if (sessionStorage.getItem(PUSH_SYNCED_SESSION_KEY) === "1") return { status: "skipped" };
+  } catch {
+    /* private mode – continue */
+  }
+
+  try {
+    let reg = navigator.serviceWorker.controller ? await navigator.serviceWorker.ready : null;
+    if (!reg) {
+      reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+    }
+    const result = await persistPushSubscription(reg, role);
+    if (result.status === "success") {
+      try {
+        sessionStorage.setItem(PUSH_SYNCED_SESSION_KEY, "1");
+      } catch {
+        /* ignore */
+      }
+    }
+    return result;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    pushLog("ensurePushSubscriptionSynced error:", message);
+    return { status: "error", message };
+  }
+}
+
+async function persistPushSubscription(
+  reg: ServiceWorkerRegistration,
+  role?: UserRole | (string & {}) | null
+): Promise<PushEnableResult> {
+  if (!reg.pushManager) {
+    pushLog("Exit: pushManager unavailable on registration");
+    return { status: "unsupported", reason: "Push is not supported in this browser." };
+  }
+
+  pushLog("Fetching VAPID public key…");
+  const vapidRes = await fetch("/api/push/vapid-public", { credentials: "include" });
+  if (!vapidRes.ok) {
+    pushLog("Exit: VAPID key missing or error", vapidRes.status);
+    return { status: "error", message: "Server push config missing. Try again later." };
+  }
+  const { publicKey } = (await vapidRes.json()) as { publicKey?: string };
+  if (!publicKey) {
+    pushLog("Exit: VAPID key empty in response");
+    return { status: "error", message: "Server push config invalid." };
+  }
+  pushLog("VAPID key received");
+
+  pushLog("Creating/refreshing push subscription…");
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+    });
+  }
+  pushLog("Subscription object ready", { endpoint: !!sub?.endpoint });
+
+  const j = sub.toJSON();
+  const body = {
+    endpoint: j.endpoint,
+    keys: j.keys as { p256dh: string; auth: string },
+    role: role ?? undefined,
+  };
+  if (!body.endpoint || !body.keys?.p256dh || !body.keys?.auth) {
+    return { status: "error", message: "Browser returned an incomplete push subscription." };
+  }
+
+  pushLog("Posting subscription to backend POST /api/push/subscribe…");
+  const subscribeRes = await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(body),
+  });
+
+  if (!subscribeRes.ok) {
+    const err = await subscribeRes.json().catch(() => ({}));
+    const msg = (err as { error?: string }).error || "Failed to save subscription";
+    pushLog("Subscription save failure", subscribeRes.status, msg);
+    return { status: "error", message: msg };
+  }
+  pushLog("Subscription save success – stored on backend");
+  return { status: "success" };
 }
 
 function urlBase64ToUint8Array(base64: string): Uint8Array {
@@ -179,7 +234,12 @@ export function PushPermissionPrompt({ role, onSubscribed }: Props) {
   React.useEffect(() => {
     if (!mounted || typeof window === "undefined") return;
     if (!("Notification" in window) || !("serviceWorker" in navigator)) return;
-    if (Notification.permission === "granted") return;
+    if (Notification.permission === "granted") {
+      // Permission already granted: silently refresh SW + backend subscription so
+      // expired (410) endpoints get replaced without re-prompting the user.
+      void ensurePushSubscriptionSynced(role);
+      return;
+    }
     const dismissedAt = localStorage.getItem(PERMISSION_DISMISSED_KEY);
     if (dismissedAt && !isOpenFromSettings) {
       const t = parseInt(dismissedAt, 10);
@@ -187,7 +247,7 @@ export function PushPermissionPrompt({ role, onSubscribed }: Props) {
     }
     setShow(true);
     setStep("pre-prompt");
-  }, [mounted, isOpenFromSettings]);
+  }, [mounted, isOpenFromSettings, role]);
 
   const handleEnable = async () => {
     setStep("loading");
