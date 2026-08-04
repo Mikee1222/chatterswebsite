@@ -265,6 +265,15 @@ export function modelScheduleUrl(opts?: { weekStart?: string; action?: "submit" 
   return q ? `${base}?${q}` : base;
 }
 
+/** Build admin model-schedules detail URL with model + optional week. */
+export function adminModelScheduleUrl(opts: { modelId: string; weekStart?: string }): string {
+  const p = new URLSearchParams();
+  p.set("model", opts.modelId);
+  const monday = opts.weekStart?.trim();
+  if (monday && monday !== getThisWeekMonday()) p.set("week", monday);
+  return `${ROUTES.admin.modelSchedules}?${p.toString()}`;
+}
+
 /** Build admin shift activity URL with optional query string. */
 export function adminShiftActivityUrl(params?: Record<string, string>): string {
   const base = ROUTES.admin.shiftActivity;

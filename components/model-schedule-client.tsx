@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Calendar, Clock, Gauge, Layers, ListChecks, Palmtree, Plus, StickyNote, Timer, X } from "lucide-react";
 import { addDays, getThisWeekMonday, formatWeekLabel, WEEKLY_PROGRAM_DAY_OPTIONS, normalizeWeekStart } from "@/lib/weekly-program";
 import { formatTimeRange, formatDateLong, formatScheduleWeekdayDateLine, formatScheduleItemTypeForDisplay } from "@/lib/format";
-import { modelScheduleUrl } from "@/lib/routes";
+import { adminModelScheduleUrl, modelScheduleUrl } from "@/lib/routes";
 import type {
   ModelAvailabilityTimeWindow,
   ModelScheduleItem,
@@ -58,7 +58,8 @@ type Props = {
   currentPeriod: ModelPeriodRecord | null;
   initialTimeOff: ModelTimeOffRequest[];
   initialAction?: string | null;
-  resolveWeekHref?: (mondayYmd: string) => string;
+  /** When true, week nav links stay on admin model-schedules (with model query). */
+  adminWeekNav?: boolean;
   /** When true, render Mon–Sun program grid + item modal (admin). Model availability page passes false. */
   showProgramGrid?: boolean;
   /** Below: used only when `showProgramGrid` is true */
@@ -74,14 +75,13 @@ export function ModelScheduleClient({
   currentPeriod,
   initialTimeOff,
   initialAction,
-  resolveWeekHref,
+  adminWeekNav = false,
   showProgramGrid = true,
   initialItems = [],
   periodDates = [],
   predictedPeriodStart = null,
   initialAvailability = [],
 }: Props) {
-  void modelId;
   const { t } = useTranslations();
   const { language } = useLanguage();
   const locale = language === "es" ? "es" : "en-GB";
@@ -177,7 +177,11 @@ export function ModelScheduleClient({
   }, [scrollTarget]);
 
   const scheduleHref = (monday: string) =>
-    resolveWeekHref?.(monday) ?? (monday === getThisWeekMonday() ? modelScheduleUrl() : modelScheduleUrl({ weekStart: monday }));
+    adminWeekNav
+      ? adminModelScheduleUrl({ modelId, weekStart: monday })
+      : monday === getThisWeekMonday()
+        ? modelScheduleUrl()
+        : modelScheduleUrl({ weekStart: monday });
 
   const prevWeek = addDays(weekStart, -7);
   const nextWeek = addDays(weekStart, 7);

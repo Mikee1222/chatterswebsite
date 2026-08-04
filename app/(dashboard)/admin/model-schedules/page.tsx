@@ -1,8 +1,6 @@
 import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
-import { ROUTES } from "@/lib/routes";
-import { redirect } from "next/navigation";
 import { ModelScheduleClient } from "@/components/model-schedule-client";
 import { LanguageProvider } from "@/lib/language-provider";
 import { listModelScheduleItems } from "@/services/model-schedule";
@@ -86,13 +84,6 @@ export default async function AdminModelSchedulesPage({
   const predictedPeriodStart = upcoming?.predicted_start ?? null;
   const initialItems = mergeScheduleWithLives(scheduleItems, liveStreams, fromDate, toDate);
 
-  const resolveWeekHref = (monday: string) => {
-    const p = new URLSearchParams();
-    p.set("model", modelId);
-    if (monday !== getThisWeekMonday()) p.set("week", monday);
-    return `${ROUTES.admin.modelSchedules}?${p.toString()}`;
-  };
-
   return (
     <div className="container mx-auto p-6">
       <h1 className="mb-6 text-3xl font-bold text-white">Model Schedules</h1>
@@ -129,7 +120,7 @@ export default async function AdminModelSchedulesPage({
           currentPeriod={currentPeriod}
           initialAvailability={[]}
           initialTimeOff={[]}
-          resolveWeekHref={resolveWeekHref}
+          adminWeekNav
         />
       </LanguageProvider>
     </div>
