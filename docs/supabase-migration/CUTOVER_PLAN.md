@@ -1,6 +1,9 @@
-# Supabase cutover plan (DO NOT EXECUTE until readiness is YES)
+# Supabase cutover plan
 
-This plan flips Production from Airtable (`DATA_BACKEND` unset / airtable) to Supabase. **Do not run these steps until** [`E2E_READINESS_REPORT.md`](./E2E_READINESS_REPORT.md) is **YES** (or CONDITIONAL with accepted residual risks).
+> **Executed 2026-08-04.** See [`CUTOVER_EXECUTED.md`](./CUTOVER_EXECUTED.md) for deployment ID, verification, and exact rollback commands.  
+> Original gate: do not run until [`E2E_READINESS_REPORT.md`](./E2E_READINESS_REPORT.md) is **YES** (or CONDITIONAL with accepted residual risks).
+
+This plan flips Production from Airtable (`DATA_BACKEND` unset / airtable) to Supabase.
 
 ## Preconditions
 
