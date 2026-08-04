@@ -33,6 +33,16 @@ export function recurringRealRowExistsForAthensYmd(
   );
 }
 
+/** True when the series anchor marks this Athens day as skipped (this-occurrence-only delete/exception). */
+export function recurrenceSkipsAthensYmd(
+  task: Pick<VaTaskRecord, "recurrence_skipped_dates"> | null | undefined,
+  ymd: string,
+): boolean {
+  const target = ymd.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(target)) return false;
+  return (task?.recurrence_skipped_dates ?? []).some((d) => d.trim().slice(0, 10) === target);
+}
+
 /**
  * Expand recurring series so every Athens calendar day in range has a visible instance.
  *
@@ -66,6 +76,7 @@ export function expandTasksForAthensYmd(tasks: VaTaskRecord[], ymd: string): VaT
 
   const virtual: VaTaskRecord[] = [];
   for (const [key, anchor] of anchors) {
+    if (recurrenceSkipsAthensYmd(anchor, target)) continue;
     if (recurringRealRowExistsForAthensYmd(tasks, key, target)) continue;
     const projected = materializeVirtualOccurrence(anchor, target);
     if (projected) virtual.push(projected);

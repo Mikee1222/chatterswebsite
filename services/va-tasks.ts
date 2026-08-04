@@ -115,6 +115,8 @@ type Fields = {
   recurrence_days?: string | string[];
   recurrence_interval?: number;
   recurrence_end_date?: string;
+  /** Supabase-only; Airtable path ignores and maps to []. */
+  recurrence_skipped_dates?: string | string[];
   reminder_minutes_before?: number;
   completed_at?: string;
   completed_notes?: string;
@@ -160,6 +162,21 @@ function parseRecurrenceDays(raw: unknown): VaRecurrenceDay[] {
   return arr.filter((d): d is VaRecurrenceDay => typeof d === "string" && allowed.has(d as VaRecurrenceDay));
 }
 
+function parseSkippedDates(raw: unknown): string[] {
+  if (raw == null) return [];
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const d of arr) {
+    if (typeof d !== "string") continue;
+    const ymd = d.trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd) || seen.has(ymd)) continue;
+    seen.add(ymd);
+    out.push(ymd);
+  }
+  return out;
+}
+
 function mapRecord(rec: AirtableRecord<Fields>): VaTaskRecord {
   const f = rec.fields;
   return {
@@ -180,6 +197,7 @@ function mapRecord(rec: AirtableRecord<Fields>): VaTaskRecord {
       ? f.recurrence_interval
       : null,
     recurrence_end_date: f.recurrence_end_date?.trim() ? f.recurrence_end_date.trim() : null,
+    recurrence_skipped_dates: parseSkippedDates(f.recurrence_skipped_dates),
     reminder_minutes_before:
       typeof f.reminder_minutes_before === "number" && Number.isFinite(f.reminder_minutes_before)
         ? f.reminder_minutes_before
@@ -290,6 +308,7 @@ export type VaTaskCreateInput = {
   recurrence_days?: VaRecurrenceDay[];
   recurrence_interval?: number | null;
   recurrence_end_date?: string | null;
+  recurrence_skipped_dates?: string[] | null;
   reminder_minutes_before?: number | null;
 };
 
@@ -389,6 +408,7 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
     );
     if (recEnd) payload.recurrence_end_date = recEnd;
   }
+  // Airtable has no recurrence_skipped_dates field — skipped on Airtable path.
   if (data.reminder_minutes_before !== undefined) payload.reminder_minutes_before = data.reminder_minutes_before;
   if (data.completed_at !== undefined) {
     const doneAt = toIsoDateTimeOrOmit(

@@ -122,7 +122,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
   const [loadingPhases, setLoadingPhases] = React.useState(false);
   const modelNames = task.assigned_model_names ?? [];
   const isVirtual = Boolean(task.is_virtual_occurrence || task.id.startsWith("virt_"));
-  /** Virtual occurrences show projected checklist structure but stay read-only. */
+  /** Inline phase edits stay on real rows; use Edit for series / occurrence changes. */
   const canEditPhases = canManage && !isVirtual;
 
   const togglePhases = React.useCallback(async () => {
@@ -341,9 +341,9 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
             </h3>
           </div>
           <div className="flex shrink-0 flex-wrap items-center gap-1.5">
-            {canManage && !isVirtual ? (
+            {canManage ? (
               <>
-                {task.status !== "done" && task.status !== "skipped" ? (
+                {!isVirtual && task.status !== "done" && task.status !== "skipped" ? (
                   <button
                     type="button"
                     onClick={() => void onRemind(task)}
@@ -431,7 +431,7 @@ export const AdminVaTaskCard = React.memo(function AdminVaTaskCard({
               />
               {isVirtual ? (
                 <p className="mt-3 text-center text-xs text-sky-300/70">
-                  Preview of the recurring checklist — edits apply on a real occurrence.
+                  Projected occurrence — use Edit or Delete to change this date or the series.
                 </p>
               ) : null}
               {canEditPhases ? (

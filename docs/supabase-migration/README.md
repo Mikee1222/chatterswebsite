@@ -7,6 +7,7 @@ Phase 1 (schema design) deliverables for Gunzo OS / chatter-dashboard.
 | [01-table-enumeration.md](./01-table-enumeration.md) | Every Airtable table/field inventory |
 | [02-schema-design.md](./02-schema-design.md) | Mapping decisions (FKs, storage, formulas, RLS) |
 | [03-remaining-work.md](./03-remaining-work.md) | Phases 2–5 plan + why we stopped after Phase 1 |
+| [DELTA_SYNC_GAP.md](./DELTA_SYNC_GAP.md) | Catch-up sync for Airtable writes between bulk migration and cutover |
 
 ## Migrations
 

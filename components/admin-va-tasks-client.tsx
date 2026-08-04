@@ -4,14 +4,16 @@ import * as React from "react";
 import { Bell, Check, ClipboardList, Clock, Pencil, Plus, Search, Trash2, Users, X, ImageIcon, Camera, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
-import { createVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
+import { createVaTaskAction, updateRecurringVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { RecurringOccurrenceScopeDialog } from "@/components/recurring-occurrence-scope-dialog";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification, ModelRecord, VaTaskRecord, VaTaskStatus, VaTaskPriority, VaRecurrenceType, VaRecurrenceDay } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
+import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import { DEFAULT_TASK_STEP_TYPE, TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 import {
   filterTasksByAthensYmd,
@@ -314,6 +316,12 @@ export function AdminVaTasksClient({
   const defaultViewMode = canShowList ? "list" : "progress";
   const [localTasks, setLocalTasks] = React.useState(tasks);
   const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
+  const [deleteScope, setDeleteScope] = React.useState<RecurringOccurrenceScope | null>(null);
+  const [scopeDialog, setScopeDialog] = React.useState<
+    null | { mode: "edit" | "delete"; task: VaTaskRecord }
+  >(null);
+  const [editScope, setEditScope] = React.useState<RecurringOccurrenceScope | null>(null);
+  const [editingTaskSnapshot, setEditingTaskSnapshot] = React.useState<VaTaskRecord | null>(null);
   const [confirmingTaskDelete, setConfirmingTaskDelete] = React.useState(false);
   const [reminding, setReminding] = React.useState<string | null>(null);
   const [remindSuccess, setRemindSuccess] = React.useState<string | null>(null);
@@ -393,6 +401,8 @@ export function AdminVaTasksClient({
 
   function resetTaskModal() {
     setEditingId(null);
+    setEditScope(null);
+    setEditingTaskSnapshot(null);
     setTitle("");
     setDescription("");
     setAssignAll(false);
@@ -428,27 +438,10 @@ export function AdminVaTasksClient({
     }
   }
 
-  const openCreate = () => {
-    resetTaskModal();
-    // New tasks must land on today's List view — blank due_date is filtered out by Athens date nav.
-    setDueLocal(defaultDueDatetimeLocal());
-    void loadTemplateOptions();
-    setModalOpen(true);
-  };
-
-  const openEdit = React.useCallback(async (t: VaTaskRecord) => {
-    if (t.is_virtual_occurrence) {
-      addToast(
-        localToast(
-          `vat-edit-virt-${Date.now()}`,
-          "Projected day",
-          "Edit the recurring series from a real (spawned) occurrence — this date is preview-only until that day is created.",
-          "normal",
-        ),
-      );
-      return;
-    }
+  const fillEditForm = React.useCallback(async (t: VaTaskRecord, scope: RecurringOccurrenceScope | null) => {
     setEditingId(t.id);
+    setEditScope(scope);
+    setEditingTaskSnapshot(t);
     setTitle(t.title);
     setDescription(t.description);
     setAssignAll(t.assigned_to_ids.length === 0);
@@ -469,19 +462,60 @@ export function AdminVaTasksClient({
     editPhasesSnapshotRef.current = null;
     setError(null);
     setModalOpen(true);
+    const phaseTaskId = t.is_virtual_occurrence
+      ? (t.virtual_source_task_id?.trim() || t.id)
+      : t.id;
     try {
-      const res = await fetch(`/api/admin/task-phases?task_id=${encodeURIComponent(t.id)}`, { credentials: "include" });
+      const params = new URLSearchParams({ task_id: phaseTaskId });
+      if (t.is_virtual_occurrence && t.virtual_source_task_id) {
+        params.set("source_task_id", t.virtual_source_task_id);
+      }
+      const res = await fetch(`/api/admin/task-phases?${params}`, { credentials: "include" });
       const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
       const phases = data.phases ?? [];
-      editPhasesSnapshotRef.current = {
-        phaseIds: phases.map((p) => p.id),
-        itemsByPhaseId: Object.fromEntries(phases.map((p) => [p.id, (p.items ?? []).map((i) => i.id)])),
-      };
-      setDraftPhases(phases.map(phaseToDraft));
+      // Virtual this_only → new row on save (create phases). Virtual this_and_future → edit anchor phases.
+      if (t.is_virtual_occurrence && scope === "this_only") {
+        editPhasesSnapshotRef.current = { phaseIds: [], itemsByPhaseId: {} };
+        setDraftPhases(
+          phases.map((p) => ({
+            ...phaseToDraft(p),
+            serverId: undefined,
+            items: (p.items ?? []).map((i) => ({
+              tempId: `new-${i.id}`,
+              serverId: undefined,
+              title: i.title,
+              requires_screenshot: i.requires_screenshot,
+              step_type: i.step_type ?? DEFAULT_TASK_STEP_TYPE,
+            })),
+          })),
+        );
+      } else {
+        editPhasesSnapshotRef.current = {
+          phaseIds: phases.map((p) => p.id),
+          itemsByPhaseId: Object.fromEntries(phases.map((p) => [p.id, (p.items ?? []).map((i) => i.id)])),
+        };
+        setDraftPhases(phases.map(phaseToDraft));
+      }
     } catch {
       editPhasesSnapshotRef.current = { phaseIds: [], itemsByPhaseId: {} };
     }
-  }, [addToast]);
+  }, []);
+
+  const openEdit = React.useCallback((t: VaTaskRecord) => {
+    if (t.is_recurring || t.is_virtual_occurrence) {
+      setScopeDialog({ mode: "edit", task: t });
+      return;
+    }
+    void fillEditForm(t, null);
+  }, [fillEditForm]);
+
+  const openCreate = () => {
+    resetTaskModal();
+    // New tasks must land on today's List view — blank due_date is filtered out by Athens date nav.
+    setDueLocal(defaultDueDatetimeLocal());
+    void loadTemplateOptions();
+    setModalOpen(true);
+  };
 
   const filteredTasks = React.useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
@@ -885,12 +919,27 @@ export function AdminVaTasksClient({
 
     try {
       if (editingId) {
-        const res = await updateVaTaskAction(editingId, payload);
-        if (!res.success) {
-          setError(res.error);
-          return;
+        const isRecurringEdit = Boolean(editScope && editingTaskSnapshot);
+        if (isRecurringEdit && editScope && editingTaskSnapshot) {
+          const res = await updateRecurringVaTaskAction({
+            taskId: editingId,
+            scope: editScope,
+            data: payload,
+            taskPayload: editingTaskSnapshot,
+          });
+          if (!res.success) {
+            setError(res.error);
+            return;
+          }
+          await persistDraftPhasesForTask(res.targetTaskId, title.trim(), !res.materialized);
+        } else {
+          const res = await updateVaTaskAction(editingId, payload);
+          if (!res.success) {
+            setError(res.error);
+            return;
+          }
+          await persistDraftPhasesForTask(editingId, title.trim(), true);
         }
-        await persistDraftPhasesForTask(editingId, title.trim(), true);
       } else {
         const res = await createVaTaskAction(payload);
         if (!res.success) {
@@ -914,7 +963,21 @@ export function AdminVaTasksClient({
     const id = taskPendingDelete.id;
     setConfirmingTaskDelete(true);
     try {
-      const res = await fetch(`/api/va-tasks/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const isRecurring = Boolean(
+        taskPendingDelete.is_recurring ||
+          taskPendingDelete.is_virtual_occurrence ||
+          deleteScope,
+      );
+      const res = await fetch(`/api/va-tasks/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: isRecurring ? { "Content-Type": "application/json" } : undefined,
+        body: isRecurring
+          ? JSON.stringify({
+              scope: deleteScope ?? "this_only",
+              taskPayload: taskPendingDelete,
+            })
+          : undefined,
+      });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) {
         addToast(localToast(`vat-del-err-${Date.now()}`, "Could not delete", data.error ?? "Delete failed.", "high"));
@@ -922,6 +985,7 @@ export function AdminVaTasksClient({
       }
       setLocalTasks((prev) => prev.filter((t) => t.id !== id));
       setTaskPendingDelete(null);
+      setDeleteScope(null);
       addToast(localToast(`vat-del-ok-${Date.now()}`, "Task deleted", "The task was removed.", "normal"));
       router.refresh();
     } catch {
@@ -929,7 +993,7 @@ export function AdminVaTasksClient({
     } finally {
       setConfirmingTaskDelete(false);
     }
-  }, [taskPendingDelete, addToast, router]);
+  }, [taskPendingDelete, deleteScope, addToast, router]);
 
   const handleRemind = React.useCallback(async (task: VaTaskRecord) => {
     if (task.is_virtual_occurrence) {
@@ -982,19 +1046,28 @@ export function AdminVaTasksClient({
   }, []);
 
   const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
-    if (task.is_virtual_occurrence || task.id.startsWith("virt_")) {
-      addToast(
-        localToast(
-          `vat-del-virt-${Date.now()}`,
-          "Projected day",
-          "There is no Airtable row for this date yet. Delete or edit a real occurrence of the series instead.",
-          "normal",
-        ),
-      );
+    if (task.is_recurring || task.is_virtual_occurrence) {
+      setScopeDialog({ mode: "delete", task });
       return;
     }
+    setDeleteScope(null);
     setTaskPendingDelete(task);
-  }, [addToast]);
+  }, []);
+
+  const handleScopeChosen = React.useCallback(
+    (scope: RecurringOccurrenceScope) => {
+      const dlg = scopeDialog;
+      setScopeDialog(null);
+      if (!dlg) return;
+      if (dlg.mode === "edit") {
+        void fillEditForm(dlg.task, scope);
+        return;
+      }
+      setDeleteScope(scope);
+      setTaskPendingDelete(dlg.task);
+    },
+    [scopeDialog, fillEditForm],
+  );
 
   const handleAddPhase = React.useCallback(async (taskId: string, taskTitle: string) => {
     if (taskId.startsWith("virt_")) return;
@@ -1945,16 +2018,35 @@ export function AdminVaTasksClient({
         description={
           taskPendingDelete ? (
             <>
-              Delete <span className="font-medium text-white">{taskPendingDelete.title}</span>? This action cannot be undone.
+              Delete <span className="font-medium text-white">{taskPendingDelete.title}</span>
+              {deleteScope === "this_only"
+                ? " for this date only"
+                : deleteScope === "this_and_future"
+                  ? " from this date forward (series stops; past days stay)"
+                  : ""}
+              ? This action cannot be undone.
             </>
           ) : null
         }
         onClose={() => {
-          if (!confirmingTaskDelete) setTaskPendingDelete(null);
+          if (!confirmingTaskDelete) {
+            setTaskPendingDelete(null);
+            setDeleteScope(null);
+          }
         }}
         onConfirm={confirmDeleteTask}
         confirming={confirmingTaskDelete}
       />
+      ) : null}
+
+      {canManage ? (
+        <RecurringOccurrenceScopeDialog
+          open={scopeDialog != null}
+          mode={scopeDialog?.mode ?? "edit"}
+          taskTitle={scopeDialog?.task.title}
+          onClose={() => setScopeDialog(null)}
+          onChoose={handleScopeChosen}
+        />
       ) : null}
     </div>
   );

@@ -1,0 +1,875 @@
+{
+  "gapStart": "2026-08-02T23:28:59.673Z",
+  "gapEnd": "2026-08-03T23:37:00.000Z",
+  "dryRun": true,
+  "generatedAt": "2026-08-04T00:49:54.270Z",
+  "totals": {
+    "gapRows": 616,
+    "inserts": 560,
+    "updates": 55,
+    "conflicts": 1,
+    "tableErrors": 0
+  },
+  "tables": [
+    {
+      "table": "va_tasks",
+      "airtableGap": 2,
+      "inserts": 2,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "va_task_phase_items",
+      "airtableGap": 157,
+      "inserts": 144,
+      "updates": 13,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "notifications",
+      "airtableGap": 352,
+      "inserts": 348,
+      "updates": 4,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "shifts",
+      "airtableGap": 12,
+      "inserts": 8,
+      "updates": 4,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "shift_models",
+      "airtableGap": 25,
+      "inserts": 16,
+      "updates": 9,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "custom_requests",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "winner_videos",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "system_settings",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "roles",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "earnings_config",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "staff_task_types",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "whale_tags",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "spin_wheel_prizes",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_tiers",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_groups",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_departments",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "marketing_platforms",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "pdf_templates",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "pricing_rows",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "pricing_specials",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "mass_lists",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "challenges",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "mistakes",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "mistake_reasons",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "users",
+      "airtableGap": 6,
+      "inserts": 0,
+      "updates": 5,
+      "skipConflict": 1,
+      "errors": 0
+    },
+    {
+      "table": "modelss",
+      "airtableGap": 9,
+      "inserts": 0,
+      "updates": 9,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "clients",
+      "airtableGap": 3,
+      "inserts": 0,
+      "updates": 3,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "client_models",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "models",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "chatters",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "whales",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "shift_queue",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "va_task_phases",
+      "airtableGap": 14,
+      "inserts": 12,
+      "updates": 2,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "task_templates",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "task_template_phases",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "task_template_items",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "va_content_assignments",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "notification_preferences",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "push_subscriptions",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "activity_logs",
+      "airtableGap": 13,
+      "inserts": 13,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "billing_cycles",
+      "airtableGap": 4,
+      "inserts": 3,
+      "updates": 1,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "billing_cycle_revenues",
+      "airtableGap": 1,
+      "inserts": 0,
+      "updates": 1,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "payment_methods",
+      "airtableGap": 2,
+      "inserts": 0,
+      "updates": 2,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "payment_submissions",
+      "airtableGap": 3,
+      "inserts": 3,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "invoices",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "calendar_events",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "challenge_progress",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "chatter_points",
+      "airtableGap": 2,
+      "inserts": 0,
+      "updates": 2,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "points_transactions",
+      "airtableGap": 4,
+      "inserts": 4,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "spin_wheel_spins",
+      "airtableGap": 1,
+      "inserts": 1,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "monthly_targets",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "staff_hours_summary",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_live_streams",
+      "airtableGap": 1,
+      "inserts": 1,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_periods",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_personal_events",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_schedule",
+      "airtableGap": 2,
+      "inserts": 2,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_tasks",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_time_off_requests",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_content_requests",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_expense_requests",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_social_accounts",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_funnel_links",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "weekly_availability_requests",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "weekly_availability_requests_models",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "weekly_availability_requests_va",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "weekly_program",
+      "airtableGap": 3,
+      "inserts": 3,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "weekly_program_va",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "whale_activity",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "whale_transactions",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "feedback",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "fines_and_bonuses",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "chatter_mistakes",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "rebills",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "tips",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "of_subscribers",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "link_pages",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "link_page_blocks",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "link_redirects",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "link_ab_results",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "link_page_analytics",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_roles",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_functions",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_progress",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_quiz_questions",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_quiz_attempts",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_signoffs",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "sop_feedback",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "marketing_phones",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "marketing_daily_reviews",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "marketing_spot_checks",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "marketing_exec_audits",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "shadowban_reports",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "video_transcripts",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "pdf_documents",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "creator_assignments",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "research_bunches",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "research_ideas",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "content_items",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "content_item_events",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "chatter_performance",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "chatters_apply_form",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "feedback_cc",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "mss",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "model_content_legacy",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "paypal_money_received",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "self_evaluations",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    }
+  ],
+  "preSkipped": [],
+  "conflicts": [
+    {
+      "table": "users",
+      "airtable_id": "recA62rgP2WK9Jbp2",
+      "supabase_id": "dc6ef0a0-d29a-4099-afe5-5a29a9ece0ba",
+      "action": "skip_conflict",
+      "reason": "supabase updated_at=2026-08-03T23:55:55.91+00:00 >= cutover 2026-08-03T23:37:00.000Z",
+      "airtable_created": "2026-05-02T22:07:04.000Z",
+      "sb_updated_at": "2026-08-03T23:55:55.91+00:00"
+    }
+  ]
+}

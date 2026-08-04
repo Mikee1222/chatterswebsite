@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { qualifiesForAdminVaTasksNav } from "@/lib/nav-config";
-import { getUserPermissions } from "@/lib/rbac";
+import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { assertVaTypeCanAccessNavHref } from "@/lib/va-type-access";
@@ -30,6 +30,8 @@ export default async function VaTasksPage() {
     await assertVaTypeCanAccessNavHref(user, ROUTES.va.tasks);
   }
 
+  const canManage = await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE);
+
   const vaId = user.airtableUserId ?? user.id;
   const [tasks, activeShift] = await Promise.all([
     getVaTasksForUser(vaId).catch(() => []),
@@ -41,5 +43,12 @@ export default async function VaTasksPage() {
     ? { id: activeShift.id, start_time: activeShift.start_time ?? "", status: activeShift.status }
     : null;
 
-  return <VaTasksClient tasks={tasks} userName={userName} initialActiveShift={initialActiveShift} />;
+  return (
+    <VaTasksClient
+      tasks={tasks}
+      userName={userName}
+      initialActiveShift={initialActiveShift}
+      canManage={canManage}
+    />
+  );
 }

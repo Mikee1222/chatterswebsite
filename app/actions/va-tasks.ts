@@ -19,12 +19,26 @@ import {
 import { getActiveVaTaskShift } from "@/services/shifts";
 import { isVirtualVaTaskId, shouldSpawnRecurring } from "@/lib/recurrence";
 import { spawnNextRecurringOccurrenceAfterComplete } from "@/services/va-task-recurring-spawn";
+import {
+  applyRecurringDeleteScope,
+  applyRecurringEditScope,
+} from "@/services/va-task-recurring-scope";
+import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import type { VaTaskRecord, VaTaskStatus } from "@/types";
 import { shouldUsePersonalVaTasksNav } from "@/lib/nav-config";
 import { getUserPermissions, hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 
+export type { RecurringOccurrenceScope };
+
 export type VaTaskActionResult = { success: true; task?: VaTaskRecord } | { success: false; error: string };
+
+function revalidateVaTaskPaths() {
+  revalidatePath(ROUTES.admin.vaTasks);
+  revalidatePath(ROUTES.va.tasks);
+  revalidatePath(ROUTES.va.home);
+  revalidatePath(ROUTES.va.schedule);
+}
 
 export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
@@ -38,10 +52,7 @@ export async function createVaTaskAction(input: VaTaskCreateInput): Promise<VaTa
       ...input,
       assigned_by_ids: input.assigned_by_ids?.length ? input.assigned_by_ids : actorId ? [actorId] : [],
     });
-    revalidatePath(ROUTES.admin.vaTasks);
-    revalidatePath(ROUTES.va.tasks);
-    revalidatePath(ROUTES.va.home);
-    revalidatePath(ROUTES.va.schedule);
+    revalidateVaTaskPaths();
     await notifyVaTaskAssigned(task, actorId, user.fullName);
     return { success: true, task };
   } catch (e) {
@@ -81,13 +92,60 @@ async function notifyVaTaskAssigned(
 export async function updateVaTaskAction(id: string, data: VaTaskUpdateInput): Promise<VaTaskActionResult> {
   const user = await getSessionFromCookies();
   if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) return { success: false, error: "Unauthorized." };
+  if (isVirtualVaTaskId(id)) {
+    return {
+      success: false,
+      error: "Use the recurring edit scope action for projected occurrences.",
+    };
+  }
   try {
     await updateVaTask(id, data);
-    revalidatePath(ROUTES.admin.vaTasks);
-    revalidatePath(ROUTES.va.tasks);
-    revalidatePath(ROUTES.va.home);
-    revalidatePath(ROUTES.va.schedule);
+    revalidateVaTaskPaths();
     return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Update failed." };
+  }
+}
+
+export type RecurringVaTaskEditResult =
+  | { success: true; targetTaskId: string; materialized: boolean }
+  | { success: false; error: string };
+
+/** Edit a recurring task with calendar scope (this occurrence vs this and future). */
+export async function updateRecurringVaTaskAction(input: {
+  taskId: string;
+  scope: RecurringOccurrenceScope;
+  data: VaTaskUpdateInput;
+  /** For virtual ids — client must pass the projected task snapshot fields via taskPayload. */
+  taskPayload?: VaTaskRecord;
+}): Promise<RecurringVaTaskEditResult> {
+  const user = await getSessionFromCookies();
+  if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) {
+    return { success: false, error: "Unauthorized." };
+  }
+
+  try {
+    let task: VaTaskRecord | null = null;
+    if (isVirtualVaTaskId(input.taskId) || input.taskPayload?.is_virtual_occurrence) {
+      task = input.taskPayload ?? null;
+      if (!task || task.id !== input.taskId) {
+        return { success: false, error: "Projected occurrence payload is required." };
+      }
+    } else {
+      task = await getVaTaskById(input.taskId);
+    }
+    if (!task) return { success: false, error: "Task not found." };
+    if (!task.is_recurring && !task.is_virtual_occurrence) {
+      return { success: false, error: "Task is not part of a recurring series." };
+    }
+
+    const result = await applyRecurringEditScope({
+      task,
+      scope: input.scope,
+      data: input.data,
+    });
+    revalidateVaTaskPaths();
+    return { success: true, targetTaskId: result.targetTaskId, materialized: result.materialized };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Update failed." };
   }
@@ -146,10 +204,7 @@ export async function updateVaTaskStatusAction(input: {
       }
     }
 
-    revalidatePath(ROUTES.va.tasks);
-    revalidatePath(ROUTES.va.home);
-    revalidatePath(ROUTES.va.schedule);
-    revalidatePath(ROUTES.admin.vaTasks);
+    revalidateVaTaskPaths();
 
     if (input.status === "done") {
       const vaName = user.fullName?.trim() || user.email?.trim() || "VA";
@@ -175,16 +230,46 @@ export async function deleteVaTaskAction(id: string): Promise<VaTaskActionResult
   if (isVirtualVaTaskId(id)) {
     return {
       success: false,
-      error:
-        "Cannot delete a projected recurring day — it has no Airtable record yet. Delete a real occurrence of the series instead.",
+      error: "Use the recurring delete scope action for projected occurrences.",
     };
   }
   try {
     await deleteVaTask(id);
-    revalidatePath(ROUTES.admin.vaTasks);
-    revalidatePath(ROUTES.va.tasks);
-    revalidatePath(ROUTES.va.home);
-    revalidatePath(ROUTES.va.schedule);
+    revalidateVaTaskPaths();
+    return { success: true };
+  } catch (e) {
+    return { success: false, error: e instanceof Error ? e.message : "Delete failed." };
+  }
+}
+
+/** Delete a recurring task with calendar scope (this occurrence vs this and future). */
+export async function deleteRecurringVaTaskAction(input: {
+  taskId: string;
+  scope: RecurringOccurrenceScope;
+  taskPayload?: VaTaskRecord;
+}): Promise<VaTaskActionResult> {
+  const user = await getSessionFromCookies();
+  if (!user || !(await hasPermission(user, PERMISSIONS.VA_TASKS_MANAGE))) {
+    return { success: false, error: "Unauthorized." };
+  }
+
+  try {
+    let task: VaTaskRecord | null = null;
+    if (isVirtualVaTaskId(input.taskId) || input.taskPayload?.is_virtual_occurrence) {
+      task = input.taskPayload ?? null;
+      if (!task || task.id !== input.taskId) {
+        return { success: false, error: "Projected occurrence payload is required." };
+      }
+    } else {
+      task = await getVaTaskById(input.taskId);
+    }
+    if (!task) return { success: false, error: "Task not found." };
+    if (!task.is_recurring && !task.is_virtual_occurrence) {
+      return { success: false, error: "Task is not part of a recurring series." };
+    }
+
+    await applyRecurringDeleteScope({ task, scope: input.scope });
+    revalidateVaTaskPaths();
     return { success: true };
   } catch (e) {
     return { success: false, error: e instanceof Error ? e.message : "Delete failed." };

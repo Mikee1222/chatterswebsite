@@ -61,6 +61,7 @@ async function main() {
       recurrence_days: [],
       recurrence_interval: 1,
       recurrence_end_date: f.recurrence_end_date?.trim() ?? null,
+      recurrence_skipped_dates: [],
       reminder_minutes_before: null,
       completed_at: null,
       completed_notes: "",

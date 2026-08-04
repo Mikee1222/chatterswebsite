@@ -50,6 +50,7 @@ type Row = SbRow & {
   recurrence_days?: string[] | null;
   recurrence_interval?: number | null;
   recurrence_end_date?: string | null;
+  recurrence_skipped_dates?: string[] | null;
   reminder_minutes_before?: number | null;
   completed_at?: string | null;
   completed_notes?: string | null;
@@ -93,6 +94,21 @@ function parseRecurrenceDays(raw: unknown): VaRecurrenceDay[] {
   if (raw == null) return [];
   const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
   return arr.filter((d): d is VaRecurrenceDay => typeof d === "string" && allowed.has(d as VaRecurrenceDay));
+}
+
+function parseSkippedDates(raw: unknown): string[] {
+  if (raw == null) return [];
+  const arr = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : [];
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const d of arr) {
+    if (typeof d !== "string") continue;
+    const ymd = d.trim().slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd) || seen.has(ymd)) continue;
+    seen.add(ymd);
+    out.push(ymd);
+  }
+  return out;
 }
 
 function parseFlexibleDateInput(raw: string | null | undefined): Date | null {
@@ -142,6 +158,7 @@ function mapRowSync(
         ? Number(row.recurrence_interval)
         : null,
     recurrence_end_date: row.recurrence_end_date?.trim() ? String(row.recurrence_end_date).slice(0, 10) : null,
+    recurrence_skipped_dates: parseSkippedDates(row.recurrence_skipped_dates),
     reminder_minutes_before:
       typeof row.reminder_minutes_before === "number" && Number.isFinite(row.reminder_minutes_before)
         ? Number(row.reminder_minutes_before)
@@ -298,6 +315,7 @@ export type VaTaskCreateInput = {
   recurrence_days?: VaRecurrenceDay[];
   recurrence_interval?: number | null;
   recurrence_end_date?: string | null;
+  recurrence_skipped_dates?: string[] | null;
   reminder_minutes_before?: number | null;
 };
 
@@ -335,6 +353,9 @@ export async function createVaTask(data: VaTaskCreateInput): Promise<VaTaskRecor
   if (due) payload.due_date = due;
   const recEnd = toDateOnly(data.recurrence_end_date ?? undefined);
   if (recEnd) payload.recurrence_end_date = recEnd;
+  if (data.recurrence_skipped_dates !== undefined) {
+    payload.recurrence_skipped_dates = parseSkippedDates(data.recurrence_skipped_dates);
+  }
 
   const row = await sbInsert<Row>(TABLE, payload);
   await Promise.all([
@@ -377,6 +398,10 @@ export async function updateVaTask(id: string, data: VaTaskUpdateInput): Promise
   if (data.recurrence_end_date !== undefined) {
     const recEnd = toDateOnly(data.recurrence_end_date === null ? undefined : data.recurrence_end_date);
     if (recEnd) payload.recurrence_end_date = recEnd;
+    else if (data.recurrence_end_date === null) payload.recurrence_end_date = null;
+  }
+  if (data.recurrence_skipped_dates !== undefined) {
+    payload.recurrence_skipped_dates = parseSkippedDates(data.recurrence_skipped_dates);
   }
   if (data.reminder_minutes_before !== undefined) {
     payload.reminder_minutes_before = data.reminder_minutes_before;

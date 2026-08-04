@@ -8,7 +8,9 @@ import {
   ChevronRight,
   ExternalLink,
   ImageIcon,
+  Pencil,
   Smartphone,
+  Trash2,
 } from "lucide-react";
 import { formatDateEuropean } from "@/lib/format";
 import { getSocialColor } from "@/lib/social-platform-config";
@@ -100,6 +102,9 @@ export type VaTaskCardProps = {
   onShadowbanReport: (acc: SocialAccount) => void;
   onSaveObservations?: (taskId: string, notes: string) => Promise<boolean>;
   observationsSaving?: boolean;
+  canManage?: boolean;
+  onEdit?: (task: VaTaskRecord) => void;
+  onDelete?: (task: VaTaskRecord) => void;
 };
 
 function allPhasesCompleted(phases: TaskPhase[]): boolean {
@@ -127,6 +132,9 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   onShadowbanReport,
   onSaveObservations,
   observationsSaving = false,
+  canManage = false,
+  onEdit,
+  onDelete,
 }: VaTaskCardProps) {
   const [expanded, setExpanded] = React.useState(false);
   const [observations, setObservations] = React.useState(task.completed_notes ?? "");
@@ -243,7 +251,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
             disabled={itemDisabled}
             title={
               isVirtual
-                ? "Preview only — unlocks when this day’s real task exists"
+                ? "Projected day — checklist unlocks when this day’s real task exists"
                 : !onShift
                   ? "Start your shift to complete items"
                   : undefined
@@ -377,17 +385,45 @@ export const VaTaskCard = React.memo(function VaTaskCard({
         ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[13px] text-[#B8B4B8]/55">{assigneeLabel(task, userName)}</p>
-          {showDone ? (
-            <button
-              type="button"
-              onClick={(e) => void onMarkComplete(task, e)}
-              disabled={!onShift || isCompleting}
-              title={!onShift ? "Start your shift to mark tasks done" : undefined}
-              className={cn(VA_BTN_SECONDARY, "shrink-0 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40")}
-            >
-              {isCompleting ? "Saving…" : "Mark done"}
-            </button>
-          ) : null}
+          <div className="flex shrink-0 flex-wrap items-center gap-1.5">
+            {canManage && onEdit ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(task);
+                }}
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-white/15 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-white/60 transition hover:border-white/25 hover:text-white"
+              >
+                <Pencil className="h-3 w-3" aria-hidden />
+                Edit
+              </button>
+            ) : null}
+            {canManage && onDelete ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(task);
+                }}
+                className="inline-flex min-h-[36px] items-center gap-1 rounded-lg border border-red-500/30 bg-transparent px-2.5 py-1.5 text-[11px] font-medium text-red-300 transition hover:bg-red-500/10"
+              >
+                <Trash2 className="h-3 w-3" aria-hidden />
+                Delete
+              </button>
+            ) : null}
+            {showDone ? (
+              <button
+                type="button"
+                onClick={(e) => void onMarkComplete(task, e)}
+                disabled={!onShift || isCompleting}
+                title={!onShift ? "Start your shift to mark tasks done" : undefined}
+                className={cn(VA_BTN_SECONDARY, "shrink-0 px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40")}
+              >
+                {isCompleting ? "Saving…" : "Mark done"}
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>
 

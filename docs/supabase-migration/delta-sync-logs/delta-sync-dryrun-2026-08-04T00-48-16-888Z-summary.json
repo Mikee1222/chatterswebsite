@@ -1,0 +1,73 @@
+{
+  "gapStart": "2026-08-02T23:28:59.673Z",
+  "gapEnd": "2026-08-03T23:37:00.000Z",
+  "dryRun": true,
+  "generatedAt": "2026-08-04T00:49:01.841Z",
+  "totals": {
+    "gapRows": 548,
+    "inserts": 518,
+    "updates": 30,
+    "conflicts": 0,
+    "tableErrors": 0
+  },
+  "tables": [
+    {
+      "table": "va_tasks",
+      "airtableGap": 2,
+      "inserts": 2,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "va_task_phase_items",
+      "airtableGap": 157,
+      "inserts": 144,
+      "updates": 13,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "notifications",
+      "airtableGap": 352,
+      "inserts": 348,
+      "updates": 4,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "shifts",
+      "airtableGap": 12,
+      "inserts": 8,
+      "updates": 4,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "shift_models",
+      "airtableGap": 25,
+      "inserts": 16,
+      "updates": 9,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "custom_requests",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    },
+    {
+      "table": "winner_videos",
+      "airtableGap": 0,
+      "inserts": 0,
+      "updates": 0,
+      "skipConflict": 0,
+      "errors": 0
+    }
+  ],
+  "preSkipped": [],
+  "conflicts": []
+}

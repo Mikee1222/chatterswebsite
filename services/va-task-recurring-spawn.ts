@@ -7,6 +7,7 @@ import {
 } from "@/lib/recurrence";
 import {
   getVaTasksViewTodayYmd,
+  recurrenceSkipsAthensYmd,
   recurringRealRowExistsForAthensYmd,
   taskMatchesAthensYmd,
 } from "@/lib/va-task-date-filter";
@@ -120,6 +121,7 @@ function buildSpawnInput(anchor: VaTaskRecord, dueIso: string): VaTaskCreateInpu
     recurrence_days: [...anchor.recurrence_days],
     recurrence_interval: anchor.recurrence_interval ?? undefined,
     recurrence_end_date: anchor.recurrence_end_date,
+    recurrence_skipped_dates: [...(anchor.recurrence_skipped_dates ?? [])],
     reminder_minutes_before: anchor.reminder_minutes_before,
   };
 }
@@ -168,6 +170,8 @@ async function spawnRecurringOccurrenceIfMissingLocked(
   series: string,
   allTasks: VaTaskRecord[],
 ): Promise<VaTaskRecord | null> {
+  if (recurrenceSkipsAthensYmd(anchor, targetYmd)) return null;
+
   const { clonePhasesToTask, getPhasesByTask } = await import("@/services/task-phases");
 
   const resolveExisting = async (): Promise<VaTaskRecord | undefined> => {
@@ -230,6 +234,10 @@ export async function spawnTodayRecurringOccurrencesForVa(vaId: string): Promise
       skipped += 1;
       continue;
     }
+    if (recurrenceSkipsAthensYmd(anchor, todayYmd)) {
+      skipped += 1;
+      continue;
+    }
     const result = await spawnRecurringOccurrenceIfMissing(anchor, dueIso, tasks);
     if (result) spawned += 1;
     else skipped += 1;
@@ -250,6 +258,10 @@ export async function spawnTodayRecurringOccurrencesAll(): Promise<SpawnRecurrin
   for (const [series, anchor] of anchors) {
     const dueIso = occurrenceDueForAthensYmd(anchor, todayYmd);
     if (!dueIso) {
+      skipped += 1;
+      continue;
+    }
+    if (recurrenceSkipsAthensYmd(anchor, todayYmd)) {
       skipped += 1;
       continue;
     }
