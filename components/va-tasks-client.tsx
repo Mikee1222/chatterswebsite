@@ -4,17 +4,20 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Check, ListChecks, StickyNote, X } from "lucide-react";
-import { updateVaTaskStatusAction } from "@/app/actions/va-tasks";
+import { updateRecurringVaTaskAction, updateVaTaskAction, updateVaTaskStatusAction } from "@/app/actions/va-tasks";
+import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { RecurringOccurrenceScopeDialog } from "@/components/recurring-occurrence-scope-dialog";
 import { selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { VAShadowbanReportModal } from "@/components/va-shadowban-report-modal";
-import type { VaTaskRecord, VaTaskStatus } from "@/types";
+import type { VaTaskPriority, VaTaskRecord, VaTaskStatus } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
 import type { SocialAccount } from "@/services/marketing";
 import { cn } from "@/lib/utils";
+import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
 import { groupRecurringTasks } from "@/lib/recurring-utils";
 import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-date-filter";
 import { VA_CARD, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
@@ -36,6 +39,7 @@ type Props = {
   tasks: VaTaskRecord[];
   userName?: string;
   initialActiveShift?: ActiveShift | null;
+  canManage?: boolean;
 };
 
 const DATE_VIEW_GROUP_OPTS = { forDateView: true as const };
@@ -219,7 +223,12 @@ function VaShiftBar({
   );
 }
 
-export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiveShift = null }: Props) {
+export function VaTasksClient({
+  tasks: initialTasks,
+  userName = "",
+  initialActiveShift = null,
+  canManage = false,
+}: Props) {
   const router = useRouter();
   const { addToast } = useToast();
   const tasks = initialTasks;
@@ -229,6 +238,22 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
   const [busy, setBusy] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
   const [completing, setCompleting] = React.useState<string | null>(null);
+
+  const [scopeDialog, setScopeDialog] = React.useState<
+    null | { mode: "edit" | "delete"; task: VaTaskRecord }
+  >(null);
+  const [taskPendingDelete, setTaskPendingDelete] = React.useState<VaTaskRecord | null>(null);
+  const [deleteScope, setDeleteScope] = React.useState<RecurringOccurrenceScope | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = React.useState(false);
+  const [editModal, setEditModal] = React.useState<{
+    task: VaTaskRecord;
+    scope: RecurringOccurrenceScope | null;
+  } | null>(null);
+  const [editTitle, setEditTitle] = React.useState("");
+  const [editDescription, setEditDescription] = React.useState("");
+  const [editPriority, setEditPriority] = React.useState<VaTaskPriority>("normal");
+  const [editSaving, setEditSaving] = React.useState(false);
+  const [editError, setEditError] = React.useState<string | null>(null);
 
   const todayYmd = getVaTasksViewTodayYmd();
   const [selectedYmd, setSelectedYmd] = React.useState(todayYmd);
@@ -471,7 +496,7 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
         winnerVideoLocalToast(
           `vat-virt-done-${Date.now()}`,
           "Upcoming day",
-          "This day is preview-only until the real occurrence is spawned (usually when the prior day is completed).",
+          "This projected day isn’t a real task yet — complete it after it spawns for today, or ask a manager to edit the series.",
           "normal",
         ),
       );
@@ -497,12 +522,11 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
 
   const handleOpenTask = React.useCallback((t: VaTaskRecord) => {
     if (t.is_virtual_occurrence) {
-      // Card expand + projected checklist is the preview; status modal stays blocked.
       addToast(
         winnerVideoLocalToast(
           `vat-virt-open-${Date.now()}`,
           "Upcoming day",
-          "Preview only — checklist items unlock when this day’s real task is spawned.",
+          "Checklist items unlock when this day’s real task is spawned.",
           "normal",
         ),
       );
@@ -513,6 +537,124 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
     setStatusPick(t.status === "in_progress" ? "in_progress" : "done");
     setErr(null);
   }, [addToast]);
+
+  const openEditForm = React.useCallback((task: VaTaskRecord, scope: RecurringOccurrenceScope | null) => {
+    setEditModal({ task, scope });
+    setEditTitle(task.title);
+    setEditDescription(task.description);
+    setEditPriority(task.priority);
+    setEditError(null);
+  }, []);
+
+  const handleEditRequest = React.useCallback(
+    (task: VaTaskRecord) => {
+      if (task.is_recurring || task.is_virtual_occurrence) {
+        setScopeDialog({ mode: "edit", task });
+        return;
+      }
+      openEditForm(task, null);
+    },
+    [openEditForm],
+  );
+
+  const handleDeleteRequest = React.useCallback((task: VaTaskRecord) => {
+    if (task.is_recurring || task.is_virtual_occurrence) {
+      setScopeDialog({ mode: "delete", task });
+      return;
+    }
+    setDeleteScope(null);
+    setTaskPendingDelete(task);
+  }, []);
+
+  const handleScopeChosen = React.useCallback(
+    (scope: RecurringOccurrenceScope) => {
+      const dlg = scopeDialog;
+      setScopeDialog(null);
+      if (!dlg) return;
+      if (dlg.mode === "edit") {
+        openEditForm(dlg.task, scope);
+        return;
+      }
+      setDeleteScope(scope);
+      setTaskPendingDelete(dlg.task);
+    },
+    [scopeDialog, openEditForm],
+  );
+
+  const confirmDeleteTask = React.useCallback(async () => {
+    if (!taskPendingDelete) return;
+    setConfirmingDelete(true);
+    try {
+      const isRecurring = Boolean(
+        taskPendingDelete.is_recurring || taskPendingDelete.is_virtual_occurrence || deleteScope,
+      );
+      const res = await fetch(`/api/va-tasks/${encodeURIComponent(taskPendingDelete.id)}`, {
+        method: "DELETE",
+        headers: isRecurring ? { "Content-Type": "application/json" } : undefined,
+        body: isRecurring
+          ? JSON.stringify({
+              scope: deleteScope ?? "this_only",
+              taskPayload: taskPendingDelete,
+            })
+          : undefined,
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        addToast(
+          winnerVideoLocalToast(
+            `vat-del-err-${Date.now()}`,
+            "Could not delete",
+            data.error ?? "Delete failed.",
+            "high",
+          ),
+        );
+        return;
+      }
+      setTaskPendingDelete(null);
+      setDeleteScope(null);
+      addToast(winnerVideoLocalToast(`vat-del-ok-${Date.now()}`, "Task deleted", "Removed.", "normal"));
+      router.refresh();
+    } catch {
+      addToast(winnerVideoLocalToast(`vat-del-err-${Date.now()}`, "Could not delete", "Network error.", "high"));
+    } finally {
+      setConfirmingDelete(false);
+    }
+  }, [taskPendingDelete, deleteScope, addToast, router]);
+
+  const saveEditModal = React.useCallback(async () => {
+    if (!editModal || !editTitle.trim()) return;
+    setEditSaving(true);
+    setEditError(null);
+    const payload = {
+      title: editTitle.trim(),
+      description: editDescription.trim(),
+      priority: editPriority,
+    };
+    try {
+      if (editModal.scope) {
+        const res = await updateRecurringVaTaskAction({
+          taskId: editModal.task.id,
+          scope: editModal.scope,
+          data: payload,
+          taskPayload: editModal.task,
+        });
+        if (!res.success) {
+          setEditError(res.error);
+          return;
+        }
+      } else {
+        const res = await updateVaTaskAction(editModal.task.id, payload);
+        if (!res.success) {
+          setEditError(res.error);
+          return;
+        }
+      }
+      setEditModal(null);
+      router.refresh();
+    } finally {
+      setEditSaving(false);
+    }
+  }, [editModal, editTitle, editDescription, editPriority, router]);
 
   const handleCompleteItemClick = React.useCallback(
     (item: PhaseItem, taskId: string) => {
@@ -706,6 +848,9 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
                   onShadowbanReport={handleShadowbanReport}
                   onSaveObservations={handleSaveObservations}
                   observationsSaving={observationsSavingId === task.id}
+                  canManage={canManage}
+                  onEdit={canManage ? handleEditRequest : undefined}
+                  onDelete={canManage ? handleDeleteRequest : undefined}
                 />
               ))}
               {!showAllTasks && regularTasks.length > TASK_LIST_INITIAL_CAP ? (
@@ -735,6 +880,9 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
                       onShadowbanReport={handleShadowbanReport}
                       onSaveObservations={handleSaveObservations}
                       observationsSaving={observationsSavingId === group.currentTask.id}
+                      canManage={canManage}
+                      onEdit={canManage ? handleEditRequest : undefined}
+                      onDelete={canManage ? handleDeleteRequest : undefined}
                     />
                   ) : (
                     <div className="rounded-2xl border border-[#D4AF8C]/15 bg-[#151315] px-4 py-3">
@@ -938,6 +1086,122 @@ export function VaTasksClient({ tasks: initialTasks, userName = "", initialActiv
             </div>
           </div>
         </div>
+      ) : null}
+
+      {canManage ? (
+        <>
+          <RecurringOccurrenceScopeDialog
+            open={scopeDialog != null}
+            mode={scopeDialog?.mode ?? "edit"}
+            taskTitle={scopeDialog?.task.title}
+            onClose={() => setScopeDialog(null)}
+            onChoose={handleScopeChosen}
+          />
+          <ConfirmDeleteModal
+            open={taskPendingDelete != null}
+            title="Delete task?"
+            description={
+              taskPendingDelete ? (
+                <>
+                  Delete <span className="font-medium text-white">{taskPendingDelete.title}</span>
+                  {deleteScope === "this_only"
+                    ? " for this date only"
+                    : deleteScope === "this_and_future"
+                      ? " from this date forward"
+                      : ""}
+                  ?
+                </>
+              ) : null
+            }
+            onClose={() => {
+              if (!confirmingDelete) {
+                setTaskPendingDelete(null);
+                setDeleteScope(null);
+              }
+            }}
+            onConfirm={confirmDeleteTask}
+            confirming={confirmingDelete}
+          />
+          {editModal ? (
+            <div className="fixed inset-0 z-[200] flex items-end justify-center bg-black/70 p-4 backdrop-blur-sm md:items-center">
+              <button
+                type="button"
+                className="absolute inset-0"
+                aria-label="Close"
+                onClick={() => !editSaving && setEditModal(null)}
+              />
+              <div className={cn(VA_CARD, "relative z-10 w-full max-w-md p-5 shadow-2xl")}>
+                <h2 className="text-lg font-semibold text-white">Edit task</h2>
+                {editModal.scope ? (
+                  <p className="mt-1 text-xs text-white/50">
+                    {editModal.scope === "this_only"
+                      ? "This occurrence only"
+                      : "This and all future occurrences"}
+                  </p>
+                ) : null}
+                <div className="mt-4 space-y-3">
+                  <label className="block text-sm text-white/70">
+                    Title
+                    <input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/40"
+                    />
+                  </label>
+                  <label className="block text-sm text-white/70">
+                    Description
+                    <textarea
+                      value={editDescription}
+                      onChange={(e) => setEditDescription(e.target.value)}
+                      rows={3}
+                      className="mt-1.5 w-full resize-y rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/40"
+                    />
+                  </label>
+                  <label className="block text-sm text-white/70">
+                    Priority
+                    <select
+                      value={editPriority}
+                      onChange={(e) => setEditPriority(e.target.value as VaTaskPriority)}
+                      className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/35 px-3 py-2.5 text-sm text-white outline-none focus:border-pink-500/40"
+                    >
+                      <option value="low" className={selectOptionClass}>
+                        Low
+                      </option>
+                      <option value="normal" className={selectOptionClass}>
+                        Normal
+                      </option>
+                      <option value="high" className={selectOptionClass}>
+                        High
+                      </option>
+                      <option value="urgent" className={selectOptionClass}>
+                        Urgent
+                      </option>
+                    </select>
+                  </label>
+                  {editError ? <p className="text-sm text-red-300">{editError}</p> : null}
+                </div>
+                <div className="mt-5 flex justify-end gap-2">
+                  <button
+                    type="button"
+                    disabled={editSaving}
+                    onClick={() => setEditModal(null)}
+                    className={cn(VA_BTN_SECONDARY, "px-4 py-2 text-sm")}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={editSaving || !editTitle.trim()}
+                    onClick={() => void saveEditModal()}
+                    className="rounded-xl bg-[#FF1493] px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-45"
+                  >
+                    {editSaving ? "Saving…" : "Save"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

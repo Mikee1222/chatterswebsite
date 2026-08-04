@@ -383,6 +383,11 @@ export type VaTaskRecord = {
   recurrence_days: VaRecurrenceDay[];
   recurrence_interval: number | null;
   recurrence_end_date: string | null;
+  /**
+   * Athens YYYY-MM-DD dates excluded from virtual projection / proactive spawn
+   * for this series (this-occurrence-only delete or detached exception).
+   */
+  recurrence_skipped_dates: string[];
   reminder_minutes_before: number | null;
   completed_at: string | null;
   completed_notes: string;
