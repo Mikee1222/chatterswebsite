@@ -93,26 +93,58 @@ async function pickPhaseCloneSourceId(
     (t) => !t.is_virtual_occurrence && t.is_recurring && vaTaskSeriesKey(t) === seriesKey,
   );
   let bestId = fallbackId;
-  let bestCount = -1;
+  let bestScore = Number.NEGATIVE_INFINITY;
   for (const t of inSeries) {
     const phases = await getPhasesByTask(t.id);
     const itemCount = phases.reduce((n, p) => n + p.items.length, 0);
-    if (itemCount > bestCount) {
-      bestCount = itemCount;
+    const withModel = phases.some((p) => Boolean(p.assigned_model_id?.trim()));
+    // Prefer sources that still carry assigned_model_* — item count alone can pick a
+    // duplicate-bloated row that lost model ids after a bad prior clone.
+    const score = (withModel ? 1_000_000 : 0) + itemCount;
+    if (score > bestScore) {
+      bestScore = score;
       bestId = t.id;
     }
   }
   return bestId;
 }
 
-function buildSpawnInput(anchor: VaTaskRecord, dueIso: string): VaTaskCreateInput {
+/** Models often live only on phases for older series — lift them onto the spawned task row. */
+async function resolveSpawnModelFields(
+  anchor: VaTaskRecord,
+  sourceTaskId: string,
+): Promise<{ assigned_model_ids: string[]; assigned_model_names: string[] }> {
+  const fromAnchorIds = [...(anchor.assigned_model_ids ?? [])].map((x) => x.trim()).filter(Boolean);
+  const fromAnchorNames = [...(anchor.assigned_model_names ?? [])].map((x) => x.trim()).filter(Boolean);
+  if (fromAnchorIds.length) {
+    return { assigned_model_ids: fromAnchorIds, assigned_model_names: fromAnchorNames };
+  }
+
+  const { getPhasesByTask } = await import("@/services/task-phases");
+  const phases = await getPhasesByTask(sourceTaskId);
+  const ids: string[] = [];
+  const names: string[] = [];
+  for (const phase of phases) {
+    const id = phase.assigned_model_id?.trim() ?? "";
+    if (!id || ids.includes(id)) continue;
+    ids.push(id);
+    names.push(phase.assigned_model_name?.trim() ?? "");
+  }
+  return { assigned_model_ids: ids, assigned_model_names: names };
+}
+
+function buildSpawnInput(
+  anchor: VaTaskRecord,
+  dueIso: string,
+  models?: { assigned_model_ids: string[]; assigned_model_names: string[] },
+): VaTaskCreateInput {
   return {
     title: anchor.title,
     description: anchor.description,
     assigned_to_ids: [...anchor.assigned_to_ids],
     assigned_by_ids: anchor.assigned_by_ids?.length ? [...anchor.assigned_by_ids] : undefined,
-    assigned_model_ids: [...(anchor.assigned_model_ids ?? [])],
-    assigned_model_names: [...(anchor.assigned_model_names ?? [])],
+    assigned_model_ids: [...(models?.assigned_model_ids ?? anchor.assigned_model_ids ?? [])],
+    assigned_model_names: [...(models?.assigned_model_names ?? anchor.assigned_model_names ?? [])],
     status: "pending",
     priority: anchor.priority,
     due_date: dueIso,
@@ -173,6 +205,7 @@ async function spawnRecurringOccurrenceIfMissingLocked(
   if (recurrenceSkipsAthensYmd(anchor, targetYmd)) return null;
 
   const { clonePhasesToTask, getPhasesByTask } = await import("@/services/task-phases");
+  const { updateVaTask } = await import("@/services/va-tasks");
 
   const resolveExisting = async (): Promise<VaTaskRecord | undefined> => {
     const fromMemory = findExistingRowForDueIso(allTasks, series, dueIso);
@@ -186,6 +219,15 @@ async function spawnRecurringOccurrenceIfMissingLocked(
     const phases = await getPhasesByTask(existing.id);
     if (phases.length > 0) return null;
     const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+    const models = await resolveSpawnModelFields(anchor, sourceId);
+    if (models.assigned_model_ids.length && !(existing.assigned_model_ids ?? []).length) {
+      await updateVaTask(existing.id, {
+        assigned_model_ids: models.assigned_model_ids,
+        assigned_model_names: models.assigned_model_names,
+      }).catch((err) =>
+        console.error("[va-task-recurring-spawn] backfill task models failed", err),
+      );
+    }
     await clonePhasesToTask(sourceId, existing).catch((err) =>
       console.error("[va-task-recurring-spawn] backfill phases failed", err),
     );
@@ -204,8 +246,9 @@ async function spawnRecurringOccurrenceIfMissingLocked(
     return null;
   }
 
-  const spawned = await createVaTask(buildSpawnInput(anchor, dueIso));
   const sourceId = await pickPhaseCloneSourceId(allTasks, series, anchor.id);
+  const models = await resolveSpawnModelFields(anchor, sourceId);
+  const spawned = await createVaTask(buildSpawnInput(anchor, dueIso, models));
   await clonePhasesToTask(sourceId, spawned).catch((err) =>
     console.error("[va-task-recurring-spawn] clone phases failed", err),
   );

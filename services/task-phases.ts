@@ -478,15 +478,38 @@ export async function deletePhaseItem(id: string): Promise<void> {
 }
 
 /**
+ * Prefer one row per phase_number when a source task has duplicate phase rows
+ * (historical over-clone). Prefer the copy that still has an assigned model.
+ */
+function dedupePhasesForClone(phases: TaskPhase[]): TaskPhase[] {
+  const byNumber = new Map<number, TaskPhase>();
+  for (const phase of phases) {
+    const n = phase.phase_number || 1;
+    const prev = byNumber.get(n);
+    if (!prev) {
+      byNumber.set(n, phase);
+      continue;
+    }
+    const prevHasModel = Boolean(prev.assigned_model_id?.trim());
+    const nextHasModel = Boolean(phase.assigned_model_id?.trim());
+    if (!prevHasModel && nextHasModel) byNumber.set(n, phase);
+  }
+  return [...byNumber.values()].sort((a, b) => a.phase_number - b.phase_number);
+}
+
+/**
  * Clone all phases + checklist items from one task onto another (fresh `pending` copies).
  * Shared by the recurring-task spawn paths (updateVaTaskStatusAction + cron backfill) so the
  * next occurrence keeps its phase/checklist structure instead of spawning an empty shell.
+ *
+ * Copies structural + assignee fields from the source phase (model id/name, VA id/name,
+ * scheduled_time, region). Intentionally resets status/start/end/completed to a fresh pending row.
  */
 export async function clonePhasesToTask(
   sourceTaskId: string,
   targetTask: { id: string; title: string },
 ): Promise<number> {
-  const phases = await getPhasesByTask(sourceTaskId);
+  const phases = dedupePhasesForClone(await getPhasesByTask(sourceTaskId));
   let cloned = 0;
   for (const phase of phases) {
     const created = await createPhase({
@@ -496,9 +519,33 @@ export async function clonePhasesToTask(
       title: phase.title,
       description: phase.description,
       region: phase.region,
+      scheduled_time: phase.scheduled_time,
+      assigned_va_id: phase.assigned_va_id,
+      assigned_va_name: phase.assigned_va_name,
       assigned_model_id: phase.assigned_model_id,
       assigned_model_name: phase.assigned_model_name,
     });
+
+    // Guaranteed model/VA copy — createPhase may fall back to the target task, which often
+    // has empty assigned_model_* for series that only store models on phases.
+    const sourceModelId = phase.assigned_model_id?.trim() ?? "";
+    const sourceModelName = phase.assigned_model_name?.trim() ?? "";
+    const sourceVaId = phase.assigned_va_id?.trim() ?? "";
+    const sourceVaName = phase.assigned_va_name?.trim() ?? "";
+    const needsModelPatch =
+      Boolean(sourceModelId) && (created.assigned_model_id?.trim() ?? "") !== sourceModelId;
+    const needsVaPatch =
+      Boolean(sourceVaId) && (created.assigned_va_id?.trim() ?? "") !== sourceVaId;
+    if (needsModelPatch || needsVaPatch) {
+      await updatePhase(created.id, {
+        task_id: targetTask.id,
+        ...(needsModelPatch
+          ? { assigned_model_id: sourceModelId, assigned_model_name: sourceModelName }
+          : {}),
+        ...(needsVaPatch ? { assigned_va_id: sourceVaId, assigned_va_name: sourceVaName } : {}),
+      });
+    }
+
     const stablePhaseId = created.phase_id || created.id;
     for (const item of phase.items) {
       await createPhaseItem({
