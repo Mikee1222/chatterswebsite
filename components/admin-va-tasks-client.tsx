@@ -6,11 +6,12 @@ import { useRouter } from "next/navigation";
 import { formatDateEuropean, formatDateTimeAthens } from "@/lib/format";
 import { createVaTaskAction, updateRecurringVaTaskAction, updateVaTaskAction } from "@/app/actions/va-tasks";
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { RecurringOccurrenceScopeDialog } from "@/components/recurring-occurrence-scope-dialog";
 import { useToast } from "@/contexts/toast-context";
 import type { AppNotification, ModelRecord, VaTaskRecord, VaTaskStatus, VaTaskPriority, VaRecurrenceType, VaRecurrenceDay } from "@/types";
 import type { PhaseItem, TaskPhase } from "@/services/task-phases";
-import type { TaskTemplateRecord } from "@/services/task-templates";
+import type { TaskTemplateDetail, TaskTemplateRecord } from "@/services/task-templates";
 import { CustomSelect } from "@/components/ui/custom-select";
 import { cn } from "@/lib/utils";
 import type { RecurringOccurrenceScope } from "@/lib/recurring-occurrence-scope";
@@ -207,6 +208,36 @@ function phaseToDraft(p: TaskPhase): DraftPhase {
   };
 }
 
+function countCompletedPhaseItems(phases: TaskPhase[]): number {
+  return phases.reduce(
+    (n, p) => n + (p.items ?? []).filter((i) => i.status === "completed").length,
+    0,
+  );
+}
+
+/** Copy template phases into local draft state (no server IDs — one-directional apply). */
+function templateDetailToDraftPhases(
+  template: TaskTemplateDetail,
+  region: TaskPhase["region"],
+): DraftPhase[] {
+  const sorted = [...template.phases].sort((a, b) => a.phase_number - b.phase_number);
+  return sorted.map((phase, phaseIndex) => {
+    const items = [...(phase.items ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+    return {
+      tempId: `tpl-phase-${phase.id}-${phaseIndex}`,
+      title: phase.title || `Phase ${phaseIndex + 1}`,
+      region,
+      scheduled_time: "",
+      items: items.map((item, itemIndex) => ({
+        tempId: `tpl-item-${item.id}-${itemIndex}`,
+        title: item.title,
+        requires_screenshot: item.requires_screenshot,
+        step_type: item.step_type ?? DEFAULT_TASK_STEP_TYPE,
+      })),
+    };
+  });
+}
+
 function ModelMultiSelect({
   models,
   selectedIds,
@@ -392,12 +423,17 @@ export function AdminVaTasksClient({
   const [reminderMinutes, setReminderMinutes] = React.useState<number | null>(null);
   const [draftPhases, setDraftPhases] = React.useState<DraftPhase[]>([]);
   const editPhasesSnapshotRef = React.useRef<EditPhasesSnapshot | null>(null);
+  const editPhasesCompletedCountRef = React.useRef(0);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [createMode, setCreateMode] = React.useState<"scratch" | "template">("scratch");
   const [templateOptions, setTemplateOptions] = React.useState<TaskTemplateRecord[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = React.useState("");
   const [templateRegion, setTemplateRegion] = React.useState<TaskPhase["region"]>("Global");
+  const [applyingTemplate, setApplyingTemplate] = React.useState(false);
+  const [templateReplaceConfirm, setTemplateReplaceConfirm] = React.useState<{
+    completedCount: number;
+  } | null>(null);
 
   function resetTaskModal() {
     setEditingId(null);
@@ -420,10 +456,13 @@ export function AdminVaTasksClient({
     setReminderMinutes(null);
     setDraftPhases([]);
     editPhasesSnapshotRef.current = null;
+    editPhasesCompletedCountRef.current = 0;
     setError(null);
     setCreateMode("scratch");
     setSelectedTemplateId("");
     setTemplateRegion("Global");
+    setTemplateReplaceConfirm(null);
+    setApplyingTemplate(false);
   }
 
   async function loadTemplateOptions() {
@@ -460,8 +499,13 @@ export function AdminVaTasksClient({
     setReminderMinutes(t.reminder_minutes_before != null && Number.isFinite(t.reminder_minutes_before) ? t.reminder_minutes_before : null);
     setDraftPhases([]);
     editPhasesSnapshotRef.current = null;
+    editPhasesCompletedCountRef.current = 0;
     setError(null);
+    setCreateMode("scratch");
+    setSelectedTemplateId("");
+    setTemplateRegion("Global");
     setModalOpen(true);
+    void loadTemplateOptions();
     const phaseTaskId = t.is_virtual_occurrence
       ? (t.virtual_source_task_id?.trim() || t.id)
       : t.id;
@@ -473,9 +517,12 @@ export function AdminVaTasksClient({
       const res = await fetch(`/api/admin/task-phases?${params}`, { credentials: "include" });
       const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
       const phases = data.phases ?? [];
+      editPhasesCompletedCountRef.current = countCompletedPhaseItems(phases);
       // Virtual this_only → new row on save (create phases). Virtual this_and_future → edit anchor phases.
       if (t.is_virtual_occurrence && scope === "this_only") {
         editPhasesSnapshotRef.current = { phaseIds: [], itemsByPhaseId: {} };
+        // Progress lives on the series source — this occurrence materializes fresh phases.
+        editPhasesCompletedCountRef.current = 0;
         setDraftPhases(
           phases.map((p) => ({
             ...phaseToDraft(p),
@@ -498,6 +545,7 @@ export function AdminVaTasksClient({
       }
     } catch {
       editPhasesSnapshotRef.current = { phaseIds: [], itemsByPhaseId: {} };
+      editPhasesCompletedCountRef.current = 0;
     }
   }, []);
 
@@ -1222,12 +1270,55 @@ export function AdminVaTasksClient({
 
   function handleTemplateSelection(templateId: string) {
     setSelectedTemplateId(templateId);
+    // Auto-recurrence hint is create-only — don't rewrite edit form recurrence unexpectedly.
+    if (editingId) return;
     const tpl = templateOptions.find((t) => t.id === templateId);
     if (tpl?.name === "Daily Marketing Routine") {
       setIsRecurring(true);
       setRecurrenceType("daily");
       setRecurrenceInterval(1);
     }
+  }
+
+  async function replaceChecklistFromTemplate() {
+    if (!selectedTemplateId || applyingTemplate) return;
+    setApplyingTemplate(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/task-templates/${encodeURIComponent(selectedTemplateId)}`, {
+        credentials: "include",
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        template?: TaskTemplateDetail;
+        error?: string;
+      };
+      if (!res.ok || !data.template) {
+        setError(data.error?.trim() || "Could not load template");
+        return;
+      }
+      // Snapshot of original server phases stays intact so persist deletes them on save.
+      // New drafts have no serverIds — one-directional copy from template → task only.
+      setDraftPhases(templateDetailToDraftPhases(data.template, templateRegion));
+      editPhasesCompletedCountRef.current = 0;
+      setTemplateReplaceConfirm(null);
+    } catch {
+      setError("Could not load template");
+    } finally {
+      setApplyingTemplate(false);
+    }
+  }
+
+  function handleApplyTemplateOnEdit() {
+    if (!selectedTemplateId) {
+      setError("Select a template");
+      return;
+    }
+    const completedCount = editPhasesCompletedCountRef.current;
+    if (completedCount > 0) {
+      setTemplateReplaceConfirm({ completedCount });
+      return;
+    }
+    void replaceChecklistFromTemplate();
   }
 
   return (
@@ -1797,6 +1888,57 @@ export function AdminVaTasksClient({
 
               <Divider />
 
+              {editingId ? (
+                <div>
+                  <SectionLabel icon="" label="Apply template" />
+                  <p className="mb-3 text-xs text-white/40">
+                    Replace this task&apos;s checklist with a template. Does not change the shared template.
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-white/40">Template</label>
+                      <select
+                        value={selectedTemplateId}
+                        onChange={(e) => handleTemplateSelection(e.target.value)}
+                        className={ADMIN_MODAL_INPUT}
+                      >
+                        <option value="">Select template…</option>
+                        {templateOptions.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.name} ({t.category})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1.5 block text-xs font-medium text-white/40">Phase region</label>
+                      <select
+                        value={templateRegion}
+                        onChange={(e) => setTemplateRegion(e.target.value as TaskPhase["region"])}
+                        className={ADMIN_MODAL_INPUT}
+                      >
+                        <option value="Greek">🇬🇷 Greek</option>
+                        <option value="USA">🇺🇸 USA</option>
+                        <option value="Global">Global</option>
+                      </select>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleApplyTemplateOnEdit}
+                      disabled={!selectedTemplateId || applyingTemplate}
+                      className={cn(
+                        VA_BTN_SECONDARY,
+                        "w-full border-[#FF1493]/25 bg-[#FF1493]/10 py-2.5 text-sm text-[#FF1493] hover:border-[#FF1493]/40 hover:bg-[#FF1493]/15 disabled:opacity-40",
+                      )}
+                    >
+                      {applyingTemplate ? "Applying…" : "Replace checklist"}
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {editingId ? <Divider /> : null}
+
               {createMode === "scratch" || editingId ? (
               <div>
                 <div className="mb-4 flex items-center justify-between">
@@ -2046,6 +2188,27 @@ export function AdminVaTasksClient({
           taskTitle={scopeDialog?.task.title}
           onClose={() => setScopeDialog(null)}
           onChoose={handleScopeChosen}
+        />
+      ) : null}
+
+      {canManage ? (
+        <ConfirmDialog
+          open={templateReplaceConfirm != null}
+          onClose={() => {
+            if (!applyingTemplate) setTemplateReplaceConfirm(null);
+          }}
+          onConfirm={() => void replaceChecklistFromTemplate()}
+          title="Replace checklist?"
+          description={
+            templateReplaceConfirm
+              ? `Applying this template will replace the current checklist. ${templateReplaceConfirm.completedCount} item${
+                  templateReplaceConfirm.completedCount === 1 ? " is" : "s are"
+                } already marked complete — they will be lost. Continue?`
+              : ""
+          }
+          confirmLabel="Replace checklist"
+          confirmVariant="warning"
+          loading={applyingTemplate}
         />
       ) : null}
     </div>

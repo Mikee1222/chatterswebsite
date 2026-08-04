@@ -14,7 +14,10 @@ type Ctx = { params: Promise<{ id: string }> };
 export async function GET(_req: Request, ctx: Ctx) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await hasPermission(session, PERMISSIONS.TASK_TEMPLATES_MANAGE))) {
+  // VA task managers need detail to apply a template while editing a task (same gate as list).
+  const canManageTemplates = await hasPermission(session, PERMISSIONS.TASK_TEMPLATES_MANAGE);
+  const canManageVaTasks = await hasPermission(session, PERMISSIONS.VA_TASKS_MANAGE);
+  if (!canManageTemplates && !canManageVaTasks) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   const { id } = await ctx.params;
