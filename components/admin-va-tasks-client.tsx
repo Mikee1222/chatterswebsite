@@ -1514,7 +1514,12 @@ export function AdminVaTasksClient({
       ) : null}
 
       {canManage && modalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm md:items-center">
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/80 backdrop-blur-sm md:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-label={editingId ? "Edit task" : "New task"}
+        >
           <div className="max-h-[92dvh] w-full overflow-y-auto rounded-t-[20px] border border-[rgba(255,255,255,0.06)] bg-[#0D0B0D] shadow-2xl md:max-w-2xl md:rounded-[20px]">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-[rgba(255,255,255,0.06)] bg-[#0D0B0D]/95 px-6 py-5 backdrop-blur-sm">
               <div>

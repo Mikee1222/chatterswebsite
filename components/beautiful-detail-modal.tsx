@@ -5,6 +5,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegisterMobileOverlay } from "@/contexts/mobile-fab-visibility-context";
 
 export type BeautifulDetailModalStat = {
   label: string;
@@ -71,6 +72,7 @@ export function BeautifulDetailModal({
   headerGradientClass,
 }: Props) {
   const richHeader = Boolean(headerGradientClass?.trim());
+  useRegisterMobileOverlay(open);
   return (
     <AnimatePresence>
       {open ? (
@@ -78,6 +80,7 @@ export function BeautifulDetailModal({
           <Dialog.Portal forceMount>
             <Dialog.Overlay asChild forceMount>
               <motion.div
+                data-mobile-chrome-hide
                 className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}

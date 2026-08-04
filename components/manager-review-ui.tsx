@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Check, ExternalLink, Loader2, Upload, X } from "lucide-react";
 import { CustomSelect, type CustomSelectOption, type CustomSelectProps } from "@/components/ui/custom-select";
+import { useRegisterMobileOverlay } from "@/contexts/mobile-fab-visibility-context";
 import {
   SPOT_CHECK_STATUS_STYLES,
   SPOT_CHECK_TYPE_STYLES,
@@ -637,8 +638,13 @@ export function ReviewModalShell({
   onClose: () => void;
   saving?: boolean;
 }) {
+  useRegisterMobileOverlay(true);
   return (
-    <div className="fixed inset-0 z-[200] flex items-end justify-center p-4 md:items-center">
+    <div
+      className="fixed inset-0 z-[200] flex items-end justify-center p-4 md:items-center"
+      data-mobile-chrome-hide
+      role="presentation"
+    >
       <button
         type="button"
         className="absolute inset-0 bg-black/75 backdrop-blur-sm"
@@ -652,6 +658,9 @@ export function ReviewModalShell({
           "shadow-[0_24px_64px_-16px_rgba(0,0,0,0.75),0_0_48px_-12px_rgba(255,20,147,0.15)]",
         )}
         style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
       >
         <h2 className="text-lg font-semibold text-white">{title}</h2>
         <div className={cn(VA_CHAMPAGNE_DIVIDER, "my-3")} />

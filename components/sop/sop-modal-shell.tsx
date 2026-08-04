@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useRegisterMobileOverlay } from "@/contexts/mobile-fab-visibility-context";
 
 const easeOut = [0.22, 1, 0.36, 1] as const;
 
@@ -50,6 +51,7 @@ export function SopModalShell({
   const mobile = useMobileSheet();
   const [mounted, setMounted] = React.useState(false);
   React.useEffect(() => setMounted(true), []);
+  useRegisterMobileOverlay(mounted);
 
   const panelMotion = reduce
     ? { initial: { opacity: 0 }, animate: { opacity: 1 }, exit: { opacity: 0 } }
@@ -79,6 +81,7 @@ export function SopModalShell({
       exit={{ opacity: 0 }}
       transition={{ duration: reduce ? 0.01 : 0.15, ease: "easeOut" }}
       role="presentation"
+      data-mobile-chrome-hide
     >
       <div
         className="absolute inset-0 bg-black/75 backdrop-blur-md"

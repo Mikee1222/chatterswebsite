@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/form";
+import { useRegisterMobileOverlay } from "@/contexts/mobile-fab-visibility-context";
 
 export interface ConfirmDialogProps {
   open: boolean;
@@ -43,6 +44,8 @@ export function ConfirmDialog({
   const [typedName, setTypedName] = React.useState("");
   const [internalLoading, setInternalLoading] = React.useState(false);
   const wasOpen = React.useRef(false);
+
+  useRegisterMobileOverlay(open && mounted);
 
   React.useEffect(() => setMounted(true), []);
 
@@ -86,7 +89,10 @@ export function ConfirmDialog({
   }[confirmVariant];
 
   return createPortal(
-    <div className="fixed inset-0 z-[220] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm md:items-center">
+    <div
+      className="fixed inset-0 z-[220] flex items-end justify-center bg-black/60 p-4 backdrop-blur-sm md:items-center"
+      data-mobile-chrome-hide
+    >
       <button type="button" className="absolute inset-0" aria-label="Close" onClick={() => !showSpinner && onClose()} />
       <div
         className="relative z-10 w-full max-w-md rounded-2xl border border-white/10 bg-[#1a1a2e] p-6 shadow-2xl"

@@ -70,7 +70,7 @@ import { FloatingActionButton } from "@/components/floating-action-button";
 import { VaFloatingActionButton } from "@/components/va-quick-actions-modal";
 import { AdminFloatingQuickActionsButton } from "@/components/admin-quick-actions-modal";
 import { MoreMenuModal } from "@/components/more-menu-modal";
-import { MobileFabVisibilityProvider } from "@/contexts/mobile-fab-visibility-context";
+import { MobileFabVisibilityProvider, useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
 import { ChatterRebillTipFabProvider } from "@/contexts/chatter-rebill-tip-fab-context";
 import { ChatterRebillTipFabHost } from "@/components/chatter-rebill-tip-fab-host";
 import { LiveShiftMiniBar } from "@/components/live-shift-mini-bar";
@@ -229,6 +229,13 @@ type MobileAppShellProps = {
   userPermissions?: Permission[];
 };
 
+/** Unmounts children while any modal/overlay asks mobile chrome to hide. Must sit under MobileFabVisibilityProvider. */
+function MobileChromeUnlessOverlay({ children }: { children: React.ReactNode }) {
+  const hide = useMobileFabHidden();
+  if (hide) return null;
+  return <>{children}</>;
+}
+
 export function MobileAppShell({
   user,
   children,
@@ -381,6 +388,7 @@ export function MobileAppShell({
           <MobileFab user={user} />
         )}
 
+        <MobileChromeUnlessOverlay>
         <nav
           className="fixed bottom-0 left-0 right-0 z-40 flex h-[var(--mobile-bottom-nav-height,76px)] items-stretch justify-around gap-0.5 border-t border-white/[0.09] bg-zinc-950/92 px-1 pt-1 backdrop-blur-xl md:hidden"
           style={{
@@ -526,6 +534,7 @@ export function MobileAppShell({
             )}
           </button>
         </nav>
+        </MobileChromeUnlessOverlay>
       </div>
 
       <MoreMenuModal open={moreOpen} onClose={() => setMoreOpen(false)} title="More" userRole={role}>
