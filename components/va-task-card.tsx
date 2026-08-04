@@ -88,6 +88,24 @@ const TaskStatusBadge = React.memo(function TaskStatusBadge({ status }: { status
   return <span className={cn(VA_STATUS_BADGE, variant)}>{status.replace(/_/g, " ")}</span>;
 });
 
+/** Signature of social accounts for a card's phases — used to bust React.memo when accounts load. */
+export function modelAccountsKeyForPhases(
+  phases: TaskPhase[],
+  accounts: Record<string, SocialAccount[]>,
+): string {
+  const ids = [
+    ...new Set(phases.map((p) => p.assigned_model_id?.trim()).filter(Boolean) as string[]),
+  ].sort();
+  if (ids.length === 0) return "";
+  return ids
+    .map((id) => {
+      const accs = accounts[id];
+      if (!accs) return `${id}:_`;
+      return `${id}:${accs.map((a) => `${a.id}:${a.account_status ?? "active"}`).join(",")}`;
+    })
+    .join("|");
+}
+
 export type VaTaskCardProps = {
   task: VaTaskRecord;
   userName: string;
@@ -95,6 +113,8 @@ export type VaTaskCardProps = {
   isCompleting: boolean;
   phases: TaskPhase[];
   getModelAccounts: (modelId: string) => SocialAccount[];
+  /** Changes when social accounts for this card's models arrive/update (memo bust). */
+  modelAccountsKey?: string;
   onLoadPhases: (task: VaTaskRecord) => void | Promise<void>;
   onMarkComplete: (task: VaTaskRecord, e?: React.MouseEvent) => void;
   onOpenTask: (task: VaTaskRecord) => void;
@@ -125,6 +145,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   isCompleting,
   phases,
   getModelAccounts,
+  modelAccountsKey: _modelAccountsKey = "",
   onLoadPhases,
   onMarkComplete,
   onOpenTask,
@@ -496,6 +517,7 @@ export const VaTaskCard = React.memo(function VaTaskCard({
   prev.isCompleting === next.isCompleting &&
   prev.phases === next.phases &&
   prev.getModelAccounts === next.getModelAccounts &&
+  prev.modelAccountsKey === next.modelAccountsKey &&
   prev.onLoadPhases === next.onLoadPhases &&
   prev.onMarkComplete === next.onMarkComplete &&
   prev.onOpenTask === next.onOpenTask &&

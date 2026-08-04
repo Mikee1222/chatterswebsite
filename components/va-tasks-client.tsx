@@ -23,7 +23,7 @@ import { filterTasksByAthensYmd, getVaTasksViewTodayYmd } from "@/lib/va-task-da
 import { VA_CARD, VA_BTN_SECONDARY } from "@/lib/va-tasks-tokens";
 import { ShiftButton } from "@/components/shift-button";
 import { TaskDateNavigator } from "@/components/task-date-navigator";
-import { VaTaskCard, EMPTY_TASK_PHASES } from "@/components/va-task-card";
+import { VaTaskCard, EMPTY_TASK_PHASES, modelAccountsKeyForPhases } from "@/components/va-task-card";
 import { VaTasksSearchBar } from "@/components/va-tasks-search-bar";
 import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
@@ -408,18 +408,30 @@ export function VaTasksClient({
     const res = await fetch(`/api/va/task-phases?${params}`, { credentials: "include" });
     const data = (await res.json().catch(() => ({}))) as { phases?: TaskPhase[] };
     const phases: TaskPhase[] = data.phases ?? [];
-    setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
 
     const modelIds = [...new Set(phases.map((p) => p.assigned_model_id).filter(Boolean))] as string[];
-    for (const modelId of modelIds) {
-      const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(modelId)}`, {
-        credentials: "include",
-      });
-      const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
-      if (accRes.ok) {
-        setModelAccounts((prev) => (prev[modelId] ? prev : { ...prev, [modelId]: accData.accounts ?? [] }));
+    const accountsByModel: Record<string, SocialAccount[]> = {};
+    await Promise.all(
+      modelIds.map(async (modelId) => {
+        const accRes = await fetch(`/api/va/marketing/accounts?model_id=${encodeURIComponent(modelId)}`, {
+          credentials: "include",
+        });
+        const accData = (await accRes.json().catch(() => ({}))) as { accounts?: SocialAccount[] };
+        if (accRes.ok) {
+          accountsByModel[modelId] = accData.accounts ?? [];
+        }
+      }),
+    );
+
+    // Set phases + accounts together so the memoized card's first expand paint includes links.
+    setModelAccounts((prev) => {
+      const next = { ...prev };
+      for (const [modelId, accs] of Object.entries(accountsByModel)) {
+        if (!next[modelId]) next[modelId] = accs;
       }
-    }
+      return next;
+    });
+    setTaskPhases((prev) => ({ ...prev, [task.id]: phases }));
   }, []);
 
   const submitPhaseItemCompletion = React.useCallback(
@@ -841,6 +853,10 @@ export function VaTasksClient({
                   isCompleting={completing === task.id}
                   phases={taskPhases[task.id] ?? EMPTY_TASK_PHASES}
                   getModelAccounts={getModelAccounts}
+                  modelAccountsKey={modelAccountsKeyForPhases(
+                    taskPhases[task.id] ?? EMPTY_TASK_PHASES,
+                    modelAccounts,
+                  )}
                   onLoadPhases={loadPhasesAndAccounts}
                   onMarkComplete={handleMarkComplete}
                   onOpenTask={handleOpenTask}
@@ -873,6 +889,10 @@ export function VaTasksClient({
                       isCompleting={completing === group.currentTask.id}
                       phases={taskPhases[group.currentTask.id] ?? EMPTY_TASK_PHASES}
                       getModelAccounts={getModelAccounts}
+                      modelAccountsKey={modelAccountsKeyForPhases(
+                        taskPhases[group.currentTask.id] ?? EMPTY_TASK_PHASES,
+                        modelAccounts,
+                      )}
                       onLoadPhases={loadPhasesAndAccounts}
                       onMarkComplete={handleMarkComplete}
                       onOpenTask={handleOpenTask}
