@@ -7,8 +7,8 @@ import {
   sbDeleteByPublicId,
   sbInsert,
   sbResolveUuidToAirtableMap,
-  sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   requireSbUuids,
@@ -109,12 +109,17 @@ export async function getRequestsForWeekVa(
   vaRecordId?: string
 ): Promise<WeeklyAvailabilityRequest[]> {
   const weekYmd = ensureMondayForQuery(weekStart);
-  const rows = await sbSelectAll<Row>(TABLE);
-  const mapped = await mapRows(rows);
-  const forWeek = mapped.filter((r) => r.week_start === weekYmd);
-  return vaRecordId != null && vaRecordId !== ""
-    ? forWeek.filter((r) => r.chatter_id === vaRecordId)
-    : forWeek;
+  let rows: Row[];
+  if (vaRecordId != null && vaRecordId !== "") {
+    const uuids = await sbUuidsForAirtableIds("users", [vaRecordId]);
+    if (!uuids[0]) return [];
+    rows = await sbSelectWhere<Row>(TABLE, (q) =>
+      q.eq("week_start", weekYmd).contains("chatter", [uuids[0]!])
+    );
+  } else {
+    rows = await sbSelectWhere<Row>(TABLE, (q) => q.eq("week_start", weekYmd));
+  }
+  return mapRows(rows);
 }
 
 export async function getWeeklyAvailabilityRequestVaById(

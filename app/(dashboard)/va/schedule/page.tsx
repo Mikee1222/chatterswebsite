@@ -7,7 +7,7 @@ import { normalizeWeekStartAthens } from "@/lib/airtable-datetime";
 import { getProgramsForWeekVa } from "@/services/weekly-program-va";
 import { getVaTasksForUser } from "@/services/va-tasks";
 import { getActiveShifts } from "@/services/shifts";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { VaScheduleClient } from "@/components/va-schedule-client";
 
 function norm(s: string | null | undefined): string {
@@ -51,7 +51,7 @@ export default async function VaSchedulePage({ searchParams }: { searchParams?: 
     getProgramsForWeekVa(weekStart).catch(() => []),
     getVaTasksForUser(userId).catch(() => []),
     getActiveShifts("virtual_assistant").catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
 
   const modelIdToName = Object.fromEntries(

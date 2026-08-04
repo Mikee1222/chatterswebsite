@@ -1,6 +1,5 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
-import { unstable_cache } from "next/cache";
 import { getSessionFromCookies } from "@/lib/auth";
 import { getNotificationUserId } from "@/lib/notification-user";
 import { ROUTES } from "@/lib/routes";
@@ -11,22 +10,13 @@ import { formatTimeFromISO } from "@/lib/format";
 import { ShiftClient } from "@/components/shift-client";
 import { RouterRefreshInterval } from "@/components/router-refresh-interval";
 import { getTodayYmd } from "@/lib/weekly-program";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { listAllModelPeriods } from "@/services/model-periods";
 import type { ModelRecord, OccupiedModelDetail } from "@/types";
 import { devLog } from "@/lib/dev-log";
 
 const MAX_BREAK_MINUTES = 45;
 
-/** Dual-backed modelss list; cached 60s to cut backend volume on shift refreshes. */
-const getCachedShiftPageModelss = unstable_cache(
-  async (): Promise<ModelRecord[]> => {
-    const records = await listAllModelss();
-    return records.filter((m) => m.model_name?.trim() && m.model_id?.trim());
-  },
-  ["shift-page-modelss-dual-v1"],
-  { revalidate: 60 }
-);
 
 export default async function ShiftPage() {
   const user = await getSessionFromCookies();
@@ -64,7 +54,9 @@ export default async function ShiftPage() {
   try {
     const [activeShiftResult, modelssResult, programsResult] = await Promise.all([
       getActiveShiftByChatter(chatterId),
-      getCachedShiftPageModelss(),
+      getCachedModelss().then((all) =>
+        all.filter((m) => m.model_name?.trim() && m.model_id?.trim())
+      ),
       getProgramsForWeek(weekStart),
     ]);
     activeShift = activeShiftResult;

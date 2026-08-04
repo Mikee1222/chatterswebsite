@@ -11,6 +11,7 @@ import {
   sbSelectAll,
   sbSelectByPublicId,
   sbSelectEq,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   type SbRow,
@@ -194,8 +195,12 @@ export async function listAllWhales(_filterByFormula?: string): Promise<Whale[]>
 }
 
 export async function countWhalesWithoutChatter(): Promise<number> {
-  const all = await listAllWhales();
-  return all.filter((w) => !w.assigned_chatter_id?.trim()).length;
+  const rows = await sbSelectWhere<Pick<Row, "id" | "airtable_id">>(
+    TABLE,
+    (q) => q.or("assigned_chatter.is.null,assigned_chatter.eq.{}"),
+    "id, airtable_id"
+  );
+  return rows.length;
 }
 
 export type WhaleStatusCounts = {
@@ -227,8 +232,46 @@ export async function listWhalesPaginated(
   pageSize: number = WHALES_DEFAULT_PAGE_SIZE,
   offset?: string
 ): Promise<{ whales: Whale[]; nextOffset: string | null }> {
-  const all = await listAllWhales();
-  const filtered = all.filter((w) => matchesFilters(w, filters));
+  const [chatterUuids, modelUuids] = await Promise.all([
+    filters.chatterId
+      ? sbUuidsForAirtableIds("users", [filters.chatterId])
+      : Promise.resolve([] as string[]),
+    filters.modelId
+      ? sbUuidsForAirtableIds("modelss", [filters.modelId])
+      : Promise.resolve([] as string[]),
+  ]);
+
+  const rows = await sbSelectWhere<Row>(TABLE, (q) => {
+    let query = q;
+    if (filters.relationshipStatus) {
+      query = query.eq("relationship_status", filters.relationshipStatus);
+    }
+    if (filters.status?.trim()) {
+      const s = filters.status.trim();
+      if (s === WHALES_STATUS_FILTER_NOT_ASSIGNED) {
+        query = query.or("assigned_chatter.is.null,assigned_chatter.eq.{}");
+      } else {
+        query = query.eq("status", s);
+      }
+    }
+    if (filters.usernameSearch?.trim()) {
+      const qText = filters.usernameSearch.trim().slice(0, 100);
+      query = query.ilike("username", `%${qText}%`);
+    }
+    if (filters.chatterId) {
+      if (!chatterUuids[0]) return query.eq("id", "00000000-0000-0000-0000-000000000000");
+      query = query.contains("assigned_chatter", [chatterUuids[0]]);
+    }
+    if (filters.modelId) {
+      if (!modelUuids[0]) return query.eq("id", "00000000-0000-0000-0000-000000000000");
+      query = query.contains("assigned_model", [modelUuids[0]]);
+    }
+    return query;
+  });
+
+  const mapped = await mapRows(rows);
+  // Keep in-memory matchesFilters for dual-id edge cases (airtable vs uuid public ids).
+  const filtered = mapped.filter((w) => matchesFilters(w, filters));
   const size = Math.min(100, Math.max(1, pageSize));
   const start = offset ? Math.max(0, parseInt(offset, 10) || 0) : 0;
   const page = filtered.slice(start, start + size);
@@ -237,12 +280,16 @@ export async function listWhalesPaginated(
 }
 
 export async function getWhalesByChatter(chatterRecordId: string): Promise<Whale[]> {
-  const all = await listAllWhales();
-  const matched = all.filter((w) => w.assigned_chatter_id === chatterRecordId);
+  const uuids = await sbUuidsForAirtableIds("users", [chatterRecordId]);
+  if (!uuids[0]) return [];
+  const rows = await sbSelectWhere<Row>(TABLE, (q) =>
+    q.contains("assigned_chatter", [uuids[0]!])
+  );
+  const matched = await mapRows(rows);
   if (process.env.NODE_ENV !== "production") {
     devLog("[getWhalesByChatter:sb]", {
       chatterRecordId,
-      totalFetched: all.length,
+      totalFetched: matched.length,
       matchedCount: matched.length,
     });
   }

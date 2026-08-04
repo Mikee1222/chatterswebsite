@@ -2,7 +2,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { listCustomRequestsPaginated } from "@/services/custom-requests";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { listAllUsers } from "@/services/users";
 import { AdminCustomRequestsClient } from "@/components/admin-custom-requests-client";
 import type { CustomRequest } from "@/types";
@@ -17,7 +17,7 @@ export default async function AdminCustomRequestsPage() {
       hasMore: false,
       total: 0,
     })),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
     listAllUsers().catch(() => []),
   ]);
 

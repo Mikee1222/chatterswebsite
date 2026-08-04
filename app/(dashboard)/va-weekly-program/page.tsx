@@ -3,7 +3,7 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekAndVa } from "@/services/weekly-program-va";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { formatTimeFromISO } from "@/lib/format";
 import { getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
 import { normalizeWeekStart, formatWeekLabel } from "@/lib/weekly-program";
@@ -35,7 +35,7 @@ export default async function VaWeeklyProgramPage() {
   const weekStart = normalizeWeekStart(getWeekStartYmdInAthens(0));
   const [entries, modelss] = await Promise.all([
     getProgramsForWeekAndVa(weekStart, vaId).catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
   const idToName: Record<string, string> = {};
   modelss.forEach((m) => {

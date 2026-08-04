@@ -3,7 +3,7 @@ import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getProgramsForWeekAndChatter } from "@/services/weekly-program";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { formatTimeFromISO, formatDateOnlyEuropean } from "@/lib/format";
 import { addDays, parseWeekStart } from "@/lib/weekly-program";
 import { WeeklyProgramDaySwiper } from "@/components/weekly-program-day-swiper";
@@ -66,7 +66,7 @@ export default async function WeeklyProgramPage({
 
   const [entries, modelss] = await Promise.all([
     getProgramsForWeekAndChatter(weekStart, chatterId).catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
   const idToName: Record<string, string> = {};
   modelss.forEach((m) => {

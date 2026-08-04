@@ -4,7 +4,7 @@ import { MyWhalesClient } from "@/components/my-whales-client";
 import { getSessionFromCookies } from "@/lib/auth";
 import { ROUTES } from "@/lib/routes";
 import { getWhalesByChatter } from "@/services/whales";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { devLog } from "@/lib/dev-log";
 
 export default async function MyWhalesPage() {
@@ -14,7 +14,7 @@ export default async function MyWhalesPage() {
   const chatterId = user.airtableUserId ?? user.id;
   const [whales, modelss] = await Promise.all([
     getWhalesByChatter(chatterId).catch(() => []),
-    listAllModelss().catch(() => []),
+    getCachedModelss().catch(() => []),
   ]);
   const modelNames: Record<string, string> = {};
   for (const m of modelss) {

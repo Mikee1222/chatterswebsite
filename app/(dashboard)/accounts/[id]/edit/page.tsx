@@ -4,7 +4,7 @@ import { getUserByAirtableId, listAllUsers } from "@/services/users";
 import { redirect, notFound } from "next/navigation";
 import { EditAccountForm } from "@/components/edit-account-form";
 import { isModelActiveForAssignment } from "@/lib/assignment-filters";
-import { listAllModelss } from "@/services/modelss";
+import { getCachedModelss } from "@/lib/modelss-cache";
 import { getVaReviewHistory } from "@/services/marketing-reviews";
 import { getRoles } from "@/services/roles";
 import { hasPermission } from "@/lib/rbac";
@@ -23,7 +23,7 @@ export default async function EditAccountPage({
   const record = await getUserByAirtableId(id);
   if (!record) notFound();
   const [allModels, allUsers, roles, canDelete] = await Promise.all([
-    listAllModelss(),
+    getCachedModelss(),
     listAllUsers(),
     getRoles(),
     hasPermission(user, PERMISSIONS.ACCOUNTS_DELETE),
