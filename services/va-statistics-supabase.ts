@@ -12,7 +12,7 @@
  */
 
 import { ymdInAthens } from "@/lib/airtable-datetime";
-import { sbSelectAll, type SbRow } from "@/lib/supabase-data";
+import { sbSelectWhere, type SbRow } from "@/lib/supabase-data";
 import { TASK_STEP_TYPES, type TaskStepType } from "@/lib/task-step-types";
 
 export type PhaseItemRow = {
@@ -45,9 +45,34 @@ type NotificationSbRow = SbRow & {
   user_id?: string | null;
 };
 
+const PUNCTUALITY_EVENTS = [
+  "shift_late",
+  "shift_late_admin",
+  "shift_no_show",
+  "shift_no_show_admin",
+  "break_exceeded",
+  "break_exceeded_admin",
+] as const;
+
+/** PostgREST `.in()` URL safety — chunk large task id sets. */
+const TASK_ID_CHUNK = 80;
+
 export async function loadPhaseItemsForTasks(taskIds: Set<string>): Promise<PhaseItemRow[]> {
   if (taskIds.size === 0) return [];
-  const rows = await sbSelectAll<PhaseItemSbRow>("va_task_phase_items").catch(() => []);
+  const ids = [...taskIds].filter(Boolean);
+  const columns =
+    "id, airtable_id, task_id, step_type, status, requires_screenshot, screenshot, completed_at";
+  const rows: PhaseItemSbRow[] = [];
+  for (let i = 0; i < ids.length; i += TASK_ID_CHUNK) {
+    const chunk = ids.slice(i, i + TASK_ID_CHUNK);
+    const part = await sbSelectWhere<PhaseItemSbRow>(
+      "va_task_phase_items",
+      (q) => q.in("task_id", chunk),
+      columns
+    ).catch(() => [] as PhaseItemSbRow[]);
+    rows.push(...part);
+  }
+
   const out: PhaseItemRow[] = [];
   for (const rec of rows) {
     const tid = String(rec.task_id ?? "").trim();
@@ -72,6 +97,18 @@ function ymdInRange(ymd: string, start: string, end: string): boolean {
   return Boolean(ymd) && ymd >= start && ymd <= end;
 }
 
+/**
+ * Athens day bounds → UTC ISO window with ±1 day pad so timezone edge rows
+ * are included; exact Athens YMD filter still applied in JS.
+ */
+function athensRangeToUtcPad(startYmd: string, endYmd: string): { gte: string; lt: string } {
+  return {
+    gte: `${startYmd}T00:00:00.000+02:00`,
+    // end exclusive + 1 calendar day pad for EEST (+03)
+    lt: `${endYmd}T23:59:59.999+03:00`,
+  };
+}
+
 export async function loadPunctualityFromNotifications(
   startYmd: string,
   endYmd: string
@@ -81,16 +118,19 @@ export async function loadPunctualityFromNotifications(
   const breakExceeded = new Map<string, number>();
   const bump = (map: Map<string, number>, uid: string) => map.set(uid, (map.get(uid) ?? 0) + 1);
 
-  const relevantEvents = new Set([
-    "shift_late",
-    "shift_late_admin",
-    "shift_no_show",
-    "shift_no_show_admin",
-    "break_exceeded",
-    "break_exceeded_admin",
-  ]);
+  const relevantEvents = new Set<string>(PUNCTUALITY_EVENTS);
+  const { gte, lt } = athensRangeToUtcPad(startYmd, endYmd);
 
-  const rows = await sbSelectAll<NotificationSbRow>("notifications").catch(() => []);
+  const rows = await sbSelectWhere<NotificationSbRow>(
+    "notifications",
+    (q) =>
+      q
+        .in("event_type", [...PUNCTUALITY_EVENTS])
+        .gte("created_at", gte)
+        .lte("created_at", lt),
+    "id, airtable_id, event_type, created_at, user_id"
+  ).catch(() => [] as NotificationSbRow[]);
+
   for (const rec of rows) {
     const ev = String(rec.event_type ?? "").trim();
     if (!relevantEvents.has(ev)) continue;

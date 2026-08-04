@@ -14,6 +14,7 @@ import {
   sbInsertMany,
   sbSelectAll,
   sbSelectByPublicId,
+  sbSelectWhere,
   sbUpdateByPublicId,
   sbUuidsForAirtableIds,
   type SbRow,
@@ -221,18 +222,38 @@ export async function listAllShifts(
   _caller = "shifts.listAllShifts"
 ): Promise<Shift[]> {
   void _caller;
-  let rows = await sbSelectAll<ShiftRow>(SHIFTS_TABLE);
-  if (filterByFormula) {
-    const f = filterByFormula;
-    // Common formulas used by the Airtable service — filter in memory.
-    const wantsActive =
-      f.includes('"active"') && f.includes('"on_break"') && f.includes("OR");
-    const wantsOnBreakOnly = /=\s*"on_break"/.test(f) && !f.includes('"active"');
-    const staffMatch = f.match(/\{staff_role\}\s*=\s*"([^"]+)"/);
-    const dateEq = f.match(/DATESTR\(\{date\}\)\s*=\s*"(\d{4}-\d{2}-\d{2})"/);
-    const dateGte = f.match(/DATESTR\(\{date\}\)\s*>=\s*"(\d{4}-\d{2}-\d{2})"/);
-    const dateLte = f.match(/DATESTR\(\{date\}\)\s*<=\s*"(\d{4}-\d{2}-\d{2})"/);
+  const f = filterByFormula ?? "";
+  // Common formulas used by the Airtable service — push to Postgres when possible.
+  const wantsActive =
+    Boolean(f) && f.includes('"active"') && f.includes('"on_break"') && f.includes("OR");
+  const wantsOnBreakOnly = Boolean(f) && /=\s*"on_break"/.test(f) && !f.includes('"active"');
+  const staffMatch = f.match(/\{staff_role\}\s*=\s*"([^"]+)"/);
+  const dateEq = f.match(/DATESTR\(\{date\}\)\s*=\s*"(\d{4}-\d{2}-\d{2})"/);
+  const dateGte = f.match(/DATESTR\(\{date\}\)\s*>=\s*"(\d{4}-\d{2}-\d{2})"/);
+  const dateLte = f.match(/DATESTR\(\{date\}\)\s*<=\s*"(\d{4}-\d{2}-\d{2})"/);
+  const canPushDateOrStaff = Boolean(dateEq || dateGte || dateLte || staffMatch);
 
+  let rows: ShiftRow[];
+  if (!f) {
+    rows = await sbSelectAll<ShiftRow>(SHIFTS_TABLE);
+  } else if (canPushDateOrStaff || wantsActive || wantsOnBreakOnly) {
+    // Active/on_break is derived from status + break_started_at; pull status candidates
+    // from Postgres then refine in memory.
+    rows = await sbSelectWhere<ShiftRow>(SHIFTS_TABLE, (q) => {
+      let query = q;
+      if (dateEq) query = query.eq("date", dateEq[1]);
+      if (dateGte) query = query.gte("date", dateGte[1]);
+      if (dateLte) query = query.lte("date", dateLte[1]);
+      if (staffMatch) query = query.eq("staff_role", staffMatch[1]);
+      if (wantsActive) query = query.in("status", ["active", "on_break"]);
+      if (wantsOnBreakOnly) query = query.eq("status", "on_break");
+      return query;
+    });
+  } else {
+    rows = await sbSelectAll<ShiftRow>(SHIFTS_TABLE);
+  }
+
+  if (f) {
     rows = rows.filter((r) => {
       const status = getShiftStatus(r.status);
       const effective =
@@ -277,7 +298,13 @@ export async function getActiveShiftsWithModel(modelId: string): Promise<Shift[]
 export async function getChatterIdsFromOpenShiftModels(modelId: string): Promise<string[]> {
   const trimmed = modelId.trim();
   if (!trimmed) return [];
-  const rows = await sbSelectAll<ShiftModelRow>(SHIFT_MODELS_TABLE);
+  const modelUuids = await sbUuidsForAirtableIds("modelss", [trimmed]);
+  const modelUuid = modelUuids[0];
+  if (!modelUuid) return [];
+
+  const rows = await sbSelectWhere<ShiftModelRow>(SHIFT_MODELS_TABLE, (q) =>
+    q.contains("model", [modelUuid])
+  );
   const mapped = await mapShiftModels(rows);
   const ids = new Set<string>();
   for (const sm of mapped) {
@@ -430,8 +457,36 @@ export async function getShiftModelById(recordId: string): Promise<ShiftModel | 
 
 export async function listShiftModelsForShifts(shiftRecordIds: string[]): Promise<ShiftModel[]> {
   if (shiftRecordIds.length === 0) return [];
-  const set = new Set(shiftRecordIds);
-  const rows = await sbSelectAll<ShiftModelRow>(SHIFT_MODELS_TABLE);
+  const set = new Set(shiftRecordIds.map((id) => id.trim()).filter(Boolean));
+  if (set.size === 0) return [];
+
+  // shift_models.shift is uuid[]; resolve public ids → UUIDs and filter with overlaps.
+  const publicIds = [...set];
+  const uuids = await sbUuidsForAirtableIds("shifts", publicIds);
+  const shiftUuids = [...new Set(uuids.filter(Boolean))];
+
+  let rows: ShiftModelRow[];
+  if (shiftUuids.length > 0) {
+    const chunkSize = 40;
+    rows = [];
+    for (let i = 0; i < shiftUuids.length; i += chunkSize) {
+      const chunk = shiftUuids.slice(i, i + chunkSize);
+      const part = await sbSelectWhere<ShiftModelRow>(SHIFT_MODELS_TABLE, (q) =>
+        q.overlaps("shift", chunk)
+      );
+      rows.push(...part);
+    }
+  } else {
+    // Native-supabase shift ids may already be UUIDs (no airtable_id).
+    const maybeUuids = publicIds.filter((id) =>
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+    );
+    if (maybeUuids.length === 0) return [];
+    rows = await sbSelectWhere<ShiftModelRow>(SHIFT_MODELS_TABLE, (q) =>
+      q.overlaps("shift", maybeUuids)
+    );
+  }
+
   const mapped = await mapShiftModels(rows);
   return mapped.filter((sm) => set.has(sm.shift_id));
 }
