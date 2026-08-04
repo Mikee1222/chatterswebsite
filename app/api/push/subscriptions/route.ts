@@ -22,5 +22,7 @@ export async function GET() {
   return NextResponse.json({
     hasSubscription: subscriptions.length > 0,
     count: subscriptions.length,
+    /** Endpoints the client can match against its PushSubscription (no keys). */
+    endpoints: subscriptions.map((s) => s.endpoint).filter(Boolean),
   });
 }

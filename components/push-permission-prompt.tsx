@@ -97,15 +97,19 @@ export async function runPushEnableFlow(role?: UserRole | (string & {}) | null):
 }
 
 /**
- * When Notification.permission is already granted, re-register SW + upsert the current
- * PushSubscription to the backend. Fixes stale/expired endpoints after OS or browser churn
- * without showing the permission prompt again.
+ * When Notification.permission is already granted, silently ensure a live PushSubscription
+ * exists and is stored server-side. No permission prompt.
+ *
+ * Covers the post-410 gap: server pruned the row, but the browser may still hold the dead
+ * endpoint — getSubscription() alone is not enough; we verify against the server and mint
+ * a new endpoint via unsubscribe + subscribe when needed.
  */
 export async function ensurePushSubscriptionSynced(
   role?: UserRole | (string & {}) | null
 ): Promise<PushEnableResult | { status: "skipped" }> {
   if (typeof window === "undefined") return { status: "skipped" };
   if (!("Notification" in window) || !("serviceWorker" in navigator)) return { status: "skipped" };
+  // Only auto-heal when permission is already granted — never prompt.
   if (Notification.permission !== "granted") return { status: "skipped" };
   if (!window.isSecureContext) return { status: "skipped" };
   try {
@@ -120,7 +124,7 @@ export async function ensurePushSubscriptionSynced(
       reg = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
     }
-    const result = await persistPushSubscription(reg, role);
+    const result = await persistPushSubscription(reg, role, { verifyServer: true });
     if (result.status === "success") {
       try {
         sessionStorage.setItem(PUSH_SYNCED_SESSION_KEY, "1");
@@ -136,9 +140,25 @@ export async function ensurePushSubscriptionSynced(
   }
 }
 
+async function fetchServerPushEndpoints(): Promise<string[] | null> {
+  try {
+    const res = await fetch("/api/push/subscriptions", { credentials: "include" });
+    if (!res.ok) {
+      pushLog("Server subscription list unavailable", res.status);
+      return null;
+    }
+    const data = (await res.json()) as { endpoints?: string[] };
+    return Array.isArray(data.endpoints) ? data.endpoints.filter(Boolean) : [];
+  } catch (e) {
+    pushLog("Server subscription list fetch failed", e);
+    return null;
+  }
+}
+
 async function persistPushSubscription(
   reg: ServiceWorkerRegistration,
-  role?: UserRole | (string & {}) | null
+  role?: UserRole | (string & {}) | null,
+  opts?: { verifyServer?: boolean }
 ): Promise<PushEnableResult> {
   if (!reg.pushManager) {
     pushLog("Exit: pushManager unavailable on registration");
@@ -158,8 +178,27 @@ async function persistPushSubscription(
   }
   pushLog("VAPID key received");
 
-  pushLog("Creating/refreshing push subscription…");
   let sub = await reg.pushManager.getSubscription();
+
+  if (opts?.verifyServer) {
+    const serverEndpoints = await fetchServerPushEndpoints();
+    if (serverEndpoints !== null) {
+      const onServer = !!(sub?.endpoint && serverEndpoints.includes(sub.endpoint));
+      if (onServer) {
+        pushLog("Local endpoint already stored server-side – sync complete");
+        return { status: "success" };
+      }
+      // Granted but no live server match: drop dead local sub (if any) and mint a new endpoint.
+      // Browsers allow pushManager.subscribe() silently when permission is already "granted".
+      if (sub) {
+        pushLog("Local endpoint missing on server – unsubscribing to mint a fresh endpoint");
+        await sub.unsubscribe().catch(() => {});
+        sub = null;
+      }
+    }
+  }
+
+  pushLog("Creating/refreshing push subscription…");
   if (!sub) {
     sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
