@@ -18,7 +18,7 @@ export default async function AdminInflowwPerformancePage() {
 
   const range = resolveInflowwStatsRange("this_week");
   const [initial, linkedUsers] = await Promise.all([
-    getAdminInflowwPerformanceReport(range),
+    getAdminInflowwPerformanceReport(range, { includeRoi: true }),
     listUsersWithInflowwEmployeeId(),
   ]);
 
