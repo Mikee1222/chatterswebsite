@@ -1,15 +1,17 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 
 export function usePagination<T>(items: T[], pageSize = 20) {
   const [page, setPage] = useState(1);
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize));
+  const safePage = Math.min(page, totalPages);
   const paginated = useMemo(() => {
-    const start = (page - 1) * pageSize;
+    const start = (safePage - 1) * pageSize;
     return items.slice(start, start + pageSize);
-  }, [items, page, pageSize]);
+  }, [items, safePage, pageSize]);
 
-  // Reset to page 1 when items change
-  const reset = () => setPage(1);
+  // Stable identity so filter effects that depend on `reset` do not
+  // re-fire on every render and snap the user back to page 1.
+  const reset = useCallback(() => setPage(1), []);
 
-  return { page, setPage, totalPages, paginated, reset };
+  return { page: safePage, setPage, totalPages, paginated, reset };
 }
