@@ -300,6 +300,25 @@ export async function syncInflowwDailyStats(params?: {
     }
   }
 
+  // Rewards: incremental sales points + Infloww challenge progress (cron + manual share this path).
+  try {
+    const { awardInflowwSalesPointsAfterSync } = await import("@/services/infloww-sales-points");
+    const pointsResult = await awardInflowwSalesPointsAfterSync({
+      publicUserIds: params?.publicUserIds,
+    });
+    if (pointsResult.errors.length > 0) {
+      console.error("[infloww-daily-stats] sales points errors", pointsResult.errors.slice(0, 10));
+    }
+  } catch (e) {
+    console.error("[infloww-daily-stats] awardInflowwSalesPointsAfterSync failed", e);
+  }
+  try {
+    const { refreshInflowwChallengesAfterSync } = await import("@/services/challenges");
+    await refreshInflowwChallengesAfterSync({ publicUserIds: params?.publicUserIds });
+  } catch (e) {
+    console.error("[infloww-daily-stats] refreshInflowwChallengesAfterSync failed", e);
+  }
+
   return result;
 }
 

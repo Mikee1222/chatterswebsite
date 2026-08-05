@@ -10,9 +10,9 @@ import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import { awardPoints } from "@/services/points-engine";
 import { listAllUsers } from "@/services/users";
-import { CHALLENGE_METRICS, type ChallengeMetric } from "@/lib/challenges";
+import { challengeMetricKind, isChallengeMetric, isInflowwChallengeMetric, type ChallengeMetric } from "@/lib/challenges";
 
-export { CHALLENGE_METRICS, daysRemainingYmd, getChallengeStatus } from "@/lib/challenges";
+export { CHALLENGE_METRICS, daysRemainingYmd, getChallengeStatus, isInflowwChallengeMetric } from "@/lib/challenges";
 export type { ChallengeMetric, ChallengeStatus } from "@/lib/challenges";
 
 const CHALLENGES = "challenges";
@@ -66,18 +66,26 @@ function ymd(v: unknown): string {
   return "";
 }
 
+function normalizeStoredTargetValue(metric: ChallengeMetric, raw: unknown): number {
+  const n = Number(raw ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  const kind = challengeMetricKind(metric);
+  if (kind === "count") return Math.max(1, Math.floor(n));
+  if (kind === "hours") return Math.max(0.1, Math.round(n * 100) / 100);
+  if (kind === "rate_pct") return Math.max(0.1, Math.min(100, Math.round(n * 100) / 100));
+  return Math.max(0.01, Math.round(n * 100) / 100);
+}
+
 function mapChallenge(rec: AirtableRecord<ChallengeFields>): ChallengeRow {
   const f = rec.fields ?? {};
   const metric = String(f.target_metric ?? "");
-  const safeMetric = (CHALLENGE_METRICS as readonly string[]).includes(metric)
-    ? (metric as ChallengeMetric)
-    : "transactions";
+  const safeMetric = isChallengeMetric(metric) ? metric : "transactions";
   return {
     id: rec.id,
     title: String(f.title ?? "").trim() || "Untitled",
     description: String(f.description ?? "").trim(),
     target_metric: safeMetric,
-    target_value: Math.max(0, Math.floor(Number(f.target_value ?? 0))),
+    target_value: normalizeStoredTargetValue(safeMetric, f.target_value),
     reward_points: Math.max(0, Math.floor(Number(f.reward_points ?? 0))),
     start_date: ymd(f.start_date),
     end_date: ymd(f.end_date),
@@ -210,14 +218,55 @@ export type ChallengeWithPersonalProgress = ChallengeRow & {
   progress: ChallengeProgressRow | null;
   current_value: number;
   completed: boolean;
+  /** Rate/derived Infloww metrics with no usable data yet. */
+  progress_unavailable?: boolean;
+  progress_unavailable_reason?: string;
 };
+
+async function buildInflowwChallengeProgress(
+  userId: string,
+  c: ChallengeRow,
+  existing: ChallengeProgressRow | null
+): Promise<ChallengeWithPersonalProgress> {
+  const { fetchProgress } = await import("@/services/infloww-challenge-progress");
+  const prog = await fetchProgress(
+    c.target_metric as import("@/lib/challenges").InflowwChallengeMetric,
+    { startYmd: c.start_date, endYmd: c.end_date },
+    userId
+  );
+
+  if (prog.unavailable) {
+    return {
+      ...c,
+      progress: existing,
+      current_value: 0,
+      completed: Boolean(existing?.completed),
+      progress_unavailable: true,
+      progress_unavailable_reason: prog.unavailable_reason,
+    };
+  }
+
+  const raw = Math.max(0, prog.value);
+  const current_value = existing?.completed ? c.target_value : Math.min(c.target_value, raw);
+  return {
+    ...c,
+    progress: existing,
+    current_value,
+    completed: Boolean(existing?.completed),
+  };
+}
 
 export async function getAllChallengesWithProgress(userId: string): Promise<ChallengeWithPersonalProgress[]> {
   if (isSupabaseBackend()) {
     return (await import("./challenges-supabase")).getAllChallengesWithProgress(userId);
   }
-  const active = await getActiveChallenges(userId);
-  if (!userId.trim() || active.length === 0) return [];
+  const uid = userId.trim();
+  const active = await getActiveChallenges(uid);
+  if (!uid || active.length === 0) return [];
+
+  const { getUserInflowwLinkByPublicId } = await import("@/services/infloww-daily-stats");
+  const inflowwLink = await getUserInflowwLinkByPublicId(uid);
+  const hasInfloww = Boolean(inflowwLink && inflowwLink.infloww_employee_id > 0);
 
   const allProgress = await listAllRecords<ProgressFields>(PROGRESS, {
     _caller: "challenges.getAllChallengesWithProgress",
@@ -225,20 +274,31 @@ export async function getAllChallengesWithProgress(userId: string): Promise<Chal
   const byChallenge = new Map<string, ChallengeProgressRow>();
   for (const r of allProgress) {
     const row = mapProgress(r as AirtableRecord<ProgressFields>);
-    if (row.user_id !== userId.trim()) continue;
+    if (row.user_id !== uid) continue;
     if (row.challenge_id) byChallenge.set(row.challenge_id, row);
   }
 
-  return active.map((c) => {
+  const out: ChallengeWithPersonalProgress[] = [];
+  for (const c of active) {
+    if (isInflowwChallengeMetric(c.target_metric)) {
+      if (!hasInfloww) continue;
+      out.push(await buildInflowwChallengeProgress(uid, c, byChallenge.get(c.id) ?? null));
+      continue;
+    }
     const p = byChallenge.get(c.id) ?? null;
-    const current_value = p ? (p.completed ? c.target_value : Math.min(c.target_value, Math.max(0, p.current_value))) : 0;
-    return {
+    const current_value = p
+      ? p.completed
+        ? c.target_value
+        : Math.min(c.target_value, Math.max(0, p.current_value))
+      : 0;
+    out.push({
       ...c,
       progress: p,
       current_value,
       completed: Boolean(p?.completed),
-    };
-  });
+    });
+  }
+  return out;
 }
 
 async function findProgressRecord(
@@ -315,6 +375,7 @@ async function completeChallengeIfNeeded(userId: string, ch: ChallengeRow, curre
 /**
  * Increment progress for all live challenges that use this metric.
  * Caps `current_value` at `target_value`, then awards points once when completed.
+ * Infloww metrics are absolute (synced via setChallengeProgressAbsolute) — ignored here.
  */
 export async function updateChallengeProgress(
   userId: string,
@@ -328,6 +389,7 @@ export async function updateChallengeProgress(
       incrementBy
     );
   }
+  if (isInflowwChallengeMetric(metric)) return;
   if (!userId.trim() || !Number.isFinite(incrementBy) || incrementBy <= 0) return;
   try {
     const list = await challengesMatchingMetricInWindow(metric, userId);
@@ -411,6 +473,111 @@ export async function deleteProgressForChallenge(challengeId: string): Promise<v
   for (const r of all) {
     if (String(r.fields?.challenge_id ?? "").trim() === challengeId) {
       await deleteRecord(PROGRESS, r.id);
+    }
+  }
+}
+
+/**
+ * Set absolute progress for one challenge (used by Infloww metric sync).
+ * Does not decrease a completed challenge.
+ */
+export async function setChallengeProgressAbsolute(
+  userId: string,
+  challenge: ChallengeRow,
+  absoluteValue: number
+): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).setChallengeProgressAbsolute(
+      userId,
+      challenge,
+      absoluteValue
+    );
+  }
+  const uid = userId.trim();
+  if (!uid || !Number.isFinite(absoluteValue)) return;
+  try {
+    const existing = await findProgressRecord(uid, challenge.id);
+    if (existing?.fields.completed) return;
+    const next = Math.min(challenge.target_value, Math.max(0, absoluteValue));
+    const nowIso = new Date().toISOString();
+    if (existing) {
+      await updateChallengeProgressRow(existing.id, {
+        current_value: next,
+        updated_at: nowIso,
+      });
+    } else {
+      await createChallengeProgressRow({
+        challenge_id: challenge.id,
+        user_id: uid,
+        current_value: next,
+        completed: false,
+        updated_at: nowIso,
+      });
+    }
+    await completeChallengeIfNeeded(uid, challenge, next);
+  } catch (e) {
+    console.error("[challenges] setChallengeProgressAbsolute failed", {
+      userId,
+      challengeId: challenge.id,
+      error: e,
+    });
+  }
+}
+
+/** Refresh Infloww-metric challenges for linked users after stats sync. */
+export async function refreshInflowwChallengesAfterSync(params?: {
+  publicUserIds?: string[];
+}): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./challenges-supabase")).refreshInflowwChallengesAfterSync(params);
+  }
+
+  const { listUsersWithInflowwEmployeeId } = await import("@/services/infloww-daily-stats");
+  const { fetchProgress } = await import("@/services/infloww-challenge-progress");
+
+  let users = await listUsersWithInflowwEmployeeId();
+  if (params?.publicUserIds?.length) {
+    const want = new Set(params.publicUserIds.map((x) => x.trim()).filter(Boolean));
+    users = users.filter((u) => want.has(u.publicId) || want.has(u.uuid));
+  }
+
+  const today = getTodayYmdAthens();
+  const all = await listAllRecords<ChallengeFields>(CHALLENGES, {
+    _caller: "challenges.refreshInflowwChallengesAfterSync",
+  });
+  const liveInfloww = all
+    .map((r) => mapChallenge(r as AirtableRecord<ChallengeFields>))
+    .filter(
+      (c) =>
+        c.active &&
+        isInflowwChallengeMetric(c.target_metric) &&
+        c.start_date &&
+        c.end_date &&
+        c.start_date <= today &&
+        c.end_date >= today
+    );
+
+  if (!liveInfloww.length || !users.length) return;
+
+  for (const user of users) {
+    for (const ch of liveInfloww) {
+      if (!challengeAppliesToUser(ch, user.publicId)) continue;
+      try {
+        if (!isInflowwChallengeMetric(ch.target_metric)) continue;
+        const prog = await fetchProgress(
+          ch.target_metric,
+          { startYmd: ch.start_date, endYmd: ch.end_date },
+          user.publicId
+        );
+        if (prog.unavailable) continue;
+        await setChallengeProgressAbsolute(user.publicId, ch, prog.value);
+      } catch (e) {
+        console.error("[challenges] refreshInflowwChallengesAfterSync failed", {
+          userId: user.publicId,
+          challengeId: ch.id,
+          error: e,
+        });
+      }
     }
   }
 }

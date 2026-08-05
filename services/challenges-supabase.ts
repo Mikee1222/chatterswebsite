@@ -14,7 +14,7 @@ import {
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { awardPoints } from "@/services/points-engine";
 import { listAllUsers } from "@/services/users";
-import { CHALLENGE_METRICS, type ChallengeMetric } from "@/lib/challenges";
+import { challengeMetricKind, isChallengeMetric, isInflowwChallengeMetric, type ChallengeMetric } from "@/lib/challenges";
 import type { ChallengeProgressRow, ChallengeRow, ChallengeWithPersonalProgress } from "./challenges";
 import { challengeAppliesToUser } from "./challenges";
 
@@ -50,17 +50,25 @@ function ymd(v: unknown): string {
   return "";
 }
 
+function normalizeStoredTargetValue(metric: ChallengeMetric, raw: unknown): number {
+  const n = Number(raw ?? 0);
+  if (!Number.isFinite(n) || n <= 0) return 1;
+  const kind = challengeMetricKind(metric);
+  if (kind === "count") return Math.max(1, Math.floor(n));
+  if (kind === "hours") return Math.max(0.1, Math.round(n * 100) / 100);
+  if (kind === "rate_pct") return Math.max(0.1, Math.min(100, Math.round(n * 100) / 100));
+  return Math.max(0.01, Math.round(n * 100) / 100);
+}
+
 function mapChallenge(row: ChallengeSbRow): ChallengeRow {
   const metric = String(row.target_metric ?? "");
-  const safeMetric = (CHALLENGE_METRICS as readonly string[]).includes(metric)
-    ? (metric as ChallengeMetric)
-    : "transactions";
+  const safeMetric = isChallengeMetric(metric) ? metric : "transactions";
   return {
     id: publicId(row),
     title: String(row.title ?? "").trim() || "Untitled",
     description: String(row.description ?? "").trim(),
     target_metric: safeMetric,
-    target_value: Math.max(0, Math.floor(Number(row.target_value ?? 0))),
+    target_value: normalizeStoredTargetValue(safeMetric, row.target_value),
     reward_points: Math.max(0, Math.floor(Number(row.reward_points ?? 0))),
     start_date: ymd(row.start_date),
     end_date: ymd(row.end_date),
@@ -119,24 +127,82 @@ export async function getChallengeProgress(
 export async function getAllChallengesWithProgress(
   userId: string
 ): Promise<ChallengeWithPersonalProgress[]> {
-  const active = await getActiveChallenges(userId);
-  if (!userId.trim() || active.length === 0) return [];
+  const uid = userId.trim();
+  const active = await getActiveChallenges(uid);
+  if (!uid || active.length === 0) return [];
+
+  const { getUserInflowwLinkByPublicId } = await import("@/services/infloww-daily-stats");
+  const link = await getUserInflowwLinkByPublicId(uid).catch(() => null);
+  const linked = Boolean(link && link.infloww_employee_id > 0);
+
+  const visible = active.filter((c) => {
+    if (!isInflowwChallengeMetric(c.target_metric)) return true;
+    return linked;
+  });
+  if (visible.length === 0) return [];
+
   const allProgress = await sbSelectAll<ProgressSbRow>(PROGRESS);
   const byChallenge = new Map<string, ChallengeProgressRow>();
   for (const r of allProgress) {
     const row = mapProgress(r);
-    if (row.user_id !== userId.trim()) continue;
+    if (row.user_id !== uid) continue;
     if (row.challenge_id) byChallenge.set(row.challenge_id, row);
   }
-  return active.map((c) => {
+
+  const { fetchProgress } = await import("@/services/infloww-challenge-progress");
+  const out: ChallengeWithPersonalProgress[] = [];
+
+  for (const c of visible) {
     const p = byChallenge.get(c.id) ?? null;
+    if (isInflowwChallengeMetric(c.target_metric) && !p?.completed) {
+      try {
+        const fetched = await fetchProgress(
+          c.target_metric,
+          { startYmd: c.start_date, endYmd: c.end_date },
+          uid
+        );
+        if (fetched.unavailable) {
+          out.push({
+            ...c,
+            progress: p,
+            current_value: p ? Math.min(c.target_value, Math.max(0, p.current_value)) : 0,
+            completed: false,
+            progress_unavailable: true,
+            progress_unavailable_reason: fetched.unavailable_reason,
+          });
+          continue;
+        }
+        await setChallengeProgressAbsolute(uid, c, fetched.value);
+        const refreshed = await findProgressRecord(uid, c.id);
+        const completed = Boolean(refreshed?.mapped.completed);
+        const current_value = completed
+          ? c.target_value
+          : Math.min(c.target_value, Math.max(0, fetched.value));
+        out.push({
+          ...c,
+          progress: refreshed?.mapped ?? null,
+          current_value,
+          completed,
+        });
+        continue;
+      } catch (e) {
+        console.error("[challenges:sb] infloww progress fetch failed", {
+          userId: uid,
+          challengeId: c.id,
+          error: e,
+        });
+      }
+    }
+
     const current_value = p
       ? p.completed
         ? c.target_value
         : Math.min(c.target_value, Math.max(0, p.current_value))
       : 0;
-    return { ...c, progress: p, current_value, completed: Boolean(p?.completed) };
-  });
+    out.push({ ...c, progress: p, current_value, completed: Boolean(p?.completed) });
+  }
+
+  return out;
 }
 
 async function findProgressRecord(
@@ -226,6 +292,7 @@ export async function updateChallengeProgress(
   metric: ChallengeMetric,
   incrementBy: number
 ): Promise<void> {
+  if (isInflowwChallengeMetric(metric)) return;
   const uid = userId.trim();
   if (!uid || !Number.isFinite(incrementBy) || incrementBy <= 0) return;
   try {
@@ -259,6 +326,88 @@ export async function updateChallengeProgress(
       incrementBy,
       error: e,
     });
+  }
+}
+
+export async function setChallengeProgressAbsolute(
+  userId: string,
+  challenge: ChallengeRow,
+  absoluteValue: number
+): Promise<void> {
+  const uid = userId.trim();
+  if (!uid || !Number.isFinite(absoluteValue)) return;
+  try {
+    const existing = await findProgressRecord(uid, challenge.id);
+    if (existing?.mapped.completed) return;
+    const next = Math.min(challenge.target_value, Math.max(0, absoluteValue));
+    const now = new Date().toISOString();
+    if (existing) {
+      await sbUpdateByPublicId(PROGRESS, existing.id, {
+        current_value: next,
+        updated_at: now,
+      });
+    } else {
+      await sbInsert(PROGRESS, {
+        challenge_id: challenge.id,
+        user_id: uid,
+        current_value: next,
+        completed: false,
+        updated_at: now,
+      });
+    }
+    await completeChallengeIfNeeded(uid, challenge, next);
+  } catch (e) {
+    console.error("[challenges:sb] setChallengeProgressAbsolute failed", {
+      userId,
+      challengeId: challenge.id,
+      error: e,
+    });
+  }
+}
+
+/** After Infloww sync: push absolute progress for live Infloww challenges. */
+export async function refreshInflowwChallengesAfterSync(params?: {
+  publicUserIds?: string[];
+}): Promise<void> {
+  try {
+    const { listUsersWithInflowwEmployeeId } = await import("@/services/infloww-daily-stats");
+    const { fetchProgress } = await import("@/services/infloww-challenge-progress");
+    let users = await listUsersWithInflowwEmployeeId();
+    if (params?.publicUserIds?.length) {
+      const want = new Set(params.publicUserIds.map((x) => x.trim()).filter(Boolean));
+      users = users.filter((u) => want.has(u.publicId) || want.has(u.uuid));
+    }
+    const today = getTodayYmdAthens();
+    const all = await sbSelectAll<ChallengeSbRow>(CHALLENGES);
+    const liveInfloww = all
+      .map(mapChallenge)
+      .filter((c) => isInflowwChallengeMetric(c.target_metric) && isLiveInWindow(c, today));
+
+    if (!liveInfloww.length || !users.length) return;
+
+    for (const user of users) {
+      for (const ch of liveInfloww) {
+        if (!challengeAppliesToUser(ch, user.publicId)) continue;
+        try {
+          if (!isInflowwChallengeMetric(ch.target_metric)) continue;
+          const fetched = await fetchProgress(
+            ch.target_metric,
+            { startYmd: ch.start_date, endYmd: ch.end_date },
+            user.publicId
+          );
+          if (fetched.unavailable) continue;
+          await setChallengeProgressAbsolute(user.publicId, ch, fetched.value);
+        } catch (e) {
+          console.error("[challenges:sb] refreshInfloww after sync failed", {
+            userId: user.publicId,
+            challengeId: ch.id,
+            error: e,
+          });
+        }
+      }
+    }
+  } catch (e) {
+    console.error("[challenges:sb] refreshInflowwChallengesAfterSync failed", e);
   }
 }
 

@@ -83,6 +83,8 @@ function categoryIcon(category: string) {
   if (c === "manual") return Star;
   if (c === "penalty") return CircleDot;
   if (c === "spin") return Sparkles;
+  if (c === "infloww") return BarChart3;
+  if (c === "challenge") return TrendingUp;
   return FileText;
 }
 

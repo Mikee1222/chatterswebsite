@@ -7,6 +7,7 @@ import {
   Clock,
   Flame,
   Loader2,
+  BarChart3,
   RotateCw,
   Star,
   Trophy,
@@ -280,6 +281,15 @@ export function RewardsConfigClient({
             description="Extra points for completing a shift without a break"
             value={config.SHIFT_NO_BREAK_BONUS}
             onChange={set("SHIFT_NO_BREAK_BONUS")}
+          />
+        </SectionCard>
+
+        <SectionCard title="Infloww sales" icon={BarChart3}>
+          <ConfigRow
+            label="Sales per $100"
+            description="Points awarded for each $100 of Infloww total sales (incremental after sync)"
+            value={config.INFLOWW_SALES_PER_100}
+            onChange={set("INFLOWW_SALES_PER_100")}
           />
         </SectionCard>
 

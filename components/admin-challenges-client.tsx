@@ -6,22 +6,29 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowUp,
+  BarChart3,
   Calendar,
   Check,
   CheckSquare,
   ChevronDown,
   Clock,
+  DollarSign,
   Loader2,
+  MessageSquare,
   Pencil,
+  Percent,
   Plus,
   RefreshCw,
   Search,
+  Send,
   Star,
   Trash2,
   TrendingUp,
   Trophy,
+  Unlock,
   Users,
   X,
+  Zap,
 } from "lucide-react";
 import { Label, Input, Textarea } from "@/components/ui/form";
 import { useToast } from "@/contexts/toast-context";
@@ -35,11 +42,14 @@ import type { AppNotification } from "@/types";
 import type { ChallengeRow } from "@/services/challenges";
 import {
   CHALLENGE_METRICS,
+  CHALLENGE_METRIC_LABELS,
   type ChallengeMetric,
   type ChallengeStatus,
-  formatChallengeHours,
+  formatChallengeValue,
   getChallengeStatus,
   daysRemainingYmd,
+  isInflowwChallengeMetric,
+  challengeMetricKind,
 } from "@/lib/challenges";
 import { cn } from "@/lib/utils";
 
@@ -70,14 +80,7 @@ function localToast(id: string, title: string, body: string, priority: "normal" 
   };
 }
 
-const METRIC_LABELS: Record<ChallengeMetric, string> = {
-  transactions: "Transactions",
-  whales_added: "Whales added",
-  shift_hours: "Shift hours",
-  customs_completed: "Customs completed",
-  whale_status_upgrades: "Whale status upgrades",
-  rebills_verified: "Rebills verified",
-};
+const METRIC_LABELS = CHALLENGE_METRIC_LABELS;
 
 const METRIC_ICONS: Record<ChallengeMetric, React.ComponentType<{ className?: string }>> = {
   transactions: TrendingUp,
@@ -86,6 +89,17 @@ const METRIC_ICONS: Record<ChallengeMetric, React.ComponentType<{ className?: st
   customs_completed: CheckSquare,
   whale_status_upgrades: ArrowUp,
   rebills_verified: RefreshCw,
+  infloww_sales: DollarSign,
+  infloww_ppv_sales: DollarSign,
+  infloww_tips: DollarSign,
+  infloww_messages: MessageSquare,
+  infloww_ppvs_sent: Send,
+  infloww_ppvs_unlocked: Unlock,
+  infloww_unlock_rate: Percent,
+  infloww_golden_ratio: BarChart3,
+  infloww_fans_chatted: Users,
+  infloww_rev_per_hour: Zap,
+  infloww_rev_per_fan: TrendingUp,
 };
 
 function emptyForm(): ChallengeData {
@@ -164,8 +178,15 @@ function scheduleDurationDays(start: string, end: string): number {
 }
 
 function formatTargetValue(metric: ChallengeMetric, value: number): string {
-  if (metric === "shift_hours") return formatChallengeHours(value);
-  return String(value);
+  return formatChallengeValue(metric, value);
+}
+
+function targetInputHint(metric: ChallengeMetric): string {
+  const kind = challengeMetricKind(metric);
+  if (kind === "money") return "Target in dollars (e.g. 5000)";
+  if (kind === "rate_pct") return "Target as percent (e.g. 40 for 40%)";
+  if (kind === "hours") return "Target in hours";
+  return "Target count";
 }
 
 function chatterInitials(name: string): string {
@@ -313,29 +334,41 @@ function MetricSelect({
         <ChevronDown className={cn("h-4 w-4 shrink-0 text-white/45 transition", open && "rotate-180")} aria-hidden />
       </button>
       {open ? (
-        <div className="absolute z-10 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl">
-          {CHALLENGE_METRICS.map((m) => {
-            const Icon = METRIC_ICONS[m];
-            const selected = m === value;
-            return (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  onChange(m);
-                  setOpen(false);
-                }}
-                className={cn(
-                  "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-white/5",
-                  selected ? "bg-pink-500/10 text-pink-100" : "text-white/80"
-                )}
-              >
-                <Icon className="h-4 w-4 shrink-0 text-white/55" aria-hidden />
-                <span className="flex-1 truncate">{METRIC_LABELS[m]}</span>
-                {selected ? <Check className="h-4 w-4 shrink-0 text-pink-300" aria-hidden /> : null}
-              </button>
-            );
-          })}
+        <div className="absolute z-10 mt-1 max-h-72 w-full overflow-y-auto rounded-xl border border-white/10 bg-[#1a1a1a] shadow-2xl">
+          {(
+            [
+              ["Team activity", CHALLENGE_METRICS.filter((m) => !isInflowwChallengeMetric(m))],
+              ["Infloww performance", CHALLENGE_METRICS.filter((m) => isInflowwChallengeMetric(m))],
+            ] as const
+          ).map(([label, metrics]) => (
+            <div key={label}>
+              <div className="sticky top-0 bg-[#1a1a1a] px-4 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                {label}
+              </div>
+              {metrics.map((m) => {
+                const Icon = METRIC_ICONS[m];
+                const selected = m === value;
+                return (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => {
+                      onChange(m);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm transition hover:bg-white/5",
+                      selected ? "bg-pink-500/10 text-pink-100" : "text-white/80"
+                    )}
+                  >
+                    <Icon className="h-4 w-4 shrink-0 text-white/55" aria-hidden />
+                    <span className="flex-1 truncate">{METRIC_LABELS[m]}</span>
+                    {selected ? <Check className="h-4 w-4 shrink-0 text-pink-300" aria-hidden /> : null}
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       ) : null}
     </div>
@@ -621,13 +654,21 @@ function ChallengePanel({
                         id="ch-target"
                         type="number"
                         required
-                        min={1}
+                        min={challengeMetricKind(form.target_metric) === "count" ? 1 : 0.01}
+                        step={
+                          challengeMetricKind(form.target_metric) === "count"
+                            ? 1
+                            : challengeMetricKind(form.target_metric) === "rate_pct"
+                              ? 0.1
+                              : 0.01
+                        }
                         value={form.target_value}
                         onChange={(e) =>
                           setForm((f) => ({ ...f, target_value: Number(e.target.value) || 1 }))
                         }
                         className="mt-1"
                       />
+                      <p className="mt-1 text-[11px] text-white/40">{targetInputHint(form.target_metric)}</p>
                     </div>
                     <div>
                       <Label htmlFor="ch-reward">Reward points</Label>
@@ -644,6 +685,12 @@ function ChallengePanel({
                       />
                     </div>
                   </div>
+                  {isInflowwChallengeMetric(form.target_metric) ? (
+                    <p className="rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+                      Infloww challenges only appear for chatters with an Infloww Employee ID linked. Progress updates
+                      after each stats sync.
+                    </p>
+                  ) : null}
                 </section>
 
                 <section className="space-y-4">

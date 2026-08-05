@@ -8,7 +8,11 @@ import {
   deleteChallenge,
   updateChallenge,
 } from "@/services/challenges";
-import type { ChallengeMetric } from "@/lib/challenges";
+import {
+  isChallengeMetric,
+  normalizeChallengeTargetValue,
+  type ChallengeMetric,
+} from "@/lib/challenges";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 
@@ -36,12 +40,20 @@ function assignedUsersCsv(ids: string[] | undefined): string {
   return list.join(",");
 }
 
+function normalizeMetric(raw: string): ChallengeMetric | null {
+  const m = raw.trim();
+  return isChallengeMetric(m) ? m : null;
+}
+
 function normalizeCreatePayload(data: ChallengeData): Record<string, unknown> {
+  const metric = normalizeMetric(data.target_metric);
+  if (!metric) throw new Error("Invalid challenge metric.");
+
   return {
     title: data.title.trim(),
     description: data.description.trim(),
-    target_metric: data.target_metric,
-    target_value: Math.max(1, Math.floor(Number(data.target_value))),
+    target_metric: metric,
+    target_value: normalizeChallengeTargetValue(metric, Number(data.target_value)),
     reward_points: Math.max(0, Math.floor(Number(data.reward_points))),
     start_date: data.start_date.trim().slice(0, 10),
     end_date: data.end_date.trim().slice(0, 10),
@@ -83,13 +95,31 @@ export async function updateChallengeAction(
     const patch: Record<string, unknown> = {};
     if (data.title !== undefined) patch.title = data.title.trim();
     if (data.description !== undefined) patch.description = data.description.trim();
-    if (data.target_metric !== undefined) patch.target_metric = data.target_metric;
-    if (data.target_value !== undefined) patch.target_value = Math.max(1, Math.floor(Number(data.target_value)));
-    if (data.reward_points !== undefined) patch.reward_points = Math.max(0, Math.floor(Number(data.reward_points)));
+    if (data.target_metric !== undefined) {
+      const metric = normalizeMetric(data.target_metric);
+      if (!metric) return { success: false, error: "Invalid challenge metric." };
+      patch.target_metric = metric;
+    }
+    if (data.target_value !== undefined) {
+      const metric =
+        data.target_metric != null
+          ? normalizeMetric(data.target_metric)
+          : null;
+      if (metric) {
+        patch.target_value = normalizeChallengeTargetValue(metric, Number(data.target_value));
+      } else {
+        patch.target_value = Math.max(0.01, Number(data.target_value));
+      }
+    }
+    if (data.reward_points !== undefined) {
+      patch.reward_points = Math.max(0, Math.floor(Number(data.reward_points)));
+    }
     if (data.start_date !== undefined) patch.start_date = data.start_date.trim().slice(0, 10);
     if (data.end_date !== undefined) patch.end_date = data.end_date.trim().slice(0, 10);
     if (data.active !== undefined) patch.active = Boolean(data.active);
-    if (data.assigned_user_ids !== undefined) patch.assigned_users = assignedUsersCsv(data.assigned_user_ids);
+    if (data.assigned_user_ids !== undefined) {
+      patch.assigned_users = assignedUsersCsv(data.assigned_user_ids);
+    }
 
     if (Object.keys(patch).length === 0) {
       return { success: false, error: "Nothing to update." };

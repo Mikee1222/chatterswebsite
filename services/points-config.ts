@@ -27,6 +27,11 @@ export const DEFAULT_CONFIG = {
   STREAK_30_DAYS: 150,
   AVAILABILITY_SUBMITTED: 15,
   REBILL_VERIFIED: 50,
+  /**
+   * Points per $100 of Infloww total sales (incremental).
+   * Default 10 mirrors SHIFT_PER_HOUR — ~$100 revenue ≈ 1 hour of shift points.
+   */
+  INFLOWW_SALES_PER_100: 10,
   POINTS_PER_SPIN: 500,
 } as const;
 

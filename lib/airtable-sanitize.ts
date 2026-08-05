@@ -223,7 +223,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
     level: new Set(["Bronze", "Silver", "Gold", "Diamond"]),
   },
   points_transactions: {
-    category: new Set(["shift", "whale", "custom", "streak", "challenge", "manual", "penalty", "spin", "mistake", "rebill"]),
+    category: new Set(["shift", "whale", "custom", "streak", "challenge", "manual", "penalty", "spin", "mistake", "rebill", "infloww"]),
   },
   challenges: {
     target_metric: new Set([
