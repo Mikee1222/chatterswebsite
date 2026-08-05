@@ -248,4 +248,47 @@ export interface InflowwCreatorDayStats {
   ppvsSent: number;
   fansChatted: number;
   replyTimeMs: number | null;
+  /** Fans with auto-renew on — from GET /v1/creator-report/fans/renew-on. */
+  fansWithRenewOn: number;
+}
+
+/** Normalized row from GET /v1/refunds. Monetary fields are dollars. */
+export interface InflowwRefund {
+  /** Infloww refund row id (preferred unique key). */
+  refundId: string;
+  transactionId: string;
+  creatorId: string;
+  fanId?: string;
+  paymentAmount: number;
+  transactionType?: string;
+  paymentStatus?: string;
+  currency: string;
+  paymentTimeMs: number | null;
+  refundTimeMs: number;
+}
+
+/** Daily renew-on count from GET /v1/creator-report/fans/renew-on. */
+export interface InflowwCreatorRenewOnRow {
+  platformPid: string;
+  date: string;
+  fansWithRenewOn: number;
+  creatorId?: string;
+}
+
+/** Normalized row from GET /v1/priority-mass-messages. Money in dollars. */
+export interface InflowwPriorityMassMessage {
+  priorityMassMessageId: string;
+  creatorId: string;
+  employeeId?: string;
+  status?: string;
+  price: number;
+  revenue: number;
+  numberOfTimesSent: number;
+  numberOfPurchases: number;
+  /** Raw targeting rules / audience filters when present. */
+  targetingRules: unknown;
+  messagePreview?: string;
+  createdTimeMs: number | null;
+  sentTimeMs: number | null;
+  currency: string;
 }

@@ -69,8 +69,10 @@ Frost, Lina, Lydia, Marillia, Roxana, Silia.
 
 | Table | Unique key |
 | --- | --- |
-| `infloww_creator_daily_stats` | `(creator_infloww_id, date)` |
+| `infloww_creator_daily_stats` | `(creator_infloww_id, date)` — includes `fans_with_renew_on` |
 | `infloww_transactions` | `transaction_id` |
+| `infloww_refunds` | `refund_id` |
+| `infloww_priority_mass_messages` | `priority_mass_message_id` |
 | `infloww_marketing_links` | `(model_id, infloww_link_id)` — `model_id` = modelss public id |
 | `infloww_link_fans` | `(link_id, fan_id)` |
 
@@ -78,6 +80,7 @@ Migrations:
 
 - `supabase/migrations/20260806040000_infloww_creator_earnings.sql`
 - `supabase/migrations/20260806050000_modelss_infloww_creator_id.sql`
+- `supabase/migrations/20260806060000_infloww_creator_earnings_refunds_pmm.sql`
 
 ## Endpoints synced
 
@@ -85,9 +88,11 @@ Migrations:
 | --- | --- |
 | `GET /v1/transactions` | unix-ms window; status `loading` → re-sync until `done` (~12h) |
 | `GET /v1/transaction-perf/details` | unix-ms; 31-day chunks; employee attribution |
+| `GET /v1/refunds` | unix-ms; ~1h provider delay; 31-day chunks |
+| `GET /v1/priority-mass-messages` | unix-ms; per creator; optional employeeIds |
 | `GET /v1/links` | `CAMPAIGN` / `TRIAL` / `TRACKING` (2–4h Infloww delay) |
 | `GET /v1/linkfans` | per link |
-| `GET /v1/creator-report/*` | rank, visitors, fans, subscribers, chat-summary |
+| `GET /v1/creator-report/*` | rank, visitors, fans, subscribers, chat-summary, renew-on |
 
 ## Cron cadence
 

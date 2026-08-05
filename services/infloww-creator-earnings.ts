@@ -13,11 +13,14 @@ import {
   fetchAllCreatorLinkTypes,
   fetchCreatorChatSummary,
   fetchCreatorFansCount,
+  fetchCreatorFansRenewOn,
   fetchCreatorProfileVisitors,
   fetchCreatorRank,
+  fetchCreatorRefunds,
   fetchCreatorSubscriberCount,
   fetchCreatorTransactions,
   fetchLinkFans,
+  fetchPriorityMassMessages,
   fetchTransactionPerfDetails,
   getInflowwModels,
   inflowwReportTodayYmd,
@@ -33,6 +36,8 @@ import type {
   InflowwLinkType,
   InflowwMarketingLink,
   InflowwModel,
+  InflowwPriorityMassMessage,
+  InflowwRefund,
   InflowwTransactionPerfDetail,
 } from "@/types/infloww";
 import type { ModelRecord } from "@/types";
@@ -62,6 +67,8 @@ export type CreatorEarningsSyncResult = {
   transactions: CreatorSyncSectionResult;
   marketingLinks: CreatorSyncSectionResult;
   linkFans: CreatorSyncSectionResult;
+  refunds: CreatorSyncSectionResult;
+  priorityMassMessages: CreatorSyncSectionResult;
 };
 
 function n(v: unknown): number {
@@ -196,6 +203,7 @@ async function upsertCreatorDailyStats(
       ppvs_sent: r.ppvsSent,
       fans_chatted: r.fansChatted,
       reply_time_ms: r.replyTimeMs,
+      fans_with_renew_on: r.fansWithRenewOn ?? 0,
       synced_at: now,
       updated_at: now,
     };
@@ -394,12 +402,13 @@ async function syncCreatorReportSection(
   }
 
   try {
-    const [ranks, visitors, fans, subscribers, chat] = await Promise.all([
+    const [ranks, visitors, fans, subscribers, chat, renewOn] = await Promise.all([
       fetchCreatorRank({ creatorIds, startYmd, endYmd }),
       fetchCreatorProfileVisitors({ creatorIds, startYmd, endYmd }),
       fetchCreatorFansCount({ creatorIds, startYmd, endYmd }),
       fetchCreatorSubscriberCount({ creatorIds, startYmd, endYmd }),
       fetchCreatorChatSummary({ creatorIds, startYmd, endYmd, dayByDay: true }),
+      fetchCreatorFansRenewOn({ creatorIds, startYmd, endYmd }),
     ]);
     const merged = mergeCreatorDayStats({
       creatorIdByPlatformPid,
@@ -408,6 +417,7 @@ async function syncCreatorReportSection(
       fans,
       subscribers,
       chat,
+      renewOn,
     });
     result.upserted = await upsertCreatorDailyStats(linked, merged);
   } catch (err) {
@@ -565,6 +575,124 @@ async function syncMarketingSection(
   return { links: linksResult, fans: fansResult };
 }
 
+async function upsertRefunds(link: LinkedCreatorModel, refunds: InflowwRefund[]): Promise<number> {
+  if (!refunds.length) return 0;
+  const now = new Date().toISOString();
+  const payload = refunds.map((r) => ({
+    refund_id: r.refundId,
+    transaction_id: r.transactionId,
+    creator_infloww_id: link.creatorInflowwId,
+    model_record_id: link.modelRecordId,
+    model_stable_id: link.modelStableId,
+    fan_id: r.fanId ?? null,
+    payment_amount: r.paymentAmount,
+    transaction_type: r.transactionType ?? null,
+    payment_status: r.paymentStatus ?? null,
+    currency: r.currency || "USD",
+    payment_time: r.paymentTimeMs ? isoFromMs(r.paymentTimeMs) : null,
+    refund_time: isoFromMs(r.refundTimeMs) ?? now,
+    synced_at: now,
+    updated_at: now,
+  }));
+  const sb = getSupabaseServiceClient();
+  const { error, count } = await sb.from("infloww_refunds").upsert(payload, {
+    onConflict: "refund_id",
+    count: "exact",
+  });
+  if (error) throw new Error(`upsert infloww_refunds: ${error.message}`);
+  return count ?? payload.length;
+}
+
+async function upsertPriorityMassMessages(
+  link: LinkedCreatorModel,
+  rows: InflowwPriorityMassMessage[]
+): Promise<number> {
+  if (!rows.length) return 0;
+  const now = new Date().toISOString();
+  const payload = rows.map((r) => ({
+    priority_mass_message_id: r.priorityMassMessageId,
+    creator_infloww_id: link.creatorInflowwId,
+    model_record_id: link.modelRecordId,
+    model_stable_id: link.modelStableId,
+    employee_id: r.employeeId ?? null,
+    status: r.status ?? null,
+    price: r.price,
+    revenue: r.revenue,
+    number_of_times_sent: r.numberOfTimesSent,
+    number_of_purchases: r.numberOfPurchases,
+    targeting_rules: r.targetingRules ?? null,
+    message_preview: r.messagePreview ?? null,
+    currency: r.currency || "USD",
+    created_time: r.createdTimeMs ? isoFromMs(r.createdTimeMs) : null,
+    sent_time: r.sentTimeMs ? isoFromMs(r.sentTimeMs) : null,
+    synced_at: now,
+    updated_at: now,
+  }));
+  const sb = getSupabaseServiceClient();
+  const { error, count } = await sb.from("infloww_priority_mass_messages").upsert(payload, {
+    onConflict: "priority_mass_message_id",
+    count: "exact",
+  });
+  if (error) throw new Error(`upsert infloww_priority_mass_messages: ${error.message}`);
+  return count ?? payload.length;
+}
+
+async function syncRefundsSection(
+  linked: LinkedCreatorModel[],
+  startYmd: string,
+  endYmd: string
+): Promise<CreatorSyncSectionResult> {
+  const result: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+  for (const link of linked) {
+    try {
+      const refunds = await fetchCreatorRefunds({
+        creatorId: link.creatorInflowwId,
+        startYmd,
+        endYmd,
+      });
+      result.upserted += await upsertRefunds(link, refunds);
+    } catch (err) {
+      logInflowwFailure("syncRefundsSection", err, { creatorId: link.creatorInflowwId });
+      result.errors.push({
+        creatorId: link.creatorInflowwId,
+        message: err instanceof Error ? err.message : String(err),
+        status: err instanceof InflowwApiError ? err.status : undefined,
+        path: err instanceof InflowwApiError ? err.path : undefined,
+      });
+    }
+  }
+  return result;
+}
+
+async function syncPriorityMassMessagesSection(
+  linked: LinkedCreatorModel[],
+  startYmd: string,
+  endYmd: string
+): Promise<CreatorSyncSectionResult> {
+  const result: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+  for (const link of linked) {
+    try {
+      const rows = await fetchPriorityMassMessages({
+        creatorId: link.creatorInflowwId,
+        startYmd,
+        endYmd,
+      });
+      result.upserted += await upsertPriorityMassMessages(link, rows);
+    } catch (err) {
+      logInflowwFailure("syncPriorityMassMessagesSection", err, {
+        creatorId: link.creatorInflowwId,
+      });
+      result.errors.push({
+        creatorId: link.creatorInflowwId,
+        message: err instanceof Error ? err.message : String(err),
+        status: err instanceof InflowwApiError ? err.status : undefined,
+        path: err instanceof InflowwApiError ? err.path : undefined,
+      });
+    }
+  }
+  return result;
+}
+
 /**
  * Sync creator-level Infloww data for all matched modelss ↔ Infloww creators.
  * Defaults to today+yesterday (same window as employee cron).
@@ -576,8 +704,12 @@ export async function syncInflowwCreatorEarnings(params?: {
   skipMarketing?: boolean;
   /** Skip transactions + transaction-perf. */
   skipTransactions?: boolean;
-  /** Skip creator-report daily stats. */
+  /** Skip creator-report daily stats (incl. renew-on). */
   skipDailyStats?: boolean;
+  /** Skip refunds. */
+  skipRefunds?: boolean;
+  /** Skip priority mass messages. */
+  skipPriorityMassMessages?: boolean;
 }): Promise<CreatorEarningsSyncResult> {
   const today = inflowwReportTodayYmd();
   const defaultDay = addDaysAthensYmd(today, -1);
@@ -604,6 +736,12 @@ export async function syncInflowwCreatorEarnings(params?: {
   const marketing = params?.skipMarketing
     ? { links: empty, fans: empty }
     : await syncMarketingSection(linked);
+  const refunds = params?.skipRefunds
+    ? empty
+    : await syncRefundsSection(linked, startYmd, endYmd);
+  const priorityMassMessages = params?.skipPriorityMassMessages
+    ? empty
+    : await syncPriorityMassMessagesSection(linked, startYmd, endYmd);
 
   return {
     startYmd,
@@ -614,6 +752,8 @@ export async function syncInflowwCreatorEarnings(params?: {
     transactions,
     marketingLinks: marketing.links,
     linkFans: marketing.fans,
+    refunds,
+    priorityMassMessages,
   };
 }
 
@@ -635,6 +775,7 @@ export type CreatorDailyStatsRow = {
   ppvs_sent: number;
   fans_chatted: number;
   reply_time_ms: number | null;
+  fans_with_renew_on: number;
 };
 
 export async function listCreatorDailyStats(params: {
@@ -647,7 +788,7 @@ export async function listCreatorDailyStats(params: {
   let q = sb
     .from("infloww_creator_daily_stats")
     .select(
-      "creator_infloww_id, model_record_id, model_stable_id, model_name, date, performance_rank, profile_visitors, guest_visitors, logged_in_visitors, active_fans, expired_fans, new_subscribers, renewals, messages_sent, ppvs_sent, fans_chatted, reply_time_ms"
+      "creator_infloww_id, model_record_id, model_stable_id, model_name, date, performance_rank, profile_visitors, guest_visitors, logged_in_visitors, active_fans, expired_fans, new_subscribers, renewals, messages_sent, ppvs_sent, fans_chatted, reply_time_ms, fans_with_renew_on"
     )
     .gte("date", params.startYmd)
     .lte("date", params.endYmd)
@@ -674,6 +815,7 @@ export async function listCreatorDailyStats(params: {
     ppvs_sent: Math.round(n(row.ppvs_sent)),
     fans_chatted: Math.round(n(row.fans_chatted)),
     reply_time_ms: row.reply_time_ms == null ? null : n(row.reply_time_ms),
+    fans_with_renew_on: Math.round(n(row.fans_with_renew_on)),
   }));
 }
 
@@ -886,4 +1028,112 @@ export async function compareTransactionPerfVsEmployeeSales(params: {
   return out
     .filter((r) => Math.abs(r.delta) >= 0.5)
     .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}
+
+export type CreatorRefundRow = {
+  refund_id: string;
+  transaction_id: string;
+  creator_infloww_id: string;
+  model_record_id: string | null;
+  fan_id: string | null;
+  payment_amount: number;
+  transaction_type: string | null;
+  payment_status: string | null;
+  refund_time: string | null;
+  payment_time: string | null;
+};
+
+export async function listCreatorRefunds(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+  limit?: number;
+}): Promise<CreatorRefundRow[]> {
+  const sb = getSupabaseServiceClient();
+  const startIso = `${params.startYmd}T00:00:00.000Z`;
+  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  let q = sb
+    .from("infloww_refunds")
+    .select(
+      "refund_id, transaction_id, creator_infloww_id, model_record_id, fan_id, payment_amount, transaction_type, payment_status, refund_time, payment_time"
+    )
+    .gte("refund_time", startIso)
+    .lte("refund_time", endIso)
+    .order("refund_time", { ascending: false })
+    .limit(params.limit ?? 500);
+  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+  const { data, error } = await q;
+  if (error) throw new Error(`listCreatorRefunds: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    refund_id: String(row.refund_id),
+    transaction_id: String(row.transaction_id),
+    creator_infloww_id: String(row.creator_infloww_id),
+    model_record_id: row.model_record_id ? String(row.model_record_id) : null,
+    fan_id: row.fan_id ? String(row.fan_id) : null,
+    payment_amount: n(row.payment_amount),
+    transaction_type: row.transaction_type ? String(row.transaction_type) : null,
+    payment_status: row.payment_status ? String(row.payment_status) : null,
+    refund_time: row.refund_time ? String(row.refund_time) : null,
+    payment_time: row.payment_time ? String(row.payment_time) : null,
+  }));
+}
+
+export type PriorityMassMessageRow = {
+  priority_mass_message_id: string;
+  creator_infloww_id: string;
+  model_record_id: string | null;
+  employee_id: string | null;
+  status: string | null;
+  price: number;
+  revenue: number;
+  number_of_times_sent: number;
+  number_of_purchases: number;
+  message_preview: string | null;
+  sent_time: string | null;
+  created_time: string | null;
+};
+
+export async function listPriorityMassMessages(params: {
+  startYmd?: string;
+  endYmd?: string;
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+  employeeId?: string;
+  limit?: number;
+}): Promise<PriorityMassMessageRow[]> {
+  const sb = getSupabaseServiceClient();
+  let q = sb
+    .from("infloww_priority_mass_messages")
+    .select(
+      "priority_mass_message_id, creator_infloww_id, model_record_id, employee_id, status, price, revenue, number_of_times_sent, number_of_purchases, message_preview, sent_time, created_time"
+    )
+    .order("sent_time", { ascending: false, nullsFirst: false })
+    .limit(params.limit ?? 500);
+  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+  if (params.employeeId) q = q.eq("employee_id", params.employeeId);
+  if (params.startYmd) {
+    q = q.gte("sent_time", `${params.startYmd}T00:00:00.000Z`);
+  }
+  if (params.endYmd) {
+    q = q.lte("sent_time", `${params.endYmd}T23:59:59.999Z`);
+  }
+  const { data, error } = await q;
+  if (error) throw new Error(`listPriorityMassMessages: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    priority_mass_message_id: String(row.priority_mass_message_id),
+    creator_infloww_id: String(row.creator_infloww_id),
+    model_record_id: row.model_record_id ? String(row.model_record_id) : null,
+    employee_id: row.employee_id ? String(row.employee_id) : null,
+    status: row.status ? String(row.status) : null,
+    price: n(row.price),
+    revenue: n(row.revenue),
+    number_of_times_sent: Math.round(n(row.number_of_times_sent)),
+    number_of_purchases: Math.round(n(row.number_of_purchases)),
+    message_preview: row.message_preview ? String(row.message_preview) : null,
+    sent_time: row.sent_time ? String(row.sent_time) : null,
+    created_time: row.created_time ? String(row.created_time) : null,
+  }));
 }

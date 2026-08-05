@@ -24,7 +24,8 @@ function isCronAuthorized(request: Request): boolean {
  * Syncs Infloww-safe today + previous day for:
  * 1) Employee daily stats (users with infloww_employee_id)
  * 2) Creator earnings (modelss matched to Infloww creators — transactions,
- *    creator-report, marketing links/fans; re-syncs status=loading txs)
+ *    creator-report incl. renew-on, marketing links/fans, refunds,
+ *    priority mass messages; re-syncs status=loading txs)
  *
  * Cadence: daily via vercel.json (Hobby max). For more frequent runs use the
  * GitHub Actions / external cron path — see docs/infloww-employee-performance.md
@@ -52,13 +53,17 @@ export async function GET(request: Request) {
       creator.dailyStats.errors.length +
       creator.transactions.errors.length +
       creator.marketingLinks.errors.length +
-      creator.linkFans.errors.length;
+      creator.linkFans.errors.length +
+      creator.refunds.errors.length +
+      creator.priorityMassMessages.errors.length;
     if (creatorErrorCount > 0) {
       console.error("[cron/sync-infloww-stats] creator errors", {
         count: creatorErrorCount,
         dailyStats: creator.dailyStats.errors.slice(0, 10),
         transactions: creator.transactions.errors.slice(0, 10),
         marketing: creator.marketingLinks.errors.slice(0, 10),
+        refunds: creator.refunds.errors.slice(0, 10),
+        pmm: creator.priorityMassMessages.errors.slice(0, 10),
       });
     }
 

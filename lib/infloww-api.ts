@@ -2064,6 +2064,7 @@ export function mergeCreatorDayStats(params: {
   fans: import("@/types/infloww").InflowwCreatorFansCountRow[];
   subscribers: import("@/types/infloww").InflowwCreatorSubscriberCountRow[];
   chat: import("@/types/infloww").InflowwCreatorChatSummaryRow[];
+  renewOn?: import("@/types/infloww").InflowwCreatorRenewOnRow[];
 }): import("@/types/infloww").InflowwCreatorDayStats[] {
   const map = new Map<string, import("@/types/infloww").InflowwCreatorDayStats>();
   const ensure = (platformPid: string, date: string) => {
@@ -2087,6 +2088,7 @@ export function mergeCreatorDayStats(params: {
         ppvsSent: 0,
         fansChatted: 0,
         replyTimeMs: null,
+        fansWithRenewOn: 0,
       };
       map.set(k, row);
     }
@@ -2125,8 +2127,234 @@ export function mergeCreatorDayStats(params: {
     row.fansChatted = c.fansChatted;
     row.replyTimeMs = c.replyTimeMs;
   }
+  for (const r of params.renewOn ?? []) {
+    if (!r.date || !r.platformPid) continue;
+    const row = ensure(r.platformPid, r.date);
+    row.fansWithRenewOn = r.fansWithRenewOn;
+  }
 
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+function mapRefundRow(
+  row: unknown,
+  creatorId: string
+): import("@/types/infloww").InflowwRefund {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const refundId = String(
+    r["id"] ?? r["refundId"] ?? r["refund_id"] ?? r["transactionId"] ?? r["transaction_id"] ?? ""
+  );
+  const transactionId = String(r["transactionId"] ?? r["transaction_id"] ?? refundId);
+  const refundTimeMs =
+    msField(r, ["refundTime", "refund_time"]) ||
+    msField(r, ["createdTime", "created_time"]) ||
+    Date.now();
+  return {
+    refundId: refundId || `${creatorId}-${transactionId}-${refundTimeMs}`,
+    transactionId,
+    creatorId,
+    fanId: strField(r, ["fanId", "fan_id"]),
+    paymentAmount: centsToDollars(r["paymentAmount"] ?? r["payment_amount"] ?? r["amount"]),
+    transactionType: strField(r, ["transactionType", "transaction_type", "type"]),
+    paymentStatus: strField(r, ["paymentStatus", "payment_status", "status"]),
+    currency: strField(r, ["currency"]) ?? "USD",
+    paymentTimeMs: (() => {
+      const ms = msField(r, ["paymentTime", "payment_time"]);
+      return ms > 0 ? ms : null;
+    })(),
+    refundTimeMs,
+  };
+}
+
+function mapRenewOnRow(row: unknown): import("@/types/infloww").InflowwCreatorRenewOnRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    platformPid: String(r["platformPid"] ?? r["platform_pid"] ?? ""),
+    date: ymdField(r) ?? "",
+    fansWithRenewOn: Math.round(
+      numField(r, ["fansWithRenewOn", "fans_with_renew_on", "renewOnFans", "renew_on_fans"])
+    ),
+    creatorId: strField(r, ["creatorId", "creator_id"]),
+  };
+}
+
+function mapPriorityMassMessage(
+  row: unknown,
+  creatorId: string
+): import("@/types/infloww").InflowwPriorityMassMessage {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const priorityMassMessageId = String(
+    r["priorityMassMessageId"] ??
+      r["priority_mass_message_id"] ??
+      r["id"] ??
+      r["messageId"] ??
+      r["message_id"] ??
+      ""
+  );
+  const targeting =
+    r["targetingRules"] ??
+    r["targeting_rules"] ??
+    r["rules"] ??
+    r["audience"] ??
+    r["filters"] ??
+    null;
+  return {
+    priorityMassMessageId,
+    creatorId,
+    employeeId: strField(r, ["employeeId", "employee_id", "attributeEmployeeId"]),
+    status: strField(r, ["status"]),
+    price: centsToDollars(r["price"] ?? r["messagePrice"] ?? r["message_price"]),
+    revenue: centsToDollars(
+      r["revenue"] ?? r["salesAmount"] ?? r["sales_amount"] ?? r["earnings"] ?? r["earningsGross"]
+    ),
+    numberOfTimesSent: Math.round(
+      numField(r, ["numberOfTimesSent", "number_of_times_sent", "timesSent", "sentCount"])
+    ),
+    numberOfPurchases: Math.round(
+      numField(r, ["numberOfPurchases", "number_of_purchases", "purchases", "purchaseCount"])
+    ),
+    targetingRules: targeting,
+    messagePreview: strField(r, [
+      "message",
+      "messagePreview",
+      "message_preview",
+      "text",
+      "preview",
+    ]),
+    createdTimeMs: (() => {
+      const ms = msField(r, ["createdTime", "created_time"]);
+      return ms > 0 ? ms : null;
+    })(),
+    sentTimeMs: (() => {
+      const ms = msField(r, ["sentTime", "sent_time", "sendTime", "send_time"]);
+      return ms > 0 ? ms : null;
+    })(),
+    currency: strField(r, ["currency"]) ?? "USD",
+  };
+}
+
+/**
+ * GET /v1/refunds — creator refunds (tips/PPV/etc.).
+ * Uses unix-ms startTime/endTime; ~1h Infloww sync delay. Paginates with cursor.
+ * Auto-chunks ranges longer than 31 calendar days.
+ */
+export async function fetchCreatorRefunds(params: {
+  creatorId: string;
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwRefund[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwRefund[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const startMs = athensYmdStartUtcMs(chunk.startYmd);
+    let endMs = athensYmdEndUtcMs(chunk.endYmd);
+    const safeEnd = Date.now() - 2000;
+    if (endMs > safeEnd) endMs = safeEnd;
+    if (endMs < startMs) continue;
+    const times = txTimeQueryParams(startMs, endMs);
+    const base = new URLSearchParams({
+      creatorId: params.creatorId,
+      startTime: times.startTime,
+      endTime: times.endTime,
+      limit: "100",
+    });
+    try {
+      const rows = await paginateCreatorList("/refunds", base);
+      for (const row of rows) {
+        const mapped = mapRefundRow(row, params.creatorId);
+        if (mapped.refundId) out.push(mapped);
+      }
+    } catch (e) {
+      if (e instanceof InflowwApiError && e.status === 400) {
+        inflowwDebug("refunds skipped (400)", {
+          creatorId: params.creatorId,
+          message: e.message,
+        });
+        continue;
+      }
+      throw e;
+    }
+  }
+  return out;
+}
+
+/**
+ * GET /v1/creator-report/fans/renew-on — daily fansWithRenewOn per creator.
+ * creatorIds up to 10; date range uses YYYY-MM-DD bounds (same as other creator-report).
+ */
+export async function fetchCreatorFansRenewOn(params: {
+  creatorIds: string[];
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwCreatorRenewOnRow[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwCreatorRenewOnRow[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateCreatorReport("/creator-report/fans/renew-on", {
+      ...times,
+      creatorIds: params.creatorIds,
+    });
+    for (const row of rows) {
+      const mapped = mapRenewOnRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      if (mapped.date && mapped.platformPid) out.push(mapped);
+    }
+  }
+  return out;
+}
+
+/**
+ * GET /v1/priority-mass-messages — priority mass message campaigns for one creator.
+ * creatorId required; optional employeeIds filter. Uses unix-ms startTime/endTime.
+ * Auto-chunks ranges longer than 31 calendar days.
+ */
+export async function fetchPriorityMassMessages(params: {
+  creatorId: string;
+  startYmd: string;
+  endYmd: string;
+  employeeIds?: string[];
+}): Promise<import("@/types/infloww").InflowwPriorityMassMessage[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwPriorityMassMessage[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const startMs = athensYmdStartUtcMs(chunk.startYmd);
+    let endMs = athensYmdEndUtcMs(chunk.endYmd);
+    const safeEnd = Date.now() - 2000;
+    if (endMs > safeEnd) endMs = safeEnd;
+    if (endMs < startMs) continue;
+    const times = txTimeQueryParams(startMs, endMs);
+    const base = new URLSearchParams({
+      creatorId: params.creatorId,
+      startTime: times.startTime,
+      endTime: times.endTime,
+      limit: "100",
+      platformCode: "OnlyFans",
+    });
+    for (const empId of params.employeeIds ?? []) {
+      if (empId.trim()) base.append("employeeIds", empId.trim());
+    }
+    try {
+      const rows = await paginateCreatorList("/priority-mass-messages", base);
+      for (const row of rows) {
+        const mapped = mapPriorityMassMessage(row, params.creatorId);
+        if (mapped.priorityMassMessageId) out.push(mapped);
+      }
+    } catch (e) {
+      if (e instanceof InflowwApiError && e.status === 400) {
+        inflowwDebug("priority-mass-messages skipped (400)", {
+          creatorId: params.creatorId,
+          message: e.message,
+        });
+        continue;
+      }
+      throw e;
+    }
+  }
+  return out;
 }
 
 export { CREATOR_REPORT_MAX_CREATOR_IDS, CREATOR_LINK_TYPES };

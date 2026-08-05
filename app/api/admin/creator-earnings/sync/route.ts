@@ -30,6 +30,8 @@ export async function POST(request: Request) {
     skipMarketing?: boolean;
     skipTransactions?: boolean;
     skipDailyStats?: boolean;
+    skipRefunds?: boolean;
+    skipPriorityMassMessages?: boolean;
   } = {};
   try {
     body = (await request.json()) as typeof body;
@@ -54,12 +56,16 @@ export async function POST(request: Request) {
       skipMarketing: body.skipMarketing,
       skipTransactions: body.skipTransactions,
       skipDailyStats: body.skipDailyStats,
+      skipRefunds: body.skipRefunds,
+      skipPriorityMassMessages: body.skipPriorityMassMessages,
     });
     const errCount =
       result.dailyStats.errors.length +
       result.transactions.errors.length +
       result.marketingLinks.errors.length +
-      result.linkFans.errors.length;
+      result.linkFans.errors.length +
+      result.refunds.errors.length +
+      result.priorityMassMessages.errors.length;
     return NextResponse.json({ success: errCount === 0, ...result });
   } catch (err) {
     console.error("[admin/creator-earnings/sync]", err);
