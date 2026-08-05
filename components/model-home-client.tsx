@@ -11,6 +11,7 @@ import {
   type ModelGoLivePlatformOption,
   modelLiveStreamPlatformLabel,
 } from "@/lib/airtable-options";
+import { VA_BTN_PRIMARY, VA_CARD } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import { useTranslations } from "@/lib/use-translations";
 import { useRealtime } from "@/contexts/realtime-context";
@@ -48,6 +49,10 @@ function formatLiveDuration(totalSec: number): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+function isOptimisticLiveId(id: string): boolean {
+  return id.startsWith("optimistic-");
+}
+
 export function ModelHomeClient({
   displayName,
   userEmail,
@@ -70,6 +75,8 @@ export function ModelHomeClient({
   const pendingLiveIdRef = React.useRef<string | null>(null);
   /** SSR-seeded live — first client fetch must not clear until server confirms absent. */
   const ssrActiveLiveRef = React.useRef<ModelHomeActiveLive | null>(activeLiveProp ?? null);
+  /** Snapshot for rolling back optimistic End Live. */
+  const endRollbackRef = React.useRef<ModelHomeActiveLive | null>(null);
 
   const setLiveState = React.useCallback((live: ModelHomeActiveLive | null) => {
     setActiveLive(live);
@@ -108,20 +115,29 @@ export function ModelHomeClient({
 
   React.useEffect(() => {
     if (pendingLiveIdRef.current) return;
+    if (endRollbackRef.current) return;
     if (activeLiveProp) {
       setActiveLive(activeLiveProp);
       ssrActiveLiveRef.current = activeLiveProp;
     }
   }, [activeLiveProp]);
 
+  // SSR already seeds live state — avoid racing first paint. When SSR said not-live,
+  // confirm immediately; when SSR said live, defer a quiet reconcile.
   React.useEffect(() => {
-    void fetchActiveLive();
-  }, [fetchActiveLive]);
+    const delayMs = activeLiveProp ? 2200 : 0;
+    const id = window.setTimeout(() => {
+      void fetchActiveLive();
+    }, delayMs);
+    return () => window.clearTimeout(id);
+  }, [fetchActiveLive, activeLiveProp]);
 
   React.useEffect(() => {
     if (!realtime?.subscribe) return;
     return realtime.subscribe((event) => {
       if (event.type === "model_live_started" || event.type === "model_live_ended") {
+        // Skip while our own start/end is in flight — optimistic UI owns the card.
+        if (pendingLiveIdRef.current || endRollbackRef.current) return;
         void fetchActiveLive();
       }
     });
@@ -148,6 +164,15 @@ export function ModelHomeClient({
 
   const handleStartLive = React.useCallback(async () => {
     setActionError(null);
+    const optimisticId = `optimistic-${Date.now()}`;
+    const optimisticStartedAt = new Date().toISOString();
+    pendingLiveIdRef.current = optimisticId;
+    // Instant visual confirmation — don't wait for the network.
+    setLiveState({
+      id: optimisticId,
+      platform,
+      started_at: optimisticStartedAt,
+    });
     setIsStarting(true);
     try {
       const res = await fetch("/api/model/live/start", {
@@ -160,17 +185,21 @@ export function ModelHomeClient({
       try {
         data = raw ? (JSON.parse(raw) as typeof data) : {};
       } catch {
+        pendingLiveIdRef.current = null;
+        setLiveState(null);
         setActionError(t("common.invalidResponse"));
         return;
       }
       if (!res.ok) {
+        pendingLiveIdRef.current = null;
+        setLiveState(null);
         if (res.status === 409) {
           setActionError("A live stream is already active. Please end it first.");
-          await fetchActiveLive();
+          void fetchActiveLive();
         } else if (res.status === 403) {
           setActionError("You don't have permission to start a live stream.");
         } else {
-          setActionError(data.error ?? "Could not start live stream. Please try again.");
+          setActionError(data.error ?? t("home.couldNotStartLive"));
         }
         return;
       }
@@ -179,11 +208,12 @@ export function ModelHomeClient({
         setLiveState({
           id: data.live_id,
           platform: data.platform ?? platform,
-          started_at: data.started_at ?? new Date().toISOString(),
+          started_at: data.started_at ?? optimisticStartedAt,
         });
       }
       setActionError(null);
-      await fetchActiveLive();
+      // Reconcile in the background — don't block the live UI.
+      void fetchActiveLive();
       router.refresh();
     } finally {
       setIsStarting(false);
@@ -192,41 +222,55 @@ export function ModelHomeClient({
 
   const handleEndLive = React.useCallback(async () => {
     setActionError(null);
+    const previous = activeLive;
+    const liveId = previous?.id && !isOptimisticLiveId(previous.id) ? previous.id : undefined;
+    endRollbackRef.current = previous;
+    pendingLiveIdRef.current = null;
+    ssrActiveLiveRef.current = null;
+    // Instant not-live confirmation.
+    setLiveState(null);
     setIsEnding(true);
     try {
       const res = await fetch("/api/model/live/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(activeLive?.id ? { live_id: activeLive.id } : {}),
+        body: JSON.stringify(liveId ? { live_id: liveId } : {}),
       });
       const raw = await res.text();
       let data: { error?: string } = {};
       try {
         data = raw ? (JSON.parse(raw) as { error?: string }) : {};
       } catch {
+        if (endRollbackRef.current) setLiveState(endRollbackRef.current);
+        endRollbackRef.current = null;
         setActionError(t("common.invalidResponse"));
         return;
       }
       if (!res.ok) {
+        if (endRollbackRef.current) setLiveState(endRollbackRef.current);
+        endRollbackRef.current = null;
         setActionError(data.error ?? t("home.couldNotEndLive"));
         return;
       }
-      pendingLiveIdRef.current = null;
-      ssrActiveLiveRef.current = null;
-      setLiveState(null);
+      endRollbackRef.current = null;
       setActionError(null);
-      await fetchActiveLive({ confirmAbsent: true });
+      void fetchActiveLive({ confirmAbsent: true });
       router.refresh();
     } finally {
       setIsEnding(false);
     }
-  }, [activeLive?.id, fetchActiveLive, router, setLiveState, t]);
+  }, [activeLive, fetchActiveLive, router, setLiveState, t]);
 
   const comingSoonCards = [
     { key: "today" as const, title: t("home.todayEarnings"), Icon: DollarSign },
     { key: "week" as const, title: t("home.weekEarnings"), Icon: TrendingUp },
     { key: "fans" as const, title: t("home.totalFans"), Icon: Heart },
   ] as const;
+
+  const isLive = activeLive != null;
+  const platformLabel = activeLive
+    ? modelLiveStreamPlatformLabel(activeLive.platform)
+    : modelLiveStreamPlatformLabel(platform);
 
   return (
     <div className="space-y-8 md:space-y-10">
@@ -258,71 +302,121 @@ export function ModelHomeClient({
       <motion.section
         initial={reduceMotion ? false : { opacity: 0, y: 14 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: reduceMotion ? 0 : 0.12, ease: [0.22, 1, 0.36, 1] }}
+        transition={{ duration: 0.4, delay: reduceMotion ? 0 : 0.08, ease: [0.22, 1, 0.36, 1] }}
         className={cn(
-          "relative overflow-hidden rounded-3xl border p-6 md:p-8",
-          activeLive
-            ? "border-red-500/35 bg-gradient-to-br from-red-950/40 via-black/50 to-zinc-950/40 shadow-[0_20px_70px_-36px_rgba(239,68,68,0.35),inset_0_1px_0_rgba(255,255,255,0.06)]"
-            : "border-white/10 bg-zinc-950/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl"
+          VA_CARD,
+          "relative overflow-hidden p-5 md:p-7",
+          isLive
+            ? "border border-[#FF1493]/35 bg-gradient-to-br from-[#FF1493]/18 via-[#151315] to-[#0D0B0D] shadow-[0_24px_64px_-28px_rgba(255,20,147,0.45),inset_0_1px_0_rgba(255,255,255,0.08)]"
+            : "border border-[#D4AF8C]/20 bg-gradient-to-br from-white/[0.06] via-[#151315] to-[#0D0B0D]"
         )}
       >
-        {!activeLive ? null : (
-          <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-red-500/20 blur-3xl" aria-hidden />
-        )}
-        <div className="relative space-y-6">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="flex items-start gap-3">
+        {isLive && !reduceMotion ? (
+          <>
+            <div
+              className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[#FF1493]/25 blur-3xl motion-safe:animate-pulse"
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute -bottom-20 left-0 h-36 w-36 rounded-full bg-[#D4AF8C]/12 blur-3xl"
+              aria-hidden
+            />
+          </>
+        ) : !isLive ? (
+          <div
+            className="pointer-events-none absolute -right-12 -top-12 h-36 w-36 rounded-full bg-[#D4AF8C]/10 blur-3xl"
+            aria-hidden
+          />
+        ) : null}
+
+        <div className="relative space-y-5">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
               <span
                 className={cn(
-                  "flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1",
-                  activeLive
-                    ? "bg-red-500/20 text-red-200 ring-red-400/35"
-                    : "bg-fuchsia-500/20 text-fuchsia-100 ring-fuchsia-400/25"
+                  "relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl ring-1",
+                  isLive
+                    ? "bg-[#FF1493]/20 text-[#FF1493] ring-[#FF1493]/40"
+                    : "bg-[#D4AF8C]/12 text-[#D4AF8C] ring-[#D4AF8C]/30"
                 )}
               >
-                <Radio className="h-6 w-6" aria-hidden />
+                {isLive && !reduceMotion ? (
+                  <span className="absolute inset-0 rounded-2xl bg-[#FF1493]/25 motion-safe:animate-ping opacity-40" aria-hidden />
+                ) : null}
+                <Radio className="relative h-6 w-6" aria-hidden />
               </span>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-white/50">{t("live.sectionLabel")}</p>
-                <h2 className="mt-1 text-lg font-semibold text-white md:text-xl">
-                  {activeLive ? t("home.youAreLive") : t("home.startLiveStream")}
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <p
+                    className={cn(
+                      "text-[10px] font-semibold uppercase tracking-[0.2em]",
+                      isLive ? "text-[#FF1493]/90" : "text-[#D4AF8C]/85"
+                    )}
+                  >
+                    {t("live.sectionLabel")}
+                  </p>
+                  {isLive ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-[#FF1493]/45 bg-[#FF1493]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-[#FF1493]">
+                      <span className="relative flex h-1.5 w-1.5">
+                        {!reduceMotion ? (
+                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#FF1493] opacity-75" />
+                        ) : null}
+                        <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#FF1493] shadow-[0_0_10px_rgba(255,20,147,0.9)]" />
+                      </span>
+                      {t("home.liveBadge")}
+                    </span>
+                  ) : (
+                    <span className="inline-flex rounded-md border border-[#D4AF8C]/25 bg-[#D4AF8C]/[0.06] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[#D4AF8C]/90">
+                      {t("home.notLive")}
+                    </span>
+                  )}
+                </div>
+                <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-white md:text-xl">
+                  {isLive ? t("home.youAreLive") : t("home.startLiveStream")}
                 </h2>
-                <p className="mt-2 max-w-lg text-sm text-white/55">
-                  {activeLive ? t("home.liveNotifyTeam") : t("home.livePickPlatform")}
+                <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-white/50">
+                  {isLive ? t("home.liveNotifyTeam") : t("home.livePickPlatform")}
                 </p>
               </div>
             </div>
           </div>
 
           {actionError ? (
-            <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-2 text-sm text-amber-100" role="alert">
+            <p className="rounded-xl border border-amber-500/35 bg-amber-500/10 px-4 py-2.5 text-sm text-amber-100" role="alert">
               {actionError}
             </p>
           ) : null}
 
-          {activeLive ? (
-            <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap items-center gap-4">
-                <span className="flex items-center gap-2" aria-live="polite">
-                  <span className="relative flex h-3 w-3 shrink-0">
-                    {!reduceMotion ? (
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-70" />
-                    ) : null}
-                    <span className="relative inline-flex h-3 w-3 rounded-full bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.9)]" />
-                  </span>
-                  <span className="text-sm font-medium text-white/90">{modelLiveStreamPlatformLabel(activeLive.platform)}</span>
-                  <span className="rounded-lg bg-white/10 px-3 py-1 font-mono text-sm tabular-nums text-white">
+          {isLive && activeLive ? (
+            <div className="space-y-4">
+              <div
+                className="grid grid-cols-2 gap-3 rounded-2xl border border-white/10 bg-black/35 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:gap-4"
+                aria-live="polite"
+              >
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                    {t("home.platform")}
+                  </p>
+                  <p className="mt-1 truncate text-base font-semibold text-white sm:text-lg">{platformLabel}</p>
+                </div>
+                <div className="min-w-0 text-right">
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/80">
+                    {t("home.liveDuration")}
+                  </p>
+                  <p className="mt-1 font-mono text-2xl font-semibold tabular-nums tracking-tight text-[#FF1493] sm:text-3xl">
                     {formatLiveDuration(elapsedSec)}
-                  </span>
-                </span>
+                  </p>
+                </div>
               </div>
+
               <button
                 type="button"
                 onClick={() => void handleEndLive()}
-                disabled={isEnding}
+                disabled={isEnding || isStarting}
                 className={cn(
-                  "inline-flex min-h-11 items-center justify-center gap-2 rounded-2xl border border-red-400/40 px-6 text-sm font-semibold text-red-100",
-                  "bg-red-500/15 transition hover:bg-red-500/25 disabled:cursor-not-allowed disabled:opacity-50"
+                  "inline-flex w-full min-h-12 items-center justify-center gap-2 rounded-xl border border-[#FF1493]/45 bg-[#FF1493]/15 px-6 text-sm font-semibold text-white",
+                  "shadow-[0_8px_28px_-12px_rgba(255,20,147,0.55)] transition hover:bg-[#FF1493]/25 active:scale-[0.99]",
+                  "disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:active:scale-100"
                 )}
               >
                 {isEnding ? (
@@ -334,12 +428,17 @@ export function ModelHomeClient({
                   t("home.endLive")
                 )}
               </button>
+              {isStarting ? (
+                <p className="text-center text-xs text-white/40">{t("home.starting")}</p>
+              ) : null}
             </div>
           ) : (
-            <>
+            <div className="space-y-4">
               <div>
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-white/40">{t("home.platform")}</p>
-                <div className="flex flex-wrap gap-2">
+                <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/75">
+                  {t("home.platform")}
+                </p>
+                <div className="grid grid-cols-3 gap-2">
                   {MODEL_GO_LIVE_PLATFORM_OPTIONS.map((p) => (
                     <button
                       key={p}
@@ -347,11 +446,12 @@ export function ModelHomeClient({
                       disabled={isStarting}
                       onClick={() => setPlatform(p)}
                       className={cn(
-                        "rounded-xl border px-4 py-2.5 text-sm font-medium transition",
+                        "min-h-11 rounded-xl border px-2 py-2.5 text-xs font-semibold transition sm:text-sm",
                         platform === p
-                          ? "border-pink-400/50 bg-pink-500/20 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
-                          : "border-white/10 bg-black/30 text-white/70 hover:border-white/20 hover:text-white/90",
-                        isStarting && "cursor-not-allowed opacity-45"
+                          ? "border-[#FF1493]/50 bg-[#FF1493]/18 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]"
+                          : "border-white/10 bg-black/30 text-white/65 hover:border-[#D4AF8C]/35 hover:text-white/90",
+                        isStarting && "cursor-not-allowed opacity-45",
+                        "motion-reduce:transition-none"
                       )}
                     >
                       {modelLiveStreamPlatformLabel(p)}
@@ -364,9 +464,8 @@ export function ModelHomeClient({
                 onClick={() => void handleStartLive()}
                 disabled={isStarting}
                 className={cn(
-                  "inline-flex w-full min-h-[52px] items-center justify-center gap-2 rounded-2xl px-6 py-4 text-base font-bold tracking-tight text-white shadow-lg transition",
-                  "bg-gradient-to-r from-pink-500 via-fuchsia-600 to-violet-600 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60",
-                  "ring-1 ring-white/15"
+                  VA_BTN_PRIMARY,
+                  "inline-flex w-full min-h-[52px] items-center justify-center gap-2 text-base font-bold tracking-tight"
                 )}
               >
                 {isStarting ? (
@@ -375,10 +474,13 @@ export function ModelHomeClient({
                     {t("home.starting")}
                   </>
                 ) : (
-                  t("home.startLive")
+                  <>
+                    <Radio className="h-5 w-5 shrink-0" aria-hidden />
+                    {t("home.startLive")}
+                  </>
                 )}
               </button>
-            </>
+            </div>
           )}
         </div>
       </motion.section>
