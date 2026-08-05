@@ -3,7 +3,7 @@
  * Production path is Supabase-only (infloww_daily_stats table).
  */
 
-import { getTodayYmdAthens, addDaysAthensYmd } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import {
   EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS,
   fetchEmployeeDayStats,
@@ -216,6 +216,8 @@ async function upsertDayStats(
 /**
  * Sync Infloww employee stats for a date range into `infloww_daily_stats`.
  * Defaults to previous Athens calendar day when dates omitted.
+ * `endYmd` is capped to {@link inflowwReportTodayYmd} (min Athens/UTC today)
+ * so Infloww never receives a future calendar `endTime`.
  * Upserts on `(user_id, infloww_performer_id, date)` — same-day re-sync overwrites.
  */
 export async function syncInflowwDailyStats(params?: {
@@ -225,7 +227,7 @@ export async function syncInflowwDailyStats(params?: {
   publicUserIds?: string[];
 }): Promise<InflowwSyncResult> {
   const today = inflowwReportTodayYmd();
-  const defaultDay = addDaysAthensYmd(getTodayYmdAthens(), -1);
+  const defaultDay = addDaysAthensYmd(today, -1);
   let startYmd = (params?.startYmd ?? defaultDay).slice(0, 10);
   let endYmd = (params?.endYmd ?? defaultDay).slice(0, 10);
   if (startYmd > endYmd) {

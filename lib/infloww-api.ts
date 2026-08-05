@@ -998,6 +998,24 @@ function assertEmployeeReportLookback(startYmd: string, endYmd: string): void {
   }
 }
 
+/** Cap end to Infloww-safe today before lookback asserts / API calls. */
+function clampEmployeeReportRange(
+  startYmd: string,
+  endYmd: string
+): { startYmd: string; endYmd: string } {
+  let start = startYmd.slice(0, 10);
+  let end = endYmd.slice(0, 10);
+  const today = inflowwReportTodayYmd();
+  if (end > today) end = today;
+  if (start > end) {
+    throw new InflowwApiError(
+      "Invalid date range: start is after end after capping endTime to today.",
+      400
+    );
+  }
+  return { startYmd: start, endYmd: end };
+}
+
 const PERFORMER_ID_KEYS = [
   "platformPid",
   "platform_pid",
@@ -1226,8 +1244,10 @@ async function paginateEmployeeReport(
 }
 
 /**
- * Infloww rejects endTime in its own "future" — often UTC calendar day —
- * so cap employee-report ranges to the earlier of Athens today and UTC today.
+ * Infloww rejects endTime in its own "future" — typically the UTC calendar day.
+ * Athens (UTC+2/+3) can already be "tomorrow" while UTC is still "yesterday",
+ * so employee-report `endTime` must never exceed the earlier of those two YMD
+ * strings. Always use this (not `getTodayYmdAthens`) when building sync ranges.
  */
 export function inflowwReportTodayYmd(): string {
   const athens = getTodayYmdAthens();
@@ -1269,8 +1289,7 @@ export async function fetchEmployeeSalesSummary(params: {
   endYmd: string;
   employeeIds?: number[];
 }): Promise<import("@/types/infloww").InflowwEmployeeSalesRow[]> {
-  const start = params.startYmd.slice(0, 10);
-  const end = params.endYmd.slice(0, 10);
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
   assertEmployeeReportLookback(start, end);
   const chunks = chunkDateRangeYmd(start, end);
   const out: import("@/types/infloww").InflowwEmployeeSalesRow[] = [];
@@ -1300,8 +1319,7 @@ export async function fetchEmployeeChatSummary(params: {
   endYmd: string;
   employeeIds?: number[];
 }): Promise<import("@/types/infloww").InflowwEmployeeChatRow[]> {
-  const start = params.startYmd.slice(0, 10);
-  const end = params.endYmd.slice(0, 10);
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
   assertEmployeeReportLookback(start, end);
   const chunks = chunkDateRangeYmd(start, end);
   const out: import("@/types/infloww").InflowwEmployeeChatRow[] = [];
@@ -1444,8 +1462,7 @@ export async function fetchEmployeeDayStats(params: {
   endYmd: string;
   employeeIds?: number[];
 }): Promise<import("@/types/infloww").InflowwEmployeeDayStats[]> {
-  const start = params.startYmd.slice(0, 10);
-  const end = params.endYmd.slice(0, 10);
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
   assertEmployeeReportLookback(start, end);
   const span = daysBetweenInclusive(start, end);
 

@@ -30,15 +30,20 @@ Sync reported `rowsUpserted: 1246` (exact upsert count), `errors: 0`. ~12 API re
 
 ## Cron
 
-`GET /api/cron/sync-infloww-stats` — **hourly** at minute 15 UTC (`15 * * * *` in `vercel.json`).
+`GET /api/cron/sync-infloww-stats` — **daily** at 03:15 UTC (`15 3 * * *` in `vercel.json`).
+(Hourly was briefly tried but Vercel Hobby rejects non-daily crons.)
 
-Each run syncs **today + yesterday** (Athens calendar) for all linked users so late Infloww updates are caught. Upsert key `(user_id, infloww_performer_id, date)` overwrites same-day rows.
+Each run syncs **Infloww-safe today + yesterday** for all linked users so late
+updates are caught. “Safe today” = `min(Athens YMD, UTC YMD)` via
+`inflowwReportTodayYmd()` — Athens can already be the next calendar day while
+UTC (and Infloww’s “past or present” check) is still the previous day.
+Upsert key `(user_id, infloww_performer_id, date)` overwrites same-day rows.
 
-### Expected API volume (hourly)
+### Expected API volume (daily)
 
 With 31-day chunking and dates present on API rows: **1 chunk × 2 endpoints (sales + chat) × N linked chatters**.
 
-| Linked chatters (N) | Requests / hourly run | vs 1000 req/min |
+| Linked chatters (N) | Requests / daily run | vs 1000 req/min |
 | --- | --- | --- |
 | 2 (current) | ~4 | Safe |
 | 50 | ~100 | Safe |
@@ -46,13 +51,20 @@ With 31-day chunking and dates present on API rows: **1 chunk × 2 endpoints (sa
 
 ## Manual / historical backfill
 
-Admin → **Chatter performance** → Custom range → **Sync now**.
+Admin → **Chatter performance** (`infloww_stats:view_all`):
 
-One-time ~90-day Production backfill (local, uses prod env):
+- **Sync now** — re-sync the currently viewed report range (end capped to safe today)
+- **Sync Last 3 Months** — `lookbackDays: 90` ending at safe today
+- **Sync Last Year** — `lookbackDays: 366` (Infloww max) ending at safe today
+
+Ranges &gt;31 days are auto-chunked with global request spacing (`INFLOWW_MIN_REQUEST_INTERVAL_MS`, default 200ms).
+
+One-time CLI backfill (local, uses prod env):
 
 ```bash
 vercel env pull .env.production.local --environment production --yes
 npx tsx scripts/backfill-infloww-90d.ts
+# or LOOKBACK_DAYS=366 npx tsx scripts/backfill-infloww-90d.ts
 ```
 
 Or:
@@ -61,7 +73,7 @@ Or:
 curl -X POST "$APP_URL/api/admin/infloww-stats/sync" \
   -H "Cookie: <admin session>" \
   -H "Content-Type: application/json" \
-  -d '{"startYmd":"2026-05-08","endYmd":"2026-08-05"}'
+  -d '{"lookbackDays":90}'
 ```
 
 Employee reports: ranges &gt;31 days are auto-chunked. Day-by-day fallback only if API rows omit dates.

@@ -318,6 +318,8 @@ export function AdminInflowwPerformanceClient({
   const [sortDir, setSortDir] = React.useState<"asc" | "desc">("desc");
   const [loading, setLoading] = React.useState(false);
   const [syncing, setSyncing] = React.useState(false);
+  /** Which sync button is active (`now` | `90` | `366`). */
+  const [syncKind, setSyncKind] = React.useState<"now" | "90" | "366" | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [dismissedWhales, setDismissedWhales] = React.useState<Set<string>>(new Set());
@@ -373,19 +375,20 @@ export function AdminInflowwPerformanceClient({
     }
   }
 
-  async function syncNow() {
+  async function runSync(
+    kind: "now" | "90" | "366",
+    bodyPayload: Record<string, unknown>
+  ) {
     setSyncing(true);
+    setSyncKind(kind);
     setSyncMsg(null);
     setError(null);
     try {
-      const startYmd = preset === "custom" ? customStart : data.range.startYmd;
-      const endYmd = preset === "custom" ? customEnd : data.range.endYmd;
       const res = await fetch("/api/admin/infloww-stats/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startYmd,
-          endYmd,
+          ...bodyPayload,
           publicUserIds: filterUserId ? [filterUserId] : undefined,
         }),
       });
@@ -393,6 +396,8 @@ export function AdminInflowwPerformanceClient({
         error?: string;
         rowsUpserted?: number;
         usersTargeted?: number;
+        startYmd?: string;
+        endYmd?: string;
         errors?: Array<{ employeeId: number; message: string; status?: number }>;
       };
       if (!res.ok) throw new Error(body.error || `Sync failed (${res.status})`);
@@ -405,8 +410,10 @@ export function AdminInflowwPerformanceClient({
               .slice(0, 3)
               .map((e) => `#${e.employeeId}${e.status ? ` (${e.status})` : ""} ${e.message}`)
               .join(" · ")}${errCount > 3 ? ` (+${errCount - 3} more)` : ""}`;
+      const range =
+        body.startYmd && body.endYmd ? ` (${body.startYmd} → ${body.endYmd})` : "";
       setSyncMsg(
-        `Synced ${body.rowsUpserted ?? 0} rows for ${body.usersTargeted ?? 0} users` +
+        `Synced ${body.rowsUpserted ?? 0} rows for ${body.usersTargeted ?? 0} users${range}` +
           (errCount ? ` (${errCount} employee error(s)${detail})` : "")
       );
       if (errCount > 0) {
@@ -422,7 +429,25 @@ export function AdminInflowwPerformanceClient({
       setError(e instanceof Error ? e.message : "Sync failed");
     } finally {
       setSyncing(false);
+      setSyncKind(null);
     }
+  }
+
+  /** Sync the currently viewed report range (endTime capped server-side to Infloww-safe today). */
+  function syncNow() {
+    const startYmd = preset === "custom" ? customStart : data.range.startYmd;
+    const endYmd = preset === "custom" ? customEnd : data.range.endYmd;
+    return runSync("now", { startYmd, endYmd });
+  }
+
+  /** ~90-day backfill ending at Infloww-safe today (31-day chunks server-side). */
+  function syncLast3Months() {
+    return runSync("90", { lookbackDays: 90 });
+  }
+
+  /** Full Infloww lookback (366 days max) ending at Infloww-safe today. */
+  function syncLastYear() {
+    return runSync("366", { lookbackDays: 366 });
   }
 
   function toggleSort(key: SortKey) {
@@ -516,15 +541,37 @@ export function AdminInflowwPerformanceClient({
                 if (p !== "custom") void load({ preset: p });
               }}
             />
-            <button
-              type="button"
-              disabled={syncing}
-              onClick={() => void syncNow()}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF8C]/40 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-semibold text-[#D4AF8C] disabled:opacity-50"
-            >
-              <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-              Sync now
-            </button>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncNow()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF8C]/40 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-semibold text-[#D4AF8C] disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "now" && "animate-spin")} />
+                Sync now
+              </button>
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncLast3Months()}
+                title="Backfill ~90 days ending at Infloww-safe today (31-day chunks)"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "90" && "animate-spin")} />
+                Sync Last 3 Months
+              </button>
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncLastYear()}
+                title="Backfill up to 366 days ending at Infloww-safe today (31-day chunks)"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "366" && "animate-spin")} />
+                Sync Last Year
+              </button>
+            </div>
           </div>
         ) : null}
       </motion.div>

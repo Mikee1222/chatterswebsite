@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { getTodayYmdAthens, addDaysAthensYmd } from "@/lib/airtable-datetime";
+import { addDaysAthensYmd } from "@/lib/airtable-datetime";
+import { inflowwReportTodayYmd } from "@/lib/infloww-api";
 import { syncInflowwDailyStats } from "@/services/infloww-daily-stats";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +20,9 @@ function isCronAuthorized(request: Request): boolean {
 
 /**
  * GET /api/cron/sync-infloww-stats
- * Hourly: syncs today + yesterday (Athens) for all users with infloww_employee_id.
+ * Daily (Hobby): syncs Infloww-safe today + previous day for all users with
+ * infloww_employee_id. endTime uses min(Athens today, UTC today) so Infloww
+ * never sees a "future" calendar day across the Athens/UTC boundary.
  * Upserts on (user_id, infloww_performer_id, date) so same-day re-runs overwrite.
  */
 export async function GET(request: Request) {
@@ -27,7 +30,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const today = getTodayYmdAthens();
+    const today = inflowwReportTodayYmd();
     const yesterday = addDaysAthensYmd(today, -1);
     const result = await syncInflowwDailyStats({
       startYmd: yesterday,
