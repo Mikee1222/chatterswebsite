@@ -79,7 +79,9 @@ function resolveRolePermissions(roleId: string, stored: Permission[]): Permissio
 }
 ```
 
-**Critical implication:** Any permission listed in `CHATTER_PERMISSIONS`, `VA_PERMISSIONS`, or `DEFAULT_ROLE_PERMISSIONS.admin/manager` becomes a **mandatory floor** for that system role. Stored Airtable toggles can only **add** permissions, not remove floor grants.
+**Critical implication:** Any permission listed in `CHATTER_PERMISSIONS`, `VA_PERMISSIONS`, or `DEFAULT_ROLE_PERMISSIONS.admin/manager` becomes a **mandatory floor** for that system role. Stored Airtable/Supabase toggles can only **add** permissions, not remove floor grants.
+
+**Inverse implication:** Removing a permission from a code default array does **not** revoke it if it remains in the stored role `permissions` JSON. Update the Chatter/VA role row in Supabase (and Airtable when dual-used) surgically. `mistakes:view` is intentionally **not** a chatter default (VA/admin submission only); chatters keep it only if an admin grants it via Roles UI.
 
 **Opt-in permissions** (blur tool, winner videos submit, video transcribe, my profiles) are intentionally **excluded** from VA/chatter defaults. For manager, they're in `MANAGER_EXCLUDED` so the Roles UI toggle stays authoritative.
 

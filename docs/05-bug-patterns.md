@@ -199,6 +199,14 @@ Because `resolveRolePermissions()` **union-merges** code defaults:
 
 Documented example: `winner_videos:submit`, `blur_tool:access`, `video_transcribe:access`.
 
+### Inverse bug: removing a default does not revoke stored grants
+
+`resolveRolePermissions()` **unions** code defaults into stored permissions but **never strips** previously stored grants. So removing `mistakes:view` from `CHATTER_PERMISSIONS` in code leaves Production chatters with Mistakes nav/forms until the **roles** row is updated in Supabase (and Airtable if dual-used).
+
+**Fix:** surgically remove the permission from the Chatter role `permissions` JSON. Permissions are loaded per request (60s in-memory RBAC cache) — re-login is not required; wait for cache TTL or a fresh serverless instance.
+
+Incident (2026-08): `test@gmail.com` (role=chatter) still saw Mistakes after the code default removal for this reason.
+
 ---
 
 ## 9. Nav / page permission drift
