@@ -184,7 +184,18 @@ function pickArray(payload: unknown, depth = 0): unknown[] {
   if (Array.isArray(payload)) return payload;
   if (payload && typeof payload === "object") {
     const o = payload as Record<string, unknown>;
-    const candidateKeys = ["data", "results", "items", "creators", "transactions", "records", "list", "rows", "content"];
+    const candidateKeys = [
+      "data",
+      "results",
+      "items",
+      "creators",
+      "employees",
+      "transactions",
+      "records",
+      "list",
+      "rows",
+      "content",
+    ];
     for (const k of candidateKeys) {
       const maybe = o[k];
       if (Array.isArray(maybe)) return maybe;
@@ -658,6 +669,97 @@ export async function getInflowwEarningsSnapshot(params: {
   });
 
   return { earnings, models, transactions, totals };
+}
+
+// ---------------------------------------------------------------------------
+// Employee list — GET /employees (Employee data → Employee list)
+// ---------------------------------------------------------------------------
+
+function mapEmployeeRow(row: unknown, idx: number): import("@/types/infloww").InflowwEmployee {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const nested =
+    r["employee"] && typeof r["employee"] === "object" ? (r["employee"] as Record<string, unknown>) : null;
+  const nestedUser =
+    r["user"] && typeof r["user"] === "object" ? (r["user"] as Record<string, unknown>) : null;
+  const employeeId =
+    idField(r, ["employeeId", "employee_id", "employeeID", "id"]) ||
+    idField(nested ?? {}, ["employeeId", "employee_id", "id"]) ||
+    idField(nestedUser ?? {}, ["employeeId", "id"]);
+  const name =
+    strField(r, ["name", "fullName", "full_name", "displayName", "display_name", "employeeName"]) ??
+    strField(nested ?? {}, ["name", "fullName", "displayName"]) ??
+    strField(nestedUser ?? {}, ["name", "fullName", "displayName"]) ??
+    (employeeId ? `Employee ${employeeId}` : `Employee ${idx + 1}`);
+  const email =
+    strField(r, ["email", "emailAddress", "email_address"]) ??
+    strField(nested ?? {}, ["email"]) ??
+    strField(nestedUser ?? {}, ["email"]);
+  const status =
+    strField(r, ["status", "employeeStatus", "employee_status", "state", "activeStatus"]) ??
+    strField(nested ?? {}, ["status"]);
+  const username =
+    strField(r, ["username", "userName", "user_name", "login"]) ??
+    strField(nested ?? {}, ["username"]) ??
+    strField(nestedUser ?? {}, ["username"]);
+  const role =
+    strField(r, ["role", "roleName", "role_name", "jobTitle", "job_title", "title"]) ??
+    strField(nested ?? {}, ["role", "roleName"]);
+  return {
+    employeeId,
+    name,
+    ...(email ? { email } : {}),
+    ...(status ? { status } : {}),
+    ...(username ? { username } : {}),
+    ...(role ? { role } : {}),
+  };
+}
+
+/**
+ * Fetch all agency employees from Infloww (`GET /v1/employees`).
+ * Paginates with `cursor` + `limit` (and `hasMore` when present), same pattern as `/creators`.
+ */
+export async function fetchInflowwEmployees(): Promise<import("@/types/infloww").InflowwEmployee[]> {
+  const out: import("@/types/infloww").InflowwEmployee[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  const MAX_PAGES = 200;
+  do {
+    pages += 1;
+    if (pages > MAX_PAGES) {
+      throw new InflowwApiError(`Infloww /employees: exceeded max pagination pages (${MAX_PAGES}).`, 500);
+    }
+    const qp = new URLSearchParams({ limit: "100" });
+    if (cursor) qp.set("cursor", cursor);
+    const payload = await inflowwFetchJson<unknown>("/employees", qp);
+    const rows = pickArray(payload);
+    inflowwDebug("employees page", {
+      page: pages,
+      rowCount: rows.length,
+      hasMore: hasMoreFrom(payload),
+      hasCursor: Boolean(cursorFromPayload(payload)),
+    });
+    for (let i = 0; i < rows.length; i++) {
+      const mapped = mapEmployeeRow(rows[i], out.length + i);
+      if (mapped.employeeId > 0) out.push(mapped);
+    }
+    const more = hasMoreFrom(payload);
+    const next = cursorFromPayload(payload) ?? nextCursorFrom(payload);
+    if (more) {
+      if (!next) {
+        throw new InflowwApiError("Infloww /employees: hasMore=true but no cursor returned.", 502);
+      }
+      cursor = next;
+    } else if (next && rows.length > 0) {
+      // Creators-style: nextCursor without hasMore
+      cursor = next;
+    } else {
+      cursor = undefined;
+    }
+    if (rows.length === 0) break;
+  } while (cursor);
+
+  out.sort((a, b) => a.name.localeCompare(b.name) || a.employeeId - b.employeeId);
+  return out;
 }
 
 // ---------------------------------------------------------------------------

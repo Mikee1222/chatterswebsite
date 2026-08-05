@@ -14,6 +14,8 @@ Auth headers: `Authorization: <API key>` and `x-oid: <OID>`.
 
 Accounts → edit user → **Infloww employee ID** (numeric). Stored as `users.infloww_employee_id`.
 
+To find IDs: Admin → **Chatter performance** → **Employee ID lookup** table (live `GET /v1/employees`). Requires `INFLOWW_API_KEY` + `INFLOWW_AGENCY_OID` in Vercel env.
+
 ## Cron
 
 `GET /api/cron/sync-infloww-stats` — daily **03:15 UTC** (`vercel.json`). Syncs the previous Athens calendar day for all linked users.
@@ -33,7 +35,10 @@ curl -X POST "$APP_URL/api/admin/infloww-stats/sync" \
 
 ## Endpoints used
 
+- `GET /v1/employees` — agency employee list (id / name / email / status) for linking accounts
 - `GET /v1/employee-report/employee-sales-summary`
 - `GET /v1/employee-report/employee-chat-summary`
 
-Params: `platformCode=OnlyFans`, ISO `startTime`/`endTime`, optional `employeeIds`, cursor pagination via `hasMore`/`cursor`. Ranges &gt;31 days are chunked (or day-by-day for attribution).
+Employee list: cursor pagination via `cursor`/`limit` (and `hasMore` when present).
+
+Employee reports params: `platformCode=OnlyFans`, ISO `startTime`/`endTime`, optional `employeeIds`, cursor pagination via `hasMore`/`cursor`. Ranges &gt;31 days are chunked (or day-by-day for attribution).

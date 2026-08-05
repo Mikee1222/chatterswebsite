@@ -10,6 +10,7 @@ import type {
   InflowwChatterPerformance,
   InflowwStatsPreset,
 } from "@/services/infloww-performance";
+import { AdminInflowwEmployeesLookup } from "@/components/admin-infloww-employees-lookup";
 
 const PRESETS: { id: InflowwStatsPreset; label: string }[] = [
   { id: "this_week", label: "This Week" },
@@ -431,6 +432,8 @@ export function AdminInflowwPerformanceClient({
           sorted.map((row) => <ChatterRow key={row.user_uuid} row={row} />)
         )}
       </div>
+
+      <AdminInflowwEmployeesLookup />
     </div>
   );
 }

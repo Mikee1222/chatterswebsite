@@ -32,6 +32,16 @@ export interface InflowwEarningsResponse {
   };
 }
 
+/** Row from Infloww Employee list (`GET /v1/employees`) for ID lookup. */
+export interface InflowwEmployee {
+  employeeId: number;
+  name: string;
+  email?: string;
+  status?: string;
+  username?: string;
+  role?: string;
+}
+
 /** One employee × performer × day row from Infloww employee-report endpoints. */
 export interface InflowwEmployeeSalesRow {
   employeeId: number;
