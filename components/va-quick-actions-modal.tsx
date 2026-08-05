@@ -228,8 +228,10 @@ export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloat
     };
   }, [shadowbanModalOpen]);
 
-  if (getEffectiveStaffRole(user) !== "virtual_assistant" || fabHiddenByOverlay) return null;
+  if (getEffectiveStaffRole(user) !== "virtual_assistant") return null;
 
+  // Never return null while open: our sheet is role=dialog, which sets fabHiddenByOverlay
+  // via MutationObserver. Unmounting the sheet would clear the dialog → remount loop (screen flash).
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",
     right: "max(1rem, env(safe-area-inset-right, 0px))",
@@ -254,14 +256,84 @@ export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloat
           canMistakeShift={canMistakeShift}
         />
 
-        <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
+        {!fabHiddenByOverlay ? (
+          <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className={FAB_BTN_CLASS}
+              style={fabShadowStyle}
+              aria-expanded={open}
+              aria-haspopup="dialog"
+              aria-label={open ? "Close quick actions" : "Open quick actions"}
+            >
+              <Plus
+                className={cn("h-7 w-7 transition-transform duration-200 ease-out", open && "rotate-45")}
+                strokeWidth={2.4}
+              />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {!fabHiddenByOverlay ? (
+        <div className="pointer-events-none fixed z-[50] hidden flex-col items-end gap-2 md:pointer-events-auto md:flex bottom-6 right-6">
+          {open ? (
+            <button
+              type="button"
+              className="pointer-events-auto fixed inset-0 z-[45] cursor-default bg-black/40 backdrop-blur-[2px]"
+              aria-label="Close quick actions"
+              onClick={() => setOpen(false)}
+            />
+          ) : null}
+
+          {open ? (
+            <nav
+              className="pointer-events-auto relative z-[50] mb-1 min-w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-black/90 py-1 shadow-[0_-8px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl"
+              aria-label="Quick actions"
+            >
+              <ul className="divide-y divide-white/5">
+                {quickActions.map(({ href, label, Icon }) => (
+                  <li key={href + label}>
+                    <Link
+                      href={href}
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+                <li>
+                  <button
+                    type="button"
+                    onClick={openShadowbanReport}
+                    className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
+                  >
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
+                      <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-white">Report shadowban</p>
+                      <p className="text-xs text-white/40">Report an account issue</p>
+                    </div>
+                  </button>
+                </li>
+                <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
+              </ul>
+            </nav>
+          ) : null}
+
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className={FAB_BTN_CLASS}
+            className={cn(FAB_BTN_CLASS, "pointer-events-auto relative z-[50]")}
             style={fabShadowStyle}
             aria-expanded={open}
-            aria-haspopup="dialog"
+            aria-haspopup="menu"
             aria-label={open ? "Close quick actions" : "Open quick actions"}
           >
             <Plus
@@ -270,73 +342,7 @@ export function VaFloatingActionButton({ user, canMistakeShift = true }: VaFloat
             />
           </button>
         </div>
-      </div>
-
-      <div className="pointer-events-none fixed z-[50] hidden flex-col items-end gap-2 md:pointer-events-auto md:flex bottom-6 right-6">
-        {open ? (
-          <button
-            type="button"
-            className="pointer-events-auto fixed inset-0 z-[45] cursor-default bg-black/40 backdrop-blur-[2px]"
-            aria-label="Close quick actions"
-            onClick={() => setOpen(false)}
-          />
-        ) : null}
-
-        {open ? (
-          <nav
-            className="pointer-events-auto relative z-[50] mb-1 min-w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-black/90 py-1 shadow-[0_-8px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl"
-            aria-label="Quick actions"
-          >
-            <ul className="divide-y divide-white/5">
-              {quickActions.map(({ href, label, Icon }) => (
-                <li key={href + label}>
-                  <Link
-                    href={href}
-                    onClick={() => setOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    {label}
-                  </Link>
-                </li>
-              ))}
-              <li>
-                <button
-                  type="button"
-                  onClick={openShadowbanReport}
-                  className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-white/5"
-                >
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/20">
-                    <AlertTriangle className="h-4 w-4 text-amber-400" aria-hidden />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-white">Report shadowban</p>
-                    <p className="text-xs text-white/40">Report an account issue</p>
-                  </div>
-                </button>
-              </li>
-              <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
-            </ul>
-          </nav>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className={cn(FAB_BTN_CLASS, "pointer-events-auto relative z-[50]")}
-          style={fabShadowStyle}
-          aria-expanded={open}
-          aria-haspopup="menu"
-          aria-label={open ? "Close quick actions" : "Open quick actions"}
-        >
-          <Plus
-            className={cn("h-7 w-7 transition-transform duration-200 ease-out", open && "rotate-45")}
-            strokeWidth={2.4}
-          />
-        </button>
-      </div>
+      ) : null}
     </>
   );
 }

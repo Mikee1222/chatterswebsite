@@ -32,8 +32,10 @@ export function FloatingActionButton({ user }: FloatingActionButtonProps) {
   const [open, setOpen] = React.useState(false);
   const fabHiddenByOverlay = useMobileFabHidden();
 
-  if (getEffectiveStaffRole(user) !== "chatter" || fabHiddenByOverlay) return null;
+  if (getEffectiveStaffRole(user) !== "chatter") return null;
 
+  // Never return null while open: our sheet is role=dialog, which sets fabHiddenByOverlay
+  // via MutationObserver. Unmounting the sheet would clear the dialog → remount loop (screen flash).
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 20px)",
     right: "max(1rem, env(safe-area-inset-right, 0px))",
@@ -49,14 +51,71 @@ export function FloatingActionButton({ user }: FloatingActionButtonProps) {
       <div className="md:hidden">
         <QuickActionsModal open={open} onClose={() => setOpen(false)} />
 
-        <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
+        {!fabHiddenByOverlay ? (
+          <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className={FAB_BTN_CLASS}
+              style={fabShadowStyle}
+              aria-expanded={open}
+              aria-haspopup="dialog"
+              aria-label={open ? "Close quick actions" : "Open quick actions"}
+            >
+              <Plus
+                className={cn("h-7 w-7 transition-transform duration-200 ease-out", open && "rotate-45")}
+                strokeWidth={2.4}
+              />
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {/* ——— Desktop (md+): dropdown above FAB ——— */}
+      {!fabHiddenByOverlay ? (
+        <div className="pointer-events-none fixed z-[50] hidden flex-col items-end gap-2 md:pointer-events-auto md:flex bottom-6 right-6">
+          {open ? (
+            <button
+              type="button"
+              className="pointer-events-auto fixed inset-0 z-[45] cursor-default bg-black/40 backdrop-blur-[2px]"
+              aria-label="Close quick actions"
+              onClick={() => setOpen(false)}
+            />
+          ) : null}
+
+          {open ? (
+            <nav
+              className="pointer-events-auto relative z-[50] mb-1 min-w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-black/90 py-1 shadow-[0_-8px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl"
+              aria-label="Quick actions"
+            >
+              <ul className="divide-y divide-white/5">
+                {CHATTER_QUICK_ACTIONS.map(({ href, label, Icon }) => (
+                  <li key={href}>
+                    <Link
+                      href={href}
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
+                    >
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      {label}
+                    </Link>
+                  </li>
+                ))}
+                <ChatterRebillTipFabMenuItems onClose={() => setOpen(false)} variant="nav" />
+                <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
+              </ul>
+            </nav>
+          ) : null}
+
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className={FAB_BTN_CLASS}
+            className={cn(FAB_BTN_CLASS, "pointer-events-auto relative z-[50]")}
             style={fabShadowStyle}
             aria-expanded={open}
-            aria-haspopup="dialog"
+            aria-haspopup="menu"
             aria-label={open ? "Close quick actions" : "Open quick actions"}
           >
             <Plus
@@ -65,60 +124,7 @@ export function FloatingActionButton({ user }: FloatingActionButtonProps) {
             />
           </button>
         </div>
-      </div>
-
-      {/* ——— Desktop (md+): dropdown above FAB ——— */}
-      <div className="pointer-events-none fixed z-[50] hidden flex-col items-end gap-2 md:pointer-events-auto md:flex bottom-6 right-6">
-        {open ? (
-          <button
-            type="button"
-            className="pointer-events-auto fixed inset-0 z-[45] cursor-default bg-black/40 backdrop-blur-[2px]"
-            aria-label="Close quick actions"
-            onClick={() => setOpen(false)}
-          />
-        ) : null}
-
-        {open ? (
-          <nav
-            className="pointer-events-auto relative z-[50] mb-1 min-w-[220px] overflow-hidden rounded-2xl border border-white/10 bg-black/90 py-1 shadow-[0_-8px_40px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl"
-            aria-label="Quick actions"
-          >
-            <ul className="divide-y divide-white/5">
-              {CHATTER_QUICK_ACTIONS.map(({ href, label, Icon }) => (
-                <li key={href}>
-                  <Link
-                    href={href}
-                    onClick={() => setOpen(false)}
-                    className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
-                  >
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
-                      <Icon className="h-4 w-4" />
-                    </span>
-                    {label}
-                  </Link>
-                </li>
-              ))}
-              <ChatterRebillTipFabMenuItems onClose={() => setOpen(false)} variant="nav" />
-              <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
-            </ul>
-          </nav>
-        ) : null}
-
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className={cn(FAB_BTN_CLASS, "pointer-events-auto relative z-[50]")}
-          style={fabShadowStyle}
-          aria-expanded={open}
-          aria-haspopup="menu"
-          aria-label={open ? "Close quick actions" : "Open quick actions"}
-        >
-          <Plus
-            className={cn("h-7 w-7 transition-transform duration-200 ease-out", open && "rotate-45")}
-            strokeWidth={2.4}
-          />
-        </button>
-      </div>
+      ) : null}
     </>
   );
 }
