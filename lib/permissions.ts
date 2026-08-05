@@ -420,7 +420,10 @@ const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.SOPS_QUIZ,
   PERMISSIONS.SPIN_WHEEL_VIEW,
   PERMISSIONS.SETTINGS_VIEW,
-  PERMISSIONS.MISTAKES_VIEW,
+  // mistakes:view intentionally NOT a chatter default — chatters do not submit/record
+  // mistakes (VA/admin only). Admins can still grant mistakes:view via Roles UI for
+  // read-only "My mistakes" if desired. Kept out of defaults so resolveRolePermissions()
+  // floor does not force it on every chatter role.
 ];
 
 const VA_PERMISSIONS: Permission[] = [
