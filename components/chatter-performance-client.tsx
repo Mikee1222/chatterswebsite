@@ -3,7 +3,7 @@
 import * as React from "react";
 import dynamic from "next/dynamic";
 import { motion, useReducedMotion } from "framer-motion";
-import { Link2Off, Sparkles, Trophy } from "lucide-react";
+import { Link2Off, Sparkles, Trophy, Flame, CalendarDays } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import {
@@ -11,6 +11,7 @@ import {
   ConversionFunnelViz,
   CountUp,
   DatePresetBar,
+  GOLDEN_RATIO_TOOLTIP,
   InflowwCustomDateRange,
   LuxuryStatCard,
   PeriodBadge,
@@ -203,7 +204,34 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      {a?.daily_tip ? (
+        <div
+          className={cn(
+            VA_CARD,
+            "border border-white/10 bg-gradient-to-r from-white/5 to-[#D4AF8C]/8 p-5"
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#D4AF8C]/30 bg-[#D4AF8C]/10">
+              <Sparkles className="h-5 w-5 text-[#D4AF8C]" />
+            </div>
+            <div>
+              <SectionLabel>Today&apos;s tip</SectionLabel>
+              <p className="mt-1 text-lg font-semibold text-white">{a.daily_tip.label}</p>
+              <p className="mt-1.5 text-sm leading-relaxed text-white/55">{a.daily_tip.detail}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+        <LuxuryStatCard
+          label="Golden Ratio"
+          value={pct(t.golden_ratio)}
+          hint="PPVs ÷ messages"
+          tooltip={GOLDEN_RATIO_TOOLTIP}
+          accent="champagne"
+        />
         <LuxuryStatCard
           label="Unlock rate"
           value={
@@ -248,6 +276,67 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
           hint={a?.tip_size_note ? "Estimated from tip days" : undefined}
         />
       </div>
+
+      {(a?.sales_streak || a?.best_day_of_week) ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {a.sales_streak ? (
+            <div
+              className={cn(
+                VA_CARD,
+                "border border-emerald-500/20 bg-emerald-500/5 p-5"
+              )}
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-500/30 bg-emerald-500/10">
+                  <Flame className="h-5 w-5 text-emerald-300" />
+                </div>
+                <div>
+                  <SectionLabel>Streak</SectionLabel>
+                  <p className="mt-1 text-2xl font-semibold text-emerald-300">
+                    {a.sales_streak.days} days
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-white/55">
+                    {a.sales_streak.label}
+                  </p>
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {a.best_day_of_week ? (
+            <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
+              <div className="flex items-start gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5">
+                  <CalendarDays className="h-5 w-5 text-[#D4AF8C]" />
+                </div>
+                <div>
+                  <SectionLabel>Best day of week</SectionLabel>
+                  {a.best_day_of_week.confidence === "insufficient" ? (
+                    <>
+                      <p className="mt-1 text-lg font-semibold text-white/50">Not enough data</p>
+                      <p className="mt-1.5 text-sm text-white/45">{a.best_day_of_week.note}</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="mt-1 text-2xl font-semibold text-white">
+                        {a.best_day_of_week.weekday}
+                        <span className="ml-2 text-sm font-normal text-white/40">
+                          avg {money(a.best_day_of_week.avg_sales)}
+                        </span>
+                      </p>
+                      <p className="mt-1.5 text-sm leading-relaxed text-white/55">
+                        {a.best_day_of_week.note}
+                        {a.best_day_of_week.confidence === "weak"
+                          ? " (best-effort)"
+                          : ""}
+                      </p>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">
         {a ? <ConversionFunnelViz funnel={a.funnel} /> : null}

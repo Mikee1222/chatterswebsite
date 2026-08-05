@@ -120,10 +120,16 @@ Shared compute for Admin Chatter Performance + My Performance:
 | Avg tip size | tips ÷ tip day×creator rows (Infloww lacks tip event count) |
 | Rev / fan | sales ÷ fans_chatted |
 | Fan CVR (unlock rate) | **ppvs_unlocked ÷ ppvs_sent** from chat-summary (`unlockRate`); falls back to fans_who_spent ÷ fans_chatted only if unlock fields absent |
+| Golden Ratio | **ppvs_sent ÷ messages_sent** (fraction 0–1). Infloww chat-summary returns percent (e.g. 7.32); ingest normalizes. Healthy band ~4–7% (UI tooltip). Aggregates recompute from totals. |
 | WoW / period change | Equal-length prior window |
 | Personal best | Best day + ISO week from all-time synced rows |
 | Team percentile | Rank by sales among linked chatters with sales&gt;0; needs ≥3 |
 | Consistency | 0–100 from daily sales CV (≥3 active days) |
+| Sales streak | Consecutive calendar days with sales (or above personal avg) — My Performance |
+| Best day of week | Best-effort from daily aggregates only; skipped/weak when sample insufficient |
+| Daily tip | One rule-based tip from Weekly Progress–style signals + period trend |
+| PPV pricing signal | Admin: high avg PPV + low unlock → consider lowering; low avg PPV + high unlock → room to raise |
+| Team sales trend | Admin: daily/weekly aggregate of linked chatters (recharts) |
 | Whale suggestions | High-value rebills (≥$50) whose username is not in Whales — **suggest only** |
 | Rebill ↔ sales | Pearson across chatters when n≥4; else deferred note |
 | ROI | Admin-only (`includeRoi`); needs compensation on user |
@@ -131,6 +137,8 @@ Shared compute for Admin Chatter Performance + My Performance:
 ### Deferred / sparse data (Edgar sample Aug 2026)
 
 - **Fan CVR / unlock stage**: Prefer Infloww chat-summary `ppvsUnlocked` + `unlockRate` (synced as `ppvs_unlocked` / `unlock_rate`). `fans_who_spent` is a fallback only — that field is often missing from the live API. Funnel unlock shows n/a only when neither direct unlock metrics nor fans_who_spent are available.
+- **Golden Ratio**: Column always existed; values were percent-scale from API. Migration `20260806020000` recomputes fraction from `ppvs_sent/messages_sent`. Display uses recomputed aggregates.
+- **Best day of week**: Daily rows only — no hour-of-day. Shown as weak/insufficient when pattern is unclear.
 - **Whale auto-flag from Infloww**: no fan-level IDs in `infloww_daily_stats` — cannot auto-suggest OF usernames from sales sync alone
 - **Rebill retention correlation**: needs ≥4 chatters with both rebills + sales; otherwise UI shows “data doesn’t support cleanly”
 - **Performer names**: employee-report uses `platformPid` (no name). Resolve via Infloww `/creators.platformPid` → name, preferring `modelss.model_name` when `modelss.model_id` matches the Infloww creator id. Fallback `Creator {id}`; performer_id `0` → **Unattributed** (pinned last).

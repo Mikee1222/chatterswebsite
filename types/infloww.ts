@@ -72,6 +72,10 @@ export interface InflowwEmployeeChatRow {
   ppvsUnlocked: number;
   /** Fraction 0–1 from chat-summary `unlockRate` (e.g. "75.00%" → 0.75). */
   unlockRate: number | null;
+  /**
+   * Golden Ratio as fraction 0–1 (PPVs sent ÷ messages).
+   * Infloww chat-summary returns a percent (e.g. 7.32 → 0.0732).
+   */
   goldenRatio: number | null;
   fanCvr: number | null;
   avgEarningsPerSpendingFan: number | null;
@@ -99,6 +103,7 @@ export interface InflowwEmployeeDayStats {
   fansWhoSpent: number;
   ppvsUnlocked: number;
   unlockRate: number | null;
+  /** Fraction 0–1 (PPVs ÷ messages). */
   goldenRatio: number | null;
   fanCvr: number | null;
   avgEarningsPerSpendingFan: number | null;

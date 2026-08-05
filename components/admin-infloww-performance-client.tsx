@@ -21,6 +21,7 @@ import {
   ConversionFunnelViz,
   CountUp,
   DatePresetBar,
+  GOLDEN_RATIO_TOOLTIP,
   InflowwCustomDateRange,
   LuxuryStatCard,
   PeriodBadge,
@@ -42,6 +43,8 @@ type AdminPerfTab = "overview" | "weekly_progress";
 const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
 const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
 const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
 });
@@ -58,6 +61,7 @@ type SortKey =
   | "fans_chatted"
   | "fan_cvr"
   | "unlock_rate"
+  | "golden_ratio"
   | "revenue_per_hour"
   | "consistency"
   | "avg_ppv";
@@ -71,6 +75,8 @@ function sortValue(row: InflowwChatterPerformance, key: SortKey): number | strin
       return row.totals.fan_cvr ?? -1;
     case "unlock_rate":
       return a?.funnel.unlock_data_sparse ? -1 : (a?.funnel.unlock_rate ?? -1);
+    case "golden_ratio":
+      return row.totals.golden_ratio ?? -1;
     case "revenue_per_hour":
       return a?.revenue_per_hour ?? -1;
     case "consistency":
@@ -121,7 +127,14 @@ function ChatterDrilldown({
       </button>
       {open && a ? (
         <div className="space-y-4 border-t border-white/6 bg-black/25 px-4 py-5">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
+            <LuxuryStatCard
+              label="Golden Ratio"
+              value={pct(row.totals.golden_ratio)}
+              hint="PPVs ÷ messages"
+              tooltip={GOLDEN_RATIO_TOOLTIP}
+              accent="champagne"
+            />
             <LuxuryStatCard
               label="Unlock rate"
               value={a.funnel.unlock_data_sparse ? "n/a" : pct(a.funnel.unlock_rate)}
@@ -338,6 +351,7 @@ export function AdminInflowwPerformanceClient({
   const [error, setError] = React.useState<string | null>(null);
   const [syncMsg, setSyncMsg] = React.useState<string | null>(null);
   const [dismissedWhales, setDismissedWhales] = React.useState<Set<string>>(new Set());
+  const [teamTrendMode, setTeamTrendMode] = React.useState<"daily" | "weekly">("daily");
 
   const performerOptions = React.useMemo(() => {
     const map = new Map<number, string>();
@@ -492,6 +506,11 @@ export function AdminInflowwPerformanceClient({
 
   const effortFlags = data.chatters.filter((c) => c.analytics?.high_effort_low_conversion.flagged);
   const whaleList = (data.whale_suggestions ?? []).filter((w) => !dismissedWhales.has(w.id));
+  const teamTrendData =
+    teamTrendMode === "weekly"
+      ? (data.team_trend_weekly ?? [])
+      : (data.team_trend_daily ?? []);
+  const ppvInsights = data.ppv_pricing_insights ?? [];
 
   const teamFunnel = React.useMemo(() => {
     const first = data.chatters[0]?.analytics?.funnel;
@@ -707,7 +726,7 @@ export function AdminInflowwPerformanceClient({
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <LuxuryStatCard
           label="Team sales"
           value={<CountUp value={data.team_totals.sales} format={(n) => money(n)} />}
@@ -726,6 +745,13 @@ export function AdminInflowwPerformanceClient({
           }
         />
         <LuxuryStatCard
+          label="Golden Ratio"
+          value={pct(data.team_totals.golden_ratio)}
+          hint="PPVs ÷ messages"
+          tooltip={GOLDEN_RATIO_TOOLTIP}
+          accent="champagne"
+        />
+        <LuxuryStatCard
           label="Unlock rate"
           value={teamFunnel.unlock_data_sparse ? "n/a" : pct(teamFunnel.unlock_rate)}
           hint={
@@ -737,6 +763,31 @@ export function AdminInflowwPerformanceClient({
         />
         <LuxuryStatCard label="Fan CVR" value={pct(data.team_totals.fan_cvr)} />
       </div>
+
+      {ppvInsights.length > 0 ? (
+        <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
+          <div className="mb-3 flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-[#D4AF8C]" />
+            <SectionLabel>PPV pricing signals</SectionLabel>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {ppvInsights.map((ins) => (
+              <span
+                key={ins.id}
+                title={ins.detail}
+                className={cn(
+                  "inline-flex max-w-full items-center rounded-full border px-3 py-1.5 text-[11px] font-semibold tracking-wide",
+                  ins.direction === "lower"
+                    ? "border-amber-500/35 bg-amber-500/12 text-amber-100"
+                    : "border-emerald-500/35 bg-emerald-500/12 text-emerald-200"
+                )}
+              >
+                {ins.user_name}: {ins.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {(data.alerts?.length ?? 0) > 0 || effortFlags.length > 0 ? (
         <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
@@ -812,6 +863,68 @@ export function AdminInflowwPerformanceClient({
         </div>
       </div>
 
+      <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <SectionLabel>Team sales trend</SectionLabel>
+          <div className="flex gap-1.5">
+            {(
+              [
+                ["daily", "Daily"],
+                ["weekly", "Weekly"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setTeamTrendMode(id)}
+                className={cn(
+                  "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
+                  teamTrendMode === id
+                    ? "border-[#D4AF8C]/40 text-[#D4AF8C]"
+                    : "border-white/10 text-white/40 hover:text-white/70"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <p className="mt-1 text-xs text-white/40">
+          Aggregated sales across all linked chatters in the selected range
+        </p>
+        <div className="mt-3 h-64 w-full">
+          {teamTrendData.length === 0 ? (
+            <p className="flex h-full items-center justify-center text-sm text-white/40">
+              No team trend data for this range yet.
+            </p>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={teamTrendData}>
+                <CartesianGrid stroke="rgba(255,255,255,0.06)" vertical={false} />
+                <XAxis dataKey="ymd" tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} />
+                <YAxis tick={{ fill: "rgba(255,255,255,0.4)", fontSize: 11 }} />
+                <Tooltip
+                  contentStyle={{
+                    background: "#1a1a1a",
+                    border: "1px solid rgba(255,255,255,0.1)",
+                    borderRadius: 12,
+                  }}
+                  formatter={(value) => money(Number(value ?? 0))}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="sales"
+                  stroke="#FF1493"
+                  strokeWidth={2}
+                  dot={false}
+                  isAnimationActive={!reduce}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
       <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
         <SectionLabel>Chatter × Creator heatmap</SectionLabel>
         <p className="mt-1 mb-3 text-xs text-white/40">Sales intensity by chatter and creator</p>
@@ -884,6 +997,7 @@ export function AdminInflowwPerformanceClient({
               ["messages_sent", "Msgs"],
               ["fans_chatted", "Fans"],
               ["unlock_rate", "Unlock"],
+              ["golden_ratio", "Golden"],
               ["fan_cvr", "CVR"],
               ["revenue_per_hour", "$/h"],
               ["consistency", "Consist."],

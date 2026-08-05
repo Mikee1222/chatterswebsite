@@ -109,6 +109,43 @@ export type CompensationRoi = {
   note: string | null;
 };
 
+export type SalesStreak = {
+  days: number;
+  kind: "sales" | "above_average";
+  label: string;
+};
+
+export type BestDayOfWeek = {
+  weekday: string;
+  weekday_index: number;
+  avg_sales: number;
+  sample_days: number;
+  confidence: "clear" | "weak" | "insufficient";
+  note: string;
+};
+
+export type DailyActionableTip = {
+  id: string;
+  label: string;
+  detail: string;
+  severity: "positive" | "neutral" | "warning" | "critical" | "info";
+};
+
+export type PpvPricingInsight = {
+  id: string;
+  user_public_id: string;
+  user_name: string;
+  direction: "lower" | "raise";
+  label: string;
+  detail: string;
+};
+
+export type TeamTrendPoint = {
+  ymd: string;
+  sales: number;
+  messages_sent: number;
+};
+
 export type DerivedChatterAnalytics = {
   revenue_per_hour: number | null;
   shift_hours: number;
@@ -131,6 +168,9 @@ export type DerivedChatterAnalytics = {
   roi: CompensationRoi | null;
   /** Creator ranking for this chatter (already sorted by sales desc). */
   top_creator_label: string | null;
+  sales_streak: SalesStreak | null;
+  best_day_of_week: BestDayOfWeek | null;
+  daily_tip: DailyActionableTip | null;
 };
 
 export type ChatterCreatorHeatCell = {
@@ -410,6 +450,363 @@ export function detectHighEffortLowConversion(params: {
   };
 }
 
+const WEEKDAY_NAMES = [
+  "Sunday",
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+] as const;
+
+/**
+ * Consecutive calendar days with sales ending at the latest day in the series.
+ * Prefers above-personal-average streak when it's at least as long (positive framing).
+ */
+export function computeSalesStreak(
+  daily: Array<{ ymd: string; sales: number }>
+): SalesStreak | null {
+  if (daily.length < 2) return null;
+  const byYmd = new Map(daily.map((d) => [d.ymd, d.sales]));
+  const sorted = [...byYmd.keys()].sort();
+  const endYmd = sorted[sorted.length - 1]!;
+  const activeSales = [...byYmd.values()].filter((s) => s > 0);
+  if (activeSales.length < 2) return null;
+  const mean = activeSales.reduce((a, b) => a + b, 0) / activeSales.length;
+
+  function countCalendarBack(pred: (sales: number) => boolean): number {
+    let n = 0;
+    let cursor = endYmd;
+    for (let guard = 0; guard < 400; guard++) {
+      const sales = byYmd.get(cursor);
+      // Missing day = gap — streak breaks (we only count synced calendar days with data).
+      if (sales == null || !pred(sales)) break;
+      n += 1;
+      cursor = addDaysYmd(cursor, -1);
+    }
+    return n;
+  }
+
+  const salesDays = countCalendarBack((s) => s > 0);
+  const aboveAvgDays = countCalendarBack((s) => s >= mean && s > 0);
+
+  if (aboveAvgDays >= 2 && aboveAvgDays >= salesDays) {
+    return {
+      days: aboveAvgDays,
+      kind: "above_average",
+      label: `${aboveAvgDays}-day streak above your average — keep the rhythm going.`,
+    };
+  }
+  if (salesDays >= 2) {
+    return {
+      days: salesDays,
+      kind: "sales",
+      label: `${salesDays}-day sales streak — nice consistency.`,
+    };
+  }
+  return null;
+}
+
+/**
+ * Best weekday from daily aggregates only (no hour-level data).
+ * Needs a clear lead vs the runner-up; otherwise notes insufficient pattern.
+ */
+export function computeBestDayOfWeek(
+  daily: Array<{ ymd: string; sales: number }>
+): BestDayOfWeek | null {
+  if (daily.length < 7) {
+    return {
+      weekday: "—",
+      weekday_index: -1,
+      avg_sales: 0,
+      sample_days: daily.length,
+      confidence: "insufficient",
+      note: "Need about a week of daily data to spot a best day of week.",
+    };
+  }
+
+  const buckets = Array.from({ length: 7 }, () => ({ sum: 0, n: 0 }));
+  for (const d of daily) {
+    const parts = d.ymd.split("-").map(Number);
+    if (parts.length !== 3) continue;
+    const dow = new Date(Date.UTC(parts[0]!, parts[1]! - 1, parts[2]!, 12)).getUTCDay();
+    buckets[dow]!.sum += d.sales;
+    buckets[dow]!.n += 1;
+  }
+
+  const avgs = buckets.map((b, i) => ({
+    i,
+    avg: b.n > 0 ? b.sum / b.n : 0,
+    n: b.n,
+  }));
+  const withData = avgs.filter((a) => a.n >= 2);
+  if (withData.length < 3) {
+    return {
+      weekday: "—",
+      weekday_index: -1,
+      avg_sales: 0,
+      sample_days: daily.length,
+      confidence: "insufficient",
+      note: "Not enough weekday samples yet for a clear pattern.",
+    };
+  }
+
+  const ranked = [...withData].sort((a, b) => b.avg - a.avg);
+  const best = ranked[0]!;
+  const second = ranked[1];
+  const clear =
+    best.avg > 0 &&
+    second != null &&
+    best.avg >= second.avg * 1.2 &&
+    best.n >= 2;
+
+  if (!clear) {
+    return {
+      weekday: WEEKDAY_NAMES[best.i]!,
+      weekday_index: best.i,
+      avg_sales: round2(best.avg),
+      sample_days: best.n,
+      confidence: "weak",
+      note: "Slight lean toward this day — pattern not strong enough to treat as gospel.",
+    };
+  }
+
+  return {
+    weekday: WEEKDAY_NAMES[best.i]!,
+    weekday_index: best.i,
+    avg_sales: round2(best.avg),
+    sample_days: best.n,
+    confidence: "clear",
+    note: `Strongest average sales on ${WEEKDAY_NAMES[best.i]}s (${best.n} samples).`,
+  };
+}
+
+/**
+ * One actionable tip from Weekly Progress–style rules + recent period trend.
+ */
+export function pickDailyActionableTip(params: {
+  totals: AnalyticsTotalsInput;
+  previousTotals: AnalyticsTotalsInput | null;
+  period_change: DerivedChatterAnalytics["period_change"];
+  funnel: ConversionFunnel;
+  avg_ppv_price: number | null;
+  consistency_score: number | null;
+  high_effort: HighEffortLowConversion;
+  golden_ratio: number | null;
+}): DailyActionableTip | null {
+  const {
+    totals,
+    period_change: pc,
+    funnel,
+    avg_ppv_price,
+    consistency_score,
+    high_effort,
+    golden_ratio,
+  } = params;
+
+  if (totals.messages_sent < 30 && totals.sales <= 0) {
+    return null;
+  }
+
+  if (high_effort.flagged) {
+    return {
+      id: "tip-effort",
+      label: "Tighten the offer, not the volume",
+      detail:
+        "You're sending a lot with conversion lagging the team — focus on PPV timing and stronger hooks.",
+      severity: "warning",
+    };
+  }
+
+  if (pc.sales.direction === "down" && (pc.sales.pct_change ?? 0) <= -20) {
+    return {
+      id: "tip-sales-drop",
+      label: "Stabilize the slide",
+      detail: `Sales are ${pc.sales.pct_change?.toFixed(0)}% vs the prior period — protect today's conversations and re-engage warm fans.`,
+      severity: (pc.sales.pct_change ?? 0) <= -40 ? "critical" : "warning",
+    };
+  }
+
+  if (
+    !funnel.unlock_data_sparse &&
+    funnel.unlock_rate != null &&
+    funnel.unlock_rate < 0.25 &&
+    funnel.ppvs_sent >= 10
+  ) {
+    return {
+      id: "tip-unlock-low",
+      label: "Unlock rate needs attention",
+      detail:
+        avg_ppv_price != null && avg_ppv_price >= 20
+          ? "Unlocks are soft and avg PPV is high — try a slightly lower price point or softer openers."
+          : "Unlocks are soft — review teaser quality and when you drop PPVs in the chat.",
+      severity: "warning",
+    };
+  }
+
+  if (golden_ratio != null && golden_ratio > 0.12 && totals.messages_sent >= 50) {
+    return {
+      id: "tip-gr-high",
+      label: "Ease up on PPV density",
+      detail:
+        "Golden Ratio is running high — more relationship messages between PPVs usually lifts unlocks.",
+      severity: "info",
+    };
+  }
+
+  if (golden_ratio != null && golden_ratio > 0 && golden_ratio < 0.03 && totals.messages_sent >= 80) {
+    return {
+      id: "tip-gr-low",
+      label: "Room to send more PPVs",
+      detail:
+        "Golden Ratio is low vs the healthy band — selective PPV sends can unlock more revenue without flooding.",
+      severity: "info",
+    };
+  }
+
+  if (pc.sales.direction === "up" && (pc.sales.pct_change ?? 0) >= 15) {
+    return {
+      id: "tip-momentum",
+      label: "Ride the momentum",
+      detail: `Sales are up ${pc.sales.pct_change?.toFixed(0)}% vs prior — keep the same pacing and creator focus that worked.`,
+      severity: "positive",
+    };
+  }
+
+  if (consistency_score != null && consistency_score < 40) {
+    return {
+      id: "tip-consistency",
+      label: "Smooth the day-to-day",
+      detail:
+        "Results swing a lot between days — aim for a steady message + PPV cadence rather than feast-or-famine.",
+      severity: "info",
+    };
+  }
+
+  if (
+    !funnel.unlock_data_sparse &&
+    funnel.unlock_rate != null &&
+    funnel.unlock_rate >= 0.55 &&
+    avg_ppv_price != null &&
+    avg_ppv_price < 12 &&
+    funnel.ppvs_sent >= 8
+  ) {
+    return {
+      id: "tip-price-up",
+      label: "Unlocks are strong — test higher PPV",
+      detail:
+        "High unlock with a low average PPV suggests room to raise price a notch on strong fans.",
+      severity: "positive",
+    };
+  }
+
+  if (totals.sales > 0 || totals.messages_sent >= 50) {
+    return {
+      id: "tip-steady",
+      label: "Stay consistent",
+      detail:
+        "Keep a healthy Golden Ratio (about 4–7% PPVs per messages) and protect response quality today.",
+      severity: "neutral",
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Admin PPV pricing signals from avg PPV price × unlock rate vs team medians.
+ */
+export function generatePpvPricingInsights(
+  chatters: Array<{
+    user_public_id: string;
+    user_name: string;
+    avg_ppv_price: number | null;
+    unlock_rate: number | null;
+    unlock_data_sparse: boolean;
+    ppvs_sent: number;
+  }>
+): PpvPricingInsight[] {
+  const usable = chatters.filter(
+    (c) =>
+      !c.unlock_data_sparse &&
+      c.avg_ppv_price != null &&
+      c.unlock_rate != null &&
+      c.ppvs_sent >= 8
+  );
+  if (usable.length < 1) return [];
+
+  const prices = usable.map((c) => c.avg_ppv_price!);
+  const unlocks = usable.map((c) => c.unlock_rate!);
+  const medPrice = median(prices);
+  const medUnlock = median(unlocks);
+  if (medPrice == null || medUnlock == null) return [];
+
+  const out: PpvPricingInsight[] = [];
+  for (const c of usable) {
+    const price = c.avg_ppv_price!;
+    const unlock = c.unlock_rate!;
+    const highPrice = price >= medPrice * 1.2 || (usable.length < 2 && price >= 25);
+    const lowPrice = price <= medPrice * 0.8 || (usable.length < 2 && price <= 10);
+    const lowUnlock = unlock <= medUnlock * 0.75 || unlock < 0.3;
+    const highUnlock = unlock >= medUnlock * 1.2 || unlock >= 0.55;
+
+    if (highPrice && lowUnlock) {
+      out.push({
+        id: `ppv-lower-${c.user_public_id}`,
+        user_public_id: c.user_public_id,
+        user_name: c.user_name,
+        direction: "lower",
+        label: "Consider lowering PPV price",
+        detail: `${c.user_name}: avg PPV ${round2(price).toFixed(2)} with unlock ${(unlock * 100).toFixed(0)}% — price may be blocking unlocks.`,
+      });
+    } else if (lowPrice && highUnlock) {
+      out.push({
+        id: `ppv-raise-${c.user_public_id}`,
+        user_public_id: c.user_public_id,
+        user_name: c.user_name,
+        direction: "raise",
+        label: "Room to increase PPV price",
+        detail: `${c.user_name}: strong unlock (${(unlock * 100).toFixed(0)}%) at avg PPV ${round2(price).toFixed(2)} — room to test a higher price.`,
+      });
+    }
+  }
+  return out;
+}
+
+/** Aggregate linked chatters' daily sales into a team series. */
+export function buildTeamDailyTrend(
+  chatters: Array<{ daily: Array<{ ymd: string; sales: number; messages_sent: number }> }>
+): TeamTrendPoint[] {
+  const map = new Map<string, TeamTrendPoint>();
+  for (const c of chatters) {
+    for (const d of c.daily) {
+      const cur = map.get(d.ymd) ?? { ymd: d.ymd, sales: 0, messages_sent: 0 };
+      cur.sales += d.sales;
+      cur.messages_sent += d.messages_sent;
+      map.set(d.ymd, cur);
+    }
+  }
+  return Array.from(map.values())
+    .map((p) => ({ ...p, sales: round2(p.sales) }))
+    .sort((a, b) => a.ymd.localeCompare(b.ymd));
+}
+
+/** Roll team daily points into ISO weeks (Mon–Sun). */
+export function buildTeamWeeklyTrend(daily: TeamTrendPoint[]): TeamTrendPoint[] {
+  const weeks = new Map<string, TeamTrendPoint>();
+  for (const d of daily) {
+    const mon = startOfWeekMonday(d.ymd);
+    const cur = weeks.get(mon) ?? { ymd: mon, sales: 0, messages_sent: 0 };
+    cur.sales += d.sales;
+    cur.messages_sent += d.messages_sent;
+    weeks.set(mon, cur);
+  }
+  return Array.from(weeks.values())
+    .map((p) => ({ ...p, sales: round2(p.sales) }))
+    .sort((a, b) => a.ymd.localeCompare(b.ymd));
+}
+
 export function buildChatterAlerts(params: {
   user_public_id: string;
   user_name: string;
@@ -612,10 +1009,29 @@ export function deriveChatterAnalytics(input: {
   const revenue_per_hour =
     shiftHours >= 1 ? round2(totals.sales / shiftHours) : null;
 
+  const avg_ppv_price = computeAvgPpvPrice(totals);
+  const golden_ratio =
+    totals.messages_sent > 0 ? totals.ppvs_sent / totals.messages_sent : null;
+
+  const sales_streak = computeSalesStreak(daily);
+  const best_day_of_week = computeBestDayOfWeek(
+    allTimeRows.length ? dailySalesSeries(allTimeRows) : daily
+  );
+  const daily_tip = pickDailyActionableTip({
+    totals,
+    previousTotals: prev,
+    period_change,
+    funnel,
+    avg_ppv_price,
+    consistency_score,
+    high_effort: high_effort_low_conversion,
+    golden_ratio,
+  });
+
   return {
     revenue_per_hour,
     shift_hours: round2(shiftHours),
-    avg_ppv_price: computeAvgPpvPrice(totals),
+    avg_ppv_price,
     avg_tip_size: tip.avg,
     tip_size_note: tip.note,
     revenue_per_fan: rate(totals.sales, totals.fans_chatted),
@@ -643,6 +1059,9 @@ export function deriveChatterAnalytics(input: {
         })
       : null,
     top_creator_label: topCreatorName ?? null,
+    sales_streak,
+    best_day_of_week,
+    daily_tip,
   };
 }
 

@@ -86,8 +86,16 @@ async function main() {
   console.log(`rows after: ${after.length}`);
   const unlockSum = after.reduce((s, r) => s + r.ppvs_unlocked, 0);
   const withRate = after.filter((r) => r.unlock_rate != null).length;
+  const withGr = after.filter((r) => r.golden_ratio != null).length;
+  const msgs = after.reduce((s, r) => s + r.messages_sent, 0);
+  const ppvs = after.reduce((s, r) => s + r.ppvs_sent, 0);
+  const computedGr = msgs > 0 ? ppvs / msgs : null;
   console.log(
     `unlock metrics: sum(ppvs_unlocked)=${unlockSum}, rows with unlock_rate=${withRate}/${after.length}`
+  );
+  console.log(
+    `golden ratio: rows with golden_ratio=${withGr}/${after.length}` +
+      (computedGr != null ? `, recomputed=${(computedGr * 100).toFixed(2)}%` : "")
   );
   console.log("per chatter:");
   for (const [, v] of byUser) {

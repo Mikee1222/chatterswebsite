@@ -121,6 +121,7 @@ export function LuxuryStatCard({
   label,
   value,
   hint,
+  tooltip,
   accent = "white",
   glow,
   badge,
@@ -129,6 +130,8 @@ export function LuxuryStatCard({
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
+  /** Native title tooltip on the card (e.g. Golden Ratio explanation). */
+  tooltip?: string;
   accent?: "pink" | "champagne" | "emerald" | "white" | "amber";
   glow?: boolean;
   badge?: React.ReactNode;
@@ -146,6 +149,7 @@ export function LuxuryStatCard({
             : "text-white";
   return (
     <div
+      title={tooltip}
       className={cn(
         VA_CARD,
         glow && VA_CARD_GLOW,
@@ -167,6 +171,11 @@ export function LuxuryStatCard({
       <div className="relative flex items-start justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
           {label}
+          {tooltip ? (
+            <span className="ml-1 cursor-help text-white/25" aria-hidden>
+              ⓘ
+            </span>
+          ) : null}
         </p>
         {badge}
       </div>
@@ -177,6 +186,9 @@ export function LuxuryStatCard({
     </div>
   );
 }
+
+export const GOLDEN_RATIO_TOOLTIP =
+  "Revenue efficiency per message sent. Industry healthy range: 4-7%.";
 
 export function DatePresetBar({
   preset,

@@ -881,6 +881,30 @@ function parseUnlockRateField(r: Record<string, unknown>, keys: string[]): numbe
   return null;
 }
 
+/**
+ * Infloww chat-summary `goldenRatio` is PPVs sent ÷ messages as a **percent**
+ * (e.g. 7.32 → 7.32%, healthy ~4–10%). Normalize to fraction 0–1.
+ */
+function parseGoldenRatioField(r: Record<string, unknown>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null) continue;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      // API always sends percent scale (0.79 = 0.79%, 7.32 = 7.32%).
+      return v / 100;
+    }
+    const s = String(v).trim();
+    if (!s || s === "-" || /^n\/?a$/i.test(s)) continue;
+    const hasPct = s.includes("%");
+    const n = Number.parseFloat(s.replace(/%/g, "").replace(/,/g, ""));
+    if (!Number.isFinite(n)) continue;
+    if (hasPct || n > 1) return n / 100;
+    // Bare fraction rare; treat ≤1 without % as already-normalized.
+    return n;
+  }
+  return null;
+}
+
 function idField(r: Record<string, unknown>, keys: string[]): number {
   for (const k of keys) {
     const v = r[k];
@@ -1164,7 +1188,7 @@ function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChat
         : ppvsSent > 0
           ? ppvsUnlocked / ppvsSent
           : null,
-    goldenRatio: nullableNumField(r, ["goldenRatio", "golden_ratio"]),
+    goldenRatio: parseGoldenRatioField(r, ["goldenRatio", "golden_ratio"]),
     fanCvr: nullableNumField(r, ["fanCvr", "fan_cvr", "fanConversionRate", "cvr"]),
     avgEarningsPerSpendingFan: nullableNumField(r, [
       "avgEarningsPerSpendingFan",
@@ -1438,7 +1462,12 @@ export function mergeEmployeeSalesAndChat(
     } else if (row.ppvsSent > 0 && row.ppvsUnlocked > 0) {
       row.unlockRate = row.ppvsUnlocked / row.ppvsSent;
     }
-    if (c.goldenRatio != null) row.goldenRatio = c.goldenRatio;
+    // Prefer recomputed Golden Ratio from merged counts; fall back to API percent→fraction.
+    if (row.messagesSent > 0) {
+      row.goldenRatio = row.ppvsSent / row.messagesSent;
+    } else if (c.goldenRatio != null) {
+      row.goldenRatio = c.goldenRatio;
+    }
     if (c.fanCvr != null) row.fanCvr = c.fanCvr;
     if (c.avgEarningsPerSpendingFan != null) row.avgEarningsPerSpendingFan = c.avgEarningsPerSpendingFan;
     if (c.responseTimeSeconds != null) row.responseTimeSeconds = c.responseTimeSeconds;

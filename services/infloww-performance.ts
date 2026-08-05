@@ -17,9 +17,12 @@ import { listAllShifts } from "@/services/shifts";
 import {
   buildChatterAlerts,
   buildHeatmapCells,
+  buildTeamDailyTrend,
+  buildTeamWeeklyTrend,
   computePctChange,
   computeRebillSalesCorrelation,
   deriveChatterAnalytics,
+  generatePpvPricingInsights,
   generateWeeklyInsights,
   medianNumber,
   previousPeriodRange,
@@ -27,7 +30,9 @@ import {
   type DerivedChatterAnalytics,
   type PerformanceAlert,
   type PeriodChangeMetric,
+  type PpvPricingInsight,
   type RebillRetentionNote,
+  type TeamTrendPoint,
   type WhaleCandidateSuggestion,
   type WeeklyInsightTag,
 } from "@/services/infloww-analytics";
@@ -111,6 +116,9 @@ export type InflowwAdminPerformanceReport = {
   whale_suggestions: WhaleCandidateSuggestion[];
   /** Sensitive ROI rows — only populated when caller requests includeRoi. */
   include_roi: boolean;
+  ppv_pricing_insights: PpvPricingInsight[];
+  team_trend_daily: TeamTrendPoint[];
+  team_trend_weekly: TeamTrendPoint[];
 };
 
 function parseYmd(ymd: string): { y: number; m: number; d: number } | null {
@@ -746,6 +754,19 @@ export async function getAdminInflowwPerformanceReport(
   }
   finalizeDerived(team_totals);
 
+  const team_trend_daily = buildTeamDailyTrend(enriched.chatters);
+  const team_trend_weekly = buildTeamWeeklyTrend(team_trend_daily);
+  const ppv_pricing_insights = generatePpvPricingInsights(
+    enriched.chatters.map((c) => ({
+      user_public_id: c.user_public_id,
+      user_name: c.full_name || "Unknown",
+      avg_ppv_price: c.analytics?.avg_ppv_price ?? null,
+      unlock_rate: c.analytics?.funnel.unlock_rate ?? null,
+      unlock_data_sparse: c.analytics?.funnel.unlock_data_sparse ?? true,
+      ppvs_sent: c.totals.ppvs_sent,
+    }))
+  );
+
   return {
     range,
     team_totals,
@@ -755,6 +776,9 @@ export async function getAdminInflowwPerformanceReport(
     rebill_retention: enriched.rebill_retention,
     include_roi: includeRoi,
     whale_suggestions: enriched.whale_suggestions,
+    ppv_pricing_insights,
+    team_trend_daily,
+    team_trend_weekly,
   };
 }
 
