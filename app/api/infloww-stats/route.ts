@@ -11,16 +11,25 @@ import {
 
 export const dynamic = "force-dynamic";
 
+const PRESETS = new Set<InflowwStatsPreset>([
+  "this_week",
+  "last_week",
+  "this_month",
+  "last_month",
+  "custom",
+]);
+
 /**
  * GET /api/infloww-stats
- * Query: preset, start, end, userId (admin), performerId (admin)
+ * Query: preset, start, end, userId (admin), performerId (admin), includeRoi (admin)
  */
 export async function GET(request: Request) {
   const session = await getSessionFromCookies();
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const url = new URL(request.url);
-  const preset = (url.searchParams.get("preset") ?? "this_week") as InflowwStatsPreset;
+  const rawPreset = (url.searchParams.get("preset") ?? "this_week") as InflowwStatsPreset;
+  const preset = PRESETS.has(rawPreset) ? rawPreset : "this_week";
   const start = url.searchParams.get("start");
   const end = url.searchParams.get("end");
   const range = resolveInflowwStatsRange(preset, start, end);
@@ -35,9 +44,11 @@ export async function GET(request: Request) {
       performerRaw != null && performerRaw !== ""
         ? Number.parseInt(performerRaw, 10)
         : undefined;
+    const includeRoi = url.searchParams.get("includeRoi") === "1";
     const report = await getAdminInflowwPerformanceReport(range, {
       publicUserId: userId,
       performerId: Number.isFinite(performerId) ? performerId : undefined,
+      includeRoi,
     });
     return NextResponse.json(report);
   }
