@@ -16,13 +16,44 @@ Accounts → edit user → **Infloww employee ID** (numeric). Stored as `users.i
 
 To find IDs: Admin → **Chatter performance** → **Employee ID lookup** table (live `GET /v1/employees`). Requires `INFLOWW_API_KEY` + `INFLOWW_AGENCY_OID` in Vercel env.
 
+## Historical backfill (executed 2026-08-05)
+
+Production one-shot via `scripts/backfill-infloww-90d.ts` (Athens `2026-05-08` → `2026-08-05`):
+
+| Chatter | Rows upserted (post-sync count) | Distinct days | Span |
+| --- | --- | --- | --- |
+| Edgar | 696 | 87 | 2026-05-08 → 2026-08-05 |
+| test | 553 | 75 | 2026-05-21 → 2026-08-05 |
+| **Total** | **1249** | **90 calendar days covered** | |
+
+Sync reported `rowsUpserted: 1246` (exact upsert count), `errors: 0`. ~12 API requests (2 employees × 3×31-day chunks × sales+chat).
+
 ## Cron
 
-`GET /api/cron/sync-infloww-stats` — daily **03:15 UTC** (`vercel.json`). Syncs the previous Athens calendar day for all linked users.
+`GET /api/cron/sync-infloww-stats` — **hourly** at minute 15 UTC (`15 * * * *` in `vercel.json`).
 
-## Manual backfill
+Each run syncs **today + yesterday** (Athens calendar) for all linked users so late Infloww updates are caught. Upsert key `(user_id, infloww_performer_id, date)` overwrites same-day rows.
 
-Admin → **Chatter performance** → set From/To (≤366 days lookback) → **Sync now**.
+### Expected API volume (hourly)
+
+With 31-day chunking and dates present on API rows: **1 chunk × 2 endpoints (sales + chat) × N linked chatters**.
+
+| Linked chatters (N) | Requests / hourly run | vs 1000 req/min |
+| --- | --- | --- |
+| 2 (current) | ~4 | Safe |
+| 50 | ~100 | Safe |
+| 200 | ~400 | Safe (still under 1000/min; default spacing 200ms ≈ 300 req/min) |
+
+## Manual / historical backfill
+
+Admin → **Chatter performance** → Custom range → **Sync now**.
+
+One-time ~90-day Production backfill (local, uses prod env):
+
+```bash
+vercel env pull .env.production.local --environment production --yes
+npx tsx scripts/backfill-infloww-90d.ts
+```
 
 Or:
 
@@ -30,8 +61,10 @@ Or:
 curl -X POST "$APP_URL/api/admin/infloww-stats/sync" \
   -H "Cookie: <admin session>" \
   -H "Content-Type: application/json" \
-  -d '{"startYmd":"2026-07-01","endYmd":"2026-08-04"}'
+  -d '{"startYmd":"2026-05-08","endYmd":"2026-08-05"}'
 ```
+
+Employee reports: ranges &gt;31 days are auto-chunked. Day-by-day fallback only if API rows omit dates.
 
 ## Endpoints used
 
@@ -41,7 +74,7 @@ curl -X POST "$APP_URL/api/admin/infloww-stats/sync" \
 
 Employee list: cursor pagination via `cursor`/`limit` (and `hasMore` when present).
 
-Employee reports params: `platformCode=OnlyFans`, date-only `startTime`/`endTime` (`YYYY-MM-DD`), optional `employeeIds`, cursor pagination via `hasMore`/`cursor`. Ranges &gt;31 days are chunked (or day-by-day for attribution).
+Employee reports params: `platformCode=OnlyFans`, date-only `startTime`/`endTime` (`YYYY-MM-DD`), optional `employeeIds`, cursor pagination via `hasMore`/`cursor`. Ranges &gt;31 days are auto-chunked (31-day windows). Day-by-day fallback only when response rows omit dates.
 
 Response shape notes (sales-summary):
 - Rows live under `data.list` (not a bare `data` array)

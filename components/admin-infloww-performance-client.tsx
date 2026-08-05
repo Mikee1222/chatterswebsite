@@ -21,6 +21,7 @@ import {
   ConversionFunnelViz,
   CountUp,
   DatePresetBar,
+  InflowwCustomDateRange,
   LuxuryStatCard,
   PeriodBadge,
   PersonalBestCallout,
@@ -28,11 +29,15 @@ import {
   money,
   pct,
 } from "@/components/infloww-performance-ui";
+import { AdminWeeklyProgressPanel } from "@/components/admin-weekly-progress-panel";
 import type {
   InflowwAdminPerformanceReport,
   InflowwChatterPerformance,
   InflowwStatsPreset,
+  InflowwWeeklyProgressReport,
 } from "@/services/infloww-performance";
+
+type AdminPerfTab = "overview" | "weekly_progress";
 
 const Bar = dynamic(() => import("recharts").then((m) => m.Bar), { ssr: false });
 const BarChart = dynamic(() => import("recharts").then((m) => m.BarChart), { ssr: false });
@@ -294,13 +299,17 @@ function Heatmap({
 export function AdminInflowwPerformanceClient({
   initial,
   linkedUsers,
+  initialWeekly = null,
 }: {
   initial: InflowwAdminPerformanceReport;
   linkedUsers: Array<{ id: string; name: string; employeeId: number }>;
+  initialWeekly?: InflowwWeeklyProgressReport | null;
 }) {
   const reduce = useReducedMotion();
+  const [tab, setTab] = React.useState<AdminPerfTab>("overview");
   const [data, setData] = React.useState(initial);
   const [preset, setPreset] = React.useState<InflowwStatsPreset>(initial.range.preset);
+  /** Draft custom range — not overwritten when loading named presets. */
   const [customStart, setCustomStart] = React.useState(initial.range.startYmd);
   const [customEnd, setCustomEnd] = React.useState(initial.range.endYmd);
   const [filterUserId, setFilterUserId] = React.useState("");
@@ -351,8 +360,12 @@ export function AdminInflowwPerformanceClient({
       const json = (await res.json()) as InflowwAdminPerformanceReport;
       setData(json);
       setPreset(json.range.preset);
-      setCustomStart(json.range.startYmd);
-      setCustomEnd(json.range.endYmd);
+      // Only sync draft custom dates when the applied preset is custom —
+      // keeps draft stable while flipping This Week / Last Month / etc.
+      if (json.range.preset === "custom") {
+        setCustomStart(json.range.startYmd);
+        setCustomEnd(json.range.endYmd);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -365,12 +378,14 @@ export function AdminInflowwPerformanceClient({
     setSyncMsg(null);
     setError(null);
     try {
+      const startYmd = preset === "custom" ? customStart : data.range.startYmd;
+      const endYmd = preset === "custom" ? customEnd : data.range.endYmd;
       const res = await fetch("/api/admin/infloww-stats/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          startYmd: customStart,
-          endYmd: customEnd,
+          startYmd,
+          endYmd,
           publicUserIds: filterUserId ? [filterUserId] : undefined,
         }),
       });
@@ -495,55 +510,89 @@ export function AdminInflowwPerformanceClient({
             Chatter performance
           </h1>
           <p className="mt-2 text-sm text-white/45">
-            {data.range.startYmd} → {data.range.endYmd} · {data.chatters.length} linked chatters
+            {tab === "overview"
+              ? `${data.range.startYmd} → ${data.range.endYmd} · ${data.chatters.length} linked chatters`
+              : "Custom 4-week month breakdown · rule-based insights"}
           </p>
         </div>
-        <div className="flex flex-col items-start gap-2 sm:items-end">
-          <DatePresetBar
-            preset={preset}
-            loading={loading}
-            onSelect={(p) => {
-              setPreset(p);
-              if (p !== "custom") void load({ preset: p });
-            }}
-          />
-          <button
-            type="button"
-            disabled={syncing}
-            onClick={() => void syncNow()}
-            className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF8C]/40 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-semibold text-[#D4AF8C] disabled:opacity-50"
-          >
-            <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
-            Sync now
-          </button>
-        </div>
+        {tab === "overview" ? (
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <DatePresetBar
+              preset={preset}
+              loading={loading}
+              onSelect={(p) => {
+                setPreset(p);
+                if (p !== "custom") void load({ preset: p });
+              }}
+            />
+            <button
+              type="button"
+              disabled={syncing}
+              onClick={() => void syncNow()}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF8C]/40 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-semibold text-[#D4AF8C] disabled:opacity-50"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
+              Sync now
+            </button>
+          </div>
+        ) : null}
       </motion.div>
 
-      <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 border border-white/10 bg-white/5 p-4")}>
-        <label className="text-xs text-white/50">
-          From
-          <input
-            type="date"
-            value={customStart}
-            onChange={(e) => setCustomStart(e.target.value)}
-            className="mt-1 block rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-          />
-        </label>
-        <label className="text-xs text-white/50">
-          To
-          <input
-            type="date"
-            value={customEnd}
-            onChange={(e) => setCustomEnd(e.target.value)}
-            className="mt-1 block rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-          />
-        </label>
-        <label className="text-xs text-white/50">
+      <div className="flex gap-1 rounded-xl border border-white/10 bg-black/30 p-1">
+        {(
+          [
+            ["overview", "Overview"],
+            ["weekly_progress", "Weekly Progress"],
+          ] as const
+        ).map(([id, label]) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setTab(id)}
+            className={cn(
+              "flex-1 rounded-lg px-4 py-2 text-sm font-semibold transition",
+              tab === id
+                ? "bg-gradient-to-r from-[#FF1493]/25 to-[#D4AF8C]/15 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+                : "text-white/45 hover:text-white/70"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "weekly_progress" ? (
+        <AdminWeeklyProgressPanel initial={initialWeekly} linkedUsers={linkedUsers} />
+      ) : null}
+
+      {tab === "overview" && preset === "custom" ? (
+        <InflowwCustomDateRange
+          startYmd={customStart}
+          endYmd={customEnd}
+          loading={loading}
+          onChange={(start, end) => {
+            setCustomStart(start);
+            setCustomEnd(end);
+          }}
+          onApply={(start, end) =>
+            void load({
+              preset: "custom",
+              start,
+              end,
+            })
+          }
+        />
+      ) : null}
+
+      {tab === "overview" ? (
+        <>
+      <div className={cn(VA_CARD, "flex flex-col gap-3 border border-white/10 bg-white/5 p-4 sm:flex-row sm:flex-wrap sm:items-end")}>
+        <label className="w-full text-xs text-white/50 sm:w-auto">
           Chatter
           <select
             value={filterUserId}
             onChange={(e) => setFilterUserId(e.target.value)}
-            className="mt-1 block min-w-[10rem] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+            className="mt-1 block w-full min-w-[10rem] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
           >
             <option value="">All linked</option>
             {linkedUsers.map((u) => (
@@ -553,12 +602,12 @@ export function AdminInflowwPerformanceClient({
             ))}
           </select>
         </label>
-        <label className="text-xs text-white/50">
+        <label className="w-full text-xs text-white/50 sm:w-auto">
           Creator
           <select
             value={filterPerformerId}
             onChange={(e) => setFilterPerformerId(e.target.value)}
-            className="mt-1 block min-w-[10rem] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+            className="mt-1 block w-full min-w-[10rem] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
           >
             <option value="">All creators</option>
             {performerOptions.map(([id, name]) => (
@@ -572,15 +621,19 @@ export function AdminInflowwPerformanceClient({
           type="button"
           disabled={loading}
           onClick={() =>
-            void load({
-              preset: "custom",
-              start: customStart,
-              end: customEnd,
-            })
+            void load(
+              preset === "custom"
+                ? {
+                    preset: "custom",
+                    start: customStart,
+                    end: customEnd,
+                  }
+                : { preset }
+            )
           }
-          className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-sm disabled:opacity-50")}
+          className={cn(VA_BTN_PRIMARY, "w-full px-4 py-2 text-sm disabled:opacity-50 sm:w-auto")}
         >
-          Apply
+          Apply filters
         </button>
       </div>
 
@@ -801,6 +854,8 @@ export function AdminInflowwPerformanceClient({
       </div>
 
       <AdminInflowwEmployeesLookup />
+        </>
+      ) : null}
     </div>
   );
 }

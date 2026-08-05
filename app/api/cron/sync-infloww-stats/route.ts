@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
+import { getTodayYmdAthens, addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { syncInflowwDailyStats } from "@/services/infloww-daily-stats";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-/** Allow multi-employee day sync within Vercel limits. */
+/** Allow multi-employee today+yesterday sync within Vercel limits. */
 export const maxDuration = 300;
 
 function isCronAuthorized(request: Request): boolean {
@@ -18,14 +19,20 @@ function isCronAuthorized(request: Request): boolean {
 
 /**
  * GET /api/cron/sync-infloww-stats
- * Syncs previous Athens calendar day for all users with infloww_employee_id.
+ * Hourly: syncs today + yesterday (Athens) for all users with infloww_employee_id.
+ * Upserts on (user_id, infloww_performer_id, date) so same-day re-runs overwrite.
  */
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
   try {
-    const result = await syncInflowwDailyStats();
+    const today = getTodayYmdAthens();
+    const yesterday = addDaysAthensYmd(today, -1);
+    const result = await syncInflowwDailyStats({
+      startYmd: yesterday,
+      endYmd: today,
+    });
     if (result.errors.length > 0) {
       console.error("[cron/sync-infloww-stats] employee errors", {
         count: result.errors.length,

@@ -1381,8 +1381,10 @@ export function mergeEmployeeSalesAndChat(
 }
 
 /**
- * Fetch + merge sales/chat for a range. When the range spans multiple days and
- * API rows omit dates, fetches day-by-day so each row can be attributed.
+ * Fetch + merge sales/chat for a range.
+ * Prefers 31-day chunked multi-day requests (dates are present on live Infloww
+ * employee reports). Falls back to day-by-day only when rows omit dates so
+ * attribution would otherwise be lost.
  */
 export async function fetchEmployeeDayStats(params: {
   startYmd: string;
@@ -1394,26 +1396,37 @@ export async function fetchEmployeeDayStats(params: {
   assertEmployeeReportLookback(start, end);
   const span = daysBetweenInclusive(start, end);
 
-  // Multi-day without reliable date fields: sync day-by-day for attribution.
-  if (span > 1) {
+  const [sales, chat] = await Promise.all([
+    fetchEmployeeSalesSummary({ startYmd: start, endYmd: end, employeeIds: params.employeeIds }),
+    fetchEmployeeChatSummary({ startYmd: start, endYmd: end, employeeIds: params.employeeIds }),
+  ]);
+
+  const undated =
+    sales.some((r) => !r.date) || chat.some((r) => !r.date);
+  if (span > 1 && undated) {
+    // Multi-day without reliable date fields: sync day-by-day for attribution.
     const all: import("@/types/infloww").InflowwEmployeeDayStats[] = [];
     let cursor = start;
     while (cursor <= end) {
-      const [sales, chat] = await Promise.all([
-        fetchEmployeeSalesSummary({ startYmd: cursor, endYmd: cursor, employeeIds: params.employeeIds }),
-        fetchEmployeeChatSummary({ startYmd: cursor, endYmd: cursor, employeeIds: params.employeeIds }),
+      const [daySales, dayChat] = await Promise.all([
+        fetchEmployeeSalesSummary({
+          startYmd: cursor,
+          endYmd: cursor,
+          employeeIds: params.employeeIds,
+        }),
+        fetchEmployeeChatSummary({
+          startYmd: cursor,
+          endYmd: cursor,
+          employeeIds: params.employeeIds,
+        }),
       ]);
-      all.push(...mergeEmployeeSalesAndChat(sales, chat, cursor));
+      all.push(...mergeEmployeeSalesAndChat(daySales, dayChat, cursor));
       cursor = addDaysYmd(cursor, 1);
     }
     return all;
   }
 
-  const [sales, chat] = await Promise.all([
-    fetchEmployeeSalesSummary({ startYmd: start, endYmd: end, employeeIds: params.employeeIds }),
-    fetchEmployeeChatSummary({ startYmd: start, endYmd: end, employeeIds: params.employeeIds }),
-  ]);
-  return mergeEmployeeSalesAndChat(sales, chat, start);
+  return mergeEmployeeSalesAndChat(sales, chat, span === 1 ? start : undefined);
 }
 
 export { EMPLOYEE_REPORT_MAX_DAYS, EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS };

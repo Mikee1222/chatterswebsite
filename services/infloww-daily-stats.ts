@@ -209,6 +209,7 @@ async function upsertDayStats(
 /**
  * Sync Infloww employee stats for a date range into `infloww_daily_stats`.
  * Defaults to previous Athens calendar day when dates omitted.
+ * Upserts on `(user_id, infloww_performer_id, date)` — same-day re-sync overwrites.
  */
 export async function syncInflowwDailyStats(params?: {
   startYmd?: string;
@@ -301,21 +302,35 @@ export async function queryInflowwDailyStats(params: {
   performerId?: number;
 }): Promise<InflowwDailyStatsRow[]> {
   const sb = getSupabaseServiceClient();
-  let q = sb
-    .from("infloww_daily_stats")
-    .select("*")
-    .gte("date", params.startYmd.slice(0, 10))
-    .lte("date", params.endYmd.slice(0, 10))
-    .order("date", { ascending: true });
+  const pageSize = 1000;
+  const out: InflowwDailyStatsRow[] = [];
+  let from = 0;
 
-  if (params.userUuids?.length) {
-    q = q.in("user_id", params.userUuids);
-  }
-  if (params.performerId != null && Number.isFinite(params.performerId)) {
-    q = q.eq("infloww_performer_id", params.performerId);
+  for (;;) {
+    let q = sb
+      .from("infloww_daily_stats")
+      .select("*")
+      .gte("date", params.startYmd.slice(0, 10))
+      .lte("date", params.endYmd.slice(0, 10))
+      .order("date", { ascending: true })
+      .order("user_id", { ascending: true })
+      .order("infloww_performer_id", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (params.userUuids?.length) {
+      q = q.in("user_id", params.userUuids);
+    }
+    if (params.performerId != null && Number.isFinite(params.performerId)) {
+      q = q.eq("infloww_performer_id", params.performerId);
+    }
+
+    const { data, error } = await q;
+    if (error) throw new Error(`queryInflowwDailyStats: ${error.message}`);
+    const batch = data ?? [];
+    for (const r of batch) out.push(mapDbRow(r as Record<string, unknown>));
+    if (batch.length < pageSize) break;
+    from += pageSize;
   }
 
-  const { data, error } = await q;
-  if (error) throw new Error(`queryInflowwDailyStats: ${error.message}`);
-  return (data ?? []).map((r) => mapDbRow(r as Record<string, unknown>));
+  return out;
 }

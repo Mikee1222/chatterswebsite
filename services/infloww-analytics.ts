@@ -616,3 +616,249 @@ export function previousPeriodRange(
   const prevStart = addDaysYmd(prevEnd, -(days - 1));
   return { startYmd: prevStart, endYmd: prevEnd };
 }
+
+// ─── Weekly Progress insight rules (custom 4-week months) ───────────────────
+
+export type WeeklyInsightSeverity = "positive" | "neutral" | "warning" | "critical" | "info";
+
+export type WeeklyInsightCategory =
+  | "sales_trend"
+  | "absolute_tier"
+  | "conversion"
+  | "effort"
+  | "volume";
+
+export type WeeklyInsightTag = {
+  id: string;
+  label: string;
+  severity: WeeklyInsightSeverity;
+  category: WeeklyInsightCategory;
+};
+
+export type WeeklyInsightContext = {
+  sales: number;
+  ppv_sales: number;
+  tips: number;
+  messages_sent: number;
+  fans_chatted: number;
+  fan_cvr: number | null;
+  /** WoW % change (null when no prior week). */
+  sales_wow_pct: number | null;
+  messages_wow_pct: number | null;
+  cvr_wow_pct: number | null;
+  /** Team sales for this week (peers with sales > 0). */
+  team_week_sales: number[];
+  /** Team median messages (for volume baselines). */
+  team_median_messages: number | null;
+  /** Team median fan_cvr among peers with fans_chatted > 0. */
+  team_median_cvr: number | null;
+};
+
+function median(nums: number[]): number | null {
+  const valid = nums.filter((x) => Number.isFinite(x));
+  if (valid.length === 0) return null;
+  const s = [...valid].sort((a, b) => a - b);
+  const mid = Math.floor(s.length / 2);
+  return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+/** Extensible rule-based tags — multiple tags per chatter/week. */
+export function generateWeeklyInsights(ctx: WeeklyInsightContext): WeeklyInsightTag[] {
+  const tags: WeeklyInsightTag[] = [];
+  const salesWow = ctx.sales_wow_pct;
+  const msgWow = ctx.messages_wow_pct;
+  const cvrWow = ctx.cvr_wow_pct;
+
+  // Sales trend vs prior custom week
+  if (salesWow != null) {
+    if (salesWow > 20) {
+      tags.push({
+        id: "sales-strong-up",
+        label: "Strong Weekly Improvement",
+        severity: "positive",
+        category: "sales_trend",
+      });
+    } else if (salesWow < -20) {
+      tags.push({
+        id: "sales-strong-down",
+        label: "Declining — needs attention",
+        severity: salesWow <= -40 ? "critical" : "warning",
+        category: "sales_trend",
+      });
+    } else if (Math.abs(salesWow) <= 10) {
+      tags.push({
+        id: "sales-steady",
+        label: "Steady",
+        severity: "neutral",
+        category: "sales_trend",
+      });
+    } else if (salesWow > 10) {
+      tags.push({
+        id: "sales-mild-up",
+        label: "Modest sales lift",
+        severity: "positive",
+        category: "sales_trend",
+      });
+    } else {
+      tags.push({
+        id: "sales-mild-down",
+        label: "Soft sales dip",
+        severity: "warning",
+        category: "sales_trend",
+      });
+    }
+  }
+
+  // Absolute tier vs team that week
+  const peers = ctx.team_week_sales.filter((s) => s > 0);
+  if (ctx.sales > 0 && peers.length >= 2) {
+    const sorted = [...peers].sort((a, b) => b - a);
+    const rank = sorted.findIndex((s) => s === ctx.sales) + 1 || sorted.length;
+    const of = sorted.length;
+    const percentile = of <= 1 ? 100 : Math.round(((of - rank) / (of - 1)) * 100);
+    if (percentile >= 75 || rank === 1) {
+      tags.push({
+        id: "tier-top",
+        label: "Top Seller",
+        severity: "positive",
+        category: "absolute_tier",
+      });
+    } else if (percentile <= 25) {
+      tags.push({
+        id: "tier-needs",
+        label: "Needs Improvement",
+        severity: "warning",
+        category: "absolute_tier",
+      });
+    } else {
+      tags.push({
+        id: "tier-avg",
+        label: "Average",
+        severity: "neutral",
+        category: "absolute_tier",
+      });
+    }
+  } else if (ctx.sales <= 0 && (ctx.messages_sent > 0 || ctx.fans_chatted > 0)) {
+    tags.push({
+      id: "tier-needs-zero",
+      label: "Needs Improvement",
+      severity: "warning",
+      category: "absolute_tier",
+    });
+  }
+
+  // Effort / conversion patterns
+  const cvr = ctx.fan_cvr;
+  const teamCvr = ctx.team_median_cvr;
+  const teamMsg = ctx.team_median_messages;
+  const highMsgs =
+    ctx.messages_sent >= 150 &&
+    teamMsg != null &&
+    ctx.messages_sent >= teamMsg * 1.15;
+  const lowCvr =
+    cvr != null &&
+    teamCvr != null &&
+    teamCvr > 0 &&
+    cvr < teamCvr * 0.55;
+  const highCvr =
+    cvr != null &&
+    teamCvr != null &&
+    teamCvr > 0 &&
+    cvr >= teamCvr * 1.25;
+  const lowVolume =
+    teamMsg != null &&
+    ctx.messages_sent > 0 &&
+    ctx.messages_sent < teamMsg * 0.55;
+
+  if (highMsgs && lowCvr) {
+    tags.push({
+      id: "effort-high-cvr-low",
+      label: "High effort, needs conversion coaching",
+      severity: "warning",
+      category: "effort",
+    });
+  }
+  if (highCvr && lowVolume) {
+    tags.push({
+      id: "efficient-underutilized",
+      label: "Efficient but underutilized",
+      severity: "info",
+      category: "effort",
+    });
+  }
+
+  // Conversion trend
+  if (cvrWow != null) {
+    if (cvrWow > 20) {
+      tags.push({
+        id: "cvr-up",
+        label: "Conversion climbing",
+        severity: "positive",
+        category: "conversion",
+      });
+    } else if (cvrWow < -20) {
+      tags.push({
+        id: "cvr-down",
+        label: "Conversion slipping",
+        severity: "warning",
+        category: "conversion",
+      });
+    }
+  }
+
+  // Volume / effort trend
+  if (msgWow != null) {
+    if (msgWow > 25 && (salesWow == null || salesWow < 5)) {
+      tags.push({
+        id: "volume-up-sales-flat",
+        label: "Volume up, sales lagging",
+        severity: "warning",
+        category: "volume",
+      });
+    } else if (msgWow < -25 && (salesWow == null || salesWow > -10)) {
+      tags.push({
+        id: "volume-down",
+        label: "Lower outreach this week",
+        severity: "info",
+        category: "volume",
+      });
+    } else if (msgWow > 20 && salesWow != null && salesWow > 15) {
+      tags.push({
+        id: "volume-and-sales-up",
+        label: "Effort and sales aligned",
+        severity: "positive",
+        category: "volume",
+      });
+    }
+  }
+
+  // Tips share signal
+  if (ctx.sales > 50 && ctx.tips / ctx.sales >= 0.35) {
+    tags.push({
+      id: "tips-heavy",
+      label: "Tips-heavy week",
+      severity: "info",
+      category: "sales_trend",
+    });
+  }
+  if (ctx.sales > 50 && ctx.ppv_sales / ctx.sales >= 0.7) {
+    tags.push({
+      id: "ppv-driven",
+      label: "PPV-driven week",
+      severity: "info",
+      category: "sales_trend",
+    });
+  }
+
+  return tags;
+}
+
+/** Median helper exported for weekly progress aggregation. */
+export function medianNumber(nums: number[]): number | null {
+  return median(nums);
+}
+
+/** Public pct-change for weekly WoW metrics. */
+export function computePctChange(current: number, previous: number): PeriodChangeMetric {
+  return pctChange(current, previous);
+}

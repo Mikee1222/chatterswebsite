@@ -5,12 +5,13 @@ import dynamic from "next/dynamic";
 import { motion, useReducedMotion } from "framer-motion";
 import { Link2Off, Sparkles, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { VA_CARD, VA_CARD_GLOW, VA_BTN_PRIMARY } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 import {
   ConsistencyRing,
   ConversionFunnelViz,
   CountUp,
   DatePresetBar,
+  InflowwCustomDateRange,
   LuxuryStatCard,
   PeriodBadge,
   PersonalBestCallout,
@@ -64,6 +65,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
   const reduce = useReducedMotion();
   const [data, setData] = React.useState(initial);
   const [preset, setPreset] = React.useState<InflowwStatsPreset>(initial.range.preset);
+  /** Draft custom range — not overwritten when loading named presets. */
   const [customStart, setCustomStart] = React.useState(initial.range.startYmd);
   const [customEnd, setCustomEnd] = React.useState(initial.range.endYmd);
   const [loading, setLoading] = React.useState(false);
@@ -86,8 +88,10 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
       const json = (await res.json()) as InflowwChatterPerformance;
       setData(json);
       setPreset(json.range.preset);
-      setCustomStart(json.range.startYmd);
-      setCustomEnd(json.range.endYmd);
+      if (json.range.preset === "custom") {
+        setCustomStart(json.range.startYmd);
+        setCustomEnd(json.range.endYmd);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -173,34 +177,16 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
       </motion.div>
 
       {preset === "custom" ? (
-        <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 border border-white/10 bg-white/5 p-4")}>
-          <label className="text-xs text-white/50">
-            From
-            <input
-              type="date"
-              value={customStart}
-              onChange={(e) => setCustomStart(e.target.value)}
-              className="mt-1 block rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-            />
-          </label>
-          <label className="text-xs text-white/50">
-            To
-            <input
-              type="date"
-              value={customEnd}
-              onChange={(e) => setCustomEnd(e.target.value)}
-              className="mt-1 block rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
-            />
-          </label>
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => void load("custom", customStart, customEnd)}
-            className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-sm disabled:opacity-50")}
-          >
-            Apply
-          </button>
-        </div>
+        <InflowwCustomDateRange
+          startYmd={customStart}
+          endYmd={customEnd}
+          loading={loading}
+          onChange={(start, end) => {
+            setCustomStart(start);
+            setCustomEnd(end);
+          }}
+          onApply={(start, end) => void load("custom", start, end)}
+        />
       ) : null}
 
       {error ? (

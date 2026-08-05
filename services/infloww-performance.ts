@@ -4,6 +4,12 @@
  */
 
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import {
+  customWeekIndexForYmd,
+  getCustomWeekBoundaries,
+  type CustomWeekBoundary,
+  type CustomWeekIndex,
+} from "@/lib/infloww-custom-weeks";
 import { getInflowwModels } from "@/lib/infloww-api";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { publicId } from "@/lib/supabase-data";
@@ -11,14 +17,19 @@ import { listAllShifts } from "@/services/shifts";
 import {
   buildChatterAlerts,
   buildHeatmapCells,
+  computePctChange,
   computeRebillSalesCorrelation,
   deriveChatterAnalytics,
+  generateWeeklyInsights,
+  medianNumber,
   previousPeriodRange,
   type ChatterCreatorHeatCell,
   type DerivedChatterAnalytics,
   type PerformanceAlert,
+  type PeriodChangeMetric,
   type RebillRetentionNote,
   type WhaleCandidateSuggestion,
+  type WeeklyInsightTag,
 } from "@/services/infloww-analytics";
 import {
   getUserInflowwLinkByPublicId,
@@ -734,4 +745,286 @@ export async function getAdminInflowwPerformanceReport(
 /** Resolve public id helper for callers that only have uuid. */
 export function linkedUserPublicId(user: { id: string; airtable_id?: string | null }): string {
   return publicId({ id: user.id, airtable_id: user.airtable_id });
+}
+
+// ─── Weekly Progress (custom 4-week months) ─────────────────────────────────
+
+export type InflowwWeekWowMetrics = {
+  sales: PeriodChangeMetric;
+  ppv_sales: PeriodChangeMetric;
+  tips: PeriodChangeMetric;
+  messages_sent: PeriodChangeMetric;
+  fans_chatted: PeriodChangeMetric;
+  fan_cvr: PeriodChangeMetric;
+};
+
+export type InflowwChatterWeekSlice = {
+  week: CustomWeekIndex;
+  startYmd: string;
+  endYmd: string;
+  label: string;
+  dayCount: number;
+  totals: InflowwMetricTotals;
+  wow: InflowwWeekWowMetrics;
+  insights: WeeklyInsightTag[];
+};
+
+export type InflowwWeeklyChatterProgress = {
+  user_public_id: string;
+  user_uuid: string;
+  full_name: string;
+  infloww_employee_id: number;
+  month_totals: InflowwMetricTotals;
+  weeks: InflowwChatterWeekSlice[];
+};
+
+export type InflowwWeeklyProgressReport = {
+  year: number;
+  month: number;
+  /** YYYY-MM */
+  monthKey: string;
+  weeks: CustomWeekBoundary[];
+  chatters: InflowwWeeklyChatterProgress[];
+  team_by_week: Array<{
+    week: CustomWeekIndex;
+    totals: InflowwMetricTotals;
+  }>;
+  team_month_totals: InflowwMetricTotals;
+};
+
+function wowFromTotals(
+  current: InflowwMetricTotals,
+  previous: InflowwMetricTotals | null
+): InflowwWeekWowMetrics {
+  if (!previous) {
+    return {
+      sales: { current: current.sales, previous: 0, pct_change: null, direction: "na" },
+      ppv_sales: {
+        current: current.ppv_sales,
+        previous: 0,
+        pct_change: null,
+        direction: "na",
+      },
+      tips: { current: current.tips, previous: 0, pct_change: null, direction: "na" },
+      messages_sent: {
+        current: current.messages_sent,
+        previous: 0,
+        pct_change: null,
+        direction: "na",
+      },
+      fans_chatted: {
+        current: current.fans_chatted,
+        previous: 0,
+        pct_change: null,
+        direction: "na",
+      },
+      fan_cvr: {
+        current: current.fan_cvr ?? 0,
+        previous: 0,
+        pct_change: null,
+        direction: "na",
+      },
+    };
+  }
+  return {
+    sales: computePctChange(current.sales, previous.sales),
+    ppv_sales: computePctChange(current.ppv_sales, previous.ppv_sales),
+    tips: computePctChange(current.tips, previous.tips),
+    messages_sent: computePctChange(current.messages_sent, previous.messages_sent),
+    fans_chatted: computePctChange(current.fans_chatted, previous.fans_chatted),
+    fan_cvr: computePctChange(current.fan_cvr ?? 0, previous.fan_cvr ?? 0),
+  };
+}
+
+/**
+ * Aggregate infloww_daily_stats into custom 4-week buckets for a calendar month.
+ * Admin / manager only (`infloww_stats:view_all` at the route layer).
+ */
+export async function getAdminWeeklyProgressReport(
+  year: number,
+  month: number,
+  filters?: { publicUserId?: string }
+): Promise<InflowwWeeklyProgressReport> {
+  const weeks = getCustomWeekBoundaries(year, month);
+  const monthKey = `${year}-${String(month).padStart(2, "0")}`;
+  const monthStart = weeks[0]?.startYmd ?? `${monthKey}-01`;
+  const monthEnd = weeks[weeks.length - 1]?.endYmd ?? monthStart;
+
+  let users = await listUsersWithInflowwEmployeeId();
+  if (filters?.publicUserId) {
+    const id = filters.publicUserId.trim();
+    users = users.filter((u) => u.publicId === id || u.uuid === id);
+  }
+
+  const uuids = users.map((u) => u.uuid);
+  const rows = uuids.length
+    ? await queryInflowwDailyStats({
+        userUuids: uuids,
+        startYmd: monthStart,
+        endYmd: monthEnd,
+      })
+    : [];
+
+  const byUserWeek = new Map<string, Map<CustomWeekIndex, InflowwDailyStatsRow[]>>();
+  for (const row of rows) {
+    const wi = customWeekIndexForYmd(row.date);
+    if (wi == null) continue;
+    let weekMap = byUserWeek.get(row.user_id);
+    if (!weekMap) {
+      weekMap = new Map();
+      byUserWeek.set(row.user_id, weekMap);
+    }
+    const list = weekMap.get(wi) ?? [];
+    list.push(row);
+    weekMap.set(wi, list);
+  }
+
+  // Precompute per-user per-week totals
+  type WeekTotals = Map<CustomWeekIndex, InflowwMetricTotals>;
+  const userWeekTotals = new Map<string, WeekTotals>();
+  for (const u of users) {
+    const weekMap = byUserWeek.get(u.uuid) ?? new Map();
+    const totalsMap: WeekTotals = new Map();
+    for (const boundary of weeks) {
+      totalsMap.set(boundary.week, sumTotals(weekMap.get(boundary.week) ?? []));
+    }
+    userWeekTotals.set(u.uuid, totalsMap);
+  }
+
+  // Team baselines per week
+  const teamSalesByWeek = new Map<CustomWeekIndex, number[]>();
+  const teamMsgsByWeek = new Map<CustomWeekIndex, number[]>();
+  const teamCvrByWeek = new Map<CustomWeekIndex, number[]>();
+  for (const boundary of weeks) {
+    const sales: number[] = [];
+    const msgs: number[] = [];
+    const cvrs: number[] = [];
+    for (const u of users) {
+      const t = userWeekTotals.get(u.uuid)?.get(boundary.week) ?? emptyTotals();
+      if (t.sales > 0) sales.push(t.sales);
+      if (t.messages_sent > 0) msgs.push(t.messages_sent);
+      if (t.fans_chatted > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
+    }
+    teamSalesByWeek.set(boundary.week, sales);
+    teamMsgsByWeek.set(boundary.week, msgs);
+    teamCvrByWeek.set(boundary.week, cvrs);
+  }
+
+  const chatters: InflowwWeeklyChatterProgress[] = users.map((u) => {
+    const totalsMap = userWeekTotals.get(u.uuid)!;
+    const weekSlices: InflowwChatterWeekSlice[] = weeks.map((boundary, idx) => {
+      const totals = totalsMap.get(boundary.week) ?? emptyTotals();
+      const prevBoundary = idx > 0 ? weeks[idx - 1]! : null;
+      const prevTotals = prevBoundary
+        ? (totalsMap.get(prevBoundary.week) ?? emptyTotals())
+        : null;
+      const wow = wowFromTotals(totals, prevTotals);
+      const insights = generateWeeklyInsights({
+        sales: totals.sales,
+        ppv_sales: totals.ppv_sales,
+        tips: totals.tips,
+        messages_sent: totals.messages_sent,
+        fans_chatted: totals.fans_chatted,
+        fan_cvr: totals.fan_cvr,
+        sales_wow_pct: wow.sales.pct_change,
+        messages_wow_pct: wow.messages_sent.pct_change,
+        cvr_wow_pct: wow.fan_cvr.pct_change,
+        team_week_sales: teamSalesByWeek.get(boundary.week) ?? [],
+        team_median_messages: medianNumber(teamMsgsByWeek.get(boundary.week) ?? []),
+        team_median_cvr: medianNumber(teamCvrByWeek.get(boundary.week) ?? []),
+      });
+      return {
+        week: boundary.week,
+        startYmd: boundary.startYmd,
+        endYmd: boundary.endYmd,
+        label: boundary.label,
+        dayCount: boundary.dayCount,
+        totals,
+        wow,
+        insights,
+      };
+    });
+
+    const month_totals = emptyTotals();
+    for (const w of weekSlices) {
+      month_totals.sales += w.totals.sales;
+      month_totals.ppv_sales += w.totals.ppv_sales;
+      month_totals.tips += w.totals.tips;
+      month_totals.dm_sales += w.totals.dm_sales;
+      month_totals.pmm_sales += w.totals.pmm_sales;
+      month_totals.ofmm_sales += w.totals.ofmm_sales;
+      month_totals.messages_sent += w.totals.messages_sent;
+      month_totals.ppvs_sent += w.totals.ppvs_sent;
+      month_totals.fans_chatted += w.totals.fans_chatted;
+      month_totals.fans_who_spent += w.totals.fans_who_spent;
+    }
+    finalizeDerived(month_totals);
+
+    return {
+      user_public_id: u.publicId,
+      user_uuid: u.uuid,
+      full_name: u.full_name,
+      infloww_employee_id: u.infloww_employee_id,
+      month_totals,
+      weeks: weekSlices,
+    };
+  });
+
+  chatters.sort((a, b) => b.month_totals.sales - a.month_totals.sales);
+
+  const team_by_week = weeks.map((boundary) => {
+    const totals = emptyTotals();
+    for (const c of chatters) {
+      const w = c.weeks.find((x) => x.week === boundary.week);
+      if (!w) continue;
+      totals.sales += w.totals.sales;
+      totals.ppv_sales += w.totals.ppv_sales;
+      totals.tips += w.totals.tips;
+      totals.dm_sales += w.totals.dm_sales;
+      totals.pmm_sales += w.totals.pmm_sales;
+      totals.ofmm_sales += w.totals.ofmm_sales;
+      totals.messages_sent += w.totals.messages_sent;
+      totals.ppvs_sent += w.totals.ppvs_sent;
+      totals.fans_chatted += w.totals.fans_chatted;
+      totals.fans_who_spent += w.totals.fans_who_spent;
+    }
+    finalizeDerived(totals);
+    return { week: boundary.week, totals };
+  });
+
+  const team_month_totals = emptyTotals();
+  for (const tw of team_by_week) {
+    team_month_totals.sales += tw.totals.sales;
+    team_month_totals.ppv_sales += tw.totals.ppv_sales;
+    team_month_totals.tips += tw.totals.tips;
+    team_month_totals.dm_sales += tw.totals.dm_sales;
+    team_month_totals.pmm_sales += tw.totals.pmm_sales;
+    team_month_totals.ofmm_sales += tw.totals.ofmm_sales;
+    team_month_totals.messages_sent += tw.totals.messages_sent;
+    team_month_totals.ppvs_sent += tw.totals.ppvs_sent;
+    team_month_totals.fans_chatted += tw.totals.fans_chatted;
+    team_month_totals.fans_who_spent += tw.totals.fans_who_spent;
+  }
+  finalizeDerived(team_month_totals);
+
+  return {
+    year,
+    month,
+    monthKey,
+    weeks,
+    chatters,
+    team_by_week,
+    team_month_totals,
+  };
+}
+
+/** Current Athens calendar month as { year, month }. */
+export function currentAthensYearMonth(): { year: number; month: number } {
+  const today = getTodayYmdAthens();
+  const p = parseYmd(today);
+  if (!p) {
+    const d = new Date();
+    return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+  }
+  return { year: p.y, month: p.m };
 }

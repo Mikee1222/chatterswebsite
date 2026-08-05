@@ -5,7 +5,9 @@ import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { AdminInflowwPerformanceClient } from "@/components/admin-infloww-performance-client";
 import {
+  currentAthensYearMonth,
   getAdminInflowwPerformanceReport,
+  getAdminWeeklyProgressReport,
   resolveInflowwStatsRange,
 } from "@/services/infloww-performance";
 import { listUsersWithInflowwEmployeeId } from "@/services/infloww-daily-stats";
@@ -17,14 +19,17 @@ export default async function AdminInflowwPerformancePage() {
   }
 
   const range = resolveInflowwStatsRange("this_week");
-  const [initial, linkedUsers] = await Promise.all([
+  const { year, month } = currentAthensYearMonth();
+  const [initial, initialWeekly, linkedUsers] = await Promise.all([
     getAdminInflowwPerformanceReport(range, { includeRoi: true }),
+    getAdminWeeklyProgressReport(year, month),
     listUsersWithInflowwEmployeeId(),
   ]);
 
   return (
     <AdminInflowwPerformanceClient
       initial={initial}
+      initialWeekly={initialWeekly}
       linkedUsers={linkedUsers.map((u) => ({
         id: u.publicId,
         name: u.full_name,
