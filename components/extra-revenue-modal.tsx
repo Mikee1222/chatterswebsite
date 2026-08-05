@@ -14,7 +14,10 @@ import { GlassModal, ButtonPrimary, ButtonSecondary } from "@/components/ui/form
 import { FormInput } from "@/components/ui/form-input";
 import { FormSelect } from "@/components/ui/form-select";
 import { FormTextarea } from "@/components/ui/form-textarea";
-import { CHATTER_ATTACHMENT_MAX_BYTES } from "@/lib/chatter-attachment-constants";
+import {
+  CHATTER_ATTACHMENT_MAX_BYTES,
+  CHATTER_ATTACHMENT_MAX_MB,
+} from "@/lib/chatter-attachment-constants";
 import type { FineBonusPaymentMethod } from "@/services/fines-bonuses";
 
 export type ModelPaymentInfo = {
@@ -143,7 +146,7 @@ export function ExtraRevenueModal({
       return;
     }
     if (file.size > CHATTER_ATTACHMENT_MAX_BYTES) {
-      toast.error(`Screenshot must be under ${CHATTER_ATTACHMENT_MAX_BYTES / (1024 * 1024)}MB`);
+      toast.error(`Screenshot must be under ${CHATTER_ATTACHMENT_MAX_MB}MB`);
       return;
     }
     if (!file.type.startsWith("image/")) {
@@ -321,7 +324,7 @@ export function ExtraRevenueModal({
               <>
                 <Upload className="h-8 w-8 text-pink-300/70" />
                 <p className="text-sm text-white/70">Drag & drop or click to upload</p>
-                <p className="text-xs text-white/40">PNG, JPG — max {CHATTER_ATTACHMENT_MAX_BYTES / (1024 * 1024)}MB</p>
+                <p className="text-xs text-white/40">PNG, JPG — max {CHATTER_ATTACHMENT_MAX_MB}MB</p>
               </>
             )}
           </div>

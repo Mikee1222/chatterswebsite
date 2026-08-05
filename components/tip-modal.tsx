@@ -3,7 +3,10 @@
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { CheckCircle2, Upload, X } from "lucide-react";
-import { CHATTER_ATTACHMENT_MAX_BYTES } from "@/lib/chatter-attachment-constants";
+import {
+  CHATTER_ATTACHMENT_MAX_BYTES,
+  CHATTER_ATTACHMENT_MAX_MB,
+} from "@/lib/chatter-attachment-constants";
 import type { ChatterModalModelOption } from "@/components/rebill-modal";
 import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 
@@ -60,7 +63,7 @@ export function TipModal({
       return;
     }
     if (file && file.size > CHATTER_ATTACHMENT_MAX_BYTES) {
-      setError(`Screenshot must be under ${CHATTER_ATTACHMENT_MAX_BYTES / (1024 * 1024)}MB.`);
+      setError(`Screenshot must be under ${CHATTER_ATTACHMENT_MAX_MB}MB.`);
       return;
     }
 
@@ -173,6 +176,13 @@ export function TipModal({
               className="hidden"
               onChange={(e) => {
                 const f = e.target.files?.[0];
+                if (f && f.size > CHATTER_ATTACHMENT_MAX_BYTES) {
+                  setFile(null);
+                  setError(`Screenshot must be under ${CHATTER_ATTACHMENT_MAX_MB}MB.`);
+                  e.target.value = "";
+                  return;
+                }
+                setError(null);
                 setFile(f && f.size > 0 ? f : null);
               }}
             />
@@ -182,7 +192,7 @@ export function TipModal({
               className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-white/20 bg-white/[0.03] px-4 py-3 text-sm text-white/70 hover:bg-white/5"
             >
               <Upload className="h-4 w-4" />
-              {file ? file.name : "Screenshot (optional, max 5MB)"}
+              {file ? file.name : `Screenshot (optional, max ${CHATTER_ATTACHMENT_MAX_MB}MB)`}
             </button>
 
             {error ? <p className="text-sm text-red-400">{error}</p> : null}

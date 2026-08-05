@@ -1,5 +1,10 @@
 import { put } from "@vercel/blob";
-import { CHATTER_ATTACHMENT_MAX_BYTES } from "@/lib/chatter-attachment-constants";
+import {
+  CHATTER_ATTACHMENT_MAX_BYTES,
+  CHATTER_ATTACHMENT_MAX_MB,
+} from "@/lib/chatter-attachment-constants";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { uploadToPrivateStorage } from "@/lib/supabase-signed-url";
 
 function safeScreenshotBasename(original: string): string {
   const stripped = original.replace(/^.*[/\\]/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -9,19 +14,35 @@ function safeScreenshotBasename(original: string): string {
   return key.slice(0, 180);
 }
 
-/** Upload one image screenshot for rebill/tip forms (blob when configured, else data URL fallback). */
+/** Upload one image screenshot for rebill/tip forms (Supabase Storage, Blob, or data URL fallback). */
 export async function chatterScreenshotAttachments(
   file: File | null,
   blobFolder: string,
   entityId: string
 ): Promise<Array<{ url: string; filename?: string }>> {
-  if (!file || file.size <= 0 || file.size >= CHATTER_ATTACHMENT_MAX_BYTES) return [];
+  if (!file || file.size <= 0) return [];
+  if (file.size > CHATTER_ATTACHMENT_MAX_BYTES) {
+    throw new Error(`Screenshot must be under ${CHATTER_ATTACHMENT_MAX_MB}MB.`);
+  }
   const mime = file.type || "application/octet-stream";
-  if (!mime.startsWith("image/")) return [];
+  if (!mime.startsWith("image/")) {
+    throw new Error("Screenshot must be an image file.");
+  }
 
-  const useBlobStore = !!process.env.BLOB_READ_WRITE_TOKEN?.trim();
   const name = safeScreenshotBasename(file.name);
 
+  if (isSupabaseBackend()) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const token = await uploadToPrivateStorage({
+      bucket: "attachments",
+      objectPath: `chatter/${blobFolder}/${entityId}/${Date.now()}_${name}`,
+      bytes,
+      contentType: mime,
+    });
+    return [{ url: token, filename: name }];
+  }
+
+  const useBlobStore = !!process.env.BLOB_READ_WRITE_TOKEN?.trim();
   if (useBlobStore) {
     const blob = await put(`${blobFolder}/${entityId}/${name}`, file, { access: "public" });
     return [{ url: blob.url, filename: name }];

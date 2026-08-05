@@ -6,7 +6,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Pages Router body limit; App Router route handlers use platform/runtime limits instead.
+  // Pages Router body limit. App Router route handlers use platform/runtime limits
+  // (Cloudflare Workers via OpenNext). Chatter screenshot uploads are capped at
+  // CHATTER_ATTACHMENT_MAX_BYTES (10MB) in lib/chatter-attachment-constants.ts.
   api: { bodyParser: { sizeLimit: "100mb" } },
   // Cloudflare: use @opennextjs/cloudflare (Workers). Build: npm run pages:build; deploy: npm run deploy:cf
   outputFileTracingRoot: path.join(__dirname, "."),

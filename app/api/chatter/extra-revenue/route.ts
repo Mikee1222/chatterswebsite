@@ -47,14 +47,19 @@ export async function POST(req: Request) {
   }
 
   const submissionId = `er_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-  const attachments = await chatterScreenshotAttachments(
-    screenshot,
-    "extra-revenue",
-    submissionId
-  ).catch((err) => {
+  let attachments: { url: string; filename?: string }[] = [];
+  try {
+    attachments = await chatterScreenshotAttachments(screenshot, "extra-revenue", submissionId);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "Screenshot upload failed";
     console.error("[chatter/extra-revenue] screenshot upload failed", err);
-    return [] as { url: string; filename?: string }[];
-  });
+    const clientError =
+      msg.includes("under") || msg.includes("image") || msg.includes("Invalid");
+    return NextResponse.json(
+      { error: clientError ? msg : "Screenshot upload failed" },
+      { status: clientError ? 400 : 502 }
+    );
+  }
 
   const screenshot_url = attachments[0]?.url ?? "";
   if (!screenshot_url) {

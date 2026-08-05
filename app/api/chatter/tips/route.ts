@@ -34,11 +34,19 @@ export async function POST(req: Request) {
   const tipId = `tip_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   let attachments: { url: string; filename?: string }[] = [];
-  if (screenshot instanceof File) {
-    attachments = await chatterScreenshotAttachments(screenshot, "tips", tipId).catch((err) => {
+  if (screenshot instanceof File && screenshot.size > 0) {
+    try {
+      attachments = await chatterScreenshotAttachments(screenshot, "tips", tipId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Screenshot upload failed";
       console.error("[chatter/tips] screenshot upload failed", err);
-      return [];
-    });
+      const clientError =
+        msg.includes("under") || msg.includes("image") || msg.includes("Invalid");
+      return NextResponse.json(
+        { error: clientError ? msg : "Screenshot upload failed" },
+        { status: clientError ? 400 : 502 }
+      );
+    }
   }
 
   const reporterName = session.fullName?.trim() || session.email;

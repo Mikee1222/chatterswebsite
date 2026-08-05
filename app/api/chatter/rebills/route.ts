@@ -32,11 +32,19 @@ export async function POST(req: Request) {
   const rebillId = `reb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   let attachments: { url: string; filename?: string }[] = [];
-  if (screenshot instanceof File) {
-    attachments = await chatterScreenshotAttachments(screenshot, "rebills", rebillId).catch((err) => {
+  if (screenshot instanceof File && screenshot.size > 0) {
+    try {
+      attachments = await chatterScreenshotAttachments(screenshot, "rebills", rebillId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Screenshot upload failed";
       console.error("[chatter/rebills] screenshot upload failed", err);
-      return [];
-    });
+      const clientError =
+        msg.includes("under") || msg.includes("image") || msg.includes("Invalid");
+      return NextResponse.json(
+        { error: clientError ? msg : "Screenshot upload failed" },
+        { status: clientError ? 400 : 502 }
+      );
+    }
   }
 
   const reporterName = session.fullName?.trim() || session.email;
