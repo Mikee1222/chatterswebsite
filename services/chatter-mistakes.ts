@@ -332,6 +332,25 @@ export async function uploadMistakeScreenshot(
   });
 }
 
+export async function setMistakeScreenshotUrls(
+  recordId: string,
+  urls: string[]
+): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./chatter-mistakes-supabase")).setMistakeScreenshotUrls(recordId, urls);
+  }
+  void recordId;
+  void urls;
+}
+
+export async function appendMistakeScreenshotUrls(recordId: string, urls: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./chatter-mistakes-supabase")).appendMistakeScreenshotUrls(recordId, urls);
+  }
+  void recordId;
+  void urls;
+}
+
 export async function updateMistakeRow(recordId: string, fields: Record<string, unknown>): Promise<MistakeRecord> {
   if (isSupabaseBackend()) return (await import("./chatter-mistakes-supabase")).updateMistakeRow(recordId, fields);
   const now = new Date().toISOString();

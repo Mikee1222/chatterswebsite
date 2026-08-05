@@ -5,8 +5,10 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
+import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
 import { readAssignmentFilesFromFormData } from "@/lib/va-content-assignment-files";
 import {
+  appendVAContentAssignmentFileUrls,
   createVaContentAssignmentAdmin,
   uploadVAContentAssignmentAttachments,
 } from "@/services/va-content-assignments";
@@ -57,8 +59,39 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: parsed.error.issues.map((e) => e.message).join(" ") }, { status: 400 });
   }
 
+  const directFileUrls: string[] = [];
+  const fileUrlsJson = String(fd.get("file_urls") ?? "").trim();
+  if (fileUrlsJson) {
+    try {
+      const parsedUrls = JSON.parse(fileUrlsJson) as unknown;
+      if (Array.isArray(parsedUrls)) {
+        for (const u of parsedUrls) {
+          const s = String(u ?? "").trim();
+          if (s) directFileUrls.push(s);
+        }
+      }
+    } catch {
+      return NextResponse.json({ error: "Invalid file_urls JSON" }, { status: 400 });
+    }
+  }
+  for (const entry of fd.getAll("file_url")) {
+    const s = String(entry ?? "").trim();
+    if (s) directFileUrls.push(s);
+  }
+  const uniqueSbTokens = [...new Set(directFileUrls.filter((u) => u.startsWith("sb://")))];
+  for (const token of uniqueSbTokens) {
+    if (!isAllowedDirectUploadToken(token, "va-content-assignment")) {
+      return NextResponse.json({ error: "Invalid file reference" }, { status: 400 });
+    }
+  }
+  const legacyHttpsFileUrl =
+    uniqueSbTokens.length === 0 && parsed.data.file_url?.startsWith("https://")
+      ? parsed.data.file_url
+      : null;
+
   const files = await readAssignmentFilesFromFormData(fd);
   const hasLocalFiles = files.length > 0;
+  const hasDirectTokens = uniqueSbTokens.length > 0;
 
   try {
     const row = await createVaContentAssignmentAdmin({
@@ -69,10 +102,21 @@ export async function POST(req: Request) {
       content_type: parsed.data.content_type,
       priority: parsed.data.priority,
       deadline: parsed.data.deadline ?? null,
-      file_url: hasLocalFiles ? null : parsed.data.file_url ?? null,
+      file_url: hasLocalFiles || hasDirectTokens ? null : legacyHttpsFileUrl,
     });
 
-    if (hasLocalFiles) {
+    if (hasDirectTokens) {
+      const append = await appendVAContentAssignmentFileUrls(row.id, uniqueSbTokens);
+      if (append.error) {
+        return NextResponse.json(
+          {
+            error: `Assignment saved but file link failed: ${append.error}`,
+            id: row.id,
+          },
+          { status: 502 }
+        );
+      }
+    } else if (hasLocalFiles) {
       const upload = await uploadVAContentAssignmentAttachments(row.id, files);
       if (upload.error) {
         return NextResponse.json(

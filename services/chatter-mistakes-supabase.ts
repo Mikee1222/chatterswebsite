@@ -325,3 +325,43 @@ export async function uploadMistakeScreenshot(
     updated_at: new Date().toISOString(),
   });
 }
+
+/** Set screenshot column from already-uploaded sb:// tokens (direct client upload). */
+export async function setMistakeScreenshotUrls(
+  recordId: string,
+  urls: string[]
+): Promise<void> {
+  const cleaned = urls.map((u) => u.trim()).filter(Boolean);
+  if (!cleaned.length) return;
+  const row = await sbSelectByPublicId<MistakeRow>(TABLE_MISTAKES, recordId);
+  if (!row) throw new Error("Mistake not found");
+  const existing = Array.isArray(row.screenshot)
+    ? (row.screenshot as unknown[])
+        .map((x) =>
+          typeof x === "string" ? x : String((x as { url?: string })?.url ?? "")
+        )
+        .filter(Boolean)
+    : [];
+  await sbUpdateByPublicId(TABLE_MISTAKES, recordId, {
+    screenshot: [...existing, ...cleaned],
+    updated_at: new Date().toISOString(),
+  });
+}
+
+export async function appendMistakeScreenshotUrls(recordId: string, urls: string[]): Promise<void> {
+  if (!urls.length) return;
+  const row = await sbSelectByPublicId<MistakeRow>(TABLE_MISTAKES, recordId);
+  if (!row) throw new Error("Mistake not found");
+  const existing = Array.isArray(row.screenshot)
+    ? (row.screenshot as unknown[])
+        .map((x) =>
+          typeof x === "string" ? x : String((x as { url?: string })?.url ?? "")
+        )
+        .filter(Boolean)
+    : [];
+  existing.push(...urls.filter(Boolean));
+  await sbUpdateByPublicId(TABLE_MISTAKES, recordId, {
+    screenshot: existing,
+    updated_at: new Date().toISOString(),
+  });
+}

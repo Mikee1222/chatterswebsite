@@ -29,6 +29,8 @@ import { devLog } from "@/lib/dev-log";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
 import { getRoles } from "@/services/roles";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
 
 async function requireAccountsPermission(permission: Permission) {
   const user = await getSessionFromCookies();
@@ -94,6 +96,35 @@ async function readContractUploadFiles(formData: FormData) {
     });
   }
   return files;
+}
+
+function parseContractAttachmentUrls(formData: FormData): UserContractAttachment[] {
+  const raw = (formData.get("contract_attachment_urls") as string)?.trim() ?? "";
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    const out: UserContractAttachment[] = [];
+    for (const item of parsed) {
+      if (typeof item === "string") {
+        if (isAllowedDirectUploadToken(item, "user-contract")) {
+          out.push({ url: item });
+        }
+        continue;
+      }
+      if (!item || typeof item !== "object") continue;
+      const url = typeof (item as { url?: unknown }).url === "string" ? (item as { url: string }).url.trim() : "";
+      if (!url || !isAllowedDirectUploadToken(url, "user-contract")) continue;
+      const filename =
+        typeof (item as { filename?: unknown }).filename === "string"
+          ? (item as { filename: string }).filename
+          : undefined;
+      out.push({ url, ...(filename ? { filename } : {}) });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 type ParsedCompensationFields = {
@@ -196,7 +227,20 @@ export async function createAccount(formData: FormData) {
   input.collaboration_start_date = compensation.collaboration_start_date;
   input.collaboration_end_date = compensation.collaboration_end_date;
 
-  const contractFiles = await readContractUploadFiles(formData);
+  const preUploadedContractUrls = parseContractAttachmentUrls(formData);
+  if (preUploadedContractUrls.length > 0) {
+    input.contract_attachments = [
+      ...compensation.contract_attachments,
+      ...preUploadedContractUrls,
+    ];
+  }
+
+  // On Supabase, contracts are pre-uploaded client-side as sb:// tokens — never
+  // pull File bytes through the server action (Vercel body size limits).
+  const contractFiles =
+    isSupabaseBackend() || preUploadedContractUrls.length > 0
+      ? []
+      : await readContractUploadFiles(formData);
 
   try {
     const created = await createUser(input);
@@ -308,7 +352,18 @@ export async function updateAccount(formData: FormData) {
   input.collaboration_start_date = compensation.collaboration_start_date;
   input.collaboration_end_date = compensation.collaboration_end_date;
 
-  const contractFiles = await readContractUploadFiles(formData);
+  const preUploadedContractUrls = parseContractAttachmentUrls(formData);
+  if (preUploadedContractUrls.length > 0) {
+    input.contract_attachments = [
+      ...compensation.contract_attachments,
+      ...preUploadedContractUrls,
+    ];
+  }
+
+  const contractFiles =
+    isSupabaseBackend() || preUploadedContractUrls.length > 0
+      ? []
+      : await readContractUploadFiles(formData);
 
   try {
     await updateUser(recordId, input);

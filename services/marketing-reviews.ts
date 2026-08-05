@@ -410,6 +410,15 @@ export async function uploadSpotCheckAttachments(
   }
 }
 
+export async function appendSpotCheckAttachmentUrls(id: string, urls: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./marketing-reviews-supabase")).appendSpotCheckAttachmentUrls(id, urls);
+  }
+  // Airtable path expects File bytes via uploadSpotCheckAttachments — no-op for URL tokens.
+  void id;
+  void urls;
+}
+
 export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
   if (isSupabaseBackend()) return (await import("./marketing-reviews-supabase")).getDailyReviews();
   const records = await listAllRecords<DailyReviewFields>(TABLE_DAILY_REVIEWS, {
@@ -511,6 +520,14 @@ export async function uploadDailyReviewAttachments(
       bytes: file.bytes,
     });
   }
+}
+
+export async function appendDailyReviewAttachmentUrls(id: string, urls: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./marketing-reviews-supabase")).appendDailyReviewAttachmentUrls(id, urls);
+  }
+  void id;
+  void urls;
 }
 
 export async function deleteDailyReview(id: string): Promise<void> {

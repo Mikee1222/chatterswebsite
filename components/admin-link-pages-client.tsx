@@ -33,6 +33,8 @@ import {
   Upload,
 } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { FormInput } from "@/components/ui/form-input";
 import { Label, Textarea } from "@/components/ui/form";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -216,6 +218,7 @@ function ImageUploadArea({
   onRemove: () => void;
 }) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [isUploading, setIsUploading] = React.useState(false);
   const inputRef = React.useRef<HTMLInputElement>(null);
 
@@ -225,14 +228,22 @@ function ImageUploadArea({
     if (!file) return;
     setIsUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("type", uploadType);
-      formData.append("pageId", pageId);
-      const res = await fetch("/api/admin/link-pages/upload", { method: "POST", body: formData });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
-      onUploaded(data.url);
+      if (isSupabase) {
+        const { url } = await uploadFileToSupabaseStorage(file, "link-page-asset", {
+          pageId,
+          assetType: uploadType,
+        });
+        onUploaded(url);
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("type", uploadType);
+        formData.append("pageId", pageId);
+        const res = await fetch("/api/admin/link-pages/upload", { method: "POST", body: formData });
+        const data = (await res.json()) as { url?: string; error?: string };
+        if (!res.ok || !data.url) throw new Error(data.error ?? "Upload failed");
+        onUploaded(data.url);
+      }
       addToast(localToast("Uploaded", "Image uploaded!", "normal"));
     } catch (err) {
       addToast(
@@ -1042,6 +1053,7 @@ type Tab = "editor" | "analytics" | "ab_test";
 
 export function AdminLinkPagesClient({ initialPages, modelById, models }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [pages, setPages] = React.useState(initialPages);
   const [selectedId, setSelectedId] = React.useState<string | null>(initialPages[0]?.id ?? null);
   const [selectedPage, setSelectedPage] = React.useState<LinkPageWithBlocks | null>(null);
@@ -1604,6 +1616,14 @@ export function AdminLinkPagesClient({ initialPages, modelById, models }: Props)
 
   async function uploadPhoto(file: File, onUrl: (url: string) => void) {
     if (!selectedId) throw new Error("No page selected");
+    if (isSupabase) {
+      const { url } = await uploadFileToSupabaseStorage(file, "link-page-asset", {
+        pageId: selectedId,
+        assetType: "block",
+      });
+      onUrl(url);
+      return;
+    }
     const form = new FormData();
     form.append("file", file);
     form.append("type", "block");

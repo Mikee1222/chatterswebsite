@@ -787,6 +787,22 @@ export type CreateVaContentAssignmentAdminInput = {
   direct_assign?: boolean;
 };
 
+/** Append already-uploaded sb:// tokens into `file_attachment` (direct client upload). */
+export async function appendVAContentAssignmentFileUrls(
+  assignmentRecordId: string,
+  urls: string[]
+): Promise<{ uploaded: number; error?: string }> {
+  if (isSupabaseBackend()) {
+    return (await import("./va-content-assignments-supabase")).appendVAContentAssignmentFileUrls(
+      assignmentRecordId,
+      urls
+    );
+  }
+  void assignmentRecordId;
+  void urls;
+  return { uploaded: 0 };
+}
+
 /** Upload local files into `file_attachment` on an existing assignment row (sequential). */
 export async function uploadVAContentAssignmentAttachments(
   assignmentRecordId: string,
@@ -826,6 +842,21 @@ export async function uploadVAContentAssignmentAttachments(
     }
   }
   return { uploaded };
+}
+
+export async function appendVAContentAssignmentUrls(
+  assignmentRecordId: string,
+  urls: string[]
+): Promise<{ uploaded: number; error?: string }> {
+  if (isSupabaseBackend()) {
+    return (await import("./va-content-assignments-supabase")).appendVAContentAssignmentUrls(
+      assignmentRecordId,
+      urls
+    );
+  }
+  void assignmentRecordId;
+  void urls;
+  return { uploaded: 0, error: "Direct URL attach is only available on Supabase backend" };
 }
 
 /**

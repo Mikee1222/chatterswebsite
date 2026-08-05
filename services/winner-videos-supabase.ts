@@ -256,6 +256,14 @@ export async function uploadWinnerVideoScreenshot(
   await sbUpdateByPublicId(TABLE, id, { screenshot: existing });
 }
 
+export async function appendWinnerVideoScreenshotUrls(id: string, urls: string[]): Promise<void> {
+  if (!urls.length) return;
+  const row = await sbSelectByPublicId<Row>(TABLE, id);
+  if (!row) throw new Error("Winner video not found");
+  const existing = [...(row.screenshot ?? []), ...urls.filter(Boolean)];
+  await sbUpdateByPublicId(TABLE, id, { screenshot: existing });
+}
+
 export async function listAllRaw(): Promise<WinnerVideoRecord[]> {
   const rows = await sbSelectAll<Row>(TABLE);
   return Promise.all(rows.map(mapRow));

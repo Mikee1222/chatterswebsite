@@ -392,6 +392,23 @@ export async function completeVAContentAssignmentForModel(
   return mapRow(row);
 }
 
+/** Append already-uploaded sb:// tokens (direct client upload). */
+export async function appendVAContentAssignmentFileUrls(
+  assignmentRecordId: string,
+  urls: string[]
+): Promise<{ uploaded: number; error?: string }> {
+  const cleaned = urls.map((u) => u.trim()).filter(Boolean);
+  if (!cleaned.length) return { uploaded: 0 };
+  const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
+  if (!row) return { uploaded: 0, error: "Assignment not found" };
+  const existing = [...(row.file_attachment ?? []), ...cleaned];
+  await sbUpdateByPublicId(TABLE, assignmentRecordId, {
+    file_attachment: existing,
+    updated_at: new Date().toISOString(),
+  });
+  return { uploaded: cleaned.length };
+}
+
 export async function uploadVAContentAssignmentAttachments(
   assignmentRecordId: string,
   files: ParsedAssignmentFile[]
@@ -441,6 +458,23 @@ export async function uploadVAContentAssignmentAttachments(
     updated_at: new Date().toISOString(),
   });
   return { uploaded };
+}
+
+export async function appendVAContentAssignmentUrls(
+  assignmentRecordId: string,
+  urls: string[]
+): Promise<{ uploaded: number; error?: string }> {
+  if (!urls.length) return { uploaded: 0 };
+  const countErr = validateAssignmentFileCount(urls.length);
+  if (countErr) return { uploaded: 0, error: countErr };
+  const row = await sbSelectByPublicId<Row>(TABLE, assignmentRecordId);
+  if (!row) return { uploaded: 0, error: "Assignment not found" };
+  const existing = [...(row.file_attachment ?? []), ...urls.filter(Boolean)];
+  await sbUpdateByPublicId(TABLE, assignmentRecordId, {
+    file_attachment: existing,
+    updated_at: new Date().toISOString(),
+  });
+  return { uploaded: urls.length };
 }
 
 export async function createVaContentAssignmentAdmin(

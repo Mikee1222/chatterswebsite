@@ -38,6 +38,7 @@ import { WINNER_VIDEO_CONTENT_TYPES, type WinnerVideoContentType } from "@/lib/w
 import type { WinnerVideoRecord } from "@/services/winner-videos";
 import type { ModelRecord } from "@/types";
 import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
 type Props = {
@@ -157,7 +158,14 @@ export function VaWinnerVideosClient({ initialSubmissions, gunzoModels }: Props)
       }
       if (screenshotFiles.length > 0) {
         const fd = new FormData();
-        for (const f of screenshotFiles) fd.append("screenshot", f);
+        if (isSupabaseBackend) {
+          const uploaded = await uploadFilesToSupabaseStorage(screenshotFiles, "winner-video-screenshot", {
+            itemId: data.video.id,
+          });
+          for (const u of uploaded) fd.append("screenshot_url", u.sbUrl);
+        } else {
+          for (const f of screenshotFiles) fd.append("screenshot", f);
+        }
         await fetch(`/api/winner-videos/${encodeURIComponent(data.video.id)}/screenshot`, {
           method: "POST",
           body: fd,

@@ -2,20 +2,19 @@ import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
 import { isSupabaseBackend } from "@/lib/data-backend";
 import {
-  ATTACHMENTS_BUCKET,
+  DIRECT_UPLOAD_PURPOSE_CONFIG,
   directUploadPathPrefix,
   isDirectUploadPurpose,
   safeUploadBasename,
-  validateScreenshotFileMeta,
+  validateDirectUploadFileMeta,
   type DirectUploadPurpose,
 } from "@/lib/direct-storage-upload";
-import { hasPermission } from "@/lib/rbac";
-import { PERMISSIONS, type Permission } from "@/lib/permissions";
-import { createPrivateStorageSignedUpload } from "@/lib/supabase-signed-url";
-
-function purposePermission(purpose: DirectUploadPurpose): Permission {
-  return purpose === "va-phase-item" ? PERMISSIONS.VA_TASKS_VIEW : PERMISSIONS.SHIFTS_VIEW;
-}
+import { hasAnyPermission } from "@/lib/rbac";
+import {
+  createPrivateStorageSignedUpload,
+  privateStorageToken,
+} from "@/lib/supabase-signed-url";
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
 
 /**
  * Mint a short-lived Supabase Storage signed upload URL.
@@ -38,6 +37,8 @@ export async function POST(req: Request) {
     contentType?: string;
     size?: number;
     itemId?: string;
+    pageId?: string;
+    assetType?: string;
   };
   try {
     body = (await req.json()) as typeof body;
@@ -49,21 +50,26 @@ export async function POST(req: Request) {
   if (!isDirectUploadPurpose(purposeRaw)) {
     return NextResponse.json({ error: "Invalid upload purpose" }, { status: 400 });
   }
-  const purpose = purposeRaw;
+  const purpose: DirectUploadPurpose = purposeRaw;
+  const cfg = DIRECT_UPLOAD_PURPOSE_CONFIG[purpose];
 
-  if (!(await hasPermission(session, purposePermission(purpose)))) {
+  if (!(await hasAnyPermission(session, cfg.permissions))) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  if (purpose === "va-phase-item" && !String(body.itemId ?? "").trim()) {
-    return NextResponse.json({ error: "itemId is required for VA screenshots" }, { status: 400 });
+  if (cfg.requiresItemId && !String(body.itemId ?? "").trim()) {
+    return NextResponse.json({ error: "itemId is required for this upload" }, { status: 400 });
   }
 
   const size = typeof body.size === "number" ? body.size : Number(body.size);
-  const contentType = String(body.contentType ?? "").trim() || "image/png";
-  const filename = safeUploadBasename(String(body.filename ?? "screenshot.png"));
+  const contentType = String(body.contentType ?? "").trim() || "application/octet-stream";
+  const filename = safeUploadBasename(
+    String(body.filename ?? "upload.bin"),
+    "upload",
+    cfg.kind
+  );
 
-  const metaError = validateScreenshotFileMeta({ size, contentType, filename });
+  const metaError = validateDirectUploadFileMeta(purpose, { size, contentType, filename });
   if (metaError) {
     return NextResponse.json({ error: metaError }, { status: 400 });
   }
@@ -73,21 +79,32 @@ export async function POST(req: Request) {
     .slice(0, 64);
   const prefix = directUploadPathPrefix(purpose, {
     itemId: String(body.itemId ?? "").trim() || undefined,
+    pageId: String(body.pageId ?? "").trim() || undefined,
+    assetType: String(body.assetType ?? "").trim() || undefined,
   });
   const objectPath = `${prefix}/${userKey}_${Date.now()}_${filename}`;
 
   try {
     const signed = await createPrivateStorageSignedUpload({
-      bucket: ATTACHMENTS_BUCKET,
+      bucket: cfg.bucket,
       objectPath,
       upsert: true,
     });
+
+    let publicUrl: string | undefined;
+    if (cfg.publicBucket) {
+      const sb = getSupabaseServiceClient();
+      const { data } = sb.storage.from(cfg.bucket).getPublicUrl(objectPath);
+      publicUrl = data.publicUrl || undefined;
+    }
+
     return NextResponse.json({
-      bucket: ATTACHMENTS_BUCKET,
+      bucket: cfg.bucket,
       path: signed.path,
       signedUrl: signed.signedUrl,
       token: signed.token,
-      sbUrl: signed.sbUrl,
+      sbUrl: signed.sbUrl || privateStorageToken(cfg.bucket, objectPath),
+      ...(publicUrl ? { publicUrl } : {}),
     });
   } catch (err) {
     console.error("[attachments/upload-url]", err);

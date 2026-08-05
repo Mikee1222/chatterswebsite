@@ -264,7 +264,9 @@ async function mapPaymentSubmissions(rows: PaymentRow[]): Promise<PaymentSubmiss
         submitted_datetime: String(row.submitted_datetime ?? ""),
         reference_id: row.reference_id ?? undefined,
         note: row.note ?? undefined,
-        proof_url: row.proof_url ?? undefined,
+        proof_url: row.proof_url
+          ? await (await import("@/lib/supabase-signed-url")).resolveStorageUrl(row.proof_url)
+          : undefined,
         proof_attachment: proof_attachment.length ? proof_attachment : undefined,
         status: (row.status as PaymentSubmissionStatus) ?? "pending_review",
         admin_note: row.admin_note ?? undefined,

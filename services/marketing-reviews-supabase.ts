@@ -21,6 +21,7 @@ import {
   type SpotCheckStatus,
   type SpotCheckType,
 } from "@/lib/marketing-reviews-helpers";
+import { uploadToPrivateStorage, urlsToAttachments } from "@/lib/supabase-signed-url";
 import type {
   MarketingSpotCheck,
   MarketingDailyReview,
@@ -95,14 +96,13 @@ function coerceNumber(v: unknown): number | null {
   const n = Number.parseInt(String(v), 10);
   return Number.isFinite(n) ? n : null;
 }
-function attachmentsFromUrls(v: string[] | null | undefined): ReviewAttachment[] {
-  if (!Array.isArray(v)) return [];
-  return v
-    .filter((u): u is string => typeof u === "string" && u.length > 0)
-    .map((url) => ({ url }));
+async function attachmentsFromUrls(v: string[] | null | undefined): Promise<ReviewAttachment[]> {
+  if (!Array.isArray(v) || v.length === 0) return [];
+  const signed = await urlsToAttachments(v.filter((u): u is string => typeof u === "string" && u.length > 0));
+  return signed.map((a) => ({ url: a.url, filename: a.filename }));
 }
 
-function mapSpotCheck(row: SpotCheckRow): MarketingSpotCheck {
+async function mapSpotCheck(row: SpotCheckRow): Promise<MarketingSpotCheck> {
   return {
     id: publicId(row),
     subject: String(row.subject ?? ""),
@@ -118,11 +118,11 @@ function mapSpotCheck(row: SpotCheckRow): MarketingSpotCheck {
     action_taken: String(row.action_taken ?? ""),
     status: coerceSpotCheckStatus(row.status),
     resolution_time: coerceNumber(row.resolution_time),
-    attachments: attachmentsFromUrls(row.attachments),
+    attachments: await attachmentsFromUrls(row.attachments),
   };
 }
 
-function mapDailyReview(row: DailyReviewRow): MarketingDailyReview {
+async function mapDailyReview(row: DailyReviewRow): Promise<MarketingDailyReview> {
   return {
     id: publicId(row),
     review_label: String(row.review_label ?? ""),
@@ -135,7 +135,7 @@ function mapDailyReview(row: DailyReviewRow): MarketingDailyReview {
     actions_assigned: String(row.actions_assigned ?? ""),
     time_spent_minutes: coerceNumber(row.time_spent_minutes),
     manager_name: String(row.manager_name ?? ""),
-    attachments: attachmentsFromUrls(row.attachments),
+    attachments: await attachmentsFromUrls(row.attachments),
   };
 }
 
@@ -179,7 +179,7 @@ export async function getSpotChecks(filters: SpotCheckFilters = {}): Promise<Mar
   if (filters.date_to?.trim()) q = q.lt("timestamp", filters.date_to.trim());
   const { data, error } = await q;
   if (error) throw new Error(`marketing_spot_checks: ${error.message}`);
-  return ((data ?? []) as unknown as SpotCheckRow[]).map(mapSpotCheck);
+  return Promise.all(((data ?? []) as unknown as SpotCheckRow[]).map(mapSpotCheck));
 }
 
 export async function getSpotCheckById(id: string): Promise<MarketingSpotCheck | null> {
@@ -209,7 +209,7 @@ export async function createSpotCheck(
     status: data.status ?? "Pending",
     ...(data.resolution_time != null ? { resolution_time: data.resolution_time } : {}),
   });
-  const spotCheck = mapSpotCheck(row);
+  const spotCheck = await mapSpotCheck(row);
 
   const { listUsersWithPermission } = await import("@/services/users");
   const { PERMISSIONS } = await import("@/lib/permissions");
@@ -287,19 +287,41 @@ export async function deleteSpotCheck(id: string): Promise<void> {
 }
 
 export async function uploadSpotCheckAttachments(
-  _id: string,
-  _files: Array<{ name: string; type: string; bytes: Uint8Array }>
+  id: string,
+  files: Array<{ name: string; type: string; bytes: Uint8Array }>
 ): Promise<void> {
-  // Attachments still handled via Airtable. Supabase migration for attachments is out of scope.
-  void _id;
-  void _files;
+  const row = await sbSelectByPublicId<SpotCheckRow>(TABLE_SPOT_CHECKS, id);
+  if (!row) throw new Error("Spot check not found");
+  const existing = [...(row.attachments ?? [])];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
+    if (!file.bytes.byteLength) continue;
+    const safeName = (file.name || "attachment").replace(/[^a-zA-Z0-9._-]/g, "_");
+    const token = await uploadToPrivateStorage({
+      bucket: "attachments",
+      objectPath: `marketing_spot_checks/${row.airtable_id || row.id}/attachments/${Date.now()}_${i}_${safeName}`,
+      bytes: file.bytes,
+      contentType: file.type || "application/octet-stream",
+    });
+    existing.push(token);
+  }
+  await sbUpdateByPublicId(TABLE_SPOT_CHECKS, id, { attachments: existing });
+}
+
+/** Append already-uploaded sb:// tokens (direct client upload). */
+export async function appendSpotCheckAttachmentUrls(id: string, urls: string[]): Promise<void> {
+  if (!urls.length) return;
+  const row = await sbSelectByPublicId<SpotCheckRow>(TABLE_SPOT_CHECKS, id);
+  if (!row) throw new Error("Spot check not found");
+  const existing = [...(row.attachments ?? []), ...urls.filter(Boolean)];
+  await sbUpdateByPublicId(TABLE_SPOT_CHECKS, id, { attachments: existing });
 }
 
 export async function getDailyReviews(): Promise<MarketingDailyReview[]> {
   const sb = getSupabaseServiceClient();
   const { data, error } = await sb.from(TABLE_DAILY_REVIEWS).select("*").order("review_date", { ascending: false });
   if (error) throw new Error(`marketing_daily_reviews: ${error.message}`);
-  return ((data ?? []) as unknown as DailyReviewRow[]).map(mapDailyReview);
+  return Promise.all(((data ?? []) as unknown as DailyReviewRow[]).map(mapDailyReview));
 }
 
 export async function getDailyReviewByDate(date: string): Promise<MarketingDailyReview | null> {
@@ -313,7 +335,7 @@ export async function getDailyReviewByDate(date: string): Promise<MarketingDaily
 export async function getDailyReviewDetail(id: string): Promise<MarketingDailyReviewDetail | null> {
   const row = await sbSelectByPublicId<DailyReviewRow>(TABLE_DAILY_REVIEWS, id);
   if (!row) return null;
-  const review = mapDailyReview(row);
+  const review = await mapDailyReview(row);
   const execAudits = await getExecAuditsForDailyReview(id);
   return { ...review, exec_audits: execAudits };
 }
@@ -365,11 +387,34 @@ export async function updateDailyReview(id: string, data: Partial<MarketingDaily
 }
 
 export async function uploadDailyReviewAttachments(
-  _id: string,
-  _files: Array<{ name: string; type: string; bytes: Uint8Array }>
+  id: string,
+  files: Array<{ name: string; type: string; bytes: Uint8Array }>
 ): Promise<void> {
-  void _id;
-  void _files;
+  const row = await sbSelectByPublicId<DailyReviewRow>(TABLE_DAILY_REVIEWS, id);
+  if (!row) throw new Error("Daily review not found");
+  const existing = [...(row.attachments ?? [])];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i]!;
+    if (!file.bytes.byteLength) continue;
+    const safeName = (file.name || "attachment").replace(/[^a-zA-Z0-9._-]/g, "_");
+    const token = await uploadToPrivateStorage({
+      bucket: "attachments",
+      objectPath: `marketing_daily_reviews/${row.airtable_id || row.id}/attachments/${Date.now()}_${i}_${safeName}`,
+      bytes: file.bytes,
+      contentType: file.type || "application/octet-stream",
+    });
+    existing.push(token);
+  }
+  await sbUpdateByPublicId(TABLE_DAILY_REVIEWS, id, { attachments: existing });
+}
+
+/** Append already-uploaded sb:// tokens (direct client upload). */
+export async function appendDailyReviewAttachmentUrls(id: string, urls: string[]): Promise<void> {
+  if (!urls.length) return;
+  const row = await sbSelectByPublicId<DailyReviewRow>(TABLE_DAILY_REVIEWS, id);
+  if (!row) throw new Error("Daily review not found");
+  const existing = [...(row.attachments ?? []), ...urls.filter(Boolean)];
+  await sbUpdateByPublicId(TABLE_DAILY_REVIEWS, id, { attachments: existing });
 }
 
 export async function deleteDailyReview(id: string): Promise<void> {

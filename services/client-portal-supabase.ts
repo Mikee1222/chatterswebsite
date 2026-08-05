@@ -298,7 +298,16 @@ async function mapSubmissions(rows: SubmissionRow[]): Promise<PaymentSubmissionR
     sbResolveUuidToAirtableMap(CLIENTS, rows.map((r) => r.client)),
     sbResolveUuidToAirtableMap(METHODS, rows.map((r) => r.selected_payment_method)),
   ]);
-  return rows.map((r) => mapSubmissionSync(r, cycleAt, clientAt, methodAt));
+  const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
+  return Promise.all(
+    rows.map(async (r) => {
+      const mapped = mapSubmissionSync(r, cycleAt, clientAt, methodAt);
+      if (mapped.proof_url) {
+        mapped.proof_url = await resolveStorageUrl(mapped.proof_url);
+      }
+      return mapped;
+    })
+  );
 }
 
 async function mapSubmission(row: SubmissionRow): Promise<PaymentSubmissionRecord> {

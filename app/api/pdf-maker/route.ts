@@ -2,9 +2,12 @@ import { put } from "@vercel/blob";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import { SOP_FILES_BUCKET } from "@/lib/direct-storage-upload";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { buildPdfBytes, safePdfFilename } from "@/lib/pdf-maker-build";
+import { uploadToPrivateStorage, resolveStorageUrl } from "@/lib/supabase-signed-url";
 import { createPdfDocument, getDefaultPdfStyle, normalizePdfStyle } from "@/services/pdf-maker";
 
 const styleSchema = z.object({
@@ -57,7 +60,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+  if (!isSupabaseBackend() && !process.env.BLOB_READ_WRITE_TOKEN) {
     return NextResponse.json({ error: "File upload not configured" }, { status: 503 });
   }
 
@@ -66,12 +69,25 @@ export async function POST(req: Request) {
 
   try {
     const pdfBytes = await buildPdfBytes(title, subtitle, sections, style, metaFields ?? []);
-    const filename = `pdf-maker/${Date.now()}-${safePdfFilename(title)}`;
-    const blob = await put(filename, Buffer.from(pdfBytes), {
-      access: "public",
-      contentType: "application/pdf",
-      addRandomSuffix: false,
-    });
+    const safeName = safePdfFilename(title);
+    let fileUrl: string;
+
+    if (isSupabaseBackend()) {
+      fileUrl = await uploadToPrivateStorage({
+        bucket: SOP_FILES_BUCKET,
+        objectPath: `pdf-maker/${Date.now()}_${safeName}`,
+        bytes: new Uint8Array(pdfBytes),
+        contentType: "application/pdf",
+      });
+    } else {
+      const filename = `pdf-maker/${Date.now()}-${safeName}`;
+      const blob = await put(filename, Buffer.from(pdfBytes), {
+        access: "public",
+        contentType: "application/pdf",
+        addRandomSuffix: false,
+      });
+      fileUrl = blob.url;
+    }
 
     const createdBy = (session.fullName?.trim() || session.email?.trim() || "Unknown");
     const record = await createPdfDocument({
@@ -82,11 +98,13 @@ export async function POST(req: Request) {
       template: templateId,
       style,
       createdBy,
-      fileUrl: blob.url,
+      fileUrl,
     });
 
+    const downloadUrl = isSupabaseBackend() ? await resolveStorageUrl(fileUrl) : fileUrl;
+
     return NextResponse.json({
-      downloadUrl: blob.url,
+      downloadUrl,
       recordId: record.id,
     });
   } catch (e) {

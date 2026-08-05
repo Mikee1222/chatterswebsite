@@ -21,6 +21,8 @@ import {
 } from "@/components/manager-review-ui";
 import { WinnerVideoCopyButton } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { formatDateTimeAthens } from "@/lib/format";
 import { copyTextToClipboard } from "@/lib/winner-videos-copy";
 import { appendWinnerVideoDateParams, WINNER_VIDEO_DATE_RANGE_OPTIONS, type WinnerVideoDateRange } from "@/lib/winner-videos-filters";
@@ -124,6 +126,7 @@ function TranscriptPreview({
 
 export function TranscriptVideosClient({ initialTranscripts }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [transcripts, setTranscripts] = React.useState(initialTranscripts);
   const [loading, setLoading] = React.useState(false);
   const [videoFile, setVideoFile] = React.useState<File[]>([]);
@@ -182,10 +185,17 @@ export function TranscriptVideosClient({ initialTranscripts }: Props) {
     setProgressStage("uploading");
 
     const fd = new FormData();
-    fd.append("video_file", videoFile[0]!);
     if (label.trim()) fd.append("label", label.trim());
 
     try {
+      if (isSupabase) {
+        const { sbUrl } = await uploadFileToSupabaseStorage(videoFile[0]!, "video-transcript");
+        fd.append("video_file_url", sbUrl);
+      } else {
+        fd.append("video_file", videoFile[0]!);
+      }
+
+      setProgressStage("processing");
       const res = await fetch("/api/transcript-videos", {
         method: "POST",
         body: fd,

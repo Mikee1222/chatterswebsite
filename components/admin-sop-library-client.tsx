@@ -37,6 +37,8 @@ import {
 import { AdminSopOverviewPanel } from "@/components/admin-sop-overview-panel";
 import { AdminSopQuizInsightsPanel } from "@/components/admin-sop-quiz-insights-panel";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import {
   Checkbox,
   ButtonPrimary,
@@ -658,6 +660,7 @@ type Props = {
 
 export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRoles }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [mainTab, setMainTab] = React.useState<"overview" | "library">("overview");
   const [departments, setDepartments] = React.useState(() => sortDepartments(initialDepartments));
   const [roles, setRoles] = React.useState(() => sortRoles(initialRoles));
@@ -1122,21 +1125,30 @@ export function AdminSopLibraryClient({ initialDepartments, initialRoles, rbacRo
 
     setFnFileUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/admin/sops/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const data = (await res.json()) as { url?: string; name?: string; error?: string };
-      if (!res.ok || !data.url) {
-        throw new Error(data.error ?? "Upload failed");
+      if (isSupabase) {
+        const { sbUrl, url, filename } = await uploadFileToSupabaseStorage(file, "sop-file");
+        setFnForm((f) => ({
+          ...f,
+          sop_file_url: sbUrl || url,
+          sop_file_name: filename || file.name,
+        }));
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/admin/sops/upload", {
+          method: "POST",
+          body: formData,
+        });
+        const data = (await res.json()) as { url?: string; name?: string; error?: string };
+        if (!res.ok || !data.url) {
+          throw new Error(data.error ?? "Upload failed");
+        }
+        setFnForm((f) => ({
+          ...f,
+          sop_file_url: data.url!,
+          sop_file_name: data.name ?? file.name,
+        }));
       }
-      setFnForm((f) => ({
-        ...f,
-        sop_file_url: data.url!,
-        sop_file_name: data.name ?? file.name,
-      }));
     } catch (err) {
       setFnFileUploadError(err instanceof Error ? err.message : "Upload failed");
       if (fnFileInputRef.current) fnFileInputRef.current.value = "";

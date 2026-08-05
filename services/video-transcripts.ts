@@ -157,6 +157,14 @@ export async function uploadVideoTranscriptFile(
   }
 }
 
+export async function setVideoTranscriptFileUrls(id: string, urls: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./video-transcripts-supabase")).setVideoTranscriptFileUrls(id, urls);
+  }
+  void id;
+  void urls;
+}
+
 export type UpdateVideoTranscriptResultInput = {
   transcript?: string;
   language?: string;

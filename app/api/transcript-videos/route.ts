@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getSessionFromCookies } from "@/lib/auth";
+import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import {
   isAllowedWinnerVideoType,
   validateWinnerVideoFileSize,
-  WINNER_VIDEO_MAX_FILE_BYTES,
 } from "@/lib/winner-video-files";
 import { transcribeVideoUrl } from "@/services/winner-videos";
 import { getVideoTranscriptFileUrl } from "@/lib/video-transcripts-helpers";
@@ -13,9 +13,11 @@ import {
   createVideoTranscriptRecord,
   getVideoTranscriptById,
   getVideoTranscripts,
+  setVideoTranscriptFileUrls,
   updateVideoTranscriptResult,
   uploadVideoTranscriptFile,
 } from "@/services/video-transcripts";
+import { readRequestFormData } from "@/lib/request-form-data";
 
 export const maxDuration = 300;
 
@@ -47,20 +49,36 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const fd = await req.formData();
+  const formDataOrErr = await readRequestFormData(req);
+  if (formDataOrErr instanceof NextResponse) return formDataOrErr;
+  const fd = formDataOrErr;
+
+  const videoFileUrl = String(fd.get("video_file_url") ?? "").trim();
   const entry = fd.get("video_file");
-  if (!(entry instanceof File) || entry.size <= 0) {
+  const hasFile = entry instanceof File && entry.size > 0;
+
+  if (!videoFileUrl && !hasFile) {
     return NextResponse.json({ error: "A video file is required" }, { status: 400 });
   }
 
-  const name = entry.name || "video.mp4";
-  const type = entry.type || "application/octet-stream";
-  if (!isAllowedWinnerVideoType(type, name)) {
-    return NextResponse.json({ error: "Invalid video file type" }, { status: 400 });
+  if (videoFileUrl && !isAllowedDirectUploadToken(videoFileUrl, "video-transcript")) {
+    return NextResponse.json({ error: "Invalid video file reference" }, { status: 400 });
   }
-  const sizeError = validateWinnerVideoFileSize(entry.size);
-  if (sizeError) {
-    return NextResponse.json({ error: sizeError }, { status: 400 });
+
+  let name = "video.mp4";
+  let type = "application/octet-stream";
+  if (hasFile && entry instanceof File) {
+    name = entry.name || "video.mp4";
+    type = entry.type || "application/octet-stream";
+    if (!isAllowedWinnerVideoType(type, name)) {
+      return NextResponse.json({ error: "Invalid video file type" }, { status: 400 });
+    }
+    const sizeError = validateWinnerVideoFileSize(entry.size);
+    if (sizeError) {
+      return NextResponse.json({ error: sizeError }, { status: 400 });
+    }
+  } else if (videoFileUrl) {
+    name = videoFileUrl.split("/").pop()?.replace(/^[a-f0-9-]+_\d+_/, "") || "video.mp4";
   }
 
   const label = (fd.get("label")?.toString() || name).trim() || name;
@@ -75,13 +93,17 @@ export async function POST(req: Request) {
       uploaded_by_name: userName,
     });
 
-    await uploadVideoTranscriptFile(record.id, [
-      {
-        name,
-        type,
-        bytes: new Uint8Array(await entry.arrayBuffer()),
-      },
-    ]);
+    if (videoFileUrl) {
+      await setVideoTranscriptFileUrls(record.id, [videoFileUrl]);
+    } else if (hasFile && entry instanceof File) {
+      await uploadVideoTranscriptFile(record.id, [
+        {
+          name,
+          type,
+          bytes: new Uint8Array(await entry.arrayBuffer()),
+        },
+      ]);
+    }
 
     const refreshed = await getVideoTranscriptById(record.id);
     const fileUrl = refreshed ? getVideoTranscriptFileUrl(refreshed) : null;

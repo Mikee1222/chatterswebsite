@@ -3,6 +3,8 @@
 import * as React from "react";
 import { usePathname } from "next/navigation";
 import { CheckCircle2, Upload, X } from "lucide-react";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 
 type FeedbackType = "bug" | "suggestion" | "other";
 
@@ -14,6 +16,7 @@ export function FeedbackModal({
   onClose: () => void;
 }) {
   const pathname = usePathname();
+  const isSupabase = useIsSupabaseBackend();
   const [type, setType] = React.useState<FeedbackType>("bug");
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
@@ -71,7 +74,14 @@ export function FeedbackModal({
       fd.append("title", title.trim());
       fd.append("description", description.trim());
       fd.append("page", pathname || "");
-      for (const f of files) fd.append("screenshots", f);
+      if (files.length > 0) {
+        if (isSupabase) {
+          const uploaded = await uploadFilesToSupabaseStorage(files, "feedback");
+          for (const u of uploaded) fd.append("screenshot_url", u.sbUrl);
+        } else {
+          for (const f of files) fd.append("screenshots", f);
+        }
+      }
       const res = await fetch("/api/feedback", {
         method: "POST",
         body: fd,

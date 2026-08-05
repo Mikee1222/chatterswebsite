@@ -6,10 +6,12 @@ import { ROUTES } from "@/lib/routes";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { notifyByRoleConfig } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { isAllowedDirectUploadToken } from "@/lib/direct-storage-upload";
 import {
   createMistakeRow,
   getActiveMistakeReasonByReasonId,
   getMistakesByVA,
+  setMistakeScreenshotUrls,
   uploadMistakeScreenshot,
 } from "@/services/chatter-mistakes";
 
@@ -82,9 +84,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "mistake_date must be a valid ISO datetime" }, { status: 400 });
   }
 
+  const screenshotUrl = String(fd.get("screenshot_url") ?? "").trim();
+  if (screenshotUrl && !isAllowedDirectUploadToken(screenshotUrl, "va-mistake")) {
+    return NextResponse.json({ error: "Invalid screenshot reference" }, { status: 400 });
+  }
+
   const fileEntry = fd.get("screenshot");
   let fileBytes: { name: string; type: string; data: Uint8Array } | null = null;
-  if (fileEntry instanceof File && fileEntry.size > 0) {
+  if (!screenshotUrl && fileEntry instanceof File && fileEntry.size > 0) {
     fileBytes = {
       name: fileEntry.name || "screenshot",
       type: fileEntry.type || "image/png",
@@ -110,7 +117,22 @@ export async function POST(req: Request) {
       explanation: parsed.data.explanation,
     });
 
-    if (fileBytes && fileBytes.data.byteLength > 0) {
+    if (screenshotUrl) {
+      try {
+        await setMistakeScreenshotUrls(recordId, [screenshotUrl]);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return NextResponse.json(
+          {
+            error: `Mistake saved but screenshot link failed: ${msg}`,
+            success: true,
+            mistake_id,
+            id: recordId,
+          },
+          { status: 502 }
+        );
+      }
+    } else if (fileBytes && fileBytes.data.byteLength > 0) {
       try {
         await uploadMistakeScreenshot(recordId, {
           name: fileBytes.name,

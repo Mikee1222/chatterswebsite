@@ -2,6 +2,11 @@ import { Buffer } from "node:buffer";
 import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
+import { isSupabaseBackend } from "@/lib/data-backend";
+import {
+  attachmentFromSbToken,
+  isAllowedDirectUploadToken,
+} from "@/lib/direct-storage-upload";
 import { hasPermission } from "@/lib/rbac";
 import { createFeedback } from "@/services/feedback";
 import { notifyAdmins } from "@/services/notification-service";
@@ -29,6 +34,10 @@ export async function POST(req: Request) {
   const title = String(formData.get("title") ?? "").trim();
   const description = String(formData.get("description") ?? "").trim();
   const page = String(formData.get("page") ?? "").trim();
+  const screenshotUrls = formData
+    .getAll("screenshot_url")
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean);
   const screenshots = formData.getAll("screenshots");
 
   if (!type || !title || !description) {
@@ -38,29 +47,50 @@ export async function POST(req: Request) {
   const allowedType = type === "bug" || type === "suggestion" || type === "other" ? type : "other";
   const feedbackId = `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   const useBlobStore = !!process.env.BLOB_READ_WRITE_TOKEN?.trim();
+  const onSupabase = isSupabaseBackend();
 
   const attachments: Array<{ url: string; filename?: string }> = [];
 
-  for (let i = 0; i < screenshots.length; i++) {
-    const raw = screenshots[i];
-    if (!(raw instanceof File)) continue;
-    if (raw.size <= 0 || raw.size >= MAX_SCREENSHOT_BYTES) continue;
-
-    const mime = raw.type || "application/octet-stream";
-    if (!mime.startsWith("image/")) continue;
-
-    if (useBlobStore) {
-      try {
-        const name = safeScreenshotBasename(raw.name, i);
-        const blob = await put(`feedback/${feedbackId}/${name}`, raw, { access: "public" });
-        attachments.push({ url: blob.url, filename: name });
-      } catch (err) {
-        console.error("[feedback] Blob upload failed:", err);
+  if (screenshotUrls.length > 0) {
+    for (const token of screenshotUrls) {
+      if (!isAllowedDirectUploadToken(token, "feedback")) {
+        return NextResponse.json({ error: "Invalid screenshot reference" }, { status: 400 });
       }
-    } else {
-      const bytes = await raw.arrayBuffer();
-      const base64 = Buffer.from(bytes).toString("base64");
-      attachments.push({ filename: raw.name, url: `data:${mime};base64,${base64}` });
+      attachments.push(attachmentFromSbToken(token));
+    }
+  } else {
+    for (let i = 0; i < screenshots.length; i++) {
+      const raw = screenshots[i];
+      if (!(raw instanceof File)) continue;
+      if (raw.size <= 0 || raw.size >= MAX_SCREENSHOT_BYTES) continue;
+
+      const mime = raw.type || "application/octet-stream";
+      if (!mime.startsWith("image/")) continue;
+
+      if (onSupabase) {
+        // Prefer client direct-upload; server-side path kept as fallback for small files.
+        const { uploadToPrivateStorage } = await import("@/lib/supabase-signed-url");
+        const name = safeScreenshotBasename(raw.name, i);
+        const token = await uploadToPrivateStorage({
+          bucket: "feedback-screenshots",
+          objectPath: `feedback/${feedbackId}/${name}`,
+          bytes: new Uint8Array(await raw.arrayBuffer()),
+          contentType: mime,
+        });
+        attachments.push({ url: token, filename: name });
+      } else if (useBlobStore) {
+        try {
+          const name = safeScreenshotBasename(raw.name, i);
+          const blob = await put(`feedback/${feedbackId}/${name}`, raw, { access: "public" });
+          attachments.push({ url: blob.url, filename: name });
+        } catch (err) {
+          console.error("[feedback] Blob upload failed:", err);
+        }
+      } else {
+        const bytes = await raw.arrayBuffer();
+        const base64 = Buffer.from(bytes).toString("base64");
+        attachments.push({ filename: raw.name, url: `data:${mime};base64,${base64}` });
+      }
     }
   }
 

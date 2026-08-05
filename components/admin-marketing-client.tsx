@@ -27,6 +27,8 @@ import {
 import { ConfirmDeleteModal } from "@/components/confirm-delete-modal";
 import { PlatformIconBadge } from "@/components/social-platform-icon";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage, uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { formatDateTimeAthens, formatRelativeTime } from "@/lib/format";
 import { getSocialColor } from "@/lib/social-platform-config";
 import type { ShadowbanReportType } from "@/lib/shadowban-helpers";
@@ -563,6 +565,7 @@ export function AdminMarketingClient({
   initialReports?: ShadowbanReport[];
 }) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const initialPending = initialReports.filter((r) => r.status === "pending").length;
   const [tab, setTab] = React.useState<Tab>(initialPending > 0 ? "reports" : "accounts");
   const [platforms, setPlatforms] = React.useState(initialPlatforms);
@@ -693,7 +696,14 @@ export function AdminMarketingClient({
   async function uploadPhonePhotosForId(phoneId: string, files: File[]) {
     if (!files.length) return;
     const fd = new FormData();
-    for (const f of files) fd.append("photos", f);
+    if (isSupabase) {
+      const uploaded = await uploadFilesToSupabaseStorage(files, "marketing-phone-photos", {
+        itemId: phoneId,
+      });
+      for (const u of uploaded) fd.append("photo_url", u.sbUrl);
+    } else {
+      for (const f of files) fd.append("photos", f);
+    }
     const res = await fetch(`/api/admin/marketing/phones/${encodeURIComponent(phoneId)}/photos`, {
       method: "POST",
       credentials: "include",
@@ -1351,7 +1361,12 @@ export function AdminMarketingClient({
       fd.append("username", shadowbanReportTarget.username);
       fd.append("report_type", "shadowbanned");
       fd.append("notes", shadowbanNotes);
-      fd.append("screenshot", shadowbanFile);
+      if (isSupabase) {
+        const { sbUrl } = await uploadFileToSupabaseStorage(shadowbanFile, "shadowban-report");
+        fd.append("screenshot_url", sbUrl);
+      } else {
+        fd.append("screenshot", shadowbanFile);
+      }
       const res = await fetch("/api/va/marketing/report-shadowban", {
         method: "POST",
         credentials: "include",

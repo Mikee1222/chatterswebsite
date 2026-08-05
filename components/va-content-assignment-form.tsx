@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/form";
 import { Select, selectOptionClass } from "@/components/ui/form";
 import { VaContentAssignmentFileDropzone } from "@/components/va-content-assignment-file-dropzone";
 import { VA_CONTENT_ASSIGNMENT_MAX_FILES } from "@/lib/va-content-assignment-files";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import type { ModelRecord } from "@/types";
 
 const CONTENT_TYPES = ["PDF", "Video Script", "Photo Guide", "Other"] as const;
@@ -32,6 +34,7 @@ export function VaContentAssignmentForm({
   submitLabel,
 }: VaContentAssignmentFormProps) {
   const router = useRouter();
+  const isSupabase = useIsSupabaseBackend();
   const isAdminMode = Boolean(vaOptions?.length);
   const endpoint = createEndpoint ?? (isAdminMode ? "/api/admin/va-content-assignments/create" : "/api/va/content/create");
 
@@ -96,12 +99,17 @@ export function VaContentAssignmentForm({
       fd.set("priority", priority);
       if (deadline.trim()) fd.set("deadline", deadline.trim());
       if (fileUrl.trim() && files.length === 0) fd.set("file_url", fileUrl.trim());
-      for (const file of files) {
-        fd.append("files", file);
-      }
-
       if (files.length > 0) {
         setUploadProgress(`Uploading ${files.length} file${files.length === 1 ? "" : "s"}…`);
+        if (isSupabase) {
+          const uploaded = await uploadFilesToSupabaseStorage(files, "va-content-assignment");
+          for (const u of uploaded) fd.append("file_url", u.sbUrl);
+          fd.set("file_urls", JSON.stringify(uploaded.map((u) => u.sbUrl)));
+        } else {
+          for (const file of files) {
+            fd.append("files", file);
+          }
+        }
       }
 
       const res = await fetch(endpoint, { method: "POST", body: fd });

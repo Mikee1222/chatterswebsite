@@ -4,6 +4,8 @@ import * as React from "react";
 import { Check, X, ClipboardList } from "lucide-react";
 import type { SocialAccount } from "@/services/marketing";
 import { PLATFORM_ICONS } from "@/lib/social-platform-config";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 
 export type VAShadowbanReportModalProps = {
   open: boolean;
@@ -14,6 +16,7 @@ export type VAShadowbanReportModalProps = {
 };
 
 export function VAShadowbanReportModal({ open, onClose, vaAccounts, presetAccount }: VAShadowbanReportModalProps) {
+  const isSupabase = useIsSupabaseBackend();
   const [selectedAccount, setSelectedAccount] = React.useState<SocialAccount | null>(null);
   const [reportType, setReportType] = React.useState<"shadowbanned" | "banned">("shadowbanned");
   const [screenshot, setScreenshot] = React.useState<File | null>(null);
@@ -72,8 +75,13 @@ export function VAShadowbanReportModal({ open, onClose, vaAccounts, presetAccoun
     fd.append("username", selectedAccount.username);
     fd.append("report_type", reportType);
     fd.append("notes", notes);
-    fd.append("screenshot", screenshot);
     try {
+      if (isSupabase) {
+        const { sbUrl } = await uploadFileToSupabaseStorage(screenshot, "shadowban-report");
+        fd.append("screenshot_url", sbUrl);
+      } else {
+        fd.append("screenshot", screenshot);
+      }
       const res = await fetch("/api/va/marketing/report-shadowban", {
         method: "POST",
         credentials: "include",

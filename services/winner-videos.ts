@@ -333,6 +333,14 @@ export async function uploadWinnerVideoScreenshot(
   }
 }
 
+export async function appendWinnerVideoScreenshotUrls(id: string, urls: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./winner-videos-supabase")).appendWinnerVideoScreenshotUrls(id, urls);
+  }
+  void id;
+  void urls;
+}
+
 export type ApproveWinnerVideoInput = {
   assigned_creator_name: string;
   recreation_deadline: string;

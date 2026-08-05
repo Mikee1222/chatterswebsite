@@ -21,6 +21,8 @@ import {
   VA_MODEL_TAG,
 } from "@/components/manager-review-ui";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
 import type {
@@ -88,6 +90,7 @@ export function SupervisorDailyReviewClient({
   roleLabels,
 }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [myReviews, setMyReviews] = React.useState(initialSubmissions);
   const [selectedDate, setSelectedDate] = React.useState(todayReviewIso());
   const [activeReview, setActiveReview] = React.useState<MarketingDailyReviewDetail | null>(todayReview);
@@ -224,7 +227,14 @@ export function SupervisorDailyReviewClient({
 
       if (attachFiles.length > 0) {
         const fd = new FormData();
-        for (const f of attachFiles) fd.append("attachments", f);
+        if (isSupabase) {
+          const uploaded = await uploadFilesToSupabaseStorage(attachFiles, "daily-review", {
+            itemId: activeReview.id,
+          });
+          for (const u of uploaded) fd.append("attachment_url", u.sbUrl);
+        } else {
+          for (const f of attachFiles) fd.append("attachments", f);
+        }
         await fetch(`${API_BASE}/${activeReview.id}/attachments`, { method: "POST", body: fd });
       }
 

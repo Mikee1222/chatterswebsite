@@ -27,6 +27,8 @@ import {
   type CustomSelectOption,
 } from "@/components/manager-review-ui";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { ROUTES } from "@/lib/routes";
 import { formatReviewDate, todayReviewIso } from "@/lib/marketing-reviews-helpers";
 import { cn } from "@/lib/utils";
@@ -103,6 +105,7 @@ export function AdminDailyReviewClient({
   roleLabels,
 }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [reviews, setReviews] = React.useState(initialReviews);
   const [selectedDate, setSelectedDate] = React.useState(todayReviewIso());
   const [activeReview, setActiveReview] = React.useState<MarketingDailyReviewDetail | null>(todayReview);
@@ -287,7 +290,14 @@ export function AdminDailyReviewClient({
 
       if (attachFiles.length > 0) {
         const fd = new FormData();
-        for (const f of attachFiles) fd.append("attachments", f);
+        if (isSupabase) {
+          const uploaded = await uploadFilesToSupabaseStorage(attachFiles, "daily-review", {
+            itemId: activeReview.id,
+          });
+          for (const u of uploaded) fd.append("attachment_url", u.sbUrl);
+        } else {
+          for (const f of attachFiles) fd.append("attachments", f);
+        }
         await fetch(`${API_BASE}/${activeReview.id}/attachments`, { method: "POST", body: fd });
       }
 

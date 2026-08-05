@@ -622,6 +622,15 @@ export async function uploadPhonePhotos(
   await sbUpdateByPublicId(T_PHONES, phoneId, { phone_photos: existing });
 }
 
+/** Append already-uploaded sb:// tokens (direct client upload). */
+export async function appendPhonePhotoUrls(phoneId: string, urls: string[]): Promise<void> {
+  if (!urls.length) return;
+  const row = await sbSelectByPublicId<PhoneRow>(T_PHONES, phoneId);
+  if (!row) throw new Error("Phone not found");
+  const existing = [...(row.phone_photos ?? []), ...urls.filter(Boolean)];
+  await sbUpdateByPublicId(T_PHONES, phoneId, { phone_photos: existing });
+}
+
 export async function unlinkAccountFromPhone(accountId: string): Promise<void> {
   await sbUpdateByPublicId(T_ACCOUNTS, accountId, {
     linked_phone: [],

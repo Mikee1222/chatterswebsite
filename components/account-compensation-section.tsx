@@ -9,6 +9,8 @@ import { FormSelect } from "@/components/ui/form-select";
 import { SopFormSection } from "@/components/sop/sop-form-section";
 import { selectOptionClass } from "@/components/ui/form";
 import { cn } from "@/lib/utils";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 
 const COMPENSATION_TYPES: CompensationType[] = ["Percentage", "Flat Fee"];
 const MAX_ATTACHMENT_MB = 4;
@@ -30,6 +32,7 @@ export function AccountCompensationSection({
   existingAttachments = [],
   defaultOpen = false,
 }: Props) {
+  const isSupabase = useIsSupabaseBackend();
   const [compensationType, setCompensationType] = React.useState<CompensationType | "">(
     defaultCompensationType
   );
@@ -46,7 +49,53 @@ export function AccountCompensationSection({
   );
   const [keptAttachments, setKeptAttachments] = React.useState(existingAttachments);
   const [newFileNames, setNewFileNames] = React.useState<string[]>([]);
+  const [uploadedUrls, setUploadedUrls] = React.useState<UserContractAttachment[]>([]);
+  const [uploading, setUploading] = React.useState(false);
+  const [uploadError, setUploadError] = React.useState<string | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  React.useEffect(() => {
+    if (!isSupabase) return;
+    const form = fileInputRef.current?.closest("form");
+    if (!form) return;
+    const onSubmit = (e: Event) => {
+      if (uploading) {
+        e.preventDefault();
+        setUploadError("Wait for contract uploads to finish.");
+      }
+    };
+    form.addEventListener("submit", onSubmit);
+    return () => form.removeEventListener("submit", onSubmit);
+  }, [isSupabase, uploading]);
+
+  async function onFilesSelected(files: FileList | null) {
+    const list = Array.from(files ?? []);
+    setUploadError(null);
+    setNewFileNames(list.map((f) => f.name));
+    if (!isSupabase) return;
+    if (list.length === 0) {
+      setUploadedUrls([]);
+      return;
+    }
+    setUploading(true);
+    try {
+      const uploaded = await uploadFilesToSupabaseStorage(list, "user-contract");
+      setUploadedUrls(
+        uploaded.map((u) => ({
+          url: u.sbUrl,
+          filename: u.filename,
+        }))
+      );
+      setNewFileNames(uploaded.map((u) => u.filename));
+    } catch (err) {
+      setUploadedUrls([]);
+      setNewFileNames([]);
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   return (
     <SopFormSection
@@ -147,6 +196,13 @@ export function AccountCompensationSection({
           name="kept_contract_attachments"
           value={JSON.stringify(keptAttachments)}
         />
+        {isSupabase ? (
+          <input
+            type="hidden"
+            name="contract_attachment_urls"
+            value={JSON.stringify(uploadedUrls.map((a) => a.url))}
+          />
+        ) : null}
         <div className="space-y-3">
           {keptAttachments.length > 0 && (
             <ul className="space-y-2">
@@ -190,18 +246,23 @@ export function AccountCompensationSection({
           <div
             role="button"
             tabIndex={0}
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => !uploading && fileInputRef.current?.click()}
             onKeyDown={(e) => {
+              if (uploading) return;
               if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
             }}
             className={cn(
               "cursor-pointer rounded-2xl border-2 border-dashed p-4 text-center transition-all",
-              newFileNames.length > 0
-                ? "border-green-500/30 bg-green-500/5"
-                : "border-white/15 hover:border-pink-500/40 hover:bg-pink-500/5"
+              uploading
+                ? "border-white/20 bg-white/[0.03] opacity-80"
+                : newFileNames.length > 0
+                  ? "border-green-500/30 bg-green-500/5"
+                  : "border-white/15 hover:border-pink-500/40 hover:bg-pink-500/5"
             )}
           >
-            {newFileNames.length > 0 ? (
+            {uploading ? (
+              <p className="text-sm font-medium text-white/70">Uploading…</p>
+            ) : newFileNames.length > 0 ? (
               <div className="space-y-1">
                 <p className="text-sm font-medium text-green-300/90">
                   {newFileNames.length} new file{newFileNames.length === 1 ? "" : "s"} selected
@@ -223,17 +284,15 @@ export function AccountCompensationSection({
             <input
               ref={fileInputRef}
               id="contract_attachments"
-              name="contract_attachments"
+              name={isSupabase ? undefined : "contract_attachments"}
               type="file"
               multiple
               accept="image/*,application/pdf"
               className="hidden"
-              onChange={(e) => {
-                const names = Array.from(e.target.files ?? []).map((f) => f.name);
-                setNewFileNames(names);
-              }}
+              onChange={(e) => void onFilesSelected(e.target.files)}
             />
           </div>
+          {uploadError ? <p className="text-xs text-red-300/90">{uploadError}</p> : null}
         </div>
       </FormField>
 

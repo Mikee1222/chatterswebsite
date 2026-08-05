@@ -544,6 +544,14 @@ export async function uploadPhonePhotos(
   }
 }
 
+export async function appendPhonePhotoUrls(phoneId: string, urls: string[]): Promise<void> {
+  if (isSupabaseBackend()) {
+    return (await import("./marketing-supabase")).appendPhonePhotoUrls(phoneId, urls);
+  }
+  void phoneId;
+  void urls;
+}
+
 export async function unlinkAccountFromPhone(accountId: string): Promise<void> {
   if (isSupabaseBackend()) return (await import("./marketing-supabase")).unlinkAccountFromPhone(accountId);
   await updateRecord(TABLE_ACCOUNTS, accountId, {

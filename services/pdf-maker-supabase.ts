@@ -129,11 +129,13 @@ function mapTemplate(row: TemplateRow): PdfTemplate {
   };
 }
 
-function mapDocument(row: DocumentRow): PdfDocument {
+async function mapDocument(row: DocumentRow): Promise<PdfDocument> {
   const sectionsRaw = row.Sections ?? row.sections;
   const metaRaw = row["Meta Fields"] ?? row.meta_fields;
   const styleRaw = row.Style ?? row.style;
   const createdBy = fieldStr(row, "Created By", "created_by");
+  const rawFileUrl = fieldStr(row, "File URL", "file_url");
+  const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
   return {
     id: publicId(row),
     title: fieldStr(row, "Title", "title") || "Untitled",
@@ -143,7 +145,7 @@ function mapDocument(row: DocumentRow): PdfDocument {
     metaFields: parseMetaFieldsJson(metaRaw),
     style: parseStyleJson(styleRaw),
     createdBy,
-    fileUrl: fieldStr(row, "File URL", "file_url"),
+    fileUrl: await resolveStorageUrl(rawFileUrl),
     createdAt: fieldStr(row, "Created At", "created_at", "created_time"),
   };
 }
@@ -183,8 +185,8 @@ export async function createPdfDocument(input: {
 export async function getPdfHistory(limit = 20): Promise<PdfDocument[]> {
   const rows = await sbSelectAll<DocumentRow>(PDF_DOCUMENTS_TABLE);
   const safeLimit = Math.min(Math.max(1, Math.floor(limit)), 100);
-  return rows
-    .map(mapDocument)
+  const mapped = await Promise.all(rows.map(mapDocument));
+  return mapped
     .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
     .slice(0, safeLimit);
 }

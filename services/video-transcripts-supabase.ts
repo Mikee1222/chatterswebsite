@@ -117,7 +117,7 @@ export async function uploadVideoTranscriptFile(
     if (!file.bytes.byteLength) continue;
     const safeName = (file.name || "video").replace(/[^a-zA-Z0-9._-]/g, "_");
     const token = await uploadToPrivateStorage({
-      bucket: "attachments",
+      bucket: "winner-videos",
       objectPath: `video_transcripts/${row.airtable_id || row.id}/video_file/${Date.now()}_${i}_${safeName}`,
       bytes: file.bytes,
       contentType: file.type || "application/octet-stream",
@@ -126,6 +126,18 @@ export async function uploadVideoTranscriptFile(
   }
   await sbUpdateByPublicId(TABLE, id, {
     video_file: existing,
+    updated_at: new Date().toISOString(),
+  });
+}
+
+/** Set video_file from already-uploaded sb:// tokens (direct client upload). */
+export async function setVideoTranscriptFileUrls(id: string, urls: string[]): Promise<void> {
+  const cleaned = urls.map((u) => u.trim()).filter(Boolean);
+  if (!cleaned.length) return;
+  const row = await sbSelectByPublicId<Row>(TABLE, id);
+  if (!row) throw new Error("Video transcript not found");
+  await sbUpdateByPublicId(TABLE, id, {
+    video_file: cleaned,
     updated_at: new Date().toISOString(),
   });
 }

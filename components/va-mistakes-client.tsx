@@ -4,6 +4,8 @@ import * as React from "react";
 import { AnimatePresence } from "framer-motion";
 import { Pencil, ClipboardList } from "lucide-react";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import type { AppNotification } from "@/types";
 import { getNowDatetimeLocalAthens, athensDatetimeLocalToISO } from "@/lib/airtable-datetime";
 import { formatDateTimeAthens } from "@/lib/format";
@@ -146,6 +148,7 @@ type Props = {
 
 export function VaMistakesClient({ initialMistakes, chatters, models, reasons }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [mainTab, setMainTab] = React.useState<"submit" | "submitted">("submit");
   const [subTab, setSubTab] = React.useState<"all" | "rejected">("all");
   const [mistakes, setMistakes] = React.useState(initialMistakes);
@@ -265,9 +268,16 @@ export function VaMistakesClient({ initialMistakes, chatters, models, reasons }:
     fd.set("mistake_date", athensDatetimeLocalToISO(mistakeLocal));
     fd.set("reason_id", reasonId);
     fd.set("explanation", explanation.trim());
-    if (screenshot) fd.set("screenshot", screenshot);
-
     try {
+      if (screenshot) {
+        if (isSupabase) {
+          const { sbUrl } = await uploadFileToSupabaseStorage(screenshot, "va-mistake");
+          fd.set("screenshot_url", sbUrl);
+        } else {
+          fd.set("screenshot", screenshot);
+        }
+      }
+
       const res = await fetch("/api/va/mistakes", { method: "POST", body: fd });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

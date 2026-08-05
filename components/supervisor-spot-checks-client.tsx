@@ -18,6 +18,8 @@ import {
 import { SpotCheckForm, type SpotCheckFormValues } from "@/components/spot-check-form";
 import { staffDisplayName, type StaffUserOption } from "@/components/staff-assignee-picker";
 import { useToast } from "@/contexts/toast-context";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFilesToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { formatDateTimeAthens } from "@/lib/format";
 import type { MarketingSpotCheck } from "@/services/marketing-reviews";
 import type { ModelRecord } from "@/types";
@@ -54,6 +56,7 @@ export function SupervisorSpotChecksClient({
   models,
 }: Props) {
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const [submissions, setSubmissions] = React.useState(initialSubmissions);
   const [loading, setLoading] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
@@ -103,7 +106,14 @@ export function SupervisorSpotChecksClient({
       }
       if (values.files.length > 0) {
         const fd = new FormData();
-        for (const f of values.files) fd.append("attachments", f);
+        if (isSupabase) {
+          const uploaded = await uploadFilesToSupabaseStorage(values.files, "spot-check", {
+            itemId: data.spotCheck.id,
+          });
+          for (const u of uploaded) fd.append("attachment_url", u.sbUrl);
+        } else {
+          for (const f of values.files) fd.append("attachments", f);
+        }
         await fetch(`/api/spot-checks/${data.spotCheck.id}/attachments`, {
           method: "POST",
           body: fd,

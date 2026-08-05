@@ -23,6 +23,8 @@ import { canSubmitPayment } from "@/lib/billing-status";
 import { SUPPORTED_SOLANA_TOKENS, type SolanaToken } from "@/lib/currency";
 import { ROUTES } from "@/lib/routes";
 import { ClientPaymentMethodCard } from "./payment-method-card";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
+import { uploadFileToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 
 type ProofFilePickerProps = {
   value: File | null;
@@ -223,6 +225,7 @@ export function PaymentForm({
   cycleRevenues = [],
   modelIdToName = {},
 }: PaymentFormProps) {
+  const isSupabase = useIsSupabaseBackend();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -690,24 +693,29 @@ export function PaymentForm({
 
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      const res = await fetch("/api/client/upload-proof", {
-        method: "POST",
-        body: formData,
-      });
-      const data = (await res.json()) as { url?: string; error?: string };
-      if (!res.ok || !data.url) {
-        throw new Error(data.error ?? "Upload failed");
+      if (isSupabase) {
+        const { sbUrl } = await uploadFileToSupabaseStorage(file, "payment-proof");
+        setProofUrl(sbUrl);
+      } else {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/client/upload-proof", {
+          method: "POST",
+          body: formData,
+        });
+        const data = (await res.json()) as { url?: string; error?: string };
+        if (!res.ok || !data.url) {
+          throw new Error(data.error ?? "Upload failed");
+        }
+        setProofUrl(data.url);
       }
-      setProofUrl(data.url);
     } catch (err) {
       setUploadError(err instanceof Error ? err.message : "Upload failed");
       setProofFile(null);
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [isSupabase]);
 
   const proofReady = Boolean(proofUrl);
 

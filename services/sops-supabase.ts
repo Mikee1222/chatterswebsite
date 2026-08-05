@@ -374,25 +374,28 @@ async function mapFns(rows: FnRow[]): Promise<SopFunction[]> {
     sbResolveUuidToAirtableMap(ROLES, rows.map((r) => r.sop_role)),
     sbResolveUuidToAirtableMap(DEPTS, rows.map((r) => r.department)),
   ]);
-  return rows.map((row) => ({
-    id: publicId(row),
-    function_id: String(row.function_id ?? ""),
-    sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
-    name: String(row.name ?? ""),
-    department_id: firstMappedLinkedId(row.department, deptAt),
-    kpi: String(row.kpi ?? ""),
-    standard_type: coerceStandardType(row.standard_type),
-    sop_content: String(row.sop_content ?? ""),
-    sop_file_url: String(row.sop_file_url ?? ""),
-    sop_file_name: String(row.sop_file_name ?? ""),
-    loom_url: String(row.loom_url ?? ""),
-    cadence_type: coerceCadenceType(row.cadence_type),
-    cadence_note: String(row.cadence_note ?? ""),
-    sort_order: coerceSortOrder(row.sort_order),
-    is_active: row.is_active !== false,
-    content_version: coerceContentVersion(row.content_version),
-    created_at: row.created_at != null ? String(row.created_at) : undefined,
-  }));
+  const { resolveStorageUrl } = await import("@/lib/supabase-signed-url");
+  return Promise.all(
+    rows.map(async (row) => ({
+      id: publicId(row),
+      function_id: String(row.function_id ?? ""),
+      sop_role_id: firstMappedLinkedId(row.sop_role, roleAt),
+      name: String(row.name ?? ""),
+      department_id: firstMappedLinkedId(row.department, deptAt),
+      kpi: String(row.kpi ?? ""),
+      standard_type: coerceStandardType(row.standard_type),
+      sop_content: String(row.sop_content ?? ""),
+      sop_file_url: await resolveStorageUrl(String(row.sop_file_url ?? "")),
+      sop_file_name: String(row.sop_file_name ?? ""),
+      loom_url: String(row.loom_url ?? ""),
+      cadence_type: coerceCadenceType(row.cadence_type),
+      cadence_note: String(row.cadence_note ?? ""),
+      sort_order: coerceSortOrder(row.sort_order),
+      is_active: row.is_active !== false,
+      content_version: coerceContentVersion(row.content_version),
+      created_at: row.created_at != null ? String(row.created_at) : undefined,
+    }))
+  );
 }
 
 async function mapFn(row: FnRow): Promise<SopFunction> {
