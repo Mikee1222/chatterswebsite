@@ -1,15 +1,21 @@
 import { redirect } from "next/navigation";
 import { getEffectiveStaffRole } from "@/lib/staff-session-role";
 import { getSessionFromCookies } from "@/lib/auth";
+import { hasPermission } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { getWhalesByChatter } from "@/services/whales";
 import { getActiveShiftByChatter, getShiftsByChatter, listShiftModels } from "@/services/shifts";
 import { listTransactionsByChatter } from "@/services/whale-transactions";
 import { getMonthlyTargetByTeamMemberAndMonth } from "@/services/monthly-targets";
+import {
+  getChatterInflowwPerformance,
+  resolveInflowwStatsRange,
+} from "@/services/infloww-performance";
 import { transactionTypeLabel } from "@/lib/airtable-options";
 import { formatDateEuropean, displayName } from "@/lib/format";
 import { getNowInAthens } from "@/lib/airtable-datetime";
-import { ChatterHomeClient } from "@/components/chatter-home-client";
+import { ChatterHomeClient, type InflowwHomeMtdData } from "@/components/chatter-home-client";
 import { ChatterHomePageClient } from "@/components/chatter-home-page-client";
 import { SopResumeBanner } from "@/components/sop-resume-banner";
 import { getAcademyResumeForMember } from "@/lib/sop-academy";
@@ -72,18 +78,25 @@ export default async function ChatterHomePage() {
   const chatterId = user.airtableUserId ?? user.id;
   const athens = getNowInAthens();
   const currentMonthKey = `${athens.getUTCFullYear()}-${String(athens.getUTCMonth() + 1).padStart(2, "0")}`;
+  const canViewOwnInfloww = await hasPermission(user, PERMISSIONS.INFLOWW_STATS_VIEW_OWN);
 
-  const [whales, shiftCardData, transactions, monthlyTarget, sopResume] = await Promise.all([
-    getWhalesByChatter(chatterId).catch(() => []),
-    getHomeShiftCardData(chatterId),
-    listTransactionsByChatter(chatterId, 10000).catch(() => []),
-    getMonthlyTargetByTeamMemberAndMonth(chatterId, currentMonthKey).catch(() => null),
-    getAcademyResumeForMember(chatterId, {
-      airtableUserId: user.airtableUserId,
-      memberRole: user.role,
-      secondaryRole: "chatter",
-    }).catch(() => null),
-  ]);
+  const [whales, shiftCardData, transactions, monthlyTarget, sopResume, inflowwPerf] =
+    await Promise.all([
+      getWhalesByChatter(chatterId).catch(() => []),
+      getHomeShiftCardData(chatterId),
+      listTransactionsByChatter(chatterId, 10000).catch(() => []),
+      getMonthlyTargetByTeamMemberAndMonth(chatterId, currentMonthKey).catch(() => null),
+      getAcademyResumeForMember(chatterId, {
+        airtableUserId: user.airtableUserId,
+        memberRole: user.role,
+        secondaryRole: "chatter",
+      }).catch(() => null),
+      canViewOwnInfloww
+        ? getChatterInflowwPerformance(user.id, resolveInflowwStatsRange("this_month")).catch(
+            () => null
+          )
+        : Promise.resolve(null),
+    ]);
 
   const assignedWhalesCount = whales.length;
 
@@ -101,11 +114,6 @@ export default async function ChatterHomePage() {
     // keep fallback
   }
 
-  const totalEarnedUsd = transactions.reduce((sum: number, tx: WhaleTransaction) => {
-    const amountUsd = tx.currency === "eur" ? tx.amount * eurToUsdRate : tx.amount;
-    return sum + amountUsd;
-  }, 0);
-
   const transactionsThisMonth = transactions.filter((tx) => tx.date && tx.date.startsWith(currentMonthKey));
   const achievedThisMonthUsd = transactionsThisMonth.reduce((sum: number, tx: WhaleTransaction) => {
     const amountUsd = tx.currency === "eur" ? tx.amount * eurToUsdRate : tx.amount;
@@ -116,6 +124,23 @@ export default async function ChatterHomePage() {
     monthlyTarget && (monthlyTarget.is_active ?? true)
       ? { target: monthlyTarget, achievedUsd: achievedThisMonthUsd }
       : null;
+
+  let inflowwMtd: InflowwHomeMtdData = null;
+  if (canViewOwnInfloww) {
+    if (!inflowwPerf || !inflowwPerf.linked) {
+      inflowwMtd = { linked: false };
+    } else {
+      const change = inflowwPerf.analytics?.period_change.sales ?? null;
+      inflowwMtd = {
+        linked: true,
+        mtdSalesUsd: inflowwPerf.totals.sales,
+        vsLastMonth:
+          change && change.pct_change != null && change.direction !== "na"
+            ? { pctChange: change.pct_change, direction: change.direction }
+            : null,
+      };
+    }
+  }
 
   return (
     <ChatterHomePageClient>
@@ -133,7 +158,7 @@ export default async function ChatterHomePage() {
       {sopResume ? <SopResumeBanner resume={sopResume} /> : null}
 
       <ChatterHomeClient
-        totalEarnedUsd={totalEarnedUsd}
+        inflowwMtd={inflowwMtd}
         shiftCardData={shiftCardData}
         assignedWhalesCount={assignedWhalesCount}
         monthlyTargetData={monthlyTargetData}

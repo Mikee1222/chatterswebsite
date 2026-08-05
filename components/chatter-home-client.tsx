@@ -2,18 +2,33 @@
 
 import * as React from "react";
 import { motion } from "framer-motion";
-import { Calculator, Clock, Fish } from "lucide-react";
+import { Calculator, Clock, Fish, Link2Off } from "lucide-react";
 import { useUsdToEurRate } from "@/lib/hooks/use-usd-to-eur-rate";
 import { ROUTES } from "@/lib/routes";
 import { formatTimeEuropean, formatDurationMinutes, formatDateEuropean } from "@/lib/format";
 import { Label, Input } from "@/components/ui/form";
+import { CountUp, money, pctPoints } from "@/components/infloww-performance-ui";
+import { cn } from "@/lib/utils";
 import type { HomeShiftCardData } from "@/app/(dashboard)/home/page";
 import type { MonthlyTarget } from "@/types";
 
 type MonthlyTargetData = { target: MonthlyTarget; achievedUsd: number } | null;
 
+/** Infloww MTD card payload — `null` hides the card (no view_own permission). */
+export type InflowwHomeMtdData =
+  | { linked: false }
+  | {
+      linked: true;
+      mtdSalesUsd: number;
+      vsLastMonth: {
+        pctChange: number;
+        direction: "up" | "down" | "flat";
+      } | null;
+    }
+  | null;
+
 type Props = {
-  totalEarnedUsd: number;
+  inflowwMtd: InflowwHomeMtdData;
   shiftCardData: HomeShiftCardData;
   assignedWhalesCount: number;
   monthlyTargetData?: MonthlyTargetData;
@@ -66,7 +81,7 @@ function formatDurationHHMM(totalMinutes: number): string {
 }
 
 export function ChatterHomeClient({
-  totalEarnedUsd,
+  inflowwMtd,
   shiftCardData,
   assignedWhalesCount,
   monthlyTargetData = null,
@@ -81,7 +96,6 @@ export function ChatterHomeClient({
   const netAfterOnlyfans = rev * 0.8;
   const chatterEarnings = netAfterOnlyfans * (pct / 100);
   const eurAmount = usdToEur(chatterEarnings);
-  const totalEarnedEur = usdToEur(totalEarnedUsd);
 
   const [liveDurationMinutes, setLiveDurationMinutes] = React.useState(0);
   const liveData = shiftCardData.kind === "live" ? shiftCardData : null;
@@ -93,11 +107,6 @@ export function ChatterHomeClient({
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [liveData]);
-
-  const totalValid = typeof totalEarnedUsd === "number" && !Number.isNaN(totalEarnedUsd);
-  const eurLabel = totalValid
-    ? `≈ €${totalEarnedEur.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-    : "—";
 
   return (
     <section className="space-y-8">
@@ -155,32 +164,11 @@ export function ChatterHomeClient({
         </Reveal>
       )}
 
-      <Reveal delay={0.09}>
-        <motion.a
-          href={ROUTES.chatter.logTransaction}
-          whileHover={hoverLift}
-          className="group block rounded-2xl border border-pink-500/25 bg-gradient-to-br from-pink-500/[0.14] via-black/50 to-fuchsia-950/35 p-7 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl transition-shadow duration-300 hover:border-pink-400/40 hover:shadow-[0_24px_56px_-12px_hsl(330_85%_55%/0.35)]"
-        >
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-200/70">Total earned</p>
-          <motion.p
-            className="mt-3 text-5xl font-bold tracking-tight text-white sm:text-6xl"
-            initial={{ opacity: 0, scale: 0.94 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ type: "spring", stiffness: 140, damping: 20, delay: 0.2 }}
-          >
-            {!totalValid ? "—" : `$${totalEarnedUsd.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
-          </motion.p>
-          <motion.p
-            className="mt-2 text-lg font-medium text-pink-100/85 sm:text-xl"
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.45, ease: easeOut, delay: 0.42 }}
-          >
-            {eurLabel}
-          </motion.p>
-          <p className="mt-2 text-sm text-white/45">Tap to log a whale session</p>
-        </motion.a>
-      </Reveal>
+      {inflowwMtd ? (
+        <Reveal delay={0.09}>
+          <InflowwMtdCard data={inflowwMtd} />
+        </Reveal>
+      ) : null}
 
       <div className="grid gap-8 lg:grid-cols-2">
         <Reveal delay={0.18}>
@@ -254,6 +242,69 @@ export function ChatterHomeClient({
         </div>
       </div>
     </section>
+  );
+}
+
+function InflowwMtdCard({ data }: { data: Exclude<InflowwHomeMtdData, null> }) {
+  if (!data.linked) {
+    return (
+      <motion.div
+        whileHover={hoverLift}
+        className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.05] via-black/55 to-[#D4AF8C]/10 p-7 backdrop-blur-xl"
+      >
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#D4AF8C]/80">
+          Month-to-date sales
+        </p>
+        <div className="mt-5 flex items-start gap-4">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#D4AF8C]/25 bg-[#D4AF8C]/10">
+            <Link2Off className="h-5 w-5 text-[#D4AF8C]" aria-hidden />
+          </span>
+          <div>
+            <p className="text-lg font-semibold text-white/90">Infloww not linked</p>
+            <p className="mt-1.5 max-w-md text-sm leading-relaxed text-white/50">
+              Ask an admin to set your Infloww employee ID so month-to-date sales can show here.
+            </p>
+          </div>
+        </div>
+      </motion.div>
+    );
+  }
+
+  const vs = data.vsLastMonth;
+
+  return (
+    <motion.a
+      href={ROUTES.chatter.myPerformance}
+      whileHover={hoverLift}
+      className="group block rounded-2xl border border-pink-500/25 bg-gradient-to-br from-pink-500/[0.14] via-black/50 to-fuchsia-950/35 p-7 shadow-[0_0_0_1px_rgba(255,255,255,0.06)] backdrop-blur-xl transition-shadow duration-300 hover:border-pink-400/40 hover:shadow-[0_24px_56px_-12px_hsl(330_85%_55%/0.35)]"
+    >
+      <p className="text-xs font-semibold uppercase tracking-[0.18em] text-pink-200/70">
+        Month-to-date sales
+      </p>
+      <motion.p
+        className="mt-3 text-5xl font-bold tracking-tight text-white sm:text-6xl"
+        initial={{ opacity: 0, scale: 0.94 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: "spring", stiffness: 140, damping: 20, delay: 0.2 }}
+      >
+        <CountUp value={data.mtdSalesUsd} format={(n) => money(n)} />
+      </motion.p>
+      {vs ? (
+        <p
+          className={cn(
+            "mt-3 text-sm font-medium",
+            vs.direction === "up" && "text-emerald-300/90",
+            vs.direction === "down" && "text-red-300/90",
+            vs.direction === "flat" && "text-white/50"
+          )}
+        >
+          vs last month: {pctPoints(vs.pctChange)}
+        </p>
+      ) : null}
+      <p className="mt-3 text-sm text-white/45 transition-colors group-hover:text-pink-200/70">
+        View full performance →
+      </p>
+    </motion.a>
   );
 }
 
