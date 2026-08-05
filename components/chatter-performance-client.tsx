@@ -203,7 +203,25 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         />
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <LuxuryStatCard
+          label="Unlock rate"
+          value={
+            a?.funnel.unlock_data_sparse
+              ? "n/a"
+              : a
+                ? pct(a.funnel.unlock_rate)
+                : "—"
+          }
+          hint={
+            a?.funnel.unlock_data_sparse
+              ? "Not yet synced"
+              : a
+                ? `${a.funnel.unlocked.toLocaleString()} / ${a.funnel.ppvs_sent.toLocaleString()} PPVs`
+                : undefined
+          }
+          accent="emerald"
+        />
         <LuxuryStatCard
           label="Rev / hour"
           value={a?.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}

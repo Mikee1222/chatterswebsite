@@ -57,6 +57,7 @@ type SortKey =
   | "messages_sent"
   | "fans_chatted"
   | "fan_cvr"
+  | "unlock_rate"
   | "revenue_per_hour"
   | "consistency"
   | "avg_ppv";
@@ -68,6 +69,8 @@ function sortValue(row: InflowwChatterPerformance, key: SortKey): number | strin
       return row.full_name || "";
     case "fan_cvr":
       return row.totals.fan_cvr ?? -1;
+    case "unlock_rate":
+      return a?.funnel.unlock_data_sparse ? -1 : (a?.funnel.unlock_rate ?? -1);
     case "revenue_per_hour":
       return a?.revenue_per_hour ?? -1;
     case "consistency":
@@ -103,8 +106,8 @@ function ChatterDrilldown({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-white">{row.full_name || "Unknown"}</p>
           <p className="mt-0.5 text-xs text-white/40">
-            Emp {row.infloww_employee_id} · {row.totals.messages_sent.toLocaleString()} msgs · CVR{" "}
-            {pct(row.totals.fan_cvr)}
+            Emp {row.infloww_employee_id} · {row.totals.messages_sent.toLocaleString()} msgs · Unlock{" "}
+            {a?.funnel.unlock_data_sparse ? "n/a" : pct(a?.funnel.unlock_rate)}
             {a?.revenue_per_hour != null ? ` · ${money(a.revenue_per_hour)}/h` : ""}
             {a?.team_standing ? ` · #${a.team_standing.rank}/${a.team_standing.of}` : ""}
           </p>
@@ -118,7 +121,17 @@ function ChatterDrilldown({
       </button>
       {open && a ? (
         <div className="space-y-4 border-t border-white/6 bg-black/25 px-4 py-5">
-          <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
+            <LuxuryStatCard
+              label="Unlock rate"
+              value={a.funnel.unlock_data_sparse ? "n/a" : pct(a.funnel.unlock_rate)}
+              hint={
+                a.funnel.unlock_data_sparse
+                  ? "Not yet synced"
+                  : `${a.funnel.unlocked.toLocaleString()} / ${a.funnel.ppvs_sent.toLocaleString()} PPVs`
+              }
+              accent="emerald"
+            />
             <LuxuryStatCard
               label="Rev / hour"
               value={a.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}
@@ -279,7 +292,9 @@ function Heatmap({
                     >
                       {sales > 0 ? (
                         <span className="text-[10px] font-semibold text-white/90">
-                          {sales >= 1000 ? `${(sales / 1000).toFixed(1)}k` : Math.round(sales)}
+                          {sales >= 1000
+                            ? `$${(sales / 1000).toFixed(1)}k`
+                            : money(Math.round(sales))}
                         </span>
                       ) : (
                         <span className="text-white/15">·</span>
@@ -692,7 +707,7 @@ export function AdminInflowwPerformanceClient({
         </p>
       ) : null}
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <LuxuryStatCard
           label="Team sales"
           value={<CountUp value={data.team_totals.sales} format={(n) => money(n)} />}
@@ -710,7 +725,17 @@ export function AdminInflowwPerformanceClient({
             <CountUp value={data.team_totals.messages_sent} format={(n) => Math.round(n).toLocaleString()} />
           }
         />
-        <LuxuryStatCard label="Fan CVR" value={pct(data.team_totals.fan_cvr)} accent="emerald" />
+        <LuxuryStatCard
+          label="Unlock rate"
+          value={teamFunnel.unlock_data_sparse ? "n/a" : pct(teamFunnel.unlock_rate)}
+          hint={
+            teamFunnel.unlock_data_sparse
+              ? "Not yet synced"
+              : `${teamFunnel.unlocked.toLocaleString()} / ${teamFunnel.ppvs_sent.toLocaleString()} PPVs`
+          }
+          accent="emerald"
+        />
+        <LuxuryStatCard label="Fan CVR" value={pct(data.team_totals.fan_cvr)} />
       </div>
 
       {(data.alerts?.length ?? 0) > 0 || effortFlags.length > 0 ? (
@@ -858,6 +883,7 @@ export function AdminInflowwPerformanceClient({
               ["ppv_sales", "PPV"],
               ["messages_sent", "Msgs"],
               ["fans_chatted", "Fans"],
+              ["unlock_rate", "Unlock"],
               ["fan_cvr", "CVR"],
               ["revenue_per_hour", "$/h"],
               ["consistency", "Consist."],
