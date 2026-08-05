@@ -1,5 +1,5 @@
 import type { InflowwEarnings, InflowwEarningsResponse, InflowwModel, InflowwTransaction } from "@/types/infloww";
-import { athensYmdEndUtcMs, athensYmdStartUtcMs } from "@/lib/airtable-datetime";
+import { athensYmdEndUtcMs, athensYmdStartUtcMs, getTodayYmdAthens, ymdInAthens } from "@/lib/airtable-datetime";
 import { devLog } from "@/lib/dev-log";
 
 const INFLOWW_BASE_URL = "https://openapi.infloww.com/v1";
@@ -932,7 +932,7 @@ export function chunkDateRangeYmd(
 }
 
 function assertEmployeeReportLookback(startYmd: string, endYmd: string): void {
-  const today = localYmdFromMs(Date.now());
+  const today = getTodayYmdAthens();
   const earliest = addDaysYmd(today, -(EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS - 1));
   if (startYmd < earliest) {
     throw new InflowwApiError(
@@ -1064,18 +1064,29 @@ async function paginateEmployeeReport(
   return out;
 }
 
-function rangeToIsoBounds(startYmd: string, endYmd: string): { startTime: string; endTime: string } {
-  const startMs = athensYmdStartUtcMs(startYmd);
-  let endMs = athensYmdEndUtcMs(endYmd);
-  const safeEnd = Date.now() - 2000;
-  if (endMs > safeEnd) endMs = safeEnd;
-  if (endMs < startMs) {
-    throw new InflowwApiError("Invalid from/to date range: end is before start after capping to now.", 400);
+/**
+ * Employee-report query params: Infloww expects date-only `YYYY-MM-DD`
+ * (not full ISO datetime). Inputs are Athens calendar days from chunking —
+ * never derive these via `toISOString().slice(0,10)` (UTC day shift risk).
+ */
+function rangeToDateBounds(startYmd: string, endYmd: string): { startTime: string; endTime: string } {
+  const start =
+    /^\d{4}-\d{2}-\d{2}$/.test(startYmd.trim().slice(0, 10))
+      ? startYmd.trim().slice(0, 10)
+      : ymdInAthens(startYmd);
+  let end =
+    /^\d{4}-\d{2}-\d{2}$/.test(endYmd.trim().slice(0, 10))
+      ? endYmd.trim().slice(0, 10)
+      : ymdInAthens(endYmd);
+  if (!start || !end) {
+    throw new InflowwApiError("Invalid from/to date range.", 400);
   }
-  return {
-    startTime: new Date(startMs).toISOString(),
-    endTime: new Date(endMs).toISOString(),
-  };
+  const today = getTodayYmdAthens();
+  if (end > today) end = today;
+  if (start > end) {
+    throw new InflowwApiError("Invalid from/to date range: end is before start after capping to today.", 400);
+  }
+  return { startTime: start, endTime: end };
 }
 
 /**
@@ -1093,7 +1104,7 @@ export async function fetchEmployeeSalesSummary(params: {
   const chunks = chunkDateRangeYmd(start, end);
   const out: import("@/types/infloww").InflowwEmployeeSalesRow[] = [];
   for (const chunk of chunks) {
-    const times = rangeToIsoBounds(chunk.startYmd, chunk.endYmd);
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
     const rows = await paginateEmployeeReport("/employee-report/employee-sales-summary", {
       ...times,
       employeeIds: params.employeeIds,
@@ -1124,7 +1135,7 @@ export async function fetchEmployeeChatSummary(params: {
   const chunks = chunkDateRangeYmd(start, end);
   const out: import("@/types/infloww").InflowwEmployeeChatRow[] = [];
   for (const chunk of chunks) {
-    const times = rangeToIsoBounds(chunk.startYmd, chunk.endYmd);
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
     const rows = await paginateEmployeeReport("/employee-report/employee-chat-summary", {
       ...times,
       employeeIds: params.employeeIds,
