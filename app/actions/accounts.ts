@@ -290,6 +290,20 @@ export async function updateAccount(formData: FormData) {
     telegram_username_raw === null
       ? undefined
       : (telegram_username_raw as string).trim().replace(/^@/, "") || null;
+  const infloww_employee_id_raw = formData.get("infloww_employee_id");
+  let infloww_employee_id: number | null | undefined = undefined;
+  if (infloww_employee_id_raw !== null) {
+    const trimmed = String(infloww_employee_id_raw).trim();
+    if (!trimmed) {
+      infloww_employee_id = null;
+    } else {
+      const n = Number.parseInt(trimmed, 10);
+      if (!Number.isFinite(n) || n <= 0) {
+        redirect(ACCOUNTS_LIST + "?error=" + encodeURIComponent("Invalid Infloww employee ID."));
+      }
+      infloww_employee_id = n;
+    }
+  }
 
   const input: UpdateUserInput = {};
   if (full_name !== undefined) input.full_name = full_name;
@@ -341,6 +355,7 @@ export async function updateAccount(formData: FormData) {
     input.va_type = null;
   }
   if (telegram_username !== undefined) input.telegram_username = telegram_username;
+  if (infloww_employee_id !== undefined) input.infloww_employee_id = infloww_employee_id;
 
   const compensation = parseCompensationFields(formData);
   if ("error" in compensation) {

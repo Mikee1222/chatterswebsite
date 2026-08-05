@@ -31,3 +31,61 @@ export interface InflowwEarningsResponse {
     cut: number;
   };
 }
+
+/** One employee × performer × day row from Infloww employee-report endpoints. */
+export interface InflowwEmployeeSalesRow {
+  employeeId: number;
+  performerId: number;
+  performerName?: string;
+  /** Calendar day YYYY-MM-DD when the API returns a date; otherwise the request day. */
+  date?: string;
+  sales: number;
+  ppvSales: number;
+  tips: number;
+  dmSales: number;
+  pmmSales: number;
+  ofmmSales: number;
+}
+
+export interface InflowwEmployeeChatRow {
+  employeeId: number;
+  performerId: number;
+  performerName?: string;
+  date?: string;
+  messagesSent: number;
+  ppvsSent: number;
+  fansChatted: number;
+  fansWhoSpent: number;
+  goldenRatio: number | null;
+  fanCvr: number | null;
+  avgEarningsPerSpendingFan: number | null;
+  responseTimeSeconds: number | null;
+  salesPerHour: number | null;
+  messagesPerHour: number | null;
+  fansChattedPerHour: number | null;
+}
+
+/** Merged sales + chat metrics for upsert into infloww_daily_stats. */
+export interface InflowwEmployeeDayStats {
+  employeeId: number;
+  performerId: number;
+  performerName?: string;
+  date: string;
+  sales: number;
+  ppvSales: number;
+  tips: number;
+  dmSales: number;
+  pmmSales: number;
+  ofmmSales: number;
+  messagesSent: number;
+  ppvsSent: number;
+  fansChatted: number;
+  fansWhoSpent: number;
+  goldenRatio: number | null;
+  fanCvr: number | null;
+  avgEarningsPerSpendingFan: number | null;
+  responseTimeSeconds: number | null;
+  salesPerHour: number | null;
+  messagesPerHour: number | null;
+  fansChattedPerHour: number | null;
+}

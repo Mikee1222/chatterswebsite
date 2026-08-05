@@ -45,6 +45,7 @@ type Fields = {
   linked_model_id?: string | string[];
   language_preference?: string;
   telegram_username?: string;
+  infloww_employee_id?: number | string;
   last_login_user_agent?: string;
   [FIELD_COMPENSATION_TYPE]?: string;
   [FIELD_COMPENSATION_VALUE]?: number;
@@ -118,6 +119,12 @@ function mapRecord(rec: AirtableRecord<Fields>, includePasswordHash = false): Us
   if (vaType) out.va_type = vaType;
   if (typeof f.telegram_username === "string" && f.telegram_username.trim()) {
     out.telegram_username = f.telegram_username.trim();
+  }
+  if (typeof f.infloww_employee_id === "number" && Number.isFinite(f.infloww_employee_id)) {
+    out.infloww_employee_id = f.infloww_employee_id;
+  } else if (typeof f.infloww_employee_id === "string" && f.infloww_employee_id.trim()) {
+    const n = Number.parseInt(f.infloww_employee_id.trim(), 10);
+    if (Number.isFinite(n)) out.infloww_employee_id = n;
   }
   if (typeof f.last_login_user_agent === "string" && f.last_login_user_agent.trim()) {
     out.last_login_user_agent = f.last_login_user_agent.trim();
@@ -274,6 +281,7 @@ export type CreateUserInput = {
   linked_model_id?: string;
   language_preference?: string;
   telegram_username?: string;
+  infloww_employee_id?: number | null;
   va_type?: VaType;
   compensation_type?: CompensationType | null;
   compensation_value?: number | null;
@@ -297,6 +305,9 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   if (input.linked_model_id) fields.linked_model = [input.linked_model_id];
   if (input.language_preference) fields.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) fields.telegram_username = input.telegram_username.trim();
+  if (input.infloww_employee_id != null && Number.isFinite(input.infloww_employee_id)) {
+    fields.infloww_employee_id = input.infloww_employee_id;
+  }
   if (input.va_type) fields.va_type = input.va_type;
   applyCompensationFields(fields as Record<string, unknown>, input);
   const rec = await createRecord<Fields>(TABLE, fields as Fields);
@@ -317,6 +328,7 @@ export type UpdateUserInput = Partial<{
   /** Persists Airtable values chatting | marketing | both (null clears). */
   va_type: VaType | null;
   telegram_username: string | null;
+  infloww_employee_id: number | null;
   compensation_type: CompensationType | null;
   compensation_value: number | null;
   contract_attachments: UserContractAttachment[] | null;
@@ -414,6 +426,9 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   }
   if (input.telegram_username !== undefined) {
     fields.telegram_username = input.telegram_username?.trim() ?? "";
+  }
+  if (input.infloww_employee_id !== undefined) {
+    (fields as Record<string, unknown>).infloww_employee_id = input.infloww_employee_id;
   }
   applyCompensationFields(fields as Record<string, unknown>, input);
   const rec = await updateRecord<Fields>(TABLE, recordId, fields);

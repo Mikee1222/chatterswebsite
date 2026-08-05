@@ -659,3 +659,477 @@ export async function getInflowwEarningsSnapshot(params: {
 
   return { earnings, models, transactions, totals };
 }
+
+// ---------------------------------------------------------------------------
+// Employee reports (sales + chat summary) — GET /employee-report/*
+// ---------------------------------------------------------------------------
+
+const EMPLOYEE_REPORT_MAX_DAYS = 31;
+const EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS = 366;
+
+function numField(r: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function nullableNumField(r: Record<string, unknown>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function idField(r: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number.parseInt(String(v), 10);
+    if (Number.isFinite(n)) return n;
+  }
+  return 0;
+}
+
+function strField(r: Record<string, unknown>, keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = r[k];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return undefined;
+}
+
+function ymdField(r: Record<string, unknown>): string | undefined {
+  const keys = [
+    "date",
+    "day",
+    "businessDate",
+    "business_date",
+    "reportDate",
+    "report_date",
+    "statDate",
+    "stat_date",
+  ];
+  for (const k of keys) {
+    const v = r[k];
+    if (typeof v === "string") {
+      const m = v.trim().match(/^(\d{4}-\d{2}-\d{2})/);
+      if (m?.[1]) return m[1];
+    }
+    if (typeof v === "number" && Number.isFinite(v) && v > 1e11) {
+      return localYmdFromMs(v);
+    }
+  }
+  return undefined;
+}
+
+function hasMoreFrom(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const o = payload as Record<string, unknown>;
+  if (o["hasMore"] === true || o["has_more"] === true) return true;
+  const nested = o["data"];
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    const d = nested as Record<string, unknown>;
+    if (d["hasMore"] === true || d["has_more"] === true) return true;
+  }
+  return false;
+}
+
+function cursorFromPayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const o = payload as Record<string, unknown>;
+  const direct = nextCursorFrom(payload);
+  if (direct) return direct;
+  const nested = o["data"];
+  if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+    return nextCursorFrom(nested);
+  }
+  return undefined;
+}
+
+function addDaysYmd(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map((x) => Number.parseInt(x, 10));
+  if (!y || !m || !d) return ymd;
+  const dt = new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  return dt.toISOString().slice(0, 10);
+}
+
+function daysBetweenInclusive(startYmd: string, endYmd: string): number {
+  const a = Date.parse(`${startYmd}T12:00:00.000Z`);
+  const b = Date.parse(`${endYmd}T12:00:00.000Z`);
+  if (Number.isNaN(a) || Number.isNaN(b)) return 0;
+  return Math.floor((b - a) / 86_400_000) + 1;
+}
+
+/** Split a YYYY-MM-DD range into chunks of at most `maxDays` inclusive days. */
+export function chunkDateRangeYmd(
+  startYmd: string,
+  endYmd: string,
+  maxDays = EMPLOYEE_REPORT_MAX_DAYS
+): Array<{ startYmd: string; endYmd: string }> {
+  let start = startYmd.slice(0, 10);
+  const end = endYmd.slice(0, 10);
+  if (start > end) return [];
+  const out: Array<{ startYmd: string; endYmd: string }> = [];
+  while (start <= end) {
+    const chunkEnd = addDaysYmd(start, maxDays - 1);
+    const capped = chunkEnd > end ? end : chunkEnd;
+    out.push({ startYmd: start, endYmd: capped });
+    start = addDaysYmd(capped, 1);
+  }
+  return out;
+}
+
+function assertEmployeeReportLookback(startYmd: string, endYmd: string): void {
+  const today = localYmdFromMs(Date.now());
+  const earliest = addDaysYmd(today, -(EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS - 1));
+  if (startYmd < earliest) {
+    throw new InflowwApiError(
+      `Infloww employee reports only support the last ${EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS} days (earliest ${earliest}).`,
+      400
+    );
+  }
+  if (endYmd > today) {
+    throw new InflowwApiError("endTime cannot be in the future for Infloww employee reports.", 400);
+  }
+  if (startYmd > endYmd) {
+    throw new InflowwApiError("Invalid date range: start is after end.", 400);
+  }
+}
+
+function mapSalesRow(row: unknown): import("@/types/infloww").InflowwEmployeeSalesRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const nestedEmp =
+    r["employee"] && typeof r["employee"] === "object" ? (r["employee"] as Record<string, unknown>) : null;
+  const nestedPerf =
+    r["performer"] && typeof r["performer"] === "object"
+      ? (r["performer"] as Record<string, unknown>)
+      : r["creator"] && typeof r["creator"] === "object"
+        ? (r["creator"] as Record<string, unknown>)
+        : null;
+  return {
+    employeeId: idField(r, ["employeeId", "employee_id", "employeeID"]) || idField(nestedEmp ?? {}, ["id", "employeeId"]),
+    performerId:
+      idField(r, ["performerId", "performer_id", "creatorId", "creator_id", "modelId", "model_id"]) ||
+      idField(nestedPerf ?? {}, ["id", "performerId", "creatorId"]),
+    performerName: strField(r, ["performerName", "performer_name", "creatorName", "creator_name", "modelName"]) ??
+      strField(nestedPerf ?? {}, ["name", "username", "displayName"]),
+    date: ymdField(r),
+    sales: numField(r, ["sales", "totalSales", "total_sales", "revenue", "totalRevenue"]),
+    ppvSales: numField(r, ["ppvSales", "ppv_sales", "ppv", "ppvRevenue"]),
+    tips: numField(r, ["tips", "tipSales", "tip_sales", "tipRevenue"]),
+    dmSales: numField(r, ["dmSales", "dm_sales", "directMessageSales", "direct_message_sales", "messageSales"]),
+    pmmSales: numField(r, ["pmmSales", "pmm_sales", "priorityMassMessageSales", "priority_mass_message_sales"]),
+    ofmmSales: numField(r, ["ofmmSales", "ofmm_sales", "ofMassMessageSales", "of_mass_message_sales", "massMessageSales"]),
+  };
+}
+
+function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChatRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const nestedEmp =
+    r["employee"] && typeof r["employee"] === "object" ? (r["employee"] as Record<string, unknown>) : null;
+  const nestedPerf =
+    r["performer"] && typeof r["performer"] === "object"
+      ? (r["performer"] as Record<string, unknown>)
+      : r["creator"] && typeof r["creator"] === "object"
+        ? (r["creator"] as Record<string, unknown>)
+        : null;
+  return {
+    employeeId: idField(r, ["employeeId", "employee_id", "employeeID"]) || idField(nestedEmp ?? {}, ["id", "employeeId"]),
+    performerId:
+      idField(r, ["performerId", "performer_id", "creatorId", "creator_id", "modelId", "model_id"]) ||
+      idField(nestedPerf ?? {}, ["id", "performerId", "creatorId"]),
+    performerName: strField(r, ["performerName", "performer_name", "creatorName", "creator_name", "modelName"]) ??
+      strField(nestedPerf ?? {}, ["name", "username", "displayName"]),
+    date: ymdField(r),
+    messagesSent: Math.round(numField(r, ["messagesSent", "messages_sent", "directMessagesSent", "direct_messages_sent", "dmSent"])),
+    ppvsSent: Math.round(numField(r, ["ppvsSent", "ppvs_sent", "directPpvsSent", "direct_ppvs_sent", "ppvSent"])),
+    fansChatted: Math.round(numField(r, ["fansChatted", "fans_chatted", "fansMessaged", "fans_messaged"])),
+    fansWhoSpent: Math.round(numField(r, ["fansWhoSpent", "fans_who_spent", "spendingFans", "fansSpent"])),
+    goldenRatio: nullableNumField(r, ["goldenRatio", "golden_ratio"]),
+    fanCvr: nullableNumField(r, ["fanCvr", "fan_cvr", "fanConversionRate", "cvr"]),
+    avgEarningsPerSpendingFan: nullableNumField(r, [
+      "avgEarningsPerSpendingFan",
+      "avg_earnings_per_spending_fan",
+      "avgEarningsPerFan",
+      "avg_earnings_per_fan",
+    ]),
+    responseTimeSeconds: nullableNumField(r, [
+      "responseTimeSeconds",
+      "response_time_seconds",
+      "responseTime",
+      "response_time",
+      "avgResponseTime",
+    ]),
+    salesPerHour: nullableNumField(r, ["salesPerHour", "sales_per_hour"]),
+    messagesPerHour: nullableNumField(r, ["messagesPerHour", "messages_per_hour", "messagesSentPerHour"]),
+    fansChattedPerHour: nullableNumField(r, ["fansChattedPerHour", "fans_chatted_per_hour"]),
+  };
+}
+
+async function paginateEmployeeReport(
+  path: string,
+  params: {
+    startTime: string;
+    endTime: string;
+    employeeIds?: number[];
+  }
+): Promise<unknown[]> {
+  const out: unknown[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  const MAX_PAGES = 200;
+  do {
+    pages += 1;
+    if (pages > MAX_PAGES) {
+      throw new InflowwApiError(`Infloww ${path}: exceeded max pagination pages (${MAX_PAGES}).`, 500);
+    }
+    const qp = new URLSearchParams({
+      platformCode: "OnlyFans",
+      startTime: params.startTime,
+      endTime: params.endTime,
+    });
+    if (params.employeeIds?.length) {
+      for (const id of params.employeeIds) qp.append("employeeIds", String(id));
+    }
+    if (cursor) qp.set("cursor", cursor);
+    const payload = await inflowwFetchJson<unknown>(path, qp);
+    const rows = pickArray(payload);
+    inflowwDebug("employee-report page", {
+      path,
+      page: pages,
+      rowCount: rows.length,
+      hasMore: hasMoreFrom(payload),
+      cursor: Boolean(cursorFromPayload(payload)),
+    });
+    out.push(...rows);
+    const more = hasMoreFrom(payload);
+    cursor = more ? cursorFromPayload(payload) : undefined;
+    if (!more) break;
+    if (!cursor) {
+      throw new InflowwApiError(`Infloww ${path}: hasMore=true but no cursor returned.`, 502);
+    }
+  } while (cursor);
+  return out;
+}
+
+function rangeToIsoBounds(startYmd: string, endYmd: string): { startTime: string; endTime: string } {
+  const startMs = athensYmdStartUtcMs(startYmd);
+  let endMs = athensYmdEndUtcMs(endYmd);
+  const safeEnd = Date.now() - 2000;
+  if (endMs > safeEnd) endMs = safeEnd;
+  if (endMs < startMs) {
+    throw new InflowwApiError("Invalid from/to date range: end is before start after capping to now.", 400);
+  }
+  return {
+    startTime: new Date(startMs).toISOString(),
+    endTime: new Date(endMs).toISOString(),
+  };
+}
+
+/**
+ * Fetch employee sales summary for a date range (auto-chunks >31 days).
+ * `employeeIds` optional — omit to fetch all agency employees.
+ */
+export async function fetchEmployeeSalesSummary(params: {
+  startYmd: string;
+  endYmd: string;
+  employeeIds?: number[];
+}): Promise<import("@/types/infloww").InflowwEmployeeSalesRow[]> {
+  const start = params.startYmd.slice(0, 10);
+  const end = params.endYmd.slice(0, 10);
+  assertEmployeeReportLookback(start, end);
+  const chunks = chunkDateRangeYmd(start, end);
+  const out: import("@/types/infloww").InflowwEmployeeSalesRow[] = [];
+  for (const chunk of chunks) {
+    const times = rangeToIsoBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateEmployeeReport("/employee-report/employee-sales-summary", {
+      ...times,
+      employeeIds: params.employeeIds,
+    });
+    for (const row of rows) {
+      const mapped = mapSalesRow(row);
+      if (!mapped.date) {
+        // Single-day chunks: default to that day; multi-day: leave undefined caller may discard
+        if (chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      }
+      out.push(mapped);
+    }
+  }
+  return out;
+}
+
+/**
+ * Fetch employee chat summary for a date range (auto-chunks >31 days).
+ */
+export async function fetchEmployeeChatSummary(params: {
+  startYmd: string;
+  endYmd: string;
+  employeeIds?: number[];
+}): Promise<import("@/types/infloww").InflowwEmployeeChatRow[]> {
+  const start = params.startYmd.slice(0, 10);
+  const end = params.endYmd.slice(0, 10);
+  assertEmployeeReportLookback(start, end);
+  const chunks = chunkDateRangeYmd(start, end);
+  const out: import("@/types/infloww").InflowwEmployeeChatRow[] = [];
+  for (const chunk of chunks) {
+    const times = rangeToIsoBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateEmployeeReport("/employee-report/employee-chat-summary", {
+      ...times,
+      employeeIds: params.employeeIds,
+    });
+    for (const row of rows) {
+      const mapped = mapChatRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      out.push(mapped);
+    }
+  }
+  return out;
+}
+
+/**
+ * Merge sales + chat rows keyed by employee|performer|date.
+ * Prefer day-by-day fetches when dates are missing from API rows.
+ */
+export function mergeEmployeeSalesAndChat(
+  sales: import("@/types/infloww").InflowwEmployeeSalesRow[],
+  chat: import("@/types/infloww").InflowwEmployeeChatRow[],
+  fallbackDate?: string
+): import("@/types/infloww").InflowwEmployeeDayStats[] {
+  const map = new Map<string, import("@/types/infloww").InflowwEmployeeDayStats>();
+
+  const keyOf = (employeeId: number, performerId: number, date: string) =>
+    `${employeeId}|${performerId}|${date}`;
+
+  for (const s of sales) {
+    const date = s.date ?? fallbackDate;
+    if (!date) continue;
+    const k = keyOf(s.employeeId, s.performerId, date);
+    const existing = map.get(k);
+    if (existing) {
+      existing.sales += s.sales;
+      existing.ppvSales += s.ppvSales;
+      existing.tips += s.tips;
+      existing.dmSales += s.dmSales;
+      existing.pmmSales += s.pmmSales;
+      existing.ofmmSales += s.ofmmSales;
+      if (s.performerName) existing.performerName = s.performerName;
+    } else {
+      map.set(k, {
+        employeeId: s.employeeId,
+        performerId: s.performerId,
+        performerName: s.performerName,
+        date,
+        sales: s.sales,
+        ppvSales: s.ppvSales,
+        tips: s.tips,
+        dmSales: s.dmSales,
+        pmmSales: s.pmmSales,
+        ofmmSales: s.ofmmSales,
+        messagesSent: 0,
+        ppvsSent: 0,
+        fansChatted: 0,
+        fansWhoSpent: 0,
+        goldenRatio: null,
+        fanCvr: null,
+        avgEarningsPerSpendingFan: null,
+        responseTimeSeconds: null,
+        salesPerHour: null,
+        messagesPerHour: null,
+        fansChattedPerHour: null,
+      });
+    }
+  }
+
+  for (const c of chat) {
+    const date = c.date ?? fallbackDate;
+    if (!date) continue;
+    const k = keyOf(c.employeeId, c.performerId, date);
+    let row = map.get(k);
+    if (!row) {
+      row = {
+        employeeId: c.employeeId,
+        performerId: c.performerId,
+        performerName: c.performerName,
+        date,
+        sales: 0,
+        ppvSales: 0,
+        tips: 0,
+        dmSales: 0,
+        pmmSales: 0,
+        ofmmSales: 0,
+        messagesSent: 0,
+        ppvsSent: 0,
+        fansChatted: 0,
+        fansWhoSpent: 0,
+        goldenRatio: null,
+        fanCvr: null,
+        avgEarningsPerSpendingFan: null,
+        responseTimeSeconds: null,
+        salesPerHour: null,
+        messagesPerHour: null,
+        fansChattedPerHour: null,
+      };
+      map.set(k, row);
+    }
+    row.messagesSent += c.messagesSent;
+    row.ppvsSent += c.ppvsSent;
+    row.fansChatted += c.fansChatted;
+    row.fansWhoSpent += c.fansWhoSpent;
+    if (c.goldenRatio != null) row.goldenRatio = c.goldenRatio;
+    if (c.fanCvr != null) row.fanCvr = c.fanCvr;
+    if (c.avgEarningsPerSpendingFan != null) row.avgEarningsPerSpendingFan = c.avgEarningsPerSpendingFan;
+    if (c.responseTimeSeconds != null) row.responseTimeSeconds = c.responseTimeSeconds;
+    if (c.salesPerHour != null) row.salesPerHour = c.salesPerHour;
+    if (c.messagesPerHour != null) row.messagesPerHour = c.messagesPerHour;
+    if (c.fansChattedPerHour != null) row.fansChattedPerHour = c.fansChattedPerHour;
+    if (c.performerName) row.performerName = c.performerName;
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Fetch + merge sales/chat for a range. When the range spans multiple days and
+ * API rows omit dates, fetches day-by-day so each row can be attributed.
+ */
+export async function fetchEmployeeDayStats(params: {
+  startYmd: string;
+  endYmd: string;
+  employeeIds?: number[];
+}): Promise<import("@/types/infloww").InflowwEmployeeDayStats[]> {
+  const start = params.startYmd.slice(0, 10);
+  const end = params.endYmd.slice(0, 10);
+  assertEmployeeReportLookback(start, end);
+  const span = daysBetweenInclusive(start, end);
+
+  // Multi-day without reliable date fields: sync day-by-day for attribution.
+  if (span > 1) {
+    const all: import("@/types/infloww").InflowwEmployeeDayStats[] = [];
+    let cursor = start;
+    while (cursor <= end) {
+      const [sales, chat] = await Promise.all([
+        fetchEmployeeSalesSummary({ startYmd: cursor, endYmd: cursor, employeeIds: params.employeeIds }),
+        fetchEmployeeChatSummary({ startYmd: cursor, endYmd: cursor, employeeIds: params.employeeIds }),
+      ]);
+      all.push(...mergeEmployeeSalesAndChat(sales, chat, cursor));
+      cursor = addDaysYmd(cursor, 1);
+    }
+    return all;
+  }
+
+  const [sales, chat] = await Promise.all([
+    fetchEmployeeSalesSummary({ startYmd: start, endYmd: end, employeeIds: params.employeeIds }),
+    fetchEmployeeChatSummary({ startYmd: start, endYmd: end, employeeIds: params.employeeIds }),
+  ]);
+  return mergeEmployeeSalesAndChat(sales, chat, start);
+}
+
+export { EMPLOYEE_REPORT_MAX_DAYS, EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS };

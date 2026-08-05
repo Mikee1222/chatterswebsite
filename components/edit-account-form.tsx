@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import {
   Headphones,
+  Hash,
   KeyRound,
   Languages,
   Link2,
@@ -271,6 +272,31 @@ export function EditAccountForm({ user, roles, modelOptions = [], canDelete = fa
                 type="text"
                 defaultValue={user.telegram_username ?? ""}
                 placeholder="username"
+                autoComplete="off"
+              />
+            </FormField>
+          )}
+          {(role === "chatter" ||
+            role === "virtual_assistant" ||
+            role === "admin" ||
+            role === "manager") && (
+            <FormField
+              label="Infloww employee ID"
+              icon={<Hash />}
+              htmlFor="infloww_employee_id"
+              description="Numeric employee ID from Infloww — links sales & chat performance sync."
+            >
+              <FormInput
+                id="infloww_employee_id"
+                name="infloww_employee_id"
+                type="text"
+                inputMode="numeric"
+                defaultValue={
+                  user.infloww_employee_id != null && user.infloww_employee_id > 0
+                    ? String(user.infloww_employee_id)
+                    : ""
+                }
+                placeholder="e.g. 1234567890"
                 autoComplete="off"
               />
             </FormField>

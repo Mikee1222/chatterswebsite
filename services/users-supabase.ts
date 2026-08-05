@@ -39,6 +39,7 @@ type Row = SbRow & {
   linked_model?: string[] | null;
   language_preference?: string | null;
   telegram_username?: string | null;
+  infloww_employee_id?: number | null;
   last_login_user_agent?: string | null;
   compensation_type?: string | null;
   compensation_value?: number | null;
@@ -99,6 +100,12 @@ function mapRowSync(row: Row, modelAt: Map<string, string>, includePasswordHash 
   if (vaType) out.va_type = vaType;
   if (typeof row.telegram_username === "string" && row.telegram_username.trim()) {
     out.telegram_username = row.telegram_username.trim();
+  }
+  if (typeof row.infloww_employee_id === "number" && Number.isFinite(row.infloww_employee_id)) {
+    out.infloww_employee_id = row.infloww_employee_id;
+  } else if (row.infloww_employee_id != null) {
+    const n = Number(row.infloww_employee_id);
+    if (Number.isFinite(n)) out.infloww_employee_id = n;
   }
   if (typeof row.last_login_user_agent === "string" && row.last_login_user_agent.trim()) {
     out.last_login_user_agent = row.last_login_user_agent.trim();
@@ -238,6 +245,7 @@ export type CreateUserInput = {
   linked_model_id?: string;
   language_preference?: string;
   telegram_username?: string;
+  infloww_employee_id?: number | null;
   va_type?: VaType;
   compensation_type?: CompensationType | null;
   compensation_value?: number | null;
@@ -264,6 +272,9 @@ export async function createUser(input: CreateUserInput): Promise<UserRecord> {
   }
   if (input.language_preference) row.language_preference = input.language_preference;
   if (input.telegram_username?.trim()) row.telegram_username = input.telegram_username.trim();
+  if (input.infloww_employee_id != null && Number.isFinite(input.infloww_employee_id)) {
+    row.infloww_employee_id = input.infloww_employee_id;
+  }
   if (input.va_type) row.va_type = input.va_type;
   if (input.compensation_type) row.compensation_type = input.compensation_type;
   if (input.compensation_value != null) row.compensation_value = input.compensation_value;
@@ -289,6 +300,7 @@ export type UpdateUserInput = Partial<{
   secondary_role: "chatter" | "virtual_assistant" | null;
   va_type: VaType | null;
   telegram_username: string | null;
+  infloww_employee_id: number | null;
   compensation_type: CompensationType | null;
   compensation_value: number | null;
   contract_attachments: UserContractAttachment[] | null;
@@ -323,6 +335,9 @@ export async function updateUser(recordId: string, input: UpdateUserInput): Prom
   if (input.va_type !== undefined) patch.va_type = input.va_type;
   if (input.telegram_username !== undefined) {
     patch.telegram_username = input.telegram_username?.trim() ?? "";
+  }
+  if (input.infloww_employee_id !== undefined) {
+    patch.infloww_employee_id = input.infloww_employee_id;
   }
   if (input.compensation_type !== undefined) {
     if (input.compensation_type === null) {

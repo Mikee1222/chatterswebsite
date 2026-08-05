@@ -14,6 +14,9 @@ export const PERMISSIONS = {
   EARNINGS_VIEW: "earnings:view",
   EARNINGS_CONFIG: "earnings:config",
 
+  INFLOWW_STATS_VIEW_OWN: "infloww_stats:view_own",
+  INFLOWW_STATS_VIEW_ALL: "infloww_stats:view_all",
+
   MISTAKES_VIEW: "mistakes:view",
   MISTAKES_MANAGE: "mistakes:manage",
   MISTAKES_REASONS_MANAGE: "mistakes:reasons-manage",
@@ -165,6 +168,8 @@ const ACTION_LABELS: Record<string, string> = {
   availability: "Availability",
   "shadowban-report": "Shadowban report",
   diagnostic: "Diagnostic",
+  view_own: "View own",
+  view_all: "View all",
 };
 
 /** Human-readable labels for permission categories (prefix before `:`). */
@@ -172,6 +177,7 @@ export const PERMISSION_CATEGORY_LABELS: Record<string, string> = {
   billing: "Billing",
   accounts: "Accounts",
   earnings: "Earnings",
+  infloww_stats: "Infloww performance",
   mistakes: "Mistakes",
   challenges: "Challenges",
   rewards: "Rewards",
@@ -244,6 +250,9 @@ export const PERMISSION_DESCRIPTIONS: Record<Permission, string> = {
 
   "earnings:view": "Προβολή απολογισμών και κερδών",
   "earnings:config": "Ρύθμιση κανόνων υπολογισμού κερδών",
+
+  "infloww_stats:view_own": "Προβολή προσωπικών στατιστικών απόδοσης Infloww (πωλήσεις / chat)",
+  "infloww_stats:view_all": "Προβολή στατιστικών απόδοσης Infloww για όλους τους chatters",
 
   "mistakes:view": "Προβολή σφαλμάτων και μητρώου λαθών",
   "mistakes:manage": "Καταχώρηση και διαχείριση σφαλμάτων χειριστών",
@@ -407,6 +416,7 @@ const MANAGER_EXCLUDED: Permission[] = [
 const CHATTER_PERMISSIONS: Permission[] = [
   PERMISSIONS.SHIFTS_START,
   PERMISSIONS.SHIFTS_VIEW,
+  PERMISSIONS.INFLOWW_STATS_VIEW_OWN,
   // Baseline for Informations nav (/informations) — core chatter reference data, not toggleable off.
   PERMISSIONS.INFORMATIONS_VIEW,
   PERMISSIONS.WHALES_VIEW,

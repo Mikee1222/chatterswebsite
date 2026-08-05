@@ -43,6 +43,8 @@ export const ROUTES = {
     mistakes: "/mistakes",
     informations: "/informations",
     sops: "/sops",
+    /** Personal Infloww sales/chat performance. */
+    myPerformance: "/my-performance",
   },
 
   /** Virtual assistant (role: virtual_assistant) */
@@ -86,6 +88,8 @@ export const ROUTES = {
     shiftActivity: "/admin/shift-activity",
     earnings: "/admin/earnings",
     earningsConfig: "/admin/earnings-config",
+    /** All-chatters Infloww sales/chat performance leaderboard. */
+    inflowwPerformance: "/admin/infloww-performance",
     whales: "/admin/whales",
     /** Admin whale profile (Airtable whales record id). */
     whaleDetail: (id: string) => `/admin/whales/${encodeURIComponent(id)}`,

@@ -906,6 +906,8 @@ export interface UserRecord {
   /** Airtable `va_type` when role (or secondary_role) is virtual_assistant. */
   va_type?: VaType | null;
   telegram_username?: string;
+  /** Infloww employee ID for sales/chat performance sync. */
+  infloww_employee_id?: number | null;
   /** Last User-Agent string seen on successful login (for new-device detection). */
   last_login_user_agent?: string;
   /** Airtable `Compensation Type`: Percentage or Flat Fee. */

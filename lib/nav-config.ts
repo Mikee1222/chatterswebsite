@@ -298,6 +298,14 @@ const chatterNav: NavItem[] = [
   { href: ROUTES.chatter.myWhales, label: "My whales", iconKey: "Users", beta: true, navSection: "WORK" },
   { href: ROUTES.chatter.myRebills, label: "My rebills", iconKey: "TrendingUp", excludeFromMobileMainTabs: true, navSection: "WORK" },
   { href: ROUTES.chatter.mistakes, label: "My mistakes", iconKey: "AlertCircle", excludeFromMobileMainTabs: true, navSection: "WORK", requiresPermission: PERMISSIONS.MISTAKES_VIEW },
+  {
+    href: ROUTES.chatter.myPerformance,
+    label: "My Performance",
+    iconKey: "LineChart",
+    excludeFromMobileMainTabs: true,
+    navSection: "WORK",
+    requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_OWN,
+  },
 
   // ── FINANCE ──
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", iconKey: "Coins", excludeFromMobileMainTabs: true, navSection: "FINANCE" },
@@ -615,6 +623,13 @@ const adminNav: NavItem[] = [
     navSection: "FINANCE",
     adminOnly: true,
     requiresPermission: PERMISSIONS.EARNINGS_VIEW,
+  },
+  {
+    href: ROUTES.admin.inflowwPerformance,
+    label: "Chatter performance",
+    iconKey: "TrendingUp",
+    navSection: "FINANCE",
+    requiresPermission: PERMISSIONS.INFLOWW_STATS_VIEW_ALL,
   },
   // Hidden from sidebar for now; route `/admin/earnings-config` still works if opened directly.
   // { href: ROUTES.admin.earningsConfig, label: "Earnings config", iconKey: "UserCog", adminOnly: true },
