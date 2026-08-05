@@ -11,6 +11,9 @@
 
 export type CustomWeekIndex = 1 | 2 | 3 | 4;
 
+/** Lifecycle of a custom week vs Athens "today". */
+export type CustomWeekStatus = "not_started" | "in_progress" | "complete";
+
 export type CustomWeekBoundary = {
   week: CustomWeekIndex;
   /** Inclusive YYYY-MM-DD */
@@ -20,6 +23,17 @@ export type CustomWeekBoundary = {
   dayCount: number;
   /** e.g. "Week 1 · Aug 1–7" */
   label: string;
+};
+
+export type CustomWeekProgress = {
+  status: CustomWeekStatus;
+  /** Days elapsed in the week so far (0 when not started). */
+  elapsedDays: number;
+  /**
+   * True when the week has begun (start ≤ today) or already has synced activity.
+   * Future empty weeks are not comparable for WoW / insights.
+   */
+  hasStarted: boolean;
 };
 
 const MONTH_SHORT = [
@@ -103,4 +117,64 @@ export function customWeekIndexForYmd(dateYmd: string): CustomWeekIndex | null {
   const d = parts[2]!;
   if (d < 1 || d > 31) return null;
   return customWeekIndexForDay(d);
+}
+
+/** Inclusive day count between two YYYY-MM-DD strings (UTC noon). */
+export function inclusiveDaySpan(startYmd: string, endYmd: string): number {
+  const a = startYmd.trim().slice(0, 10);
+  const b = endYmd.trim().slice(0, 10);
+  if (!a || !b || a > b) return 0;
+  const ap = a.split("-").map(Number);
+  const bp = b.split("-").map(Number);
+  if (ap.length !== 3 || bp.length !== 3) return 0;
+  const start = Date.UTC(ap[0]!, ap[1]! - 1, ap[2]!, 12, 0, 0);
+  const end = Date.UTC(bp[0]!, bp[1]! - 1, bp[2]!, 12, 0, 0);
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
+
+/**
+ * Classify a custom week vs Athens calendar "today".
+ * Future weeks with no activity → `not_started` (not comparable for WoW).
+ * Activity in a future window (rare / sync skew) still counts as started.
+ */
+export function classifyCustomWeekProgress(
+  boundary: CustomWeekBoundary,
+  todayYmd: string,
+  hasActivity: boolean
+): CustomWeekProgress {
+  const today = todayYmd.trim().slice(0, 10);
+  const calendarStarted = today >= boundary.startYmd;
+
+  if (!calendarStarted && !hasActivity) {
+    return { status: "not_started", elapsedDays: 0, hasStarted: false };
+  }
+
+  const hasStarted = true;
+  if (today > boundary.endYmd) {
+    return { status: "complete", elapsedDays: boundary.dayCount, hasStarted };
+  }
+
+  // In progress (including the last calendar day of the week).
+  const effectiveEnd = today < boundary.startYmd ? boundary.startYmd : today;
+  const cappedEnd = effectiveEnd > boundary.endYmd ? boundary.endYmd : effectiveEnd;
+  const elapsedDays = Math.max(1, inclusiveDaySpan(boundary.startYmd, cappedEnd));
+  return {
+    status: "in_progress",
+    elapsedDays: Math.min(elapsedDays, boundary.dayCount),
+    hasStarted,
+  };
+}
+
+/** UI / report label: dates, optional in-progress day counter, or not-yet-started. */
+export function formatCustomWeekDisplayLabel(
+  boundary: CustomWeekBoundary,
+  progress: CustomWeekProgress
+): string {
+  if (progress.status === "not_started") {
+    return `Week ${boundary.week} · Not yet started`;
+  }
+  if (progress.status === "in_progress") {
+    return `Week ${boundary.week} (in progress, day ${progress.elapsedDays} of ${boundary.dayCount})`;
+  }
+  return boundary.label;
 }

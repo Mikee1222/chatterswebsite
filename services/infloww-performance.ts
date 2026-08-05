@@ -5,10 +5,14 @@
 
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import {
+  classifyCustomWeekProgress,
   customWeekIndexForYmd,
+  formatCustomWeekDisplayLabel,
   getCustomWeekBoundaries,
   type CustomWeekBoundary,
   type CustomWeekIndex,
+  type CustomWeekProgress,
+  type CustomWeekStatus,
 } from "@/lib/infloww-custom-weeks";
 import { getInflowwModels } from "@/lib/infloww-api";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -19,6 +23,7 @@ import {
   buildHeatmapCells,
   buildTeamDailyTrend,
   buildTeamWeeklyTrend,
+  computeAvgPpvPrice,
   computePctChange,
   computeRebillSalesCorrelation,
   deriveChatterAnalytics,
@@ -26,6 +31,7 @@ import {
   generateWeeklyInsights,
   medianNumber,
   previousPeriodRange,
+  resolveUnlockMetrics,
   type ChatterCreatorHeatCell,
   type DerivedChatterAnalytics,
   type PerformanceAlert,
@@ -269,6 +275,40 @@ async function shiftHoursByPublicId(
     if (s.status !== "completed" && s.status !== "active" && s.status !== "on_break") continue;
     if (s.staff_role && s.staff_role !== "chatter") continue;
     out.set(cid, (out.get(cid) ?? 0) + workedHours(s));
+  }
+  return out;
+}
+
+/** Shift hours bucketed by custom week index within a month window. */
+async function shiftHoursByPublicIdPerCustomWeek(
+  startYmd: string,
+  endYmd: string,
+  publicIds: string[]
+): Promise<Map<string, Map<CustomWeekIndex, number>>> {
+  const out = new Map<string, Map<CustomWeekIndex, number>>();
+  if (!publicIds.length) return out;
+  const want = new Set(publicIds);
+  const formula = `AND(DATESTR({date}) >= "${startYmd}", DATESTR({date}) <= "${endYmd}")`;
+  let shifts: Shift[] = [];
+  try {
+    shifts = await listAllShifts(formula, "infloww-performance.shiftHoursByWeek");
+  } catch {
+    return out;
+  }
+  for (const s of shifts) {
+    const cid = (s.chatter_id ?? "").trim();
+    if (!cid || !want.has(cid)) continue;
+    if (s.status !== "completed" && s.status !== "active" && s.status !== "on_break") continue;
+    if (s.staff_role && s.staff_role !== "chatter") continue;
+    const dateYmd = (s.date ?? "").trim().slice(0, 10);
+    const wi = customWeekIndexForYmd(dateYmd);
+    if (wi == null) continue;
+    let byWeek = out.get(cid);
+    if (!byWeek) {
+      byWeek = new Map();
+      out.set(cid, byWeek);
+    }
+    byWeek.set(wi, (byWeek.get(wi) ?? 0) + workedHours(s));
   }
   return out;
 }
@@ -798,14 +838,39 @@ export type InflowwWeekWowMetrics = {
   fan_cvr: PeriodChangeMetric;
 };
 
+/** Extra derived stats shown under week-card "Show more". */
+export type InflowwWeekExtraStats = {
+  golden_ratio: number | null;
+  unlock_rate: number | null;
+  unlock_data_sparse: boolean;
+  /** null when unlock data sparse / unavailable (not a true zero). */
+  ppvs_unlocked: number | null;
+  revenue_per_hour: number | null;
+  revenue_per_fan: number | null;
+  avg_ppv_price: number | null;
+  shift_hours: number;
+};
+
 export type InflowwChatterWeekSlice = {
   week: CustomWeekIndex;
   startYmd: string;
   endYmd: string;
   label: string;
+  /** Progress-aware label (in progress / not yet started). */
+  displayLabel: string;
   dayCount: number;
+  elapsedDays: number;
+  status: CustomWeekStatus;
+  hasStarted: boolean;
+  /** Synced activity present (distinguishes true $0 from no-data-yet). */
+  hasActivity: boolean;
+  /** WoW was computed against a prior started week (possibly day-rate scaled). */
+  wowComparable: boolean;
+  /** True when WoW uses per-day rates (partial week or unequal day counts). */
+  wowScaled: boolean;
   totals: InflowwMetricTotals;
   wow: InflowwWeekWowMetrics;
+  extras: InflowwWeekExtraStats;
   insights: WeeklyInsightTag[];
 };
 
@@ -818,77 +883,171 @@ export type InflowwWeeklyChatterProgress = {
   weeks: InflowwChatterWeekSlice[];
 };
 
+export type InflowwWeeklyWeekMeta = CustomWeekBoundary & CustomWeekProgress & {
+  displayLabel: string;
+};
+
 export type InflowwWeeklyProgressReport = {
   year: number;
   month: number;
   /** YYYY-MM */
   monthKey: string;
-  weeks: CustomWeekBoundary[];
+  /** Athens calendar "today" used for week status. */
+  asOfYmd: string;
+  weeks: InflowwWeeklyWeekMeta[];
   chatters: InflowwWeeklyChatterProgress[];
   team_by_week: Array<{
     week: CustomWeekIndex;
+    status: CustomWeekStatus;
+    hasStarted: boolean;
+    displayLabel: string;
     totals: InflowwMetricTotals;
   }>;
   team_month_totals: InflowwMetricTotals;
 };
 
+function emptyWow(current: InflowwMetricTotals): InflowwWeekWowMetrics {
+  return {
+    sales: { current: current.sales, previous: 0, pct_change: null, direction: "na" },
+    ppv_sales: {
+      current: current.ppv_sales,
+      previous: 0,
+      pct_change: null,
+      direction: "na",
+    },
+    tips: { current: current.tips, previous: 0, pct_change: null, direction: "na" },
+    messages_sent: {
+      current: current.messages_sent,
+      previous: 0,
+      pct_change: null,
+      direction: "na",
+    },
+    fans_chatted: {
+      current: current.fans_chatted,
+      previous: 0,
+      pct_change: null,
+      direction: "na",
+    },
+    fan_cvr: {
+      current: current.fan_cvr ?? 0,
+      previous: 0,
+      pct_change: null,
+      direction: "na",
+    },
+  };
+}
+
+function hasWeekActivity(t: InflowwMetricTotals): boolean {
+  return (
+    t.sales > 0 ||
+    t.ppv_sales > 0 ||
+    t.tips > 0 ||
+    t.messages_sent > 0 ||
+    t.ppvs_sent > 0 ||
+    t.fans_chatted > 0 ||
+    t.ppvs_unlocked > 0
+  );
+}
+
+/**
+ * WoW between two started weeks. When either side is partial or day counts differ,
+ * compare per-day rates so a 3-day in-progress week isn't treated as a full-week -$100%.
+ */
 function wowFromTotals(
   current: InflowwMetricTotals,
-  previous: InflowwMetricTotals | null
-): InflowwWeekWowMetrics {
-  if (!previous) {
+  previous: InflowwMetricTotals | null,
+  opts: {
+    currentElapsedDays: number;
+    previousElapsedDays: number;
+    comparable: boolean;
+  }
+): { wow: InflowwWeekWowMetrics; scaled: boolean } {
+  if (!opts.comparable || !previous || opts.currentElapsedDays <= 0 || opts.previousElapsedDays <= 0) {
+    return { wow: emptyWow(current), scaled: false };
+  }
+
+  const scale =
+    opts.currentElapsedDays !== opts.previousElapsedDays;
+
+  const norm = (value: number, days: number) => (scale ? value / days : value);
+
+  return {
+    scaled: scale,
+    wow: {
+      sales: computePctChange(
+        norm(current.sales, opts.currentElapsedDays),
+        norm(previous.sales, opts.previousElapsedDays)
+      ),
+      ppv_sales: computePctChange(
+        norm(current.ppv_sales, opts.currentElapsedDays),
+        norm(previous.ppv_sales, opts.previousElapsedDays)
+      ),
+      tips: computePctChange(
+        norm(current.tips, opts.currentElapsedDays),
+        norm(previous.tips, opts.previousElapsedDays)
+      ),
+      messages_sent: computePctChange(
+        norm(current.messages_sent, opts.currentElapsedDays),
+        norm(previous.messages_sent, opts.previousElapsedDays)
+      ),
+      fans_chatted: computePctChange(
+        norm(current.fans_chatted, opts.currentElapsedDays),
+        norm(previous.fans_chatted, opts.previousElapsedDays)
+      ),
+      // Rates (CVR) are already density metrics — compare raw, not day-scaled.
+      fan_cvr: computePctChange(current.fan_cvr ?? 0, previous.fan_cvr ?? 0),
+    },
+  };
+}
+
+function weekExtras(
+  totals: InflowwMetricTotals,
+  shiftHours: number,
+  hasStarted: boolean
+): InflowwWeekExtraStats {
+  if (!hasStarted) {
     return {
-      sales: { current: current.sales, previous: 0, pct_change: null, direction: "na" },
-      ppv_sales: {
-        current: current.ppv_sales,
-        previous: 0,
-        pct_change: null,
-        direction: "na",
-      },
-      tips: { current: current.tips, previous: 0, pct_change: null, direction: "na" },
-      messages_sent: {
-        current: current.messages_sent,
-        previous: 0,
-        pct_change: null,
-        direction: "na",
-      },
-      fans_chatted: {
-        current: current.fans_chatted,
-        previous: 0,
-        pct_change: null,
-        direction: "na",
-      },
-      fan_cvr: {
-        current: current.fan_cvr ?? 0,
-        previous: 0,
-        pct_change: null,
-        direction: "na",
-      },
+      golden_ratio: null,
+      unlock_rate: null,
+      unlock_data_sparse: false,
+      ppvs_unlocked: null,
+      revenue_per_hour: null,
+      revenue_per_fan: null,
+      avg_ppv_price: null,
+      shift_hours: 0,
     };
   }
+  const unlock = resolveUnlockMetrics(totals);
   return {
-    sales: computePctChange(current.sales, previous.sales),
-    ppv_sales: computePctChange(current.ppv_sales, previous.ppv_sales),
-    tips: computePctChange(current.tips, previous.tips),
-    messages_sent: computePctChange(current.messages_sent, previous.messages_sent),
-    fans_chatted: computePctChange(current.fans_chatted, previous.fans_chatted),
-    fan_cvr: computePctChange(current.fan_cvr ?? 0, previous.fan_cvr ?? 0),
+    golden_ratio: totals.messages_sent > 0 ? totals.golden_ratio : null,
+    unlock_rate: unlock.unlock_rate,
+    unlock_data_sparse: unlock.unlock_data_sparse,
+    ppvs_unlocked: unlock.unlock_data_sparse ? null : unlock.unlocked,
+    revenue_per_hour: shiftHours >= 1 ? Math.round((totals.sales / shiftHours) * 100) / 100 : null,
+    revenue_per_fan:
+      totals.fans_chatted > 0 ? Math.round((totals.sales / totals.fans_chatted) * 100) / 100 : null,
+    avg_ppv_price: computeAvgPpvPrice(totals),
+    shift_hours: Math.round(shiftHours * 100) / 100,
   };
 }
 
 /**
  * Aggregate infloww_daily_stats into custom 4-week buckets for a calendar month.
  * Admin / manager only (`infloww_stats:view_all` at the route layer).
+ *
+ * Future (not-yet-started) weeks are excluded from WoW / declining insights.
+ * In-progress weeks use day-rate WoW vs prior started weeks.
  */
 export async function getAdminWeeklyProgressReport(
   year: number,
   month: number,
   filters?: { publicUserId?: string }
 ): Promise<InflowwWeeklyProgressReport> {
-  const weeks = getCustomWeekBoundaries(year, month);
+  const asOfYmd = getTodayYmdAthens();
+  const boundaries = getCustomWeekBoundaries(year, month);
   const monthKey = `${year}-${String(month).padStart(2, "0")}`;
-  const monthStart = weeks[0]?.startYmd ?? `${monthKey}-01`;
-  const monthEnd = weeks[weeks.length - 1]?.endYmd ?? monthStart;
+  const monthStart = boundaries[0]?.startYmd ?? `${monthKey}-01`;
+  const monthEnd = boundaries[boundaries.length - 1]?.endYmd ?? monthStart;
 
   let users = await listUsersWithInflowwEmployeeId();
   if (filters?.publicUserId) {
@@ -897,13 +1056,19 @@ export async function getAdminWeeklyProgressReport(
   }
 
   const uuids = users.map((u) => u.uuid);
-  const rows = uuids.length
-    ? await queryInflowwDailyStats({
-        userUuids: uuids,
-        startYmd: monthStart,
-        endYmd: monthEnd,
-      })
-    : [];
+  const publicIds = users.map((u) => u.publicId);
+  const [rows, hoursByUserWeek] = await Promise.all([
+    uuids.length
+      ? queryInflowwDailyStats({
+          userUuids: uuids,
+          startYmd: monthStart,
+          endYmd: monthEnd,
+        })
+      : Promise.resolve([] as InflowwDailyStatsRow[]),
+    publicIds.length
+      ? shiftHoursByPublicIdPerCustomWeek(monthStart, monthEnd, publicIds)
+      : Promise.resolve(new Map<string, Map<CustomWeekIndex, number>>()),
+  ]);
 
   const byUserWeek = new Map<string, Map<CustomWeekIndex, InflowwDailyStatsRow[]>>();
   for (const row of rows) {
@@ -919,75 +1084,131 @@ export async function getAdminWeeklyProgressReport(
     weekMap.set(wi, list);
   }
 
-  // Precompute per-user per-week totals
+  // Precompute per-user per-week totals + progress
   type WeekTotals = Map<CustomWeekIndex, InflowwMetricTotals>;
   const userWeekTotals = new Map<string, WeekTotals>();
   for (const u of users) {
     const weekMap = byUserWeek.get(u.uuid) ?? new Map();
     const totalsMap: WeekTotals = new Map();
-    for (const boundary of weeks) {
+    for (const boundary of boundaries) {
       totalsMap.set(boundary.week, sumTotals(weekMap.get(boundary.week) ?? []));
     }
     userWeekTotals.set(u.uuid, totalsMap);
   }
 
-  // Team baselines per week
+  const weekMeta: InflowwWeeklyWeekMeta[] = boundaries.map((boundary) => {
+    let anyActivity = false;
+    for (const u of users) {
+      const t = userWeekTotals.get(u.uuid)?.get(boundary.week) ?? emptyTotals();
+      if (hasWeekActivity(t)) {
+        anyActivity = true;
+        break;
+      }
+    }
+    const progress = classifyCustomWeekProgress(boundary, asOfYmd, anyActivity);
+    return {
+      ...boundary,
+      ...progress,
+      displayLabel: formatCustomWeekDisplayLabel(boundary, progress),
+    };
+  });
+
+  // Team baselines per week — only among started weeks with real sales/msgs
   const teamSalesByWeek = new Map<CustomWeekIndex, number[]>();
   const teamMsgsByWeek = new Map<CustomWeekIndex, number[]>();
   const teamCvrByWeek = new Map<CustomWeekIndex, number[]>();
-  for (const boundary of weeks) {
+  for (const meta of weekMeta) {
     const sales: number[] = [];
     const msgs: number[] = [];
     const cvrs: number[] = [];
-    for (const u of users) {
-      const t = userWeekTotals.get(u.uuid)?.get(boundary.week) ?? emptyTotals();
-      if (t.sales > 0) sales.push(t.sales);
-      if (t.messages_sent > 0) msgs.push(t.messages_sent);
-      if (t.fans_chatted > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
-      else if (t.ppvs_sent > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
+    if (meta.hasStarted) {
+      for (const u of users) {
+        const t = userWeekTotals.get(u.uuid)?.get(meta.week) ?? emptyTotals();
+        if (t.sales > 0) sales.push(t.sales);
+        if (t.messages_sent > 0) msgs.push(t.messages_sent);
+        if (t.fans_chatted > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
+        else if (t.ppvs_sent > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
+      }
     }
-    teamSalesByWeek.set(boundary.week, sales);
-    teamMsgsByWeek.set(boundary.week, msgs);
-    teamCvrByWeek.set(boundary.week, cvrs);
+    teamSalesByWeek.set(meta.week, sales);
+    teamMsgsByWeek.set(meta.week, msgs);
+    teamCvrByWeek.set(meta.week, cvrs);
   }
 
   const chatters: InflowwWeeklyChatterProgress[] = users.map((u) => {
     const totalsMap = userWeekTotals.get(u.uuid)!;
-    const weekSlices: InflowwChatterWeekSlice[] = weeks.map((boundary, idx) => {
+    const weekSlices: InflowwChatterWeekSlice[] = boundaries.map((boundary, idx) => {
       const totals = totalsMap.get(boundary.week) ?? emptyTotals();
-      const prevBoundary = idx > 0 ? weeks[idx - 1]! : null;
+      const activity = hasWeekActivity(totals);
+      const progress = classifyCustomWeekProgress(boundary, asOfYmd, activity);
+      const displayLabel = formatCustomWeekDisplayLabel(boundary, progress);
+
+      const prevBoundary = idx > 0 ? boundaries[idx - 1]! : null;
       const prevTotals = prevBoundary
         ? (totalsMap.get(prevBoundary.week) ?? emptyTotals())
         : null;
-      const wow = wowFromTotals(totals, prevTotals);
-      const insights = generateWeeklyInsights({
-        sales: totals.sales,
-        ppv_sales: totals.ppv_sales,
-        tips: totals.tips,
-        messages_sent: totals.messages_sent,
-        fans_chatted: totals.fans_chatted,
-        fan_cvr: totals.fan_cvr,
-        sales_wow_pct: wow.sales.pct_change,
-        messages_wow_pct: wow.messages_sent.pct_change,
-        cvr_wow_pct: wow.fan_cvr.pct_change,
-        team_week_sales: teamSalesByWeek.get(boundary.week) ?? [],
-        team_median_messages: medianNumber(teamMsgsByWeek.get(boundary.week) ?? []),
-        team_median_cvr: medianNumber(teamCvrByWeek.get(boundary.week) ?? []),
+      const prevActivity = prevTotals ? hasWeekActivity(prevTotals) : false;
+      const prevProgress = prevBoundary
+        ? classifyCustomWeekProgress(prevBoundary, asOfYmd, prevActivity)
+        : null;
+
+      const wowComparable =
+        progress.hasStarted &&
+        prevProgress != null &&
+        prevProgress.hasStarted &&
+        prevTotals != null;
+
+      const { wow, scaled: wowScaled } = wowFromTotals(totals, prevTotals, {
+        currentElapsedDays: progress.elapsedDays,
+        previousElapsedDays: prevProgress?.elapsedDays ?? 0,
+        comparable: wowComparable,
       });
+
+      const shiftHours =
+        hoursByUserWeek.get(u.publicId)?.get(boundary.week) ?? 0;
+      const extras = weekExtras(totals, shiftHours, progress.hasStarted);
+
+      const insights =
+        progress.hasStarted
+          ? generateWeeklyInsights({
+              sales: totals.sales,
+              ppv_sales: totals.ppv_sales,
+              tips: totals.tips,
+              messages_sent: totals.messages_sent,
+              fans_chatted: totals.fans_chatted,
+              fan_cvr: totals.fan_cvr,
+              sales_wow_pct: wowComparable ? wow.sales.pct_change : null,
+              messages_wow_pct: wowComparable ? wow.messages_sent.pct_change : null,
+              cvr_wow_pct: wowComparable ? wow.fan_cvr.pct_change : null,
+              team_week_sales: teamSalesByWeek.get(boundary.week) ?? [],
+              team_median_messages: medianNumber(teamMsgsByWeek.get(boundary.week) ?? []),
+              team_median_cvr: medianNumber(teamCvrByWeek.get(boundary.week) ?? []),
+            })
+          : [];
+
       return {
         week: boundary.week,
         startYmd: boundary.startYmd,
         endYmd: boundary.endYmd,
         label: boundary.label,
+        displayLabel,
         dayCount: boundary.dayCount,
+        elapsedDays: progress.elapsedDays,
+        status: progress.status,
+        hasStarted: progress.hasStarted,
+        hasActivity: activity,
+        wowComparable,
+        wowScaled,
         totals,
         wow,
+        extras,
         insights,
       };
     });
 
     const month_totals = emptyTotals();
     for (const w of weekSlices) {
+      if (!w.hasStarted && !w.hasActivity) continue;
       month_totals.sales += w.totals.sales;
       month_totals.ppv_sales += w.totals.ppv_sales;
       month_totals.tips += w.totals.tips;
@@ -1015,11 +1236,11 @@ export async function getAdminWeeklyProgressReport(
 
   chatters.sort((a, b) => b.month_totals.sales - a.month_totals.sales);
 
-  const team_by_week = weeks.map((boundary) => {
+  const team_by_week = weekMeta.map((meta) => {
     const totals = emptyTotals();
     for (const c of chatters) {
-      const w = c.weeks.find((x) => x.week === boundary.week);
-      if (!w) continue;
+      const w = c.weeks.find((x) => x.week === meta.week);
+      if (!w || (!w.hasStarted && !w.hasActivity)) continue;
       totals.sales += w.totals.sales;
       totals.ppv_sales += w.totals.ppv_sales;
       totals.tips += w.totals.tips;
@@ -1034,11 +1255,18 @@ export async function getAdminWeeklyProgressReport(
       if (w.totals.has_direct_unlock_metrics) totals.has_direct_unlock_metrics = true;
     }
     finalizeDerived(totals);
-    return { week: boundary.week, totals };
+    return {
+      week: meta.week,
+      status: meta.status,
+      hasStarted: meta.hasStarted,
+      displayLabel: meta.displayLabel,
+      totals,
+    };
   });
 
   const team_month_totals = emptyTotals();
   for (const tw of team_by_week) {
+    if (!tw.hasStarted) continue;
     team_month_totals.sales += tw.totals.sales;
     team_month_totals.ppv_sales += tw.totals.ppv_sales;
     team_month_totals.tips += tw.totals.tips;
@@ -1058,7 +1286,8 @@ export async function getAdminWeeklyProgressReport(
     year,
     month,
     monthKey,
-    weeks,
+    asOfYmd,
+    weeks: weekMeta,
     chatters,
     team_by_week,
     team_month_totals,
