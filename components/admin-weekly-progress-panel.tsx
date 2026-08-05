@@ -13,10 +13,13 @@ import { VA_CARD } from "@/lib/va-tasks-tokens";
 import {
   CountUp,
   LuxuryStatCard,
+  MetricLabel,
   PeriodBadge,
   SectionLabel,
+  StatInfoTooltip,
   money,
   pct,
+  type InflowwStatMetricId,
 } from "@/components/infloww-performance-ui";
 import type {
   InflowwChatterWeekSlice,
@@ -64,14 +67,21 @@ function InsightPills({ tags }: { tags: WeeklyInsightTag[] }) {
 
 function WeekExtraStats({ slice }: { slice: InflowwChatterWeekSlice }) {
   const x = slice.extras;
-  const rows: Array<{ label: string; value: string; hint?: string }> = [
+  const rows: Array<{
+    label: string;
+    metricId: InflowwStatMetricId;
+    value: string;
+    hint?: string;
+  }> = [
     {
       label: "Golden ratio",
+      metricId: "golden_ratio",
       value: x.golden_ratio == null ? "—" : pct(x.golden_ratio),
       hint: "PPVs ÷ messages",
     },
     {
       label: "Unlock rate",
+      metricId: "unlock_rate",
       value: x.unlock_data_sparse
         ? "n/a"
         : x.unlock_rate == null
@@ -85,6 +95,7 @@ function WeekExtraStats({ slice }: { slice: InflowwChatterWeekSlice }) {
     },
     {
       label: "Rev / hour",
+      metricId: "rev_per_hour",
       value:
         x.revenue_per_hour == null
           ? x.shift_hours < 1
@@ -95,10 +106,12 @@ function WeekExtraStats({ slice }: { slice: InflowwChatterWeekSlice }) {
     },
     {
       label: "Rev / fan",
+      metricId: "rev_per_fan",
       value: x.revenue_per_fan == null ? "—" : money(x.revenue_per_fan, 2),
     },
     {
       label: "Avg PPV",
+      metricId: "avg_ppv",
       value: x.avg_ppv_price == null ? "—" : money(x.avg_ppv_price, 2),
     },
   ];
@@ -107,7 +120,9 @@ function WeekExtraStats({ slice }: { slice: InflowwChatterWeekSlice }) {
     <div className="grid grid-cols-2 gap-x-2 gap-y-2 border-t border-white/8 pt-2.5">
       {rows.map((r) => (
         <div key={r.label}>
-          <p className="text-[10px] text-white/35">{r.label}</p>
+          <p className="inline-flex items-center gap-1 text-[10px] text-white/35">
+            <MetricLabel metricId={r.metricId}>{r.label}</MetricLabel>
+          </p>
           <p className="text-[11px] font-medium tabular-nums text-white/80">{r.value}</p>
           {r.hint ? <p className="text-[9px] text-white/25">{r.hint}</p> : null}
         </div>
@@ -165,7 +180,10 @@ function WeekCard({ slice }: { slice: InflowwChatterWeekSlice }) {
         </div>
         {!notStarted && slice.wowComparable ? (
           <div className="flex flex-col items-end gap-0.5">
-            <PeriodBadge change={slice.wow.sales} />
+            <div className="flex items-center gap-1">
+              <PeriodBadge change={slice.wow.sales} />
+              <StatInfoTooltip metricId="wow" />
+            </div>
             {slice.wowScaled ? (
               <span className="text-[9px] text-white/30">per-day adj.</span>
             ) : null}
@@ -189,6 +207,9 @@ function WeekCard({ slice }: { slice: InflowwChatterWeekSlice }) {
       ) : (
         <>
           <div className="relative">
+            <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">
+              <MetricLabel metricId="week_sales">Sales</MetricLabel>
+            </p>
             <p className="text-xl font-semibold tabular-nums text-[#FF1493]">
               {slice.hasActivity || slice.totals.sales > 0
                 ? money(slice.totals.sales)
@@ -198,39 +219,56 @@ function WeekCard({ slice }: { slice: InflowwChatterWeekSlice }) {
               <p className="mt-1 text-[11px] text-white/35">$0 so far this week</p>
             ) : (
               <p className="mt-1 text-[11px] text-white/45">
-                PPV {money(slice.totals.ppv_sales)} · Tips {money(slice.totals.tips)}
+                <MetricLabel metricId="ppv" className="text-white/45">
+                  PPV
+                </MetricLabel>{" "}
+                {money(slice.totals.ppv_sales)} ·{" "}
+                <MetricLabel metricId="tips" className="text-white/45">
+                  Tips
+                </MetricLabel>{" "}
+                {money(slice.totals.tips)}
               </p>
             )}
           </div>
           <div className="relative grid grid-cols-2 gap-x-2 gap-y-1.5 text-[11px]">
             <div>
-              <span className="text-white/35">Msgs</span>{" "}
+              <span className="inline-flex items-center gap-1 text-white/35">
+                <MetricLabel metricId="messages">Msgs</MetricLabel>
+              </span>{" "}
               <span className="tabular-nums text-white/80">
                 {slice.totals.messages_sent.toLocaleString()}
               </span>
               {slice.wowComparable ? (
-                <div className="mt-0.5">
+                <div className="mt-0.5 flex items-center gap-1">
                   <PeriodBadge change={slice.wow.messages_sent} />
+                  <StatInfoTooltip metricId="wow" />
                 </div>
               ) : null}
             </div>
             <div>
-              <span className="text-white/35">CVR</span>{" "}
+              <span className="inline-flex items-center gap-1 text-white/35">
+                <MetricLabel metricId="fan_cvr">CVR</MetricLabel>
+              </span>{" "}
               <span className="tabular-nums text-white/80">{pct(slice.totals.fan_cvr)}</span>
               {slice.wowComparable ? (
-                <div className="mt-0.5">
+                <div className="mt-0.5 flex items-center gap-1">
                   <PeriodBadge change={slice.wow.fan_cvr} />
+                  <StatInfoTooltip metricId="wow" />
                 </div>
               ) : null}
             </div>
             <div>
-              <span className="text-white/35">Fans</span>{" "}
+              <span className="inline-flex items-center gap-1 text-white/35">
+                <MetricLabel metricId="fans_chatted">Fans</MetricLabel>
+              </span>{" "}
               <span className="tabular-nums text-white/80">
                 {slice.totals.fans_chatted.toLocaleString()}
               </span>
             </div>
             <div>
-              <span className="text-white/35">PPVs</span>{" "}
+              <span className="inline-flex items-center gap-1 text-white/35">
+                <MetricLabel metricId="funnel_ppvs">PPVs</MetricLabel>
+              </span>{" "}
               <span className="tabular-nums text-white/80">
                 {slice.totals.ppvs_sent.toLocaleString()}
               </span>
@@ -458,6 +496,7 @@ export function AdminWeeklyProgressPanel({
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <LuxuryStatCard
               label="Month sales"
+              metricId="month_sales"
               value={
                 <CountUp
                   value={data.team_month_totals.sales}
@@ -469,22 +508,25 @@ export function AdminWeeklyProgressPanel({
             />
             <LuxuryStatCard
               label="Month PPV"
+              metricId="month_ppv"
               value={money(data.team_month_totals.ppv_sales)}
               accent="champagne"
             />
             <LuxuryStatCard
               label="Messages"
+              metricId="messages"
               value={data.team_month_totals.messages_sent.toLocaleString()}
             />
             <LuxuryStatCard
               label="Fan CVR"
+              metricId="fan_cvr"
               value={pct(data.team_month_totals.fan_cvr)}
               accent="emerald"
             />
           </div>
 
           <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
-            <SectionLabel>Team by week</SectionLabel>
+            <SectionLabel metricId="team_by_week">Team by week</SectionLabel>
             <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-4">
               {data.team_by_week.map((tw) => {
                 const boundary = data.weeks.find((w) => w.week === tw.week);

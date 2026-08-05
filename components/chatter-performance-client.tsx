@@ -11,12 +11,13 @@ import {
   ConversionFunnelViz,
   CountUp,
   DatePresetBar,
-  GOLDEN_RATIO_TOOLTIP,
   InflowwCustomDateRange,
   LuxuryStatCard,
+  MetricLabel,
   PeriodBadge,
   PersonalBestCallout,
   SectionLabel,
+  StatInfoTooltip,
   money,
   pct,
 } from "@/components/infloww-performance-ui";
@@ -143,7 +144,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         <div className="relative mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
-              Total sales
+              <MetricLabel metricId="total_sales">Total sales</MetricLabel>
             </p>
             <p className="mt-1 text-3xl font-semibold tabular-nums text-[#FF1493] md:text-4xl">
               <CountUp value={t.sales} format={(n) => money(n)} />
@@ -152,7 +153,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
-              PPV
+              <MetricLabel metricId="ppv">PPV</MetricLabel>
             </p>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-[#D4AF8C] md:text-3xl">
               <CountUp value={t.ppv_sales} format={(n) => money(n)} />
@@ -160,7 +161,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
-              Tips
+              <MetricLabel metricId="tips">Tips</MetricLabel>
             </p>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-white md:text-3xl">
               <CountUp value={t.tips} format={(n) => money(n)} />
@@ -168,7 +169,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
           </div>
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
-              Fans chatted
+              <MetricLabel metricId="fans_chatted">Fans chatted</MetricLabel>
             </p>
             <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400 md:text-3xl">
               <CountUp value={t.fans_chatted} format={(n) => Math.round(n).toLocaleString()} />
@@ -216,7 +217,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
               <Sparkles className="h-5 w-5 text-[#D4AF8C]" />
             </div>
             <div>
-              <SectionLabel>Today&apos;s tip</SectionLabel>
+              <SectionLabel metricId="daily_tip">Today&apos;s tip</SectionLabel>
               <p className="mt-1 text-lg font-semibold text-white">{a.daily_tip.label}</p>
               <p className="mt-1.5 text-sm leading-relaxed text-white/55">{a.daily_tip.detail}</p>
             </div>
@@ -227,13 +228,14 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <LuxuryStatCard
           label="Golden Ratio"
+          metricId="golden_ratio"
           value={pct(t.golden_ratio)}
           hint="PPVs ÷ messages"
-          tooltip={GOLDEN_RATIO_TOOLTIP}
           accent="champagne"
         />
         <LuxuryStatCard
           label="Unlock rate"
+          metricId="unlock_rate"
           value={
             a?.funnel.unlock_data_sparse
               ? "n/a"
@@ -252,6 +254,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         />
         <LuxuryStatCard
           label="Rev / hour"
+          metricId="rev_per_hour"
           value={a?.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}
           hint={
             a?.revenue_per_hour != null
@@ -262,16 +265,19 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         />
         <LuxuryStatCard
           label="Rev / fan"
+          metricId="rev_per_fan"
           value={a?.revenue_per_fan != null ? money(a.revenue_per_fan, 2) : "—"}
           accent="pink"
         />
         <LuxuryStatCard
           label="Avg PPV price"
+          metricId="avg_ppv"
           value={a?.avg_ppv_price != null ? money(a.avg_ppv_price, 2) : "—"}
           hint="PPV revenue ÷ PPVs sent"
         />
         <LuxuryStatCard
           label="Avg tip"
+          metricId="avg_tip"
           value={a?.avg_tip_size != null ? money(a.avg_tip_size, 2) : "—"}
           hint={a?.tip_size_note ? "Estimated from tip days" : undefined}
         />
@@ -291,7 +297,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
                   <Flame className="h-5 w-5 text-emerald-300" />
                 </div>
                 <div>
-                  <SectionLabel>Streak</SectionLabel>
+                  <SectionLabel metricId="streak">Streak</SectionLabel>
                   <p className="mt-1 text-2xl font-semibold text-emerald-300">
                     {a.sales_streak.days} days
                   </p>
@@ -309,7 +315,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
                   <CalendarDays className="h-5 w-5 text-[#D4AF8C]" />
                 </div>
                 <div>
-                  <SectionLabel>Best day of week</SectionLabel>
+                  <SectionLabel metricId="best_day_of_week">Best day of week</SectionLabel>
                   {a.best_day_of_week.confidence === "insufficient" ? (
                     <>
                       <p className="mt-1 text-lg font-semibold text-white/50">Not enough data</p>
@@ -355,7 +361,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
               <Trophy className="h-5 w-5 text-[#FF1493]" />
             </div>
             <div>
-              <SectionLabel>Team standing</SectionLabel>
+              <SectionLabel metricId="team_standing">Team standing</SectionLabel>
               <p className="mt-1 text-lg font-semibold text-white">
                 #{a.team_standing.rank} of {a.team_standing.of}{" "}
                 <span className="text-sm font-normal text-white/45">
@@ -368,7 +374,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         </div>
       ) : a ? (
         <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
-          <SectionLabel>Team standing</SectionLabel>
+          <SectionLabel metricId="team_standing">Team standing</SectionLabel>
           <p className="mt-2 text-sm text-white/45">Not enough team data yet to rank</p>
         </div>
       ) : null}
@@ -377,7 +383,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         <div className={cn(VA_CARD, VA_CARD_GLOW, "border border-[#D4AF8C]/20 bg-white/5 p-5")}>
           <div className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[#D4AF8C]" />
-            <SectionLabel>You perform best with…</SectionLabel>
+            <SectionLabel metricId="best_creator">You perform best with…</SectionLabel>
           </div>
           <p className="mt-2 text-xl font-semibold text-white">{bestCreator.performer_name}</p>
           <p className="mt-1 text-sm text-white/50">
@@ -388,7 +394,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
       ) : null}
 
       <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
-        <SectionLabel>Sales trend</SectionLabel>
+        <SectionLabel metricId="sales_trend">Sales trend</SectionLabel>
         <div className="mt-3 h-64 w-full">
           {data.daily.length === 0 ? (
             <p className="flex h-full items-center justify-center text-sm text-white/40">
@@ -430,7 +436,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
 
       <div className={cn(VA_CARD, "overflow-hidden border border-white/10 bg-white/5")}>
         <div className="border-b border-white/8 px-4 py-3">
-          <SectionLabel>Per creator ranking</SectionLabel>
+          <SectionLabel metricId="per_creator">Per creator ranking</SectionLabel>
         </div>
         {data.by_performer.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-white/40">No creator breakdown yet.</p>
@@ -468,20 +474,21 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         <div className="grid grid-cols-3 gap-3">
           {(
             [
-              ["Sales", a.period_change.sales],
-              ["Messages", a.period_change.messages],
-              ["Unlock rate", a.period_change.unlock_rate],
+              ["Sales", "total_sales", a.period_change.sales],
+              ["Messages", "messages", a.period_change.messages],
+              ["Unlock rate", "unlock_rate", a.period_change.unlock_rate],
             ] as const
-          ).map(([label, change]) => (
+          ).map(([label, metricId, change]) => (
             <div
               key={label}
               className={cn(VA_CARD, "border border-white/10 bg-white/5 p-3 text-center")}
             >
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
-                {label}
+              <p className="inline-flex items-center justify-center gap-1 text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                <MetricLabel metricId={metricId}>{label}</MetricLabel>
               </p>
-              <div className="mt-2 flex justify-center">
+              <div className="mt-2 flex items-center justify-center gap-1">
                 <PeriodBadge change={change} />
+                <StatInfoTooltip metricId="wow" />
               </div>
             </div>
           ))}
@@ -490,7 +497,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
 
       {a?.whale_suggestions && a.whale_suggestions.length > 0 ? (
         <div className={cn(VA_CARD, "border border-[#D4AF8C]/20 bg-white/5 p-5")}>
-          <SectionLabel>Fans to watch</SectionLabel>
+          <SectionLabel metricId="fans_to_watch">Fans to watch</SectionLabel>
           <p className="mt-1 mb-3 text-xs text-white/40">
             High-value rebill activity not yet in Whales — suggest only, no auto-create.
           </p>

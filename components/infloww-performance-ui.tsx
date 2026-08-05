@@ -5,6 +5,7 @@
  */
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { motion, useReducedMotion } from "framer-motion";
 import { CalendarRange, X } from "lucide-react";
 import { DayPicker, type DateRange } from "react-day-picker";
@@ -17,6 +18,65 @@ import type {
   PeriodChangeMetric,
 } from "@/services/infloww-analytics";
 
+/** Centralized metric explanations — keep labels consistent across admin / chatter / weekly. */
+export const INFLOWW_STAT_INFO = {
+  total_sales: "Total revenue generated, including PPVs, tips, and message-based sales.",
+  team_sales: "Combined sales across all linked chatters in the selected period.",
+  month_sales: "Team sales for the selected Athens calendar month.",
+  month_ppv: "PPV revenue across the team for the selected month.",
+  ppv: "Revenue from pay-per-view content unlocked by fans.",
+  tips: "Revenue from fan tips.",
+  messages: "Total direct messages sent to fans.",
+  fans_chatted: "Number of unique fans messaged during this period.",
+  fan_cvr:
+    "Percentage of fans who made a purchase, out of those chatted with. Can look thin when spend attribution is incomplete.",
+  rev_per_hour: "Revenue divided by hours worked (shifted) during this period.",
+  rev_per_fan: "Average revenue generated per fan chatted.",
+  avg_ppv: "Average price of PPV content sold (PPV revenue ÷ PPVs sent).",
+  avg_tip: "Average tip amount received (estimated when tip counts aren't exact).",
+  unlock_rate:
+    "Percentage of sent PPVs that fans actually purchased/unlocked. Shows n/a when unlock counts haven't synced yet.",
+  golden_ratio:
+    "Revenue efficiency per message sent — a measure of how much value each message generates. Industry healthy range is typically 4–7%.",
+  consistency:
+    "How steady daily performance is — higher means less day-to-day variation, lower means bigger swings.",
+  personal_best: "Highest single day and week of sales recorded in the available history.",
+  team_standing: "Ranking compared to other chatters' performance in this period.",
+  wow: "Percentage change compared to the previous equivalent period.",
+  roi: "Revenue generated compared to compensation paid — return on this team member's cost. Admin-only.",
+  roi_revenue: "Sales attributed to this chatter in the selected period.",
+  estimated_comp: "Estimated compensation cost for this chatter in the period.",
+  roi_ratio: "Dollars of revenue generated per dollar of estimated compensation.",
+  conversion_funnel:
+    "Path from messages sent → PPVs sent → unlocks → revenue. Spot where conversion drops off.",
+  funnel_messages: "Messages sent in this period — the top of the conversion funnel.",
+  funnel_ppvs: "Pay-per-view messages sent to fans.",
+  funnel_unlocked: "PPVs fans actually purchased. n/a when unlock data hasn't synced.",
+  funnel_revenue: "Revenue attributed at the bottom of the conversion funnel.",
+  msg_to_ppv: "Share of messages that led to a PPV send.",
+  streak: "Consecutive days with sales activity — a momentum signal.",
+  best_day_of_week: "Weekday that historically averages the highest sales.",
+  sales_trend: "Daily sales over the selected range.",
+  team_sales_trend: "Aggregated sales across all linked chatters, daily or weekly.",
+  leaderboard: "Top chatters by sales in the selected period.",
+  heatmap: "Sales intensity by chatter × creator pairing — darker cells mean more revenue.",
+  whale_suggestions:
+    "High-value rebill activity not yet tracked as Whales — suggestions only, no auto-create.",
+  ppv_pricing_signals:
+    "Hints when average PPV looks high with low unlocks, or low with high unlocks.",
+  best_creator: "Creator account where sales and conversion look strongest in this range.",
+  per_creator: "Sales breakdown by creator account.",
+  fans_to_watch:
+    "High-value rebill activity not yet in Whales — suggest only, no auto-create.",
+  daily_tip: "A short coaching nudge based on recent patterns.",
+  week_sales: "Sales for this custom week of the Athens calendar month.",
+  team_by_week: "Team sales rolled up into each custom week of the month.",
+  alerts: "Automated flags for drops, effort/conversion mismatches, and other risk signals.",
+} as const;
+
+export type InflowwStatMetricId = keyof typeof INFLOWW_STAT_INFO;
+
+export const GOLDEN_RATIO_TOOLTIP = INFLOWW_STAT_INFO.golden_ratio;
 /** Parse `YYYY-MM-DD` as local calendar date (avoids UTC off-by-one). */
 export function parseYmdLocal(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map((n) => Number.parseInt(n, 10));
@@ -117,10 +177,182 @@ export function PeriodBadge({ change }: { change: PeriodChangeMetric }) {
   );
 }
 
+function useFineHover(): boolean {
+  const [fine, setFine] = React.useState(false);
+  React.useEffect(() => {
+    const mq = window.matchMedia("(hover: hover) and (pointer: fine)");
+    const sync = () => setFine(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
+  return fine;
+}
+
+/** "?" info icon — hover on desktop, tap to toggle on mobile. */
+export function StatInfoTooltip({
+  metricId,
+  text,
+  className,
+}: {
+  metricId?: InflowwStatMetricId;
+  text?: string;
+  className?: string;
+}) {
+  const copy = text ?? (metricId ? INFLOWW_STAT_INFO[metricId] : undefined);
+  const reduce = useReducedMotion();
+  const fineHover = useFineHover();
+  const [open, setOpen] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+  const btnRef = React.useRef<HTMLButtonElement>(null);
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const [pos, setPos] = React.useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    maxWidth: number;
+  } | null>(null);
+
+  React.useEffect(() => setMounted(true), []);
+
+  React.useLayoutEffect(() => {
+    if (!open || !btnRef.current) {
+      setPos(null);
+      return;
+    }
+    const rect = btnRef.current.getBoundingClientRect();
+    const maxWidth = Math.min(280, window.innerWidth - 24);
+    const preferredLeft = Math.min(
+      Math.max(12, rect.left + rect.width / 2 - maxWidth / 2),
+      window.innerWidth - maxWidth - 12
+    );
+    const spaceBelow = window.innerHeight - rect.bottom;
+    if (spaceBelow < 120) {
+      setPos({
+        bottom: window.innerHeight - rect.top + 8,
+        left: preferredLeft,
+        maxWidth,
+      });
+    } else {
+      setPos({ top: rect.bottom + 8, left: preferredLeft, maxWidth });
+    }
+  }, [open, copy]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    const onOutside = (e: MouseEvent | TouchEvent) => {
+      const target = e.target as Node;
+      if (btnRef.current?.contains(target)) return;
+      if (panelRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onOutside);
+    document.addEventListener("touchstart", onOutside, { passive: true });
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onOutside);
+      document.removeEventListener("touchstart", onOutside);
+    };
+  }, [open]);
+
+  if (!copy) return null;
+
+  return (
+    <span className={cn("relative inline-flex shrink-0 align-middle", className)}>
+      <button
+        ref={btnRef}
+        type="button"
+        aria-label="What this metric means"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        onMouseEnter={() => {
+          if (fineHover) setOpen(true);
+        }}
+        onMouseLeave={() => {
+          if (fineHover) setOpen(false);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={(e) => {
+          if (panelRef.current?.contains(e.relatedTarget as Node)) return;
+          if (!fineHover) return;
+          setOpen(false);
+        }}
+        className={cn(
+          "inline-flex h-3.5 w-3.5 items-center justify-center rounded-full border border-white/20 bg-white/[0.06] text-[9px] font-semibold leading-none text-white/45",
+          "transition duration-200 motion-reduce:transition-none",
+          "hover:border-[#D4AF8C]/45 hover:bg-white/10 hover:text-[#D4AF8C]",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4AF8C]/40",
+          open && "border-[#D4AF8C]/50 text-[#D4AF8C]"
+        )}
+      >
+        ?
+      </button>
+      {mounted && open && pos
+        ? createPortal(
+            <div
+              ref={panelRef}
+              role="tooltip"
+              onMouseEnter={() => {
+                if (fineHover) setOpen(true);
+              }}
+              onMouseLeave={() => {
+                if (fineHover) setOpen(false);
+              }}
+              className={cn(
+                "fixed z-[10060] rounded-xl border border-white/12 bg-[#141214]/95 px-3 py-2.5 text-left shadow-[0_12px_40px_-12px_rgba(0,0,0,0.85)] backdrop-blur-md",
+                reduce
+                  ? "opacity-100"
+                  : "animate-in fade-in-0 zoom-in-95 duration-150"
+              )}
+              style={{
+                top: pos.top,
+                bottom: pos.bottom,
+                left: pos.left,
+                maxWidth: pos.maxWidth,
+                width: pos.maxWidth,
+              }}
+            >
+              <p className="text-[12px] leading-relaxed text-white/75">{copy}</p>
+            </div>,
+            document.body
+          )
+        : null}
+    </span>
+  );
+}
+
+/** Label + "?" info icon, for hero metrics and inline week stats. */
+export function MetricLabel({
+  metricId,
+  children,
+  className,
+}: {
+  metricId: InflowwStatMetricId;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span className={cn("inline-flex items-center gap-1", className)}>
+      <span>{children}</span>
+      <StatInfoTooltip metricId={metricId} />
+    </span>
+  );
+}
+
 export function LuxuryStatCard({
   label,
   value,
   hint,
+  metricId,
   tooltip,
   accent = "white",
   glow,
@@ -130,7 +362,9 @@ export function LuxuryStatCard({
   label: string;
   value: React.ReactNode;
   hint?: React.ReactNode;
-  /** Native title tooltip on the card (e.g. Golden Ratio explanation). */
+  /** Prefer this — looks up copy from INFLOWW_STAT_INFO. */
+  metricId?: InflowwStatMetricId;
+  /** Override / one-off explanation (falls back when metricId omitted). */
   tooltip?: string;
   accent?: "pink" | "champagne" | "emerald" | "white" | "amber";
   glow?: boolean;
@@ -149,7 +383,6 @@ export function LuxuryStatCard({
             : "text-white";
   return (
     <div
-      title={tooltip}
       className={cn(
         VA_CARD,
         glow && VA_CARD_GLOW,
@@ -169,12 +402,10 @@ export function LuxuryStatCard({
         }}
       />
       <div className="relative flex items-start justify-between gap-2">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
-          {label}
-          {tooltip ? (
-            <span className="ml-1 cursor-help text-white/25" aria-hidden>
-              ⓘ
-            </span>
+        <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+          <span>{label}</span>
+          {metricId || tooltip ? (
+            <StatInfoTooltip metricId={metricId} text={tooltip} />
           ) : null}
         </p>
         {badge}
@@ -186,9 +417,6 @@ export function LuxuryStatCard({
     </div>
   );
 }
-
-export const GOLDEN_RATIO_TOOLTIP =
-  "Revenue efficiency per message sent. Industry healthy range: 4-7%.";
 
 export function DatePresetBar({
   preset,
@@ -410,11 +638,26 @@ export function ConversionFunnelViz({
 }) {
   const reduce = useReducedMotion();
   const stages = [
-    { key: "messages", label: "Messages", value: funnel.messages, color: "#D4AF8C", sparse: false },
-    { key: "ppvs", label: "PPVs sent", value: funnel.ppvs_sent, color: "#E879B8", sparse: false },
+    {
+      key: "messages",
+      label: "Messages",
+      metricId: "funnel_messages" as const,
+      value: funnel.messages,
+      color: "#D4AF8C",
+      sparse: false,
+    },
+    {
+      key: "ppvs",
+      label: "PPVs sent",
+      metricId: "funnel_ppvs" as const,
+      value: funnel.ppvs_sent,
+      color: "#E879B8",
+      sparse: false,
+    },
     {
       key: "unlocked",
       label: "Unlocked",
+      metricId: "funnel_unlocked" as const,
       value: funnel.unlocked,
       color: "#FF1493",
       sparse: funnel.unlock_data_sparse,
@@ -422,6 +665,7 @@ export function ConversionFunnelViz({
     {
       key: "revenue",
       label: "Revenue",
+      metricId: "funnel_revenue" as const,
       value: funnel.revenue,
       color: "#FF1493",
       money: true,
@@ -437,14 +681,25 @@ export function ConversionFunnelViz({
     <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5", className)}>
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+          <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
             Conversion funnel
+            <StatInfoTooltip metricId="conversion_funnel" />
           </p>
           <p className="mt-1 text-sm text-white/50">Messages → PPV → unlock → revenue</p>
         </div>
         <div className="text-right text-xs text-white/40">
-          <p>Msg→PPV {pct(funnel.msg_to_ppv_rate)}</p>
-          <p>Unlock {funnel.unlock_data_sparse ? "n/a" : pct(funnel.unlock_rate)}</p>
+          <p className="inline-flex items-center justify-end gap-1">
+            <MetricLabel metricId="msg_to_ppv" className="justify-end">
+              Msg→PPV
+            </MetricLabel>{" "}
+            {pct(funnel.msg_to_ppv_rate)}
+          </p>
+          <p className="inline-flex items-center justify-end gap-1">
+            <MetricLabel metricId="unlock_rate" className="justify-end">
+              Unlock
+            </MetricLabel>{" "}
+            {funnel.unlock_data_sparse ? "n/a" : pct(funnel.unlock_rate)}
+          </p>
         </div>
       </div>
       <div className="space-y-3">
@@ -458,7 +713,15 @@ export function ConversionFunnelViz({
           return (
             <div key={s.key}>
               <div className="mb-1 flex items-center justify-between text-xs">
-                <span className={sparse ? "text-white/35" : "text-white/55"}>{s.label}</span>
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1",
+                    sparse ? "text-white/35" : "text-white/55"
+                  )}
+                >
+                  {s.label}
+                  <StatInfoTooltip metricId={s.metricId} />
+                </span>
                 <span
                   className={cn(
                     "font-semibold tabular-nums",
@@ -523,8 +786,9 @@ export function ConsistencyRing({
 
   return (
     <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5", className)}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+      <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
         Consistency
+        <StatInfoTooltip metricId="consistency" />
       </p>
       <div className="mt-3 flex items-center gap-4">
         <div className="relative h-24 w-24 shrink-0">
@@ -582,8 +846,9 @@ export function PersonalBestCallout({
         "border border-[#D4AF8C]/25 bg-gradient-to-br from-[#D4AF8C]/10 via-white/5 to-transparent p-5"
       )}
     >
-      <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]">
+      <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]">
         {warm ? "Your personal best" : "Personal best"}
+        <StatInfoTooltip metricId="personal_best" />
       </p>
       <div className="mt-3 grid gap-3 sm:grid-cols-2">
         {bestDay ? (
@@ -611,10 +876,17 @@ export function PersonalBestCallout({
   );
 }
 
-export function SectionLabel({ children }: { children: React.ReactNode }) {
+export function SectionLabel({
+  children,
+  metricId,
+}: {
+  children: React.ReactNode;
+  metricId?: InflowwStatMetricId;
+}) {
   return (
-    <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
-      {children}
+    <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-white/35">
+      <span>{children}</span>
+      {metricId ? <StatInfoTooltip metricId={metricId} /> : null}
     </p>
   );
 }

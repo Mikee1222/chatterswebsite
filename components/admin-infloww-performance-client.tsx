@@ -21,14 +21,16 @@ import {
   ConversionFunnelViz,
   CountUp,
   DatePresetBar,
-  GOLDEN_RATIO_TOOLTIP,
   InflowwCustomDateRange,
   LuxuryStatCard,
+  MetricLabel,
   PeriodBadge,
   PersonalBestCallout,
   SectionLabel,
+  StatInfoTooltip,
   money,
   pct,
+  type InflowwStatMetricId,
 } from "@/components/infloww-performance-ui";
 import { AdminWeeklyProgressPanel } from "@/components/admin-weekly-progress-panel";
 import type {
@@ -130,13 +132,14 @@ function ChatterDrilldown({
           <div className="grid grid-cols-2 gap-2 md:grid-cols-3 lg:grid-cols-6">
             <LuxuryStatCard
               label="Golden Ratio"
+              metricId="golden_ratio"
               value={pct(row.totals.golden_ratio)}
               hint="PPVs ÷ messages"
-              tooltip={GOLDEN_RATIO_TOOLTIP}
               accent="champagne"
             />
             <LuxuryStatCard
               label="Unlock rate"
+              metricId="unlock_rate"
               value={a.funnel.unlock_data_sparse ? "n/a" : pct(a.funnel.unlock_rate)}
               hint={
                 a.funnel.unlock_data_sparse
@@ -147,6 +150,7 @@ function ChatterDrilldown({
             />
             <LuxuryStatCard
               label="Rev / hour"
+              metricId="rev_per_hour"
               value={a.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}
               hint={
                 a.revenue_per_hour != null
@@ -157,15 +161,18 @@ function ChatterDrilldown({
             />
             <LuxuryStatCard
               label="Rev / fan"
+              metricId="rev_per_fan"
               value={a.revenue_per_fan != null ? money(a.revenue_per_fan, 2) : "—"}
               accent="pink"
             />
             <LuxuryStatCard
               label="Avg PPV"
+              metricId="avg_ppv"
               value={a.avg_ppv_price != null ? money(a.avg_ppv_price, 2) : "—"}
             />
             <LuxuryStatCard
               label="Avg tip*"
+              metricId="avg_tip"
               value={a.avg_tip_size != null ? money(a.avg_tip_size, 2) : "—"}
               hint={a.tip_size_note ? "Estimated" : undefined}
             />
@@ -186,20 +193,20 @@ function ChatterDrilldown({
           ) : null}
           {showRoi && a.roi ? (
             <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
-              <SectionLabel>ROI (sensitive)</SectionLabel>
+              <SectionLabel metricId="roi">ROI (sensitive)</SectionLabel>
               <div className="mt-2 flex flex-wrap gap-4 text-sm">
-                <span className="text-white/60">
-                  Revenue{" "}
+                <span className="inline-flex items-center gap-1 text-white/60">
+                  <MetricLabel metricId="roi_revenue">Revenue</MetricLabel>{" "}
                   <strong className="text-white">{money(a.roi.revenue)}</strong>
                 </span>
-                <span className="text-white/60">
-                  Est. comp{" "}
+                <span className="inline-flex items-center gap-1 text-white/60">
+                  <MetricLabel metricId="estimated_comp">Est. comp</MetricLabel>{" "}
                   <strong className="text-[#D4AF8C]">
                     {a.roi.estimated_comp != null ? money(a.roi.estimated_comp) : "—"}
                   </strong>
                 </span>
-                <span className="text-white/60">
-                  Ratio{" "}
+                <span className="inline-flex items-center gap-1 text-white/60">
+                  <MetricLabel metricId="roi_ratio">Ratio</MetricLabel>{" "}
                   <strong className="text-[#FF1493]">
                     {a.roi.ratio != null ? `${a.roi.ratio.toFixed(1)}×` : "—"}
                   </strong>
@@ -210,7 +217,7 @@ function ChatterDrilldown({
           ) : null}
           {row.by_performer.length > 0 ? (
             <div>
-              <SectionLabel>Creators</SectionLabel>
+              <SectionLabel metricId="per_creator">Creators</SectionLabel>
               <div className="mt-2 space-y-1">
                 {row.by_performer.map((p) => (
                   <div
@@ -729,30 +736,34 @@ export function AdminInflowwPerformanceClient({
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
         <LuxuryStatCard
           label="Team sales"
+          metricId="team_sales"
           value={<CountUp value={data.team_totals.sales} format={(n) => money(n)} />}
           accent="pink"
           glow
         />
         <LuxuryStatCard
           label="PPV"
+          metricId="ppv"
           value={<CountUp value={data.team_totals.ppv_sales} format={(n) => money(n)} />}
           accent="champagne"
         />
         <LuxuryStatCard
           label="Messages"
+          metricId="messages"
           value={
             <CountUp value={data.team_totals.messages_sent} format={(n) => Math.round(n).toLocaleString()} />
           }
         />
         <LuxuryStatCard
           label="Golden Ratio"
+          metricId="golden_ratio"
           value={pct(data.team_totals.golden_ratio)}
           hint="PPVs ÷ messages"
-          tooltip={GOLDEN_RATIO_TOOLTIP}
           accent="champagne"
         />
         <LuxuryStatCard
           label="Unlock rate"
+          metricId="unlock_rate"
           value={teamFunnel.unlock_data_sparse ? "n/a" : pct(teamFunnel.unlock_rate)}
           hint={
             teamFunnel.unlock_data_sparse
@@ -761,14 +772,18 @@ export function AdminInflowwPerformanceClient({
           }
           accent="emerald"
         />
-        <LuxuryStatCard label="Fan CVR" value={pct(data.team_totals.fan_cvr)} />
+        <LuxuryStatCard
+          label="Fan CVR"
+          metricId="fan_cvr"
+          value={pct(data.team_totals.fan_cvr)}
+        />
       </div>
 
       {ppvInsights.length > 0 ? (
         <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
           <div className="mb-3 flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[#D4AF8C]" />
-            <SectionLabel>PPV pricing signals</SectionLabel>
+            <SectionLabel metricId="ppv_pricing_signals">PPV pricing signals</SectionLabel>
           </div>
           <div className="flex flex-wrap gap-2">
             {ppvInsights.map((ins) => (
@@ -793,7 +808,7 @@ export function AdminInflowwPerformanceClient({
         <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
           <div className="mb-3 flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-300" />
-            <SectionLabel>Alerts & flags</SectionLabel>
+            <SectionLabel metricId="alerts">Alerts & flags</SectionLabel>
           </div>
           <div className="space-y-2">
             {(data.alerts ?? []).slice(0, 8).map((al) => (
@@ -835,7 +850,7 @@ export function AdminInflowwPerformanceClient({
       <div className="grid gap-4 lg:grid-cols-2">
         <ConversionFunnelViz funnel={teamFunnel} />
         <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
-          <SectionLabel>Leaderboard</SectionLabel>
+          <SectionLabel metricId="leaderboard">Leaderboard</SectionLabel>
           <div className="mt-3 h-64 w-full">
             {chartData.length === 0 ? (
               <p className="flex h-full items-center justify-center text-sm text-white/40">
@@ -865,7 +880,7 @@ export function AdminInflowwPerformanceClient({
 
       <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <SectionLabel>Team sales trend</SectionLabel>
+          <SectionLabel metricId="team_sales_trend">Team sales trend</SectionLabel>
           <div className="flex gap-1.5">
             {(
               [
@@ -926,7 +941,7 @@ export function AdminInflowwPerformanceClient({
       </div>
 
       <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
-        <SectionLabel>Chatter × Creator heatmap</SectionLabel>
+        <SectionLabel metricId="heatmap">Chatter × Creator heatmap</SectionLabel>
         <p className="mt-1 mb-3 text-xs text-white/40">Sales intensity by chatter and creator</p>
         <Heatmap cells={data.heatmap ?? []} chatters={data.chatters} />
       </div>
@@ -935,7 +950,7 @@ export function AdminInflowwPerformanceClient({
         <div className={cn(VA_CARD, "border border-[#D4AF8C]/20 bg-white/5 p-5")}>
           <div className="mb-3 flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-[#D4AF8C]" />
-            <SectionLabel>Whale candidate suggestions</SectionLabel>
+            <SectionLabel metricId="whale_suggestions">Whale candidate suggestions</SectionLabel>
           </div>
           <p className="mb-3 text-xs text-white/40">
             Suggest only — confirm opens the Whales flow. Infloww lacks fan-level IDs; candidates
@@ -991,25 +1006,25 @@ export function AdminInflowwPerformanceClient({
         <div className="flex flex-wrap gap-2 border-b border-white/8 px-4 py-3">
           {(
             [
-              ["name", "Chatter"],
-              ["sales", "Sales"],
-              ["ppv_sales", "PPV"],
-              ["messages_sent", "Msgs"],
-              ["fans_chatted", "Fans"],
-              ["unlock_rate", "Unlock"],
-              ["golden_ratio", "Golden"],
-              ["fan_cvr", "CVR"],
-              ["revenue_per_hour", "$/h"],
-              ["consistency", "Consist."],
-              ["avg_ppv", "Avg PPV"],
+              ["name", "Chatter", null],
+              ["sales", "Sales", "total_sales"],
+              ["ppv_sales", "PPV", "ppv"],
+              ["messages_sent", "Msgs", "messages"],
+              ["fans_chatted", "Fans", "fans_chatted"],
+              ["unlock_rate", "Unlock", "unlock_rate"],
+              ["golden_ratio", "Golden", "golden_ratio"],
+              ["fan_cvr", "CVR", "fan_cvr"],
+              ["revenue_per_hour", "$/h", "rev_per_hour"],
+              ["consistency", "Consist.", "consistency"],
+              ["avg_ppv", "Avg PPV", "avg_ppv"],
             ] as const
-          ).map(([key, label]) => (
+          ).map(([key, label, metricId]) => (
             <button
               key={key}
               type="button"
               onClick={() => toggleSort(key)}
               className={cn(
-                "rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
+                "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider",
                 sortKey === key
                   ? "border-[#D4AF8C]/40 text-[#D4AF8C]"
                   : "border-white/10 text-white/45"
@@ -1017,6 +1032,15 @@ export function AdminInflowwPerformanceClient({
             >
               {label}
               {sortKey === key ? (sortDir === "asc" ? " ↑" : " ↓") : ""}
+              {metricId ? (
+                <span
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className="inline-flex"
+                >
+                  <StatInfoTooltip metricId={metricId as InflowwStatMetricId} />
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
