@@ -29,6 +29,7 @@ import { winnerVideoLocalToast } from "@/components/winner-videos-shared";
 import { useToast } from "@/contexts/toast-context";
 import { applyOptimisticItemCompletion } from "@/lib/va-task-phase-optimistic";
 import { ManagerReviewFileDropzone } from "@/components/manager-review-ui";
+import { postFormData } from "@/lib/post-form-data";
 import {
   ENGAGEMENT_SCREENSHOT_TARGET,
   isEngagementScreenshotItem,
@@ -450,11 +451,11 @@ export function VaTasksClient({
         for (const file of screenshots) {
           fd.append("screenshots", file);
         }
-        const res = await fetch(`/api/va/phase-items/${encodeURIComponent(item.id)}/complete`, {
-          method: "POST",
-          credentials: "include",
-          body: fd,
-        });
+        const res = await postFormData(
+          `/api/va/phase-items/${encodeURIComponent(item.id)}/complete`,
+          fd,
+          { credentials: "include" },
+        );
         const payload = (await res.json().catch(() => ({}))) as {
           allPhasesCompleted?: boolean;
           error?: string;

@@ -18,6 +18,7 @@ import {
   CHATTER_ATTACHMENT_MAX_BYTES,
   CHATTER_ATTACHMENT_MAX_MB,
 } from "@/lib/chatter-attachment-constants";
+import { postFormData } from "@/lib/post-form-data";
 import type { FineBonusPaymentMethod } from "@/services/fines-bonuses";
 
 export type ModelPaymentInfo = {
@@ -177,7 +178,7 @@ export function ExtraRevenueModal({
       if (notes.trim()) fd.set("notes", notes.trim());
       fd.set("screenshot", screenshot);
 
-      const res = await fetch("/api/chatter/extra-revenue", { method: "POST", body: fd });
+      const res = await postFormData("/api/chatter/extra-revenue", fd);
       const data = (await res.json()) as { error?: string; success?: boolean };
       if (!res.ok) {
         toast.error(data.error || "Submit failed");

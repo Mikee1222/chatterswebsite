@@ -12,6 +12,7 @@ import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getActiveVaTaskShift } from "@/services/shifts";
 import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
 import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
+import { readRequestFormData } from "@/lib/request-form-data";
 
 function safeScreenshotBasename(original: string): string {
   const stripped = original.replace(/^.*[/\\]/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -67,7 +68,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
-  const formData = await req.formData();
+  const formDataOrErr = await readRequestFormData(req);
+  if (formDataOrErr instanceof NextResponse) return formDataOrErr;
+  const formData = formDataOrErr;
   const screenshotEntries = [
     ...formData.getAll("screenshot"),
     ...formData.getAll("screenshots"),

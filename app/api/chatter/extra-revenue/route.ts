@@ -7,6 +7,7 @@ import { createExtraRevenueSubmission, type FineBonusPaymentMethod } from "@/ser
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { formatMoney } from "@/lib/notification-copy";
+import { readRequestFormData } from "@/lib/request-form-data";
 
 const PAYMENT_METHODS = new Set<FineBonusPaymentMethod>(["PayPal", "Revolut", "Other"]);
 
@@ -19,7 +20,9 @@ export async function POST(req: Request) {
   const userName = session.fullName?.trim() || session.email || "Chatter";
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const formData = await req.formData();
+  const formDataOrErr = await readRequestFormData(req);
+  if (formDataOrErr instanceof NextResponse) return formDataOrErr;
+  const formData = formDataOrErr;
   const model_id = String(formData.get("model_id") ?? "").trim();
   const model_name = String(formData.get("model_name") ?? "").trim();
   const amountRaw = String(formData.get("amount") ?? "").trim();

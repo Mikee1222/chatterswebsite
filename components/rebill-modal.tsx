@@ -7,6 +7,7 @@ import {
   CHATTER_ATTACHMENT_MAX_BYTES,
   CHATTER_ATTACHMENT_MAX_MB,
 } from "@/lib/chatter-attachment-constants";
+import { postFormData } from "@/lib/post-form-data";
 import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 
 export type ChatterModalModelOption = { id: string; name: string };
@@ -74,9 +75,7 @@ export function RebillModal({
       fd.append("sub_username", subUsername.trim());
       fd.append("sub_type", "paid");
       if (file) fd.append("screenshot", file);
-      const res = await fetch("/api/chatter/rebills", {
-        method: "POST",
-        body: fd,
+      const res = await postFormData("/api/chatter/rebills", fd, {
         credentials: "include",
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };

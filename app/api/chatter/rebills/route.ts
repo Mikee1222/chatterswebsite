@@ -5,6 +5,7 @@ import { createRebill } from "@/services/rebills";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
+import { readRequestFormData } from "@/lib/request-form-data";
 
 function normalizeSubUsername(raw: string): string {
   let s = raw.trim();
@@ -17,7 +18,9 @@ export async function POST(req: Request) {
   if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   if (!(await hasPermission(session, "shifts:view"))) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const formData = await req.formData();
+  const formDataOrErr = await readRequestFormData(req);
+  if (formDataOrErr instanceof NextResponse) return formDataOrErr;
+  const formData = formDataOrErr;
   const model_id = String(formData.get("model_id") ?? "").trim();
   const model_name = String(formData.get("model_name") ?? "").trim();
   const sub_username = normalizeSubUsername(String(formData.get("sub_username") ?? ""));

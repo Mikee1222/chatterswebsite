@@ -7,6 +7,7 @@ import {
   CHATTER_ATTACHMENT_MAX_BYTES,
   CHATTER_ATTACHMENT_MAX_MB,
 } from "@/lib/chatter-attachment-constants";
+import { postFormData } from "@/lib/post-form-data";
 import type { ChatterModalModelOption } from "@/components/rebill-modal";
 import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 
@@ -76,9 +77,7 @@ export function TipModal({
       fd.append("sub_username", subUsername.trim());
       fd.append("amount_usd", String(amount));
       if (file) fd.append("screenshot", file);
-      const res = await fetch("/api/chatter/tips", {
-        method: "POST",
-        body: fd,
+      const res = await postFormData("/api/chatter/tips", fd, {
         credentials: "include",
       });
       const json = (await res.json().catch(() => ({}))) as { error?: string };
