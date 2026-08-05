@@ -7,7 +7,9 @@ import {
   CHATTER_ATTACHMENT_MAX_BYTES,
   CHATTER_ATTACHMENT_MAX_MB,
 } from "@/lib/chatter-attachment-constants";
+import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { postFormData } from "@/lib/post-form-data";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import type { ChatterModalModelOption } from "@/components/rebill-modal";
 import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 
@@ -20,6 +22,7 @@ export function TipModal({
   onClose: () => void;
   models: ChatterModalModelOption[];
 }) {
+  const isSupabase = useIsSupabaseBackend();
   const [modelId, setModelId] = React.useState("");
   const [subUsername, setSubUsername] = React.useState("");
   const [amountUsd, setAmountUsd] = React.useState("");
@@ -76,7 +79,14 @@ export function TipModal({
       fd.append("model_name", selectedModel?.name ?? "");
       fd.append("sub_username", subUsername.trim());
       fd.append("amount_usd", String(amount));
-      if (file) fd.append("screenshot", file);
+      if (file) {
+        if (isSupabase) {
+          const { sbUrl } = await uploadScreenshotToSupabaseStorage(file, "tips");
+          fd.append("screenshot_url", sbUrl);
+        } else {
+          fd.append("screenshot", file);
+        }
+      }
       const res = await postFormData("/api/chatter/tips", fd, {
         credentials: "include",
       });

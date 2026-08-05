@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { put } from "@vercel/blob";
 import { getSessionFromCookies } from "@/lib/auth";
 import { isSupabaseBackend } from "@/lib/data-backend";
+import {
+  attachmentFromSbToken,
+  isAllowedDirectScreenshotToken,
+  safeUploadBasename,
+} from "@/lib/direct-storage-upload";
 import { hasPermission } from "@/lib/rbac";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { ROUTES } from "@/lib/routes";
@@ -14,13 +19,6 @@ import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-servic
 import { completePhaseItem, resolvePhaseItemRowId } from "@/services/task-phases";
 import { readRequestFormData } from "@/lib/request-form-data";
 
-function safeScreenshotBasename(original: string): string {
-  const stripped = original.replace(/^.*[/\\]/, "").replace(/[^a-zA-Z0-9._-]/g, "_");
-  const base = stripped.length > 0 ? stripped.slice(0, 120) : "screenshot";
-  const hasKnownExt = /\.(png|jpe?g|gif|webp|heic|bmp)$/i.test(base);
-  return (hasKnownExt ? base : `${base}.png`).slice(0, 180);
-}
-
 async function uploadPhaseScreenshot(
   itemRowId: string,
   file: File,
@@ -28,7 +26,7 @@ async function uploadPhaseScreenshot(
   const validationError = vaTaskScreenshotFileError(file);
   if (validationError) throw new Error(validationError);
 
-  const name = safeScreenshotBasename(file.name || "screenshot.png");
+  const name = safeUploadBasename(file.name || "screenshot.png");
   const mime = file.type || "image/png";
   if (isSupabaseBackend()) {
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -71,12 +69,31 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   const formDataOrErr = await readRequestFormData(req);
   if (formDataOrErr instanceof NextResponse) return formDataOrErr;
   const formData = formDataOrErr;
+
+  const screenshotUrlEntries = [
+    ...formData.getAll("screenshot_url"),
+    ...formData.getAll("screenshot_urls"),
+  ]
+    .map((v) => String(v ?? "").trim())
+    .filter(Boolean);
+
+  const screenshotAttachments: { url: string }[] = [];
+  for (const token of screenshotUrlEntries) {
+    // Accept tokens minted against either the resolved row id or the route param id.
+    const ok =
+      isAllowedDirectScreenshotToken(token, "va-phase-item", { itemId: itemRowId }) ||
+      isAllowedDirectScreenshotToken(token, "va-phase-item", { itemId: paramId });
+    if (!ok) {
+      return NextResponse.json({ error: "Invalid screenshot reference" }, { status: 400 });
+    }
+    screenshotAttachments.push(attachmentFromSbToken(token));
+  }
+
   const screenshotEntries = [
     ...formData.getAll("screenshot"),
     ...formData.getAll("screenshots"),
   ].filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
-  const screenshotAttachments: { url: string }[] = [];
   for (const screenshotFile of screenshotEntries) {
     try {
       screenshotAttachments.push(await uploadPhaseScreenshot(itemRowId, screenshotFile));

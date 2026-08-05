@@ -18,7 +18,9 @@ import {
   CHATTER_ATTACHMENT_MAX_BYTES,
   CHATTER_ATTACHMENT_MAX_MB,
 } from "@/lib/chatter-attachment-constants";
+import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { postFormData } from "@/lib/post-form-data";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import type { FineBonusPaymentMethod } from "@/services/fines-bonuses";
 
 export type ModelPaymentInfo = {
@@ -116,6 +118,7 @@ export function ExtraRevenueModal({
   modelss: ModelPaymentInfo[];
   onSubmitted?: () => void;
 }) {
+  const isSupabase = useIsSupabaseBackend();
   const [modelId, setModelId] = React.useState("");
   const [amount, setAmount] = React.useState("");
   const [paymentMethod, setPaymentMethod] = React.useState<FineBonusPaymentMethod>("PayPal");
@@ -176,7 +179,12 @@ export function ExtraRevenueModal({
       fd.set("payment_method", paymentMethod);
       if (paymentMethod === "Other") fd.set("payment_source", paymentSource);
       if (notes.trim()) fd.set("notes", notes.trim());
-      fd.set("screenshot", screenshot);
+      if (isSupabase) {
+        const { sbUrl } = await uploadScreenshotToSupabaseStorage(screenshot, "extra-revenue");
+        fd.set("screenshot_url", sbUrl);
+      } else {
+        fd.set("screenshot", screenshot);
+      }
 
       const res = await postFormData("/api/chatter/extra-revenue", fd);
       const data = (await res.json()) as { error?: string; success?: boolean };
@@ -187,6 +195,8 @@ export function ExtraRevenueModal({
       toast.success("Payment submitted for review");
       onSubmitted?.();
       onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Submit failed");
     } finally {
       setPending(false);
     }

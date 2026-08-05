@@ -3,6 +3,10 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { createTip } from "@/services/tips";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
+import {
+  attachmentFromSbToken,
+  isAllowedDirectScreenshotToken,
+} from "@/lib/direct-storage-upload";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { formatMoney } from "@/lib/notification-copy";
@@ -26,6 +30,7 @@ export async function POST(req: Request) {
   const model_name = String(formData.get("model_name") ?? "").trim();
   const sub_username = normalizeSubUsername(String(formData.get("sub_username") ?? ""));
   const amountRaw = formData.get("amount_usd");
+  const screenshotUrl = String(formData.get("screenshot_url") ?? "").trim();
   const screenshot = formData.get("screenshot");
 
   const amount_usd =
@@ -37,7 +42,12 @@ export async function POST(req: Request) {
   const tipId = `tip_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   let attachments: { url: string; filename?: string }[] = [];
-  if (screenshot instanceof File && screenshot.size > 0) {
+  if (screenshotUrl) {
+    if (!isAllowedDirectScreenshotToken(screenshotUrl, "tips")) {
+      return NextResponse.json({ error: "Invalid screenshot reference" }, { status: 400 });
+    }
+    attachments = [attachmentFromSbToken(screenshotUrl)];
+  } else if (screenshot instanceof File && screenshot.size > 0) {
     try {
       attachments = await chatterScreenshotAttachments(screenshot, "tips", tipId);
     } catch (err) {

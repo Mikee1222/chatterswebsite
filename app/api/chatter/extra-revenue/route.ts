@@ -3,6 +3,10 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { chatterScreenshotAttachments } from "@/lib/chatter-screenshot-upload";
+import {
+  attachmentFromSbToken,
+  isAllowedDirectScreenshotToken,
+} from "@/lib/direct-storage-upload";
 import { createExtraRevenueSubmission, type FineBonusPaymentMethod } from "@/services/fines-bonuses";
 import { notifyAdmins } from "@/services/notification-service";
 import { NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
@@ -29,6 +33,7 @@ export async function POST(req: Request) {
   const payment_method = String(formData.get("payment_method") ?? "").trim() as FineBonusPaymentMethod;
   const payment_source = String(formData.get("payment_source") ?? "").trim();
   const notes = String(formData.get("notes") ?? "").trim();
+  const screenshotUrl = String(formData.get("screenshot_url") ?? "").trim();
   const screenshot = formData.get("screenshot");
 
   if (!model_id || !model_name) {
@@ -45,23 +50,30 @@ export async function POST(req: Request) {
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: "Valid amount is required" }, { status: 400 });
   }
-  if (!(screenshot instanceof File) || screenshot.size <= 0) {
-    return NextResponse.json({ error: "Screenshot is required" }, { status: 400 });
-  }
 
   const submissionId = `er_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
   let attachments: { url: string; filename?: string }[] = [];
-  try {
-    attachments = await chatterScreenshotAttachments(screenshot, "extra-revenue", submissionId);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : "Screenshot upload failed";
-    console.error("[chatter/extra-revenue] screenshot upload failed", err);
-    const clientError =
-      msg.includes("under") || msg.includes("image") || msg.includes("Invalid");
-    return NextResponse.json(
-      { error: clientError ? msg : "Screenshot upload failed" },
-      { status: clientError ? 400 : 502 }
-    );
+
+  if (screenshotUrl) {
+    if (!isAllowedDirectScreenshotToken(screenshotUrl, "extra-revenue")) {
+      return NextResponse.json({ error: "Invalid screenshot reference" }, { status: 400 });
+    }
+    attachments = [attachmentFromSbToken(screenshotUrl)];
+  } else if (screenshot instanceof File && screenshot.size > 0) {
+    try {
+      attachments = await chatterScreenshotAttachments(screenshot, "extra-revenue", submissionId);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Screenshot upload failed";
+      console.error("[chatter/extra-revenue] screenshot upload failed", err);
+      const clientError =
+        msg.includes("under") || msg.includes("image") || msg.includes("Invalid");
+      return NextResponse.json(
+        { error: clientError ? msg : "Screenshot upload failed" },
+        { status: clientError ? 400 : 502 }
+      );
+    }
+  } else {
+    return NextResponse.json({ error: "Screenshot is required" }, { status: 400 });
   }
 
   const screenshot_url = attachments[0]?.url ?? "";

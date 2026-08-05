@@ -30,6 +30,8 @@ import { useToast } from "@/contexts/toast-context";
 import { applyOptimisticItemCompletion } from "@/lib/va-task-phase-optimistic";
 import { ManagerReviewFileDropzone } from "@/components/manager-review-ui";
 import { postFormData } from "@/lib/post-form-data";
+import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import {
   ENGAGEMENT_SCREENSHOT_TARGET,
   isEngagementScreenshotItem,
@@ -234,6 +236,7 @@ export function VaTasksClient({
 }: Props) {
   const router = useRouter();
   const { addToast } = useToast();
+  const isSupabase = useIsSupabaseBackend();
   const tasks = initialTasks;
   const [selected, setSelected] = React.useState<VaTaskRecord | null>(null);
   const [notes, setNotes] = React.useState("");
@@ -448,8 +451,17 @@ export function VaTasksClient({
 
       try {
         const fd = new FormData();
-        for (const file of screenshots) {
-          fd.append("screenshots", file);
+        if (isSupabase && screenshots.length > 0) {
+          for (const file of screenshots) {
+            const { sbUrl } = await uploadScreenshotToSupabaseStorage(file, "va-phase-item", {
+              itemId: item.id,
+            });
+            fd.append("screenshot_url", sbUrl);
+          }
+        } else {
+          for (const file of screenshots) {
+            fd.append("screenshots", file);
+          }
         }
         const res = await postFormData(
           `/api/va/phase-items/${encodeURIComponent(item.id)}/complete`,
@@ -475,13 +487,13 @@ export function VaTasksClient({
         clearOptimisticRollback(taskId);
         if (payload.allPhasesCompleted) router.refresh();
         return payload;
-      } catch {
+      } catch (err) {
         rollbackOptimisticItem(taskId);
         addToast(
           winnerVideoLocalToast(
             `va-item-err-${item.id}-${Date.now()}`,
             "Could not complete item",
-            "Network error — please try again.",
+            err instanceof Error ? err.message : "Network error — please try again.",
             "high",
           ),
         );
@@ -490,7 +502,7 @@ export function VaTasksClient({
         inflightItemIdsRef.current.delete(item.id);
       }
     },
-    [addToast, clearOptimisticRollback, optimisticallyCompleteItem, rollbackOptimisticItem, router],
+    [addToast, clearOptimisticRollback, isSupabase, optimisticallyCompleteItem, rollbackOptimisticItem, router],
   );
 
   async function reloadModelAccounts(modelId: string) {

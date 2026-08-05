@@ -7,7 +7,9 @@ import {
   CHATTER_ATTACHMENT_MAX_BYTES,
   CHATTER_ATTACHMENT_MAX_MB,
 } from "@/lib/chatter-attachment-constants";
+import { uploadScreenshotToSupabaseStorage } from "@/lib/client-direct-storage-upload";
 import { postFormData } from "@/lib/post-form-data";
+import { useIsSupabaseBackend } from "@/contexts/data-backend-context";
 import { SubscriberUsernameInput, rememberSubscriberUsername } from "@/components/subscriber-username-input";
 
 export type ChatterModalModelOption = { id: string; name: string };
@@ -21,6 +23,7 @@ export function RebillModal({
   onClose: () => void;
   models: ChatterModalModelOption[];
 }) {
+  const isSupabase = useIsSupabaseBackend();
   const [modelId, setModelId] = React.useState("");
   const [subUsername, setSubUsername] = React.useState("");
   const [file, setFile] = React.useState<File | null>(null);
@@ -74,7 +77,14 @@ export function RebillModal({
       fd.append("model_name", selectedModel?.name ?? "");
       fd.append("sub_username", subUsername.trim());
       fd.append("sub_type", "paid");
-      if (file) fd.append("screenshot", file);
+      if (file) {
+        if (isSupabase) {
+          const { sbUrl } = await uploadScreenshotToSupabaseStorage(file, "rebills");
+          fd.append("screenshot_url", sbUrl);
+        } else {
+          fd.append("screenshot", file);
+        }
+      }
       const res = await postFormData("/api/chatter/rebills", fd, {
         credentials: "include",
       });

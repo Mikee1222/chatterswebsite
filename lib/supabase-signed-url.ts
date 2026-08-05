@@ -108,3 +108,32 @@ export async function uploadToPrivateStorage(opts: {
   if (error) throw new Error(`storage upload: ${error.message}`);
   return `sb://${opts.bucket}/${opts.objectPath}`;
 }
+
+/** Durable token for a private storage object path. */
+export function privateStorageToken(bucket: string, objectPath: string): string {
+  return `sb://${bucket}/${objectPath}`;
+}
+
+/**
+ * Mint a short-lived signed upload URL (service role). Client PUTs bytes directly
+ * to Storage — never through a Next.js / Vercel function body.
+ */
+export async function createPrivateStorageSignedUpload(opts: {
+  bucket: string;
+  objectPath: string;
+  upsert?: boolean;
+}): Promise<{ signedUrl: string; token: string; path: string; sbUrl: string }> {
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb.storage
+    .from(opts.bucket)
+    .createSignedUploadUrl(opts.objectPath, { upsert: opts.upsert ?? true });
+  if (error || !data?.signedUrl || !data.token) {
+    throw new Error(`signed upload url: ${error?.message || "unknown error"}`);
+  }
+  return {
+    signedUrl: data.signedUrl,
+    token: data.token,
+    path: data.path || opts.objectPath,
+    sbUrl: privateStorageToken(opts.bucket, opts.objectPath),
+  };
+}
