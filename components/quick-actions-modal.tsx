@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { AnimatePresence, motion, useDragControls } from "framer-motion";
-import { CalendarCheck, Coins, DollarSign, FileText, Play, UserPlus, X } from "lucide-react";
+import { CalendarCheck, Coins, DollarSign, Play, UserPlus, Video, X } from "lucide-react";
 import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import { FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
@@ -19,10 +19,11 @@ export const CHATTER_QUICK_ACTIONS: {
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
 }[] = [
+  // Custom Video first — primary chatter action; was easy to miss mid-list after FAB overlay races.
+  { href: ROUTES.chatter.requestCustom, label: "Custom Video", Icon: Video },
   { href: ROUTES.chatter.shift, label: "Start a shift", Icon: Play },
   { href: ROUTES.chatter.weeklyAvailability, label: "My availability", Icon: CalendarCheck },
   { href: ROUTES.chatter.myWhalesNew, label: "Add new whale", Icon: UserPlus },
-  { href: ROUTES.chatter.requestCustom, label: "Request a custom", Icon: FileText },
   { href: ROUTES.chatter.logTransaction, label: "Whale session", Icon: DollarSign },
   { href: ROUTES.finesBonuses, label: "Fines & Bonuses", Icon: Coins },
 ];
@@ -60,7 +61,7 @@ export function QuickActionsModal({ open, onClose }: QuickActionsModalProps) {
   }, [open, onClose]);
 
   return (
-    <div className="md:hidden">
+    <div className="md:hidden" data-mobile-chrome-ignore>
       <AnimatePresence>
         {open ? (
           <>
@@ -80,6 +81,7 @@ export function QuickActionsModal({ open, onClose }: QuickActionsModalProps) {
               role="dialog"
               aria-modal="true"
               aria-labelledby="quick-actions-title"
+              data-mobile-chrome-ignore
               className={cn(
                 "fixed inset-x-0 bottom-0 z-[106] flex max-h-[min(78dvh,520px)] flex-col overflow-hidden rounded-t-3xl border border-white/10 border-b-0 bg-zinc-900 shadow-[0_-12px_48px_rgba(0,0,0,0.55)]",
                 "touch-manipulation"

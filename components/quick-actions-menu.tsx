@@ -61,7 +61,7 @@ export function QuickActionsMenu({ onClose, openAddWhale, openTransactionForm }:
                   <Target className="h-6 w-6 text-purple-300" aria-hidden />
                 </div>
                 <div className="flex-1 text-left">
-                  <p className="font-medium text-white">Request custom</p>
+                  <p className="font-medium text-white">Custom Video</p>
                   <p className="text-sm text-white/40">Submit custom content request</p>
                 </div>
                 <svg className="h-5 w-5 text-white/30 transition-colors group-hover:text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
