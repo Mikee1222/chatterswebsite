@@ -1,5 +1,5 @@
 /**
- * Max screenshot size for rebill / tip / extra-revenue chatter flows.
+ * Max screenshot size for rebill / tip / extra-revenue / VA phase-item flows.
  * Aligned with client payment-proof uploads (`lib/client-proof-upload.ts` = 10MB).
  * Storage bucket `attachments` allows 50MB; this is the app-level cap.
  */

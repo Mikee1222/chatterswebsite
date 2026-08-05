@@ -7,6 +7,7 @@ import { hasPermission } from "@/lib/rbac";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { ROUTES } from "@/lib/routes";
 import { uploadToPrivateStorage } from "@/lib/supabase-signed-url";
+import { vaTaskScreenshotFileError } from "@/lib/va-task-screenshots";
 import { vaTypeAccessApiGuardForNavHref } from "@/lib/va-type-access";
 import { getActiveVaTaskShift } from "@/services/shifts";
 import { notifyAdmins, notifyByRoleConfig } from "@/services/notification-service";
@@ -23,14 +24,18 @@ async function uploadPhaseScreenshot(
   itemRowId: string,
   file: File,
 ): Promise<{ url: string }> {
+  const validationError = vaTaskScreenshotFileError(file);
+  if (validationError) throw new Error(validationError);
+
   const name = safeScreenshotBasename(file.name || "screenshot.png");
+  const mime = file.type || "image/png";
   if (isSupabaseBackend()) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const token = await uploadToPrivateStorage({
       bucket: "attachments",
       objectPath: `va_task_phase_items/${itemRowId}/${Date.now()}_${name}`,
       bytes,
-      contentType: file.type || "image/png",
+      contentType: mime,
     });
     return { url: token };
   }
@@ -69,24 +74,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   ].filter((entry): entry is File => entry instanceof File && entry.size > 0);
 
   const screenshotAttachments: { url: string }[] = [];
-  const uploadErrors: string[] = [];
   for (const screenshotFile of screenshotEntries) {
     try {
       screenshotAttachments.push(await uploadPhaseScreenshot(itemRowId, screenshotFile));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[phase-items/complete] screenshot upload failed:", e);
-      uploadErrors.push(msg);
+      const clientError =
+        msg.includes("under") ||
+        msg.includes("image") ||
+        msg.includes("empty");
+      return NextResponse.json(
+        { error: clientError ? msg : `Screenshot upload failed: ${msg || "unknown error"}` },
+        { status: clientError ? 400 : 502 },
+      );
     }
-  }
-
-  if (screenshotEntries.length > 0 && screenshotAttachments.length === 0) {
-    return NextResponse.json(
-      {
-        error: `Screenshot upload failed: ${uploadErrors[0] || "unknown error"}`,
-      },
-      { status: 502 },
-    );
   }
 
   const vaName = session.fullName?.trim() || session.email || "VA";

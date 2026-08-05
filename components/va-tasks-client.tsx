@@ -32,6 +32,8 @@ import { ManagerReviewFileDropzone } from "@/components/manager-review-ui";
 import {
   ENGAGEMENT_SCREENSHOT_TARGET,
   isEngagementScreenshotItem,
+  VA_TASK_SCREENSHOT_MAX_MB,
+  vaTaskScreenshotFileError,
 } from "@/lib/va-task-screenshots";
 import { useSupabaseRealtimeRefresh } from "@/lib/hooks/use-supabase-realtime";
 
@@ -283,6 +285,7 @@ export function VaTasksClient({
   );
   const [completingItem, setCompletingItem] = React.useState<{ item: PhaseItem; taskId: string } | null>(null);
   const [proofFiles, setProofFiles] = React.useState<File[]>([]);
+  const [proofError, setProofError] = React.useState<string | null>(null);
   const [screenshotUploading, setScreenshotUploading] = React.useState(false);
   const [observationsSavingId, setObservationsSavingId] = React.useState<string | null>(null);
   const phaseRollbackRef = React.useRef<Record<string, TaskPhase[]>>({});
@@ -674,6 +677,7 @@ export function VaTasksClient({
       if (item.requires_screenshot) {
         setCompletingItem({ item, taskId });
         setProofFiles([]);
+        setProofError(null);
         return;
       }
       void submitPhaseItemCompletion(item, taskId);
@@ -681,15 +685,37 @@ export function VaTasksClient({
     [submitPhaseItemCompletion],
   );
 
+  const handleProofFilesChange = React.useCallback((files: File[]) => {
+    for (const file of files) {
+      const err = vaTaskScreenshotFileError(file);
+      if (err) {
+        setProofError(err);
+        setProofFiles(files.filter((f) => !vaTaskScreenshotFileError(f)));
+        return;
+      }
+    }
+    setProofError(null);
+    setProofFiles(files);
+  }, []);
+
   const handleSubmitScreenshotProof = React.useCallback(async () => {
     if (!completingItem || proofFiles.length === 0 || screenshotUploading) return;
+    for (const file of proofFiles) {
+      const err = vaTaskScreenshotFileError(file);
+      if (err) {
+        setProofError(err);
+        return;
+      }
+    }
     const { item, taskId } = completingItem;
     setScreenshotUploading(true);
+    setProofError(null);
     try {
       const result = await submitPhaseItemCompletion(item, taskId, proofFiles);
       if (result) {
         setCompletingItem(null);
         setProofFiles([]);
+        setProofError(null);
       }
     } finally {
       setScreenshotUploading(false);
@@ -1073,11 +1099,14 @@ export function VaTasksClient({
               </div>
               <ManagerReviewFileDropzone
                 files={proofFiles}
-                onChange={setProofFiles}
+                onChange={handleProofFilesChange}
                 accept="image/*"
                 multiple
               />
-              <p className="text-xs text-[#B8B4B8]/45">Tip: Ctrl+V to paste from clipboard</p>
+              <p className="text-xs text-[#B8B4B8]/45">
+                Tip: Ctrl+V to paste from clipboard · max {VA_TASK_SCREENSHOT_MAX_MB}MB per image
+              </p>
+              {proofError ? <p className="text-sm text-red-400">{proofError}</p> : null}
             </div>
             <div className="mt-6 flex justify-end gap-2">
               <button
@@ -1086,6 +1115,7 @@ export function VaTasksClient({
                 onClick={() => {
                   setCompletingItem(null);
                   setProofFiles([]);
+                  setProofError(null);
                   setScreenshotUploading(false);
                 }}
                 className="rounded-2xl border border-white/10 px-5 py-3 text-sm text-white/50 disabled:opacity-40"
