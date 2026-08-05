@@ -195,14 +195,30 @@ export function AdminInflowwPerformanceClient({
         error?: string;
         rowsUpserted?: number;
         usersTargeted?: number;
-        errors?: Array<{ employeeId: number; message: string }>;
+        errors?: Array<{ employeeId: number; message: string; status?: number }>;
       };
       if (!res.ok) throw new Error(body.error || `Sync failed (${res.status})`);
-      const errCount = body.errors?.length ?? 0;
+      const errs = body.errors ?? [];
+      const errCount = errs.length;
+      const detail =
+        errCount === 0
+          ? ""
+          : `: ${errs
+              .slice(0, 3)
+              .map((e) => `#${e.employeeId}${e.status ? ` (${e.status})` : ""} ${e.message}`)
+              .join(" · ")}${errCount > 3 ? ` (+${errCount - 3} more)` : ""}`;
       setSyncMsg(
         `Synced ${body.rowsUpserted ?? 0} rows for ${body.usersTargeted ?? 0} users` +
-          (errCount ? ` (${errCount} employee error(s))` : "")
+          (errCount ? ` (${errCount} employee error(s)${detail})` : "")
       );
+      if (errCount > 0) {
+        setError(
+          errs
+            .slice(0, 5)
+            .map((e) => `Employee ${e.employeeId}: ${e.message}`)
+            .join("\n")
+        );
+      }
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed");
@@ -349,12 +365,18 @@ export function AdminInflowwPerformanceClient({
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+        <p className="whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
         </p>
       ) : null}
       {syncMsg ? (
-        <p className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+        <p
+          className={
+            syncMsg.includes("employee error")
+              ? "rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+              : "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
+          }
+        >
           {syncMsg}
         </p>
       ) : null}

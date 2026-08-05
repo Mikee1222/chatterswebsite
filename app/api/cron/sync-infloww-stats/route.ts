@@ -26,6 +26,12 @@ export async function GET(request: Request) {
   }
   try {
     const result = await syncInflowwDailyStats();
+    if (result.errors.length > 0) {
+      console.error("[cron/sync-infloww-stats] employee errors", {
+        count: result.errors.length,
+        errors: result.errors.slice(0, 20),
+      });
+    }
     return NextResponse.json({
       success: result.errors.length === 0,
       ...result,

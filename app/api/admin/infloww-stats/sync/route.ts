@@ -49,6 +49,12 @@ export async function POST(request: Request) {
       endYmd,
       publicUserIds: body.publicUserIds,
     });
+    if (result.errors.length > 0) {
+      console.error("[admin/infloww-stats/sync] employee errors", {
+        count: result.errors.length,
+        errors: result.errors.slice(0, 20),
+      });
+    }
     return NextResponse.json({ success: result.errors.length === 0, ...result });
   } catch (err) {
     console.error("[admin/infloww-stats/sync]", err);

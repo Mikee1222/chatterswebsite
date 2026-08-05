@@ -8,6 +8,7 @@ import {
   EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS,
   fetchEmployeeDayStats,
   InflowwApiError,
+  logInflowwFailure,
 } from "@/lib/infloww-api";
 import { publicId } from "@/lib/supabase-data";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
@@ -54,7 +55,7 @@ export type InflowwSyncResult = {
   endYmd: string;
   usersTargeted: number;
   rowsUpserted: number;
-  errors: Array<{ employeeId: number; message: string }>;
+  errors: Array<{ employeeId: number; message: string; status?: number; path?: string }>;
 };
 
 function n(v: unknown): number {
@@ -273,7 +274,19 @@ export async function syncInflowwDailyStats(params?: {
           : err instanceof Error
             ? err.message
             : String(err);
-      result.errors.push({ employeeId, message });
+      logInflowwFailure("employee sync failed", err, {
+        employeeId,
+        startYmd,
+        endYmd,
+        userCount: linked.length,
+      });
+      result.errors.push({
+        employeeId,
+        message,
+        ...(err instanceof InflowwApiError
+          ? { status: err.status, path: err.path || undefined }
+          : {}),
+      });
     }
   }
 

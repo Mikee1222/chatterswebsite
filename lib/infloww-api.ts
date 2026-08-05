@@ -51,11 +51,38 @@ function inflowwDebug(message: string, meta?: Record<string, unknown>) {
 
 export class InflowwApiError extends Error {
   status: number;
+  /** Truncated response body (no secrets). Empty when unavailable. */
+  body: string;
+  path: string;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, opts?: { body?: string; path?: string }) {
     super(message);
     this.status = status;
+    this.body = opts?.body ?? "";
+    this.path = opts?.path ?? "";
   }
+}
+
+/** Log Infloww HTTP failures without leaking credentials. */
+export function logInflowwFailure(
+  context: string,
+  err: unknown,
+  extra?: Record<string, unknown>
+): void {
+  if (err instanceof InflowwApiError) {
+    console.error(`[infloww] ${context}`, {
+      status: err.status,
+      path: err.path || undefined,
+      body: err.body ? err.body.slice(0, 500) : undefined,
+      message: err.message.slice(0, 500),
+      ...extra,
+    });
+    return;
+  }
+  console.error(`[infloww] ${context}`, {
+    message: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500),
+    ...extra,
+  });
 }
 
 function getInflowwEnv() {
@@ -156,9 +183,10 @@ function inflowwRangeToMs(from: string, to: string): { startMs: number; endMs: n
 
 async function inflowwFetchJson<T>(path: string, searchParams?: URLSearchParams): Promise<T> {
   const url = `${INFLOWW_BASE_URL}${path}${searchParams && searchParams.toString() ? `?${searchParams.toString()}` : ""}`;
+  // Never cache authenticated Infloww responses — stale 200s can mask expired keys.
   const init: RequestInit = {
     headers: inflowwHeaders(),
-    next: { revalidate: 300 },
+    cache: "no-store",
   };
 
   let last429Body = "";
@@ -172,11 +200,25 @@ async function inflowwFetchJson<T>(path: string, searchParams?: URLSearchParams)
     }
     if (!res.ok) {
       const body = await res.text();
-      throw new InflowwApiError(`Infloww API ${res.status}: ${body.slice(0, 300)}`, res.status);
+      const truncated = body.slice(0, 300);
+      console.error("[infloww] API error", {
+        status: res.status,
+        path,
+        body: truncated,
+      });
+      throw new InflowwApiError(`Infloww API ${res.status}: ${truncated}`, res.status, {
+        body: truncated,
+        path,
+      });
     }
     return (await res.json()) as T;
   }
-  throw new InflowwApiError(`Infloww API 429 (rate limited): ${last429Body.slice(0, 300)}`, 429);
+  const truncated429 = last429Body.slice(0, 300);
+  console.error("[infloww] API error", { status: 429, path, body: truncated429 });
+  throw new InflowwApiError(`Infloww API 429 (rate limited): ${truncated429}`, 429, {
+    body: truncated429,
+    path,
+  });
 }
 
 function pickArray(payload: unknown, depth = 0): unknown[] {
