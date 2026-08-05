@@ -41,4 +41,9 @@ curl -X POST "$APP_URL/api/admin/infloww-stats/sync" \
 
 Employee list: cursor pagination via `cursor`/`limit` (and `hasMore` when present).
 
-Employee reports params: `platformCode=OnlyFans`, ISO `startTime`/`endTime`, optional `employeeIds`, cursor pagination via `hasMore`/`cursor`. Ranges &gt;31 days are chunked (or day-by-day for attribution).
+Employee reports params: `platformCode=OnlyFans`, date-only `startTime`/`endTime` (`YYYY-MM-DD`), optional `employeeIds`, cursor pagination via `hasMore`/`cursor`. Ranges &gt;31 days are chunked (or day-by-day for attribution).
+
+Response shape notes (sales-summary):
+- Rows live under `data.list` (not a bare `data` array)
+- Performer id field is `platformPid`
+- Money fields are `salesAmount`, `ppvSalesAmount`, `tipsSalesAmount`, `directMessageSalesAmount`, `priorityMassMessageSalesAmount`, `massMessageSalesAmount` — **cents**, converted to dollars on ingest

@@ -821,6 +821,25 @@ function numField(r: Record<string, unknown>, keys: string[]): number {
   return 0;
 }
 
+/**
+ * Employee sales-summary monetary fields (`salesAmount`, `ppvSalesAmount`, …) are
+ * minor units (cents), same as transaction payloads — convert to dollars here.
+ * Legacy/alternate keys without an Amount suffix are treated as already-dollars.
+ */
+function salesMoneyField(r: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null || v === "") continue;
+    const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
+    if (!Number.isFinite(n)) continue;
+    if (/Amount$/i.test(k) || /_amount$/i.test(k) || /Cents$/i.test(k) || /_cents$/i.test(k)) {
+      return n / 100;
+    }
+    return n;
+  }
+  return 0;
+}
+
 function nullableNumField(r: Record<string, unknown>, keys: string[]): number | null {
   for (const k of keys) {
     const v = r[k];
@@ -948,6 +967,17 @@ function assertEmployeeReportLookback(startYmd: string, endYmd: string): void {
   }
 }
 
+const PERFORMER_ID_KEYS = [
+  "platformPid",
+  "platform_pid",
+  "performerId",
+  "performer_id",
+  "creatorId",
+  "creator_id",
+  "modelId",
+  "model_id",
+] as const;
+
 function mapSalesRow(row: unknown): import("@/types/infloww").InflowwEmployeeSalesRow {
   const r = (row ?? {}) as Record<string, unknown>;
   const nestedEmp =
@@ -958,21 +988,99 @@ function mapSalesRow(row: unknown): import("@/types/infloww").InflowwEmployeeSal
       : r["creator"] && typeof r["creator"] === "object"
         ? (r["creator"] as Record<string, unknown>)
         : null;
-  return {
+  const mapped: import("@/types/infloww").InflowwEmployeeSalesRow = {
     employeeId: idField(r, ["employeeId", "employee_id", "employeeID"]) || idField(nestedEmp ?? {}, ["id", "employeeId"]),
     performerId:
-      idField(r, ["performerId", "performer_id", "creatorId", "creator_id", "modelId", "model_id"]) ||
-      idField(nestedPerf ?? {}, ["id", "performerId", "creatorId"]),
+      idField(r, [...PERFORMER_ID_KEYS]) ||
+      idField(nestedPerf ?? {}, ["id", "performerId", "creatorId", "platformPid"]),
     performerName: strField(r, ["performerName", "performer_name", "creatorName", "creator_name", "modelName"]) ??
       strField(nestedPerf ?? {}, ["name", "username", "displayName"]),
     date: ymdField(r),
-    sales: numField(r, ["sales", "totalSales", "total_sales", "revenue", "totalRevenue"]),
-    ppvSales: numField(r, ["ppvSales", "ppv_sales", "ppv", "ppvRevenue"]),
-    tips: numField(r, ["tips", "tipSales", "tip_sales", "tipRevenue"]),
-    dmSales: numField(r, ["dmSales", "dm_sales", "directMessageSales", "direct_message_sales", "messageSales"]),
-    pmmSales: numField(r, ["pmmSales", "pmm_sales", "priorityMassMessageSales", "priority_mass_message_sales"]),
-    ofmmSales: numField(r, ["ofmmSales", "ofmm_sales", "ofMassMessageSales", "of_mass_message_sales", "massMessageSales"]),
+    // Live Infloww sales-summary uses *Amount keys (cents). Keep legacy aliases too.
+    sales: salesMoneyField(r, [
+      "salesAmount",
+      "sales_amount",
+      "sales",
+      "totalSales",
+      "total_sales",
+      "totalSalesAmount",
+      "revenue",
+      "totalRevenue",
+    ]),
+    ppvSales: salesMoneyField(r, [
+      "ppvSalesAmount",
+      "ppv_sales_amount",
+      "ppvSales",
+      "ppv_sales",
+      "ppv",
+      "ppvRevenue",
+    ]),
+    tips: salesMoneyField(r, [
+      "tipsSalesAmount",
+      "tips_sales_amount",
+      "tipsAmount",
+      "tips_amount",
+      "tips",
+      "tipSales",
+      "tip_sales",
+      "tipRevenue",
+    ]),
+    dmSales: salesMoneyField(r, [
+      "directMessageSalesAmount",
+      "direct_message_sales_amount",
+      "dmSales",
+      "dm_sales",
+      "directMessageSales",
+      "direct_message_sales",
+      "messageSales",
+    ]),
+    pmmSales: salesMoneyField(r, [
+      "priorityMassMessageSalesAmount",
+      "priority_mass_message_sales_amount",
+      "pmmSales",
+      "pmm_sales",
+      "priorityMassMessageSales",
+      "priority_mass_message_sales",
+    ]),
+    ofmmSales: salesMoneyField(r, [
+      "massMessageSalesAmount",
+      "mass_message_sales_amount",
+      "ofmmSales",
+      "ofmm_sales",
+      "ofMassMessageSales",
+      "of_mass_message_sales",
+      "massMessageSales",
+    ]),
   };
+
+  // Detect unmapped money if API renames fields again — never silently store $0 from real sales.
+  const rawMoneyKeys = Object.keys(r).filter((k) => /sales|tip|ppv|amount|revenue/i.test(k));
+  const rawHasPositive = rawMoneyKeys.some((k) => {
+    const v = r[k];
+    const n = typeof v === "number" ? v : Number.parseFloat(String(v ?? "").replace(/,/g, ""));
+    return Number.isFinite(n) && n > 0;
+  });
+  const mappedAllZero =
+    mapped.sales === 0 &&
+    mapped.ppvSales === 0 &&
+    mapped.tips === 0 &&
+    mapped.dmSales === 0 &&
+    mapped.pmmSales === 0 &&
+    mapped.ofmmSales === 0;
+  if (rawHasPositive && mappedAllZero) {
+    console.error("[infloww] sales row money fields not mapped (would store $0)", {
+      keys: Object.keys(r),
+      rawMoneyKeys,
+      sample: Object.fromEntries(rawMoneyKeys.map((k) => [k, r[k]])),
+    });
+    throw new InflowwApiError(
+      `Infloww sales-summary row has monetary values but none mapped (keys: ${rawMoneyKeys.join(", ") || "none"}).`,
+      502,
+      { path: "/employee-report/employee-sales-summary" }
+    );
+  }
+
+  return mapped;
 }
 
 function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChatRow {
@@ -988,15 +1096,15 @@ function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChat
   return {
     employeeId: idField(r, ["employeeId", "employee_id", "employeeID"]) || idField(nestedEmp ?? {}, ["id", "employeeId"]),
     performerId:
-      idField(r, ["performerId", "performer_id", "creatorId", "creator_id", "modelId", "model_id"]) ||
-      idField(nestedPerf ?? {}, ["id", "performerId", "creatorId"]),
+      idField(r, [...PERFORMER_ID_KEYS]) ||
+      idField(nestedPerf ?? {}, ["id", "performerId", "creatorId", "platformPid"]),
     performerName: strField(r, ["performerName", "performer_name", "creatorName", "creator_name", "modelName"]) ??
       strField(nestedPerf ?? {}, ["name", "username", "displayName"]),
     date: ymdField(r),
     messagesSent: Math.round(numField(r, ["messagesSent", "messages_sent", "directMessagesSent", "direct_messages_sent", "dmSent"])),
     ppvsSent: Math.round(numField(r, ["ppvsSent", "ppvs_sent", "directPpvsSent", "direct_ppvs_sent", "ppvSent"])),
     fansChatted: Math.round(numField(r, ["fansChatted", "fans_chatted", "fansMessaged", "fans_messaged"])),
-    fansWhoSpent: Math.round(numField(r, ["fansWhoSpent", "fans_who_spent", "spendingFans", "fansSpent"])),
+    fansWhoSpent: Math.round(numField(r, ["fansWhoSpent", "fans_who_spent", "spendingFans", "fansSpent", "fansWhoSpentMoney"])),
     goldenRatio: nullableNumField(r, ["goldenRatio", "golden_ratio"]),
     fanCvr: nullableNumField(r, ["fanCvr", "fan_cvr", "fanConversionRate", "cvr"]),
     avgEarningsPerSpendingFan: nullableNumField(r, [
@@ -1045,6 +1153,17 @@ async function paginateEmployeeReport(
     }
     if (cursor) qp.set("cursor", cursor);
     const payload = await inflowwFetchJson<unknown>(path, qp);
+    if (payload && typeof payload === "object") {
+      const errs = (payload as Record<string, unknown>)["errors"];
+      if (Array.isArray(errs) && errs.length > 0) {
+        const summary = errs
+          .slice(0, 3)
+          .map((e) => (typeof e === "string" ? e : JSON.stringify(e)))
+          .join("; ");
+        console.error("[infloww] employee-report returned errors", { path, errors: errs.slice(0, 5) });
+        throw new InflowwApiError(`Infloww ${path} errors: ${summary}`, 502, { path });
+      }
+    }
     const rows = pickArray(payload);
     inflowwDebug("employee-report page", {
       path,
@@ -1052,6 +1171,7 @@ async function paginateEmployeeReport(
       rowCount: rows.length,
       hasMore: hasMoreFrom(payload),
       cursor: Boolean(cursorFromPayload(payload)),
+      sampleKeys: rows[0] && typeof rows[0] === "object" ? Object.keys(rows[0] as object).slice(0, 20) : [],
     });
     out.push(...rows);
     const more = hasMoreFrom(payload);
