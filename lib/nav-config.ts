@@ -719,8 +719,6 @@ const modelNav: NavItem[] = [
     href: ROUTES.model.myEarnings,
     label: "My earnings",
     iconKey: "LineChart",
-    disabled: true,
-    badge: "Coming soon",
     navSection: "OVERVIEW",
   },
   { href: ROUTES.model.contentCalendar, label: "Calendar", iconKey: "CalendarDays", navSection: "OVERVIEW" },

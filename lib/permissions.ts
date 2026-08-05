@@ -465,6 +465,8 @@ const MODEL_PERMISSIONS: Permission[] = [
   PERMISSIONS.MODELS_VIEW,
   PERMISSIONS.CONTENT_VIEW,
   PERMISSIONS.SETTINGS_VIEW,
+  // Own creator earnings at /model/earnings (API scopes to linked_model_id).
+  PERMISSIONS.EARNINGS_VIEW,
 ];
 
 const CLIENT_PERMISSIONS: Permission[] = [
