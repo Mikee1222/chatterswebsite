@@ -1,336 +1,262 @@
 "use client";
 
 import * as React from "react";
-import { DayPicker, DateRange } from "react-day-picker";
-import "react-day-picker/dist/style.css";
 import dynamic from "next/dynamic";
-import { CalendarRange, ChevronDown, TrendingUp, X } from "lucide-react";
-import { useToast } from "@/contexts/toast-context";
-import { formatDateYmd } from "@/lib/format-date";
+import { AlertTriangle, Link2, RefreshCw, Search } from "lucide-react";
+import {
+  CountUp,
+  DatePresetBar,
+  money,
+  parseYmdLocal,
+  StatInfoTooltip,
+  toLocalYmd,
+} from "@/components/infloww-performance-ui";
+import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
-import type { AppNotification } from "@/types";
-import type { InflowwEarningsResponse } from "@/types/infloww";
+import type { InflowwStatsPreset } from "@/services/infloww-performance";
 
-const ACCENT = "hsl(330,80%,55%)";
-const ACCENT_SOFT = "hsl(330,80%,55% / 0.35)";
-const CHART_GROSS = "#ec4899";
-const CHART_NET = "#a78bfa";
-const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
+  ssr: false,
+});
 const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
 const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
 const CartesianGrid = dynamic(() => import("recharts").then((m) => m.CartesianGrid), { ssr: false });
 const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
 const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
 const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
-const Legend = dynamic(() => import("recharts").then((m) => m.Legend), { ssr: false });
+const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
+const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
 
-type EarningsMetric = "gross" | "net";
+type Tab = "overview" | "marketing" | "transactions" | "crossref";
 
-function localToast(
-  id: string,
-  title: string,
-  body: string,
-  priority: "normal" | "high"
-): AppNotification {
-  return {
-    id,
-    notification_id: id,
-    user_id: "local-user",
-    category: "system",
-    event_type: "system_alert",
-    priority,
-    title,
-    body,
-    entity_type: "system",
-    entity_id: "",
-    read_at: null,
-    created_at: new Date().toISOString(),
+type DashboardPayload = {
+  range: { startYmd: string; endYmd: string; preset: InflowwStatsPreset };
+  models: Array<{ id: string; name: string; creatorInflowwId: string; stableId: string }>;
+  daily: Array<{
+    creator_infloww_id: string;
+    model_record_id: string | null;
+    model_name: string | null;
+    date: string;
+    performance_rank: number | null;
+    profile_visitors: number;
+    guest_visitors: number;
+    active_fans: number;
+    expired_fans: number;
+    new_subscribers: number;
+    renewals: number;
+    messages_sent: number;
+    ppvs_sent: number;
+    fans_chatted: number;
+  }>;
+  transactions: Array<{
+    transaction_id: string;
+    model_record_id: string | null;
+    model_name: string | null;
+    fan_name: string | null;
+    created_time: string | null;
+    type: string | null;
+    status: string | null;
+    amount: number;
+    net: number;
+    sales_rule: string | null;
+    attribute_employee_id: string | null;
+    sales_amount: number | null;
+  }>;
+  marketingLinks: Array<{
+    id: string;
+    model_id: string;
+    link_type: string;
+    message: string | null;
+    sub_count: number;
+    paying_fans_count: number;
+    earnings_gross: number;
+    earnings_net: number;
+    finished_flag: boolean;
+  }>;
+  discrepancies: Array<{
+    date: string;
+    infloww_employee_id: string;
+    perf_sales: number;
+    employee_report_sales: number;
+    delta: number;
+  }>;
+  totals: {
+    gross: number;
+    net: number;
+    fee: number;
+    new_subscribers: number;
+    renewals: number;
+    profile_visitors: number;
+    messages_sent: number;
   };
+  latestFanSnapshot: Array<{
+    model_record_id: string | null;
+    model_name: string | null;
+    active_fans: number;
+    expired_fans: number;
+    date: string;
+  }>;
+  error?: string;
+};
+
+const EARNINGS_INFO = {
+  gross: "Sum of transaction amounts (gross) in the selected range from synced Infloww transactions.",
+  net: "Sum of net amounts after OnlyFans fees, from synced transaction rows.",
+  visitors: "Profile visitors from Infloww creator-report reach (guest + logged-in).",
+  fans: "Latest active vs expired fan counts from creator-report for each model in range.",
+  subs: "New subscribers and renewals summed across days in the selected range.",
+  rank: "Platform performance rank from Infloww (lower % is better — e.g. 3.00 ≈ top 3%).",
+  marketing: "Campaign / trial / tracking link earnings and paying-fan conversion from Infloww links.",
+  crossref:
+    "Compares transaction-perf attributed sales to employee-report daily sales. Large deltas may indicate attribution lag or sync gaps.",
+} as const;
+
+function Skeleton({ className }: { className?: string }) {
+  return <div className={cn("animate-pulse rounded-xl bg-white/5", className)} />;
 }
 
-/** Parse `YYYY-MM-DD` as local calendar date (avoids UTC off-by-one). */
-function parseYmdLocal(ymd: string): Date {
-  const [y, m, d] = ymd.split("-").map((n) => Number.parseInt(n, 10));
-  if (!y || !m || !d) return new Date();
-  return new Date(y, m - 1, d);
-}
-
-function toLocalYmd(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-/** Match `INFLOWW_ONLYFANS_NET_MULTIPLIER` in `lib/infloww-api.ts` (trend sums from raw tx amounts). */
-const OF_NET_MULT = 0.8;
-
-function eachLocalCalendarDayYmd(fromYmd: string, toYmd: string): string[] {
-  const out: string[] = [];
-  const cur = parseYmdLocal(fromYmd);
-  const end = parseYmdLocal(toYmd);
-  cur.setHours(0, 0, 0, 0);
-  end.setHours(0, 0, 0, 0);
-  let guard = 0;
-  while (cur <= end && guard < 400) {
-    out.push(toLocalYmd(cur));
-    cur.setDate(cur.getDate() + 1);
-    guard += 1;
-  }
-  return out;
-}
-
-function localYmdFromTxDateIso(iso: string): string {
-  const ms = Date.parse(iso);
-  if (Number.isNaN(ms)) {
-    const s = iso.trim().slice(0, 10);
-    return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : "1970-01-01";
-  }
-  return toLocalYmd(new Date(ms));
-}
-
-function money(n: number) {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n || 0);
-}
-
-function EarningsStatSkeleton() {
-  return (
-    <div className="animate-pulse rounded-2xl border border-white/10 bg-black/40 p-6 md:max-w-2xl">
-      <div className="flex justify-between gap-4">
-        <div className="h-3 w-20 rounded bg-white/10" />
-        <div className="h-9 w-44 rounded-lg bg-white/10" />
-      </div>
-      <div className="mt-6 h-10 w-48 rounded-lg bg-white/10" />
-      <div className="mt-3 h-3 w-64 rounded bg-white/10" />
-    </div>
-  );
-}
-
-function TableSkeleton() {
-  return (
-    <div className="animate-pulse space-y-3 p-2">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="h-10 rounded-lg bg-white/5" />
-      ))}
-    </div>
-  );
-}
-
-export function AdminEarningsDashboard({
-  initialFrom,
-  initialTo,
-}: {
-  initialFrom: string;
-  initialTo: string;
-}) {
-  const { addToast } = useToast();
-  const [from, setFrom] = React.useState(initialFrom);
-  const [to, setTo] = React.useState(initialTo);
+export function AdminEarningsDashboard() {
+  const [tab, setTab] = React.useState<Tab>("overview");
+  const [preset, setPreset] = React.useState<InflowwStatsPreset>("this_month");
+  const [customStart, setCustomStart] = React.useState("");
+  const [customEnd, setCustomEnd] = React.useState("");
   const [modelId, setModelId] = React.useState("");
-  const [showPicker, setShowPicker] = React.useState(false);
-  const [pickerRange, setPickerRange] = React.useState<DateRange | undefined>(undefined);
+  const [txType, setTxType] = React.useState("");
+  const [txStatus, setTxStatus] = React.useState("");
+  const [txSearch, setTxSearch] = React.useState("");
   const [loading, setLoading] = React.useState(true);
+  const [syncing, setSyncing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [data, setData] = React.useState<InflowwEarningsResponse | null>(null);
-  const [earningsMetric, setEarningsMetric] = React.useState<EarningsMetric>("gross");
-  const [sortBy, setSortBy] = React.useState<"gross_earnings" | "net_earnings" | "agency_cut">("gross_earnings");
+  const [data, setData] = React.useState<DashboardPayload | null>(null);
 
-  React.useLayoutEffect(() => {
-    if (!showPicker) return;
-    setPickerRange({
-      from: parseYmdLocal(from),
-      to: parseYmdLocal(to),
-    });
-  }, [showPicker, from, to]);
-
-  const earningsCalendarClassNames = React.useMemo(
-    () => ({
-      root: cn(
-        "rdp-root !mx-auto !p-0 text-white/90",
-        "[--rdp-accent-color:hsl(330,80%,55%)] [--rdp-animation_duration:0.22s] [--rdp-animation_timing:cubic-bezier(0.4,0,0.2,1)]",
-        "[--rdp-range_start-date-background-color:hsl(330,78%,48%)] [--rdp-range_end-date-background-color:hsl(280,58%,46%)]",
-        "[--rdp-range_start-color:white] [--rdp-range_end-color:white]"
-      ),
-      months: "rdp-months !gap-0",
-      month: "rdp-month",
-      month_caption: "rdp-month_caption mb-2 flex h-10 items-center justify-center text-sm font-semibold tracking-wide text-white",
-      nav: "rdp-nav absolute right-0 top-0 flex items-center gap-0.5",
-      button_previous: cn(
-        "rdp-button_previous rounded-lg border border-white/10 bg-white/[0.06] p-1.5 text-white/80 transition-all duration-200",
-        "hover:border-[hsl(330,80%,55%)]/50 hover:bg-white/[0.1] hover:text-white hover:shadow-[0_0_16px_-4px_hsl(330,80%,55%,0.45)]"
-      ),
-      button_next: cn(
-        "rdp-button_next rounded-lg border border-white/10 bg-white/[0.06] p-1.5 text-white/80 transition-all duration-200",
-        "hover:border-[hsl(330,80%,55%)]/50 hover:bg-white/[0.1] hover:text-white hover:shadow-[0_0_16px_-4px_hsl(330,80%,55%,0.45)]"
-      ),
-      chevron: "rdp-chevron fill-[hsl(330,80%,58%)]",
-      weekdays: "rdp-weekdays",
-      weekday: "rdp-weekday text-[0.65rem] font-medium uppercase tracking-wider text-white/45",
-      week: "rdp-week",
-      weeks: "rdp-weeks",
-      month_grid: "rdp-month_grid w-full border-collapse",
-      day: "rdp-day p-0.5 transition-colors duration-200 ease-out",
-      day_button: cn(
-        "rdp-day_button size-9 rounded-full text-[13px] font-medium text-white/88 transition-all duration-200 ease-out",
-        "hover:shadow-[0_0_18px_-3px_hsl(330,80%,55%,0.55)] hover:ring-2 hover:ring-[hsl(330,80%,55%)]/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[hsl(330,80%,55%)]/50"
-      ),
-      range_start: cn(
-        "rdp-range_start rounded-l-full !bg-gradient-to-r from-transparent via-[hsl(330,80%,55%,0.28)] to-[hsl(330,80%,55%,0.22)]"
-      ),
-      range_middle: cn(
-        "rdp-range_middle !bg-gradient-to-r from-[hsl(330,80%,55%,0.2)] via-[hsl(310,72%,52%,0.24)] to-[hsl(280,58%,50%,0.18)]"
-      ),
-      range_end: cn(
-        "rdp-range_end rounded-r-full !bg-gradient-to-r from-[hsl(280,58%,50%,0.18)] via-[hsl(330,80%,55%,0.22)] to-transparent"
-      ),
-      selected: "rdp-selected",
-      outside: "rdp-outside text-white/35 opacity-70",
-      disabled: "rdp-disabled",
-    }),
-    []
+  const load = React.useCallback(
+    async (opts?: {
+      preset?: InflowwStatsPreset;
+      startYmd?: string;
+      endYmd?: string;
+    }) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const nextPreset = opts?.preset ?? preset;
+        const qp = new URLSearchParams({ preset: nextPreset });
+        if (nextPreset === "custom") {
+          qp.set("startYmd", opts?.startYmd ?? customStart);
+          qp.set("endYmd", opts?.endYmd ?? customEnd);
+        }
+        if (modelId) qp.set("modelId", modelId);
+        if (txType) qp.set("txType", txType);
+        if (txStatus) qp.set("txStatus", txStatus);
+        if (txSearch.trim()) qp.set("txSearch", txSearch.trim());
+        const res = await fetch(`/api/admin/creator-earnings?${qp}`, { cache: "no-store" });
+        const json = (await res.json()) as DashboardPayload;
+        if (!res.ok) throw new Error(json.error ?? "Failed to load earnings");
+        setData(json);
+        setPreset(json.range.preset);
+        if (json.range.preset === "custom") {
+          setCustomStart(json.range.startYmd);
+          setCustomEnd(json.range.endYmd);
+        }
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "Failed to load");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [preset, customStart, customEnd, modelId, txType, txStatus, txSearch]
   );
-
-  const earningsCalendarModifiersClassNames = React.useMemo(
-    () => ({
-      today: cn(
-        "rdp-today !font-semibold !text-cyan-300",
-        "relative after:pointer-events-none after:absolute after:bottom-1 after:left-1/2 after:h-1 after:w-1 after:-translate-x-1/2 after:rounded-full after:bg-cyan-400 after:content-['']"
-      ),
-    }),
-    []
-  );
-
-  const loadData = React.useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const qp = new URLSearchParams({ from, to });
-      if (modelId) qp.set("modelId", modelId);
-      const res = await fetch(`/api/infloww/earnings?${qp.toString()}`, { cache: "no-store" });
-      const payload = (await res.json()) as InflowwEarningsResponse & { error?: string };
-      if (!res.ok) throw new Error(payload.error ?? "Failed to load earnings.");
-      setData(payload);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Failed to load earnings.";
-      setError(msg);
-      addToast(localToast(`infloww-load-${Date.now()}`, "Could not load earnings", msg, "high"));
-    } finally {
-      setLoading(false);
-    }
-  }, [addToast, from, to, modelId]);
 
   React.useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    void load();
+    // initial + when filters that should auto-refresh change (model)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: preset clicks call load explicitly
+  }, [modelId]);
 
-  const byModel = React.useMemo(() => {
-    const rows = (data?.earnings ?? []).slice();
-    rows.sort((a, b) => b[sortBy] - a[sortBy]);
-    return rows;
-  }, [data?.earnings, sortBy]);
-
-  const trend = React.useMemo(() => {
-    const days = eachLocalCalendarDayYmd(from, to);
-    const sumByDay = new Map<string, number>();
-    for (const tx of data?.transactions ?? []) {
-      const d = localYmdFromTxDateIso(tx.date);
-      const add = earningsMetric === "gross" ? tx.amount : tx.amount * OF_NET_MULT;
-      sumByDay.set(d, (sumByDay.get(d) ?? 0) + add);
-    }
-    return days.map((date) => {
-      const labelPretty = formatDateYmd(date);
-      return {
-        date,
-        value: sumByDay.get(date) ?? 0,
-        labelPretty,
-      };
-    });
-  }, [from, to, data?.transactions, earningsMetric]);
-
-  const primaryTotal = earningsMetric === "gross" ? (data?.totals.gross ?? 0) : (data?.totals.net ?? 0);
-  const earningsSubtitle =
-    earningsMetric === "gross"
-      ? "Gross in selected range (before OnlyFans 20% fee)"
-      : "Net in selected range (after OnlyFans 20% platform fee)";
-  const chartSeriesName = earningsMetric === "gross" ? "Gross earnings" : "Net earnings (after OF 20%)";
-  const chartStroke = earningsMetric === "gross" ? CHART_GROSS : CHART_NET;
-
-  const topPerformers = React.useMemo(() => byModel.slice(0, 5), [byModel]);
-
-  const showFullSkeleton = loading && data === null;
-  const hasRows = byModel.length > 0;
-  const txCount = data?.transactions?.length ?? 0;
-
-  function handleRangeSelect(nextRange: DateRange | undefined) {
-    if (nextRange === undefined) {
-      setPickerRange({
-        from: parseYmdLocal(from),
-        to: parseYmdLocal(to),
+  async function runSync() {
+    setSyncing(true);
+    try {
+      const startYmd = data?.range.startYmd;
+      const endYmd = data?.range.endYmd;
+      const res = await fetch("/api/admin/creator-earnings/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ startYmd, endYmd }),
       });
-      return;
-    }
-    setPickerRange(nextRange);
-    if (nextRange.from && nextRange.to) {
-      const start = nextRange.from <= nextRange.to ? nextRange.from : nextRange.to;
-      const end = nextRange.from <= nextRange.to ? nextRange.to : nextRange.from;
-      setFrom(toLocalYmd(start));
-      setTo(toLocalYmd(end));
-      setShowPicker(false);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Sync failed");
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setSyncing(false);
     }
   }
 
-  function closeDatePicker() {
-    setShowPicker(false);
-    setPickerRange(undefined);
-  }
+  const revenueTrend = React.useMemo(() => {
+    const byDay = new Map<string, number>();
+    for (const tx of data?.transactions ?? []) {
+      if (!tx.created_time) continue;
+      const d = tx.created_time.slice(0, 10);
+      byDay.set(d, (byDay.get(d) ?? 0) + tx.amount);
+    }
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, gross]) => ({ date, gross }));
+  }, [data?.transactions]);
 
-  function exportCsv() {
-    if (!byModel.length) return;
-    const header = ["model_id", "model_name", "gross_earnings", "net_earnings", "agency_cut", "date"];
-    const rows = byModel.map((r) =>
-      [r.model_id, r.model_name, r.gross_earnings, r.net_earnings, r.agency_cut, r.date].join(",")
-    );
-    const csv = [header.join(","), ...rows].join("\n");
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `infloww-earnings-${from}-to-${to}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-    addToast(localToast(`infloww-export-${Date.now()}`, "CSV exported", "Earnings file downloaded.", "normal"));
-  }
+  const rankTrend = React.useMemo(() => {
+    const rows = (data?.daily ?? []).filter((d) => d.performance_rank != null);
+    const filtered = modelId
+      ? rows.filter((d) => d.model_record_id === modelId)
+      : rows;
+    return filtered
+      .map((d) => ({
+        date: d.date,
+        rank: d.performance_rank as number,
+        name: d.model_name ?? d.creator_infloww_id,
+      }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+  }, [data?.daily, modelId]);
 
-  const chartTooltipStyle = {
-    backgroundColor: "rgba(0,0,0,0.88)",
-    border: "1px solid rgba(255,255,255,0.12)",
-    borderRadius: "12px",
-    color: "rgba(255,255,255,0.92)",
-  };
+  const visitorTrend = React.useMemo(() => {
+    const rows = modelId
+      ? (data?.daily ?? []).filter((d) => d.model_record_id === modelId)
+      : (data?.daily ?? []);
+    const byDay = new Map<string, number>();
+    for (const r of rows) {
+      byDay.set(r.date, (byDay.get(r.date) ?? 0) + r.profile_visitors);
+    }
+    return [...byDay.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, visitors]) => ({ date, visitors }));
+  }, [data?.daily, modelId]);
+
+  const tabs: { id: Tab; label: string }[] = [
+    { id: "overview", label: "Overview" },
+    { id: "marketing", label: "Marketing" },
+    { id: "transactions", label: "Transactions" },
+    { id: "crossref", label: "Cross-check" },
+  ];
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-2xl border border-white/10 bg-black/40 p-5 shadow-lg shadow-black/20">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+    <div className="space-y-6">
+      <div className={cn(VA_CARD, VA_CARD_GLOW, "p-5")}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <DatePresetBar
+            preset={preset}
+            loading={loading}
+            onSelect={(p) => {
+              setPreset(p);
+              if (p !== "custom") void load({ preset: p });
+            }}
+          />
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              aria-expanded={showPicker}
-              aria-haspopup="dialog"
-              className="inline-flex items-center gap-2 rounded-xl border border-white/15 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/90 transition hover:border-[hsl(330,80%,55%)]/35 hover:bg-white/[0.08] hover:shadow-[0_0_20px_-8px_hsl(330,80%,55%,0.35)]"
-              onClick={() => setShowPicker((s) => !s)}
-            >
-              <CalendarRange className="h-4 w-4 shrink-0 text-[hsl(330,80%,65%)]" aria-hidden />
-              <span>
-                {from} → {to}
-              </span>
-            </button>
             <select
               value={modelId}
               onChange={(e) => setModelId(e.target.value)}
-              className="rounded-xl border border-white/15 bg-black/30 px-4 py-2.5 text-sm text-white/90 focus:border-[hsl(330,80%,55%)]/50 focus:outline-none focus:ring-1 focus:ring-[hsl(330,80%,55%)]/40"
+              className={cn(VA_FILTER_INPUT, "min-w-[160px]")}
             >
-              <option value="">All creators</option>
+              <option value="">All models</option>
               {(data?.models ?? []).map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -339,250 +265,459 @@ export function AdminEarningsDashboard({
             </select>
             <button
               type="button"
-              onClick={() => void loadData()}
-              disabled={loading}
-              className="rounded-xl px-4 py-2.5 text-sm font-semibold text-white shadow-md transition disabled:opacity-50"
-              style={{ backgroundColor: ACCENT, boxShadow: `0 8px 24px ${ACCENT_SOFT}` }}
+              disabled={syncing || loading}
+              onClick={() => void runSync()}
+              className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2 px-4 py-2.5 text-xs")}
             >
-              {loading ? "Refreshing…" : "Refresh"}
+              <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} aria-hidden />
+              {syncing ? "Syncing…" : "Sync now"}
             </button>
           </div>
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={!hasRows}
-            className="rounded-xl border border-emerald-400/35 bg-emerald-500/15 px-4 py-2.5 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-500/25 disabled:opacity-40"
-          >
-            Export CSV
-          </button>
         </div>
-        {showPicker ? (
-          <div
-            className="animate-in fade-in zoom-in-95 slide-in-from-top-1 relative mt-4 overflow-hidden rounded-2xl border border-[hsl(330,80%,55%)] bg-black/90 p-4 pb-5 pt-3 shadow-[0_0_48px_-14px_hsl(330,80%,55%,0.38)] duration-200 ease-out"
-            role="dialog"
-            aria-label="Earnings date range"
-          >
-            <div className="mb-2 flex items-start justify-between gap-3 pr-1">
-              <div>
-                <p className="text-xs font-medium text-white/75">Date range</p>
-                <p className="mt-0.5 text-[11px] text-white/45">
-                  {pickerRange?.from && !pickerRange?.to
-                    ? "Click the end date to finish the range."
-                    : "Click a start date, then an end date. Filters refresh when the range is complete."}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={closeDatePicker}
-                className="rounded-lg border border-white/12 bg-white/[0.06] p-1.5 text-white/70 transition-all duration-200 hover:border-[hsl(330,80%,55%)]/40 hover:bg-white/[0.1] hover:text-white hover:shadow-[0_0_14px_-3px_hsl(330,80%,55%,0.4)]"
-                aria-label="Close calendar"
-              >
-                <X className="h-4 w-4" strokeWidth={2} />
-              </button>
-            </div>
-            <div className="flex justify-center">
-              <DayPicker
-                mode="range"
-                animate
-                resetOnSelect
-                numberOfMonths={1}
-                defaultMonth={parseYmdLocal(to)}
-                selected={pickerRange}
-                onSelect={handleRangeSelect}
-                classNames={earningsCalendarClassNames}
-                modifiersClassNames={earningsCalendarModifiersClassNames}
+        {preset === "custom" ? (
+          <div className="mt-4 flex flex-wrap items-end gap-3">
+            <label className="text-xs text-white/50">
+              From
+              <input
+                type="date"
+                value={customStart}
+                onChange={(e) => setCustomStart(e.target.value)}
+                className={cn(VA_FILTER_INPUT, "mt-1 block")}
               />
-            </div>
+            </label>
+            <label className="text-xs text-white/50">
+              To
+              <input
+                type="date"
+                value={customEnd}
+                onChange={(e) => setCustomEnd(e.target.value)}
+                className={cn(VA_FILTER_INPUT, "mt-1 block")}
+              />
+            </label>
+            <button
+              type="button"
+              className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-xs")}
+              onClick={() =>
+                void load({
+                  preset: "custom",
+                  startYmd: customStart || toLocalYmd(parseYmdLocal(data?.range.startYmd ?? "")),
+                  endYmd: customEnd || toLocalYmd(new Date()),
+                })
+              }
+            >
+              Apply
+            </button>
           </div>
+        ) : null}
+        {data?.range ? (
+          <p className="mt-3 text-xs text-white/40">
+            {data.range.startYmd} → {data.range.endYmd} · synced creator data
+          </p>
         ) : null}
       </div>
 
-      <div>
-        {showFullSkeleton ? (
-          <EarningsStatSkeleton />
-        ) : (
-          <div
-            className="relative rounded-2xl border border-white/10 border-l-4 bg-black/40 p-6 shadow-inner shadow-black/30 md:max-w-2xl"
-            style={{ borderLeftColor: chartStroke }}
+      <div className="flex flex-wrap gap-2">
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={cn(
+              "rounded-full border px-3.5 py-1.5 text-xs font-semibold transition",
+              tab === t.id
+                ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FF1493]"
+                : "border-white/10 bg-white/5 text-white/55 hover:text-white"
+            )}
           >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Earnings</p>
-              <div className="relative shrink-0">
-                <select
-                  aria-label="Earnings type"
-                  value={earningsMetric}
-                  onChange={(e) => setEarningsMetric(e.target.value as EarningsMetric)}
-                  className={cn(
-                    "appearance-none rounded-lg border border-white/12 bg-black/40 py-2 pl-3 pr-9 text-xs font-medium text-white/90",
-                    "cursor-pointer shadow-sm transition-all duration-200 ease-out",
-                    "hover:border-[hsl(330,80%,55%)]/55 hover:bg-white/[0.06] hover:text-white hover:shadow-[0_0_18px_-6px_hsl(330,80%,55%,0.45)]",
-                    "focus:border-[hsl(330,80%,55%)]/50 focus:outline-none focus:ring-2 focus:ring-[hsl(330,80%,55%)]/35"
-                  )}
-                >
-                  <option value="gross">Gross earnings</option>
-                  <option value="net">Net earnings (after OF 20%)</option>
-                </select>
-                <ChevronDown
-                  className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-[hsl(330,80%,65%)] opacity-90"
-                  aria-hidden
-                  strokeWidth={2}
-                />
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {error ? (
+        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+          {error}
+        </p>
+      ) : null}
+
+      {tab === "overview" ? (
+        <div className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            {[
+              {
+                label: "Gross revenue",
+                value: data?.totals.gross ?? 0,
+                format: (n: number) => money(n, 2),
+                info: EARNINGS_INFO.gross,
+              },
+              {
+                label: "Net revenue",
+                value: data?.totals.net ?? 0,
+                format: (n: number) => money(n, 2),
+                info: EARNINGS_INFO.net,
+              },
+              {
+                label: "New subs",
+                value: data?.totals.new_subscribers ?? 0,
+                format: (n: number) => String(Math.round(n)),
+                info: EARNINGS_INFO.subs,
+              },
+              {
+                label: "Profile visitors",
+                value: data?.totals.profile_visitors ?? 0,
+                format: (n: number) => String(Math.round(n)),
+                info: EARNINGS_INFO.visitors,
+              },
+            ].map((card) => (
+              <div key={card.label} className={cn(VA_CARD, "p-5")}>
+                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-white/45">
+                  {card.label}
+                  <StatInfoTooltip text={card.info} />
+                </div>
+                {loading && !data ? (
+                  <Skeleton className="mt-3 h-9 w-28" />
+                ) : (
+                  <p className="mt-3 text-2xl font-semibold text-white">
+                    <CountUp value={card.value} format={card.format} />
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <div className={cn(VA_CARD, "p-5")}>
+              <h2 className="mb-3 text-sm font-semibold text-white/90">Revenue trend</h2>
+              <div className="h-64">
+                {loading && !data ? (
+                  <Skeleton className="h-full w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={revenueTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }} />
+                      <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }} />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#141214",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: 12,
+                        }}
+                        formatter={(v) => [money(Number(v), 2), "Gross"]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="gross"
+                        stroke="#FF1493"
+                        fill="rgba(255,20,147,0.2)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
               </div>
             </div>
-            <p className="mt-5 text-3xl font-bold tracking-tight text-white/95 tabular-nums">{money(primaryTotal)}</p>
-            <p className="mt-2 max-w-md text-xs leading-relaxed text-white/50">{earningsSubtitle}</p>
-          </div>
-        )}
-      </div>
-
-      <div className="rounded-2xl border border-white/10 bg-black/40 p-6">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-sm font-semibold text-white/90">Earnings trend</h2>
-          <span className="text-xs text-white/50">
-            All creators combined · {earningsMetric === "gross" ? "Gross" : "Net (after OF 20%)"} · every day in range
-          </span>
-        </div>
-        <div className="h-72">
-          {showFullSkeleton ? (
-            <div className="flex h-full items-center justify-center rounded-xl bg-white/5">
-              <div className="h-48 w-full max-w-md animate-pulse rounded-xl bg-white/10" />
+            <div className={cn(VA_CARD, "p-5")}>
+              <div className="mb-3 flex items-center gap-1.5">
+                <h2 className="text-sm font-semibold text-white/90">Profile visitors</h2>
+                <StatInfoTooltip text={EARNINGS_INFO.visitors} />
+              </div>
+              <div className="h-64">
+                {loading && !data ? (
+                  <Skeleton className="h-full w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={visitorTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }} />
+                      <YAxis tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }} />
+                      <Tooltip
+                        contentStyle={{
+                          background: "#141214",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: 12,
+                        }}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="visitors"
+                        stroke="#D4AF8C"
+                        fill="rgba(212,175,140,0.18)"
+                        strokeWidth={2}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
             </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={288}>
-              <AreaChart data={trend}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.08)" />
-                <XAxis
-                  dataKey="date"
-                  stroke="rgba(255,255,255,0.45)"
-                  tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 10 }}
-                  minTickGap={8}
-                  tickFormatter={(v) => String(v).slice(5)}
-                />
-                <YAxis stroke="rgba(255,255,255,0.45)" tick={{ fill: "rgba(255,255,255,0.55)", fontSize: 11 }} />
-                <Tooltip
-                  content={({ active, payload }) => {
-                    if (!active || !payload?.length) return null;
-                    const row = payload[0].payload as { date: string; value: number; labelPretty: string };
-                    const suffix = earningsMetric === "gross" ? "gross" : "net (after OF 20%)";
-                    return (
-                      <div className="rounded-xl border border-white/10 px-3 py-2 text-sm shadow-lg" style={chartTooltipStyle}>
-                        <p className="text-white/70">{row.labelPretty}</p>
-                        <p className="mt-1 font-semibold text-white">
-                          {money(row.value)}{""}
-                          <span className="font-normal text-white/55">{suffix}</span>
-                        </p>
-                      </div>
-                    );
-                  }}
-                />
-                <Legend wrapperStyle={{ color: "rgba(255,255,255,0.65)", fontSize: 12 }} />
-                <Area
-                  type="monotone"
-                  dataKey="value"
-                  name={chartSeriesName}
-                  stroke={chartStroke}
-                  fill={`${chartStroke}33`}
-                  strokeWidth={2}
-                  isAnimationActive
-                />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
-        </div>
-      </div>
+          </div>
 
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-6 lg:col-span-2">
-          <h2 className="mb-4 text-sm font-semibold text-white/90">Earnings by creator</h2>
-          <div className="overflow-auto rounded-xl border border-white/5">
-            {showFullSkeleton ? (
-              <TableSkeleton />
-            ) : (
-              <table className="min-w-full text-sm text-white/90">
-                <thead className="border-b border-white/10 bg-black/40 text-left text-xs font-medium uppercase tracking-wider text-white/50">
+          <div className={cn(VA_CARD, "p-5")}>
+            <div className="mb-3 flex items-center gap-1.5">
+              <h2 className="text-sm font-semibold text-white/90">Platform rank trend</h2>
+              <StatInfoTooltip text={EARNINGS_INFO.rank} />
+            </div>
+            <div className="h-56">
+              {loading && !data ? (
+                <Skeleton className="h-full w-full" />
+              ) : rankTrend.length === 0 ? (
+                <p className="py-10 text-center text-sm text-white/45">No rank data in this range.</p>
+              ) : (
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={rankTrend}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                    <XAxis dataKey="date" tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }} />
+                    <YAxis
+                      reversed
+                      tick={{ fill: "rgba(255,255,255,0.45)", fontSize: 10 }}
+                      domain={["auto", "auto"]}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#141214",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 12,
+                      }}
+                    />
+                    <Line type="monotone" dataKey="rank" stroke="#a78bfa" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              )}
+            </div>
+          </div>
+
+          <div className={cn(VA_CARD, "overflow-hidden")}>
+            <div className="border-b border-white/8 px-5 py-3">
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-white/90">
+                Fan snapshot
+                <StatInfoTooltip text={EARNINGS_INFO.fans} />
+              </div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-wider text-white/40">
                   <tr>
-                    <th className="px-4 py-3 pr-3">Creator</th>
-                    <th className="px-2 py-3 pr-3">
-                      <button type="button" className="hover:text-[hsl(330,80%,65%)]" onClick={() => setSortBy("gross_earnings")}>
-                        Gross
-                      </button>
-                    </th>
-                    <th className="px-2 py-3 pr-3">
-                      <button type="button" className="hover:text-[hsl(330,80%,65%)]" onClick={() => setSortBy("net_earnings")}>
-                        Net (after OF)
-                      </button>
-                    </th>
-                    <th className="px-2 py-3 pr-3">
-                      <button type="button" className="hover:text-[hsl(330,80%,65%)]" onClick={() => setSortBy("agency_cut")}>
-                        Agency cut
-                      </button>
-                    </th>
-                    <th className="px-4 py-3">Period / day</th>
+                    <th className="px-5 py-3">Model</th>
+                    <th className="px-3 py-3">Active</th>
+                    <th className="px-3 py-3">Expired</th>
+                    <th className="px-5 py-3">As of</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {byModel.map((row) => (
-                    <tr key={`${row.model_id}-${row.date}`} className="border-t border-white/10 transition hover:bg-white/[0.04]">
-                      <td className="px-4 py-3 pr-3 font-medium text-white/90">{row.model_name}</td>
-                      <td className="px-2 py-3 pr-3 text-white/85 tabular-nums">{money(row.gross_earnings)}</td>
-                      <td className="px-2 py-3 pr-3 text-white/85 tabular-nums">{money(row.net_earnings)}</td>
-                      <td className="px-2 py-3 pr-3 text-white/85 tabular-nums">{money(row.agency_cut)}</td>
-                      <td className="px-4 py-3 text-white/60">{row.date.slice(0, 10)}</td>
+                  {(data?.latestFanSnapshot ?? []).map((row) => (
+                    <tr
+                      key={`${row.model_record_id}-${row.date}`}
+                      className="border-t border-white/6 text-white/80"
+                    >
+                      <td className="px-5 py-3 font-medium">{row.model_name ?? "—"}</td>
+                      <td className="px-3 py-3 tabular-nums">{row.active_fans}</td>
+                      <td className="px-3 py-3 tabular-nums">{row.expired_fans}</td>
+                      <td className="px-5 py-3 text-white/45">{row.date}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            )}
-          </div>
-          {!showFullSkeleton && !hasRows ? (
-            <div className="mt-6 flex flex-col items-center rounded-xl border border-dashed border-white/15 bg-white/[0.03] px-6 py-10 text-center">
-              <CalendarRange className="mb-3 h-10 w-10 text-white/35" aria-hidden />
-              <p className="text-sm font-medium text-white/80">No earnings in this range</p>
-              <p className="mt-2 max-w-md text-sm text-white/55">
-                Try widening the dates (e.g. last month), pick <strong className="text-white/70">All creators</strong>, or confirm
-                Infloww has transactions for these days.                 If the API expects ISO datetimes instead of unix ms, set{""}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-[hsl(330,80%,70%)]">INFLOWW_TX_TIME_FORMAT=iso</code>{""}
-                on the worker. Enable{""}
-                <code className="rounded bg-white/10 px-1.5 py-0.5 text-xs text-[hsl(330,80%,70%)]">INFLOWW_DEBUG=1</code> for server logs.
-              </p>
-              {txCount > 0 ? (
-                <p className="mt-3 flex items-center gap-2 text-xs text-emerald-300/90">
-                  <TrendingUp className="h-4 w-4" aria-hidden />
-                  {txCount} raw transaction(s) returned — amounts may be in an unexpected field; check Infloww payload shape.
-                </p>
+              {!loading && !(data?.latestFanSnapshot?.length) ? (
+                <p className="px-5 py-8 text-sm text-white/45">No fan snapshot yet — run Sync now.</p>
               ) : null}
             </div>
-          ) : null}
+          </div>
         </div>
-        <div className="rounded-2xl border border-white/10 bg-black/40 p-6">
-          <h2 className="mb-4 text-sm font-semibold text-white/90">Top performers</h2>
-          {showFullSkeleton ? (
-            <TableSkeleton />
-          ) : (
-            <ol className="space-y-2 text-sm">
-              {topPerformers.map((row, i) => (
-                <li
-                  key={`${row.model_id}-${i}`}
-                  className="flex items-center justify-between rounded-xl border border-white/5 bg-white/[0.04] px-4 py-3"
-                >
-                  <span className="truncate pr-3 text-white/85">
-                    <span className="font-semibold text-[hsl(330,80%,65%)]">#{i + 1}</span> {row.model_name}
-                  </span>
-                  <span className="shrink-0 font-semibold text-violet-200 tabular-nums">
-                    {money(earningsMetric === "gross" ? row.gross_earnings : row.net_earnings)}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-          {!showFullSkeleton && !topPerformers.length ? (
-            <p className="text-sm text-white/50">No ranked rows for this filter.</p>
-          ) : null}
-        </div>
-      </div>
+      ) : null}
 
-      {error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</p>
+      {tab === "marketing" ? (
+        <div className={cn(VA_CARD, "overflow-hidden")}>
+          <div className="flex items-center gap-2 border-b border-white/8 px-5 py-3">
+            <Link2 className="h-4 w-4 text-[#D4AF8C]" aria-hidden />
+            <h2 className="text-sm font-semibold text-white/90">Marketing links</h2>
+            <StatInfoTooltip text={EARNINGS_INFO.marketing} />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-[11px] uppercase tracking-wider text-white/40">
+                <tr>
+                  <th className="px-5 py-3">Type</th>
+                  <th className="px-3 py-3">Message</th>
+                  <th className="px-3 py-3">Subs</th>
+                  <th className="px-3 py-3">Paying</th>
+                  <th className="px-3 py-3">Gross</th>
+                  <th className="px-5 py-3">Net</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.marketingLinks ?? [])
+                  .filter((l) => !modelId || l.model_id === modelId)
+                  .map((l) => (
+                    <tr key={l.id} className="border-t border-white/6 text-white/80">
+                      <td className="px-5 py-3">
+                        <span className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#D4AF8C]">
+                          {l.link_type}
+                        </span>
+                      </td>
+                      <td className="max-w-xs truncate px-3 py-3 text-white/65">{l.message ?? "—"}</td>
+                      <td className="px-3 py-3 tabular-nums">{l.sub_count}</td>
+                      <td className="px-3 py-3 tabular-nums">{l.paying_fans_count}</td>
+                      <td className="px-3 py-3 tabular-nums">{money(l.earnings_gross, 2)}</td>
+                      <td className="px-5 py-3 tabular-nums">{money(l.earnings_net, 2)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+            {!loading && !(data?.marketingLinks?.length) ? (
+              <p className="px-5 py-8 text-sm text-white/45">No marketing links synced yet.</p>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "transactions" ? (
+        <div className="space-y-4">
+          <div className={cn(VA_CARD, "flex flex-wrap gap-2 p-4")}>
+            <div className="relative min-w-[200px] flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/35" />
+              <input
+                value={txSearch}
+                onChange={(e) => setTxSearch(e.target.value)}
+                placeholder="Search fan / tx id"
+                className={cn(VA_FILTER_INPUT, "w-full pl-9")}
+              />
+            </div>
+            <select
+              value={txType}
+              onChange={(e) => setTxType(e.target.value)}
+              className={VA_FILTER_INPUT}
+            >
+              <option value="">All types</option>
+              <option value="Tips">Tips</option>
+              <option value="Subscription">Subscription</option>
+            </select>
+            <select
+              value={txStatus}
+              onChange={(e) => setTxStatus(e.target.value)}
+              className={VA_FILTER_INPUT}
+            >
+              <option value="">All statuses</option>
+              <option value="done">done</option>
+              <option value="loading">loading</option>
+            </select>
+            <button
+              type="button"
+              className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-xs")}
+              onClick={() => void load()}
+            >
+              Filter
+            </button>
+          </div>
+          <div className={cn(VA_CARD, "overflow-hidden")}>
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead className="text-left text-[11px] uppercase tracking-wider text-white/40">
+                  <tr>
+                    <th className="px-5 py-3">When</th>
+                    <th className="px-3 py-3">Model</th>
+                    <th className="px-3 py-3">Fan</th>
+                    <th className="px-3 py-3">Type</th>
+                    <th className="px-3 py-3">Status</th>
+                    <th className="px-3 py-3">Gross</th>
+                    <th className="px-5 py-3">Attribution</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(data?.transactions ?? []).map((tx) => (
+                    <tr key={tx.transaction_id} className="border-t border-white/6 text-white/80">
+                      <td className="px-5 py-3 text-white/50 tabular-nums">
+                        {tx.created_time ? tx.created_time.slice(0, 16).replace("T", " ") : "—"}
+                      </td>
+                      <td className="px-3 py-3">{tx.model_name ?? "—"}</td>
+                      <td className="px-3 py-3">{tx.fan_name ?? "—"}</td>
+                      <td className="px-3 py-3">{tx.type ?? "—"}</td>
+                      <td className="px-3 py-3">
+                        <span
+                          className={cn(
+                            "rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase",
+                            tx.status === "loading"
+                              ? "bg-amber-500/15 text-amber-200"
+                              : "bg-emerald-500/15 text-emerald-200"
+                          )}
+                        >
+                          {tx.status ?? "—"}
+                        </span>
+                      </td>
+                      <td className="px-3 py-3 tabular-nums">{money(tx.amount, 2)}</td>
+                      <td className="px-5 py-3 text-xs text-white/50">
+                        {tx.sales_rule ?? "—"}
+                        {tx.attribute_employee_id
+                          ? ` · emp ${tx.attribute_employee_id.slice(-6)}`
+                          : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!loading && !(data?.transactions?.length) ? (
+                <p className="px-5 py-8 text-sm text-white/45">No transactions in this range.</p>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "crossref" ? (
+        <div className={cn(VA_CARD, "overflow-hidden")}>
+          <div className="flex items-start gap-3 border-b border-white/8 px-5 py-4">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300/80" aria-hidden />
+            <div>
+              <div className="flex items-center gap-1.5 text-sm font-semibold text-white/90">
+                Transaction-perf vs employee-report
+                <StatInfoTooltip text={EARNINGS_INFO.crossref} />
+              </div>
+              <p className="mt-1 text-xs text-white/45">
+                Rows where attributed sales and employee daily sales differ by ≥ $0.50.
+              </p>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-sm">
+              <thead className="text-left text-[11px] uppercase tracking-wider text-white/40">
+                <tr>
+                  <th className="px-5 py-3">Date</th>
+                  <th className="px-3 py-3">Employee id</th>
+                  <th className="px-3 py-3">Perf sales</th>
+                  <th className="px-3 py-3">Employee report</th>
+                  <th className="px-5 py-3">Delta</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(data?.discrepancies ?? []).map((d) => (
+                  <tr
+                    key={`${d.infloww_employee_id}-${d.date}`}
+                    className="border-t border-white/6 text-white/80"
+                  >
+                    <td className="px-5 py-3">{d.date}</td>
+                    <td className="px-3 py-3 font-mono text-xs text-white/55">
+                      {d.infloww_employee_id}
+                    </td>
+                    <td className="px-3 py-3 tabular-nums">{money(d.perf_sales, 2)}</td>
+                    <td className="px-3 py-3 tabular-nums">{money(d.employee_report_sales, 2)}</td>
+                    <td
+                      className={cn(
+                        "px-5 py-3 tabular-nums font-semibold",
+                        d.delta > 0 ? "text-amber-200" : "text-sky-200"
+                      )}
+                    >
+                      {money(d.delta, 2)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!loading && !(data?.discrepancies?.length) ? (
+              <p className="px-5 py-10 text-center text-sm text-emerald-200/80">
+                No discrepancies found in this range.
+              </p>
+            ) : null}
+          </div>
+        </div>
       ) : null}
     </div>
   );
