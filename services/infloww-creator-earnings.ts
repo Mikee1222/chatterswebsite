@@ -3,8 +3,8 @@
  * Distinct from employee/chatter `infloww_daily_stats`.
  *
  * Matching: Infloww creator ids ≠ modelss.model_id (app-stable `model_*` ids).
- * We match modelss → Infloww creators by exact creator.id === model_id when numeric,
- * else by case-insensitive model_name, else by of_user_id === platformPid.
+ * Prefer `modelss.infloww_creator_id` (stable) when set; else fall back to
+ * creator.id === model_id (rare), of_user_id === platformPid, or unique name.
  */
 
 import { addDaysAthensYmd, athensYmdStartUtcMs, athensYmdEndUtcMs } from "@/lib/airtable-datetime";
@@ -74,7 +74,7 @@ function isoFromMs(ms: number): string | null {
   return new Date(ms).toISOString();
 }
 
-/** Match app models to Infloww creators. */
+/** Match app models to Infloww creators. Prefer stable `infloww_creator_id` when set. */
 export function matchModelsToInflowwCreators(
   models: ModelRecord[],
   creators: InflowwModel[]
@@ -98,7 +98,34 @@ export function matchModelsToInflowwCreators(
 
   const candidates = models.filter((m) => Boolean(m.model_id?.trim()));
 
+  // Pass 1: stable infloww_creator_id (always wins when present + valid)
   for (const m of candidates) {
+    const creatorId = (m.infloww_creator_id ?? "").trim();
+    if (!creatorId) continue;
+    const creator = byId.get(creatorId);
+    if (!creator || usedCreatorIds.has(creator.id)) continue;
+    usedCreatorIds.add(creator.id);
+    linked.push({
+      creatorInflowwId: creator.id,
+      platformPid: creator.platformPid,
+      creatorName: creator.name,
+      modelRecordId: m.id,
+      modelStableId: m.model_id.trim(),
+      modelName: m.model_name?.trim() || creator.name,
+    });
+  }
+
+  const linkedRecordIds = new Set(linked.map((l) => l.modelRecordId));
+
+  // Pass 2: fuzzy fallback only when infloww_creator_id is unset
+  for (const m of candidates) {
+    if (linkedRecordIds.has(m.id)) continue;
+    if ((m.infloww_creator_id ?? "").trim()) {
+      // Set but invalid / already claimed → unmatched
+      unmatched.push(m);
+      continue;
+    }
+
     const stableId = m.model_id.trim();
     const ofUid = (m.of_user_id ?? "").trim();
     const nameKey = (m.model_name ?? "").trim().toLowerCase();

@@ -16,13 +16,54 @@ CRON_SECRET=<same as other crons>
 ## Linking models
 
 `modelss.model_id` is an **app-stable** id (`model_…`), **not** the Infloww
-creator id. Sync matches `modelss` ↔ Infloww `GET /v1/creators` by:
+creator id. Prefer the dedicated column:
 
-1. `modelss.model_id` === Infloww creator `id` (if ever stored that way)
-2. else `modelss.of_user_id` === creator `platformPid`
-3. else unique case-insensitive `model_name` match
+| Field | Meaning |
+| --- | --- |
+| `modelss.model_id` | App slug (`model_*`) — never use as Infloww id |
+| `modelss.infloww_creator_id` | Stable Infloww creator `id` from `GET /v1/creators` |
+| `modelss.of_user_id` | OnlyFans user id (TheOnlyAPI) — may differ from Infloww `platformPid` |
+
+Sync match order:
+
+1. **`modelss.infloww_creator_id` === Infloww creator `id`** (preferred, always when set)
+2. else `modelss.model_id` === creator `id` (legacy / rare)
+3. else `modelss.of_user_id` === creator `platformPid`
+4. else unique case-insensitive `model_name` match
 
 Unmatched models are skipped and counted in sync results (`unmatchedModels`).
+
+### Creator ID lookup
+
+Admin UI: `/admin/earnings` → **Creator ID lookup** (same permission as earnings:
+`earnings:view`). Copy an id into Accounts → Models → Edit → **Infloww creator ID**.
+
+API: `GET /api/admin/infloww-creators`.
+
+Optional backfill of fuzzy matches:
+`npx tsx scripts/backfill-infloww-creator-ids.ts`
+
+### Unmatched models (2026-08-06 audit)
+
+Infloww `/v1/creators` returned **10** creators; **9/18** Gunzo models matched by
+name; **9** had no Infloww counterpart (no `of_user_id`, no name/platformPid hit):
+
+| Gunzo model | of_user_id | Why unmatched |
+| --- | --- | --- |
+| Antigoni | — | Not present in Infloww creators |
+| Ariadni | — | Not present in Infloww creators |
+| Chrysa | — | Not present in Infloww creators |
+| Elisavet | — | Not present in Infloww creators |
+| G Antigoni | — | Not present in Infloww creators |
+| Gavriela | — | Not present in Infloww creators |
+| Katerina K | — | Not present in Infloww creators |
+| Stefania | — | Not present in Infloww creators |
+| Stella | — | Not present in Infloww creators |
+
+Leftover Infloww creator with no Gunzo model: **Ioanna** (`2482640951508999`).
+
+Matched by name (then backfilled to `infloww_creator_id`): Diana, Eirini, Frika,
+Frost, Lina, Lydia, Marillia, Roxana, Silia.
 
 ## Tables (Supabase-only)
 
@@ -33,7 +74,10 @@ Unmatched models are skipped and counted in sync results (`unmatchedModels`).
 | `infloww_marketing_links` | `(model_id, infloww_link_id)` — `model_id` = modelss public id |
 | `infloww_link_fans` | `(link_id, fan_id)` |
 
-Migration: `supabase/migrations/20260806040000_infloww_creator_earnings.sql`.
+Migrations:
+
+- `supabase/migrations/20260806040000_infloww_creator_earnings.sql`
+- `supabase/migrations/20260806050000_modelss_infloww_creator_id.sql`
 
 ## Endpoints synced
 
@@ -70,5 +114,5 @@ Body: `{ startYmd?, endYmd?, skipMarketing?, skipTransactions?, skipDailyStats? 
 
 ## UI
 
-- Admin: `/admin/earnings` (`earnings:view`)
+- Admin: `/admin/earnings` (`earnings:view`) + Creator ID lookup
 - Model: `/model/earnings` (own `linked_model_id` only)

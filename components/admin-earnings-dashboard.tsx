@@ -14,6 +14,7 @@ import {
 import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va-tasks-tokens";
 import { cn } from "@/lib/utils";
 import type { InflowwStatsPreset } from "@/services/infloww-performance";
+import { AdminInflowwCreatorsLookup } from "@/components/admin-infloww-creators-lookup";
 
 const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
   ssr: false,
@@ -719,6 +720,8 @@ export function AdminEarningsDashboard() {
           </div>
         </div>
       ) : null}
+
+      <AdminInflowwCreatorsLookup />
     </div>
   );
 }

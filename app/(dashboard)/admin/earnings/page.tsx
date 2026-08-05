@@ -15,7 +15,8 @@ export default async function AdminEarningsPage() {
         <h1 className="text-2xl font-semibold tracking-tight text-white">Earnings</h1>
         <p className="mt-1 text-sm text-white/55">
           Creator-level Infloww revenue, fans, reach, and marketing — synced daily. Distinct from
-          chatter employee performance.
+          chatter employee performance. Use Creator ID lookup below to link models via stable
+          Infloww creator ids.
         </p>
       </div>
       <AdminEarningsDashboard />

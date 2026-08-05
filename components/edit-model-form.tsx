@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, Building2, CreditCard, Gauge, Info, Layers, Link2, Sparkles, StickyNote, User, Users } from "lucide-react";
+import { Activity, Building2, CreditCard, Gauge, Hash, Info, Layers, Link2, Sparkles, StickyNote, User, Users } from "lucide-react";
 import { updateModel } from "@/services/modelss";
 import { relinkModelUserForModelProfile } from "@/services/users";
 import type { ClientModelRecord } from "@/types/client-portal";
@@ -62,6 +62,9 @@ export function EditModelForm({
     String(model.payment_threshold_eur ?? 200)
   );
   const [team, setTeam] = React.useState<ModelRecord["team"]>(model.team ?? "gunzo_team");
+  const [inflowwCreatorId, setInflowwCreatorId] = React.useState(
+    model.infloww_creator_id?.trim() ? model.infloww_creator_id.trim() : ""
+  );
   const [linkedUserId, setLinkedUserId] = React.useState(currentLinkedUserId);
   const [clientId, setClientId] = React.useState(
     () => clientAssignments.find((a) => a.client[0])?.client[0] ?? ""
@@ -141,6 +144,7 @@ export function EditModelForm({
         priority,
         notes: notes.trim(),
         team,
+        infloww_creator_id: inflowwCreatorId.trim() || null,
         paypal_email: paypalEmail.trim() || undefined,
         paypal_link: paypalLink.trim() || undefined,
         revolut_tag: revolutTag.trim() || undefined,
@@ -261,6 +265,23 @@ export function EditModelForm({
             </option>
           ))}
         </FormSelect>
+      </FormField>
+      <FormField
+        label="Infloww creator ID"
+        icon={<Hash />}
+        htmlFor="infloww_creator_id"
+        description="Stable Infloww creator id from Earnings → Creator ID lookup. Distinct from the app model_* id."
+      >
+        <FormInput
+          id="infloww_creator_id"
+          name="infloww_creator_id"
+          type="text"
+          inputMode="numeric"
+          value={inflowwCreatorId}
+          onChange={(e) => setInflowwCreatorId(e.target.value)}
+          placeholder="e.g. 2243348022951978"
+          autoComplete="off"
+        />
       </FormField>
       <FormField label="Current status" icon={<Info />} description="Live state from scheduling (read-only).">
         <p className="rounded-xl border border-white/10 bg-black/25 px-4 py-3 text-sm text-white/90">

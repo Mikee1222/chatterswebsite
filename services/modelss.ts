@@ -12,6 +12,7 @@ const TABLE = "modelss";
 type Fields = {
   model_id?: string;
   of_user_id?: string;
+  infloww_creator_id?: string | null;
   model_name?: string;
   platform?: string;
   status?: string;
@@ -45,6 +46,10 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelRecord {
     id: rec.id,
     model_id: f.model_id ?? "",
     of_user_id: typeof f.of_user_id === "string" ? f.of_user_id.trim() : "",
+    infloww_creator_id:
+      typeof f.infloww_creator_id === "string" && f.infloww_creator_id.trim()
+        ? f.infloww_creator_id.trim()
+        : null,
     model_name: f.model_name ?? "",
     platform: (f.platform as ModelRecord["platform"]) ?? "other",
     status: f.status ?? "",

@@ -447,6 +447,11 @@ export interface ModelRecord {
   model_id: string;
   /** TheOnlyAPI OF user ID — links this model to the connected OF account. */
   of_user_id?: string;
+  /**
+   * Infloww creator id from GET /v1/creators (`id`).
+   * Distinct from app-stable `model_id` (`model_*` slug). Prefer this for earnings sync.
+   */
+  infloww_creator_id?: string | null;
   model_name: string;
   platform: Platform;
   status: string;

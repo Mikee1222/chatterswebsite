@@ -23,6 +23,7 @@ const TABLE = "modelss";
 type Row = SbRow & {
   model_id?: string | null;
   of_user_id?: string | null;
+  infloww_creator_id?: string | null;
   model_name?: string | null;
   platform?: string | null;
   status?: string | null;
@@ -55,6 +56,10 @@ function mapRowSync(row: Row, userAt: Map<string, string>): ModelRecord {
     id: publicId(row),
     model_id: row.model_id ?? "",
     of_user_id: typeof row.of_user_id === "string" ? row.of_user_id.trim() : "",
+    infloww_creator_id:
+      typeof row.infloww_creator_id === "string" && row.infloww_creator_id.trim()
+        ? row.infloww_creator_id.trim()
+        : null,
     model_name: row.model_name ?? "",
     platform: (row.platform as ModelRecord["platform"]) ?? "other",
     status: row.status ?? "",
@@ -104,6 +109,7 @@ function filterCompleteModels(modelss: ModelRecord[]): ModelRecord[] {
 
 export type ModelssWriteFields = {
   of_user_id?: string;
+  infloww_creator_id?: string | null;
   current_status?: string;
   current_chatter?: string[];
   current_chatter_name?: string;
