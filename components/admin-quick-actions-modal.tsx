@@ -26,7 +26,7 @@ import { ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { SessionUser } from "@/types";
 import { PERMISSIONS, type Permission } from "@/lib/permissions";
-import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
+import { useQuickActionsFabOpen } from "@/lib/hooks/use-quick-actions-fab-open";
 import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 import {
   AdminFineBonusModal,
@@ -325,11 +325,10 @@ type AdminFloatingQuickActionsButtonProps = {
  * with whatever their permissions unlock (plus the universal "Report bug" action).
  */
 export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: AdminFloatingQuickActionsButtonProps) {
-  const [open, setOpen] = React.useState(false);
+  const { open, setOpen, requestClose, toggleOpen, showFabChrome } = useQuickActionsFabOpen();
   const [fineBonusOpen, setFineBonusOpen] = React.useState(false);
   const [shadowbanOpen, setShadowbanOpen] = React.useState(false);
   const [shadowbanAccounts, setShadowbanAccounts] = React.useState<SocialAccount[]>([]);
-  const fabHiddenByOverlay = useMobileFabHidden();
 
   const actions = React.useMemo(
     () => buildAdminQuickActions(user.role, userPermissions),
@@ -341,7 +340,7 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
   const openShadowbanReport = React.useCallback(() => {
     setOpen(false);
     setShadowbanOpen(true);
-  }, []);
+  }, [setOpen]);
 
   React.useEffect(() => {
     if (!shadowbanOpen) return;
@@ -359,9 +358,8 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
     };
   }, [shadowbanOpen]);
 
-  // Never return null while open: our sheet is role=dialog, which sets fabHiddenByOverlay
-  // via MutationObserver. Unmounting the sheet would clear the dialog → remount loop (screen flash).
-  // Hide only the chrome (+ button / desktop menu); keep modals mounted.
+  // Sheet stays mounted while open (dcfd901). FAB chrome also stays while open so
+  // MutationObserver overlay-hide does not unmount the + under the opening tap.
 
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",
@@ -385,17 +383,17 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
       <div className="md:hidden">
         <AdminQuickActionsModal
           open={open}
-          onClose={() => setOpen(false)}
+          onClose={requestClose}
           actions={actions}
           onOpenFineBonus={canManageFines ? () => setFineBonusOpen(true) : undefined}
           onReportShadowban={showShadowban ? openShadowbanReport : undefined}
         />
 
-        {!fabHiddenByOverlay ? (
+        {showFabChrome ? (
           <div className="fixed z-[107] flex flex-col items-end" style={fabBottomStyle}>
             <button
               type="button"
-              onClick={() => setOpen((v) => !v)}
+              onClick={toggleOpen}
               className={FAB_BTN_CLASS}
               style={fabShadowStyle}
               aria-expanded={open}
@@ -411,14 +409,14 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
         ) : null}
       </div>
 
-      {!fabHiddenByOverlay ? (
+      {showFabChrome ? (
         <div className="pointer-events-none fixed bottom-6 right-6 z-[50] hidden flex-col items-end gap-2 md:pointer-events-auto md:flex">
           {open ? (
             <button
               type="button"
               className="pointer-events-auto fixed inset-0 z-[45] cursor-default bg-black/40 backdrop-blur-[2px]"
               aria-label="Close quick actions"
-              onClick={() => setOpen(false)}
+              onClick={requestClose}
             />
           ) : null}
 
@@ -432,7 +430,7 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
                   <li key={`${href}-${label}`}>
                     <Link
                       href={href}
-                      onClick={() => setOpen(false)}
+                      onClick={requestClose}
                       className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
                     >
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
@@ -443,7 +441,10 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
                   </li>
                 ))}
                 {canManageFines ? (
-                  <FineBonusQuickActionNavRow onClose={() => setOpen(false)} onOpen={() => setFineBonusOpen(true)} />
+                  <FineBonusQuickActionNavRow
+                    onClose={requestClose}
+                    onOpen={() => setFineBonusOpen(true)}
+                  />
                 ) : null}
                 {showShadowban ? (
                   <li>
@@ -462,14 +463,14 @@ export function AdminFloatingQuickActionsButton({ user, userPermissions = [] }: 
                     </button>
                   </li>
                 ) : null}
-                <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
+                <FeedbackQuickActionNavRow onClose={requestClose} />
               </ul>
             </nav>
           ) : null}
 
           <button
             type="button"
-            onClick={() => setOpen((v) => !v)}
+            onClick={toggleOpen}
             className={cn(FAB_BTN_CLASS, "pointer-events-auto relative z-[50]")}
             style={fabShadowStyle}
             aria-expanded={open}

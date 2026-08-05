@@ -8,7 +8,7 @@ import { Calendar, CalendarClock, Clock, Download, Plus, X } from "lucide-react"
 import { ROUTES, modelScheduleUrl } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import type { AuthUser } from "@/lib/auth-config";
-import { useMobileFabHidden } from "@/contexts/mobile-fab-visibility-context";
+import { useQuickActionsFabOpen } from "@/lib/hooks/use-quick-actions-fab-open";
 import { useTranslations } from "@/lib/use-translations";
 import { FeedbackQuickActionNavRow, FeedbackQuickActionSheetRow } from "@/components/feedback-quick-action-menu-item";
 
@@ -168,15 +168,13 @@ export type ModelQuickActionsFabProps = {
 };
 
 export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
-  const [open, setOpen] = React.useState(false);
-  const fabHiddenByOverlay = useMobileFabHidden();
+  const { open, requestClose, toggleOpen, showFabChrome } = useQuickActionsFabOpen();
   const links = useModelQuickActionLinks();
   const { t } = useTranslations();
 
   if (user.role !== "model") return null;
 
-  // Never return null while open: our sheet is role=dialog, which sets fabHiddenByOverlay
-  // via MutationObserver. Unmounting the sheet would clear the dialog → remount loop (screen flash).
+  // Sheet stays mounted while open; FAB chrome also stays while open (overlay-hide race).
   const fabBottomStyle = {
     bottom: "calc(var(--mobile-bottom-nav-height, 76px) + env(safe-area-inset-bottom, 0px) + 12px)",
     right: "max(1rem, env(safe-area-inset-right, 0px))",
@@ -189,13 +187,13 @@ export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
   return (
     <>
       <div className="md:hidden">
-        <ModelQuickActionsModal open={open} onClose={() => setOpen(false)} />
+        <ModelQuickActionsModal open={open} onClose={requestClose} />
 
-        {!fabHiddenByOverlay ? (
+        {showFabChrome ? (
           <div className="fixed z-[302] flex flex-col items-end" style={fabBottomStyle}>
             <button
               type="button"
-              onClick={() => setOpen((v) => !v)}
+              onClick={toggleOpen}
               className={FAB_BTN_CLASS}
               style={fabShadowStyle}
               aria-expanded={open}
@@ -211,14 +209,14 @@ export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
         ) : null}
       </div>
 
-      {!fabHiddenByOverlay ? (
+      {showFabChrome ? (
         <div className="pointer-events-none fixed z-[50] hidden flex-col items-end gap-2 md:pointer-events-auto md:flex bottom-6 right-6">
           {open ? (
             <button
               type="button"
               className="pointer-events-auto fixed inset-0 z-[45] cursor-default bg-black/40 backdrop-blur-[2px]"
               aria-label={t("quickActions.close")}
-              onClick={() => setOpen(false)}
+              onClick={requestClose}
             />
           ) : null}
 
@@ -232,7 +230,7 @@ export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
                   <li key={href}>
                     <Link
                       href={href}
-                      onClick={() => setOpen(false)}
+                      onClick={requestClose}
                       className="flex items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-white/95 transition-colors hover:bg-white/[0.08]"
                     >
                       <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-pink-500/20 text-pink-400">
@@ -242,14 +240,14 @@ export function ModelQuickActionsFab({ user }: ModelQuickActionsFabProps) {
                     </Link>
                   </li>
                 ))}
-                <FeedbackQuickActionNavRow onClose={() => setOpen(false)} />
+                <FeedbackQuickActionNavRow onClose={requestClose} />
               </ul>
             </nav>
           ) : null}
 
           <button
             type="button"
-            onClick={() => setOpen((v) => !v)}
+            onClick={toggleOpen}
             className={cn(FAB_BTN_CLASS, "pointer-events-auto relative z-[50]")}
             style={fabShadowStyle}
             aria-expanded={open}
