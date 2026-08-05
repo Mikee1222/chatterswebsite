@@ -67,6 +67,9 @@ export type InflowwMetricTotals = {
   ppvs_sent: number;
   fans_chatted: number;
   fans_who_spent: number;
+  ppvs_unlocked: number;
+  /** True when any contributing row had a non-null `unlock_rate` from sync. */
+  has_direct_unlock_metrics: boolean;
   golden_ratio: number | null;
   fan_cvr: number | null;
 };
@@ -182,6 +185,8 @@ function emptyTotals(): InflowwMetricTotals {
     ppvs_sent: 0,
     fans_chatted: 0,
     fans_who_spent: 0,
+    ppvs_unlocked: 0,
+    has_direct_unlock_metrics: false,
     golden_ratio: null,
     fan_cvr: null,
   };
@@ -198,11 +203,20 @@ function addTotals(a: InflowwMetricTotals, row: InflowwDailyStatsRow): void {
   a.ppvs_sent += row.ppvs_sent;
   a.fans_chatted += row.fans_chatted;
   a.fans_who_spent += row.fans_who_spent;
+  a.ppvs_unlocked += row.ppvs_unlocked;
+  if (row.unlock_rate != null) a.has_direct_unlock_metrics = true;
 }
 
 function finalizeDerived(t: InflowwMetricTotals): void {
   t.golden_ratio = t.messages_sent > 0 ? t.ppvs_sent / t.messages_sent : null;
-  t.fan_cvr = t.fans_chatted > 0 ? t.fans_who_spent / t.fans_chatted : null;
+  // CVR: prefer direct PPV unlock rate; fall back to fans_who_spent ÷ fans_chatted
+  if (t.has_direct_unlock_metrics || t.ppvs_unlocked > 0) {
+    t.fan_cvr = t.ppvs_sent > 0 ? t.ppvs_unlocked / t.ppvs_sent : null;
+  } else if (t.fans_who_spent > 0 && t.fans_chatted > 0) {
+    t.fan_cvr = t.fans_who_spent / t.fans_chatted;
+  } else {
+    t.fan_cvr = null;
+  }
 }
 
 function sumTotals(rows: InflowwDailyStatsRow[]): InflowwMetricTotals {
@@ -727,6 +741,8 @@ export async function getAdminInflowwPerformanceReport(
     team_totals.ppvs_sent += c.totals.ppvs_sent;
     team_totals.fans_chatted += c.totals.fans_chatted;
     team_totals.fans_who_spent += c.totals.fans_who_spent;
+    team_totals.ppvs_unlocked += c.totals.ppvs_unlocked;
+    if (c.totals.has_direct_unlock_metrics) team_totals.has_direct_unlock_metrics = true;
   }
   finalizeDerived(team_totals);
 
@@ -904,6 +920,7 @@ export async function getAdminWeeklyProgressReport(
       if (t.sales > 0) sales.push(t.sales);
       if (t.messages_sent > 0) msgs.push(t.messages_sent);
       if (t.fans_chatted > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
+      else if (t.ppvs_sent > 0 && t.fan_cvr != null) cvrs.push(t.fan_cvr);
     }
     teamSalesByWeek.set(boundary.week, sales);
     teamMsgsByWeek.set(boundary.week, msgs);
@@ -957,6 +974,8 @@ export async function getAdminWeeklyProgressReport(
       month_totals.ppvs_sent += w.totals.ppvs_sent;
       month_totals.fans_chatted += w.totals.fans_chatted;
       month_totals.fans_who_spent += w.totals.fans_who_spent;
+      month_totals.ppvs_unlocked += w.totals.ppvs_unlocked;
+      if (w.totals.has_direct_unlock_metrics) month_totals.has_direct_unlock_metrics = true;
     }
     finalizeDerived(month_totals);
 
@@ -987,6 +1006,8 @@ export async function getAdminWeeklyProgressReport(
       totals.ppvs_sent += w.totals.ppvs_sent;
       totals.fans_chatted += w.totals.fans_chatted;
       totals.fans_who_spent += w.totals.fans_who_spent;
+      totals.ppvs_unlocked += w.totals.ppvs_unlocked;
+      if (w.totals.has_direct_unlock_metrics) totals.has_direct_unlock_metrics = true;
     }
     finalizeDerived(totals);
     return { week: boundary.week, totals };
@@ -1004,6 +1025,8 @@ export async function getAdminWeeklyProgressReport(
     team_month_totals.ppvs_sent += tw.totals.ppvs_sent;
     team_month_totals.fans_chatted += tw.totals.fans_chatted;
     team_month_totals.fans_who_spent += tw.totals.fans_who_spent;
+    team_month_totals.ppvs_unlocked += tw.totals.ppvs_unlocked;
+    if (tw.totals.has_direct_unlock_metrics) team_month_totals.has_direct_unlock_metrics = true;
   }
   finalizeDerived(team_month_totals);
 

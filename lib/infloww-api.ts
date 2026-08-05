@@ -859,6 +859,28 @@ function nullableNumField(r: Record<string, unknown>, keys: string[]): number | 
   return null;
 }
 
+/**
+ * Infloww chat-summary `unlockRate` is usually a percent string ("75.00%", "-", "0.00%").
+ * Normalize to a fraction 0–1; "-" / empty → null.
+ */
+function parseUnlockRateField(r: Record<string, unknown>, keys: string[]): number | null {
+  for (const k of keys) {
+    const v = r[k];
+    if (v == null) continue;
+    if (typeof v === "number" && Number.isFinite(v)) {
+      return v > 1 ? v / 100 : v;
+    }
+    const s = String(v).trim();
+    if (!s || s === "-" || /^n\/?a$/i.test(s)) continue;
+    const hasPct = s.includes("%");
+    const n = Number.parseFloat(s.replace(/%/g, "").replace(/,/g, ""));
+    if (!Number.isFinite(n)) continue;
+    if (hasPct || n > 1) return n / 100;
+    return n;
+  }
+  return null;
+}
+
 function idField(r: Record<string, unknown>, keys: string[]): number {
   for (const k of keys) {
     const v = r[k];
@@ -960,7 +982,7 @@ export function chunkDateRangeYmd(
 }
 
 function assertEmployeeReportLookback(startYmd: string, endYmd: string): void {
-  const today = getTodayYmdAthens();
+  const today = inflowwReportTodayYmd();
   const earliest = addDaysYmd(today, -(EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS - 1));
   if (startYmd < earliest) {
     throw new InflowwApiError(
@@ -1102,6 +1124,9 @@ function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChat
       : r["creator"] && typeof r["creator"] === "object"
         ? (r["creator"] as Record<string, unknown>)
         : null;
+  const ppvsSent = Math.round(numField(r, ["ppvsSent", "ppvs_sent", "directPpvsSent", "direct_ppvs_sent", "ppvSent"]));
+  const ppvsUnlocked = Math.round(numField(r, ["ppvsUnlocked", "ppvs_unlocked", "unlockedPpvs", "unlocked_ppvs"]));
+  const unlockRateParsed = parseUnlockRateField(r, ["unlockRate", "unlock_rate", "ppvUnlockRate", "ppv_unlock_rate"]);
   return {
     employeeId: idField(r, ["employeeId", "employee_id", "employeeID"]) || idField(nestedEmp ?? {}, ["id", "employeeId"]),
     performerId:
@@ -1111,9 +1136,16 @@ function mapChatRow(row: unknown): import("@/types/infloww").InflowwEmployeeChat
       strField(nestedPerf ?? {}, ["name", "username", "displayName"]),
     date: ymdField(r),
     messagesSent: Math.round(numField(r, ["messagesSent", "messages_sent", "directMessagesSent", "direct_messages_sent", "dmSent"])),
-    ppvsSent: Math.round(numField(r, ["ppvsSent", "ppvs_sent", "directPpvsSent", "direct_ppvs_sent", "ppvSent"])),
+    ppvsSent,
     fansChatted: Math.round(numField(r, ["fansChatted", "fans_chatted", "fansMessaged", "fans_messaged"])),
     fansWhoSpent: Math.round(numField(r, ["fansWhoSpent", "fans_who_spent", "spendingFans", "fansSpent", "fansWhoSpentMoney"])),
+    ppvsUnlocked,
+    unlockRate:
+      unlockRateParsed != null
+        ? unlockRateParsed
+        : ppvsSent > 0
+          ? ppvsUnlocked / ppvsSent
+          : null,
     goldenRatio: nullableNumField(r, ["goldenRatio", "golden_ratio"]),
     fanCvr: nullableNumField(r, ["fanCvr", "fan_cvr", "fanConversionRate", "cvr"]),
     avgEarningsPerSpendingFan: nullableNumField(r, [
@@ -1194,6 +1226,16 @@ async function paginateEmployeeReport(
 }
 
 /**
+ * Infloww rejects endTime in its own "future" — often UTC calendar day —
+ * so cap employee-report ranges to the earlier of Athens today and UTC today.
+ */
+export function inflowwReportTodayYmd(): string {
+  const athens = getTodayYmdAthens();
+  const utc = new Date().toISOString().slice(0, 10);
+  return athens <= utc ? athens : utc;
+}
+
+/**
  * Employee-report query params: Infloww expects date-only `YYYY-MM-DD`
  * (not full ISO datetime). Inputs are Athens calendar days from chunking —
  * never derive these via `toISOString().slice(0,10)` (UTC day shift risk).
@@ -1210,7 +1252,7 @@ function rangeToDateBounds(startYmd: string, endYmd: string): { startTime: strin
   if (!start || !end) {
     throw new InflowwApiError("Invalid from/to date range.", 400);
   }
-  const today = getTodayYmdAthens();
+  const today = inflowwReportTodayYmd();
   if (end > today) end = today;
   if (start > end) {
     throw new InflowwApiError("Invalid from/to date range: end is before start after capping to today.", 400);
@@ -1321,6 +1363,8 @@ export function mergeEmployeeSalesAndChat(
         ppvsSent: 0,
         fansChatted: 0,
         fansWhoSpent: 0,
+        ppvsUnlocked: 0,
+        unlockRate: null,
         goldenRatio: null,
         fanCvr: null,
         avgEarningsPerSpendingFan: null,
@@ -1353,6 +1397,8 @@ export function mergeEmployeeSalesAndChat(
         ppvsSent: 0,
         fansChatted: 0,
         fansWhoSpent: 0,
+        ppvsUnlocked: 0,
+        unlockRate: null,
         goldenRatio: null,
         fanCvr: null,
         avgEarningsPerSpendingFan: null,
@@ -1367,6 +1413,13 @@ export function mergeEmployeeSalesAndChat(
     row.ppvsSent += c.ppvsSent;
     row.fansChatted += c.fansChatted;
     row.fansWhoSpent += c.fansWhoSpent;
+    row.ppvsUnlocked += c.ppvsUnlocked;
+    if (c.unlockRate != null) {
+      row.unlockRate =
+        row.ppvsSent > 0 ? row.ppvsUnlocked / row.ppvsSent : c.unlockRate;
+    } else if (row.ppvsSent > 0 && row.ppvsUnlocked > 0) {
+      row.unlockRate = row.ppvsUnlocked / row.ppvsSent;
+    }
     if (c.goldenRatio != null) row.goldenRatio = c.goldenRatio;
     if (c.fanCvr != null) row.fanCvr = c.fanCvr;
     if (c.avgEarningsPerSpendingFan != null) row.avgEarningsPerSpendingFan = c.avgEarningsPerSpendingFan;

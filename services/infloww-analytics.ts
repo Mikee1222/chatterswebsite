@@ -14,6 +14,13 @@ export type AnalyticsTotalsInput = {
   ppvs_sent: number;
   fans_chatted: number;
   fans_who_spent: number;
+  /** Direct from chat-summary `ppvsUnlocked` (preferred unlock stage). */
+  ppvs_unlocked: number;
+  /**
+   * True when any synced row in the period had chat-summary unlock fields
+   * (`unlock_rate` not null). Distinguishes real 0% from pre-backfill zeros.
+   */
+  has_direct_unlock_metrics?: boolean;
 };
 
 export type PeriodChangeMetric = {
@@ -26,12 +33,12 @@ export type PeriodChangeMetric = {
 export type ConversionFunnel = {
   messages: number;
   ppvs_sent: number;
-  /** Proxy: fans_who_spent from Infloww. Often sparse / zero in current sync. */
+  /** PPVs unlocked (direct) or fans_who_spent fallback. */
   unlocked: number;
   revenue: number;
   msg_to_ppv_rate: number | null;
   unlock_rate: number | null;
-  /** True when unlock stage has no usable Infloww data. */
+  /** True when neither direct unlock fields nor fans_who_spent are usable. */
   unlock_data_sparse: boolean;
   notes: string[];
 };
@@ -227,22 +234,59 @@ export function computeConsistencyScore(dailySales: number[]): number | null {
   return score;
 }
 
+/**
+ * Prefer chat-summary `ppvsUnlocked` / derived unlock rate; fall back to
+ * sparse `fans_who_spent` only when direct unlock metrics were never synced.
+ */
+export function resolveUnlockMetrics(totals: AnalyticsTotalsInput): {
+  unlocked: number;
+  unlock_rate: number | null;
+  unlock_data_sparse: boolean;
+  source: "ppvs_unlocked" | "fans_who_spent" | "none";
+} {
+  const hasDirect =
+    Boolean(totals.has_direct_unlock_metrics) || totals.ppvs_unlocked > 0;
+  if (hasDirect) {
+    return {
+      unlocked: totals.ppvs_unlocked,
+      unlock_rate: rate(totals.ppvs_unlocked, totals.ppvs_sent),
+      unlock_data_sparse: false,
+      source: "ppvs_unlocked",
+    };
+  }
+  if (totals.fans_who_spent > 0) {
+    return {
+      unlocked: totals.fans_who_spent,
+      unlock_rate: rate(totals.fans_who_spent, totals.ppvs_sent),
+      unlock_data_sparse: false,
+      source: "fans_who_spent",
+    };
+  }
+  const sparse = totals.ppvs_sent > 0;
+  return {
+    unlocked: 0,
+    unlock_rate: sparse ? null : rate(0, totals.ppvs_sent),
+    unlock_data_sparse: sparse,
+    source: "none",
+  };
+}
+
 export function buildConversionFunnel(totals: AnalyticsTotalsInput): ConversionFunnel {
   const notes: string[] = [];
-  const unlock_data_sparse = totals.fans_who_spent <= 0 && totals.ppvs_sent > 0;
-  if (unlock_data_sparse) {
+  const resolved = resolveUnlockMetrics(totals);
+  if (resolved.unlock_data_sparse) {
     notes.push(
-      "Unlock stage uses fans_who_spent from Infloww — currently sparse/zero in synced rows, so unlock rate may be unavailable."
+      "Unlock stage unavailable — Infloww unlock fields not yet synced for this range."
     );
   }
   return {
     messages: totals.messages_sent,
     ppvs_sent: totals.ppvs_sent,
-    unlocked: totals.fans_who_spent,
+    unlocked: resolved.unlocked,
     revenue: totals.sales,
     msg_to_ppv_rate: rate(totals.ppvs_sent, totals.messages_sent),
-    unlock_rate: rate(totals.fans_who_spent, totals.ppvs_sent),
-    unlock_data_sparse,
+    unlock_rate: resolved.unlock_rate,
+    unlock_data_sparse: resolved.unlock_data_sparse,
     notes,
   };
 }
@@ -549,8 +593,8 @@ export function deriveChatterAnalytics(input: {
   const personal_best = computePersonalBest(allTimeRows.length ? allTimeRows : rows);
 
   const prev = previousTotals;
-  const prevUnlock = prev ? rate(prev.fans_who_spent, prev.ppvs_sent) : null;
-  const curUnlock = rate(totals.fans_who_spent, totals.ppvs_sent);
+  const prevUnlock = prev ? resolveUnlockMetrics(prev).unlock_rate : null;
+  const curUnlock = resolveUnlockMetrics(totals).unlock_rate;
 
   const period_change = {
     sales: pctChange(totals.sales, prev?.sales ?? 0),

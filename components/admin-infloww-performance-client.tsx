@@ -455,42 +455,33 @@ export function AdminInflowwPerformanceClient({
 
   const teamFunnel = React.useMemo(() => {
     const first = data.chatters[0]?.analytics?.funnel;
-    if (!first) {
-      return {
-        messages: data.team_totals.messages_sent,
-        ppvs_sent: data.team_totals.ppvs_sent,
-        unlocked: data.team_totals.fans_who_spent,
-        revenue: data.team_totals.sales,
-        msg_to_ppv_rate:
-          data.team_totals.messages_sent > 0
-            ? data.team_totals.ppvs_sent / data.team_totals.messages_sent
-            : null,
-        unlock_rate:
-          data.team_totals.ppvs_sent > 0
-            ? data.team_totals.fans_who_spent / data.team_totals.ppvs_sent
-            : null,
-        unlock_data_sparse:
-          data.team_totals.fans_who_spent <= 0 && data.team_totals.ppvs_sent > 0,
-        notes: [] as string[],
-      };
-    }
-    // Aggregate funnel from team totals
+    const unlocked =
+      data.team_totals.has_direct_unlock_metrics || data.team_totals.ppvs_unlocked > 0
+        ? data.team_totals.ppvs_unlocked
+        : data.team_totals.fans_who_spent > 0
+          ? data.team_totals.fans_who_spent
+          : data.team_totals.ppvs_unlocked;
+    const unlock_rate =
+      data.team_totals.ppvs_sent > 0
+        ? unlocked / data.team_totals.ppvs_sent
+        : null;
+    const unlock_data_sparse =
+      data.team_totals.ppvs_sent > 0 &&
+      !data.team_totals.has_direct_unlock_metrics &&
+      data.team_totals.ppvs_unlocked <= 0 &&
+      data.team_totals.fans_who_spent <= 0;
     return {
       messages: data.team_totals.messages_sent,
       ppvs_sent: data.team_totals.ppvs_sent,
-      unlocked: data.team_totals.fans_who_spent,
+      unlocked,
       revenue: data.team_totals.sales,
       msg_to_ppv_rate:
         data.team_totals.messages_sent > 0
           ? data.team_totals.ppvs_sent / data.team_totals.messages_sent
           : null,
-      unlock_rate:
-        data.team_totals.ppvs_sent > 0
-          ? data.team_totals.fans_who_spent / data.team_totals.ppvs_sent
-          : null,
-      unlock_data_sparse:
-        data.team_totals.fans_who_spent <= 0 && data.team_totals.ppvs_sent > 0,
-      notes: first.notes,
+      unlock_rate: unlock_data_sparse ? null : unlock_rate,
+      unlock_data_sparse,
+      notes: first?.notes ?? ([] as string[]),
     };
   }, [data]);
 

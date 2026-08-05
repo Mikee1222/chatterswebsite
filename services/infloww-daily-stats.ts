@@ -7,6 +7,7 @@ import { getTodayYmdAthens, addDaysAthensYmd } from "@/lib/airtable-datetime";
 import {
   EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS,
   fetchEmployeeDayStats,
+  inflowwReportTodayYmd,
   InflowwApiError,
   logInflowwFailure,
 } from "@/lib/infloww-api";
@@ -31,6 +32,8 @@ export type InflowwDailyStatsRow = {
   ppvs_sent: number;
   fans_chatted: number;
   fans_who_spent: number;
+  ppvs_unlocked: number;
+  unlock_rate: number | null;
   golden_ratio: number | null;
   fan_cvr: number | null;
   avg_earnings_per_spending_fan: number | null;
@@ -87,6 +90,8 @@ function mapDbRow(row: Record<string, unknown>): InflowwDailyStatsRow {
     ppvs_sent: Math.round(n(row.ppvs_sent)),
     fans_chatted: Math.round(n(row.fans_chatted)),
     fans_who_spent: Math.round(n(row.fans_who_spent)),
+    ppvs_unlocked: Math.round(n(row.ppvs_unlocked)),
+    unlock_rate: nNull(row.unlock_rate),
     golden_ratio: nNull(row.golden_ratio),
     fan_cvr: nNull(row.fan_cvr),
     avg_earnings_per_spending_fan: nNull(row.avg_earnings_per_spending_fan),
@@ -187,6 +192,8 @@ async function upsertDayStats(
     ppvs_sent: r.ppvsSent,
     fans_chatted: r.fansChatted,
     fans_who_spent: r.fansWhoSpent,
+    ppvs_unlocked: r.ppvsUnlocked,
+    unlock_rate: r.unlockRate,
     golden_ratio: r.goldenRatio,
     fan_cvr: r.fanCvr,
     avg_earnings_per_spending_fan: r.avgEarningsPerSpendingFan,
@@ -217,8 +224,8 @@ export async function syncInflowwDailyStats(params?: {
   /** Limit to specific public user ids (optional). */
   publicUserIds?: string[];
 }): Promise<InflowwSyncResult> {
-  const today = getTodayYmdAthens();
-  const defaultDay = addDaysAthensYmd(today, -1);
+  const today = inflowwReportTodayYmd();
+  const defaultDay = addDaysAthensYmd(getTodayYmdAthens(), -1);
   let startYmd = (params?.startYmd ?? defaultDay).slice(0, 10);
   let endYmd = (params?.endYmd ?? defaultDay).slice(0, 10);
   if (startYmd > endYmd) {

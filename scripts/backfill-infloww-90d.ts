@@ -29,14 +29,14 @@ async function main() {
     queryInflowwDailyStats,
     syncInflowwDailyStats,
   } = await import("../services/infloww-daily-stats");
-  const { EMPLOYEE_REPORT_MAX_DAYS } = await import("../lib/infloww-api");
+  const { EMPLOYEE_REPORT_MAX_DAYS, inflowwReportTodayYmd } = await import("../lib/infloww-api");
 
-  const today = getTodayYmdAthens();
+  const today = inflowwReportTodayYmd();
   const startYmd = addDaysAthensYmd(today, -(lookback - 1));
 
   const users = await listUsersWithInflowwEmployeeId();
   console.log("=== Infloww 90-day backfill ===");
-  console.log(`range: ${startYmd} → ${today} (${lookback} Athens days)`);
+  console.log(`range: ${startYmd} → ${today} (${lookback} days, capped to Infloww-safe today; Athens=${getTodayYmdAthens()})`);
   console.log(`linked chatters: ${users.length}`);
   for (const u of users) {
     console.log(`  - ${u.full_name || u.publicId} (emp ${u.infloww_employee_id})`);
@@ -84,6 +84,11 @@ async function main() {
   }
 
   console.log(`rows after: ${after.length}`);
+  const unlockSum = after.reduce((s, r) => s + r.ppvs_unlocked, 0);
+  const withRate = after.filter((r) => r.unlock_rate != null).length;
+  console.log(
+    `unlock metrics: sum(ppvs_unlocked)=${unlockSum}, rows with unlock_rate=${withRate}/${after.length}`
+  );
   console.log("per chatter:");
   for (const [, v] of byUser) {
     const days = [...v.days].sort();

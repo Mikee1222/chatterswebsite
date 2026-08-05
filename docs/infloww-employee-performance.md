@@ -103,11 +103,11 @@ Shared compute for Admin Chatter Performance + My Performance:
 | Metric | Source / notes |
 | --- | --- |
 | Revenue / hour | Sales ÷ shift hours; null unless ≥1h shifted in range |
-| Conversion funnel | messages → PPVs sent → fans_who_spent → revenue |
+| Conversion funnel | messages → PPVs sent → **ppvs_unlocked** → revenue |
 | Avg PPV price | ppv_sales ÷ ppvs_sent |
 | Avg tip size | tips ÷ tip day×creator rows (Infloww lacks tip event count) |
 | Rev / fan | sales ÷ fans_chatted |
-| Fan CVR | fans_who_spent ÷ fans_chatted (often 0% — field sparse in sync) |
+| Fan CVR (unlock rate) | **ppvs_unlocked ÷ ppvs_sent** from chat-summary (`unlockRate`); falls back to fans_who_spent ÷ fans_chatted only if unlock fields absent |
 | WoW / period change | Equal-length prior window |
 | Personal best | Best day + ISO week from all-time synced rows |
 | Team percentile | Rank by sales among linked chatters with sales&gt;0; needs ≥3 |
@@ -118,7 +118,7 @@ Shared compute for Admin Chatter Performance + My Performance:
 
 ### Deferred / sparse data (Edgar sample Aug 2026)
 
-- **Fan CVR / unlock stage**: `fans_who_spent` is often 0 in synced rows (confirmed agency-wide sum = 0). Calc is correct (`fans_who_spent ÷ fans_chatted` / `÷ ppvs_sent`) — zeros are sparse Infloww data, not a denom bug. Funnel unlock shows n/a when sparse.
+- **Fan CVR / unlock stage**: Prefer Infloww chat-summary `ppvsUnlocked` + `unlockRate` (synced as `ppvs_unlocked` / `unlock_rate`). `fans_who_spent` is a fallback only — that field is often missing from the live API. Funnel unlock shows n/a only when neither direct unlock metrics nor fans_who_spent are available.
 - **Whale auto-flag from Infloww**: no fan-level IDs in `infloww_daily_stats` — cannot auto-suggest OF usernames from sales sync alone
 - **Rebill retention correlation**: needs ≥4 chatters with both rebills + sales; otherwise UI shows “data doesn’t support cleanly”
 - **Performer names**: employee-report uses `platformPid` (no name). Resolve via Infloww `/creators.platformPid` → name, preferring `modelss.model_name` when `modelss.model_id` matches the Infloww creator id. Fallback `Creator {id}`; performer_id `0` → **Unattributed** (pinned last).
