@@ -66,6 +66,21 @@ curl -X POST "$APP_URL/api/admin/infloww-stats/sync" \
 
 Employee reports: ranges &gt;31 days are auto-chunked. Day-by-day fallback only if API rows omit dates.
 
+## Weekly Progress (admin)
+
+Admin → **Chatter performance** → **Weekly Progress** tab (`infloww_stats:view_all` only — not on My Performance).
+
+Custom 4 weeks per Athens calendar month (not ISO):
+
+| Week | Days |
+| --- | --- |
+| 1 | 1–7 |
+| 2 | 8–14 |
+| 3 | 15–21 |
+| 4 | 22–end of month (28/29/30/31) |
+
+Util: `lib/infloww-custom-weeks.ts` → `getCustomWeekBoundaries(year, month)`. Aggregates `infloww_daily_stats` via `getAdminWeeklyProgressReport` in `services/infloww-performance.ts`. Rule-based insight tags from `generateWeeklyInsights` in `services/infloww-analytics.ts`. API: `GET /api/infloww-stats?view=weekly_progress&year=&month=`.
+
 ## Endpoints used
 
 - `GET /v1/employees` — agency employee list (id / name / email / status) for linking accounts
