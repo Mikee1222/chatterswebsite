@@ -117,7 +117,11 @@ function ChatterDrilldown({
             <LuxuryStatCard
               label="Rev / hour"
               value={a.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}
-              hint={a.shift_hours > 0 ? `${a.shift_hours}h shifted` : "No shift hours in range"}
+              hint={
+                a.revenue_per_hour != null
+                  ? `${a.shift_hours}h shifted`
+                  : "Not enough shift data"
+              }
               accent="champagne"
             />
             <LuxuryStatCard

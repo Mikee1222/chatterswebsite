@@ -222,9 +222,9 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
           label="Rev / hour"
           value={a?.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}
           hint={
-            a && a.shift_hours > 0
+            a?.revenue_per_hour != null
               ? `${a.shift_hours}h on shift`
-              : "Link shifts in range for $/h"
+              : "Not enough shift data"
           }
           accent="champagne"
         />
@@ -272,6 +272,11 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
               <p className="mt-1.5 text-sm leading-relaxed text-white/55">{a.team_standing.label}</p>
             </div>
           </div>
+        </div>
+      ) : a ? (
+        <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
+          <SectionLabel>Team standing</SectionLabel>
+          <p className="mt-2 text-sm text-white/45">Not enough team data yet to rank</p>
         </div>
       ) : null}
 

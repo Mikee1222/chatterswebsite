@@ -201,17 +201,28 @@ export function ConversionFunnelViz({
 }) {
   const reduce = useReducedMotion();
   const stages = [
-    { key: "messages", label: "Messages", value: funnel.messages, color: "#D4AF8C" },
-    { key: "ppvs", label: "PPVs sent", value: funnel.ppvs_sent, color: "#E879B8" },
+    { key: "messages", label: "Messages", value: funnel.messages, color: "#D4AF8C", sparse: false },
+    { key: "ppvs", label: "PPVs sent", value: funnel.ppvs_sent, color: "#E879B8", sparse: false },
     {
       key: "unlocked",
-      label: funnel.unlock_data_sparse ? "Unlocked*" : "Unlocked",
+      label: "Unlocked",
       value: funnel.unlocked,
       color: "#FF1493",
+      sparse: funnel.unlock_data_sparse,
     },
-    { key: "revenue", label: "Revenue", value: funnel.revenue, color: "#FF1493", money: true },
+    {
+      key: "revenue",
+      label: "Revenue",
+      value: funnel.revenue,
+      color: "#FF1493",
+      money: true,
+      sparse: false,
+    },
   ] as const;
-  const max = Math.max(1, ...stages.slice(0, 3).map((s) => s.value));
+  const max = Math.max(
+    1,
+    ...stages.filter((s) => s.key !== "revenue" && !s.sparse).map((s) => s.value)
+  );
 
   return (
     <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5", className)}>
@@ -229,26 +240,45 @@ export function ConversionFunnelViz({
       </div>
       <div className="space-y-3">
         {stages.map((s, i) => {
-          const widthPct =
-            s.key === "revenue"
-              ? Math.min(100, (funnel.messages > 0 ? 55 + (funnel.revenue > 0 ? 35 : 0) : 20))
+          const sparse = s.sparse;
+          const widthPct = sparse
+            ? 40
+            : s.key === "revenue"
+              ? Math.min(100, funnel.messages > 0 ? 55 + (funnel.revenue > 0 ? 35 : 0) : 20)
               : Math.max(8, (s.value / max) * 100);
           return (
             <div key={s.key}>
               <div className="mb-1 flex items-center justify-between text-xs">
-                <span className="text-white/55">{s.label}</span>
-                <span className="font-semibold tabular-nums text-white">
-                  {"money" in s && s.money ? money(s.value) : s.value.toLocaleString()}
+                <span className={sparse ? "text-white/35" : "text-white/55"}>{s.label}</span>
+                <span
+                  className={cn(
+                    "font-semibold tabular-nums",
+                    sparse ? "text-white/35" : "text-white"
+                  )}
+                >
+                  {sparse
+                    ? "n/a"
+                    : "money" in s && s.money
+                      ? money(s.value)
+                      : s.value.toLocaleString()}
                 </span>
               </div>
               <div className="h-2.5 overflow-hidden rounded-full bg-white/5">
-                <motion.div
-                  className="h-full rounded-full"
-                  style={{ background: `linear-gradient(90deg, ${s.color}99, ${s.color})` }}
-                  initial={reduce ? false : { width: 0 }}
-                  animate={{ width: `${widthPct}%` }}
-                  transition={{ duration: 0.7, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
-                />
+                {sparse ? (
+                  <div
+                    className="h-full rounded-full border border-dashed border-white/25 bg-transparent"
+                    style={{ width: `${widthPct}%` }}
+                    title="Unlock data unavailable from Infloww sync"
+                  />
+                ) : (
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: `linear-gradient(90deg, ${s.color}99, ${s.color})` }}
+                    initial={reduce ? false : { width: 0 }}
+                    animate={{ width: `${widthPct}%` }}
+                    transition={{ duration: 0.7, delay: i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                  />
+                )}
               </div>
             </div>
           );

@@ -1,6 +1,8 @@
 export interface InflowwModel {
   id: string;
   name: string;
+  /** OnlyFans / platform performer id — matches `infloww_daily_stats.infloww_performer_id`. */
+  platformPid?: string;
 }
 
 export interface InflowwEarnings {

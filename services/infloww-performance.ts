@@ -4,6 +4,7 @@
  */
 
 import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
+import { getInflowwModels } from "@/lib/infloww-api";
 import { getSupabaseServiceClient } from "@/lib/supabase-server";
 import { publicId } from "@/lib/supabase-data";
 import { listAllShifts } from "@/services/shifts";
@@ -27,6 +28,9 @@ import {
   type LinkedInflowwUser,
 } from "@/services/infloww-daily-stats";
 import type { Shift } from "@/types";
+
+/** Bucket label when Infloww collapses rows with no performer attribution. */
+export const UNATTRIBUTED_PERFORMER_LABEL = "Unattributed";
 
 export type InflowwStatsPreset =
   | "this_week"
@@ -362,11 +366,82 @@ async function whaleSuggestionsFromRebills(params: {
   return out;
 }
 
+/**
+ * Resolve display names for Infloww performer ids (platformPid).
+ * Prefer `modelss.model_name` when `modelss.model_id` matches the Infloww creator id
+ * (or equals the performer id / of_user_id); else Infloww `/creators` name; else null.
+ */
+async function loadPerformerDisplayNameMap(): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  const modelssByKey = new Map<string, string>();
+
+  try {
+    const sb = getSupabaseServiceClient();
+    const { data } = await sb.from("modelss").select("model_id, of_user_id, model_name");
+    for (const row of data ?? []) {
+      const name = typeof row.model_name === "string" ? row.model_name.trim() : "";
+      if (!name) continue;
+      const mid = typeof row.model_id === "string" ? row.model_id.trim() : "";
+      if (mid) {
+        modelssByKey.set(mid, name);
+        const asNum = Number(mid);
+        if (Number.isFinite(asNum) && asNum > 0) out.set(asNum, name);
+      }
+      const ofid = typeof row.of_user_id === "string" ? row.of_user_id.trim() : "";
+      if (ofid) {
+        modelssByKey.set(ofid, name);
+        const asNum = Number(ofid);
+        if (Number.isFinite(asNum) && asNum > 0) out.set(asNum, name);
+      }
+    }
+  } catch {
+    /* modelss lookup best-effort */
+  }
+
+  try {
+    const creators = await getInflowwModels();
+    for (const c of creators) {
+      const pidRaw = c.platformPid?.trim();
+      if (!pidRaw) continue;
+      const pid = Number(pidRaw);
+      if (!Number.isFinite(pid) || pid <= 0) continue;
+      const fromModelss = modelssByKey.get(c.id) || modelssByKey.get(pidRaw);
+      out.set(pid, fromModelss || c.name);
+    }
+  } catch {
+    /* Infloww creators best-effort — modelss direct joins may still apply */
+  }
+
+  return out;
+}
+
+function performerDisplayName(
+  performerId: number,
+  rowName: string | null | undefined,
+  nameMap: Map<number, string>
+): string {
+  if (!performerId) return UNATTRIBUTED_PERFORMER_LABEL;
+  const mapped = nameMap.get(performerId);
+  if (mapped) return mapped;
+  if (rowName?.trim()) return rowName.trim();
+  return `Creator ${performerId}`;
+}
+
+function sortByPerformer(rows: InflowwPerformerBreakdown[]): InflowwPerformerBreakdown[] {
+  return [...rows].sort((a, b) => {
+    const aUn = !a.performer_id;
+    const bUn = !b.performer_id;
+    if (aUn !== bUn) return aUn ? 1 : -1; // Unattributed always last
+    return b.totals.sales - a.totals.sales;
+  });
+}
+
 function buildPerformanceBase(
   user: LinkedInflowwUser,
   range: InflowwStatsRange,
   rows: InflowwDailyStatsRow[],
-  linked: boolean
+  linked: boolean,
+  performerNames: Map<number, string> = new Map()
 ): Omit<InflowwChatterPerformance, "analytics"> {
   const totals = emptyTotals();
   const byDay = new Map<string, InflowwDailyTrendPoint>();
@@ -389,14 +464,21 @@ function buildPerformanceBase(
     if (!perf) {
       perf = {
         performer_id: row.infloww_performer_id,
-        performer_name:
-          row.performer_name ||
-          (row.infloww_performer_id ? `Creator ${row.infloww_performer_id}` : "All / unknown"),
+        performer_name: performerDisplayName(
+          row.infloww_performer_id,
+          row.performer_name,
+          performerNames
+        ),
         totals: emptyTotals(),
       };
       byPerf.set(row.infloww_performer_id, perf);
     }
-    if (row.performer_name) perf.performer_name = row.performer_name;
+    // Prefer resolved map / synced name over stale fallback
+    perf.performer_name = performerDisplayName(
+      row.infloww_performer_id,
+      row.performer_name,
+      performerNames
+    );
     addTotals(perf.totals, row);
   }
 
@@ -412,7 +494,7 @@ function buildPerformanceBase(
     range,
     totals,
     daily: Array.from(byDay.values()).sort((a, b) => a.ymd.localeCompare(b.ymd)),
-    by_performer: Array.from(byPerf.values()).sort((a, b) => b.totals.sales - a.totals.sales),
+    by_performer: sortByPerformer(Array.from(byPerf.values())),
   };
 }
 
@@ -502,7 +584,9 @@ async function enrichWithAnalytics(params: {
       rebillRetention: rebill_retention,
       compensation: compMap.get(base.user_uuid) ?? null,
       includeRoi,
-      topCreatorName: base.by_performer[0]?.performer_name ?? null,
+      topCreatorName:
+        base.by_performer.find((p) => p.performer_id > 0 && p.totals.sales > 0)
+          ?.performer_name ?? null,
     });
 
     return { ...rest, analytics };
@@ -555,12 +639,15 @@ export async function getChatterInflowwPerformance(
     const base = buildPerformanceBase(link, range, [], false);
     return { ...base, analytics: null };
   }
-  const rows = await queryInflowwDailyStats({
-    userUuids: [link.uuid],
-    startYmd: range.startYmd,
-    endYmd: range.endYmd,
-  });
-  const base = buildPerformanceBase(link, range, rows, true);
+  const [rows, performerNames] = await Promise.all([
+    queryInflowwDailyStats({
+      userUuids: [link.uuid],
+      startYmd: range.startYmd,
+      endYmd: range.endYmd,
+    }),
+    loadPerformerDisplayNameMap(),
+  ]);
+  const base = buildPerformanceBase(link, range, rows, true, performerNames);
   const enriched = await enrichWithAnalytics({
     bases: [{ ...base, _rows: rows }],
     range,
@@ -581,14 +668,17 @@ export async function getAdminInflowwPerformanceReport(
   }
 
   const uuids = users.map((u) => u.uuid);
-  const rows = uuids.length
-    ? await queryInflowwDailyStats({
-        userUuids: uuids,
-        startYmd: range.startYmd,
-        endYmd: range.endYmd,
-        performerId: filters?.performerId,
-      })
-    : [];
+  const [rows, performerNames] = await Promise.all([
+    uuids.length
+      ? queryInflowwDailyStats({
+          userUuids: uuids,
+          startYmd: range.startYmd,
+          endYmd: range.endYmd,
+          performerId: filters?.performerId,
+        })
+      : Promise.resolve([] as InflowwDailyStatsRow[]),
+    loadPerformerDisplayNameMap(),
+  ]);
 
   const byUser = new Map<string, InflowwDailyStatsRow[]>();
   for (const row of rows) {
@@ -599,7 +689,10 @@ export async function getAdminInflowwPerformanceReport(
 
   const bases = users.map((u) => {
     const userRows = byUser.get(u.uuid) ?? [];
-    return { ...buildPerformanceBase(u, range, userRows, true), _rows: userRows };
+    return {
+      ...buildPerformanceBase(u, range, userRows, true, performerNames),
+      _rows: userRows,
+    };
   });
   bases.sort((a, b) => b.totals.sales - a.totals.sales);
 

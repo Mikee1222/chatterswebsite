@@ -282,7 +282,16 @@ function mapCreatorRow(row: unknown, idx: number): InflowwModel {
       nested?.["username"] ??
       `Creator ${idx + 1}`
   );
-  return { id, name };
+  const platformPidRaw =
+    r["platformPid"] ??
+    r["platform_pid"] ??
+    nested?.["platformPid"] ??
+    nested?.["platform_pid"];
+  const platformPid =
+    platformPidRaw != null && String(platformPidRaw).trim() !== ""
+      ? String(platformPidRaw).trim()
+      : undefined;
+  return { id, name, platformPid };
 }
 
 const INFLOWW_MODELS_CACHE_TTL_MS = 15 * 60 * 1000;

@@ -274,15 +274,20 @@ export function computeAvgTipSize(
   };
 }
 
+/** Minimum chatters with real sales before team rank/percentile is meaningful. */
+export const MIN_TEAM_STANDING_PEERS = 3;
+
 export function teamStandingFromRanks(
   sales: number,
   allSales: number[]
 ): TeamStanding | null {
-  if (allSales.length === 0) return null;
-  const sorted = [...allSales].sort((a, b) => b - a);
+  // Only rank among chatters with real data; need ≥3 peers for a meaningful standing.
+  const peers = allSales.filter((s) => Number.isFinite(s) && s > 0);
+  if (peers.length < MIN_TEAM_STANDING_PEERS) return null;
+  const sorted = [...peers].sort((a, b) => b - a);
   const rank = sorted.findIndex((s) => s === sales) + 1 || sorted.length;
   const of = sorted.length;
-  const percentile = of <= 1 ? 100 : Math.round(((of - rank) / (of - 1)) * 100);
+  const percentile = Math.round(((of - rank) / (of - 1)) * 100);
   let label: string;
   if (percentile >= 75) label = "You're among the top performers this period — keep the momentum.";
   else if (percentile >= 40)
@@ -559,8 +564,9 @@ export function deriveChatterAnalytics(input: {
     teamSalesPerMsg,
   });
 
+  // Near-zero hours inflate $/h into absurd values — require ≥1h shifted.
   const revenue_per_hour =
-    shiftHours > 0 ? round2(totals.sales / shiftHours) : null;
+    shiftHours >= 1 ? round2(totals.sales / shiftHours) : null;
 
   return {
     revenue_per_hour,
