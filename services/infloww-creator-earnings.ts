@@ -1,0 +1,862 @@
+/**
+ * Supabase sync for creator-level Infloww data (earnings, marketing, creator-report).
+ * Distinct from employee/chatter `infloww_daily_stats`.
+ *
+ * Matching: Infloww creator ids ≠ modelss.model_id (app-stable `model_*` ids).
+ * We match modelss → Infloww creators by exact creator.id === model_id when numeric,
+ * else by case-insensitive model_name, else by of_user_id === platformPid.
+ */
+
+import { addDaysAthensYmd, athensYmdStartUtcMs, athensYmdEndUtcMs } from "@/lib/airtable-datetime";
+import {
+  EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS,
+  fetchAllCreatorLinkTypes,
+  fetchCreatorChatSummary,
+  fetchCreatorFansCount,
+  fetchCreatorProfileVisitors,
+  fetchCreatorRank,
+  fetchCreatorSubscriberCount,
+  fetchCreatorTransactions,
+  fetchLinkFans,
+  fetchTransactionPerfDetails,
+  getInflowwModels,
+  inflowwReportTodayYmd,
+  InflowwApiError,
+  logInflowwFailure,
+  mergeCreatorDayStats,
+} from "@/lib/infloww-api";
+import { getSupabaseServiceClient } from "@/lib/supabase-server";
+import { listAllModelss } from "@/services/modelss";
+import type {
+  InflowwCreatorDayStats,
+  InflowwCreatorTransaction,
+  InflowwLinkType,
+  InflowwMarketingLink,
+  InflowwModel,
+  InflowwTransactionPerfDetail,
+} from "@/types/infloww";
+import type { ModelRecord } from "@/types";
+
+const LOADING_RESYNC_MIN_MS = 12 * 60 * 60 * 1000;
+
+export type LinkedCreatorModel = {
+  creatorInflowwId: string;
+  platformPid?: string;
+  creatorName: string;
+  modelRecordId: string;
+  modelStableId: string;
+  modelName: string;
+};
+
+export type CreatorSyncSectionResult = {
+  upserted: number;
+  errors: Array<{ creatorId?: string; message: string; status?: number; path?: string }>;
+};
+
+export type CreatorEarningsSyncResult = {
+  startYmd: string;
+  endYmd: string;
+  creatorsTargeted: number;
+  unmatchedModels: number;
+  dailyStats: CreatorSyncSectionResult;
+  transactions: CreatorSyncSectionResult;
+  marketingLinks: CreatorSyncSectionResult;
+  linkFans: CreatorSyncSectionResult;
+};
+
+function n(v: unknown): number {
+  const x = typeof v === "number" ? v : Number(v);
+  return Number.isFinite(x) ? x : 0;
+}
+
+function isoFromMs(ms: number): string | null {
+  if (!ms || ms <= 0) return null;
+  return new Date(ms).toISOString();
+}
+
+/** Match app models to Infloww creators. */
+export function matchModelsToInflowwCreators(
+  models: ModelRecord[],
+  creators: InflowwModel[]
+): { linked: LinkedCreatorModel[]; unmatched: ModelRecord[] } {
+  const byId = new Map(creators.map((c) => [c.id, c]));
+  const byPid = new Map(
+    creators.filter((c) => c.platformPid).map((c) => [String(c.platformPid), c] as const)
+  );
+  const byName = new Map<string, InflowwModel[]>();
+  for (const c of creators) {
+    const k = c.name.trim().toLowerCase();
+    if (!k) continue;
+    const list = byName.get(k) ?? [];
+    list.push(c);
+    byName.set(k, list);
+  }
+
+  const usedCreatorIds = new Set<string>();
+  const linked: LinkedCreatorModel[] = [];
+  const unmatched: ModelRecord[] = [];
+
+  const candidates = models.filter((m) => Boolean(m.model_id?.trim()));
+
+  for (const m of candidates) {
+    const stableId = m.model_id.trim();
+    const ofUid = (m.of_user_id ?? "").trim();
+    const nameKey = (m.model_name ?? "").trim().toLowerCase();
+
+    let creator: InflowwModel | undefined = byId.get(stableId);
+    if (!creator && ofUid) creator = byPid.get(ofUid);
+    if (!creator && nameKey) {
+      const nameMatches = (byName.get(nameKey) ?? []).filter((c) => !usedCreatorIds.has(c.id));
+      if (nameMatches.length === 1) creator = nameMatches[0];
+    }
+
+    if (!creator || usedCreatorIds.has(creator.id)) {
+      unmatched.push(m);
+      continue;
+    }
+    usedCreatorIds.add(creator.id);
+    linked.push({
+      creatorInflowwId: creator.id,
+      platformPid: creator.platformPid,
+      creatorName: creator.name,
+      modelRecordId: m.id,
+      modelStableId: stableId,
+      modelName: m.model_name?.trim() || creator.name,
+    });
+  }
+
+  return { linked, unmatched };
+}
+
+export async function listLinkedCreatorModels(): Promise<{
+  linked: LinkedCreatorModel[];
+  unmatchedCount: number;
+}> {
+  const [models, creators] = await Promise.all([listAllModelss(), getInflowwModels()]);
+  const { linked, unmatched } = matchModelsToInflowwCreators(models, creators);
+  return { linked, unmatchedCount: unmatched.length };
+}
+
+async function upsertCreatorDailyStats(
+  linked: LinkedCreatorModel[],
+  rows: InflowwCreatorDayStats[]
+): Promise<number> {
+  if (!rows.length) return 0;
+  const byCreator = new Map(linked.map((l) => [l.creatorInflowwId, l]));
+  const byPid = new Map(
+    linked.filter((l) => l.platformPid).map((l) => [String(l.platformPid), l] as const)
+  );
+  const now = new Date().toISOString();
+  const payload = rows.map((r) => {
+    const link =
+      byCreator.get(r.creatorId) ??
+      (r.platformPid ? byPid.get(r.platformPid) : undefined);
+    return {
+      creator_infloww_id: link?.creatorInflowwId ?? r.creatorId,
+      model_record_id: link?.modelRecordId ?? null,
+      model_stable_id: link?.modelStableId ?? null,
+      model_name: link?.modelName ?? null,
+      date: r.date,
+      performance_rank: r.performanceRank,
+      profile_visitors: r.profileVisitors,
+      guest_visitors: r.guestVisitors,
+      logged_in_visitors: r.loggedInVisitors,
+      active_fans: r.activeFans,
+      expired_fans: r.expiredFans,
+      new_subscribers: r.newSubscribers,
+      renewals: r.renewals,
+      messages_sent: r.messagesSent,
+      ppvs_sent: r.ppvsSent,
+      fans_chatted: r.fansChatted,
+      reply_time_ms: r.replyTimeMs,
+      synced_at: now,
+      updated_at: now,
+    };
+  });
+
+  const sb = getSupabaseServiceClient();
+  const { error, count } = await sb.from("infloww_creator_daily_stats").upsert(payload, {
+    onConflict: "creator_infloww_id,date",
+    count: "exact",
+  });
+  if (error) throw new Error(`upsert infloww_creator_daily_stats: ${error.message}`);
+  return count ?? payload.length;
+}
+
+function txUpsertPayload(
+  link: LinkedCreatorModel,
+  tx: InflowwCreatorTransaction,
+  perf?: InflowwTransactionPerfDetail,
+  opts?: { markLoadingSync?: boolean }
+) {
+  const now = new Date().toISOString();
+  const status = (perf?.status ?? tx.status ?? "").toLowerCase() || null;
+  return {
+    transaction_id: tx.transactionId,
+    infloww_row_id: tx.inflowwRowId ?? perf?.inflowwRowId ?? null,
+    creator_infloww_id: link.creatorInflowwId,
+    model_record_id: link.modelRecordId,
+    model_stable_id: link.modelStableId,
+    platform_pid: tx.platformPid ?? perf?.platformPid ?? link.platformPid ?? null,
+    fan_id: tx.fanId ?? perf?.fanId ?? null,
+    fan_name: tx.fanName ?? perf?.fanName ?? null,
+    created_time: isoFromMs(tx.createdTimeMs || perf?.createdTimeMs || 0),
+    type: tx.type ?? perf?.type ?? null,
+    tip_source: tx.tipSource ?? perf?.tipSource ?? null,
+    status,
+    amount: tx.amount || perf?.amount || 0,
+    fee: tx.fee || perf?.fee || 0,
+    net: tx.net || perf?.net || 0,
+    currency: tx.currency || perf?.currency || "USD",
+    sales_rule: perf?.salesRule ?? null,
+    attribute_employee_id: perf?.attributeEmployeeId ?? null,
+    sales_amount: perf?.salesAmount ?? null,
+    last_loading_sync_at:
+      opts?.markLoadingSync || status === "loading" ? now : undefined,
+    synced_at: now,
+    updated_at: now,
+  };
+}
+
+async function upsertTransactions(
+  link: LinkedCreatorModel,
+  txs: InflowwCreatorTransaction[],
+  perfByTxId: Map<string, InflowwTransactionPerfDetail>
+): Promise<number> {
+  if (!txs.length && !perfByTxId.size) return 0;
+  const byId = new Map(txs.map((t) => [t.transactionId, t]));
+  for (const [id, p] of perfByTxId) {
+    if (!byId.has(id)) {
+      byId.set(id, {
+        transactionId: p.transactionId,
+        inflowwRowId: p.inflowwRowId,
+        creatorId: p.creatorId,
+        platformPid: p.platformPid,
+        fanId: p.fanId,
+        fanName: p.fanName,
+        createdTimeMs: p.createdTimeMs,
+        type: p.type,
+        tipSource: p.tipSource,
+        status: p.status,
+        amount: p.amount,
+        fee: p.fee,
+        net: p.net,
+        currency: p.currency,
+      });
+    }
+  }
+  const payload = [...byId.values()].map((tx) =>
+    txUpsertPayload(link, tx, perfByTxId.get(tx.transactionId), { markLoadingSync: true })
+  );
+  // Strip undefined last_loading_sync_at for done rows we don't want to overwrite incorrectly —
+  // use explicit null/omit: supabase prefers omitting keys we don't want to clear.
+  const cleaned = payload.map((row) => {
+    const out = { ...row };
+    if (out.last_loading_sync_at === undefined) delete (out as { last_loading_sync_at?: string }).last_loading_sync_at;
+    return out;
+  });
+
+  const sb = getSupabaseServiceClient();
+  const { error, count } = await sb.from("infloww_transactions").upsert(cleaned, {
+    onConflict: "transaction_id",
+    count: "exact",
+  });
+  if (error) throw new Error(`upsert infloww_transactions: ${error.message}`);
+  return count ?? cleaned.length;
+}
+
+async function upsertMarketingLinks(
+  link: LinkedCreatorModel,
+  links: InflowwMarketingLink[]
+): Promise<Map<string, string>> {
+  /** infloww_link_id → uuid */
+  const idMap = new Map<string, string>();
+  if (!links.length) return idMap;
+  const now = new Date().toISOString();
+  const payload = links.map((l) => ({
+    model_id: link.modelRecordId,
+    creator_infloww_id: link.creatorInflowwId,
+    infloww_link_id: l.linkId,
+    link_type: l.linkType,
+    message: l.message ?? null,
+    campaign_type: l.campaignType ?? null,
+    sub_count: l.subCount,
+    sub_limit: l.subLimit,
+    sub_duration: l.subDuration,
+    discount: l.discount,
+    finished_flag: l.finishedFlag,
+    earnings_gross: l.earningsGross,
+    earnings_net: l.earningsNet,
+    paying_fans_count: l.payingFansCount,
+    currency: l.currency,
+    link_created_time: isoFromMs(l.createdTimeMs),
+    expired_time: l.expiredTimeMs ? isoFromMs(l.expiredTimeMs) : null,
+    link_updated_time: l.updatedTimeMs ? isoFromMs(l.updatedTimeMs) : null,
+    synced_at: now,
+    updated_at: now,
+  }));
+
+  const sb = getSupabaseServiceClient();
+  const { data, error } = await sb
+    .from("infloww_marketing_links")
+    .upsert(payload, { onConflict: "model_id,infloww_link_id" })
+    .select("id, infloww_link_id");
+  if (error) throw new Error(`upsert infloww_marketing_links: ${error.message}`);
+  for (const row of data ?? []) {
+    idMap.set(String(row.infloww_link_id), String(row.id));
+  }
+  return idMap;
+}
+
+async function upsertLinkFans(
+  link: LinkedCreatorModel,
+  linkType: InflowwLinkType,
+  marketingLinkUuidByInflowwId: Map<string, string>,
+  fansByLinkId: Map<string, Awaited<ReturnType<typeof fetchLinkFans>>>
+): Promise<number> {
+  const now = new Date().toISOString();
+  const payload: Record<string, unknown>[] = [];
+  for (const [linkId, fans] of fansByLinkId) {
+    for (const f of fans) {
+      payload.push({
+        link_id: linkId,
+        marketing_link_uuid: marketingLinkUuidByInflowwId.get(linkId) ?? null,
+        creator_infloww_id: link.creatorInflowwId,
+        model_id: link.modelRecordId,
+        fan_id: f.fanId,
+        fan_name: f.fanName ?? null,
+        subscription_earning_gross: f.subscriptionEarningGross,
+        subscription_earning_net: f.subscriptionEarningNet,
+        posts_earning_gross: f.postsEarningGross,
+        posts_earning_net: f.postsEarningNet,
+        messages_earning_gross: f.messagesEarningGross,
+        messages_earning_net: f.messagesEarningNet,
+        streams_earning_gross: f.streamsEarningGross,
+        streams_earning_net: f.streamsEarningNet,
+        tips_earning_gross: f.tipsEarningGross,
+        tips_earning_net: f.tipsEarningNet,
+        currency: f.currency,
+        subscribed_time: f.subscribedTimeMs ? isoFromMs(f.subscribedTimeMs) : null,
+        synced_at: now,
+        updated_at: now,
+      });
+    }
+  }
+  void linkType;
+  if (!payload.length) return 0;
+  const sb = getSupabaseServiceClient();
+  const { error, count } = await sb.from("infloww_link_fans").upsert(payload, {
+    onConflict: "link_id,fan_id",
+    count: "exact",
+  });
+  if (error) throw new Error(`upsert infloww_link_fans: ${error.message}`);
+  return count ?? payload.length;
+}
+
+async function syncCreatorReportSection(
+  linked: LinkedCreatorModel[],
+  startYmd: string,
+  endYmd: string
+): Promise<CreatorSyncSectionResult> {
+  const result: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+  if (!linked.length) return result;
+  const creatorIds = linked.map((l) => l.creatorInflowwId);
+  const creatorIdByPlatformPid = new Map<string, string>();
+  for (const l of linked) {
+    if (l.platformPid) creatorIdByPlatformPid.set(l.platformPid, l.creatorInflowwId);
+  }
+
+  try {
+    const [ranks, visitors, fans, subscribers, chat] = await Promise.all([
+      fetchCreatorRank({ creatorIds, startYmd, endYmd }),
+      fetchCreatorProfileVisitors({ creatorIds, startYmd, endYmd }),
+      fetchCreatorFansCount({ creatorIds, startYmd, endYmd }),
+      fetchCreatorSubscriberCount({ creatorIds, startYmd, endYmd }),
+      fetchCreatorChatSummary({ creatorIds, startYmd, endYmd, dayByDay: true }),
+    ]);
+    const merged = mergeCreatorDayStats({
+      creatorIdByPlatformPid,
+      ranks,
+      visitors,
+      fans,
+      subscribers,
+      chat,
+    });
+    result.upserted = await upsertCreatorDailyStats(linked, merged);
+  } catch (err) {
+    logInflowwFailure("syncCreatorReportSection", err);
+    result.errors.push({
+      message: err instanceof Error ? err.message : String(err),
+      status: err instanceof InflowwApiError ? err.status : undefined,
+      path: err instanceof InflowwApiError ? err.path : undefined,
+    });
+  }
+  return result;
+}
+
+async function syncTransactionsSection(
+  linked: LinkedCreatorModel[],
+  startYmd: string,
+  endYmd: string
+): Promise<CreatorSyncSectionResult> {
+  const result: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+  let startMs = athensYmdStartUtcMs(startYmd);
+  let endMs = athensYmdEndUtcMs(endYmd);
+  const safeEnd = Date.now() - 2000;
+  if (endMs > safeEnd) endMs = safeEnd;
+  if (endMs < startMs) startMs = endMs;
+
+  for (const link of linked) {
+    try {
+      const [txs, perf] = await Promise.all([
+        fetchCreatorTransactions({
+          creatorId: link.creatorInflowwId,
+          startMs,
+          endMs,
+        }),
+        fetchTransactionPerfDetails({
+          creatorId: link.creatorInflowwId,
+          startYmd,
+          endYmd,
+        }),
+      ]);
+      const perfByTxId = new Map(perf.map((p) => [p.transactionId, p]));
+      result.upserted += await upsertTransactions(link, txs, perfByTxId);
+    } catch (err) {
+      logInflowwFailure("syncTransactionsSection", err, { creatorId: link.creatorInflowwId });
+      result.errors.push({
+        creatorId: link.creatorInflowwId,
+        message: err instanceof Error ? err.message : String(err),
+        status: err instanceof InflowwApiError ? err.status : undefined,
+        path: err instanceof InflowwApiError ? err.path : undefined,
+      });
+    }
+  }
+
+  // Re-sync loading transactions older than ~12h (status may have resolved).
+  try {
+    const sb = getSupabaseServiceClient();
+    const cutoff = new Date(Date.now() - LOADING_RESYNC_MIN_MS).toISOString();
+    const { data: loadingRows, error } = await sb
+      .from("infloww_transactions")
+      .select("transaction_id, creator_infloww_id, created_time, last_loading_sync_at")
+      .eq("status", "loading")
+      .or(`last_loading_sync_at.is.null,last_loading_sync_at.lt."${cutoff}"`)
+      .limit(200);
+    if (error) throw new Error(error.message);
+    const byCreator = new Map<string, typeof loadingRows>();
+    for (const row of loadingRows ?? []) {
+      const cid = String(row.creator_infloww_id);
+      const list = byCreator.get(cid) ?? [];
+      list.push(row);
+      byCreator.set(cid, list);
+    }
+    for (const [creatorId, rows] of byCreator) {
+      const link = linked.find((l) => l.creatorInflowwId === creatorId);
+      if (!link || !rows?.length) continue;
+      const times = rows
+        .map((r) => (r.created_time ? Date.parse(String(r.created_time)) : NaN))
+        .filter((t) => Number.isFinite(t)) as number[];
+      if (!times.length) continue;
+      const minMs = Math.min(...times) - 60_000;
+      const maxMs = Math.min(Math.max(...times) + 60_000, Date.now() - 2000);
+      try {
+        const [txs, perf] = await Promise.all([
+          fetchCreatorTransactions({ creatorId, startMs: minMs, endMs: maxMs }),
+          fetchTransactionPerfDetails({
+            creatorId,
+            startYmd: new Date(minMs).toISOString().slice(0, 10),
+            endYmd: new Date(maxMs).toISOString().slice(0, 10),
+          }),
+        ]);
+        const want = new Set(rows.map((r) => String(r.transaction_id)));
+        const filteredTxs = txs.filter((t) => want.has(t.transactionId));
+        const perfByTxId = new Map(
+          perf.filter((p) => want.has(p.transactionId)).map((p) => [p.transactionId, p])
+        );
+        result.upserted += await upsertTransactions(link, filteredTxs, perfByTxId);
+      } catch (err) {
+        logInflowwFailure("resyncLoadingTransactions", err, { creatorId });
+        result.errors.push({
+          creatorId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  } catch (err) {
+    logInflowwFailure("loadingTransactionResync", err);
+    result.errors.push({
+      message: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return result;
+}
+
+async function syncMarketingSection(
+  linked: LinkedCreatorModel[]
+): Promise<{ links: CreatorSyncSectionResult; fans: CreatorSyncSectionResult }> {
+  const linksResult: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+  const fansResult: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+
+  for (const link of linked) {
+    try {
+      const allLinks = await fetchAllCreatorLinkTypes(link.creatorInflowwId);
+      const idMap = await upsertMarketingLinks(link, allLinks);
+      linksResult.upserted += allLinks.length;
+
+      const fansByLinkId = new Map<string, Awaited<ReturnType<typeof fetchLinkFans>>>();
+      for (const ml of allLinks) {
+        // Prefer links with activity; still sync empty for completeness on small sets.
+        try {
+          const fans = await fetchLinkFans({
+            creatorId: link.creatorInflowwId,
+            linkId: ml.linkId,
+            linkType: ml.linkType,
+          });
+          if (fans.length) fansByLinkId.set(ml.linkId, fans);
+        } catch (err) {
+          logInflowwFailure("fetchLinkFans", err, { linkId: ml.linkId });
+          fansResult.errors.push({
+            creatorId: link.creatorInflowwId,
+            message: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }
+      fansResult.upserted += await upsertLinkFans(link, "CAMPAIGN", idMap, fansByLinkId);
+    } catch (err) {
+      logInflowwFailure("syncMarketingSection", err, { creatorId: link.creatorInflowwId });
+      linksResult.errors.push({
+        creatorId: link.creatorInflowwId,
+        message: err instanceof Error ? err.message : String(err),
+        status: err instanceof InflowwApiError ? err.status : undefined,
+        path: err instanceof InflowwApiError ? err.path : undefined,
+      });
+    }
+  }
+
+  return { links: linksResult, fans: fansResult };
+}
+
+/**
+ * Sync creator-level Infloww data for all matched modelss ↔ Infloww creators.
+ * Defaults to today+yesterday (same window as employee cron).
+ */
+export async function syncInflowwCreatorEarnings(params?: {
+  startYmd?: string;
+  endYmd?: string;
+  /** Skip marketing links/fans (useful for focused backfills). */
+  skipMarketing?: boolean;
+  /** Skip transactions + transaction-perf. */
+  skipTransactions?: boolean;
+  /** Skip creator-report daily stats. */
+  skipDailyStats?: boolean;
+}): Promise<CreatorEarningsSyncResult> {
+  const today = inflowwReportTodayYmd();
+  const defaultDay = addDaysAthensYmd(today, -1);
+  let startYmd = (params?.startYmd ?? defaultDay).slice(0, 10);
+  let endYmd = (params?.endYmd ?? today).slice(0, 10);
+  if (startYmd > endYmd) {
+    const t = startYmd;
+    startYmd = endYmd;
+    endYmd = t;
+  }
+  const earliest = addDaysAthensYmd(today, -(EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS - 1));
+  if (startYmd < earliest) startYmd = earliest;
+  if (endYmd > today) endYmd = today;
+
+  const { linked, unmatchedCount } = await listLinkedCreatorModels();
+
+  const empty: CreatorSyncSectionResult = { upserted: 0, errors: [] };
+  const dailyStats = params?.skipDailyStats
+    ? empty
+    : await syncCreatorReportSection(linked, startYmd, endYmd);
+  const transactions = params?.skipTransactions
+    ? empty
+    : await syncTransactionsSection(linked, startYmd, endYmd);
+  const marketing = params?.skipMarketing
+    ? { links: empty, fans: empty }
+    : await syncMarketingSection(linked);
+
+  return {
+    startYmd,
+    endYmd,
+    creatorsTargeted: linked.length,
+    unmatchedModels: unmatchedCount,
+    dailyStats,
+    transactions,
+    marketingLinks: marketing.links,
+    linkFans: marketing.fans,
+  };
+}
+
+export type CreatorDailyStatsRow = {
+  creator_infloww_id: string;
+  model_record_id: string | null;
+  model_stable_id: string | null;
+  model_name: string | null;
+  date: string;
+  performance_rank: number | null;
+  profile_visitors: number;
+  guest_visitors: number;
+  logged_in_visitors: number;
+  active_fans: number;
+  expired_fans: number;
+  new_subscribers: number;
+  renewals: number;
+  messages_sent: number;
+  ppvs_sent: number;
+  fans_chatted: number;
+  reply_time_ms: number | null;
+};
+
+export async function listCreatorDailyStats(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+}): Promise<CreatorDailyStatsRow[]> {
+  const sb = getSupabaseServiceClient();
+  let q = sb
+    .from("infloww_creator_daily_stats")
+    .select(
+      "creator_infloww_id, model_record_id, model_stable_id, model_name, date, performance_rank, profile_visitors, guest_visitors, logged_in_visitors, active_fans, expired_fans, new_subscribers, renewals, messages_sent, ppvs_sent, fans_chatted, reply_time_ms"
+    )
+    .gte("date", params.startYmd)
+    .lte("date", params.endYmd)
+    .order("date", { ascending: true });
+  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+  const { data, error } = await q;
+  if (error) throw new Error(`listCreatorDailyStats: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    creator_infloww_id: String(row.creator_infloww_id),
+    model_record_id: row.model_record_id ? String(row.model_record_id) : null,
+    model_stable_id: row.model_stable_id ? String(row.model_stable_id) : null,
+    model_name: row.model_name ? String(row.model_name) : null,
+    date: String(row.date).slice(0, 10),
+    performance_rank: row.performance_rank == null ? null : n(row.performance_rank),
+    profile_visitors: Math.round(n(row.profile_visitors)),
+    guest_visitors: Math.round(n(row.guest_visitors)),
+    logged_in_visitors: Math.round(n(row.logged_in_visitors)),
+    active_fans: Math.round(n(row.active_fans)),
+    expired_fans: Math.round(n(row.expired_fans)),
+    new_subscribers: Math.round(n(row.new_subscribers)),
+    renewals: Math.round(n(row.renewals)),
+    messages_sent: Math.round(n(row.messages_sent)),
+    ppvs_sent: Math.round(n(row.ppvs_sent)),
+    fans_chatted: Math.round(n(row.fans_chatted)),
+    reply_time_ms: row.reply_time_ms == null ? null : n(row.reply_time_ms),
+  }));
+}
+
+export type CreatorTransactionRow = {
+  transaction_id: string;
+  creator_infloww_id: string;
+  model_record_id: string | null;
+  model_name?: string | null;
+  fan_id: string | null;
+  fan_name: string | null;
+  created_time: string | null;
+  type: string | null;
+  status: string | null;
+  amount: number;
+  fee: number;
+  net: number;
+  sales_rule: string | null;
+  attribute_employee_id: string | null;
+  sales_amount: number | null;
+};
+
+export async function listCreatorTransactions(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+  type?: string;
+  status?: string;
+  search?: string;
+  limit?: number;
+}): Promise<CreatorTransactionRow[]> {
+  const sb = getSupabaseServiceClient();
+  const startIso = `${params.startYmd}T00:00:00.000Z`;
+  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  let q = sb
+    .from("infloww_transactions")
+    .select(
+      "transaction_id, creator_infloww_id, model_record_id, fan_id, fan_name, created_time, type, status, amount, fee, net, sales_rule, attribute_employee_id, sales_amount"
+    )
+    .gte("created_time", startIso)
+    .lte("created_time", endIso)
+    .order("created_time", { ascending: false })
+    .limit(params.limit ?? 500);
+  if (params.modelRecordId) q = q.eq("model_record_id", params.modelRecordId);
+  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+  if (params.type) q = q.eq("type", params.type);
+  if (params.status) q = q.eq("status", params.status);
+  if (params.search?.trim()) {
+    const s = params.search.trim();
+    q = q.or(`fan_name.ilike.%${s}%,fan_id.ilike.%${s}%,transaction_id.ilike.%${s}%`);
+  }
+  const { data, error } = await q;
+  if (error) throw new Error(`listCreatorTransactions: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    transaction_id: String(row.transaction_id),
+    creator_infloww_id: String(row.creator_infloww_id),
+    model_record_id: row.model_record_id ? String(row.model_record_id) : null,
+    fan_id: row.fan_id ? String(row.fan_id) : null,
+    fan_name: row.fan_name ? String(row.fan_name) : null,
+    created_time: row.created_time ? String(row.created_time) : null,
+    type: row.type ? String(row.type) : null,
+    status: row.status ? String(row.status) : null,
+    amount: n(row.amount),
+    fee: n(row.fee),
+    net: n(row.net),
+    sales_rule: row.sales_rule ? String(row.sales_rule) : null,
+    attribute_employee_id: row.attribute_employee_id ? String(row.attribute_employee_id) : null,
+    sales_amount: row.sales_amount == null ? null : n(row.sales_amount),
+  }));
+}
+
+export type MarketingLinkRow = {
+  id: string;
+  model_id: string;
+  creator_infloww_id: string;
+  infloww_link_id: string;
+  link_type: string;
+  message: string | null;
+  sub_count: number;
+  paying_fans_count: number;
+  earnings_gross: number;
+  earnings_net: number;
+  finished_flag: boolean;
+  link_created_time: string | null;
+  expired_time: string | null;
+};
+
+export async function listMarketingLinks(params: {
+  modelRecordId?: string;
+  creatorInflowwId?: string;
+  linkType?: string;
+}): Promise<MarketingLinkRow[]> {
+  const sb = getSupabaseServiceClient();
+  let q = sb
+    .from("infloww_marketing_links")
+    .select(
+      "id, model_id, creator_infloww_id, infloww_link_id, link_type, message, sub_count, paying_fans_count, earnings_gross, earnings_net, finished_flag, link_created_time, expired_time"
+    )
+    .order("earnings_gross", { ascending: false })
+    .limit(500);
+  if (params.modelRecordId) q = q.eq("model_id", params.modelRecordId);
+  if (params.creatorInflowwId) q = q.eq("creator_infloww_id", params.creatorInflowwId);
+  if (params.linkType) q = q.eq("link_type", params.linkType);
+  const { data, error } = await q;
+  if (error) throw new Error(`listMarketingLinks: ${error.message}`);
+  return (data ?? []).map((row) => ({
+    id: String(row.id),
+    model_id: String(row.model_id),
+    creator_infloww_id: String(row.creator_infloww_id),
+    infloww_link_id: String(row.infloww_link_id),
+    link_type: String(row.link_type),
+    message: row.message ? String(row.message) : null,
+    sub_count: Math.round(n(row.sub_count)),
+    paying_fans_count: Math.round(n(row.paying_fans_count)),
+    earnings_gross: n(row.earnings_gross),
+    earnings_net: n(row.earnings_net),
+    finished_flag: row.finished_flag === true,
+    link_created_time: row.link_created_time ? String(row.link_created_time) : null,
+    expired_time: row.expired_time ? String(row.expired_time) : null,
+  }));
+}
+
+/**
+ * Cross-check transaction-perf attributed sales vs employee-report sales by day.
+ * Compares sum(sales_amount) for attribute_employee_id per Athens day against
+ * sum(infloww_daily_stats.sales) for the matching infloww_employee_id.
+ */
+export async function compareTransactionPerfVsEmployeeSales(params: {
+  startYmd: string;
+  endYmd: string;
+  modelRecordId?: string;
+}): Promise<
+  Array<{
+    date: string;
+    infloww_employee_id: string;
+    perf_sales: number;
+    employee_report_sales: number;
+    delta: number;
+  }>
+> {
+  const sb = getSupabaseServiceClient();
+  const startIso = `${params.startYmd}T00:00:00.000Z`;
+  const endIso = `${params.endYmd}T23:59:59.999Z`;
+  let txQ = sb
+    .from("infloww_transactions")
+    .select("created_time, attribute_employee_id, sales_amount")
+    .gte("created_time", startIso)
+    .lte("created_time", endIso)
+    .not("attribute_employee_id", "is", null);
+  if (params.modelRecordId) txQ = txQ.eq("model_record_id", params.modelRecordId);
+  const { data: txs, error: txErr } = await txQ;
+  if (txErr) throw new Error(`compare tx: ${txErr.message}`);
+
+  const perfByKey = new Map<string, number>();
+  for (const row of txs ?? []) {
+    const emp = String(row.attribute_employee_id ?? "").trim();
+    if (!emp) continue;
+    const ms = row.created_time ? Date.parse(String(row.created_time)) : NaN;
+    if (!Number.isFinite(ms)) continue;
+    const date = new Date(ms).toISOString().slice(0, 10);
+    const k = `${emp}|${date}`;
+    perfByKey.set(k, (perfByKey.get(k) ?? 0) + n(row.sales_amount));
+  }
+
+  const empIds = [
+    ...new Set([...perfByKey.keys()].map((k) => k.split("|")[0]!).filter(Boolean)),
+  ];
+  if (!empIds.length) return [];
+
+  // infloww_employee_id is bigint; attribute ids from Infloww are large numeric strings
+  const { data: stats, error: stErr } = await sb
+    .from("infloww_daily_stats")
+    .select("infloww_employee_id, date, sales")
+    .gte("date", params.startYmd)
+    .lte("date", params.endYmd);
+  if (stErr) throw new Error(`compare employee stats: ${stErr.message}`);
+
+  const empByKey = new Map<string, number>();
+  for (const row of stats ?? []) {
+    const emp = String(row.infloww_employee_id);
+    const date = String(row.date).slice(0, 10);
+    const k = `${emp}|${date}`;
+    empByKey.set(k, (empByKey.get(k) ?? 0) + n(row.sales));
+  }
+
+  const out: Array<{
+    date: string;
+    infloww_employee_id: string;
+    perf_sales: number;
+    employee_report_sales: number;
+    delta: number;
+  }> = [];
+  const keys = new Set([...perfByKey.keys(), ...empByKey.keys()]);
+  for (const k of keys) {
+    const [emp, date] = k.split("|");
+    if (!emp || !date) continue;
+    if (empIds.length && !empIds.includes(emp) && !perfByKey.has(k)) continue;
+    const perf = perfByKey.get(k) ?? 0;
+    const empSales = empByKey.get(k) ?? 0;
+    const delta = perf - empSales;
+    if (Math.abs(delta) < 0.01 && perf === 0 && empSales === 0) continue;
+    out.push({
+      date,
+      infloww_employee_id: emp,
+      perf_sales: perf,
+      employee_report_sales: empSales,
+      delta,
+    });
+  }
+  return out
+    .filter((r) => Math.abs(r.delta) >= 0.5)
+    .sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+}

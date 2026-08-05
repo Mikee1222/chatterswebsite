@@ -25,3 +25,12 @@ deploys (seen 2026-08-05 in `7e3efb2`; intentionally restored to daily in
 external cron.
 
 Same-day window: route always syncs today+yesterday only (efficient).
+
+## Creator earnings (same cron)
+
+The same `/api/cron/sync-infloww-stats` route also syncs creator-level data
+(transactions, creator-report, marketing links) for matched modelss ↔ Infloww
+creators. Keep the Vercel schedule **daily**. Links/linkfans have 2–4h Infloww
+delay — daily is fine; more frequent needs the GHA/external path above.
+
+See `docs/infloww-creator-earnings.md`.

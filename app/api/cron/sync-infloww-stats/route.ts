@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { addDaysAthensYmd } from "@/lib/airtable-datetime";
 import { inflowwReportTodayYmd } from "@/lib/infloww-api";
+import { syncInflowwCreatorEarnings } from "@/services/infloww-creator-earnings";
 import { syncInflowwDailyStats } from "@/services/infloww-daily-stats";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
-/** Allow multi-employee today+yesterday sync within Vercel limits. */
+/** Employee + creator sync within Vercel limits. */
 export const maxDuration = 300;
 
 function isCronAuthorized(request: Request): boolean {
@@ -20,12 +21,14 @@ function isCronAuthorized(request: Request): boolean {
 
 /**
  * GET /api/cron/sync-infloww-stats
- * Syncs Infloww-safe today + previous day for all users with infloww_employee_id.
- * Cadence: hourly via GitHub Actions (Hobby cannot use vercel.json hourly crons);
- * Vercel keeps a daily 03:15 UTC fallback. Auth: Bearer / x-cron-secret CRON_SECRET.
- * endTime uses min(Athens today, UTC today) so Infloww never sees a "future"
- * calendar day across the Athens/UTC boundary. Upserts on
- * (user_id, infloww_performer_id, date) so same-day re-runs overwrite.
+ * Syncs Infloww-safe today + previous day for:
+ * 1) Employee daily stats (users with infloww_employee_id)
+ * 2) Creator earnings (modelss matched to Infloww creators — transactions,
+ *    creator-report, marketing links/fans; re-syncs status=loading txs)
+ *
+ * Cadence: daily via vercel.json (Hobby max). For more frequent runs use the
+ * GitHub Actions / external cron path — see docs/infloww-employee-performance.md
+ * and docs/infloww-creator-earnings.md. Do NOT set hourly in vercel.json.
  */
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {
@@ -34,19 +37,35 @@ export async function GET(request: Request) {
   try {
     const today = inflowwReportTodayYmd();
     const yesterday = addDaysAthensYmd(today, -1);
-    const result = await syncInflowwDailyStats({
-      startYmd: yesterday,
-      endYmd: today,
-    });
-    if (result.errors.length > 0) {
+    const range = { startYmd: yesterday, endYmd: today };
+
+    const employee = await syncInflowwDailyStats(range);
+    if (employee.errors.length > 0) {
       console.error("[cron/sync-infloww-stats] employee errors", {
-        count: result.errors.length,
-        errors: result.errors.slice(0, 20),
+        count: employee.errors.length,
+        errors: employee.errors.slice(0, 20),
       });
     }
+
+    const creator = await syncInflowwCreatorEarnings(range);
+    const creatorErrorCount =
+      creator.dailyStats.errors.length +
+      creator.transactions.errors.length +
+      creator.marketingLinks.errors.length +
+      creator.linkFans.errors.length;
+    if (creatorErrorCount > 0) {
+      console.error("[cron/sync-infloww-stats] creator errors", {
+        count: creatorErrorCount,
+        dailyStats: creator.dailyStats.errors.slice(0, 10),
+        transactions: creator.transactions.errors.slice(0, 10),
+        marketing: creator.marketingLinks.errors.slice(0, 10),
+      });
+    }
+
     return NextResponse.json({
-      success: result.errors.length === 0,
-      ...result,
+      success: employee.errors.length === 0 && creatorErrorCount === 0,
+      employee,
+      creator,
     });
   } catch (err) {
     console.error("[cron/sync-infloww-stats]", err);

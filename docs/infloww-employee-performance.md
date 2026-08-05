@@ -34,6 +34,10 @@ Sync reported `rowsUpserted: 1246` (exact upsert count), `errors: 0`. ~12 API re
 (efficient; same window on every run). Upsert key
 `(user_id, infloww_performer_id, date)` overwrites same-day rows.
 
+The same cron also runs **creator-level** earnings sync (transactions, creator-report,
+marketing links) for matched models — see `docs/infloww-creator-earnings.md`.
+Keep `vercel.json` **daily**; more frequent needs GHA/external (Hobby limit).
+
 “Safe today” = `min(Athens YMD, UTC YMD)` via `inflowwReportTodayYmd()` — Athens
 can already be the next calendar day while UTC (and Infloww’s “past or present”
 check) is still the previous day.

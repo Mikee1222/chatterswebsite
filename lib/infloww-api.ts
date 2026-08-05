@@ -1529,3 +1529,604 @@ export async function fetchEmployeeDayStats(params: {
 }
 
 export { EMPLOYEE_REPORT_MAX_DAYS, EMPLOYEE_REPORT_MAX_LOOKBACK_DAYS };
+
+// ---------------------------------------------------------------------------
+// Creator-level reports — transactions, transaction-perf, links, creator-report
+// ---------------------------------------------------------------------------
+
+const CREATOR_REPORT_MAX_CREATOR_IDS = 10;
+const CREATOR_LINK_TYPES: import("@/types/infloww").InflowwLinkType[] = [
+  "CAMPAIGN",
+  "TRIAL",
+  "TRACKING",
+];
+
+/** Cents → dollars for creator transaction / link money fields. */
+function centsToDollars(v: unknown): number {
+  if (v == null || v === "") return 0;
+  const n = typeof v === "number" ? v : Number.parseFloat(String(v).replace(/,/g, ""));
+  if (!Number.isFinite(n)) return 0;
+  return n / 100;
+}
+
+function msField(r: Record<string, unknown>, keys: string[]): number {
+  for (const k of keys) {
+    const ms = coerceScalarToUnixMs(r[k]);
+    if (ms > 0) return ms;
+  }
+  return 0;
+}
+
+function assertCreatorReportLookback(startYmd: string, endYmd: string): void {
+  assertEmployeeReportLookback(startYmd, endYmd);
+}
+
+async function paginateCreatorList(
+  path: string,
+  baseParams: URLSearchParams,
+  opts?: { maxPages?: number }
+): Promise<unknown[]> {
+  const out: unknown[] = [];
+  let cursor: string | undefined;
+  let pages = 0;
+  const MAX_PAGES = opts?.maxPages ?? 200;
+  do {
+    pages += 1;
+    if (pages > MAX_PAGES) {
+      throw new InflowwApiError(`Infloww ${path}: exceeded max pagination pages (${MAX_PAGES}).`, 500);
+    }
+    const qp = new URLSearchParams(baseParams);
+    if (cursor) qp.set("cursor", cursor);
+    const payload = await inflowwFetchJson<unknown>(path, qp);
+    if (payload && typeof payload === "object") {
+      const errs = (payload as Record<string, unknown>)["errors"];
+      if (Array.isArray(errs) && errs.length > 0) {
+        const summary = errs
+          .slice(0, 3)
+          .map((e) => (typeof e === "string" ? e : JSON.stringify(e)))
+          .join("; ");
+        throw new InflowwApiError(`Infloww ${path} errors: ${summary}`, 502, { path });
+      }
+    }
+    const rows = pickArray(payload);
+    inflowwDebug("creator-api page", {
+      path,
+      page: pages,
+      rowCount: rows.length,
+      hasMore: hasMoreFrom(payload),
+    });
+    out.push(...rows);
+    const more = hasMoreFrom(payload);
+    const next = cursorFromPayload(payload) ?? nextCursorFrom(payload);
+    if (more) {
+      if (!next) {
+        throw new InflowwApiError(`Infloww ${path}: hasMore=true but no cursor returned.`, 502);
+      }
+      cursor = next;
+    } else if (next && rows.length > 0 && !hasMoreFrom(payload)) {
+      // Some endpoints return cursor without hasMore
+      cursor = undefined;
+    } else {
+      cursor = undefined;
+    }
+    if (rows.length === 0) break;
+  } while (cursor);
+  return out;
+}
+
+function mapCreatorTransaction(
+  row: unknown,
+  creatorId: string
+): import("@/types/infloww").InflowwCreatorTransaction {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const transactionId = String(
+    r["transactionId"] ?? r["transaction_id"] ?? r["id"] ?? `${creatorId}-${msField(r, ["createdTime"])}`
+  );
+  return {
+    transactionId,
+    inflowwRowId: strField(r, ["id"]),
+    creatorId,
+    platformPid: strField(r, ["platformPid", "platform_pid"]),
+    fanId: strField(r, ["fanId", "fan_id"]),
+    fanName: strField(r, ["fanName", "fan_name"]),
+    createdTimeMs: msField(r, ["createdTime", "created_time", "timestamp"]),
+    type: strField(r, ["type"]),
+    tipSource: strField(r, ["tipSource", "tip_source"]),
+    status: strField(r, ["status"]),
+    amount: centsToDollars(r["amount"]),
+    fee: centsToDollars(r["fee"]),
+    net: centsToDollars(r["net"]),
+    currency: strField(r, ["currency"]) ?? "USD",
+  };
+}
+
+function mapTransactionPerf(
+  row: unknown,
+  creatorId: string
+): import("@/types/infloww").InflowwTransactionPerfDetail {
+  const r = (row ?? {}) as Record<string, unknown>;
+  const base = mapCreatorTransaction(row, creatorId);
+  return {
+    ...base,
+    salesRule: strField(r, ["salesRule", "sales_rule"]),
+    attributeEmployeeId: strField(r, ["attributeEmployeeId", "attribute_employee_id"]),
+    salesAmount: centsToDollars(r["salesAmount"] ?? r["sales_amount"] ?? r["amount"]),
+  };
+}
+
+function mapMarketingLink(
+  row: unknown,
+  creatorId: string,
+  linkType: import("@/types/infloww").InflowwLinkType
+): import("@/types/infloww").InflowwMarketingLink {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    linkId: String(r["id"] ?? r["linkId"] ?? r["link_id"] ?? ""),
+    creatorId,
+    linkType,
+    message: strField(r, ["message", "name", "title"]),
+    campaignType: strField(r, ["type", "campaignType"]),
+    subCount: Math.round(numField(r, ["subCount", "sub_count"])),
+    subLimit: nullableNumField(r, ["subLimit", "sub_limit"]),
+    subDuration: nullableNumField(r, ["subDuration", "sub_duration"]),
+    discount: nullableNumField(r, ["discount"]),
+    finishedFlag: r["finishedFlag"] === true || r["finished_flag"] === true,
+    earningsGross: centsToDollars(r["earningsGross"] ?? r["earnings_gross"]),
+    earningsNet: centsToDollars(r["earningsNet"] ?? r["earnings_net"]),
+    payingFansCount: Math.round(numField(r, ["payingFansCount", "paying_fans_count"])),
+    currency: strField(r, ["currency"]) ?? "USD",
+    createdTimeMs: msField(r, ["createdTime", "created_time"]),
+    expiredTimeMs: (() => {
+      const ms = msField(r, ["expiredTime", "expired_time"]);
+      return ms > 0 ? ms : null;
+    })(),
+    updatedTimeMs: (() => {
+      const ms = msField(r, ["updatedTime", "updated_time"]);
+      return ms > 0 ? ms : null;
+    })(),
+  };
+}
+
+function mapLinkFan(row: unknown, linkId: string): import("@/types/infloww").InflowwLinkFan {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    linkId,
+    fanId: String(r["fanId"] ?? r["fan_id"] ?? r["id"] ?? ""),
+    fanName: strField(r, ["fanName", "fan_name"]),
+    subscriptionEarningGross: centsToDollars(r["subscriptionEarningGross"]),
+    subscriptionEarningNet: centsToDollars(r["subscriptionEarningNet"]),
+    postsEarningGross: centsToDollars(r["postsEarningGross"]),
+    postsEarningNet: centsToDollars(r["postsEarningNet"]),
+    messagesEarningGross: centsToDollars(r["messagesEarningGross"]),
+    messagesEarningNet: centsToDollars(r["messagesEarningNet"]),
+    streamsEarningGross: centsToDollars(r["streamsEarningGross"]),
+    streamsEarningNet: centsToDollars(r["streamsEarningNet"]),
+    tipsEarningGross: centsToDollars(r["tipsEarningGross"]),
+    tipsEarningNet: centsToDollars(r["tipsEarningNet"]),
+    currency: strField(r, ["currency"]) ?? "USD",
+    subscribedTimeMs: (() => {
+      const ms = msField(r, ["subscribedTime", "subscribed_time"]);
+      return ms > 0 ? ms : null;
+    })(),
+  };
+}
+
+/**
+ * GET /v1/transactions — creator revenue events (tips, subs, …).
+ * Uses unix-ms startTime/endTime; paginates with cursor.
+ */
+export async function fetchCreatorTransactions(params: {
+  creatorId: string;
+  startMs: number;
+  endMs: number;
+}): Promise<import("@/types/infloww").InflowwCreatorTransaction[]> {
+  const times = txTimeQueryParams(params.startMs, params.endMs);
+  const base = new URLSearchParams({
+    creatorId: params.creatorId,
+    startTime: times.startTime,
+    endTime: times.endTime,
+    limit: "100",
+  });
+  try {
+    const rows = await paginateCreatorList("/transactions", base);
+    return rows.map((row) => mapCreatorTransaction(row, params.creatorId));
+  } catch (e) {
+    if (e instanceof InflowwApiError && e.status === 400) {
+      inflowwDebug("transactions skipped (400)", { creatorId: params.creatorId, message: e.message });
+      return [];
+    }
+    throw e;
+  }
+}
+
+/**
+ * GET /v1/transaction-perf/details — sales attribution (employee credit).
+ * Expects unix-ms startTime/endTime (YYYY-MM-DD is rejected).
+ * Auto-chunks ranges longer than 31 calendar days.
+ */
+export async function fetchTransactionPerfDetails(params: {
+  creatorId: string;
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwTransactionPerfDetail[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const chunks = chunkDateRangeYmd(start, end);
+  const out: import("@/types/infloww").InflowwTransactionPerfDetail[] = [];
+  for (const chunk of chunks) {
+    const startMs = athensYmdStartUtcMs(chunk.startYmd);
+    let endMs = athensYmdEndUtcMs(chunk.endYmd);
+    const safeEnd = Date.now() - 2000;
+    if (endMs > safeEnd) endMs = safeEnd;
+    if (endMs < startMs) continue;
+    const times = txTimeQueryParams(startMs, endMs);
+    const base = new URLSearchParams({
+      creatorId: params.creatorId,
+      startTime: times.startTime,
+      endTime: times.endTime,
+      limit: "100",
+      platformCode: "OnlyFans",
+    });
+    try {
+      const rows = await paginateCreatorList("/transaction-perf/details", base);
+      for (const row of rows) out.push(mapTransactionPerf(row, params.creatorId));
+    } catch (e) {
+      if (e instanceof InflowwApiError && e.status === 400) {
+        inflowwDebug("transaction-perf skipped (400)", {
+          creatorId: params.creatorId,
+          message: e.message,
+        });
+        continue;
+      }
+      throw e;
+    }
+  }
+  return out;
+}
+
+/** GET /v1/links?linkType=… for one creator. */
+export async function fetchCreatorLinks(params: {
+  creatorId: string;
+  linkType: import("@/types/infloww").InflowwLinkType;
+}): Promise<import("@/types/infloww").InflowwMarketingLink[]> {
+  const base = new URLSearchParams({
+    creatorId: params.creatorId,
+    linkType: params.linkType,
+    limit: "100",
+  });
+  const rows = await paginateCreatorList("/links", base);
+  return rows
+    .map((row) => mapMarketingLink(row, params.creatorId, params.linkType))
+    .filter((l) => Boolean(l.linkId));
+}
+
+/** Fetch CAMPAIGN + TRIAL + TRACKING links for a creator. */
+export async function fetchAllCreatorLinkTypes(creatorId: string): Promise<
+  import("@/types/infloww").InflowwMarketingLink[]
+> {
+  const out: import("@/types/infloww").InflowwMarketingLink[] = [];
+  for (const linkType of CREATOR_LINK_TYPES) {
+    out.push(...(await fetchCreatorLinks({ creatorId, linkType })));
+  }
+  return out;
+}
+
+/** GET /v1/linkfans?linkId&linkType. */
+export async function fetchLinkFans(params: {
+  creatorId: string;
+  linkId: string;
+  linkType: import("@/types/infloww").InflowwLinkType;
+}): Promise<import("@/types/infloww").InflowwLinkFan[]> {
+  const base = new URLSearchParams({
+    creatorId: params.creatorId,
+    linkId: params.linkId,
+    linkType: params.linkType,
+    limit: "100",
+  });
+  const rows = await paginateCreatorList("/linkfans", base);
+  return rows
+    .map((row) => mapLinkFan(row, params.linkId))
+    .filter((f) => Boolean(f.fanId));
+}
+
+function chunkCreatorIds(ids: string[], size = CREATOR_REPORT_MAX_CREATOR_IDS): string[][] {
+  const unique = [...new Set(ids.map((x) => x.trim()).filter(Boolean))];
+  const out: string[][] = [];
+  for (let i = 0; i < unique.length; i += size) out.push(unique.slice(i, i + size));
+  return out;
+}
+
+async function paginateCreatorReport(
+  path: string,
+  params: { startTime: string; endTime: string; creatorIds: string[] }
+): Promise<unknown[]> {
+  const out: unknown[] = [];
+  for (const batch of chunkCreatorIds(params.creatorIds)) {
+    const base = new URLSearchParams({
+      platformCode: "OnlyFans",
+      startTime: params.startTime,
+      endTime: params.endTime,
+    });
+    for (const id of batch) base.append("creatorIds", id);
+    out.push(...(await paginateCreatorList(path, base)));
+  }
+  return out;
+}
+
+function mapRankRow(row: unknown): import("@/types/infloww").InflowwCreatorRankRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    platformPid: String(r["platformPid"] ?? r["platform_pid"] ?? ""),
+    date: ymdField(r) ?? "",
+    performanceRank: nullableNumField(r, ["performanceRank", "performance_rank", "rank"]),
+    creatorId: strField(r, ["creatorId", "creator_id"]),
+  };
+}
+
+function mapVisitorRow(row: unknown): import("@/types/infloww").InflowwCreatorVisitorRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    platformPid: String(r["platformPid"] ?? r["platform_pid"] ?? ""),
+    date: ymdField(r) ?? "",
+    profileVisitors: Math.round(numField(r, ["profileVisitors", "profile_visitors"])),
+    guestProfileVisitors: Math.round(numField(r, ["guestProfileVisitors", "guest_profile_visitors"])),
+    loggedInUsersProfileVisitors: Math.round(
+      numField(r, ["loggedInUsersProfileVisitors", "logged_in_users_profile_visitors"])
+    ),
+  };
+}
+
+function mapFansCountRow(row: unknown): import("@/types/infloww").InflowwCreatorFansCountRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    platformPid: String(r["platformPid"] ?? r["platform_pid"] ?? ""),
+    date: ymdField(r) ?? "",
+    activeFans: Math.round(numField(r, ["activeFans", "active_fans"])),
+    expiredFans: Math.round(numField(r, ["expiredFans", "expired_fans"])),
+  };
+}
+
+function mapSubscriberCountRow(
+  row: unknown
+): import("@/types/infloww").InflowwCreatorSubscriberCountRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    platformPid: String(r["platformPid"] ?? r["platform_pid"] ?? ""),
+    date: ymdField(r) ?? "",
+    newSubscribers: Math.round(numField(r, ["newSubscribers", "new_subscribers"])),
+    subscriberRenewals: Math.round(numField(r, ["subscriberRenewals", "subscriber_renewals", "renewals"])),
+  };
+}
+
+function mapCreatorChatRow(row: unknown): import("@/types/infloww").InflowwCreatorChatSummaryRow {
+  const r = (row ?? {}) as Record<string, unknown>;
+  return {
+    platformPid: String(r["platformPid"] ?? r["platform_pid"] ?? ""),
+    date: ymdField(r),
+    replyTimeMs: nullableNumField(r, ["replyTime", "reply_time", "replyTimeMs", "reply_time_ms"]),
+    fansChatted: Math.round(numField(r, ["fansChatted", "fans_chatted"])),
+    messagesSent: Math.round(numField(r, ["messagesSent", "messages_sent"])),
+    ppvsSent: Math.round(numField(r, ["ppvsSent", "ppvs_sent"])),
+  };
+}
+
+export async function fetchCreatorRank(params: {
+  creatorIds: string[];
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwCreatorRankRow[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwCreatorRankRow[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateCreatorReport("/creator-report/rank", {
+      ...times,
+      creatorIds: params.creatorIds,
+    });
+    for (const row of rows) {
+      const mapped = mapRankRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      if (mapped.date) out.push(mapped);
+    }
+  }
+  return out;
+}
+
+export async function fetchCreatorProfileVisitors(params: {
+  creatorIds: string[];
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwCreatorVisitorRow[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwCreatorVisitorRow[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateCreatorReport("/creator-report/reach/profile-visitor-count", {
+      ...times,
+      creatorIds: params.creatorIds,
+    });
+    for (const row of rows) {
+      const mapped = mapVisitorRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      if (mapped.date) out.push(mapped);
+    }
+  }
+  return out;
+}
+
+export async function fetchCreatorFansCount(params: {
+  creatorIds: string[];
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwCreatorFansCountRow[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwCreatorFansCountRow[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateCreatorReport("/creator-report/fans/count", {
+      ...times,
+      creatorIds: params.creatorIds,
+    });
+    for (const row of rows) {
+      const mapped = mapFansCountRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      if (mapped.date) out.push(mapped);
+    }
+  }
+  return out;
+}
+
+export async function fetchCreatorSubscriberCount(params: {
+  creatorIds: string[];
+  startYmd: string;
+  endYmd: string;
+}): Promise<import("@/types/infloww").InflowwCreatorSubscriberCountRow[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const out: import("@/types/infloww").InflowwCreatorSubscriberCountRow[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateCreatorReport("/creator-report/fans/subscriber-count", {
+      ...times,
+      creatorIds: params.creatorIds,
+    });
+    for (const row of rows) {
+      const mapped = mapSubscriberCountRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      if (mapped.date) out.push(mapped);
+    }
+  }
+  return out;
+}
+
+/**
+ * GET /v1/creator-report/chat-summary.
+ * Multi-day responses often omit `date` and aggregate — prefer day-by-day for daily stats.
+ */
+export async function fetchCreatorChatSummary(params: {
+  creatorIds: string[];
+  startYmd: string;
+  endYmd: string;
+  /** When true (default for spans >1 day), fetch each day separately for attribution. */
+  dayByDay?: boolean;
+}): Promise<import("@/types/infloww").InflowwCreatorChatSummaryRow[]> {
+  const { startYmd: start, endYmd: end } = clampEmployeeReportRange(params.startYmd, params.endYmd);
+  assertCreatorReportLookback(start, end);
+  const span = daysBetweenInclusive(start, end);
+  const dayByDay = params.dayByDay ?? span > 1;
+
+  if (dayByDay && span > 1) {
+    const all: import("@/types/infloww").InflowwCreatorChatSummaryRow[] = [];
+    let cursor = start;
+    while (cursor <= end) {
+      const times = rangeToDateBounds(cursor, cursor);
+      const rows = await paginateCreatorReport("/creator-report/chat-summary", {
+        ...times,
+        creatorIds: params.creatorIds,
+      });
+      for (const row of rows) {
+        const mapped = mapCreatorChatRow(row);
+        mapped.date = cursor;
+        all.push(mapped);
+      }
+      cursor = addDaysYmd(cursor, 1);
+    }
+    return all;
+  }
+
+  const out: import("@/types/infloww").InflowwCreatorChatSummaryRow[] = [];
+  for (const chunk of chunkDateRangeYmd(start, end)) {
+    const times = rangeToDateBounds(chunk.startYmd, chunk.endYmd);
+    const rows = await paginateCreatorReport("/creator-report/chat-summary", {
+      ...times,
+      creatorIds: params.creatorIds,
+    });
+    for (const row of rows) {
+      const mapped = mapCreatorChatRow(row);
+      if (!mapped.date && chunk.startYmd === chunk.endYmd) mapped.date = chunk.startYmd;
+      out.push(mapped);
+    }
+  }
+  return out;
+}
+
+/**
+ * Merge creator-report endpoints into per-creator per-day rows.
+ * Keys by platformPid + date; `creatorIdByPlatformPid` maps platformPid → Infloww creator id.
+ */
+export function mergeCreatorDayStats(params: {
+  creatorIdByPlatformPid: ReadonlyMap<string, string>;
+  ranks: import("@/types/infloww").InflowwCreatorRankRow[];
+  visitors: import("@/types/infloww").InflowwCreatorVisitorRow[];
+  fans: import("@/types/infloww").InflowwCreatorFansCountRow[];
+  subscribers: import("@/types/infloww").InflowwCreatorSubscriberCountRow[];
+  chat: import("@/types/infloww").InflowwCreatorChatSummaryRow[];
+}): import("@/types/infloww").InflowwCreatorDayStats[] {
+  const map = new Map<string, import("@/types/infloww").InflowwCreatorDayStats>();
+  const ensure = (platformPid: string, date: string) => {
+    const creatorId = params.creatorIdByPlatformPid.get(platformPid) ?? platformPid;
+    const k = `${creatorId}|${date}`;
+    let row = map.get(k);
+    if (!row) {
+      row = {
+        creatorId,
+        platformPid,
+        date,
+        performanceRank: null,
+        profileVisitors: 0,
+        guestVisitors: 0,
+        loggedInVisitors: 0,
+        activeFans: 0,
+        expiredFans: 0,
+        newSubscribers: 0,
+        renewals: 0,
+        messagesSent: 0,
+        ppvsSent: 0,
+        fansChatted: 0,
+        replyTimeMs: null,
+      };
+      map.set(k, row);
+    }
+    return row;
+  };
+
+  for (const r of params.ranks) {
+    if (!r.date || !r.platformPid) continue;
+    const row = ensure(r.platformPid, r.date);
+    row.performanceRank = r.performanceRank;
+  }
+  for (const v of params.visitors) {
+    if (!v.date || !v.platformPid) continue;
+    const row = ensure(v.platformPid, v.date);
+    row.profileVisitors = v.profileVisitors;
+    row.guestVisitors = v.guestProfileVisitors;
+    row.loggedInVisitors = v.loggedInUsersProfileVisitors;
+  }
+  for (const f of params.fans) {
+    if (!f.date || !f.platformPid) continue;
+    const row = ensure(f.platformPid, f.date);
+    row.activeFans = f.activeFans;
+    row.expiredFans = f.expiredFans;
+  }
+  for (const s of params.subscribers) {
+    if (!s.date || !s.platformPid) continue;
+    const row = ensure(s.platformPid, s.date);
+    row.newSubscribers = s.newSubscribers;
+    row.renewals = s.subscriberRenewals;
+  }
+  for (const c of params.chat) {
+    if (!c.date || !c.platformPid) continue;
+    const row = ensure(c.platformPid, c.date);
+    row.messagesSent = c.messagesSent;
+    row.ppvsSent = c.ppvsSent;
+    row.fansChatted = c.fansChatted;
+    row.replyTimeMs = c.replyTimeMs;
+  }
+
+  return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export { CREATOR_REPORT_MAX_CREATOR_IDS, CREATOR_LINK_TYPES };

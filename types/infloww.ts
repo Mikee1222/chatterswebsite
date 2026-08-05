@@ -112,3 +112,140 @@ export interface InflowwEmployeeDayStats {
   messagesPerHour: number | null;
   fansChattedPerHour: number | null;
 }
+
+/** Marketing link type for GET /v1/links and /v1/linkfans. */
+export type InflowwLinkType = "CAMPAIGN" | "TRIAL" | "TRACKING";
+
+/** Normalized row from GET /v1/transactions. Monetary fields are dollars. */
+export interface InflowwCreatorTransaction {
+  transactionId: string;
+  inflowwRowId?: string;
+  creatorId: string;
+  platformPid?: string;
+  fanId?: string;
+  fanName?: string;
+  createdTimeMs: number;
+  type?: string;
+  tipSource?: string;
+  status?: string;
+  amount: number;
+  fee: number;
+  net: number;
+  currency: string;
+}
+
+/** Attribution row from GET /v1/transaction-perf/details. */
+export interface InflowwTransactionPerfDetail {
+  transactionId: string;
+  inflowwRowId?: string;
+  creatorId: string;
+  platformPid?: string;
+  fanId?: string;
+  fanName?: string;
+  createdTimeMs: number;
+  type?: string;
+  tipSource?: string;
+  status?: string;
+  amount: number;
+  fee: number;
+  net: number;
+  salesRule?: string;
+  attributeEmployeeId?: string;
+  salesAmount: number;
+  currency: string;
+}
+
+export interface InflowwMarketingLink {
+  linkId: string;
+  creatorId: string;
+  linkType: InflowwLinkType;
+  message?: string;
+  campaignType?: string;
+  subCount: number;
+  subLimit: number | null;
+  subDuration: number | null;
+  discount: number | null;
+  finishedFlag: boolean;
+  earningsGross: number;
+  earningsNet: number;
+  payingFansCount: number;
+  currency: string;
+  createdTimeMs: number;
+  expiredTimeMs: number | null;
+  updatedTimeMs: number | null;
+}
+
+export interface InflowwLinkFan {
+  linkId: string;
+  fanId: string;
+  fanName?: string;
+  subscriptionEarningGross: number;
+  subscriptionEarningNet: number;
+  postsEarningGross: number;
+  postsEarningNet: number;
+  messagesEarningGross: number;
+  messagesEarningNet: number;
+  streamsEarningGross: number;
+  streamsEarningNet: number;
+  tipsEarningGross: number;
+  tipsEarningNet: number;
+  currency: string;
+  subscribedTimeMs: number | null;
+}
+
+export interface InflowwCreatorRankRow {
+  creatorId?: string;
+  platformPid: string;
+  date: string;
+  performanceRank: number | null;
+}
+
+export interface InflowwCreatorVisitorRow {
+  platformPid: string;
+  date: string;
+  profileVisitors: number;
+  guestProfileVisitors: number;
+  loggedInUsersProfileVisitors: number;
+}
+
+export interface InflowwCreatorFansCountRow {
+  platformPid: string;
+  date: string;
+  activeFans: number;
+  expiredFans: number;
+}
+
+export interface InflowwCreatorSubscriberCountRow {
+  platformPid: string;
+  date: string;
+  newSubscribers: number;
+  subscriberRenewals: number;
+}
+
+export interface InflowwCreatorChatSummaryRow {
+  platformPid: string;
+  date?: string;
+  replyTimeMs: number | null;
+  fansChatted: number;
+  messagesSent: number;
+  ppvsSent: number;
+}
+
+/** Merged creator-report day for upsert into infloww_creator_daily_stats. */
+export interface InflowwCreatorDayStats {
+  creatorId: string;
+  platformPid?: string;
+  date: string;
+  performanceRank: number | null;
+  profileVisitors: number;
+  guestVisitors: number;
+  loggedInVisitors: number;
+  activeFans: number;
+  expiredFans: number;
+  newSubscribers: number;
+  renewals: number;
+  messagesSent: number;
+  ppvsSent: number;
+  fansChatted: number;
+  replyTimeMs: number | null;
+}
