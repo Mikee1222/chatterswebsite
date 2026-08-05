@@ -30,20 +30,40 @@ Sync reported `rowsUpserted: 1246` (exact upsert count), `errors: 0`. ~12 API re
 
 ## Cron
 
-`GET /api/cron/sync-infloww-stats` — **daily** at 03:15 UTC (`15 3 * * *` in `vercel.json`).
-(Hourly was briefly tried but Vercel Hobby rejects non-daily crons.)
+`GET /api/cron/sync-infloww-stats` — syncs **Infloww-safe today + yesterday** only
+(efficient; same window on every run). Upsert key
+`(user_id, infloww_performer_id, date)` overwrites same-day rows.
 
-Each run syncs **Infloww-safe today + yesterday** for all linked users so late
-updates are caught. “Safe today” = `min(Athens YMD, UTC YMD)` via
-`inflowwReportTodayYmd()` — Athens can already be the next calendar day while
-UTC (and Infloww’s “past or present” check) is still the previous day.
-Upsert key `(user_id, infloww_performer_id, date)` overwrites same-day rows.
+“Safe today” = `min(Athens YMD, UTC YMD)` via `inflowwReportTodayYmd()` — Athens
+can already be the next calendar day while UTC (and Infloww’s “past or present”
+check) is still the previous day.
 
-### Expected API volume (daily)
+### Cadence (Hobby constraint)
+
+This project’s Vercel team is on **Hobby**. Hobby only allows **once-per-day**
+schedules in `vercel.json`. Setting Infloww to `15 * * * *` (hourly) fails
+Production deploys — that happened on 2026-08-05 (`7e3efb2`) and was
+intentionally restored to daily in `e062844` so Weekly Progress could ship.
+
+| Trigger | Schedule | Where |
+| --- | --- | --- |
+| **Hourly (intended)** | `15 * * * *` UTC | `.github/workflows/sync-infloww-hourly.yml` |
+| Vercel fallback | `15 3 * * *` UTC (daily) | `vercel.json` (Hobby-safe) |
+
+Do **not** change the Vercel schedule back to hourly unless the team is upgraded
+to Pro (or a plan that allows more-than-daily crons).
+
+### GitHub Actions setup
+
+1. Repo secret `CRON_SECRET` — must match Vercel `CRON_SECRET`
+2. Optional repo variable `APP_URL` — defaults to `https://www.gunzoteam.com`
+3. Workflow supports `workflow_dispatch` for a manual test run
+
+### Expected API volume (per run)
 
 With 31-day chunking and dates present on API rows: **1 chunk × 2 endpoints (sales + chat) × N linked chatters**.
 
-| Linked chatters (N) | Requests / daily run | vs 1000 req/min |
+| Linked chatters (N) | Requests / run | vs 1000 req/min |
 | --- | --- | --- |
 | 2 (current) | ~4 | Safe |
 | 50 | ~100 | Safe |

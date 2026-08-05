@@ -20,10 +20,12 @@ function isCronAuthorized(request: Request): boolean {
 
 /**
  * GET /api/cron/sync-infloww-stats
- * Daily (Hobby): syncs Infloww-safe today + previous day for all users with
- * infloww_employee_id. endTime uses min(Athens today, UTC today) so Infloww
- * never sees a "future" calendar day across the Athens/UTC boundary.
- * Upserts on (user_id, infloww_performer_id, date) so same-day re-runs overwrite.
+ * Syncs Infloww-safe today + previous day for all users with infloww_employee_id.
+ * Cadence: hourly via GitHub Actions (Hobby cannot use vercel.json hourly crons);
+ * Vercel keeps a daily 03:15 UTC fallback. Auth: Bearer / x-cron-secret CRON_SECRET.
+ * endTime uses min(Athens today, UTC today) so Infloww never sees a "future"
+ * calendar day across the Athens/UTC boundary. Upserts on
+ * (user_id, infloww_performer_id, date) so same-day re-runs overwrite.
  */
 export async function GET(request: Request) {
   if (!isCronAuthorized(request)) {

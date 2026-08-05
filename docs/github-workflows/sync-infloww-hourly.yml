@@ -1,0 +1,35 @@
+# Hourly Infloww sync via GitHub Actions.
+# Vercel Hobby only allows once-per-day crons in vercel.json — do not move this
+# schedule into vercel.json as `15 * * * *` or Production deploys will fail.
+name: Hourly Infloww sync
+
+on:
+  schedule:
+    # Same minute-of-hour as the daily Vercel fallback (03:15 UTC).
+    - cron: "15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Trigger Infloww today+yesterday sync
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          # Public production URL (override with repo variable APP_URL if needed).
+          APP_URL: ${{ vars.APP_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET:-}" ]; then
+            echo "Missing GitHub Actions secret CRON_SECRET (must match Vercel CRON_SECRET)."
+            exit 1
+          fi
+          BASE_URL="${APP_URL:-https://www.gunzoteam.com}"
+          curl -fsS -X GET \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            -H "Accept: application/json" \
+            --max-time 290 \
+            "${BASE_URL%/}/api/cron/sync-infloww-stats"
+          echo
+          echo "Infloww sync triggered OK"
