@@ -144,7 +144,7 @@ function mapDocument(row: DocumentRow): PdfDocument {
     style: parseStyleJson(styleRaw),
     createdBy,
     fileUrl: fieldStr(row, "File URL", "file_url"),
-    createdAt: fieldStr(row, "Created At", "created_at"),
+    createdAt: fieldStr(row, "Created At", "created_at", "created_time"),
   };
 }
 
@@ -167,15 +167,15 @@ export async function createPdfDocument(input: {
   const metaFields = parseMetaFieldsJson(input.metaFields ?? []);
   const now = new Date().toISOString();
   const row = await sbInsert<DocumentRow>(PDF_DOCUMENTS_TABLE, {
-    Title: input.title.trim(),
-    Subtitle: input.subtitle?.trim() ?? "",
-    Template: input.template?.trim() ?? "",
-    Sections: JSON.stringify(input.sections),
-    "Meta Fields": JSON.stringify(metaFields),
-    Style: JSON.stringify(style),
-    "File URL": input.fileUrl.trim(),
-    "Created At": now,
-    "Created By": String(input.createdBy || "Unknown"),
+    title: input.title.trim(),
+    subtitle: input.subtitle?.trim() ?? "",
+    template: input.template?.trim() ?? "",
+    sections: JSON.stringify(input.sections),
+    meta_fields: JSON.stringify(metaFields),
+    style: JSON.stringify(style),
+    file_url: input.fileUrl.trim(),
+    created_at: now,
+    created_by: String(input.createdBy || "Unknown"),
   });
   return mapDocument(row);
 }
