@@ -2,20 +2,26 @@
 
 import * as React from "react";
 import dynamic from "next/dynamic";
-import { Link2Off } from "lucide-react";
+import { motion, useReducedMotion } from "framer-motion";
+import { Link2Off, Sparkles, Trophy } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { VA_CARD } from "@/lib/va-tasks-tokens";
+import { VA_CARD, VA_CARD_GLOW, VA_BTN_PRIMARY } from "@/lib/va-tasks-tokens";
+import {
+  ConsistencyRing,
+  ConversionFunnelViz,
+  CountUp,
+  DatePresetBar,
+  LuxuryStatCard,
+  PeriodBadge,
+  PersonalBestCallout,
+  SectionLabel,
+  money,
+  pct,
+} from "@/components/infloww-performance-ui";
 import type {
   InflowwChatterPerformance,
   InflowwStatsPreset,
 } from "@/services/infloww-performance";
-
-const PRESETS: { id: InflowwStatsPreset; label: string }[] = [
-  { id: "this_week", label: "This Week" },
-  { id: "last_week", label: "Last Week" },
-  { id: "this_month", label: "This Month" },
-  { id: "custom", label: "Custom" },
-];
 
 const Area = dynamic(() => import("recharts").then((m) => m.Area), { ssr: false });
 const AreaChart = dynamic(() => import("recharts").then((m) => m.AreaChart), { ssr: false });
@@ -27,48 +33,35 @@ const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: 
 const XAxis = dynamic(() => import("recharts").then((m) => m.XAxis), { ssr: false });
 const YAxis = dynamic(() => import("recharts").then((m) => m.YAxis), { ssr: false });
 
-function money(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function pct(n: number | null): string {
-  if (n == null) return "—";
-  return `${(n * 100).toFixed(1)}%`;
-}
-
-function StatChip({
-  label,
-  value,
-  hint,
-  accent,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  accent?: "pink" | "champagne" | "emerald";
-}) {
-  const color =
-    accent === "pink"
-      ? "text-[#FF1493]"
-      : accent === "champagne"
-        ? "text-[#D4AF8C]"
-        : accent === "emerald"
-          ? "text-emerald-400"
-          : "text-white";
+function UnlinkedEmpty() {
   return (
-    <div className={cn(VA_CARD, "p-4")}>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">{label}</p>
-      <p className={cn("mt-1 text-2xl font-semibold tabular-nums", color)}>{value}</p>
-      {hint ? <p className="mt-1 text-xs text-white/40">{hint}</p> : null}
+    <div className="mx-auto max-w-lg px-4 py-16">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={cn(
+          VA_CARD,
+          VA_CARD_GLOW,
+          "flex flex-col items-center gap-5 border border-white/10 bg-white/5 p-10 text-center"
+        )}
+      >
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-[#D4AF8C]/25 bg-[#D4AF8C]/10">
+          <Link2Off className="h-7 w-7 text-[#D4AF8C]" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-semibold text-white">My Performance</h1>
+          <p className="mt-3 max-w-sm text-sm leading-relaxed text-white/55">
+            Your Infloww account isn&apos;t linked yet. Ask an admin to set your Infloww employee ID
+            so sales and chat stats can sync here.
+          </p>
+        </div>
+      </motion.div>
     </div>
   );
 }
 
 export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterPerformance }) {
+  const reduce = useReducedMotion();
   const [data, setData] = React.useState(initial);
   const [preset, setPreset] = React.useState<InflowwStatsPreset>(initial.range.preset);
   const [customStart, setCustomStart] = React.useState(initial.range.startYmd);
@@ -103,60 +96,84 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
   }
 
   if (!data.linked) {
-    return (
-      <div className="mx-auto max-w-2xl px-4 py-16">
-        <div className={cn(VA_CARD, "flex flex-col items-center gap-4 p-10 text-center")}>
-          <div className="flex h-14 w-14 items-center justify-center rounded-full border border-white/10 bg-white/5">
-            <Link2Off className="h-6 w-6 text-[#D4AF8C]" />
-          </div>
-          <h1 className="text-xl font-semibold text-white">My Performance</h1>
-          <p className="max-w-md text-sm leading-relaxed text-white/55">
-            Your Infloww account isn&apos;t linked yet — contact your admin
-          </p>
-        </div>
-      </div>
-    );
+    return <UnlinkedEmpty />;
   }
 
   const t = data.totals;
+  const a = data.analytics;
+  const bestCreator = data.by_performer[0];
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[#D4AF8C]/80">
-            Infloww
-          </p>
-          <h1 className="mt-1 text-2xl font-semibold text-white">My Performance</h1>
-          <p className="mt-1 text-sm text-white/45">
-            {data.range.startYmd} → {data.range.endYmd}
-          </p>
+      <motion.div
+        initial={reduce ? false : { opacity: 0, y: 14 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-[#FF1493]/15 via-[#151315] to-[#0D0B0D] p-6 md:p-8"
+      >
+        <div className="pointer-events-none absolute -right-20 -top-20 h-56 w-56 rounded-full bg-[#FF1493]/20 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-16 left-10 h-40 w-40 rounded-full bg-[#D4AF8C]/15 blur-3xl" />
+        <div className="relative flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[#D4AF8C]/90">
+              Infloww · Your stage
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-white md:text-4xl">
+              My Performance
+            </h1>
+            <p className="mt-2 text-sm text-white/50">
+              {data.range.startYmd} → {data.range.endYmd}
+            </p>
+          </div>
+          <DatePresetBar
+            preset={preset}
+            loading={loading}
+            onSelect={(p) => {
+              setPreset(p);
+              if (p !== "custom") void load(p);
+            }}
+          />
         </div>
-        <div className="flex flex-wrap gap-2">
-          {PRESETS.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              disabled={loading}
-              onClick={() => {
-                setPreset(p.id);
-                if (p.id !== "custom") void load(p.id);
-              }}
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-xs font-semibold transition",
-                preset === p.id
-                  ? "border-[#FF1493]/50 bg-[#FF1493]/15 text-[#FF1493]"
-                  : "border-white/10 bg-white/5 text-white/60 hover:border-white/20 hover:text-white"
-              )}
-            >
-              {p.label}
-            </button>
-          ))}
+
+        <div className="relative mt-8 grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+              Total sales
+            </p>
+            <p className="mt-1 text-3xl font-semibold tabular-nums text-[#FF1493] md:text-4xl">
+              <CountUp value={t.sales} format={(n) => money(n)} />
+            </p>
+            {a ? <div className="mt-2"><PeriodBadge change={a.period_change.sales} /></div> : null}
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+              PPV
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-[#D4AF8C] md:text-3xl">
+              <CountUp value={t.ppv_sales} format={(n) => money(n)} />
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+              Tips
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-white md:text-3xl">
+              <CountUp value={t.tips} format={(n) => money(n)} />
+            </p>
+          </div>
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+              Fans chatted
+            </p>
+            <p className="mt-1 text-2xl font-semibold tabular-nums text-emerald-400 md:text-3xl">
+              <CountUp value={t.fans_chatted} format={(n) => Math.round(n).toLocaleString()} />
+            </p>
+          </div>
         </div>
-      </div>
+      </motion.div>
 
       {preset === "custom" ? (
-        <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 p-4")}>
+        <div className={cn(VA_CARD, "flex flex-wrap items-end gap-3 border border-white/10 bg-white/5 p-4")}>
           <label className="text-xs text-white/50">
             From
             <input
@@ -179,7 +196,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
             type="button"
             disabled={loading}
             onClick={() => void load("custom", customStart, customEnd)}
-            className="rounded-lg bg-[#FF1493] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            className={cn(VA_BTN_PRIMARY, "px-4 py-2 text-sm disabled:opacity-50")}
           >
             Apply
           </button>
@@ -192,25 +209,92 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         </p>
       ) : null}
 
+      {a ? (
+        <PersonalBestCallout
+          bestDay={a.personal_best.best_day}
+          bestWeek={a.personal_best.best_week}
+          warm
+        />
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatChip label="Total sales" value={money(t.sales)} accent="pink" />
-        <StatChip label="PPV sales" value={money(t.ppv_sales)} accent="champagne" />
-        <StatChip label="Tips" value={money(t.tips)} />
-        <StatChip label="DM sales" value={money(t.dm_sales)} />
-        <StatChip label="Messages sent" value={String(t.messages_sent)} />
-        <StatChip label="PPVs sent" value={String(t.ppvs_sent)} />
-        <StatChip label="Fans chatted" value={String(t.fans_chatted)} accent="emerald" />
-        <StatChip label="Fan CVR" value={pct(t.fan_cvr)} hint={`Golden ratio ${pct(t.golden_ratio)}`} />
+        <LuxuryStatCard
+          label="Rev / hour"
+          value={a?.revenue_per_hour != null ? money(a.revenue_per_hour) : "—"}
+          hint={
+            a && a.shift_hours > 0
+              ? `${a.shift_hours}h on shift`
+              : "Link shifts in range for $/h"
+          }
+          accent="champagne"
+        />
+        <LuxuryStatCard
+          label="Rev / fan"
+          value={a?.revenue_per_fan != null ? money(a.revenue_per_fan, 2) : "—"}
+          accent="pink"
+        />
+        <LuxuryStatCard
+          label="Avg PPV price"
+          value={a?.avg_ppv_price != null ? money(a.avg_ppv_price, 2) : "—"}
+          hint="PPV revenue ÷ PPVs sent"
+        />
+        <LuxuryStatCard
+          label="Avg tip"
+          value={a?.avg_tip_size != null ? money(a.avg_tip_size, 2) : "—"}
+          hint={a?.tip_size_note ? "Estimated from tip days" : undefined}
+        />
       </div>
 
-      <div className={cn(VA_CARD, "p-4")}>
-        <p className="mb-3 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">
-          Sales trend
-        </p>
-        <div className="h-64 w-full">
+      <div className="grid gap-4 lg:grid-cols-2">
+        {a ? <ConversionFunnelViz funnel={a.funnel} /> : null}
+        {a ? <ConsistencyRing score={a.consistency_score} /> : null}
+      </div>
+
+      {a?.team_standing ? (
+        <div
+          className={cn(
+            VA_CARD,
+            "border border-white/10 bg-gradient-to-r from-white/5 to-[#FF1493]/5 p-5"
+          )}
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[#FF1493]/30 bg-[#FF1493]/10">
+              <Trophy className="h-5 w-5 text-[#FF1493]" />
+            </div>
+            <div>
+              <SectionLabel>Team standing</SectionLabel>
+              <p className="mt-1 text-lg font-semibold text-white">
+                #{a.team_standing.rank} of {a.team_standing.of}{" "}
+                <span className="text-sm font-normal text-white/45">
+                  · top {a.team_standing.percentile}%
+                </span>
+              </p>
+              <p className="mt-1.5 text-sm leading-relaxed text-white/55">{a.team_standing.label}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {bestCreator && bestCreator.totals.sales > 0 ? (
+        <div className={cn(VA_CARD, VA_CARD_GLOW, "border border-[#D4AF8C]/20 bg-white/5 p-5")}>
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-[#D4AF8C]" />
+            <SectionLabel>You perform best with…</SectionLabel>
+          </div>
+          <p className="mt-2 text-xl font-semibold text-white">{bestCreator.performer_name}</p>
+          <p className="mt-1 text-sm text-white/50">
+            {money(bestCreator.totals.sales)} sales · {bestCreator.totals.messages_sent} msgs · CVR{" "}
+            {pct(bestCreator.totals.fan_cvr)}
+          </p>
+        </div>
+      ) : null}
+
+      <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-4")}>
+        <SectionLabel>Sales trend</SectionLabel>
+        <div className="mt-3 h-64 w-full">
           {data.daily.length === 0 ? (
             <p className="flex h-full items-center justify-center text-sm text-white/40">
-              No synced data for this range yet.
+              No synced data for this range yet — check back after the daily sync.
             </p>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
@@ -238,6 +322,7 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
                   stroke="#FF1493"
                   fill="url(#perfSales)"
                   strokeWidth={2}
+                  isAnimationActive={!reduce}
                 />
               </AreaChart>
             </ResponsiveContainer>
@@ -245,18 +330,26 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
         </div>
       </div>
 
-      <div className={cn(VA_CARD, "overflow-hidden")}>
+      <div className={cn(VA_CARD, "overflow-hidden border border-white/10 bg-white/5")}>
         <div className="border-b border-white/8 px-4 py-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-white/35">
-            Per creator
-          </p>
+          <SectionLabel>Per creator ranking</SectionLabel>
         </div>
         {data.by_performer.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-white/40">No creator breakdown yet.</p>
         ) : (
           <div className="divide-y divide-white/6">
-            {data.by_performer.map((p) => (
+            {data.by_performer.map((p, i) => (
               <div key={p.performer_id} className="flex items-center gap-3 px-4 py-3">
+                <span
+                  className={cn(
+                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-xs font-bold",
+                    i === 0
+                      ? "bg-[#FF1493]/20 text-[#FF1493]"
+                      : "bg-white/5 text-white/40"
+                  )}
+                >
+                  {i + 1}
+                </span>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-white">{p.performer_name}</p>
                   <p className="text-xs text-white/40">
@@ -272,6 +365,54 @@ export function ChatterPerformanceClient({ initial }: { initial: InflowwChatterP
           </div>
         )}
       </div>
+
+      {a?.period_change ? (
+        <div className="grid grid-cols-3 gap-3">
+          {(
+            [
+              ["Sales", a.period_change.sales],
+              ["Messages", a.period_change.messages],
+              ["Unlock rate", a.period_change.unlock_rate],
+            ] as const
+          ).map(([label, change]) => (
+            <div
+              key={label}
+              className={cn(VA_CARD, "border border-white/10 bg-white/5 p-3 text-center")}
+            >
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                {label}
+              </p>
+              <div className="mt-2 flex justify-center">
+                <PeriodBadge change={change} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {a?.whale_suggestions && a.whale_suggestions.length > 0 ? (
+        <div className={cn(VA_CARD, "border border-[#D4AF8C]/20 bg-white/5 p-5")}>
+          <SectionLabel>Fans to watch</SectionLabel>
+          <p className="mt-1 mb-3 text-xs text-white/40">
+            High-value rebill activity not yet in Whales — suggest only, no auto-create.
+          </p>
+          <ul className="space-y-2">
+            {a.whale_suggestions.slice(0, 5).map((w) => (
+              <li
+                key={w.id}
+                className="rounded-xl border border-white/8 px-3 py-2 text-sm text-white/80"
+              >
+                <span className="font-semibold text-white">{w.label}</span>
+                <span className="mt-0.5 block text-xs text-white/45">{w.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
+      {a?.rebill_retention && !a.rebill_retention.available ? (
+        <p className="text-center text-[11px] text-white/30">{a.rebill_retention.note}</p>
+      ) : null}
     </div>
   );
 }

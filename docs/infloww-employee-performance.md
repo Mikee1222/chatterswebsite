@@ -47,3 +47,29 @@ Response shape notes (sales-summary):
 - Rows live under `data.list` (not a bare `data` array)
 - Performer id field is `platformPid`
 - Money fields are `salesAmount`, `ppvSalesAmount`, `tipsSalesAmount`, `directMessageSalesAmount`, `priorityMassMessageSalesAmount`, `massMessageSalesAmount` — **cents**, converted to dollars on ingest
+
+## Derived analytics (`services/infloww-analytics.ts`)
+
+Shared compute for Admin Chatter Performance + My Performance:
+
+| Metric | Source / notes |
+| --- | --- |
+| Revenue / hour | Sales ÷ shift hours (completed/active chatter shifts in range) |
+| Conversion funnel | messages → PPVs sent → fans_who_spent → revenue |
+| Avg PPV price | ppv_sales ÷ ppvs_sent |
+| Avg tip size | tips ÷ tip day×creator rows (Infloww lacks tip event count) |
+| Rev / fan | sales ÷ fans_chatted |
+| WoW / period change | Equal-length prior window |
+| Personal best | Best day + ISO week from all-time synced rows |
+| Team percentile | Rank by sales among linked chatters |
+| Consistency | 0–100 from daily sales CV (≥3 active days) |
+| Whale suggestions | High-value rebills (≥$50) whose username is not in Whales — **suggest only** |
+| Rebill ↔ sales | Pearson across chatters when n≥4; else deferred note |
+| ROI | Admin-only (`includeRoi`); needs compensation on user |
+
+### Deferred / sparse data (Edgar sample Aug 2026)
+
+- **Unlock stage**: `fans_who_spent` often 0 in synced rows → funnel unlock rate marked sparse
+- **Whale auto-flag from Infloww**: no fan-level IDs in `infloww_daily_stats` — cannot auto-suggest OF usernames from sales sync alone
+- **Rebill retention correlation**: needs ≥4 chatters with both rebills + sales; otherwise UI shows “data doesn’t support cleanly”
+- **Performer names**: may be null until Infloww returns names — UI falls back to `Creator {id}`
