@@ -108,6 +108,27 @@ export function sumSalesForYmd(rows: InflowwDailyStatsRow[], ymd: string): numbe
   return total;
 }
 
+/** Latest `synced_at` among rows for an Athens day (null if none). */
+export function latestSyncedAtForYmd(
+  rows: InflowwDailyStatsRow[],
+  ymd: string
+): string | null {
+  const day = ymd.slice(0, 10);
+  let latestMs = 0;
+  let latestIso: string | null = null;
+  for (const r of rows) {
+    if ((r.date ?? "").slice(0, 10) !== day) continue;
+    const iso = (r.synced_at ?? "").trim();
+    if (!iso) continue;
+    const ms = Date.parse(iso);
+    if (!Number.isNaN(ms) && ms >= latestMs) {
+      latestMs = ms;
+      latestIso = new Date(ms).toISOString();
+    }
+  }
+  return latestIso;
+}
+
 export function sumSalesInRange(
   rows: InflowwDailyStatsRow[],
   startYmd: string,

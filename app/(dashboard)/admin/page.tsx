@@ -30,6 +30,7 @@ import {
   rankChattersBySales,
   rankModelsByTransactionGross,
   resolveMonthRangeAthens,
+  latestSyncedAtForYmd,
   sumSalesForYmd,
   sumSalesInRange,
 } from "@/lib/admin-home-dashboard";
@@ -113,6 +114,7 @@ export default async function AdminHomePage({
     .map((u) => ({ id: u.id, full_name: u.full_name ?? "" }));
 
   const todaySalesUsd = sumSalesForYmd(dailyRows, todayYmd);
+  const inflowwLastSyncedAt = latestSyncedAtForYmd(dailyRows, todayYmd);
   const totalRevenue = sumSalesInRange(dailyRows, monthStart, monthEnd);
   const sparklineWow = buildAdminSparklineWowFromDailyStats(dailyRows, todayYmd);
   const daily14 = buildDailyRevenueSeries(dailyRows, lastNAthensYmds(14, todayYmd));
@@ -168,6 +170,7 @@ export default async function AdminHomePage({
         yearMonth={yearMonth}
         todaySalesUsd={todaySalesUsd}
         todayYmd={todayYmd}
+        inflowwLastSyncedAt={inflowwLastSyncedAt}
         totalRevenue={totalRevenue}
         transactionCount={transactionCount}
         avgPerTransaction={avgPerTransaction}

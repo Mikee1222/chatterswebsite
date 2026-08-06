@@ -18,6 +18,7 @@ import {
   TrendingUp,
   UserRound,
   Zap,
+  RefreshCw,
 } from "lucide-react";
 import { Checkbox, Select, ButtonSecondary, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
@@ -49,6 +50,8 @@ type Props = {
   yearMonth: string;
   todaySalesUsd: number;
   todayYmd: string;
+  /** ISO timestamp of latest infloww_daily_stats.synced_at for today (Athens). */
+  inflowwLastSyncedAt: string | null;
   totalRevenue: number;
   transactionCount: number;
   avgPerTransaction: number;
@@ -256,6 +259,8 @@ export function AdminHomeClient(props: Props) {
   const [targetActive, setTargetActive] = React.useState(true);
   const [targetError, setTargetError] = React.useState<string | null>(null);
   const [targetSaving, setTargetSaving] = React.useState(false);
+  const [inflowwSyncing, setInflowwSyncing] = React.useState(false);
+  const [inflowwSyncMsg, setInflowwSyncMsg] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     setMonth(props.yearMonth);
@@ -311,6 +316,36 @@ export function AdminHomeClient(props: Props) {
       router.refresh();
     } else {
       setTargetError(res.error ?? "Failed to save");
+    }
+  };
+
+  /** Re-pull Infloww employee stats for yesterday+today (Athens), then refresh Home. */
+  const handleSyncTodayEarnings = async () => {
+    setInflowwSyncing(true);
+    setInflowwSyncMsg(null);
+    try {
+      const res = await fetch("/api/admin/infloww-stats/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lookbackDays: 2 }),
+      });
+      const body = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        rowsUpserted?: number;
+        usersTargeted?: number;
+        errors?: unknown[];
+      };
+      if (!res.ok) throw new Error(body.error || `Sync failed (${res.status})`);
+      const errCount = body.errors?.length ?? 0;
+      setInflowwSyncMsg(
+        `Synced ${body.rowsUpserted ?? 0} rows · ${body.usersTargeted ?? 0} chatters` +
+          (errCount ? ` · ${errCount} error(s)` : "")
+      );
+      router.refresh();
+    } catch (e) {
+      setInflowwSyncMsg(e instanceof Error ? e.message : "Sync failed");
+    } finally {
+      setInflowwSyncing(false);
     }
   };
 
@@ -568,8 +603,34 @@ export function AdminHomeClient(props: Props) {
           <LuxuryStatCard
             label="Today's earnings"
             value={<CountUp value={props.todaySalesUsd} format={(n) => money(n)} />}
-            hint={`${props.todayYmd} · Infloww daily stats`}
-            tooltip="Sum of employee-report sales for today (Athens) from synced infloww_daily_stats."
+            hint={
+              <div className="space-y-1.5">
+                <p>
+                  {props.todayYmd}
+                  {props.inflowwLastSyncedAt
+                    ? ` · last synced ${formatRelativeTime(props.inflowwLastSyncedAt)}`
+                    : " · not synced yet"}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    disabled={inflowwSyncing}
+                    onClick={() => void handleSyncTodayEarnings()}
+                    className="inline-flex items-center gap-1 rounded-md border border-[#FF1493]/35 bg-[#FF1493]/10 px-2 py-0.5 text-[11px] font-semibold text-[#FF1493] hover:bg-[#FF1493]/15 disabled:opacity-50"
+                  >
+                    <RefreshCw
+                      className={cn("h-3 w-3", inflowwSyncing && "animate-spin")}
+                      aria-hidden
+                    />
+                    {inflowwSyncing ? "Syncing…" : "Sync now"}
+                  </button>
+                  {inflowwSyncMsg ? (
+                    <span className="text-[10px] text-white/45">{inflowwSyncMsg}</span>
+                  ) : null}
+                </div>
+              </div>
+            }
+            tooltip="Sum of employee-report sales for today (Athens) across all linked chatters from infloww_daily_stats. Daily cron keeps Hobby limits; use Sync now for a fresh pull."
             accent="pink"
             glow
           />
