@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { ALL_PERMISSIONS, type Permission } from "@/lib/permissions";
-
-const permissionSchema = z
-  .string()
-  .refine((v): v is Permission => (ALL_PERMISSIONS as readonly string[]).includes(v));
+import { sanitizePermissions } from "@/lib/permissions";
 import { hasPermission } from "@/lib/rbac";
 import { getRoles, syncRoleOptionToAirtable, upsertRole } from "@/services/roles";
 import { NOTIFICATION_ROLE_DEFAULT_KEYS } from "@/lib/notification-role-defaults";
+
+/** Allowlist is always derived from PERMISSIONS via sanitizePermissions / ALL_PERMISSIONS. */
+const permissionsField = z
+  .array(z.string())
+  .optional()
+  .default([])
+  .transform((arr) => sanitizePermissions(arr));
 
 const notificationDefaultsSchema = z
   .object(
@@ -28,7 +31,7 @@ const postSchema = z.object({
     .regex(/^[a-z0-9]+(?:[-_][a-z0-9]+)*$/, "Slug must be lowercase letters, numbers, hyphens, and underscores"),
   label: z.string().trim().min(1).max(120),
   description: z.string().max(2000).optional().default(""),
-  permissions: z.array(permissionSchema).optional().default([]),
+  permissions: permissionsField,
   notification_defaults: notificationDefaultsSchema.optional(),
   color: z.string().max(32).optional().default("gray"),
 });

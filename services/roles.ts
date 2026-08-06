@@ -20,7 +20,7 @@ import {
   parseNotificationDefaultsJson,
   type NotificationRoleDefaults,
 } from "@/lib/notification-role-defaults";
-import { DEFAULT_ROLE_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { DEFAULT_ROLE_PERMISSIONS, sanitizePermissions, type Permission } from "@/lib/permissions";
 import { clearRoleNotificationCache } from "@/lib/role-notification-cache";
 import { listAllUsers } from "@/services/users";
 import type { RoleRecord, UserRole } from "@/types";
@@ -50,7 +50,7 @@ function parsePermissionsJson(raw: unknown): Permission[] {
   try {
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((p): p is Permission => typeof p === "string");
+    return sanitizePermissions(parsed);
   } catch {
     return [];
   }
@@ -207,7 +207,7 @@ export async function upsertRole(
     role_id: roleId,
     label: input.label.trim(),
     description: input.description?.trim() ?? "",
-    permissions: JSON.stringify(input.permissions),
+    permissions: JSON.stringify(sanitizePermissions(input.permissions)),
     notification_defaults: JSON.stringify(notificationDefaults),
     is_system_role: input.is_system_role ?? false,
     color: input.color?.trim() ?? "",

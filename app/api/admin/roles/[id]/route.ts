@@ -1,14 +1,16 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionFromCookies } from "@/lib/auth";
-import { ALL_PERMISSIONS, type Permission } from "@/lib/permissions";
+import { sanitizePermissions } from "@/lib/permissions";
 import { clearRbacCache, hasPermission } from "@/lib/rbac";
-
-const permissionSchema = z
-  .string()
-  .refine((v): v is Permission => (ALL_PERMISSIONS as readonly string[]).includes(v));
 import { deleteRole, getRoleById, upsertRole } from "@/services/roles";
 import { NOTIFICATION_ROLE_DEFAULT_KEYS } from "@/lib/notification-role-defaults";
+
+/** Allowlist is always derived from PERMISSIONS via sanitizePermissions / ALL_PERMISSIONS. */
+const permissionsField = z
+  .array(z.string())
+  .optional()
+  .transform((arr) => (arr === undefined ? undefined : sanitizePermissions(arr)));
 
 const notificationDefaultsSchema = z
   .object(
@@ -22,7 +24,7 @@ const notificationDefaultsSchema = z
 const patchSchema = z.object({
   label: z.string().trim().min(1).max(120).optional(),
   description: z.string().max(2000).optional(),
-  permissions: z.array(permissionSchema).optional(),
+  permissions: permissionsField,
   notification_defaults: notificationDefaultsSchema.optional(),
   color: z.string().max(32).optional(),
 });

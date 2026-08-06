@@ -145,6 +145,29 @@ export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
 
 export const ALL_PERMISSIONS: Permission[] = Object.values(PERMISSIONS);
 
+const PERMISSION_SET: ReadonlySet<string> = new Set(ALL_PERMISSIONS);
+
+/** True when `value` is a known permission from {@link PERMISSIONS}. */
+export function isPermission(value: unknown): value is Permission {
+  return typeof value === "string" && PERMISSION_SET.has(value);
+}
+
+/**
+ * Keep only known permissions (order-preserving, de-duped).
+ * Drops legacy/removed strings (e.g. old `content_pipeline:*`) so Roles UI saves
+ * are not blocked by stale JSON still stored on role rows.
+ */
+export function sanitizePermissions(values: readonly unknown[]): Permission[] {
+  const out: Permission[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    if (!isPermission(value) || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
 const ACTION_LABELS: Record<string, string> = {
   access: "Access",
   view: "View",
