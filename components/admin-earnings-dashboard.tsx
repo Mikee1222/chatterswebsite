@@ -742,8 +742,8 @@ export function AdminEarningsDashboard() {
 
   React.useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- model filter auto-refresh
-  }, [modelId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- initial load only
+  }, []);
 
   async function runSync(
     kind: "now" | "90" | "366",
@@ -892,77 +892,85 @@ export function AdminEarningsDashboard() {
               {data?.linkedCount != null ? ` ${data.linkedCount} linked models.` : ""}
             </p>
           </div>
-          <div className="flex flex-col gap-2 self-start">
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void syncNow()}
-                disabled={syncing || loading}
-                className={cn(VA_BTN_PRIMARY, "inline-flex items-center gap-2")}
-              >
-                <RefreshCw className={cn("h-4 w-4", syncKind === "now" && "animate-spin")} />
-                {syncKind === "now" ? "Syncing…" : "Sync now"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void syncLast3Months()}
-                disabled={syncing || loading}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-xl border border-[#D4AF8C]/35 bg-transparent px-4 py-2.5 text-xs font-medium text-[#D4AF8C] transition hover:bg-[#D4AF8C]/[0.06] disabled:opacity-40"
-                )}
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "90" && "animate-spin")} />
-                {syncKind === "90" ? "Syncing…" : "Last 3 months"}
-              </button>
-              <button
-                type="button"
-                onClick={() => void syncLastYear()}
-                disabled={syncing || loading}
-                className={cn(
-                  "inline-flex items-center gap-2 rounded-xl border border-white/15 bg-transparent px-4 py-2.5 text-xs font-medium text-white/60 transition hover:bg-white/5 disabled:opacity-40"
-                )}
-              >
-                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "366" && "animate-spin")} />
-                {syncKind === "366" ? "Syncing…" : "Last year"}
-              </button>
-            </div>
-            {syncMsg ? <p className="max-w-md text-[11px] text-emerald-300/80">{syncMsg}</p> : null}
-          </div>
-        </div>
-
-        <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
-          <DatePresetBar
-            preset={preset}
-            loading={loading}
-            onSelect={(p) => {
-              if (p === "custom") {
-                setPreset("custom");
-                return;
-              }
-              setPreset(p);
-              void load({ preset: p });
-            }}
-          />
-          {preset === "custom" ? (
-            <InflowwCustomDateRange
-              startYmd={customStart || data?.range.startYmd || toLocalYmd(new Date())}
-              endYmd={customEnd || data?.range.endYmd || toLocalYmd(new Date())}
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <DatePresetBar
+              preset={preset}
               loading={loading}
-              onChange={(s, e) => {
-                setCustomStart(s);
-                setCustomEnd(e);
-              }}
-              onApply={(s, e) => {
-                setCustomStart(s);
-                setCustomEnd(e);
-                void load({ preset: "custom", startYmd: s, endYmd: e });
+              onSelect={(p) => {
+                setPreset(p);
+                if (p !== "custom") void load({ preset: p });
               }}
             />
-          ) : null}
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncNow()}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-[#D4AF8C]/40 bg-[#D4AF8C]/10 px-3 py-1.5 text-xs font-semibold text-[#D4AF8C] disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "now" && "animate-spin")} />
+                Sync now
+              </button>
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncLast3Months()}
+                title="Backfill ~90 days ending at Infloww-safe today (31-day chunks)"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "90" && "animate-spin")} />
+                Sync Last 3 Months
+              </button>
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncLastYear()}
+                title="Backfill up to 366 days ending at Infloww-safe today (31-day chunks)"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/70 hover:bg-white/10 disabled:opacity-50"
+              >
+                <RefreshCw className={cn("h-3.5 w-3.5", syncKind === "366" && "animate-spin")} />
+                Sync Last Year
+              </button>
+            </div>
+          </div>
+        </div>
+        {data?.range ? (
+          <p className="mt-3 text-xs text-white/40">
+            {data.range.startYmd} → {data.range.endYmd}
+            {data?.linkedCount != null ? ` · ${data.linkedCount} linked models` : ""}
+          </p>
+        ) : null}
+      </div>
+
+      {preset === "custom" ? (
+        <InflowwCustomDateRange
+          startYmd={customStart || data?.range.startYmd || toLocalYmd(new Date())}
+          endYmd={customEnd || data?.range.endYmd || toLocalYmd(new Date())}
+          loading={loading}
+          onChange={(s, e) => {
+            setCustomStart(s);
+            setCustomEnd(e);
+          }}
+          onApply={(s, e) => {
+            setCustomStart(s);
+            setCustomEnd(e);
+            void load({ preset: "custom", startYmd: s, endYmd: e });
+          }}
+        />
+      ) : null}
+
+      <div
+        className={cn(
+          VA_CARD,
+          "flex flex-col gap-3 border border-white/10 bg-white/5 p-4 sm:flex-row sm:flex-wrap sm:items-end"
+        )}
+      >
+        <label className="w-full text-xs text-white/50 sm:w-auto">
+          Model
           <select
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
-            className={cn(VA_FILTER_INPUT, "min-w-[160px]")}
+            className="mt-1 block w-full min-w-[10rem] rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
           >
             <option value="">All models</option>
             {(data?.models ?? []).map((m) => (
@@ -971,17 +979,37 @@ export function AdminEarningsDashboard() {
               </option>
             ))}
           </select>
-        </div>
-        {data?.range ? (
-          <p className="mt-3 text-xs text-white/40">
-            {data.range.startYmd} → {data.range.endYmd}
-          </p>
-        ) : null}
+        </label>
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() =>
+            void load(
+              preset === "custom"
+                ? { preset: "custom", startYmd: customStart, endYmd: customEnd, modelId }
+                : { preset, modelId }
+            )
+          }
+          className={cn(VA_BTN_PRIMARY, "w-full px-4 py-2 text-sm disabled:opacity-50 sm:w-auto")}
+        >
+          Apply filters
+        </button>
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+        <p className="whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
           {error}
+        </p>
+      ) : null}
+      {syncMsg ? (
+        <p
+          className={
+            syncMsg.includes("section error")
+              ? "rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+              : "rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200"
+          }
+        >
+          {syncMsg}
         </p>
       ) : null}
 
