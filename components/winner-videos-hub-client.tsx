@@ -276,6 +276,28 @@ export function WinnerVideosHubClient({
     }
   }
 
+  async function toggleBunchStatus(id: string, status: "open" | "closed") {
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/winner-sourcing/bunches/${id}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        addToast(
+          winnerVideoLocalToast(`ws-err-${Date.now()}`, "Update failed", data.error || "Error", "high"),
+        );
+        return;
+      }
+      await refreshAll();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const pendingWinners = winners.filter((w) => w.status === "pending");
   const pendingSupers = supers.filter((w) => w.status === "pending");
   const unassignedQueue = queue.filter((q) => !q.bunch_id);
@@ -403,6 +425,7 @@ export function WinnerVideosHubClient({
               onSelectBunch={(id) => void loadBunchSlots(id)}
               onAssignCreative={assignCreative}
               onUpdateSlotType={updateSlotType}
+              onToggleBunchStatus={toggleBunchStatus}
             />
           ) : null}
         </motion.div>
@@ -623,6 +646,7 @@ function BunchesPanel({
   onSelectBunch,
   onAssignCreative,
   onUpdateSlotType,
+  onToggleBunchStatus,
 }: {
   bunches: VideoBunch[];
   models: HubModelOption[];
@@ -643,6 +667,7 @@ function BunchesPanel({
   onSelectBunch: (id: string) => void;
   onAssignCreative: (slotId: string, creativeId: string) => void;
   onUpdateSlotType: (slotId: string, video_type: SlotVideoType) => void;
+  onToggleBunchStatus?: (id: string, status: "open" | "closed") => void;
 }) {
   return (
     <div className="space-y-4">
@@ -724,12 +749,19 @@ function BunchesPanel({
               const pct = Math.min(100, Math.round((provided / b.target_video_count) * 100));
               return (
                 <li key={b.id}>
-                  <button
-                    type="button"
+                  <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onSelectBunch(b.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelectBunch(b.id);
+                      }
+                    }}
                     className={cn(
                       VA_CARD,
-                      "w-full p-4 text-left transition",
+                      "w-full cursor-pointer p-4 text-left transition",
                       selectedBunchId === b.id && "border-[#FF1493]/35 ring-1 ring-[#FF1493]/20",
                     )}
                   >
@@ -740,9 +772,21 @@ function BunchesPanel({
                           {b.model_name} · {b.status}
                         </p>
                       </div>
-                      <span className="text-xs tabular-nums text-[#D4AF8C]">
-                        {provided}/{b.target_video_count}
-                      </span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-xs tabular-nums text-[#D4AF8C]">
+                          {provided}/{b.target_video_count}
+                        </span>
+                        <button
+                          type="button"
+                          className="text-[10px] font-medium uppercase tracking-wider text-[#B8B4B8]/50 hover:text-[#D4AF8C]"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onToggleBunchStatus?.(b.id, b.status === "open" ? "closed" : "open");
+                          }}
+                        >
+                          {b.status === "open" ? "Close" : "Reopen"}
+                        </button>
+                      </div>
                     </div>
                     <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/5">
                       <div
@@ -751,7 +795,7 @@ function BunchesPanel({
                       />
                     </div>
                     <p className="mt-2 text-[11px] text-[#B8B4B8]/45">{remaining} remaining</p>
-                  </button>
+                  </div>
                 </li>
               );
             })
