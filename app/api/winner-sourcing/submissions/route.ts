@@ -3,7 +3,7 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { hasPermission } from "@/lib/rbac";
 import { PERMISSIONS } from "@/lib/permissions";
 import { createWinnerSubmission, listWinnerSubmissions } from "@/services/winner-sourcing";
-import { coerceWinnerTier, type WinnerSubmissionStatus, type WinnerTier } from "@/lib/winner-sourcing-helpers";
+import { coerceWinnerTier, type WinnerSubmissionStatus } from "@/lib/winner-sourcing-helpers";
 
 export async function GET(req: Request) {
   const session = await getSessionFromCookies();
