@@ -1,6 +1,7 @@
 "use server";
 
 import { getWeekStartYmdInAthens } from "@/lib/airtable-datetime";
+import { modelLiveStreamReasonLabel } from "@/lib/airtable-options";
 import {
   modelLiveStartedAdmin,
   modelLiveStartedChatter,
@@ -23,6 +24,21 @@ async function resolveLivePlatform(liveStreamRecordId: string, platform?: string
   if (trimmed) return trimmed;
   const live = await getModelLiveStreamById(liveStreamRecordId).catch(() => null);
   return live?.platform?.trim() ?? "";
+}
+
+async function resolveLiveReason(
+  liveStreamRecordId: string,
+  reason?: string | null,
+  reasonNote?: string | null
+): Promise<{ reason: string; reasonNote: string }> {
+  if (reason?.trim()) {
+    return { reason: reason.trim(), reasonNote: reasonNote?.trim() ?? "" };
+  }
+  const live = await getModelLiveStreamById(liveStreamRecordId).catch(() => null);
+  return {
+    reason: live?.reason?.trim() ?? "",
+    reasonNote: live?.reason_note?.trim() ?? "",
+  };
 }
 
 async function getFallbackChatterIdsForModel(modelId: string, modelRecord: ModelRecord): Promise<string[]> {
@@ -80,19 +96,24 @@ async function notifyModelLiveByRoleConfig(params: {
   modelRecord: ModelRecord;
   liveStreamRecordId: string;
   platform: string;
+  reason?: string;
+  reasonNote?: string;
   modelActorUserId?: string;
   modelName: string;
 }): Promise<void> {
-  const { kind, modelRecord, liveStreamRecordId, platform, modelActorUserId, modelName } = params;
+  const { kind, modelRecord, liveStreamRecordId, platform, reason, reasonNote, modelActorUserId, modelName } =
+    params;
   const eventType =
     kind === "started" ? NOTIFICATION_EVENT.MODEL_LIVE_STARTED : NOTIFICATION_EVENT.MODEL_LIVE_ENDED;
+  const reasonLabel =
+    kind === "started" ? modelLiveStreamReasonLabel(reason, reasonNote) : "";
   const adminCopy =
     kind === "started"
-      ? modelLiveStartedAdmin(modelName, platform)
+      ? modelLiveStartedAdmin(modelName, platform, reasonLabel)
       : modelLiveEndedAdmin(modelName, platform);
   const chatterCopy =
     kind === "started"
-      ? modelLiveStartedChatter(modelName, platform)
+      ? modelLiveStartedChatter(modelName, platform, reasonLabel)
       : modelLiveEndedChatter(modelName, platform);
   const chatterIds = await resolveChatterIdsForModelLive(modelRecord);
   const personalIds = [
@@ -109,7 +130,11 @@ async function notifyModelLiveByRoleConfig(params: {
     entity_id: liveStreamRecordId,
     actor_user_id: modelActorUserId,
     actor_name: modelName,
-    context: { modelName, platform },
+    context: {
+      modelName,
+      platform,
+      ...(reasonLabel ? { reason: reasonLabel } : {}),
+    },
   }).catch(() => {});
 }
 
@@ -117,10 +142,15 @@ async function notifyModelLiveByRoleConfig(params: {
 export async function notifyModelLiveStarted(
   modelRecord: ModelRecord,
   liveStreamRecordId: string,
-  platform?: string
+  platform?: string,
+  reason?: string | null,
+  reasonNote?: string | null
 ): Promise<void> {
   const modelName = (modelRecord.model_name ?? "Model").trim() || "Model";
-  const resolvedPlatform = await resolveLivePlatform(liveStreamRecordId, platform);
+  const [resolvedPlatform, resolvedReason] = await Promise.all([
+    resolveLivePlatform(liveStreamRecordId, platform),
+    resolveLiveReason(liveStreamRecordId, reason, reasonNote),
+  ]);
   const modelActorUserId =
     (await getActiveModelUserAirtableIdByLinkedModelRecordId(modelRecord.id)) ?? undefined;
   await notifyModelLiveByRoleConfig({
@@ -128,6 +158,8 @@ export async function notifyModelLiveStarted(
     modelRecord,
     liveStreamRecordId,
     platform: resolvedPlatform,
+    reason: resolvedReason.reason,
+    reasonNote: resolvedReason.reasonNote,
     modelActorUserId,
     modelName,
   });

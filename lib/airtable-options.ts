@@ -138,6 +138,35 @@ export function isModelGoLivePlatform(value: string): value is ModelGoLivePlatfo
 }
 
 /**
+ * model_live_streams.reason – why the model went live (Start Live).
+ * Match Airtable / Supabase single-select options exactly.
+ */
+export const MODEL_LIVE_STREAM_REASON_OPTIONS = ["going_out", "gym", "at_home", "other"] as const;
+
+export type ModelLiveStreamReasonOption = (typeof MODEL_LIVE_STREAM_REASON_OPTIONS)[number];
+
+export function isModelLiveStreamReason(value: string): value is ModelLiveStreamReasonOption {
+  return MODEL_LIVE_STREAM_REASON_OPTIONS.includes(value as ModelLiveStreamReasonOption);
+}
+
+/** Display label for live reason in notifications / admin (Greek — team language). UI uses i18n. */
+export function modelLiveStreamReasonLabel(
+  reason: string | null | undefined,
+  reasonNote?: string | null
+): string {
+  const key = (reason ?? "").trim();
+  let label = key;
+  if (key === "going_out") label = "Βγαίνω έξω";
+  else if (key === "gym") label = "Γυμναστήριο";
+  else if (key === "at_home") label = "Σπίτι";
+  else if (key === "other") label = "Άλλο";
+  else if (!key) return "";
+  const note = reasonNote?.trim();
+  if (key === "other" && note) return `${label} — ${note}`;
+  return label;
+}
+
+/**
  * model_live_streams.status – match Airtable single-select (scheduled rows + ad-hoc live/ended).
  */
 export const MODEL_LIVE_STREAM_STATUS_OPTIONS = [

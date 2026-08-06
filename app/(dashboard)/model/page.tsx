@@ -90,6 +90,8 @@ export default async function ModelHomePage() {
     ? {
         id: activeLiveRecord.id,
         platform: activeLiveRecord.platform,
+        reason: activeLiveRecord.reason,
+        reason_note: activeLiveRecord.reason_note,
         started_at:
           activeLiveRecord.actual_start?.trim() ||
           activeLiveRecord.planned_start?.trim() ||

@@ -746,6 +746,10 @@ export interface ModelLiveStreamRecord {
   details: string;
   details_en: string | null;
   details_es: string | null;
+  /** Why the model went live: going_out | gym | at_home | other */
+  reason: string | null;
+  /** Optional free-text when reason is other */
+  reason_note: string | null;
   created_at: string;
   updated_at: string;
 }

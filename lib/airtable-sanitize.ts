@@ -11,6 +11,7 @@ import { NOTIFICATIONS_TABLE } from "@/lib/notifications-schema";
 import { isTimeOnlyString } from "@/lib/airtable-datetime";
 import {
   MODEL_LIVE_STREAM_PLATFORM_OPTIONS,
+  MODEL_LIVE_STREAM_REASON_OPTIONS,
   MODEL_LIVE_STREAM_STATUS_OPTIONS,
   MODEL_TASK_TYPE_OPTIONS,
   TRANSACTION_CURRENCY_OPTIONS,
@@ -215,6 +216,7 @@ const TABLE_SELECT_FIELD_OVERRIDES: Record<string, Record<string, Set<string>>> 
   model_live_streams: {
     platform: new Set(MODEL_LIVE_STREAM_PLATFORM_OPTIONS),
     status: new Set([...MODEL_LIVE_STREAM_STATUS_OPTIONS]),
+    reason: new Set(MODEL_LIVE_STREAM_REASON_OPTIONS),
   },
   model_tasks: {
     type: new Set(MODEL_TASK_TYPE_OPTIONS),

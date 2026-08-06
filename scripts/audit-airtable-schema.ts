@@ -18,6 +18,7 @@ import {
   CUSTOM_REQUEST_STATUS_OPTIONS,
   CUSTOM_REQUEST_TYPE_OPTIONS,
   MODEL_LIVE_STREAM_PLATFORM_OPTIONS,
+  MODEL_LIVE_STREAM_REASON_OPTIONS,
   MODEL_LIVE_STREAM_STATUS_OPTIONS,
   MODEL_TASK_TYPE_OPTIONS,
   TRANSACTION_CURRENCY_OPTIONS,
@@ -177,6 +178,7 @@ function buildCodeSelectExpectations(): Record<string, Record<string, readonly s
     model_live_streams: {
       platform: MODEL_LIVE_STREAM_PLATFORM_OPTIONS,
       status: MODEL_LIVE_STREAM_STATUS_OPTIONS,
+      reason: MODEL_LIVE_STREAM_REASON_OPTIONS,
     },
     /** Airtable column is `task_type`; service Fields still use `type` (see FIELD_ALIASES). */
     model_tasks: {

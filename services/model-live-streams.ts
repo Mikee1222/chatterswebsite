@@ -25,6 +25,8 @@ type Fields = {
   details?: string;
   details_en?: string;
   details_es?: string;
+  reason?: string;
+  reason_note?: string;
   created_at?: string;
   updated_at?: string;
 };
@@ -44,6 +46,8 @@ function mapRecord(rec: AirtableRecord<Fields>): ModelLiveStreamRecord {
     details: f.details ?? "",
     details_en: f.details_en ?? null,
     details_es: f.details_es ?? null,
+    reason: f.reason?.trim() || null,
+    reason_note: f.reason_note?.trim() || null,
     created_at: f.created_at ?? "",
     updated_at: f.updated_at ?? "",
   };
@@ -125,6 +129,8 @@ export async function createModelLiveStream(input: {
   details?: string;
   details_en?: string;
   details_es?: string;
+  reason?: string | null;
+  reason_note?: string | null;
 }): Promise<ModelLiveStreamRecord> {
   if (isSupabaseBackend()) {
     return (await import("./model-live-streams-supabase")).createModelLiveStream(input);
@@ -141,6 +147,8 @@ export async function createModelLiveStream(input: {
     details: input.details ?? "",
     details_en: input.details_en ?? undefined,
     details_es: input.details_es ?? undefined,
+    reason: input.reason ?? undefined,
+    reason_note: input.reason_note ?? undefined,
   });
   const row = mapRecord(rec as AirtableRecord<Fields>);
   if (isActiveLiveStreamRecord(row)) {
@@ -168,6 +176,8 @@ export async function updateModelLiveStream(
     details: string;
     details_en: string | null;
     details_es: string | null;
+    reason: string | null;
+    reason_note: string | null;
   }>
 ): Promise<ModelLiveStreamRecord> {
   if (isSupabaseBackend()) {

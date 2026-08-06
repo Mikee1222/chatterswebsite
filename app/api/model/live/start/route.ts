@@ -5,13 +5,20 @@ import { requireModelApiContext } from "@/lib/model-api-auth";
 import { broadcastRealtimeToAll } from "@/lib/realtime-broadcast";
 import { ROUTES } from "@/lib/routes";
 import { getTodayYmd } from "@/lib/weekly-program";
-import { isModelLiveStreamPlatform, type ModelLiveStreamPlatformOption } from "@/lib/airtable-options";
+import {
+  isModelLiveStreamPlatform,
+  isModelLiveStreamReason,
+  type ModelLiveStreamPlatformOption,
+  type ModelLiveStreamReasonOption,
+} from "@/lib/airtable-options";
 import { createModelLiveStream, getActiveLiveStreamForModel } from "@/services/model-live-streams";
 import { getModelById } from "@/services/modelss";
 import { notifyModelLiveStarted } from "@/services/model-live-notify";
 
 const bodySchema = z.object({
   platform: z.enum(["instagram", "tiktok", "onlyfans"]),
+  reason: z.enum(["going_out", "gym", "at_home", "other"]),
+  reason_note: z.string().trim().max(500).optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -39,6 +46,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
+  const reason = parsed.data.reason as ModelLiveStreamReasonOption;
+  if (!isModelLiveStreamReason(reason)) {
+    return NextResponse.json({ error: "Reason is required" }, { status: 400 });
+  }
+
+  const reasonNoteRaw = parsed.data.reason_note?.trim() || null;
+  const reason_note = reason === "other" ? reasonNoteRaw : null;
+
   // Check for active stream
   let active: Awaited<ReturnType<typeof getActiveLiveStreamForModel>>;
   try {
@@ -59,6 +74,8 @@ export async function POST(req: Request) {
       platform,
       status: "in_progress",
       actual_start: new Date().toISOString(),
+      reason,
+      reason_note,
     });
   } catch (e) {
     console.error("[live/start] createModelLiveStream failed:", e);
@@ -77,7 +94,7 @@ export async function POST(req: Request) {
 
   const modelRecord = await getModelById(ctx.linkedModelId);
   if (modelRecord) {
-    await notifyModelLiveStarted(modelRecord, row.id, platform).catch((e) =>
+    await notifyModelLiveStarted(modelRecord, row.id, platform, reason, reason_note).catch((e) =>
       console.error("[live/start] notification failed:", e)
     );
   }
@@ -87,6 +104,8 @@ export async function POST(req: Request) {
     live_id: row.id,
     stream_id: row.id,
     platform: parsed.data.platform,
+    reason,
+    reason_note,
     started_at: row.actual_start ?? new Date().toISOString(),
   });
 }

@@ -23,6 +23,8 @@ export async function GET() {
     live: {
       id: record.id,
       platform: record.platform,
+      reason: record.reason,
+      reason_note: record.reason_note,
       started_at:
         record.actual_start?.trim() ||
         record.planned_start?.trim() ||

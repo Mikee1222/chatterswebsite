@@ -29,6 +29,8 @@ type Row = SbRow & {
   details?: string | null;
   details_en?: string | null;
   details_es?: string | null;
+  reason?: string | null;
+  reason_note?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -47,6 +49,8 @@ function mapRowSync(row: Row, modelAt: Map<string, string>): ModelLiveStreamReco
     details: row.details ?? "",
     details_en: row.details_en ?? null,
     details_es: row.details_es ?? null,
+    reason: row.reason?.trim() || null,
+    reason_note: row.reason_note?.trim() || null,
     created_at: row.created_at ?? "",
     updated_at: row.updated_at ?? "",
   };
@@ -125,6 +129,8 @@ export async function createModelLiveStream(input: {
   details?: string;
   details_en?: string;
   details_es?: string;
+  reason?: string | null;
+  reason_note?: string | null;
 }): Promise<ModelLiveStreamRecord> {
   const model = await requireSbUuids("modelss", [input.model_id], "model");
   const inserted = await sbInsert<Row>(TABLE, {
@@ -139,6 +145,8 @@ export async function createModelLiveStream(input: {
     details: input.details ?? "",
     details_en: input.details_en ?? null,
     details_es: input.details_es ?? null,
+    reason: input.reason ?? null,
+    reason_note: input.reason_note ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   });
@@ -168,6 +176,8 @@ export async function updateModelLiveStream(
     details: string;
     details_en: string | null;
     details_es: string | null;
+    reason: string | null;
+    reason_note: string | null;
   }>
 ): Promise<ModelLiveStreamRecord> {
   const updated = await sbUpdateByPublicId<Row>(TABLE, id, {

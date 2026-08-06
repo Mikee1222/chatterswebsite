@@ -8,7 +8,9 @@ import { Activity, DollarSign, FileText, Heart, Loader2, Package, Radio, Sparkle
 import { ROUTES } from "@/lib/routes";
 import {
   MODEL_GO_LIVE_PLATFORM_OPTIONS,
+  MODEL_LIVE_STREAM_REASON_OPTIONS,
   type ModelGoLivePlatformOption,
+  type ModelLiveStreamReasonOption,
   modelLiveStreamPlatformLabel,
 } from "@/lib/airtable-options";
 import { VA_BTN_PRIMARY, VA_CARD } from "@/lib/va-tasks-tokens";
@@ -29,6 +31,8 @@ export type ModelHomeActiveLive = {
   id: string;
   platform: string;
   started_at: string;
+  reason?: string | null;
+  reason_note?: string | null;
 };
 
 export type ModelHomeClientProps = {
@@ -66,6 +70,8 @@ export function ModelHomeClient({
   const realtime = useRealtime();
   const [activeLive, setActiveLive] = React.useState<ModelHomeActiveLive | null>(activeLiveProp);
   const [platform, setPlatform] = React.useState<ModelGoLivePlatformOption>("instagram");
+  const [reason, setReason] = React.useState<ModelLiveStreamReasonOption | "">("");
+  const [reasonNote, setReasonNote] = React.useState("");
   const [isStarting, setIsStarting] = React.useState(false);
   const [isEnding, setIsEnding] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
@@ -164,6 +170,11 @@ export function ModelHomeClient({
 
   const handleStartLive = React.useCallback(async () => {
     setActionError(null);
+    if (!reason || !MODEL_LIVE_STREAM_REASON_OPTIONS.includes(reason)) {
+      setActionError(t("home.reasonRequired"));
+      return;
+    }
+    const noteForRequest = reason === "other" ? reasonNote.trim() || null : null;
     const optimisticId = `optimistic-${Date.now()}`;
     const optimisticStartedAt = new Date().toISOString();
     pendingLiveIdRef.current = optimisticId;
@@ -171,6 +182,8 @@ export function ModelHomeClient({
     setLiveState({
       id: optimisticId,
       platform,
+      reason,
+      reason_note: noteForRequest,
       started_at: optimisticStartedAt,
     });
     setIsStarting(true);
@@ -178,10 +191,21 @@ export function ModelHomeClient({
       const res = await fetch("/api/model/live/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ platform }),
+        body: JSON.stringify({
+          platform,
+          reason,
+          reason_note: noteForRequest,
+        }),
       });
       const raw = await res.text();
-      let data: { error?: string; live_id?: string; platform?: string; started_at?: string } = {};
+      let data: {
+        error?: string;
+        live_id?: string;
+        platform?: string;
+        reason?: string;
+        reason_note?: string | null;
+        started_at?: string;
+      } = {};
       try {
         data = raw ? (JSON.parse(raw) as typeof data) : {};
       } catch {
@@ -208,6 +232,8 @@ export function ModelHomeClient({
         setLiveState({
           id: data.live_id,
           platform: data.platform ?? platform,
+          reason: data.reason ?? reason,
+          reason_note: data.reason_note ?? noteForRequest,
           started_at: data.started_at ?? optimisticStartedAt,
         });
       }
@@ -218,7 +244,7 @@ export function ModelHomeClient({
     } finally {
       setIsStarting(false);
     }
-  }, [fetchActiveLive, platform, router, setLiveState, t]);
+  }, [fetchActiveLive, platform, reason, reasonNote, router, setLiveState, t]);
 
   const handleEndLive = React.useCallback(async () => {
     setActionError(null);
@@ -271,6 +297,30 @@ export function ModelHomeClient({
   const platformLabel = activeLive
     ? modelLiveStreamPlatformLabel(activeLive.platform)
     : modelLiveStreamPlatformLabel(platform);
+
+  const reasonLabelFor = React.useCallback(
+    (r: string | null | undefined, note?: string | null) => {
+      const key = (r ?? "").trim();
+      let label = "";
+      if (key === "going_out") label = t("home.reasonGoingOut");
+      else if (key === "gym") label = t("home.reasonGym");
+      else if (key === "at_home") label = t("home.reasonAtHome");
+      else if (key === "other") label = t("home.reasonOther");
+      else if (key) label = key;
+      const n = note?.trim();
+      if (key === "other" && n) return `${label} — ${n}`;
+      return label;
+    },
+    [t]
+  );
+
+  const liveReasonLabel = activeLive ? reasonLabelFor(activeLive.reason, activeLive.reason_note) : "";
+  const liveStatusLine =
+    isLive && liveReasonLabel
+      ? t("home.liveStatusLine", { platform: platformLabel, reason: liveReasonLabel })
+      : isLive
+        ? `LIVE · ${platformLabel}`
+        : null;
 
   return (
     <div className="space-y-8 md:space-y-10">
@@ -374,6 +424,11 @@ export function ModelHomeClient({
                 <h2 className="mt-1.5 text-lg font-semibold tracking-tight text-white md:text-xl">
                   {isLive ? t("home.youAreLive") : t("home.startLiveStream")}
                 </h2>
+                {liveStatusLine ? (
+                  <p className="mt-1.5 text-sm font-medium tracking-wide text-[#FF1493]/95">
+                    {liveStatusLine}
+                  </p>
+                ) : null}
                 <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-white/50">
                   {isLive ? t("home.liveNotifyTeam") : t("home.livePickPlatform")}
                 </p>
@@ -459,10 +514,53 @@ export function ModelHomeClient({
                   ))}
                 </div>
               </div>
+              <div>
+                <label
+                  htmlFor="model-live-reason"
+                  className="mb-2 block text-[10px] font-semibold uppercase tracking-[0.16em] text-[#D4AF8C]/75"
+                >
+                  {t("home.reason")}
+                </label>
+                <select
+                  id="model-live-reason"
+                  value={reason}
+                  disabled={isStarting}
+                  onChange={(e) => setReason(e.target.value as ModelLiveStreamReasonOption | "")}
+                  required
+                  className={cn(
+                    "min-h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white",
+                    "outline-none focus:border-[#FF1493]/45 focus:ring-1 focus:ring-[#FF1493]/30",
+                    isStarting && "cursor-not-allowed opacity-45"
+                  )}
+                >
+                  <option value="" disabled>
+                    {t("home.reason")}
+                  </option>
+                  <option value="going_out">{t("home.reasonGoingOut")}</option>
+                  <option value="gym">{t("home.reasonGym")}</option>
+                  <option value="at_home">{t("home.reasonAtHome")}</option>
+                  <option value="other">{t("home.reasonOther")}</option>
+                </select>
+                {reason === "other" ? (
+                  <input
+                    type="text"
+                    value={reasonNote}
+                    disabled={isStarting}
+                    onChange={(e) => setReasonNote(e.target.value)}
+                    placeholder={t("home.reasonNotePlaceholder")}
+                    maxLength={500}
+                    className={cn(
+                      "mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-black/40 px-3 text-sm text-white placeholder:text-white/35",
+                      "outline-none focus:border-[#FF1493]/45 focus:ring-1 focus:ring-[#FF1493]/30",
+                      isStarting && "cursor-not-allowed opacity-45"
+                    )}
+                  />
+                ) : null}
+              </div>
               <button
                 type="button"
                 onClick={() => void handleStartLive()}
-                disabled={isStarting}
+                disabled={isStarting || !reason}
                 className={cn(
                   VA_BTN_PRIMARY,
                   "inline-flex w-full min-h-[52px] items-center justify-center gap-2 text-base font-bold tracking-tight"

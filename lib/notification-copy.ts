@@ -278,20 +278,30 @@ export function modelTakenAdmin(modelName: string, chatterName: string): { title
 }
 
 /** Model went live — assigned chatter (pause chatting). */
-export function modelLiveStartedChatter(modelName: string, platform: string): { title: string; body: string } {
+export function modelLiveStartedChatter(
+  modelName: string,
+  platform: string,
+  reasonLabel?: string
+): { title: string; body: string } {
   const platformLabel = modelLiveStreamPlatformLabel(platform);
+  const reasonSuffix = reasonLabel?.trim() ? ` · ${reasonLabel.trim()}` : "";
   return {
     title: `🔴 ${modelName} is live on ${platformLabel}!`,
-    body: `Pause chatting — ${modelName} just started a live stream on ${platformLabel}.`,
+    body: `Pause chatting — ${modelName} just started a live stream on ${platformLabel}${reasonSuffix}. Do not chat as them while they are live.`,
   };
 }
 
 /** Model went live — admin oversight. */
-export function modelLiveStartedAdmin(modelName: string, platform: string): { title: string; body: string } {
+export function modelLiveStartedAdmin(
+  modelName: string,
+  platform: string,
+  reasonLabel?: string
+): { title: string; body: string } {
   const platformLabel = modelLiveStreamPlatformLabel(platform);
+  const reasonSuffix = reasonLabel?.trim() ? ` · ${reasonLabel.trim()}` : "";
   return {
     title: `🔴 ${modelName} went live on ${platformLabel}`,
-    body: `${modelName} started a live stream on ${platformLabel}.`,
+    body: `${modelName} started a live stream on ${platformLabel}${reasonSuffix}. Team should not chat as them while live.`,
   };
 }
 
@@ -924,7 +934,11 @@ export function buildAdminTitle(
     case "break_exceeded":
       return `⚠️ ${actor} — break over 45 min`;
     case "model_live_started":
-      return modelLiveStartedAdmin(String(ctx.modelName ?? actor), String(ctx.platform ?? "")).title;
+      return modelLiveStartedAdmin(
+        String(ctx.modelName ?? actor),
+        String(ctx.platform ?? ""),
+        ctx.reason ? String(ctx.reason) : undefined
+      ).title;
     case "custom_approved":
       return `✅ Custom approved — ${ctx.modelName ?? "model"}`;
     case "whale_registered": {
@@ -1042,7 +1056,11 @@ export function buildAdminBody(
       return copy.body;
     }
     case "model_live_started": {
-      const copy = modelLiveStartedAdmin(String(ctx.modelName ?? actor), String(ctx.platform ?? ""));
+      const copy = modelLiveStartedAdmin(
+        String(ctx.modelName ?? actor),
+        String(ctx.platform ?? ""),
+        ctx.reason ? String(ctx.reason) : undefined
+      );
       return copy.body;
     }
     case "model_live_ended": {
