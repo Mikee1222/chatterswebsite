@@ -118,6 +118,9 @@ export interface WinnerVideoRecord {
   /** Creative (staff with creative_scripts:submit) assigned to write the script on approve. */
   assigned_creative_name: string;
   assigned_creative_id: string;
+  /** Winner sourcing bunch (Fill Bunches → Research Manage). Empty when non-bunch legacy. */
+  bunch_id: string;
+  bunch_name: string;
 }
 
 export interface WinnerVideoFilters {
@@ -163,6 +166,8 @@ type WinnerVideoFields = {
   content_type?: string;
   assigned_creative_name?: string;
   assigned_creative_id?: string;
+  bunch_id?: string | null;
+  bunch_name?: string;
 };
 
 function escapeFormulaString(value: string): string {
@@ -219,6 +224,8 @@ function mapWinnerVideo(rec: AirtableRecord<WinnerVideoFields>): WinnerVideoReco
     content_type: coerceWinnerVideoContentType(f.content_type),
     assigned_creative_name: String(f.assigned_creative_name ?? ""),
     assigned_creative_id: String(f.assigned_creative_id ?? ""),
+    bunch_id: String(f.bunch_id ?? ""),
+    bunch_name: String(f.bunch_name ?? ""),
   };
 }
 
@@ -292,11 +299,16 @@ export type CreateWinnerVideoInput = {
   views_at_submission?: number | null;
   submitted_by_id: string;
   submitted_by_name: string;
+  /** Fill Bunches: required going forward for researcher submits. */
+  bunch_id?: string;
+  bunch_name?: string;
+  script_video_type?: ScriptVideoType | "";
 };
 
 export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<WinnerVideoRecord> {
   const now = new Date().toISOString();
-  const fields = {
+  const bunchId = data.bunch_id?.trim() || "";
+  const fields: Record<string, unknown> = {
     video_id: `wv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     reference_model_id: data.reference_model_id?.trim() || undefined,
     reference_model_name: data.reference_model_name.trim(),
@@ -308,17 +320,27 @@ export async function createWinnerVideo(data: CreateWinnerVideoInput): Promise<W
     submitted_at: now,
     status: "Pending",
     views_at_submission: data.views_at_submission ?? undefined,
+    script_status: "Not Applicable",
   };
+  if (data.script_video_type) {
+    fields.script_video_type = data.script_video_type;
+  }
+  if (bunchId && isSupabaseBackend()) {
+    fields.bunch_id = bunchId;
+    fields.bunch_name = (data.bunch_name ?? "").trim();
+  }
   const video = isSupabaseBackend()
     ? await (await import("./winner-videos-supabase")).createWinnerVideoRow(fields)
-    : mapWinnerVideo(await createRecord<WinnerVideoFields>(TABLE, fields));
+    : mapWinnerVideo(await createRecord<WinnerVideoFields>(TABLE, fields as WinnerVideoFields));
 
   await notifyPermissionHolders({
     permission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
     event_type: NOTIFICATION_EVENT.WINNER_VIDEO_SUBMITTED,
     priority: NOTIFICATION_PRIORITY.NORMAL,
     title: "🎬 New winner video submitted",
-    body: `${video.submitted_by_name || "A VA"} submitted a winner video for ${video.reference_model_name || "a reference model"}. Review it in Winner Videos.`,
+    body: bunchId
+      ? `${video.submitted_by_name || "A researcher"} submitted a Fill Bunches find for ${video.reference_model_name || "a model"} (${video.bunch_name || "bunch"}). Review it in Research.`
+      : `${video.submitted_by_name || "A VA"} submitted a winner video for ${video.reference_model_name || "a reference model"}. Review it in Winner Videos.`,
     entity_type: NOTIFICATION_ENTITY.WINNER_VIDEO,
     entity_id: video.id,
     actor_user_id: data.submitted_by_id.trim() || undefined,
@@ -390,6 +412,21 @@ export async function approveWinnerVideo(id: string, data: ApproveWinnerVideoInp
 
   const updated = await getWinnerVideoById(id);
   if (!updated) throw new Error("Winner video not found after approve");
+
+  // Fill Bunches finds: materialize recreate_video_slot into the bunch on Approve only.
+  if (existing.bunch_id && isSupabaseBackend()) {
+    try {
+      const { createSlotFromApprovedWinnerVideo } = await import("./winner-sourcing");
+      await createSlotFromApprovedWinnerVideo({
+        winner_video: updated,
+        assigned_creative_id: data.assigned_creative_id.trim(),
+        assigned_creative_name: data.assigned_creative_name.trim(),
+      });
+    } catch (err) {
+      console.error("[winner-sourcing] create slot on approve failed", err);
+      throw err instanceof Error ? err : new Error("Failed to create recreate slot for bunch");
+    }
+  }
 
   if (existing.submitted_by_id) {
     await notify({

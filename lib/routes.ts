@@ -188,9 +188,9 @@ export const ROUTES = {
   spotChecks: "/spot-checks",
   /** Supervisor daily review submissions (permission-gated, not under /admin). */
   dailyReview: "/daily-review",
-  /** VA winner video submissions (permission-gated). */
+  /** @deprecated Prefer Fill Bunches (`winnerRecreates`). Legacy URL redirects. */
   winners: "/winners",
-  /** Researcher: submit recreate videos into open bunches (Winner sourcing). */
+  /** Researcher: submit recreate finds into open bunches (reviewed in Research Manage). */
   winnerRecreates: "/winner-recreates",
   /** Creative script queue — write scripts for approved winner videos. */
   creativeScripts: "/creative-scripts",

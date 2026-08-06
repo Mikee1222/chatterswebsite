@@ -407,6 +407,11 @@ export function WinnerVideoKanbanCard({
             {video.reference_model_name?.trim() || "—"}
           </p>
           {video.content_type ? <WinnerVideoContentTypeBadge contentType={video.content_type} /> : null}
+          {video.bunch_id ? (
+            <span className="inline-flex items-center rounded-md border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#D4AF8C]">
+              Bunch: {video.bunch_name?.trim() || "linked"}
+            </span>
+          ) : null}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {onRefresh ? <WinnerVideoRefreshButton onClick={onRefresh} refreshing={refreshing} /> : null}

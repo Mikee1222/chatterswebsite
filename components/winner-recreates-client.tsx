@@ -9,6 +9,17 @@ import { VA_BTN_PRIMARY, VA_CARD, VA_CARD_GLOW, VA_FILTER_INPUT } from "@/lib/va
 import type { VideoBunch } from "@/services/winner-sourcing";
 import { cn } from "@/lib/utils";
 
+function BunchProgress({ bunch }: { bunch: VideoBunch }) {
+  const filled = bunch.provided_count ?? 0;
+  const pending = bunch.pending_review_count ?? 0;
+  const remaining = bunch.remaining_count ?? Math.max(0, bunch.target_video_count - filled - pending);
+  return (
+    <p className="text-xs text-[#B8B4B8]/50">
+      Filled {filled} · Pending review {pending} · Still needed {remaining} / {bunch.target_video_count}
+    </p>
+  );
+}
+
 export function WinnerRecreatesClient({ initialBunches }: { initialBunches: VideoBunch[] }) {
   const { addToast } = useToast();
   const [bunches, setBunches] = React.useState(initialBunches);
@@ -63,8 +74,8 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
       addToast(
         winnerVideoLocalToast(
           `ws-rs-${Date.now()}`,
-          "Recreate added to bunch",
-          `Slot #${data.slot?.sequence_number ?? "?"} · ${selected?.name ?? "bunch"}`,
+          "Submitted for review",
+          `Pending in Research Manage · ${selected?.name ?? "bunch"}`,
           "normal",
         ),
       );
@@ -93,11 +104,28 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-white">Fill Bunches</h1>
             <p className="mt-1 text-sm text-[#B8B4B8]/65">
-              Submit recreate videos into open bunches that still need slots.
+              Submit finds into open bunches. Admins approve in Research Manage before a slot is created.
             </p>
           </div>
         </div>
       </div>
+
+      {bunches.length > 0 ? (
+        <div className={cn(VA_CARD, "space-y-2 p-4")}>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#D4AF8C]/70">
+            Bunch progress
+          </p>
+          <ul className="space-y-2">
+            {bunches.map((b) => (
+              <li key={b.id} className="flex flex-col gap-0.5 border-b border-white/[0.04] pb-2 last:border-0 last:pb-0">
+                <span className="text-sm text-white">{b.name}</span>
+                <span className="text-xs text-[#B8B4B8]/45">{b.model_name}</span>
+                <BunchProgress bunch={b} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       <motion.form
         onSubmit={(e) => void handleSubmit(e)}
@@ -123,11 +151,7 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
               </option>
             ))}
           </select>
-          {selected ? (
-            <p className="text-xs text-[#B8B4B8]/50">
-              Provided {selected.provided_count ?? 0} · remaining {selected.remaining_count ?? 0}
-            </p>
-          ) : null}
+          {selected ? <BunchProgress bunch={selected} /> : null}
           {!bunches.length ? (
             <p className="text-xs text-amber-300/80">No open bunches with remaining capacity.</p>
           ) : null}
@@ -188,7 +212,7 @@ export function WinnerRecreatesClient({ initialBunches }: { initialBunches: Vide
           className={cn(VA_BTN_PRIMARY, "flex w-full items-center justify-center gap-2")}
         >
           {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {submitting ? "Submitting…" : "Add to bunch"}
+          {submitting ? "Submitting…" : "Submit for review"}
         </button>
       </motion.form>
     </div>

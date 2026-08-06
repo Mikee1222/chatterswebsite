@@ -78,3 +78,14 @@ export function mapSlotTypeToScriptFields(videoType: SlotVideoType | ""): {
   if (videoType === "other") return { content_type: "Skit", script_video_type: "Other" };
   return { content_type: "Skit", script_video_type: "Storytelling" };
 }
+
+/** Reverse map Research fields → slot video_type (best-effort). */
+export function mapScriptFieldsToSlotType(
+  contentType: string,
+  scriptVideoType: string,
+): SlotVideoType {
+  const script = String(scriptVideoType ?? "").trim();
+  if (script === "Other") return "other";
+  if (script === "UGC" || String(contentType ?? "").trim() === "UGC") return "ugc";
+  return "skit";
+}

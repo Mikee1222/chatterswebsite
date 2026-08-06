@@ -290,6 +290,11 @@ export function AdminWinnerVideosClient({
                     <div className="flex flex-wrap items-center gap-2">
                       <WinnerVideoStatusBadge status={v.status} />
                       {v.content_type ? <WinnerVideoContentTypeBadge contentType={v.content_type} /> : null}
+                      {v.bunch_id ? (
+                        <span className="inline-flex items-center rounded-md border border-[#D4AF8C]/30 bg-[#D4AF8C]/10 px-2 py-0.5 text-[10px] font-medium text-[#D4AF8C]">
+                          Bunch: {v.bunch_name?.trim() || "linked"}
+                        </span>
+                      ) : null}
                       <span className="text-xs text-[#B8B4B8]/45">
                         {v.submitted_at ? formatDateTimeAthens(v.submitted_at) : <DashPlaceholder />}
                       </span>

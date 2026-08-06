@@ -35,18 +35,18 @@ test.describe("VA interactive flows", () => {
     await assertPageHealthy(page, "after checklist toggle");
   });
 
-  test("Winner / Research submit page (if permitted)", async ({ page }) => {
+  test("Fill Bunches page (if permitted)", async ({ page }) => {
     test.setTimeout(180_000);
     await asVa(page);
-    await gotoWithRetry(page, "/winners");
+    await gotoWithRetry(page, "/winner-recreates");
     await page.waitForTimeout(1000);
     const path = new URL(page.url()).pathname;
-    if (path === "/winners") {
-      await assertPageHealthy(page, "winners");
+    if (path === "/winner-recreates") {
+      await assertPageHealthy(page, "winner-recreates");
     } else {
       test.info().annotations.push({
         type: "note",
-        description: `VA redirected from /winners to ${path} (permission likely missing)`,
+        description: `VA redirected from /winner-recreates to ${path} (permission likely missing)`,
       });
     }
   });

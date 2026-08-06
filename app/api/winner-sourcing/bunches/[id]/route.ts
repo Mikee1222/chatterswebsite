@@ -5,7 +5,7 @@ import { PERMISSIONS } from "@/lib/permissions";
 import {
   getVideoBunch,
   listSlotsForBunch,
-  submitResearcherSlot,
+  submitResearcherBunchFind,
   updateVideoBunchStatus,
 } from "@/services/winner-sourcing";
 import { coerceBunchStatus, coerceSlotVideoType } from "@/lib/winner-sourcing-helpers";
@@ -66,7 +66,7 @@ export async function POST(
     return NextResponse.json({ error: "video_type required (skit/ugc/other)" }, { status: 400 });
   }
   try {
-    const slot = await submitResearcherSlot({
+    const video = await submitResearcherBunchFind({
       bunch_id: id,
       description: String(body.description ?? ""),
       video_link: String(body.video_link ?? ""),
@@ -74,7 +74,7 @@ export async function POST(
       submitted_by_id: session.airtableUserId ?? session.id,
       submitted_by_name: (session.fullName || session.email || "").trim(),
     });
-    return NextResponse.json({ slot });
+    return NextResponse.json({ video });
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : "Failed" },

@@ -143,7 +143,7 @@ export const FALLBACK_HREFS: Record<string, string[]> = {
     "/va/schedule",
     "/va/marketing",
     "/va/content-assignments",
-    "/winners",
+    "/winner-recreates",
     "/settings",
   ],
   model: [

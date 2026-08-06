@@ -745,8 +745,11 @@ function BunchesPanel({
           ) : (
             bunches.map((b) => {
               const provided = b.provided_count ?? 0;
-              const remaining = b.remaining_count ?? Math.max(0, b.target_video_count - provided);
-              const pct = Math.min(100, Math.round((provided / b.target_video_count) * 100));
+              const pending = b.pending_review_count ?? 0;
+              const remaining =
+                b.remaining_count ?? Math.max(0, b.target_video_count - provided - pending);
+              const occupied = provided + pending;
+              const pct = Math.min(100, Math.round((occupied / b.target_video_count) * 100));
               return (
                 <li key={b.id}>
                   <div
@@ -771,10 +774,13 @@ function BunchesPanel({
                         <p className="mt-0.5 text-xs text-[#B8B4B8]/55">
                           {b.model_name} · {b.status}
                         </p>
+                        <p className="mt-1 text-[11px] text-[#B8B4B8]/45">
+                          Filled {provided} · Pending {pending} · Needed {remaining}
+                        </p>
                       </div>
                       <div className="flex flex-col items-end gap-1">
                         <span className="text-xs tabular-nums text-[#D4AF8C]">
-                          {provided}/{b.target_video_count}
+                          {occupied}/{b.target_video_count}
                         </span>
                         <button
                           type="button"

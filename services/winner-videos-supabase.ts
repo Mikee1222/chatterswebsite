@@ -60,6 +60,8 @@ export interface WinnerVideoRecord {
   content_type: WinnerVideoContentType | "";
   assigned_creative_name: string;
   assigned_creative_id: string;
+  bunch_id: string;
+  bunch_name: string;
 }
 
 export interface WinnerVideoFilters {
@@ -107,6 +109,8 @@ type Row = SbRow & {
   content_type?: string | null;
   assigned_creative_name?: string | null;
   assigned_creative_id?: string | null;
+  bunch_id?: string | null;
+  bunch_name?: string | null;
 };
 
 function coerceViews(raw: unknown): number | null {
@@ -154,6 +158,8 @@ async function mapRow(row: Row): Promise<WinnerVideoRecord> {
     content_type: coerceWinnerVideoContentType(row.content_type),
     assigned_creative_name: String(row.assigned_creative_name ?? ""),
     assigned_creative_id: String(row.assigned_creative_id ?? ""),
+    bunch_id: row.bunch_id ? String(row.bunch_id) : "",
+    bunch_name: String(row.bunch_name ?? ""),
   };
 }
 

@@ -14,6 +14,7 @@ import {
   coerceWinnerSubmissionStatus,
   coerceWinnerTier,
   mapSlotTypeToScriptFields,
+  mapScriptFieldsToSlotType,
   slotFilled,
   tierFromViewCount,
   type BunchStatus,
@@ -23,6 +24,7 @@ import {
   type WinnerTier,
 } from "@/lib/winner-sourcing-helpers";
 import { createWinnerVideoRow, updateWinnerVideoFields } from "@/services/winner-videos-supabase";
+import type { WinnerVideoRecord } from "@/services/winner-videos";
 import { notify } from "@/services/notification-service";
 import { NOTIFICATION_ENTITY, NOTIFICATION_EVENT, NOTIFICATION_PRIORITY } from "@/lib/notification-types";
 import { listUsersWithPermission } from "@/services/users";
@@ -41,8 +43,11 @@ export type VideoBunch = {
   status: BunchStatus;
   created_at: string;
   updated_at: string;
-  /** Computed: slots currently in this bunch. */
+  /** Computed: recreate_video_slots currently in this bunch (approved/filled). */
   provided_count?: number;
+  /** Computed: Pending Research finds awaiting approve/reject for this bunch. */
+  pending_review_count?: number;
+  /** Computed: target − provided − pending. */
   remaining_count?: number;
 };
 
@@ -405,21 +410,33 @@ export async function listVideoBunches(filters?: {
   if (!bunches.length) return [];
 
   const ids = bunches.map((b) => b.id);
-  const { data: slots } = await sb
-    .from("recreate_video_slots")
-    .select("bunch_id")
-    .in("bunch_id", ids);
-  const counts = new Map<string, number>();
+  const [{ data: slots }, { data: pendingRows }] = await Promise.all([
+    sb.from("recreate_video_slots").select("bunch_id").in("bunch_id", ids),
+    sb
+      .from("winner_videos")
+      .select("bunch_id")
+      .in("bunch_id", ids)
+      .eq("status", "Pending"),
+  ]);
+  const slotCounts = new Map<string, number>();
   for (const s of slots ?? []) {
     const bid = String((s as { bunch_id: string }).bunch_id);
-    counts.set(bid, (counts.get(bid) ?? 0) + 1);
+    slotCounts.set(bid, (slotCounts.get(bid) ?? 0) + 1);
+  }
+  const pendingCounts = new Map<string, number>();
+  for (const p of pendingRows ?? []) {
+    const bid = String((p as { bunch_id: string }).bunch_id);
+    if (!bid) continue;
+    pendingCounts.set(bid, (pendingCounts.get(bid) ?? 0) + 1);
   }
   return bunches.map((b) => {
-    const provided = counts.get(b.id) ?? 0;
+    const provided = slotCounts.get(b.id) ?? 0;
+    const pending = pendingCounts.get(b.id) ?? 0;
     return {
       ...b,
       provided_count: provided,
-      remaining_count: Math.max(0, b.target_video_count - provided),
+      pending_review_count: pending,
+      remaining_count: Math.max(0, b.target_video_count - provided - pending),
     };
   });
 }
@@ -430,11 +447,15 @@ export async function getVideoBunch(id: string): Promise<VideoBunch | null> {
   if (error) throw new Error(`getVideoBunch: ${error.message}`);
   if (!data) return null;
   const bunch = mapBunch(data as Record<string, unknown>);
-  const provided = await countSlotsForBunch(id);
+  const [provided, pending] = await Promise.all([
+    countSlotsForBunch(id),
+    countPendingReviewsForBunch(id),
+  ]);
   return {
     ...bunch,
     provided_count: provided,
-    remaining_count: Math.max(0, bunch.target_video_count - provided),
+    pending_review_count: pending,
+    remaining_count: Math.max(0, bunch.target_video_count - provided - pending),
   };
 }
 
@@ -463,6 +484,17 @@ async function countSlotsForBunch(bunchId: string): Promise<number> {
   return count ?? 0;
 }
 
+async function countPendingReviewsForBunch(bunchId: string): Promise<number> {
+  const sb = getSupabaseServiceClient();
+  const { count, error } = await sb
+    .from("winner_videos")
+    .select("id", { count: "exact", head: true })
+    .eq("bunch_id", bunchId)
+    .eq("status", "Pending");
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
 export async function getBunchRemaining(bunchId: string): Promise<number> {
   const bunch = await getVideoBunch(bunchId);
   if (!bunch) return 0;
@@ -483,17 +515,17 @@ export async function listSlotsForBunch(bunchId: string): Promise<RecreateVideoS
 }
 
 /**
- * Researcher submits a recreate into an open bunch with remaining capacity.
- * Creates a researcher_submitted slot.
+ * Researcher Fill Bunches submit → Pending Research (winner_videos) row with bunch_id.
+ * Does NOT create recreate_video_slots until admin Approves in Research Manage.
  */
-export async function submitResearcherSlot(input: {
+export async function submitResearcherBunchFind(input: {
   bunch_id: string;
   description: string;
   video_link: string;
   video_type: SlotVideoType;
   submitted_by_id: string;
   submitted_by_name: string;
-}): Promise<RecreateVideoSlot> {
+}): Promise<WinnerVideoRecord> {
   const bunch = await getVideoBunch(input.bunch_id);
   if (!bunch) throw new Error("Bunch not found");
   if (bunch.status !== "open") throw new Error("Bunch is closed");
@@ -506,26 +538,71 @@ export async function submitResearcherSlot(input: {
   if (!video_link) throw new Error("Video link is required");
   if (!input.video_type) throw new Error("Video type is required");
 
-  const existing = await listSlotsForBunch(input.bunch_id);
-  const nextSeq = existing.reduce((m, s) => Math.max(m, s.sequence_number), 0) + 1;
+  const { content_type, script_video_type } = mapSlotTypeToScriptFields(input.video_type);
+
+  const { createWinnerVideo } = await import("./winner-videos");
+  return createWinnerVideo({
+    reference_model_id: bunch.model_id || undefined,
+    reference_model_name: bunch.model_name || "Creator",
+    content_type,
+    video_link,
+    note: description,
+    submitted_by_id: input.submitted_by_id,
+    submitted_by_name: input.submitted_by_name,
+    bunch_id: bunch.id,
+    bunch_name: bunch.name,
+    script_video_type,
+  });
+}
+
+/**
+ * On Research Manage Approve of a Fill Bunches find: create recreate_video_slot in that bunch
+ * and link it to the winner_videos row (Creative Scripts work item).
+ */
+export async function createSlotFromApprovedWinnerVideo(input: {
+  winner_video: WinnerVideoRecord;
+  assigned_creative_id: string;
+  assigned_creative_name: string;
+}): Promise<RecreateVideoSlot> {
+  const wv = input.winner_video;
+  const bunchId = wv.bunch_id?.trim();
+  if (!bunchId) throw new Error("Winner video has no bunch_id");
 
   const sb = getSupabaseServiceClient();
+  const { data: existingSlot } = await sb
+    .from("recreate_video_slots")
+    .select("*")
+    .eq("winner_video_id", wv.id)
+    .maybeSingle();
+  if (existingSlot) {
+    return mapSlot(existingSlot as Record<string, unknown>);
+  }
+
+  const bunch = await getVideoBunch(bunchId);
+  if (!bunch) throw new Error("Bunch not found");
+
+  const video_type = mapScriptFieldsToSlotType(wv.content_type, wv.script_video_type);
+  const existing = await listSlotsForBunch(bunchId);
+  const nextSeq = existing.reduce((m, s) => Math.max(m, s.sequence_number), 0) + 1;
+  const hasCreative = Boolean(input.assigned_creative_id.trim());
+
   const { data, error } = await sb
     .from("recreate_video_slots")
     .insert({
-      bunch_id: input.bunch_id,
+      bunch_id: bunchId,
       source: "researcher_submitted",
       sequence_number: nextSeq,
-      description,
-      video_link,
-      video_type: input.video_type,
-      status: "Not Applicable",
+      description: wv.note || "",
+      video_link: wv.video_link || "",
+      video_type,
+      status: hasCreative ? "Needs Script" : "Not Applicable",
+      assigned_creative_id: input.assigned_creative_id.trim() || null,
+      assigned_creative_name: input.assigned_creative_name.trim(),
+      winner_video_id: wv.id,
     })
     .select("*")
     .single();
-  if (error) throw new Error(`submitResearcherSlot: ${error.message}`);
-  void input.submitted_by_id;
-  void input.submitted_by_name;
+  if (error) throw new Error(`createSlotFromApprovedWinnerVideo: ${error.message}`);
   return mapSlot(data as Record<string, unknown>);
 }
 

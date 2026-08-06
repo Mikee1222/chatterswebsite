@@ -479,7 +479,7 @@ const adminNav: NavItem[] = [
 
   // ── CONTENT ──
   // NOTE: "PDF Maker" / "Transcript Videos" (utilities) live in `sharedPermissionNavItems`
-  // under TOOLS; the submit-tier Research + creative scripts also live there under CONTENT.
+  // under TOOLS; Fill Bunches + creative scripts also live there under CONTENT.
   {
     href: ROUTES.admin.vaContentAssignments,
     label: "VA Content",
@@ -799,15 +799,6 @@ const sharedPermissionNavItems: NavItem[] = [
   },
 
   // ── CONTENT ──
-  {
-    href: ROUTES.winners,
-    label: "Research",
-    iconKey: "Trophy",
-    navSection: "CONTENT",
-    requiresPermission: PERMISSIONS.WINNER_VIDEOS_SUBMIT,
-    hiddenIfPermission: PERMISSIONS.WINNER_VIDEOS_MANAGE,
-    excludeFromMobileMainTabs: true,
-  },
   {
     href: ROUTES.winnerRecreates,
     label: "Fill Bunches",
