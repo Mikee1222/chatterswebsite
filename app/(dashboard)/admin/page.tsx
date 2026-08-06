@@ -3,58 +3,36 @@ import { getSessionFromCookies } from "@/lib/auth";
 import { requireAdminRoute } from "@/lib/rbac";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
-import { listAllWhaleTransactions } from "@/services/whale-transactions";
 import { getActiveShifts, getShiftsForMonth } from "@/services/shifts";
 import { getCachedModelss } from "@/lib/modelss-cache";
 import { listAllCustomRequests } from "@/services/custom-requests";
 import { listAllUsers } from "@/services/users";
-import { eurToUsd } from "@/lib/exchange";
+import { listAllWhaleTransactions } from "@/services/whale-transactions";
+import { listMonthlyTargets } from "@/services/monthly-targets";
+import { listAllModelLiveStreamsInRange } from "@/services/model-live-streams";
+import {
+  listUsersWithInflowwEmployeeId,
+  queryInflowwDailyStats,
+} from "@/services/infloww-daily-stats";
+import {
+  listCreatorTransactions,
+  listCreatorTransactionTypeCounts,
+  listLinkedCreatorModels,
+} from "@/services/infloww-creator-earnings";
+import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { AdminHomeClient } from "@/components/admin-home-client";
-import { buildAdminRecentActivity, buildAdminSparklineWow } from "@/lib/admin-home-dashboard";
-import type { WhaleTransaction } from "@/types";
-
-const stagger = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
-
-function filterByMonth(transactions: WhaleTransaction[], yearMonth: string): WhaleTransaction[] {
-  if (!yearMonth || yearMonth.length < 7) return transactions;
-  return transactions.filter((t) => t.date && t.date.startsWith(yearMonth));
-}
-
-/** Convert amount to USD for aggregation (all totals in USD). */
-function toUsd(t: WhaleTransaction): number {
-  const amt = t.amount ?? 0;
-  return t.currency === "eur" ? eurToUsd(amt) : amt;
-}
-
-function aggregateRevenue(transactions: WhaleTransaction[]) {
-  const totalRevenue = transactions.reduce((s, t) => s + toUsd(t), 0);
-  const sessionCount = transactions.length;
-  const byModel: Record<string, number> = {};
-  const byChatter: Record<string, number> = {};
-  const byDay: Record<string, number> = {};
-  for (const t of transactions) {
-    const amountUsd = toUsd(t);
-    const modelKey = t.model_name?.trim() || "—";
-    byModel[modelKey] = (byModel[modelKey] ?? 0) + amountUsd;
-    const chatterKey = t.chatter_name?.trim() || "—";
-    byChatter[chatterKey] = (byChatter[chatterKey] ?? 0) + amountUsd;
-    const day = t.date ?? "";
-    if (day) byDay[day] = (byDay[day] ?? 0) + amountUsd;
-  }
-  const topModel = Object.entries(byModel).sort((a, b) => b[1] - a[1])[0];
-  const topChatter = Object.entries(byChatter).sort((a, b) => b[1] - a[1])[0];
-  return {
-    totalRevenue,
-    sessionCount,
-    topModelName: topModel?.[0] ?? "—",
-    topModelRevenue: topModel?.[1] ?? 0,
-    topChatterName: topChatter?.[0] ?? "—",
-    topChatterRevenue: topChatter?.[1] ?? 0,
-    byModel: Object.entries(byModel).sort((a, b) => b[1] - a[1]),
-    byChatter: Object.entries(byChatter).sort((a, b) => b[1] - a[1]),
-    byDay: Object.entries(byDay).sort(([a], [b]) => a.localeCompare(b)),
-  };
-}
+import {
+  buildAdminRecentActivity,
+  buildAdminSparklineWowFromDailyStats,
+  buildDailyRevenueSeries,
+  buildMonthlyTargetProgress,
+  lastNAthensYmds,
+  rankChattersBySales,
+  rankModelsByTransactionGross,
+  resolveMonthRangeAthens,
+  sumSalesForYmd,
+  sumSalesInRange,
+} from "@/lib/admin-home-dashboard";
 
 export default async function AdminHomePage({
   searchParams,
@@ -68,30 +46,90 @@ export default async function AdminHomePage({
 
   const params = await searchParams;
   const monthParam = params.month?.trim() || "";
-  const now = new Date();
-  const currentYearMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const todayYmd = getTodayYmdAthens();
+  const currentYearMonth = todayYmd.slice(0, 7);
   const yearMonth = /^\d{4}-\d{2}$/.test(monthParam) ? monthParam : currentYearMonth;
+  const { startYmd: monthStart, endYmd: monthEnd } = resolveMonthRangeAthens(yearMonth);
 
-  const [allTransactions, chatterShifts, vaShifts, shiftsThisMonth, modelss, customs, users] = await (async () => {
-    const allTransactions = await listAllWhaleTransactions().catch(() => []);
-    await stagger(150);
-    const chatterShifts = await getActiveShifts("chatter").catch(() => []);
-    await stagger(150);
-    const vaShifts = await getActiveShifts("virtual_assistant").catch(() => []);
-    await stagger(150);
-    const shiftsThisMonth = await getShiftsForMonth(yearMonth).catch(() => []);
-    await stagger(150);
-    const modelss = await getCachedModelss().catch(() => []);
-    await stagger(150);
-    const customs = await listAllCustomRequests().catch(() => []);
-    await stagger(150);
-    const users = await listAllUsers().catch(() => []);
-    return [allTransactions, chatterShifts, vaShifts, shiftsThisMonth, modelss, customs, users] as const;
-  })();
-  const chatters = users.filter((u) => u.role === "chatter").map((u) => ({ id: u.id, full_name: u.full_name ?? "" }));
+  const wowStart = addDaysAthensYmd(todayYmd, -27);
+  const activityStart = addDaysAthensYmd(todayYmd, -13);
+  const fetchStart = [monthStart, wowStart].sort()[0]!;
+  const fetchEnd = [monthEnd, todayYmd].sort().at(-1)!;
 
-  const filtered = filterByMonth(allTransactions, yearMonth);
-  const stats = aggregateRevenue(filtered);
+  const [
+    linkedUsers,
+    modelss,
+    customs,
+    users,
+    monthlyTargets,
+    linkedCreators,
+    liveStreams,
+    whaleTxs,
+  ] = await Promise.all([
+    listUsersWithInflowwEmployeeId().catch(() => []),
+    getCachedModelss().catch(() => []),
+    listAllCustomRequests().catch(() => []),
+    listAllUsers().catch(() => []),
+    listMonthlyTargets().catch(() => []),
+    listLinkedCreatorModels().catch(() => ({ linked: [], unmatchedCount: 0 })),
+    listAllModelLiveStreamsInRange({ fromDate: activityStart }).catch(() => []),
+    listAllWhaleTransactions().catch(() => []),
+  ]);
+
+  const uuids = linkedUsers.map((u) => u.uuid);
+  const nameByUuid = new Map(linkedUsers.map((u) => [u.uuid, u.full_name || "—"]));
+
+  const [dailyRows, monthTxs, txTypeCounts, chatterShifts, vaShifts, shiftsThisMonth] =
+    await Promise.all([
+      uuids.length
+        ? queryInflowwDailyStats({
+            userUuids: uuids,
+            startYmd: fetchStart,
+            endYmd: fetchEnd,
+          }).catch(() => [])
+        : Promise.resolve([]),
+      listCreatorTransactions({
+        startYmd: monthStart,
+        endYmd: monthEnd,
+        limit: 10000,
+      }).catch(() => []),
+      listCreatorTransactionTypeCounts({
+        startYmd: monthStart,
+        endYmd: monthEnd,
+      }).catch(() => []),
+      getActiveShifts("chatter").catch(() => []),
+      getActiveShifts("virtual_assistant").catch(() => []),
+      getShiftsForMonth(yearMonth).catch(() => []),
+    ]);
+
+  const activityTxs = await listCreatorTransactions({
+    startYmd: activityStart,
+    endYmd: todayYmd,
+    limit: 500,
+  }).catch(() => []);
+
+  const chatters = users
+    .filter((u) => u.role === "chatter")
+    .map((u) => ({ id: u.id, full_name: u.full_name ?? "" }));
+
+  const todaySalesUsd = sumSalesForYmd(dailyRows, todayYmd);
+  const totalRevenue = sumSalesInRange(dailyRows, monthStart, monthEnd);
+  const sparklineWow = buildAdminSparklineWowFromDailyStats(dailyRows, todayYmd);
+  const daily14 = buildDailyRevenueSeries(dailyRows, lastNAthensYmds(14, todayYmd));
+
+  const byChatter = rankChattersBySales(dailyRows, monthStart, monthEnd, nameByUuid);
+  const nameByModelRecord = new Map(
+    linkedCreators.linked.map((l) => [l.modelRecordId, l.modelName] as const)
+  );
+  const byModel = rankModelsByTransactionGross(monthTxs, nameByModelRecord);
+
+  const transactionCount = txTypeCounts.reduce((s, r) => s + r.count, 0);
+  const transactionGross = txTypeCounts.reduce((s, r) => s + r.gross, 0);
+  const avgPerTransaction = transactionCount > 0 ? transactionGross / transactionCount : 0;
+
+  const topChatter = byChatter[0];
+  const topModel = byModel[0];
+
   const freeCount = modelss.filter((m) => m.current_status === "free").length;
   const takenCount = modelss.length - freeCount;
   const pendingCustoms = customs.filter((c) => c.status === "pending").length;
@@ -102,28 +140,44 @@ export default async function AdminHomePage({
   const vaHoursThisMonth = shiftsThisMonth
     .filter((s) => s.staff_role === "virtual_assistant")
     .reduce((sum, s) => sum + (s.total_hours_decimal ?? 0), 0);
-  const avgRevenuePerSession =
-    stats.sessionCount > 0 ? stats.totalRevenue / stats.sessionCount : 0;
 
-  const recentActivity = buildAdminRecentActivity(allTransactions, customs, 14);
-  const sparklineWow = buildAdminSparklineWow(allTransactions);
-  const totalModelsCount = modelss.length;
+  const activeTargets = monthlyTargets.filter(
+    (t) => t.is_active && t.month_key === yearMonth
+  );
+  const monthlyTarget = buildMonthlyTargetProgress({
+    targetUsd: activeTargets.reduce((s, t) => s + (t.target_amount_usd ?? 0), 0),
+    achievedUsd: totalRevenue,
+    targetCount: activeTargets.length,
+  });
+
+  const modelNameById = new Map(modelss.map((m) => [m.id, m.model_name || "Model"]));
+  const recentActivity = buildAdminRecentActivity({
+    transactions: activityTxs,
+    modelNamesByRecordId: nameByModelRecord,
+    liveStreams,
+    modelNamesByLiveModelId: modelNameById,
+    customs,
+    whaleTransactions: whaleTxs,
+    limit: 14,
+  });
 
   return (
     <Suspense fallback={<div className="text-white/60">Loading…</div>}>
       <AdminHomeClient
         chatters={chatters}
         yearMonth={yearMonth}
-        totalRevenue={stats.totalRevenue}
-        sessionCount={stats.sessionCount}
-        avgRevenuePerSession={avgRevenuePerSession}
-        topModelName={stats.topModelName}
-        topModelRevenue={stats.topModelRevenue}
-        topChatterName={stats.topChatterName}
-        topChatterRevenue={stats.topChatterRevenue}
-        byModel={stats.byModel}
-        byChatter={stats.byChatter}
-        byDay={stats.byDay}
+        todaySalesUsd={todaySalesUsd}
+        todayYmd={todayYmd}
+        totalRevenue={totalRevenue}
+        transactionCount={transactionCount}
+        avgPerTransaction={avgPerTransaction}
+        topModelName={topModel?.name ?? "—"}
+        topModelRevenue={topModel?.usd ?? 0}
+        topChatterName={topChatter?.name ?? "—"}
+        topChatterRevenue={topChatter?.usd ?? 0}
+        byModel={byModel.map((r) => [r.name, r.usd] as [string, number])}
+        byChatter={byChatter.map((r) => [r.name, r.usd] as [string, number])}
+        daily14={daily14}
         activeChatterShifts={chatterShifts.length}
         activeVaShifts={vaShifts.length}
         chatterHoursThisMonth={chatterHoursThisMonth}
@@ -131,9 +185,10 @@ export default async function AdminHomePage({
         freeModelsCount={freeCount}
         takenModelsCount={takenCount}
         pendingCustomsCount={pendingCustoms}
-        totalModelsCount={totalModelsCount}
+        totalModelsCount={modelss.length}
         recentActivity={recentActivity}
         sparklineWow={sparklineWow}
+        monthlyTarget={monthlyTarget}
       />
     </Suspense>
   );

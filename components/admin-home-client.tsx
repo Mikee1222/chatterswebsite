@@ -9,15 +9,15 @@ import {
   AlertCircle,
   BadgeCheck,
   CalendarDays,
-  Clock,
   DollarSign,
   FileText,
   Medal,
+  Radio,
   StickyNote,
   TrendingDown,
   TrendingUp,
   UserRound,
-  Users,
+  Zap,
 } from "lucide-react";
 import { Checkbox, Select, ButtonSecondary, formSpace, selectOptionClass } from "@/components/ui/form";
 import { FormField } from "@/components/ui/form-field";
@@ -26,26 +26,39 @@ import { FormTextarea } from "@/components/ui/form-textarea";
 import { FormSubmitButton } from "@/components/ui/form-submit-button";
 import { adminHomeUrl, ROUTES } from "@/lib/routes";
 import { upsertMonthlyTargetAction } from "@/app/actions/monthly-targets";
-import { TodayEarningsCard } from "@/components/today-earnings-card";
-import type { AdminRecentActivityItem, AdminSparklineWow } from "@/lib/admin-home-dashboard";
+import type {
+  AdminDayAmount,
+  AdminMonthlyTargetProgress,
+  AdminRecentActivityItem,
+  AdminSparklineWow,
+} from "@/lib/admin-home-dashboard";
 import { formatDate } from "@/lib/format-date";
 import { cn } from "@/lib/utils";
+import {
+  CountUp,
+  LuxuryStatCard,
+  money,
+  StatInfoTooltip,
+} from "@/components/infloww-performance-ui";
+import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
 
 type ChatterOption = { id: string; full_name: string };
 
 type Props = {
   chatters: ChatterOption[];
   yearMonth: string;
+  todaySalesUsd: number;
+  todayYmd: string;
   totalRevenue: number;
-  sessionCount: number;
-  avgRevenuePerSession: number;
+  transactionCount: number;
+  avgPerTransaction: number;
   topModelName: string;
   topModelRevenue: number;
   topChatterName: string;
   topChatterRevenue: number;
   byModel: [string, number][];
   byChatter: [string, number][];
-  byDay: [string, number][];
+  daily14: AdminDayAmount[];
   activeChatterShifts: number;
   activeVaShifts: number;
   chatterHoursThisMonth: number;
@@ -56,6 +69,7 @@ type Props = {
   totalModelsCount: number;
   recentActivity: AdminRecentActivityItem[];
   sparklineWow: AdminSparklineWow;
+  monthlyTarget: AdminMonthlyTargetProgress;
 };
 
 const MONTH_OPTIONS = (() => {
@@ -68,15 +82,30 @@ const MONTH_OPTIONS = (() => {
   return out;
 })();
 
-const PINK = "#ec4899";
-const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), { ssr: false });
+const PINK = "#FF1493";
+const ResponsiveContainer = dynamic(() => import("recharts").then((m) => m.ResponsiveContainer), {
+  ssr: false,
+});
 const LineChart = dynamic(() => import("recharts").then((m) => m.LineChart), { ssr: false });
 const Line = dynamic(() => import("recharts").then((m) => m.Line), { ssr: false });
 const Tooltip = dynamic(() => import("recharts").then((m) => m.Tooltip), { ssr: false });
 
 function formatMonth(ym: string): string {
   const [y, m] = ym.split("-");
-  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const monthNames = [
+    "Jan",
+    "Feb",
+    "Mar",
+    "Apr",
+    "May",
+    "Jun",
+    "Jul",
+    "Aug",
+    "Sep",
+    "Oct",
+    "Nov",
+    "Dec",
+  ];
   const month = monthNames[parseInt(m ?? "1", 10) - 1] ?? m;
   return `${month} ${y}`;
 }
@@ -119,33 +148,32 @@ function BarRow({ label, value, max }: { label: string; value: number; max: numb
       </span>
       <div className="relative min-w-0 flex-1">
         <div className="h-2.5 overflow-hidden rounded-full bg-white/[0.06]">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-pink-600 to-pink-400 transition-all duration-500 ease-out"
-            style={{ width: `${pct}%` }}
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-[#DB2777]"
+            initial={{ width: 0 }}
+            whileInView={{ width: `${pct}%` }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
           />
         </div>
       </div>
       <span className="w-[5.5rem] shrink-0 text-right text-sm font-medium tabular-nums text-white/90">
-        ${value.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+        {money(value, 0)}
       </span>
     </div>
   );
 }
 
-const cardClass = cn(
-  "rounded-xl border border-white/[0.08] bg-zinc-950/80",
-  "shadow-[0_4px_24px_-8px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.04)]"
-);
-
-const sectionTitleClass = "text-base font-medium text-white/90";
+const sectionTitleClass =
+  "text-sm font-semibold uppercase tracking-[0.14em] text-white/55";
 
 const listStagger = {
   hidden: { opacity: 0 },
   show: (reduced: boolean) => ({
     opacity: 1,
     transition: {
-      staggerChildren: reduced ? 0 : 0.06,
-      delayChildren: reduced ? 0 : 0.03,
+      staggerChildren: reduced ? 0 : 0.05,
+      delayChildren: reduced ? 0 : 0.02,
     },
   }),
 };
@@ -155,13 +183,23 @@ const listItem = {
   show: (reduced: boolean) => ({
     opacity: 1,
     y: 0,
-    transition: { duration: reduced ? 0 : 0.2, ease: "easeOut" as const },
+    transition: { duration: reduced ? 0 : 0.22, ease: "easeOut" as const },
   }),
 };
 
 function activityHref(item: AdminRecentActivityItem): string {
+  if (item.href) return item.href;
   if (item.kind === "custom_request") return ROUTES.admin.customs;
-  return ROUTES.chatter.logTransaction;
+  if (item.kind === "model_live") return ROUTES.admin.modelLiveStreams;
+  if (item.kind === "large_transaction") return ROUTES.admin.earnings;
+  return ROUTES.admin.whales;
+}
+
+function ActivityIcon({ kind }: { kind: AdminRecentActivityItem["kind"] }) {
+  if (kind === "large_transaction") return <Zap className="h-4 w-4" />;
+  if (kind === "model_live") return <Radio className="h-4 w-4" />;
+  if (kind === "custom_request") return <FileText className="h-4 w-4" />;
+  return <DollarSign className="h-4 w-4" />;
 }
 
 function LeaderboardMedal({ rank }: { rank: number }) {
@@ -190,6 +228,16 @@ function LeaderboardMedal({ rank }: { rank: number }) {
     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-xs font-medium tabular-nums text-white/50">
       {rank + 1}
     </span>
+  );
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-10 text-center">
+      <div className="h-10 w-10 rounded-full border border-dashed border-white/15 bg-white/[0.03]" />
+      <p className="max-w-xs text-sm text-white/45">{message}</p>
+      <p className="text-[11px] text-white/30">Synced from Infloww · Athens timezone</p>
+    </div>
   );
 }
 
@@ -266,12 +314,12 @@ export function AdminHomeClient(props: Props) {
     }
   };
 
-  const maxModel = Math.max(1, ...props.byModel.map(([, v]) => v));
-  const maxChatter = Math.max(1, ...props.byChatter.map(([, v]) => v));
-  const maxDay = Math.max(1, ...props.byDay.map(([, v]) => v));
+  const maxModel = Math.max(1, ...props.byModel.map(([, v]) => v), 0);
+  const maxChatter = Math.max(1, ...props.byChatter.map(([, v]) => v), 0);
+  const maxDay = Math.max(1, ...props.daily14.map((d) => d.usd), 0);
 
   const activeShiftsTotal = props.activeChatterShifts + props.activeVaShifts;
-  const { sparklineWow } = props;
+  const { sparklineWow, monthlyTarget } = props;
   const wow = sparklineWow.wowPercent;
   const wowPositive = wow !== null && wow >= 0;
   const showWowPct = wow !== null && Number.isFinite(wow);
@@ -280,21 +328,21 @@ export function AdminHomeClient(props: Props) {
   const now = new Date();
   const greeting = getGreeting(now.getHours());
   const headerDate = formatHeaderDate(now);
-
-  const totalRevenueDisplay =
-    typeof props.totalRevenue !== "number" || Number.isNaN(props.totalRevenue) || (props.sessionCount === 0 && props.totalRevenue === 0)
-      ? "—"
-      : `$${props.totalRevenue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
   const recentItems = props.recentActivity.slice(0, 10);
+  const hasRevenue = props.totalRevenue > 0 || props.transactionCount > 0;
 
   return (
-    <div className="space-y-6">
-      {/* 1. Header */}
+    <div className="space-y-6 pb-8">
+      {/* Header */}
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-white md:text-[1.75rem]">{greeting}</h1>
-          <p className="mt-1 text-sm text-white/50">{headerDate}</p>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#D4AF8C]/70">
+            Admin · Command center
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-white md:text-[1.85rem]">
+            {greeting}
+          </h1>
+          <p className="mt-1 text-sm text-white/45">{headerDate} · Athens</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <Select value={month} onChange={handleMonthChange} className="min-w-[160px]" aria-label="Select month">
@@ -307,7 +355,7 @@ export function AdminHomeClient(props: Props) {
           <button
             type="button"
             onClick={handleOpenTargetModal}
-            className="rounded-xl border border-pink-500/35 bg-pink-500/10 px-4 py-2.5 text-sm font-medium text-pink-200 transition-colors hover:border-pink-400/50 hover:bg-pink-500/20"
+            className="rounded-xl border border-[#FF1493]/35 bg-[#FF1493]/10 px-4 py-2.5 text-sm font-medium text-pink-100 transition-colors hover:border-[#FF1493]/55 hover:bg-[#FF1493]/18"
           >
             Set monthly target
           </button>
@@ -315,21 +363,37 @@ export function AdminHomeClient(props: Props) {
       </header>
 
       {targetModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="monthly-target-title">
-          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" aria-hidden onClick={() => !targetSaving && setTargetModalOpen(false)} />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="monthly-target-title"
+        >
           <div
-            className="relative w-full max-w-md rounded-xl border border-white/10 bg-zinc-950 shadow-2xl"
-            style={{ boxShadow: "0 0 0 1px rgba(255,255,255,0.05), 0 24px 48px -12px rgba(0,0,0,0.7)" }}
+            className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+            aria-hidden
+            onClick={() => !targetSaving && setTargetModalOpen(false)}
+          />
+          <div
+            className="relative w-full max-w-md rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl"
+            style={{
+              boxShadow:
+                "0 0 0 1px rgba(255,255,255,0.05), 0 24px 48px -12px rgba(0,0,0,0.7)",
+            }}
           >
             <div className="border-b border-white/[0.08] px-6 py-4">
               <h2 id="monthly-target-title" className="text-lg font-semibold text-white">
                 Set monthly target
               </h2>
-              <p className="mt-0.5 text-sm text-white/50">Target amount in USD for a chatter this month</p>
+              <p className="mt-0.5 text-sm text-white/50">
+                Per-chatter USD goal · progress uses Infloww team sales
+              </p>
             </div>
             <form onSubmit={handleSubmitMonthlyTarget} className={cn("p-6", formSpace)}>
               {targetError && (
-                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200/95">{targetError}</div>
+                <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200/95">
+                  {targetError}
+                </div>
               )}
               <FormField
                 label="Team member"
@@ -355,8 +419,18 @@ export function AdminHomeClient(props: Props) {
                   ))}
                 </Select>
               </FormField>
-              <FormField label="Month" icon={<CalendarDays className="h-4 w-4" aria-hidden />} htmlFor="monthly-target-month" staggerIndex={1}>
-                <Select id="monthly-target-month" value={targetMonthKey} onChange={(e) => setTargetMonthKey(e.target.value)} className="w-full">
+              <FormField
+                label="Month"
+                icon={<CalendarDays className="h-4 w-4" aria-hidden />}
+                htmlFor="monthly-target-month"
+                staggerIndex={1}
+              >
+                <Select
+                  id="monthly-target-month"
+                  value={targetMonthKey}
+                  onChange={(e) => setTargetMonthKey(e.target.value)}
+                  className="w-full"
+                >
                   {MONTH_OPTIONS.map((ym) => (
                     <option key={ym} value={ym} className={selectOptionClass}>
                       {formatMonth(ym)}
@@ -399,7 +473,7 @@ export function AdminHomeClient(props: Props) {
               <FormField
                 label="Active"
                 icon={<BadgeCheck className="h-4 w-4" aria-hidden />}
-                description="When off, the target is stored but not used in active reporting."
+                description="When off, the target is stored but excluded from agency progress."
                 staggerIndex={4}
               >
                 <Checkbox
@@ -422,138 +496,174 @@ export function AdminHomeClient(props: Props) {
         </div>
       )}
 
-      {/* 2. Hero stats */}
+      {/* Monthly target progress */}
+      <motion.section
+        initial={reduced ? false : { opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.28 }}
+        className={cn(VA_CARD, VA_CARD_GLOW, "border border-white/10 bg-white/5 p-5 md:p-6")}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className={sectionTitleClass}>
+              Monthly target
+              <span className="ml-1.5 inline-flex align-middle">
+                <StatInfoTooltip text="Sum of active chatter targets for this month vs team sales from Infloww employee daily stats (Athens)." />
+              </span>
+            </h2>
+            <p className="mt-2 text-2xl font-semibold tabular-nums text-white md:text-3xl">
+              <CountUp value={monthlyTarget.achievedUsd} format={(n) => money(n, 0)} />
+              <span className="text-lg font-medium text-white/40 md:text-xl">
+                {" "}
+                of {monthlyTarget.targetUsd > 0 ? money(monthlyTarget.targetUsd, 0) : "—"}
+              </span>
+            </p>
+            <p className="mt-1 text-xs text-white/40">
+              {monthlyTarget.targetCount > 0
+                ? `${monthlyTarget.targetCount} active target${monthlyTarget.targetCount === 1 ? "" : "s"} · ${formatMonth(month)}`
+                : `No active targets for ${formatMonth(month)} — set one to track progress`}
+            </p>
+          </div>
+          <p className="text-sm font-semibold tabular-nums text-[#FF1493]">
+            {monthlyTarget.targetUsd > 0 ? `${monthlyTarget.progressPct.toFixed(0)}%` : "—"}
+          </p>
+        </div>
+        <div className="mt-4 h-3 overflow-hidden rounded-full bg-white/10">
+          <motion.div
+            className="h-full rounded-full bg-gradient-to-r from-[#FF1493] to-[#D4AF8C]"
+            initial={{ width: 0 }}
+            animate={{
+              width: `${monthlyTarget.targetUsd > 0 ? monthlyTarget.progressPct : 0}%`,
+            }}
+            transition={{ duration: reduced ? 0 : 0.9, ease: [0.22, 1, 0.36, 1] }}
+          />
+        </div>
+      </motion.section>
+
+      {/* Hero ops + today */}
       <motion.ul
-        className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4"
+        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
         variants={listStagger}
         initial="hidden"
         animate="show"
         custom={reduced}
       >
-        {[
-          {
-            key: "models",
-            label: "Total models",
-            value: props.totalModelsCount,
-            sub: `${props.freeModelsCount} free · ${props.takenModelsCount} taken`,
-            Icon: Users,
-            border: "border-l-emerald-500/80",
-          },
-          {
-            key: "shifts",
-            label: "Active shifts",
-            value: activeShiftsTotal,
-            sub: `${props.activeChatterShifts} chatter · ${props.activeVaShifts} VA`,
-            Icon: Clock,
-            border: "border-l-sky-500/80",
-          },
-          {
-            key: "today",
-            label: "Today's earnings",
-            sub: "Infloww · gross",
-            Icon: DollarSign,
-            border: "border-l-pink-500",
-            embeddedEarnings: true as const,
-          },
-          {
-            key: "pending",
-            label: "Pending requests",
-            value: props.pendingCustomsCount,
-            sub: "Customs queue",
-            Icon: AlertCircle,
-            border: "border-l-amber-500/80",
-          },
-        ].map((s, i) => (
-          <motion.li key={s.key} variants={listItem} custom={reduced} transition={{ delay: reduced ? 0 : i * 0.03 }}>
-            <motion.div
-              className={cn(cardClass, "h-full border-l-[3px] p-5", s.border)}
-              whileHover={reduced ? undefined : { y: -2 }}
-              transition={{ type: "spring", stiffness: 400, damping: 28 }}
-            >
-              <div className="flex gap-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/[0.06] text-pink-300">
-                  <s.Icon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm text-white/50">{s.label}</p>
-                  {"embeddedEarnings" in s && s.embeddedEarnings ? (
-                    <TodayEarningsCard embedded />
-                  ) : (
-                    <>
-                      <p className="mt-1 text-2xl font-semibold tabular-nums text-white">{"value" in s ? s.value : ""}</p>
-                      <p className="mt-0.5 text-xs text-white/40">{s.sub}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-            </motion.div>
-          </motion.li>
-        ))}
+        <motion.li variants={listItem} custom={reduced}>
+          <LuxuryStatCard
+            label="Total models"
+            value={<CountUp value={props.totalModelsCount} format={(n) => String(Math.round(n))} />}
+            hint={`${props.freeModelsCount} free · ${props.takenModelsCount} taken`}
+            accent="emerald"
+          />
+        </motion.li>
+        <motion.li variants={listItem} custom={reduced}>
+          <LuxuryStatCard
+            label="Active shifts"
+            value={<CountUp value={activeShiftsTotal} format={(n) => String(Math.round(n))} />}
+            hint={`${props.activeChatterShifts} chatter · ${props.activeVaShifts} VA`}
+            accent="champagne"
+          />
+        </motion.li>
+        <motion.li variants={listItem} custom={reduced}>
+          <LuxuryStatCard
+            label="Today's earnings"
+            value={<CountUp value={props.todaySalesUsd} format={(n) => money(n)} />}
+            hint={`${props.todayYmd} · Infloww daily stats`}
+            tooltip="Sum of employee-report sales for today (Athens) from synced infloww_daily_stats."
+            accent="pink"
+            glow
+          />
+        </motion.li>
+        <motion.li variants={listItem} custom={reduced}>
+          <LuxuryStatCard
+            label="Pending requests"
+            value={
+              <CountUp value={props.pendingCustomsCount} format={(n) => String(Math.round(n))} />
+            }
+            hint="Customs queue"
+            accent="amber"
+          />
+        </motion.li>
       </motion.ul>
 
-      {/* 3. Revenue overview 60/40 */}
-      <section className="grid gap-6 lg:grid-cols-5">
+      {/* Revenue trend + WoW */}
+      <section className="grid gap-4 lg:grid-cols-5">
         <motion.div
           initial={reduced ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22 }}
-          className={cn(cardClass, "p-5 lg:col-span-3")}
+          className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5 lg:col-span-3")}
         >
           <div className="flex items-start justify-between gap-4">
             <div>
-              <h2 className={sectionTitleClass}>Revenue trend</h2>
-              <p className="mt-0.5 text-sm text-white/45">Last 7 days · logged sessions</p>
+              <h2 className={sectionTitleClass}>
+                Revenue trend
+                <span className="ml-1.5 inline-flex align-middle">
+                  <StatInfoTooltip text="Team sales by day from infloww_daily_stats (last 7 Athens days)." />
+                </span>
+              </h2>
+              <p className="mt-1 text-sm text-white/40">Last 7 days · synced sales</p>
             </div>
           </div>
-          <div className="mt-4 h-28 w-full">
-            <ResponsiveContainer width="100%" height={112}>
-              <LineChart data={sparklineWow.sparkline7} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
-                <Tooltip
-                  contentStyle={{
-                    background: "rgba(9,9,11,0.96)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    borderRadius: 10,
-                    fontSize: 12,
-                  }}
-                  formatter={(v) => [
-                    `$${Number(v ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-                    "Revenue",
-                  ]}
-                  labelFormatter={(l) => `Day ${l}`}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="usd"
-                  stroke={PINK}
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 4, fill: PINK, stroke: "#fce7f3", strokeWidth: 2 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
+          {sparklineWow.sparkline7.every((d) => d.usd === 0) ? (
+            <EmptyState message="No sales in the last 7 days yet." />
+          ) : (
+            <div className="mt-4 h-28 w-full">
+              <ResponsiveContainer width="100%" height={112}>
+                <LineChart
+                  data={sparklineWow.sparkline7}
+                  margin={{ top: 8, right: 12, left: 0, bottom: 0 }}
+                >
+                  <Tooltip
+                    contentStyle={{
+                      background: "rgba(9,9,11,0.96)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      borderRadius: 10,
+                      fontSize: 12,
+                    }}
+                    formatter={(v) => [money(Number(v ?? 0)), "Sales"]}
+                    labelFormatter={(l) => `Day ${l}`}
+                  />
+                  <Line
+                    type="monotone"
+                    dataKey="usd"
+                    stroke={PINK}
+                    strokeWidth={2.5}
+                    dot={false}
+                    activeDot={{ r: 4, fill: PINK, stroke: "#fce7f3", strokeWidth: 2 }}
+                    isAnimationActive={!reduced}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
         </motion.div>
 
         <motion.div
           initial={reduced ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: reduced ? 0 : 0.05 }}
-          className={cn(cardClass, "flex flex-col p-5 lg:col-span-2")}
+          className={cn(VA_CARD, "flex flex-col border border-white/10 bg-white/5 p-5 lg:col-span-2")}
         >
-          <h2 className={sectionTitleClass}>Week over week</h2>
-          <p className="mt-0.5 text-sm text-white/45">Trailing 7 days vs prior 7 days</p>
+          <h2 className={sectionTitleClass}>
+            Week over week
+            <span className="ml-1.5 inline-flex align-middle">
+              <StatInfoTooltip text="Trailing 7 Athens days vs the prior 7, using employee daily sales." />
+            </span>
+          </h2>
+          <p className="mt-1 text-sm text-white/40">Trailing 7 vs prior 7</p>
           <div className="mt-5 flex flex-1 flex-col justify-center gap-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-xs text-white/40">This week</p>
                 <p className="mt-0.5 text-xl font-semibold tabular-nums text-white">
-                  ${sparklineWow.thisWeekUsd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  <CountUp value={sparklineWow.thisWeekUsd} format={(n) => money(n, 0)} />
                 </p>
               </div>
               <div>
                 <p className="text-xs text-white/40">Prior week</p>
                 <p className="mt-0.5 text-lg font-medium tabular-nums text-white/65">
-                  ${sparklineWow.prevWeekUsd.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                  <CountUp value={sparklineWow.prevWeekUsd} format={(n) => money(n, 0)} />
                 </p>
               </div>
             </div>
@@ -562,7 +672,9 @@ export function AdminHomeClient(props: Props) {
                 <span
                   className={cn(
                     "inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium tabular-nums",
-                    wowPositive ? "bg-emerald-500/15 text-emerald-300" : "bg-rose-500/15 text-rose-300"
+                    wowPositive
+                      ? "bg-emerald-500/15 text-emerald-300"
+                      : "bg-rose-500/15 text-rose-300"
                   )}
                 >
                   {wowPositive ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
@@ -570,7 +682,9 @@ export function AdminHomeClient(props: Props) {
                   {wow!.toFixed(1)}%
                 </span>
               ) : noPriorWeek && sparklineWow.thisWeekUsd > 0 ? (
-                <span className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-sm text-white/55">No prior-week baseline</span>
+                <span className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-sm text-white/55">
+                  No prior-week baseline
+                </span>
               ) : (
                 <span className="rounded-lg bg-white/[0.06] px-3 py-1.5 text-sm text-white/45">—</span>
               )}
@@ -578,66 +692,97 @@ export function AdminHomeClient(props: Props) {
           </div>
         </motion.div>
 
+        {/* Monthly summary */}
         <motion.div
           initial={reduced ? false : { opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.22, delay: reduced ? 0 : 0.08 }}
-          className={cn(cardClass, "p-5 lg:col-span-5")}
+          className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5 lg:col-span-5")}
         >
           <h2 className={sectionTitleClass}>Monthly summary · {formatMonth(month)}</h2>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             {[
               {
                 k: "rev",
                 label: "Total revenue",
-                body: totalRevenueDisplay,
-                hint: "Whale transactions",
+                body: hasRevenue ? (
+                  <CountUp value={props.totalRevenue} format={(n) => money(n)} />
+                ) : (
+                  "—"
+                ),
+                hint: "Employee daily sales",
+                tooltip: "Team sales from infloww_daily_stats for the selected Athens month.",
                 highlight: true,
               },
               {
-                k: "sess",
-                label: "Sessions",
-                body: typeof props.sessionCount !== "number" ? "—" : String(props.sessionCount),
-                hint: "Whale sessions",
+                k: "txs",
+                label: "Total transactions",
+                body: hasRevenue ? (
+                  <CountUp
+                    value={props.transactionCount}
+                    format={(n) => Math.round(n).toLocaleString()}
+                  />
+                ) : (
+                  "—"
+                ),
+                hint: "infloww_transactions",
+                tooltip: "Count of synced Infloww creator transactions in the month.",
               },
               {
                 k: "avg",
-                label: "Avg per session",
+                label: "Avg per transaction",
                 body:
-                  props.sessionCount === 0
-                    ? "—"
-                    : `$${props.avgRevenuePerSession.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-                hint: "Revenue average",
+                  props.transactionCount === 0 ? (
+                    "—"
+                  ) : (
+                    <CountUp value={props.avgPerTransaction} format={(n) => money(n)} />
+                  ),
+                hint: "Gross ÷ count",
+                tooltip: "Sum of transaction gross ÷ transaction count (creator earnings).",
               },
               {
                 k: "tm",
                 label: "Top model",
-                body: props.sessionCount === 0 ? "—" : props.topModelName,
+                body: props.byModel.length === 0 ? "—" : props.topModelName,
                 hint:
-                  props.sessionCount === 0
+                  props.byModel.length === 0
                     ? "—"
-                    : `$${(props.topModelRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    : money(props.topModelRevenue ?? 0),
+                tooltip: "Highest gross from infloww_transactions by model.",
               },
               {
                 k: "tc",
                 label: "Top chatter",
-                body: props.sessionCount === 0 ? "—" : props.topChatterName,
+                body: props.byChatter.length === 0 ? "—" : props.topChatterName,
                 hint:
-                  props.sessionCount === 0
+                  props.byChatter.length === 0
                     ? "—"
-                    : `$${(props.topChatterRevenue ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+                    : money(props.topChatterRevenue ?? 0),
+                tooltip: "Highest sales from infloww_daily_stats (same ranking as Chatter Performance).",
               },
             ].map((c) => (
               <div
                 key={c.k}
                 className={cn(
-                  "rounded-lg border border-white/[0.06] p-4",
-                  c.highlight ? "bg-pink-500/[0.08] ring-1 ring-pink-500/20" : "bg-white/[0.02]"
+                  "rounded-xl border border-white/[0.06] p-4",
+                  c.highlight
+                    ? "bg-[#FF1493]/[0.08] ring-1 ring-[#FF1493]/20"
+                    : "bg-white/[0.02]"
                 )}
               >
-                <p className="text-xs text-white/45">{c.label}</p>
-                <p className={cn("mt-1.5 font-semibold text-white/95", c.highlight ? "text-xl text-pink-200" : "text-lg")}>{c.body}</p>
-                <p className="mt-1 truncate text-xs text-white/35" title={c.hint}>
+                <p className="inline-flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-white/40">
+                  {c.label}
+                  <StatInfoTooltip text={c.tooltip} />
+                </p>
+                <p
+                  className={cn(
+                    "mt-1.5 font-semibold text-white/95",
+                    c.highlight ? "text-xl text-pink-200" : "text-lg"
+                  )}
+                >
+                  {c.body}
+                </p>
+                <p className="mt-1 truncate text-xs text-white/35" title={String(c.hint)}>
                   {c.hint}
                 </p>
               </div>
@@ -646,94 +791,133 @@ export function AdminHomeClient(props: Props) {
         </motion.div>
       </section>
 
-      {/* 4. Operations */}
-      <section className="space-y-4">
+      {/* Operations */}
+      <section className="space-y-3">
         <h2 className={sectionTitleClass}>Operations</h2>
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {(
             [
               {
                 label: "Chatter hours",
-                value: props.chatterHoursThisMonth.toFixed(1),
+                value: props.chatterHoursThisMonth,
                 hint: formatMonth(month),
-                accent: "text-white/95",
+                accent: "pink" as const,
+                digits: 1,
               },
               {
                 label: "VA hours",
-                value: props.vaHoursThisMonth.toFixed(1),
+                value: props.vaHoursThisMonth,
                 hint: formatMonth(month),
-                accent: "text-white/95",
+                accent: "champagne" as const,
+                digits: 1,
               },
               {
                 label: "Free models",
-                value: String(props.freeModelsCount),
+                value: props.freeModelsCount,
                 hint: "Currently available",
-                accent: "text-emerald-300",
+                accent: "emerald" as const,
+                digits: 0,
               },
               {
                 label: "Taken models",
-                value: String(props.takenModelsCount),
+                value: props.takenModelsCount,
                 hint: "Currently assigned",
-                accent: "text-amber-300",
+                accent: "amber" as const,
+                digits: 0,
               },
             ] as const
           ).map((op) => (
-            <motion.div
+            <LuxuryStatCard
               key={op.label}
-              className={cn(cardClass, "p-5")}
-              whileHover={reduced ? undefined : { y: -2 }}
-              transition={{ type: "spring", stiffness: 400, damping: 28 }}
-            >
-              <p className="text-sm text-white/45">{op.label}</p>
-              <p className={cn("mt-2 text-2xl font-semibold tabular-nums", op.accent)}>{op.value}</p>
-              <p className="mt-1 text-xs text-white/35">{op.hint}</p>
-            </motion.div>
+              label={op.label}
+              value={
+                <CountUp
+                  value={op.value}
+                  format={(n) =>
+                    op.digits === 1 ? n.toFixed(1) : String(Math.round(n))
+                  }
+                />
+              }
+              hint={op.hint}
+              accent={op.accent}
+            />
           ))}
         </div>
       </section>
 
-      {/* 5. Revenue breakdown */}
-      <section className="grid gap-6 lg:grid-cols-5">
-        <div className={cn(cardClass, "p-5 lg:col-span-3")}>
-          <h3 className={sectionTitleClass}>Revenue by model</h3>
+      {/* Revenue by model / chatter */}
+      <section className="grid gap-4 lg:grid-cols-5">
+        <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5 lg:col-span-3")}>
+          <h3 className={sectionTitleClass}>
+            Revenue by model
+            <span className="ml-1.5 inline-flex align-middle">
+              <StatInfoTooltip text="Gross from synced infloww_transactions grouped by model (Creator Earnings)." />
+            </span>
+          </h3>
           <div className="mt-3 max-h-72 space-y-0 overflow-y-auto overscroll-contain pr-1">
             {props.byModel.length === 0 ? (
-              <p className="py-8 text-center text-sm text-white/45">No data for this month</p>
+              <EmptyState message="No model revenue for this month." />
             ) : (
-              props.byModel.slice(0, 12).map(([name, value]) => <BarRow key={name} label={name} value={value} max={maxModel} />)
+              props.byModel
+                .slice(0, 12)
+                .map(([name, value]) => (
+                  <BarRow key={name} label={name} value={value} max={maxModel} />
+                ))
             )}
           </div>
         </div>
-        <div className={cn(cardClass, "p-5 lg:col-span-2")}>
-          <h3 className={sectionTitleClass}>Revenue by chatter</h3>
+        <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5 lg:col-span-2")}>
+          <h3 className={sectionTitleClass}>
+            Revenue by chatter
+            <span className="ml-1.5 inline-flex align-middle">
+              <StatInfoTooltip text="Employee daily sales by chatter — same source as Chatter Performance." />
+            </span>
+          </h3>
           <div className="mt-3 max-h-72 space-y-0 overflow-y-auto overscroll-contain pr-1">
             {props.byChatter.length === 0 ? (
-              <p className="py-8 text-center text-sm text-white/45">No data for this month</p>
+              <EmptyState message="No chatter sales for this month." />
             ) : (
-              props.byChatter.slice(0, 10).map(([name, value]) => <BarRow key={name} label={name} value={value} max={maxChatter} />)
+              props.byChatter
+                .slice(0, 10)
+                .map(([name, value]) => (
+                  <BarRow key={name} label={name} value={value} max={maxChatter} />
+                ))
             )}
           </div>
         </div>
       </section>
 
-      {/* 6. Daily trend */}
-      <section className={cn(cardClass, "p-5")}>
-        <h3 className={sectionTitleClass}>Daily revenue · {formatMonth(month)}</h3>
-        <p className="mt-0.5 text-sm text-white/45">Last 14 days with logged revenue</p>
+      {/* Daily 14 */}
+      <section className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
+        <h3 className={sectionTitleClass}>
+          Daily revenue · last 14 days
+          <span className="ml-1.5 inline-flex align-middle">
+            <StatInfoTooltip text="Team sales per Athens day from infloww_daily_stats." />
+          </span>
+        </h3>
+        <p className="mt-1 text-sm text-white/40">Infloww synced · Athens</p>
         <div className="mt-5 flex items-end gap-2 overflow-x-auto pb-1 sm:gap-3">
-          {props.byDay.length === 0 ? (
-            <p className="py-4 text-sm text-white/45">No daily data</p>
+          {props.daily14.every((d) => d.usd === 0) ? (
+            <EmptyState message="No daily sales in the last 14 days." />
           ) : (
-            props.byDay.slice(-14).map(([day, value]) => (
-              <div key={day} className="flex min-w-[2.25rem] flex-1 flex-col items-center gap-2">
+            props.daily14.map((d) => (
+              <div
+                key={d.ymd}
+                className="flex min-w-[2.25rem] flex-1 flex-col items-center gap-2"
+                title={`${d.ymd}: ${money(d.usd)}`}
+              >
                 <span className="text-[10px] tabular-nums text-white/40 sm:text-xs">
-                  {day.slice(8)}/{day.slice(5, 7)}
+                  {d.ymd.slice(8)}/{d.ymd.slice(5, 7)}
                 </span>
                 <div className="flex h-20 w-full items-end justify-center">
-                  <div
-                    className="w-full max-w-[2.5rem] rounded-t-md bg-gradient-to-t from-pink-600 to-pink-400 transition-all"
-                    style={{ height: `${Math.max(4, maxDay > 0 ? (value / maxDay) * 80 : 0)}px` }}
-                    title={`${day}: $${value.toFixed(2)}`}
+                  <motion.div
+                    className="w-full max-w-[2.5rem] rounded-t-md bg-gradient-to-t from-[#FF1493] to-[#D4AF8C]"
+                    initial={{ height: 4 }}
+                    whileInView={{
+                      height: Math.max(4, maxDay > 0 ? (d.usd / maxDay) * 80 : 0),
+                    }}
+                    viewport={{ once: true }}
+                    transition={{ duration: reduced ? 0 : 0.45, ease: [0.22, 1, 0.36, 1] }}
                   />
                 </div>
               </div>
@@ -742,19 +926,21 @@ export function AdminHomeClient(props: Props) {
         </div>
       </section>
 
-      {/* 7. Leaderboards */}
-      <section className="grid gap-6 lg:grid-cols-2">
-        <div className={cn(cardClass, "p-5")}>
+      {/* Leaderboards */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
           <h3 className={sectionTitleClass}>Top chatters</h3>
-          <p className="mt-0.5 text-sm text-white/45">By revenue · {formatMonth(month)}</p>
+          <p className="mt-1 text-sm text-white/40">By sales · {formatMonth(month)}</p>
           <ul className="mt-4 space-y-2">
             {props.byChatter.length === 0 ? (
-              <li className="py-6 text-center text-sm text-white/45">No data for this month</li>
+              <li>
+                <EmptyState message="No chatter rankings for this month." />
+              </li>
             ) : (
               props.byChatter.slice(0, 5).map(([name, value], i) => (
                 <li
                   key={name}
-                  className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition-colors hover:border-pink-500/25 hover:bg-pink-500/[0.04] sm:px-4"
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition-colors hover:border-[#FF1493]/25 hover:bg-[#FF1493]/[0.04] sm:px-4"
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <LeaderboardMedal rank={i} />
@@ -762,25 +948,27 @@ export function AdminHomeClient(props: Props) {
                       {name}
                     </span>
                   </span>
-                  <span className="shrink-0 text-sm font-medium tabular-nums text-pink-300">
-                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="shrink-0 text-sm font-medium tabular-nums text-[#FF1493]">
+                    {money(value)}
                   </span>
                 </li>
               ))
             )}
           </ul>
         </div>
-        <div className={cn(cardClass, "p-5")}>
+        <div className={cn(VA_CARD, "border border-white/10 bg-white/5 p-5")}>
           <h3 className={sectionTitleClass}>Top models</h3>
-          <p className="mt-0.5 text-sm text-white/45">By revenue · {formatMonth(month)}</p>
+          <p className="mt-1 text-sm text-white/40">By gross · {formatMonth(month)}</p>
           <ul className="mt-4 space-y-2">
             {props.byModel.length === 0 ? (
-              <li className="py-6 text-center text-sm text-white/45">No data for this month</li>
+              <li>
+                <EmptyState message="No model rankings for this month." />
+              </li>
             ) : (
               props.byModel.slice(0, 5).map(([name, value], i) => (
                 <li
                   key={name}
-                  className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition-colors hover:border-pink-500/25 hover:bg-pink-500/[0.04] sm:px-4"
+                  className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2.5 transition-colors hover:border-[#FF1493]/25 hover:bg-[#FF1493]/[0.04] sm:px-4"
                 >
                   <span className="flex min-w-0 items-center gap-3">
                     <LeaderboardMedal rank={i} />
@@ -788,8 +976,8 @@ export function AdminHomeClient(props: Props) {
                       {name}
                     </span>
                   </span>
-                  <span className="shrink-0 text-sm font-medium tabular-nums text-pink-300">
-                    ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span className="shrink-0 text-sm font-medium tabular-nums text-[#FF1493]">
+                    {money(value)}
                   </span>
                 </li>
               ))
@@ -798,8 +986,8 @@ export function AdminHomeClient(props: Props) {
         </div>
       </section>
 
-      {/* 8. Recent activity */}
-      <section className="space-y-4">
+      {/* Recent activity */}
+      <section className="space-y-3">
         <h2 className={sectionTitleClass}>Recent activity</h2>
         <motion.ul
           className="grid gap-3 sm:grid-cols-2"
@@ -810,33 +998,36 @@ export function AdminHomeClient(props: Props) {
           custom={reduced}
         >
           {recentItems.length === 0 ? (
-            <li className="col-span-full rounded-xl border border-white/[0.08] bg-white/[0.02] px-4 py-10 text-center text-sm text-white/45">
-              No recent sessions or customs yet.
+            <li className="col-span-full">
+              <EmptyState message="No recent sales, lives, or customs yet." />
             </li>
           ) : (
-            recentItems.map((item) => {
-              const Icon = item.kind === "whale_session" ? DollarSign : item.pending ? AlertCircle : FileText;
-              return (
-                <motion.li key={item.id} variants={listItem} custom={reduced}>
-                  <Link
-                    href={activityHref(item)}
-                    className={cn(
-                      "group flex gap-4 rounded-xl border border-white/[0.08] bg-zinc-950/60 p-4",
-                      "transition-all hover:border-pink-500/30 hover:bg-pink-500/[0.04]"
+            recentItems.map((item) => (
+              <motion.li key={item.id} variants={listItem} custom={reduced}>
+                <Link
+                  href={activityHref(item)}
+                  className={cn(
+                    "group flex gap-4 rounded-2xl border border-white/[0.08] bg-zinc-950/60 p-4",
+                    "transition-all hover:border-[#FF1493]/30 hover:bg-[#FF1493]/[0.04]"
+                  )}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#FF1493]/10 text-pink-300 transition-colors group-hover:bg-[#FF1493]/20">
+                    {item.kind === "custom_request" && item.pending ? (
+                      <AlertCircle className="h-4 w-4" />
+                    ) : (
+                      <ActivityIcon kind={item.kind} />
                     )}
-                  >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-pink-500/10 text-pink-300 transition-colors group-hover:bg-pink-500/20">
-                      <Icon className="h-4 w-4" />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-white/90">{item.title}</p>
-                      <p className="mt-0.5 truncate text-sm text-white/45">{item.subtitle}</p>
-                      <p className="mt-2 text-xs text-pink-300/70">{formatRelativeTime(item.atIso)}</p>
-                    </div>
-                  </Link>
-                </motion.li>
-              );
-            })
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-medium text-white/90">{item.title}</p>
+                    <p className="mt-0.5 truncate text-sm text-white/45">{item.subtitle}</p>
+                    <p className="mt-2 text-xs text-[#FF1493]/70">
+                      {formatRelativeTime(item.atIso)}
+                    </p>
+                  </div>
+                </Link>
+              </motion.li>
+            ))
           )}
         </motion.ul>
       </section>
