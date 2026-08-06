@@ -8,7 +8,12 @@ import { addDaysAthensYmd, getTodayYmdAthens } from "@/lib/airtable-datetime";
 import { computePctChange } from "@/services/infloww-analytics";
 import type { InflowwDailyStatsRow } from "@/services/infloww-daily-stats";
 import type { CreatorTransactionRow } from "@/services/infloww-creator-earnings";
-import type { CustomRequest, ModelLiveStreamRecord, WhaleTransaction } from "@/types";
+import type {
+  CustomRequest,
+  ModelLiveStreamRecord,
+  Shift,
+  WhaleTransaction,
+} from "@/types";
 
 export type AdminSparklineDay = { ymd: string; label: string; usd: number };
 
@@ -49,6 +54,105 @@ export type AdminRecentActivityItem = {
   pending?: boolean;
   href?: string;
 };
+
+/** Compact live-shift row for Admin Home widget. */
+export type AdminHomeLiveShiftRow = {
+  id: string;
+  name: string;
+  role: "chatter" | "virtual_assistant";
+  startTime: string | null;
+  onBreak: boolean;
+};
+
+/** Compact VA progress row for Admin Home widget. */
+export type AdminHomeVaProgressRow = {
+  vaId: string;
+  vaName: string;
+  completedItems: number;
+  totalItems: number;
+  pct: number;
+  status: "complete" | "partial" | "not_started";
+};
+
+export type AdminHomeVaProgressSummary = {
+  overallPct: number;
+  vasWithTasks: number;
+  fullyComplete: number;
+  partial: number;
+  notStarted: number;
+  completedItems: number;
+  totalItems: number;
+  rows: AdminHomeVaProgressRow[];
+};
+
+/**
+ * Worked minutes for a completed shift — same formula as Shift Activity
+ * (`start_time`/`end_time` minus `break_minutes`). Prefers stored minute fields
+ * when present; falls back to wall-clock duration because Supabase rows often
+ * leave `total_hours_decimal` / `total_minutes` null.
+ */
+export function shiftWorkedMinutes(shift: Pick<
+  Shift,
+  | "start_time"
+  | "end_time"
+  | "break_minutes"
+  | "worked_minutes"
+  | "total_minutes"
+  | "total_hours_decimal"
+  | "status"
+>): number {
+  if (typeof shift.worked_minutes === "number" && shift.worked_minutes > 0) {
+    return shift.worked_minutes;
+  }
+  if (typeof shift.total_minutes === "number" && shift.total_minutes > 0) {
+    return shift.total_minutes;
+  }
+  if (typeof shift.total_hours_decimal === "number" && shift.total_hours_decimal > 0) {
+    return Math.round(shift.total_hours_decimal * 60);
+  }
+  const start = shift.start_time ? new Date(shift.start_time).getTime() : 0;
+  const end = shift.end_time ? new Date(shift.end_time).getTime() : 0;
+  if (!start || !end || end <= start) return 0;
+  return Math.max(0, Math.floor((end - start) / 60_000) - (shift.break_minutes ?? 0));
+}
+
+/**
+ * Sum hours for a staff role in a shift list — completed shifts only,
+ * matching Admin Shift Activity monthly totals.
+ */
+export function sumShiftHoursForRole(
+  shifts: Shift[],
+  staffRole: "chatter" | "virtual_assistant"
+): number {
+  let minutes = 0;
+  for (const s of shifts) {
+    if (s.staff_role !== staffRole) continue;
+    if (s.status !== "completed") continue;
+    if (!s.start_time || !s.end_time) continue;
+    minutes += shiftWorkedMinutes(s);
+  }
+  return minutes / 60;
+}
+
+export function toAdminHomeLiveShiftRows(shifts: Shift[]): AdminHomeLiveShiftRow[] {
+  return shifts
+    .map((s) => ({
+      id: s.id,
+      name: (s.chatter_name ?? "").trim() || "—",
+      role:
+        s.staff_role === "virtual_assistant"
+          ? ("virtual_assistant" as const)
+          : ("chatter" as const),
+      startTime: s.start_time,
+      onBreak: s.status === "on_break" || Boolean(s.break_started_at),
+    }))
+    .sort((a, b) => {
+      if (a.onBreak !== b.onBreak) return a.onBreak ? 1 : -1;
+      const ta = a.startTime ? Date.parse(a.startTime) : 0;
+      const tb = b.startTime ? Date.parse(b.startTime) : 0;
+      return ta - tb;
+    });
+}
 
 /** Inclusive Athens YYYY-MM-DD span ending at `endYmd`, length `n`. */
 export function lastNAthensYmds(n: number, endYmd = getTodayYmdAthens()): string[] {

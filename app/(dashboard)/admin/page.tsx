@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { getSessionFromCookies } from "@/lib/auth";
-import { requireAdminRoute } from "@/lib/rbac";
+import { hasPermission, requireAdminRoute } from "@/lib/rbac";
+import { PERMISSIONS } from "@/lib/permissions";
 import { ROUTES } from "@/lib/routes";
 import { redirect } from "next/navigation";
 import { getActiveShifts, getShiftsForMonth } from "@/services/shifts";
@@ -33,7 +34,26 @@ import {
   latestSyncedAtForYmd,
   sumSalesForYmd,
   sumSalesInRange,
+  sumShiftHoursForRole,
+  toAdminHomeLiveShiftRows,
+  type AdminHomeVaProgressSummary,
 } from "@/lib/admin-home-dashboard";
+import {
+  filterActiveModelsForAssignment,
+  filterActiveUsersForAssignment,
+} from "@/lib/assignment-filters";
+import { selectVaTasksForDateView } from "@/lib/va-task-date-filter";
+import {
+  buildAgencyProgressStats,
+  buildVaProgressSummaries,
+} from "@/lib/va-tasks-progress";
+import { getAllVaTasks } from "@/services/va-tasks";
+import { getPhasesForTasksDisplay } from "@/services/task-phases";
+import { RouterRefreshInterval } from "@/components/router-refresh-interval";
+import { SupabaseLiveShiftsRealtime } from "@/components/supabase-live-shifts-realtime";
+
+/** Lookback so recurring series anchors still expand onto Athens today. */
+const VA_HOME_PROGRESS_LOOKBACK_DAYS = 120;
 
 export default async function AdminHomePage({
   searchParams,
@@ -44,6 +64,8 @@ export default async function AdminHomePage({
 
   const SYSTEM_ROLES = ["admin", "manager", "chatter", "virtual_assistant", "model", "client"];
   if (!SYSTEM_ROLES.includes(user.role)) redirect(ROUTES.admin.customRoleHome);
+
+  const canViewVaProgress = await hasPermission(user, PERMISSIONS.TASK_PROGRESS_VIEW);
 
   const params = await searchParams;
   const monthParam = params.month?.trim() || "";
@@ -132,16 +154,87 @@ export default async function AdminHomePage({
   const topChatter = byChatter[0];
   const topModel = byModel[0];
 
-  const freeCount = modelss.filter((m) => m.current_status === "free").length;
-  const takenCount = modelss.length - freeCount;
+  // Free/Taken — active models only (same filter as Weekly Program / Rebills / Tips).
+  const activeModels = filterActiveModelsForAssignment(modelss);
+  const freeCount = activeModels.filter((m) => m.current_status === "free").length;
+  const takenCount = activeModels.length - freeCount;
   const pendingCustoms = customs.filter((c) => c.status === "pending").length;
 
-  const chatterHoursThisMonth = shiftsThisMonth
-    .filter((s) => s.staff_role === "chatter")
-    .reduce((sum, s) => sum + (s.total_hours_decimal ?? 0), 0);
-  const vaHoursThisMonth = shiftsThisMonth
-    .filter((s) => s.staff_role === "virtual_assistant")
-    .reduce((sum, s) => sum + (s.total_hours_decimal ?? 0), 0);
+  // Hours — compute from start/end − break (Shift Activity), not null total_hours_decimal.
+  const chatterHoursThisMonth = sumShiftHoursForRole(shiftsThisMonth, "chatter");
+  const vaHoursThisMonth = sumShiftHoursForRole(shiftsThisMonth, "virtual_assistant");
+
+  const liveShiftRows = toAdminHomeLiveShiftRows([...chatterShifts, ...vaShifts]);
+
+  let vaTaskProgress: AdminHomeVaProgressSummary | null = null;
+  if (canViewVaProgress) {
+    try {
+      const athensStartYmd = addDaysAthensYmd(todayYmd, -VA_HOME_PROGRESS_LOOKBACK_DAYS);
+      const allTasks = await getAllVaTasks({
+        athensStartYmd,
+        athensEndYmd: todayYmd,
+      });
+      const { flattenedTasks } = selectVaTasksForDateView(allTasks, todayYmd);
+      const activeUsers = filterActiveUsersForAssignment(users);
+      const vaUsers = activeUsers
+        .filter((u) => u.role === "virtual_assistant" || u.secondary_role === "virtual_assistant")
+        .map((u) => ({ id: u.id, full_name: u.full_name ?? "", email: u.email ?? "" }));
+      const staffUsers = activeUsers.map((u) => ({
+        id: u.id,
+        full_name: u.full_name ?? "",
+        email: u.email ?? "",
+      }));
+      const nameById = Object.fromEntries(
+        activeUsers.map((u) => [u.id, (u.full_name || u.email || u.id).trim()])
+      );
+
+      const phasesByTask =
+        flattenedTasks.length > 0
+          ? await getPhasesForTasksDisplay(
+              flattenedTasks.map((t) => ({
+                taskId: t.id,
+                sourceTaskId: t.virtual_source_task_id ?? null,
+              }))
+            )
+          : {};
+
+      const tasksWithPhases = flattenedTasks.map((task) => ({
+        task,
+        phases: phasesByTask[task.id] ?? [],
+      }));
+      const summaries = buildVaProgressSummaries(
+        tasksWithPhases,
+        vaUsers,
+        nameById,
+        staffUsers
+      );
+      const agency = buildAgencyProgressStats(summaries);
+      vaTaskProgress = {
+        overallPct: agency.overallPct,
+        vasWithTasks: agency.vasWithTasks,
+        fullyComplete: agency.fullyComplete,
+        partial: agency.partial,
+        notStarted: agency.notStarted,
+        completedItems: agency.completedItems,
+        totalItems: agency.totalItems,
+        rows: summaries.slice(0, 8).map((s) => ({
+          vaId: s.vaId,
+          vaName: s.vaName,
+          completedItems: s.completedItems,
+          totalItems: s.totalItems,
+          pct:
+            s.totalItems > 0
+              ? Math.round((s.completedItems / s.totalItems) * 100)
+              : s.status === "complete"
+                ? 100
+                : 0,
+          status: s.status,
+        })),
+      };
+    } catch {
+      vaTaskProgress = null;
+    }
+  }
 
   const activeTargets = monthlyTargets.filter(
     (t) => t.is_active && t.month_key === yearMonth
@@ -164,35 +257,40 @@ export default async function AdminHomePage({
   });
 
   return (
-    <Suspense fallback={<div className="text-white/60">Loading…</div>}>
-      <AdminHomeClient
-        chatters={chatters}
-        yearMonth={yearMonth}
-        todaySalesUsd={todaySalesUsd}
-        todayYmd={todayYmd}
-        inflowwLastSyncedAt={inflowwLastSyncedAt}
-        totalRevenue={totalRevenue}
-        transactionCount={transactionCount}
-        avgPerTransaction={avgPerTransaction}
-        topModelName={topModel?.name ?? "—"}
-        topModelRevenue={topModel?.usd ?? 0}
-        topChatterName={topChatter?.name ?? "—"}
-        topChatterRevenue={topChatter?.usd ?? 0}
-        byModel={byModel.map((r) => [r.name, r.usd] as [string, number])}
-        byChatter={byChatter.map((r) => [r.name, r.usd] as [string, number])}
-        daily14={daily14}
-        activeChatterShifts={chatterShifts.length}
-        activeVaShifts={vaShifts.length}
-        chatterHoursThisMonth={chatterHoursThisMonth}
-        vaHoursThisMonth={vaHoursThisMonth}
-        freeModelsCount={freeCount}
-        takenModelsCount={takenCount}
-        pendingCustomsCount={pendingCustoms}
-        totalModelsCount={modelss.length}
-        recentActivity={recentActivity}
-        sparklineWow={sparklineWow}
-        monthlyTarget={monthlyTarget}
-      />
-    </Suspense>
+    <RouterRefreshInterval intervalMs={60_000}>
+      <SupabaseLiveShiftsRealtime />
+      <Suspense fallback={<div className="text-white/60">Loading…</div>}>
+        <AdminHomeClient
+          chatters={chatters}
+          yearMonth={yearMonth}
+          todaySalesUsd={todaySalesUsd}
+          todayYmd={todayYmd}
+          inflowwLastSyncedAt={inflowwLastSyncedAt}
+          totalRevenue={totalRevenue}
+          transactionCount={transactionCount}
+          avgPerTransaction={avgPerTransaction}
+          topModelName={topModel?.name ?? "—"}
+          topModelRevenue={topModel?.usd ?? 0}
+          topChatterName={topChatter?.name ?? "—"}
+          topChatterRevenue={topChatter?.usd ?? 0}
+          byModel={byModel.map((r) => [r.name, r.usd] as [string, number])}
+          byChatter={byChatter.map((r) => [r.name, r.usd] as [string, number])}
+          daily14={daily14}
+          activeChatterShifts={chatterShifts.length}
+          activeVaShifts={vaShifts.length}
+          chatterHoursThisMonth={chatterHoursThisMonth}
+          vaHoursThisMonth={vaHoursThisMonth}
+          freeModelsCount={freeCount}
+          takenModelsCount={takenCount}
+          pendingCustomsCount={pendingCustoms}
+          totalModelsCount={activeModels.length}
+          recentActivity={recentActivity}
+          sparklineWow={sparklineWow}
+          monthlyTarget={monthlyTarget}
+          liveShifts={liveShiftRows}
+          vaTaskProgress={vaTaskProgress}
+        />
+      </Suspense>
+    </RouterRefreshInterval>
   );
 }

@@ -7,8 +7,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "framer-motion";
 import {
   AlertCircle,
+  ArrowRight,
   BadgeCheck,
   CalendarDays,
+  ClipboardList,
   DollarSign,
   FileText,
   Medal,
@@ -29,6 +31,8 @@ import { adminHomeUrl, ROUTES } from "@/lib/routes";
 import { upsertMonthlyTargetAction } from "@/app/actions/monthly-targets";
 import type {
   AdminDayAmount,
+  AdminHomeLiveShiftRow,
+  AdminHomeVaProgressSummary,
   AdminMonthlyTargetProgress,
   AdminRecentActivityItem,
   AdminSparklineWow,
@@ -42,6 +46,7 @@ import {
   StatInfoTooltip,
 } from "@/components/infloww-performance-ui";
 import { VA_CARD, VA_CARD_GLOW } from "@/lib/va-tasks-tokens";
+import { LiveTimer } from "@/components/live-timer";
 
 type ChatterOption = { id: string; full_name: string };
 
@@ -73,6 +78,9 @@ type Props = {
   recentActivity: AdminRecentActivityItem[];
   sparklineWow: AdminSparklineWow;
   monthlyTarget: AdminMonthlyTargetProgress;
+  liveShifts: AdminHomeLiveShiftRow[];
+  /** Null when viewer lacks task_progress:view. */
+  vaTaskProgress: AdminHomeVaProgressSummary | null;
 };
 
 const MONTH_OPTIONS = (() => {
@@ -169,6 +177,22 @@ function BarRow({ label, value, max }: { label: string; value: number; max: numb
 
 const sectionTitleClass =
   "text-sm font-semibold uppercase tracking-[0.14em] text-white/55";
+
+function MiniProgressBar({ pct }: { pct: number }) {
+  const clamped = Math.max(0, Math.min(100, pct));
+  return (
+    <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+      <div
+        className="h-full rounded-full bg-gradient-to-r from-[#FF1493]/80 to-[#D4AF8C]/80"
+        style={{ width: `${clamped}%` }}
+        role="progressbar"
+        aria-valuenow={clamped}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      />
+    </div>
+  );
+}
 
 const listStagger = {
   hidden: { opacity: 0 },
@@ -875,14 +899,14 @@ export function AdminHomeClient(props: Props) {
               {
                 label: "Free models",
                 value: props.freeModelsCount,
-                hint: "Currently available",
+                hint: "Active · available",
                 accent: "emerald" as const,
                 digits: 0,
               },
               {
                 label: "Taken models",
                 value: props.takenModelsCount,
-                hint: "Currently assigned",
+                hint: "Active · assigned",
                 accent: "amber" as const,
                 digits: 0,
               },
@@ -904,6 +928,137 @@ export function AdminHomeClient(props: Props) {
             />
           ))}
         </div>
+      </section>
+
+      {/* Secondary ops: live shifts + VA progress */}
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className={cn(VA_CARD, "border border-white/[0.07] bg-white/[0.03] p-5")}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className={sectionTitleClass}>Live shifts</h3>
+              <p className="mt-1 text-xs text-white/35">
+                {props.liveShifts.length === 0
+                  ? "Nobody on shift"
+                  : `${props.liveShifts.length} live · ${props.activeChatterShifts} chatter · ${props.activeVaShifts} VA`}
+              </p>
+            </div>
+            <Link
+              href={ROUTES.admin.liveShifts}
+              className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[#D4AF8C]/80 transition-colors hover:text-[#D4AF8C]"
+            >
+              View all
+              <ArrowRight className="h-3 w-3" aria-hidden />
+            </Link>
+          </div>
+          <ul className="mt-4 max-h-56 space-y-2 overflow-y-auto overscroll-contain pr-0.5">
+            {props.liveShifts.length === 0 ? (
+              <li className="rounded-xl border border-dashed border-white/10 px-3 py-6 text-center text-sm text-white/40">
+                No live shifts right now
+              </li>
+            ) : (
+              props.liveShifts.map((row) => (
+                <li
+                  key={row.id}
+                  className="flex items-center gap-3 rounded-xl border border-white/[0.05] bg-black/20 px-3 py-2.5"
+                >
+                  <span
+                    className={cn(
+                      "h-1.5 w-1.5 shrink-0 rounded-full",
+                      row.onBreak ? "bg-amber-400" : "animate-pulse bg-emerald-400"
+                    )}
+                    aria-hidden
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium text-white/90">{row.name}</p>
+                    <p className="text-[10px] font-semibold uppercase tracking-wider text-white/35">
+                      {row.role === "virtual_assistant" ? "VA" : "Chatter"}
+                      {row.onBreak ? " · on break" : ""}
+                    </p>
+                  </div>
+                  <LiveTimer
+                    startTime={row.startTime}
+                    className="shrink-0 font-mono text-xs tabular-nums text-white/55"
+                  />
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+
+        {props.vaTaskProgress ? (
+          <div className={cn(VA_CARD, "border border-white/[0.07] bg-white/[0.03] p-5")}>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className={sectionTitleClass}>VA task progress</h3>
+                <p className="mt-1 text-xs text-white/35">Today · Athens</p>
+              </div>
+              <Link
+                href={ROUTES.admin.vaTasks}
+                className="inline-flex shrink-0 items-center gap-1 text-xs font-medium text-[#D4AF8C]/80 transition-colors hover:text-[#D4AF8C]"
+              >
+                View full progress
+                <ArrowRight className="h-3 w-3" aria-hidden />
+              </Link>
+            </div>
+            <div className="mt-4 flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-3xl font-semibold tabular-nums text-white/95">
+                  {props.vaTaskProgress.vasWithTasks === 0
+                    ? "—"
+                    : `${props.vaTaskProgress.overallPct}%`}
+                </p>
+                <p className="mt-1 text-xs text-white/40">
+                  {props.vaTaskProgress.vasWithTasks === 0
+                    ? "No VAs with tasks today"
+                    : `${props.vaTaskProgress.completedItems}/${props.vaTaskProgress.totalItems} items · ${props.vaTaskProgress.vasWithTasks} VA${props.vaTaskProgress.vasWithTasks === 1 ? "" : "s"}`}
+                </p>
+              </div>
+              {props.vaTaskProgress.vasWithTasks > 0 ? (
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/30">
+                  {props.vaTaskProgress.fullyComplete} done · {props.vaTaskProgress.partial}{" "}
+                  partial · {props.vaTaskProgress.notStarted} not started
+                </p>
+              ) : null}
+            </div>
+            {props.vaTaskProgress.vasWithTasks > 0 ? (
+              <div className="mt-3">
+                <MiniProgressBar pct={props.vaTaskProgress.overallPct} />
+              </div>
+            ) : null}
+            <ul className="mt-4 max-h-40 space-y-2.5 overflow-y-auto overscroll-contain">
+              {props.vaTaskProgress.rows.length === 0 ? (
+                <li className="flex items-center gap-2 text-sm text-white/40">
+                  <ClipboardList className="h-4 w-4 shrink-0 opacity-50" aria-hidden />
+                  Nothing due today
+                </li>
+              ) : (
+                props.vaTaskProgress.rows.map((row) => (
+                  <li key={row.vaId} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate text-white/75">{row.vaName}</span>
+                      <span className="shrink-0 tabular-nums text-white/45">
+                        {row.completedItems}/{row.totalItems} · {row.pct}%
+                      </span>
+                    </div>
+                    <MiniProgressBar pct={row.pct} />
+                  </li>
+                ))
+              )}
+            </ul>
+          </div>
+        ) : (
+          <div
+            className={cn(
+              VA_CARD,
+              "flex flex-col justify-center border border-white/[0.07] bg-white/[0.03] p-5"
+            )}
+          >
+            <h3 className={sectionTitleClass}>VA task progress</h3>
+            <p className="mt-2 text-sm text-white/40">
+              Progress Overview access is required to view today&apos;s completion.
+            </p>
+          </div>
+        )}
       </section>
 
       {/* Revenue by model / chatter */}
